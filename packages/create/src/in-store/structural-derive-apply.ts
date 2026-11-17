@@ -98,7 +98,7 @@ const samePoint = (p: Vec3, q: Vec3) => p.every((v, k) => v === q[k] || (Number.
  * thickness) throw inside the transaction and also leave nothing.
  */
 function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | null, p: Vec3) => Vec3): void {
-  const refuse = (what: string, why: string) => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
+  const refuse = (what: string, why: string): never => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
   for (const member of plan.curveMembers) {
     const what = `the curve member of element #${member.elementId}`;
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
@@ -114,10 +114,16 @@ function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | 
   }
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;
+    if (member.openings !== undefined && !Array.isArray(member.openings)) refuse(what, 'has openings that are not an array');
     try {
-      prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)));
+      prepareStructuralFace(
+        member.boundary.map(p => toLocal(member.storeyId, p)),
+        (member.openings ?? []).map(ring => (Array.isArray(ring) ? ring : []).map(p => toLocal(member.storeyId, p))),
+      );
     } catch (error) {
-      refuse(what, `has a bad boundary (${error instanceof Error ? error.message : String(error)})`);
+      const detail = error instanceof Error ? error.message : String(error);
+      const opening = /^Structural Face: opening (\d+):/.exec(detail);
+      refuse(what, `has a bad ${opening ? `opening ${opening[1]}` : 'boundary'} (${detail})`);
     }
   }
 }
@@ -177,7 +183,7 @@ function writePlan(
   for (const member of plan.surfaceMembers) {
     const { anchor, toLocal } = placementOf(member.storeyId);
     const { memberId } = addStructuralSurfaceMemberToStore(editor, anchor, {
-      Boundary: member.boundary.map(toLocal), Thickness: member.thickness, PredefinedType: 'SHELL',
+      Boundary: member.boundary.map(toLocal), Openings: (member.openings ?? []).map(ring => ring.map(toLocal)), Thickness: member.thickness, PredefinedType: 'SHELL',
     });
     memberIds.push(memberId);
     link(member.elementId, memberId);

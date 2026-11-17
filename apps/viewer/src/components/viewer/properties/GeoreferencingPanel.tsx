@@ -12,6 +12,7 @@
  * this change — does not grow.
  */
 
+import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
 import { useState, useCallback, useMemo } from 'react';
 import { Globe, MapPin, Search, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { computeOrthogonalHeightForBaseAltitude } from '@/lib/geo/cesium-placeme
 import {
   detectScaleUnitMismatch,
   mergeMapConversion,
+  mapUnitDisplaySuffix,
   mergeProjectedCRS,
   resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
@@ -44,6 +46,8 @@ import { GeorefRow, AngleRow } from './georef-rows';
 import { TerrainHeightButton } from './georef-terrain-height-button';
 import { GeorefReadOnlyNotices, WellKnownTextRow, isReadOnlyCoordinateOperation } from './georef-notices';
 import { WorldViewSettings } from './world-view-settings';
+import { SiteContextSection } from '../site-context/SiteContextSection';
+import { CrsAssumedBadge } from './crs-assumed-badge';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
 
@@ -141,13 +145,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     );
   }, [mergedConversion, mergedCRS, coordinateInfo, lengthUnitScale]);
 
-  const mapUnitSuffix = useMemo(() => {
-    const mapUnit = mergedCRS?.mapUnit?.toUpperCase();
-    if (!mapUnit) return 'm';
-    if (mapUnit.includes('US') && mapUnit.includes('FOOT')) return 'ftUS';
-    if (mapUnit.includes('FOOT') || mapUnit.includes('FEET')) return 'ft';
-    return 'm';
-  }, [mergedCRS?.mapUnit]);
+  const mapUnitSuffix = mapUnitDisplaySuffix(mergedCRS?.mapUnit);
 
   /**
    * Given a target world altitude (metres) for the model's ground floor
@@ -285,7 +283,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     requestAlignmentReload();
   }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload, oHeightForBaseAltitude]);
 
-  const initializeMapConversionDefaults = useCallback(() => {
+  const initializeMapConversionDefaults = useCallback((batch?: string) => {
     if (!modelId || !setGeorefFields) return;
     setGeorefFields(modelId, 'mapConversion', [
       { field: 'eastings', value: mergedConversion?.eastings ?? 0, oldValue: mergedConversion?.eastings },
@@ -294,7 +292,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       { field: 'xAxisAbscissa', value: mergedConversion?.xAxisAbscissa ?? 1, oldValue: mergedConversion?.xAxisAbscissa },
       { field: 'xAxisOrdinate', value: mergedConversion?.xAxisOrdinate ?? 0, oldValue: mergedConversion?.xAxisOrdinate },
       { field: 'scale', value: mergedConversion?.scale ?? 1, oldValue: mergedConversion?.scale },
-    ]);
+    ], batch);
     setConversionOpen(true);
     requestAlignmentReload();
   }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
@@ -325,9 +323,11 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             : result.unit;
       fieldUpdates.push({ field: 'mapUnit', value: mapUnit, oldValue: mergedCRS?.mapUnit });
     }
-    setGeorefFields(modelId, 'projectedCRS', fieldUpdates);
+    // The CRS and its default conversion are one undo step: undoing only the conversion would leave a CRS with no position.
+    const batch = newMutationBatchId();
+    setGeorefFields(modelId, 'projectedCRS', fieldUpdates, batch);
     if (!mergedConversion && !mutations?.mapConversion) {
-      initializeMapConversionDefaults();
+      initializeMapConversionDefaults(batch);
     }
     setCrsOpen(true);
     requestAlignmentReload();
@@ -391,7 +391,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         {mergedCRS?.description && (
           <span className="text-xs font-mono text-muted-foreground truncate">{mergedCRS.description}</span>
         )}
-        {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
+        {mergedCRS?.name && <><PrecisionGridBadge crsName={mergedCRS.name} /><CrsAssumedBadge crsName={mergedCRS.name} /></>}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
             <button className={`relative ml-auto flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS} after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`}>
@@ -554,7 +554,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
           <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noConversionNotice')}</span>
           <button
-            onClick={initializeMapConversionDefaults}
+            onClick={() => initializeMapConversionDefaults()}
             className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}
           >
             <MapPin className="h-2.5 w-2.5" />
@@ -579,11 +579,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         // panel's model id hasn't resolved and more than one model is loaded — see `canExportKmz`.
         geometryResult={canExportKmz ? geometryResult : null}
         instancedModelRange={instancedModelRange}
-        modelName={modelId ? models.get(modelId)?.name : undefined}
-        lengthUnitScale={lengthUnitScale}
-        editable={editable}
-        onApplyPosition={editable ? handleApplyPosition : undefined}
-      />
+        modelName={modelId ? models.get(modelId)?.name : undefined} lengthUnitScale={lengthUnitScale} editable={editable}
+        onApplyPosition={editable ? handleApplyPosition : undefined} />
+      {modelId && <SiteContextSection modelId={modelId} />}
     </div>
   );
 }

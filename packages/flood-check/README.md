@@ -221,11 +221,15 @@ entities, properties and containment from the parsed store. No meshing.
   the outlines of the ground storey's floor slabs (`FootPrint` curve or the
   extruded `Body` profile; `slab-outline`, or `slab-outline-voids-filled`
   when the slab has holes whose shape is not read: a `FootPrint` of more than
-  one curve, or a Boolean DIFFERENCE). The inner curves of a slab profile are
+  one curve, or a Boolean cut other than a vertical prism through the whole
+  slab and wholly inside it: a notch at the edge, a half space or clipping,
+  an intersection). A through cut is read as a hole and classified below; a
+  shallow cut (a recess) leaves slab material under it and is no hole. The inner curves of a slab profile are
   read as holes, also under a `FootPrint`: one under 1 m² stays closed; one
   wholly roofed (every point of a grid clipped to the hole and just inside
-  each edge and corner lies under the outer outline of a slab more than 1 m
-  higher, outside its holes, with no unread voids) is interior (a shaft, a
+  each edge and corner lies under a slab, a roof, a roofing covering, a
+  window lying flat or a plate more than 1 m higher, read in full, outside
+  its holes) is interior (a shaft, a
   stair opening, a floor area under the building): filled, noted, no
   condition; any other, a partly roofed one included, is open to the sky, a
   courtyard: a hole in the prepared footprint (`courtyardRings`,
@@ -239,12 +243,19 @@ entities, properties and containment from the parsed store. No meshing.
   a Boolean UNION) while others do, the footprint misses its area:
   `footprint.partial` is set, the slab is in `skipped`, a warning says so and
   no element gets a reassuring outcome (`partial-footprint`).
+  **Bodies given as `IfcMappedItem`** (how Revit exports doors, windows and
+  equipment) are read through their `RepresentationMap`, placed by
+  `MappingTarget · MappingOrigin` (the geometry engine's order; the target's
+  axes follow `IfcBaseAxis`, so an omitted Axis2 can mirror), with a uniform
+  scale applied; nested maps are followed up to 8 deep, a map met again is a
+  cycle, and a non-uniform scale is refused: those items count as unreadable.
   **Every geometry reader reports what it could not read**
   (`src/model/outline.ts`): bodies, slab outlines and wall axes are read item
   by item, every item, and each read returns the items present and the items
   read; a slab whose body holds two extrusions gives two rings, and one with
   an unreadable item is `partial`. A Boolean DIFFERENCE is read through its
-  outer operand and marks a slab outline as voids-filled.
+  outer operand: a supported through cut becomes a hole; an unsupported cut
+  marks the slab outline as voids-filled.
   **The footprint's quality is one record that only accumulates**
   (`src/model/footprint.ts`, `footprint.quality`): every source tried that
   could not be read, or only in part (a slab, an external wall's placement
@@ -328,8 +339,8 @@ entities, properties and containment from the parsed store. No meshing.
   and used. It is an **upper estimate** — it can flag but never clear
   (`level-upper-estimate`) — whenever the element's own body or the body of
   the opening it fills exists but cannot be read, in whole or in part (a
-  Brep, an `IfcMappedItem`, a Boolean UNION), or is absent where it alone
-  defines the level (an opening without a body; a light well without one).
+  Brep, an unreadable `IfcMappedItem`, a Boolean UNION), or is absent where it
+  alone defines the level (an opening without a body; a light well without one).
   Stairs and ramps are always upper estimates (entry at the terrain). An
   element with no readable placement is not placed: it is skipped and named
   in a warning. **A placement alone is never exact**: a door or window is
@@ -687,10 +698,13 @@ reserved, so the names follow the repo's own `IfcLite_` sets:
   that, right against the façade (below the map's 1 m cell), is not sampled;
   a footprint up to about 1 m smaller than the building the hazard model
   raised still has samples beyond the raised building.
-- Whether a slab hole is open to the sky is read from the slabs above only:
-  a roof opening closed by a skylight or a hatch not modelled as a slab reads
-  as open, so the hole is a courtyard (guarded locally; an element there may
-  get `no-ground-sample` when the hole is narrower than the sample rings).
+- Whether a slab hole is open to the sky is read from what lies above it:
+  slabs, roofs, roofing coverings, windows lying flat (skylights) and plates,
+  each through its body's plain extrusions (an element whose body is a Brep
+  or a Boolean solid does not count as roofing). A hatch or skylight not
+  modelled as one of these reads as open, so the hole is a courtyard
+  (guarded locally; an element there may get `no-ground-sample` when the
+  hole is narrower than the sample rings).
 - In a given footprint, a ring entirely covered by the others is taken for a
   courtyard (a redundant ring cannot be told from one); in slab outlines it
   never is.

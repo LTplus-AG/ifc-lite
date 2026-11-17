@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cli",
-  "version": "0.45.1",
+  "version": "0.46.0",
   "description": "CLI toolkit for IFC files — query, validate, export, create, and script BIM data",
   "type": "module",
   "bin": {
@@ -43,6 +43,7 @@
     "@ifc-lite/geo": "workspace:^",
     "@ifc-lite/geodata-ch": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/georef-check": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",

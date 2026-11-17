@@ -148,10 +148,10 @@ describe('serializeEntitySubgraph (#6232)', () => {
     const store = await parse(model(3));
     const sub = serializeEntitySubgraph(store, null, { targets: new Set([WALL]) });
 
-    for (const id of [1, 10, 11, 20, 23, OPENING, VOIDS, WINDOW, FILLS, MATERIAL_REL, 133, 132, 131, 130]) {
+    for (const id of [1, 10, 11, 20, 23, 30, OPENING, VOIDS, WINDOW, FILLS, MATERIAL_REL, 133, 132, 131, 130]) {
       expect(sub.ids.has(id), `#${id}`).toBe(true);
     }
-    for (const id of [OTHER_WALL, OTHER_WALL + 10, CONTAINS, 30, 32, 40, STYLED_ITEM, 141]) {
+    for (const id of [OTHER_WALL, OTHER_WALL + 10, CONTAINS, 32, 40, STYLED_ITEM, 141]) {
       expect(sub.ids.has(id), `#${id}`).toBe(false);
     }
     // The shared material relationship is narrowed to what the subgraph holds.
@@ -161,6 +161,47 @@ describe('serializeEntitySubgraph (#6232)', () => {
     const back = await parse(sub.bytes);
     expect(back.relationships.getRelated(WALL, RelationshipType.VoidsElement, 'forward')).toEqual([OPENING]);
     expect(back.relationships.getRelated(OPENING, RelationshipType.FillsElement, 'forward')).toEqual([WINDOW]);
+  });
+
+  it('carries the site record for its placement, without its terrain (#10435)', async () => {
+    const terrain = [
+      '#35=IFCPRODUCTDEFINITIONSHAPE($,$,(#36));',
+      "#36=IFCSHAPEREPRESENTATION(#23,'Body','SweptSolid',(#37));",
+      '#37=IFCEXTRUDEDAREASOLID(#38,#21,#108,1.);',
+      '#38=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,50.,50.);',
+    ];
+    const text = model(0, terrain).replace(
+      `#30=IFCSITE(${guid(30)},$,'S',$,$,#31,$,`,
+      `#30=IFCSITE(${guid(30)},$,'S',$,$,#31,#35,`,
+    );
+    const store = await parse(text);
+    const sub = serializeEntitySubgraph(store, null, { targets: new Set([WALL]) });
+
+    // The mesher reads the site's ObjectPlacement to pick the cut frame; the
+    // wall's chain reaches #31, and the site record names it as its own.
+    expect(lineOf(sub.bytes, 30)).toBe(`#30=IFCSITE(${guid(30)},$,'S',$,$,#31,$,$,.ELEMENT.,$,$,$,$,$);`);
+    for (const id of [35, 36, 37, 38]) expect(sub.ids.has(id), `#${id}`).toBe(false);
+    expect(closure(await parse(sub.bytes)).dangling).toEqual([]);
+    // The site as a target keeps its representation.
+    const own = serializeEntitySubgraph(store, null, { targets: new Set([30]) });
+    expect(lineOf(own.bytes, 30)).toBe(`#30=IFCSITE(${guid(30)},$,'S',$,$,#31,#35,$,.ELEMENT.,$,$,$,$,$);`);
+    expect(own.ids.has(37)).toBe(true);
+  });
+
+  it('carries a site created or retyped to a site this session, not one retyped away (#10435)', async () => {
+    const store = await parse(model(0));
+    const { view, editor } = withEditor(store);
+    const place = editor.addEntity('IfcLocalPlacement', [null, '#21']).expressId;
+    const site = editor.addEntity('IfcSite', ['1site000000000000000000', null, 'New', null, null, `#${place}`, null, null, '.ELEMENT.', null, null, null, null, null]).expressId;
+    view.setEntityType(30, 'IfcBuilding');
+    view.setEntityType(40, 'IfcSite');
+    const roots = remeshContextRoots(store, view, new Set([WALL]));
+    expect(roots.has(site)).toBe(true);
+    expect(roots.has(30)).toBe(false);
+    expect(roots.has(40)).toBe(true);
+    const sub = serializeEntitySubgraph(store, view, { targets: new Set([WALL]) });
+    expect(sub.ids.has(site) && sub.ids.has(place)).toBe(true);
+    expect(closure(await parse(sub.bytes)).dangling).toEqual([]);
   });
 
   it('carries queued edits and drops tombstoned context', async () => {
@@ -189,7 +230,7 @@ describe('serializeEntitySubgraph (#6232)', () => {
     const opening = editor.addEntity('IfcOpeningElement', ['1open000000000000000000', null, 'O', null, null, `#${openingPlace}`, '#112', null, '.OPENING.']).expressId;
     const rel = editor.addEntity('IfcRelVoidsElement', ['1void000000000000000000', null, null, null, `#${wall}`, `#${opening}`]).expressId;
 
-    expect(remeshContextRoots(store, view, new Set([wall]))).toEqual(new Set([1, rel, wall, opening]));
+    expect(remeshContextRoots(store, view, new Set([wall]))).toEqual(new Set([1, 30, rel, wall, opening]));
     const sub = serializeEntitySubgraph(store, view, { targets: new Set([wall]) });
     const back = await parse(sub.bytes);
     expect(closure(back).dangling).toEqual([]);

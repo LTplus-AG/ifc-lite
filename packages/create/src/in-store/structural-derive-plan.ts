@@ -9,6 +9,7 @@
 
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { vecLen as length } from '../ifc-creator-math.js';
+import { plateOpenings } from './structural-opening-section.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import { pointInPolygon } from './room-footprint-offset.js';
 import { curveElementLine, idealisePlate, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
@@ -21,6 +22,7 @@ import {
   type PlannedNode,
   type PlannedSurfaceMember,
   type SkippedElement,
+  type SkippedOpening,
   type StructuralDerivationFacts,
   type StructuralDerivationOptions,
   type StructuralDerivationPlan,
@@ -40,7 +42,7 @@ const ROLE_CLASSES = [['curve', CURVE], ['surface', SURFACE], ['support', SUPPOR
 /** Every class the derivation reads, for the facts reader. */
 export const DERIVATION_CLASSES: readonly string[] = [...CURVE, ...SURFACE, ...SUPPORT];
 
-function roleOf(type: string): (typeof ROLE_CLASSES)[number][0] | null {
+export function roleOf(type: string): (typeof ROLE_CLASSES)[number][0] | null {
   const chain = getInheritanceChainAcrossSchemas(type);
   return ROLE_CLASSES.find(([, classes]) => classes.some((c) => chain.includes(c)))?.[0] ?? null;
 }
@@ -77,16 +79,21 @@ function resolveDerivationOptions(options: StructuralDerivationOptions = {}): Re
 interface Line { element: PhysicalElementFact; start: Vec3; end: Vec3; axis: [Vec3, Vec3]; section: number | null; source: PlannedCurveMember['axisSource']; loadBearing: MemberLoadBearing }
 
 /** Point inside a planar polygon, in the plane's dominant projection. */
-function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3): boolean {
+function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3, clearance = 0): boolean {
   const drop = [0, 1, 2].reduce((m, k) => (Math.abs(normal[k]) > Math.abs(normal[m]) ? k : m), 0);
   const [i, j] = [0, 1, 2].filter((k) => k !== drop);
-  return pointInPolygon(p[i], p[j], polygon.map((q) => [q[i], q[j]]));
+  const projected = sub(p, scale(normal, dot(sub(p, polygon[0]), normal)));
+  return pointInPolygon(projected[i], projected[j], polygon.map((q) => [q[i], q[j]])) && (clearance <= 0 || polygon.every((a, index) => {
+    const edge = sub(polygon[(index + 1) % polygon.length], a);
+    const t = Math.max(0, Math.min(1, dot(sub(projected, a), edge) / dot(edge, edge)));
+    return length(sub(projected, add(a, scale(edge, t)))) > clearance;
+  }));
 }
 
 /** The surface builder's own boundary checks, run here so apply never meets them. */
-function checkFace(boundary: Vec3[]): { normal: Vec3 } | { issue: string } {
+function checkFace(boundary: Vec3[]): { face: ReturnType<typeof prepareStructuralFace> } | { issue: string } {
   try {
-    return { normal: prepareStructuralFace(boundary).axis };
+    return { face: prepareStructuralFace(boundary) };
   } catch (error) {
     return { issue: error instanceof Error ? error.message : String(error) };
   }
@@ -103,6 +110,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   const { tolerance } = resolved;
   const isLong = (line: { start: Vec3; end: Vec3 }) => length(sub(line.end, line.start)) > tolerance;
   const skipped: SkippedElement[] = [];
+  const skippedOpenings: SkippedOpening[] = [];
   const skip = (element: PhysicalElementFact, reason: SkippedElement['reason'], detail: string) => {
     skipped.push({ elementId: element.expressId, type: element.type, name: element.name, reason, detail });
   };
@@ -140,7 +148,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     if ('issue' in plate) { skip(element, 'no-idealisable-shape', plate.issue); continue; }
     const face = checkFace(plate.boundary);
     if ('issue' in face) skip(element, 'no-idealisable-shape', face.issue);
-    else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, loadBearing }, normal: face.normal });
+    else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, openings: plateOpenings(element, plate, face.face, tolerance, skippedOpenings), loadBearing }, normal: face.face.axis });
   }
 
   const footingGrid = new SegmentGrid(2);
@@ -244,10 +252,12 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
         // Elements, not pieces: a split member counts once.
         assumedLoadBearing: new Set(members.filter((member) => member.loadBearing === 'assumed').map((member) => member.elementId)).size,
         skipped: skipped.length,
+        skippedOpenings: skippedOpenings.length,
         extendedEnds: joined.extended.length,
         freeEnds: freeEnds.length,
       },
       skipped,
+      skippedOpenings,
       guessedSupports,
       extendedEnds: joined.extended,
       freeEnds,
@@ -279,7 +289,8 @@ function findUnconnectedEnds(
     if (onMember) { found.push({ node: node.index, landsOnElementId: onMember.elementId, landsOn: 'member-interior' }); continue; }
     if (degree[node.index] !== 1) continue;
     const onSurface = surfaces.find(({ member, normal }) =>
-      Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal));
+      Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal)
+      && !(member.openings ?? []).some(ring => insidePolygon(p, ring, normal, tolerance)));
     if (onSurface) found.push({ node: node.index, landsOnElementId: onSurface.member.elementId, landsOn: 'surface-member' });
   }
   return found;

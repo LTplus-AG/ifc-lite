@@ -1,6 +1,0 @@
----
-"@ifc-lite/renderer": minor
-"@ifc-lite/viewer": patch
----
-
-Gaussian captures keep far less memory (#9018). The renderer no longer keeps a CPU copy of a capture's rows after upload: the GPU holds the packed rows, and the CPU keeps only the centres, opacities and asset slots the depth sort and clipping read (20 bytes per splat instead of 484). Adding or removing a capture copies the other captures' rows on the GPU. A placement edit, a change of SH layout and device-loss recovery read the rows again from the capture's source. Higher-order SH coefficients are stored on the GPU as half floats when every coefficient fits (worst-case colour error below half an 8-bit step on real captures), otherwise as float32. `GaussianSplatApi.add` additionally accepts a `GaussianSplatRowsInput` whose `rows` is a re-readable `GaussianRowSource`; `gaussianRowsFromAttributes` builds one over arrays the caller keeps, and `GaussianSplatAssetInput` with `attributes` is unchanged (the renderer re-reads those arrays, so they must stay unmodified). `normalizeGaussianAttributes` takes an optional same-shape target that it rewrites in place. The viewer no longer decodes a capture whole: its decoder worker range-reads the dropped file one window at a time and streams bounded slices to the renderer, so neither the worker nor the main thread holds the file bytes or a full decoded copy.

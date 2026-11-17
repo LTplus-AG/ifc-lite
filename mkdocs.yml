@@ -155,6 +155,7 @@ nav:
     - Images and PDF Appearance: guide/appearance.md
     - Exporting Data: guide/exporting.md
     - Multi-Model Federation: guide/federation.md
+    - Georeferencing: guide/georeferencing.md
     - LandXML: guide/landxml.md
     - Site Context (Switzerland): guide/site-context.md
     - Rhino .3dm: guide/rhino-3dm.md
@@ -241,6 +242,7 @@ nav:
     - Privacy: guide/privacy.md
   - Architecture:
     - Overview: architecture/overview.md
+    - Viewer Automation (Proposed): architecture/viewer-automation-plan.md
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
@@ -323,6 +325,7 @@ nav:
   - Contributing:
     - Development Setup: contributing/setup.md
     - Testing: contributing/testing.md
+    - CI Cache Measurements: contributing/ci-cache-measurements.md
     - Collaboration Testing: contributing/collaboration-testing.md
     - Release Process: contributing/release.md
     - Contributor License Agreement: contributing/cla.md

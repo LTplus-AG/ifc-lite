@@ -14,7 +14,7 @@ import { extractModelFacts } from '../src/model/extract.js';
 import { footprintConcerns } from '../src/model/facts.js';
 import { mapOf } from './synthetic-model.js';
 import { CELL_NO_RUNOFF, type MapPoint } from '../src/types.js';
-import { CODE, CONFIRMED, flatTerrain } from './helpers.js';
+import { CODE, CONFIRMED, flatTerrain, NO_OTHER_BUILDINGS } from './helpers.js';
 import { localOf, raster } from './candidate-fixtures.js';
 import { parseStep, syntheticHouse, type Extra } from './synthetic-model.js';
 
@@ -94,7 +94,8 @@ async function chain(slabs: Slabs, w: Walls) {
     walls(b, w);
   };
   const given = slabs === 'given' ? { footprint: [[mapOf(0, 0), mapOf(20, 0), mapOf(20, 10), mapOf(0, 10)]] } : {};
-  return extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', slab: false, extra })), { expectedCrs: 'EPSG:2056', ...given });
+  // The ground storey is stated: otherwise the height reference alone would withhold every favourable outcome (item 21).
+  return extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', slab: false, extra })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG', ...given });
 }
 
 describe('footprint source chains', () => {
@@ -105,20 +106,50 @@ describe('footprint source chains', () => {
 
   it('end to end: no element gets a reassuring outcome on a footprint that is voids-filled, partial or a hull', async () => {
     const paints: Array<(l: MapPoint) => number> = [() => CELL_NO_RUNOFF, () => CODE['depth-0-0.1'], bandRound40];
+    // A stated ground storey and a complete other-buildings source, so only the footprint can withhold; the control proves a
+    // complete footprint does reach a favourable outcome under the same conditions (the test can fail).
+    const opts = { renderingConfirmation: CONFIRMED, otherBuildings: NO_OTHER_BUILDINGS };
     let checked = 0;
+    let withheld = 0;
+    let controlFavourable = 0;
+    const expectedWorst: Record<string, string> = {
+      'given|walls full loop': 'complete', 'given|walls partial loop': 'complete', 'given|no walls': 'complete',
+      'slab readable|walls full loop': 'complete', 'slab readable|walls partial loop': 'complete', 'slab readable|no walls': 'complete',
+      'slab with voids|walls full loop': 'courtyard-ring', 'slab with voids|walls partial loop': 'courtyard-ring', 'slab with voids|no walls': 'courtyard-ring',
+      'slab partly readable|walls full loop': 'partial', 'slab partly readable|walls partial loop': 'partial', 'slab partly readable|no walls': 'partial',
+      'slab unreadable|walls full loop': 'partial', 'slab unreadable|walls partial loop': 'hull', 'slab unreadable|no walls': 'hull',
+      'no slab|walls full loop': 'complete', 'no slab|walls partial loop': 'hull', 'no slab|no walls': 'hull',
+    };
     for (const [slabs, w] of rows) {
       const facts = await chain(slabs, w);
       const worst = footprintConcerns(facts.footprint).worst;
-      if (worst === 'complete' || worst === 'courtyard-ring') continue;
+      expect(worst, `${slabs}, ${w}: footprint quality`).toBe(expectedWorst[`${slabs}|${w}`]);
+      if (worst === 'complete') {
+        for (const paint of paints) {
+          const r = checkFloodExposure(facts, raster(paint), flatTerrain(499.95), opts);
+          controlFavourable += r.results.filter((x) => ['above-mapped-class-range', 'no-runoff-mapped'].includes(x.outcome)).length;
+        }
+        continue;
+      }
+      if (worst === 'courtyard-ring') continue;
       for (const paint of paints) {
-        const r = checkFloodExposure(facts, raster(paint), flatTerrain(499.95), { renderingConfirmation: CONFIRMED });
+        const r = checkFloodExposure(facts, raster(paint), flatTerrain(499.95), opts);
         for (const x of r.results) {
           checked++;
           expect(['above-mapped-class-range', 'no-runoff-mapped'], `${slabs}, ${w}: ${x.candidate.name}`).not.toContain(x.outcome);
+          // Such a footprint also keeps the doors from confirming the height reference, so the outcome alone cannot show the
+          // footprint guard at work: wherever a favourable outcome is withheld, the footprint must be among the reasons.
+          if (x.favourableWithheldBecause.length > 0) {
+            withheld++;
+            expect(x.favourableWithheldBecause.join(' '), `${slabs}, ${w}: ${x.candidate.name}`).toMatch(/footprint/);
+          }
         }
       }
     }
     expect(checked).toBeGreaterThan(50);
+    expect(withheld).toBeGreaterThan(10);
+    expect(controlFavourable).toBeGreaterThan(0);
   });
+
 });
 

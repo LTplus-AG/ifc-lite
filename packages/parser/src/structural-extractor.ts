@@ -73,6 +73,7 @@ import {
   structuralActivityKind as activityKind,
   structuralRoleOf as roleOf,
   structuralRootFields as rootFields,
+  structuralSourceIds,
   type StructuralRole,
 } from './structural-extractor-values.js';
 
@@ -119,13 +120,7 @@ export function extractStructuralOnDemand(
   // Candidate source ids are the structural classes plus the relation classes
   // below. The effective iterator removes tombstones and folds in created and
   // retyped records before the extractor reads their attributes.
-  const sourceIds = new Set<number>();
-  for (const [typeKey, ids] of byType) {
-    if (!typeKey.startsWith('IFCSTRUCTURAL')) continue;
-    const role = roleOf(typeKey);
-    if (!role) continue;
-    for (const id of ids) sourceIds.add(id);
-  }
+  const sourceIds = structuralSourceIds(byType);
 
   for (const type of RELATION_TYPES) for (const id of byType.get(type) ?? []) sourceIds.add(id);
   const typeMutations = view?.getTypeMutations?.();
@@ -186,6 +181,9 @@ export function extractStructuralOnDemand(
   /** Deleted resources read as absent; loads and conditions use the view only when one exists. */
   const viewResource = view ? readResolved : undefined;
 
+  const reinforcementAreas = read('reinforcementArea')
+    .map((record) => extractStructuralLoad(extractor, store, record.expressId, viewResource))
+    .filter((record): record is StructuralLoadInfo => !!record);
   const memberRaw = read('member');
   const connectionRaw = read('connection');
   const activityRaw = read('activity');
@@ -389,7 +387,8 @@ export function extractStructuralOnDemand(
     activities,
     loadGroups,
     resultGroups,
-    hasStructural: [analysisModels, members, connections, activities, loadGroups, resultGroups]
+    reinforcementAreas,
+    hasStructural: [analysisModels, members, connections, activities, loadGroups, resultGroups, reinforcementAreas]
       .some((rows) => rows.length > 0),
     // Derived from the loads rather than tracked alongside them, so the
     // extraction cannot claim a completeness its own tree contradicts. A

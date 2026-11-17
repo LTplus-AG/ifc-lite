@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/georef-check",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Diagnose IFC georeferencing: Levels of Georeferencing found, and findings with plain-language explanations and structured fixes (double map position, scale slips, zone prefixes, LV03/LV95, tool-default site locations)",
   "type": "module",
   "main": "./dist/index.js",

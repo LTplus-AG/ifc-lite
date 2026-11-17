@@ -159,6 +159,9 @@ export function locate(kind: LocateKind, s: LocationSources): Location | { refus
       level = value;
       basis = why;
       fromClipped = clipped;
+    } else if (value === level && clipped) {
+      // A clipped body's bottom equal to the level still only bounds it: the cut may have removed what lay there.
+      fromClipped = true;
     }
   };
   if (kind === 'opening' || kind === 'slab-opening') {

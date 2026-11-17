@@ -16,12 +16,16 @@ use crate::step_text::quoted;
 
 use super::jsval::{js_to_number, json_to_js_string, to_step_real, JsVal};
 use super::pass::Pass;
-use super::units::{find_length_unit_reference, normalize_map_unit_name};
+use super::units::normalize_map_unit_name;
 use super::values::Unwritable;
 use super::wire::GeorefMutations;
 
 const WITHOUT_CONTEXT: &str = "Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.";
 const WITHOUT_CRS: &str = "Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.";
+const UNPLANNED_REFUSAL: &str = "Georeferencing was not exported:";
+const INCOMPLETE_MAP_CONVERSION: &str = "Cannot create IfcMapConversion from a partial edit: Eastings, Northings and OrthogonalHeight are all required.";
+const PARTIAL_FACTORS: &str = "Cannot write IfcMapConversionScaled: FactorX, FactorY and FactorZ are all mandatory and must be finite numbers, and the triple given was not. The factors were not written.";
+const FACTORS_ON_UNSCALED: &str = "Cannot write FactorX/FactorY/FactorZ onto an existing IfcMapConversion: they exist only on IfcMapConversionScaled, and this edit does not change the class. The factors were not written.";
 
 /// The error the TypeScript exporter throws for an IFC2X3 output.
 pub(crate) const IFC2X3_REFUSAL: &str = "Georeferencing creation and editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.";
@@ -49,12 +53,9 @@ pub(crate) fn requests_anything(g: &GeorefMutations) -> bool {
     g.projected_crs.as_ref().is_some_and(|m| !m.is_empty()) || g.map_conversion.as_ref().is_some_and(|m| !m.is_empty())
 }
 
-/// `resolveMapUnitReference`: a project length unit, else a new one.
+/// `resolveMapUnitReference`: always a new unit, never an existing entity (one the generic API may have edited).
 fn map_unit(pass: &mut Pass<'_, '_>, name: &str) -> Result<Option<u32>, Unwritable> {
     let normalized = normalize_map_unit_name(name);
-    if let Some(existing) = find_length_unit_reference(&normalized, pass.src, &|id| pass.is_deleted(id)) {
-        return Ok(Some(existing));
-    }
     let prefix = if normalized == "METRE" {
         Some(None)
     } else {
@@ -100,27 +101,72 @@ fn preferred_context(pass: &Pass<'_, '_>) -> Option<u32> {
     first_3d.or_else(|| ids.first().copied())
 }
 
-/// A mandatory REAL: an absent or NaN value is the authored default 0 (the
-/// `Number(x) || 0` of the TypeScript writer); an infinity is refused.
-fn real_or_zero(v: Option<&Value>) -> Result<String, Unwritable> {
-    let n = v.map_or(f64::NAN, js_to_number);
-    to_step_real(if n.is_nan() || n == 0.0 { 0.0 } else { n })
-}
-
 fn real_or_unset(v: Option<&Value>) -> Result<String, Unwritable> {
     v.map_or(Ok("$".to_string()), |v| to_step_real(js_to_number(v)))
 }
 
-fn map_conversion_line(id: u32, context: u32, crs: u32, mc: &Map<String, Value>) -> Result<String, Unwritable> {
-    Ok(format!(
-        "#{id}=IFCMAPCONVERSION(#{context},#{crs},{},{},{},{},{},{});",
-        real_or_zero(mc.get("eastings"))?,
-        real_or_zero(mc.get("northings"))?,
-        real_or_zero(mc.get("orthogonalHeight"))?,
+/// `declaresMapConversionScaled`: FILE_SCHEMA identifiers whose schema
+/// declares `IfcMapConversionScaled`. Of the bundled schemas only
+/// `IFC4X3.exp` (`IFC4X3_DEV_923b0514`, what was released as IFC4X3_ADD2)
+/// does; `IFC4X3` is the bare family identifier. RC identifiers fail closed.
+fn declares_map_conversion_scaled(file_schema: &str) -> bool {
+    let token = file_schema.trim();
+    token.eq_ignore_ascii_case("IFC4X3") || token.eq_ignore_ascii_case("IFC4X3_ADD2")
+}
+
+/// `scaledUndeclaredWarning`, verbatim.
+fn scaled_undeclared_warning(file_schema: &str) -> String {
+    format!("Cannot write IfcMapConversionScaled into a file declaring FILE_SCHEMA {file_schema}: that schema does not declare it (only IFC4X3 / IFC4X3_ADD2 do). FactorX/FactorY/FactorZ were not written, and the IfcMapConversion was written without them.")
+}
+
+/// `requestedFactors`: the FactorX/Y/Z triple, `None` when none was asked
+/// for. A partial triple is reported and treated as none (all three are
+/// mandatory on `IfcMapConversionScaled`; 1.0 for a gap would be a guess).
+fn requested_factors<'a>(mc: &'a Map<String, Value>, warnings: &mut Vec<String>) -> Option<[&'a Value; 3]> {
+    // A null is a factor nobody gave, as in the TypeScript writer.
+    match ["factorX", "factorY", "factorZ"].map(|k| mc.get(k).filter(|v| !v.is_null())) {
+        [Some(x), Some(y), Some(z)] if [x, y, z].iter().all(|v| js_to_number(v).is_finite()) => Some([x, y, z]),
+        [None, None, None] => None,
+        _ => {
+            warnings.push(PARTIAL_FACTORS.to_string());
+            None
+        }
+    }
+}
+
+/// `mapConversionLine`: `IFCMAPCONVERSIONSCALED` when all three factors
+/// were requested and the schema declares it, else `IFCMAPCONVERSION`. The
+/// scaled entity is the plain one plus FactorX/Y/Z, so one line serves both.
+fn map_conversion_line(
+    id: u32,
+    context: u32,
+    crs: u32,
+    mc: &Map<String, Value>,
+    [eastings, northings, height]: [f64; 3],
+    warnings: &mut Vec<String>,
+    file_schema: &str,
+) -> Result<String, Unwritable> {
+    let mut factors = requested_factors(mc, warnings);
+    if factors.is_some() && !declares_map_conversion_scaled(file_schema) {
+        warnings.push(scaled_undeclared_warning(file_schema));
+        factors = None;
+    }
+    let mut line = format!(
+        "#{id}=IFCMAPCONVERSION{}(#{context},#{crs},{},{},{},{},{},{}",
+        if factors.is_some() { "SCALED" } else { "" },
+        to_step_real(eastings + 0.0)?,
+        to_step_real(northings + 0.0)?,
+        to_step_real(height + 0.0)?,
         real_or_unset(mc.get("xAxisAbscissa"))?,
         real_or_unset(mc.get("xAxisOrdinate"))?,
         real_or_unset(mc.get("scale"))?,
-    ))
+    );
+    for f in factors.into_iter().flatten() {
+        line.push(',');
+        line.push_str(&to_step_real(js_to_number(f))?);
+    }
+    line.push_str(");");
+    Ok(line)
 }
 
 /// Queue edits on an existing record and nominate it as the TypeScript side does.
@@ -132,58 +178,114 @@ fn edit_existing(pass: &mut Pass<'_, '_>, id: u32, edits: Vec<(String, String)>)
     }
 }
 
+/// Named attribute edits for the keys `mc` or `crs` carries, in `pairs` order.
+fn named_edits(m: &Map<String, Value>, pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+    pairs.iter().filter_map(|&(key, attr)| m.get(key).map(|v| (attr.to_string(), json_to_js_string(v)))).collect()
+}
+
+/// `MapUnit` as a reference token: the resolved or created unit, else `$`
+/// with the unsupported-unit warning.
+fn map_unit_token(pass: &mut Pass<'_, '_>, unit: &Value) -> Result<String, Unwritable> {
+    let name = json_to_js_string(unit);
+    Ok(match map_unit(pass, &name)? {
+        Some(unit_id) => format!("#{unit_id}"),
+        None => {
+            pass.warnings.push(unit_warning(&name));
+            "$".to_string()
+        }
+    })
+}
+
+/// Create the `IfcMapConversion` from the preferred context to `crs_id`, or
+/// report that no context exists.
+fn create_map_conversion(pass: &mut Pass<'_, '_>, crs_id: u32, mc: &Map<String, Value>, source_crs: &[u32], file_schema: &str) -> Result<(), Unwritable> {
+    // A create needs the whole position (`+ 0.0` below folds -0 to 0): a partial edit whose record was deleted is refused, never written as 0.
+    let pos = ["eastings", "northings", "orthogonalHeight"].map(|k| mc.get(k).filter(|v| !v.is_null()).map_or(f64::NAN, js_to_number));
+    if pos.iter().any(|n| n.is_nan()) {
+        // An unplanned caller (the viewer) never reads warnings: it gets a refusal, not a 0-filled or dropped position.
+        if source_crs.is_empty() {
+            return Err(Unwritable(format!("{UNPLANNED_REFUSAL} {INCOMPLETE_MAP_CONVERSION}")));
+        }
+        pass.warnings.push(INCOMPLETE_MAP_CONVERSION.to_string());
+        return Ok(());
+    }
+    // The planner names the SourceCRS; a host that does not plan leaves the choice to the file's own contexts.
+    let context = if source_crs.is_empty() {
+        preferred_context(pass)
+    } else {
+        let contexts = pass.of_type("IFCGEOMETRICREPRESENTATIONCONTEXT");
+        source_crs.iter().copied().find(|id| contexts.contains(id))
+    };
+    match context {
+        Some(context) => {
+            let mc_id = pass.allocate()?;
+            let line = map_conversion_line(mc_id, context, crs_id, mc, pos, &mut pass.warnings, file_schema)?;
+            pass.georef_lines.push((mc_id, line));
+            pass.new_entity_count += 1;
+        }
+        None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
+    }
+    Ok(())
+}
+
 /// `applyGeoreferencingMutations`.
-pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), Unwritable> {
+pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &str) -> Result<(), Unwritable> {
     let crs_ids = pass.of_type("IFCPROJECTEDCRS");
     let mut mc_ids = pass.of_type("IFCMAPCONVERSION");
+    // The edited record is `mc_ids[0]`: an IfcMapConversionScaled exactly
+    // when the file has no plain IfcMapConversion (the lists are disjoint).
+    let first_is_scaled = mc_ids.is_empty();
     mc_ids.extend(pass.of_type("IFCMAPCONVERSIONSCALED"));
 
     if let (Some(crs), Some(&id)) = (&g.projected_crs, crs_ids.first()) {
-        let mut edits = Vec::new();
-        for (key, attr) in [
-            ("name", "Name"),
-            ("description", "Description"),
-            ("geodeticDatum", "GeodeticDatum"),
-            ("verticalDatum", "VerticalDatum"),
-            ("mapProjection", "MapProjection"),
-            ("mapZone", "MapZone"),
-        ] {
-            if let Some(v) = crs.get(key) {
-                edits.push((attr.to_string(), json_to_js_string(v)));
-            }
-        }
+        // Text is text (`$`, `*`, `#12` stay strings, as on the create path); only an empty value clears the slot.
+        let raw = named_edits(
+            crs,
+            &[
+                ("name", "Name"),
+                ("description", "Description"),
+                ("geodeticDatum", "GeodeticDatum"),
+                ("verticalDatum", "VerticalDatum"),
+                ("mapProjection", "MapProjection"),
+                ("mapZone", "MapZone"),
+            ],
+        );
+        // The text is text whatever it looks like: only an EMPTY value is the `$` token, a text that spells `$` is quoted.
+        let text_attrs: Vec<String> = raw.iter().filter(|(_, text)| !text.is_empty()).map(|(attr, _)| attr.clone()).collect();
+        let mut edits: Vec<(String, String)> = raw.into_iter().map(|(attr, text)| if text.is_empty() { (attr, "$".to_string()) } else { (attr, text) }).collect();
         if let Some(unit) = crs.get("mapUnit") {
-            let name = json_to_js_string(unit);
-            let value = match map_unit(pass, &name)? {
-                Some(unit_id) => format!("#{unit_id}"),
-                None => {
-                    pass.warnings.push(unit_warning(&name));
-                    "$".to_string()
-                }
-            };
+            let value = map_unit_token(pass, unit)?;
             edits.push(("MapUnit".to_string(), value));
         }
         edit_existing(pass, id, edits);
+        // Text is text (`$`, `*`, `#12` stay quoted strings): carried as a decision of this writer, not inside the value.
+        for attr in text_attrs {
+            pass.text_edits.insert((id, attr));
+        }
     }
 
     if let (Some(mc), Some(&id)) = (&g.map_conversion, mc_ids.first()) {
-        let mut edits = Vec::new();
-        for (key, attr) in [
-            ("eastings", "Eastings"),
-            ("northings", "Northings"),
-            ("orthogonalHeight", "OrthogonalHeight"),
-            ("xAxisAbscissa", "XAxisAbscissa"),
-            ("xAxisOrdinate", "XAxisOrdinate"),
-            ("scale", "Scale"),
-        ] {
-            if let Some(v) = mc.get(key) {
-                edits.push((attr.to_string(), json_to_js_string(v)));
+        let mut edits = named_edits(
+            mc,
+            &[
+                ("eastings", "Eastings"),
+                ("northings", "Northings"),
+                ("orthogonalHeight", "OrthogonalHeight"),
+                ("xAxisAbscissa", "XAxisAbscissa"),
+                ("xAxisOrdinate", "XAxisOrdinate"),
+                ("scale", "Scale"),
+            ],
+        );
+        if requested_factors(mc, &mut pass.warnings).is_some() {
+            if first_is_scaled {
+                edits.extend(named_edits(mc, &[("factorX", "FactorX"), ("factorY", "FactorY"), ("factorZ", "FactorZ")]));
+            } else {
+                pass.warnings.push(FACTORS_ON_UNSCALED.to_string());
             }
         }
         edit_existing(pass, id, edits);
     }
 
-    let empty = Map::new();
     if let (Some(crs), true) = (&g.projected_crs, crs_ids.is_empty()) {
         let crs_id = pass.allocate()?;
         let text = |key: &str| match crs.get(key).filter(|v| truthy(v)) {
@@ -191,34 +293,19 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), 
             None => "$".to_string(),
         };
         let fields = ["name", "description", "geodeticDatum", "verticalDatum", "mapProjection", "mapZone"].map(text);
-        let mut unit_ref = "$".to_string();
-        if let Some(unit) = crs.get("mapUnit") {
-            let name = json_to_js_string(unit);
-            match map_unit(pass, &name)? {
-                Some(unit_id) => unit_ref = format!("#{unit_id}"),
-                None => pass.warnings.push(unit_warning(&name)),
-            }
-        }
+        let unit_ref = match crs.get("mapUnit") {
+            Some(unit) => map_unit_token(pass, unit)?,
+            None => "$".to_string(),
+        };
         pass.georef_lines.push((crs_id, format!("#{crs_id}=IFCPROJECTEDCRS({},{unit_ref});", fields.join(","))));
         pass.new_entity_count += 1;
-        match preferred_context(pass) {
-            Some(context) => {
-                let mc_id = pass.allocate()?;
-                let mc = g.map_conversion.as_ref().unwrap_or(&empty);
-                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)?));
-                pass.new_entity_count += 1;
-            }
-            None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
+        if let Some(mc) = &g.map_conversion {
+            create_map_conversion(pass, crs_id, mc, &g.source_crs, file_schema)?;
+        } else if mc_ids.is_empty() && g.source_crs.is_empty() {
+            return Err(Unwritable(format!("{UNPLANNED_REFUSAL} no position was given for the new IfcProjectedCRS.")));
         }
     } else if let (Some(mc), true, Some(&crs_id)) = (&g.map_conversion, mc_ids.is_empty(), crs_ids.first()) {
-        match preferred_context(pass) {
-            Some(context) => {
-                let mc_id = pass.allocate()?;
-                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)?));
-                pass.new_entity_count += 1;
-            }
-            None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
-        }
+        create_map_conversion(pass, crs_id, mc, &g.source_crs, file_schema)?;
     } else if g.map_conversion.is_some() && mc_ids.is_empty() && crs_ids.is_empty() {
         pass.warnings.push(WITHOUT_CRS.to_string());
     }

@@ -7,6 +7,7 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
+import { useAgentBridgeState } from '@/lib/agent-bridge/state';
 import { PaletteLauncherContext } from './command-palette-launcher';
 import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
 
@@ -15,6 +16,8 @@ type PaletteLoad = { module: typeof import('./CommandPalette') } | { error: unkn
 type CommandPaletteHostProps = ComponentProps<typeof import('./CommandPalette')['CommandPalette']>;
 
 export function CommandPaletteHost(props: CommandPaletteHostProps) {
+  const agentStatus = useAgentBridgeState().status.kind;
+  const agentActive = agentStatus === 'connected' || agentStatus === 'connecting';
   const { t } = useTranslation();
   const [opened, setOpened] = useState(false);
   const [pendingQuery, setPendingQuery] = useState('');
@@ -25,8 +28,11 @@ export function CommandPaletteHost(props: CommandPaletteHostProps) {
     if (props.open) launcher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }, [props.open]);
   useEffect(() => {
-    if (props.open) setOpened(true);
-    else { setPendingQuery(''); setComposing(false); }
+    if (props.open || agentActive) setOpened(true);
+  }, [props.open, agentActive]);
+  // Closing clears transient input even while the bridge retains the owner.
+  useEffect(() => {
+    if (!props.open) { setPendingQuery(''); setComposing(false); }
   }, [props.open]);
   useEffect(() => {
     if (!opened) return;

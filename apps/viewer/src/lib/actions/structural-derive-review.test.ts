@@ -29,7 +29,7 @@ test('#9668 review writes nothing; Apply writes one linked analysis model as one
   assert.equal(derivationModelId(useViewerStore.getState()), SAMPLE_MODEL);
   const before = editedModelBytes(dataStore, view);
   const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
-  assert.deepEqual(review.plan.report.counts, { curveMembers: 3, surfaceMembers: 0, nodes: 4, supports: 1, guessedSupports: 0, assumedLoadBearing: 3, skipped: 0, extendedEnds: 0, freeEnds: 1 });
+  assert.deepEqual(review.plan.report.counts, { curveMembers: 3, surfaceMembers: 0, nodes: 4, supports: 1, guessedSupports: 0, assumedLoadBearing: 3, skipped: 0, skippedOpenings: 0, extendedEnds: 0, freeEnds: 1 });
   assert.ok(review.created > 0);
   await assertSameNativeIfcGraph(editedModelBytes(dataStore, view), before);
   assert.equal(useViewerStore.getState().storeEditors.size, 0, 'review allocates no live editor');

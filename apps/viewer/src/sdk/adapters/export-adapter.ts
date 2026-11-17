@@ -1,10 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { viewerDrawingAnnotations } from '@/lib/export/viewer-drawing-annotations';
 import { trackExportCompleted } from '@/lib/analytics';
 import { prepareAppearanceSerialization } from '../../lib/appearance/serialization.js';
 import { packagePortableIfc, portableIfcDownload } from '../../lib/export/portable-ifc.js';
-
 import type { StoreApi } from './types.js';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
@@ -383,7 +383,7 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         modelId, model.ifcDataStore,
         mutationView ?? undefined,
       );
-      const exporter = new StepExporter(model.ifcDataStore, serialized.view);
+      const exporter = new StepExporter(model.ifcDataStore, options.includeMutations === false ? serialized.view : viewerDrawingAnnotations(modelId, model.ifcDataStore, serialized.view));
       // Include georeferencing mutations if present
       const georefMutations = options.includeMutations !== false
         ? state.georefMutations?.get(modelId) ?? undefined

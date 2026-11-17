@@ -16,6 +16,7 @@
  * single global schedule into every exported file.
  */
 
+import { viewerDrawingAnnotations } from '@/lib/export/viewer-drawing-annotations';
 import { StepExporter, Ifc5Exporter } from '@ifc-lite/export';
 import { prepareAppearanceSerialization } from '../appearance/serialization.js';
 import { packagePortableIfcAsync } from './portable-ifc.js';
@@ -42,7 +43,7 @@ export async function exportChangedModelToStep(
   invocation: StepExportInvocation,
 ): Promise<ChangesExportArtifact> {
   const serialized = prepareAppearanceSerialization(modelId, dataStore, view);
-  const exporter = new StepExporter(dataStore, serialized.view);
+  const exporter = new StepExporter(dataStore, viewerDrawingAnnotations(modelId, dataStore, serialized.view));
   const result = await exporter.exportAsync({
     schema: invocation.schema,
     includeGeometry: true,

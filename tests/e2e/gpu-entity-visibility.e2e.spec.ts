@@ -211,7 +211,7 @@ async function picksNeverHidden(page: Page, info: TestInfo, name: string, hidden
   return both.length;
 }
 
-interface Scenario { name: string; steps: Step[]; ids?: (page: Page) => Promise<number[]> }
+interface Scenario { name: string; steps: Step[]; ids?: (page: Page) => Promise<number[]>; independent?: boolean }
 
 /** Capture A (GPU visibility), check picks, capture B (pieces removed), compare; C is the unfiltered frame. */
 async function compareScenario(page: Page, info: TestInfo, scenario: Scenario, unfiltered: string): Promise<Record<string, unknown>> {
@@ -222,6 +222,7 @@ async function compareScenario(page: Page, info: TestInfo, scenario: Scenario, u
   const a = await capture(page, info, `${scenario.name}-A-gpu-visibility`);
   const picked = await picksNeverHidden(page, info, scenario.name, hidden);
   const mixedKept = await removePieces(page, hidden);
+  if (scenario.independent) expect(mixedKept, `${scenario.name}: every hidden flat piece is removed from the reference`).toBe(0);
   // Removal rebuilds batches but leaves the instanced occurrences' hidden flags
   // as they were; clear and re-apply the scenario so B gets them from scratch.
   await act(page, [['showAll'], ['clearStoreySelection'], ['setGhostExceptEntities', 'none']]);
@@ -274,11 +275,11 @@ const spreadIds = async (page: Page, minId = 0, count = 3): Promise<number[]> =>
 };
 
 const SCENARIOS: Scenario[] = [
-  { name: 'hide-with-shadows-and-selection', ids: spreadIds, steps: [['setEnvShadowsEnabled', true], ['setSelectedEntityId', 'id0'], ['hideEntities', 'rest']] },
+  { name: 'hide-with-shadows-and-selection', independent: true, ids: spreadIds, steps: [['setEnvShadowsEnabled', true], ['setSelectedEntityId', 'id0'], ['hideEntities', 'rest']] },
   { name: 'isolate-three', ids: spreadIds, steps: [['isolateEntities', 'ids']] },
   { name: 'storey-isolation', ids: firstStorey, steps: [['setStoreysSelection', 'ids']] },
-  { name: 'xray-with-hide', ids: spreadIds, steps: [['setGhostExceptEntities', 'set0'], ['hideEntities', 'rest']] },
-  { name: 'section-with-hide', ids: spreadIds, steps: [['setSectionPlaneAxis', 'down'], ['setSectionPlanePosition', 43], ['setSectionPlaneEnabled', true], ['hideEntities', 'ids']] },
+  { name: 'xray-with-hide', independent: true, ids: spreadIds, steps: [['setGhostExceptEntities', 'set0'], ['hideEntities', 'rest']] },
+  { name: 'section-with-hide', independent: true, ids: spreadIds, steps: [['setSectionPlaneAxis', 'down'], ['setSectionPlanePosition', 43], ['setSectionPlaneEnabled', true], ['hideEntities', 'ids']] },
 ];
 
 for (const quantized of [true, false]) {
@@ -309,7 +310,7 @@ test('federation (two models): hide in the second model draws what the visible p
   const second = await page.evaluate(() => [...(globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().models.values()].map((m) => m.idOffset));
   await info.attach('models.json', { body: JSON.stringify(second), contentType: 'application/json' });
   const c = await capture(page, info, 'federation-C-unfiltered');
-  await compareScenario(page, info, { name: 'federation-hide', steps: [['hideEntities', 'ids']], ids: async (p) => {
+  await compareScenario(page, info, { name: 'federation-hide', independent: true, steps: [['hideEntities', 'ids']], ids: async (p) => {
     const offsets = second.slice().sort((x, y) => x - y);
     expect(offsets).toHaveLength(2);
     const targets = await spreadIds(p, offsets[1]!, 2);

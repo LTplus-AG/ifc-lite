@@ -154,14 +154,15 @@ class SectionExclusions {
     device.pushErrorScope('out-of-memory');
     device.pushErrorScope('validation');
     let candidate: GPUBuffer | null = null;
-    try { candidate = this.allocate('entity-visibility', size); } catch { candidate = null; }
+    try { candidate = this.allocate('entity-visibility', size); }
+    catch (error) { console.warn('[SectionExclusions] entity visibility allocation threw:', error); }
     // Pop both before awaiting so no other caller's scope is consumed.
     const scopes = Promise.all([device.popErrorScope(), device.popErrorScope()]);
     this.visibilityGrowth = scopes.then(([validation, memory]) => {
       const error = validation ?? memory;
       if (error) console.warn('[SectionExclusions] entity visibility table growth rejected; partly hidden batches stay out:', error.message);
       return candidate !== null && !error;
-    }, () => false).then(valid => {
+    }, error => { console.warn('[SectionExclusions] could not confirm entity visibility allocation:', error); return false; }).then(valid => {
       this.visibilityGrowth = null;
       if (!valid || this.released) {
         candidate?.destroy();

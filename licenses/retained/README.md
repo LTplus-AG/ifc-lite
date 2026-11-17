@@ -70,7 +70,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 (elected MIT) | [1](texts/0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594.txt), [2](texts/c77a4cf9da729987d0fe7ccd811e3bd27393914ddf3d23467c18cc22954513b3.txt) |
 | find-msvc-tools | 0.1.9 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
 | flatbuffers | 25.12.19 | Apache-2.0 | [1](texts/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt) |
-| flate2 | 1.1.10 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112.txt) |
+| flate2 | 1.1.11 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112.txt) |
 | foldhash | 0.1.5 | Zlib | [1](texts/b1181a40b2a7b25cf66fd01481713bc1005df082c53ef73e851e55071b102744.txt) |
 | futures-channel | 0.3.34 | MIT OR Apache-2.0 (elected MIT) | [1](texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt), [2](texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt) |
 | futures-core | 0.3.34 | MIT OR Apache-2.0 (elected MIT) | [1](texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt), [2](texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt) |
@@ -123,7 +123,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 (elected MIT) | [1](texts/4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b.txt), [2](texts/0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594.txt), [3](texts/799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d.txt), [4](texts/0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39.txt) |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 (elected MIT) | [1](texts/4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b.txt), [2](texts/0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594.txt), [3](texts/799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d.txt), [4](texts/0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39.txt) |
 | nalgebra | 0.35.0 | Apache-2.0 | [1](texts/ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c.txt) |
-| nix | 0.31.3 | MIT | [1](texts/66e3ee1fa7f909ad3c612d556f2a0cdabcd809ad6e66f3b0605015ac64841b70.txt) |
+| nix | 0.32.0 | MIT | [1](texts/66e3ee1fa7f909ad3c612d556f2a0cdabcd809ad6e66f3b0605015ac64841b70.txt) |
 | nom | 7.1.3 | MIT | [1](texts/4dbda04344456f09a7a588140455413a9ac59b6b26a1ef7cdf9c800c012d87f0.txt) |
 | num-bigint | 0.4.6 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt) |
 | num-bigint | 0.5.1 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt) |
@@ -167,7 +167,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | simba | 0.10.0 | Apache-2.0 | [1](texts/ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c.txt) |
 | simd-adler32 | 0.3.9 | MIT | [1](texts/42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d.txt) |
 | slab | 0.4.12 | MIT | [1](texts/8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18.txt) |
-| smallvec | 1.16.4 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9.txt) |
+| smallvec | 1.16.5 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9.txt) |
 | snap | 1.1.1 | BSD-3-Clause | [1](texts/7ca1297d23644e30bd489193a82a33f324e5fe33f25df4195649b91b883df967.txt) |
 | syn | 2.0.117 | MIT OR Apache-2.0 (elected MIT) | [1](texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt), [2](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
 | syn | 3.0.2 | MIT OR Apache-2.0 (elected MIT) | [1](texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt), [2](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
@@ -218,8 +218,8 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | zerocopy | 0.8.48 | BSD-2-Clause OR Apache-2.0 OR MIT (elected MIT) | [1](texts/9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3.txt), [2](texts/83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32.txt), [3](texts/1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df.txt) |
 | zeroize_derive | 1.5.0 | Apache-2.0 OR MIT (elected MIT) | [1](texts/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt), [2](texts/b8c6939380a400f53e11923d50fcc4dd2fa1ba8339fd9d04cda38a0251b6c9b0.txt) |
 | zeroize | 1.9.1 | Apache-2.0 OR MIT (elected MIT) | [1](texts/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt), [2](texts/8c7516d4b27b1e495be5e38b612298b63de48d05f49cdac94f70f3cd70f8864b.txt) |
-| zip | 9.5.0 | MIT | [1](texts/58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79.txt) |
-| zlib-rs | 0.6.4 | Zlib | [1](texts/e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba.txt) |
+| zip | 9.6.1 | MIT | [1](texts/58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79.txt) |
+| zlib-rs | 0.6.8 | Zlib | [1](texts/e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba.txt) |
 | zmij | 1.0.21 | MIT | [1](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
 | zopfli | 0.8.3 | Apache-2.0 | [1](texts/018b1cb87efdf7a04c2fcc13d57ed63f62149113fb207b27ea13430d64f13513.txt) |
 | zstd-safe | 8.0.0 | BSD-3-Clause | [1](texts/ce4868c8e4ebe47a7d4b3c93dbf6b802033e5ae2fa7638098173f80836daac60.txt) |

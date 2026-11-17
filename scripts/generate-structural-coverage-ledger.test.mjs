@@ -113,8 +113,9 @@ test('runProbes: an applicable cell with no probe is an error, and a probe that 
 test('limits (#9668): label every problem or count it open, never change a score, and report a stale or false limit', () => {
   const id = two[0].id;
   const problems = ['a.ifc#1: lost', 'a.ifc#2: lost', 'b.ifc#3: Axis null'];
-  const limit = (extra = {}) => ({ row: id, level: 'convert', kind: 'schema', problem: /^a\.ifc#(\d+): lost$/, cite: 'no entity', holds: (f, m) => f.ok(Number(m[1])), ...extra });
-  const facts = { ok: (n) => n < 3 };
+  const limit = (extra = {}) => ({ row: id, level: 'convert', kind: 'schema', problem: /^a\.ifc#(\d+): lost$/, cite: 'no entity', holds: (f, m) => f.belowThree(Number(m[1])), ...extra });
+  // Not `ok`: check-source-text-assertions resolves every `assert.ok(...)` to a local `ok` by name.
+  const facts = { belowThree: (n) => n < 3 };
   const fresh = (list = problems, status = 'partial') => {
     const cells = cellsOf({ [id]: { convert: status } });
     if (list) cells.get(id).convert.problems = list;
@@ -129,7 +130,7 @@ test('limits (#9668): label every problem or count it open, never change a score
   const policy = limit({ kind: 'policy', problem: /Axis null$/, holds: () => true });
   assert.equal(label([limit(), policy]).cell.limits.open, 0);
   assert.deepEqual(label([limit(), limit({ cite: 'same problems, second limit' })]).issues, [], 'two limits may label the same problem');
-  const false_ = label([limit()], problems, { ok: () => false });
+  const false_ = label([limit()], problems, { belowThree: () => false });
   assert.equal(false_.issues.length, 2, 'one issue per problem it matched, not also called stale');
   assert.match(false_.issues.join(), /cited fact does not hold/);
   assert.match(label([limit({ holds: () => { throw new Error('no such file'); } })]).issues.join(), /does not hold .*\(no such file\)/, 'a holds that throws is reported, not fatal');

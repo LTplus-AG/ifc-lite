@@ -5,11 +5,13 @@ import { defineConfig } from '@playwright/test';
 
 // Opt-in #10264 S1 hardware acceptance: GPU batch picking against the CPU
 // raycast on public fixtures. It serves its own viewer dev server. Run it on a
-// real WebGPU adapter (e.g. under ~/build-workers/ifc-gpu-check on Pop, with
-// GPU_PICK_CHROME pointing at a chrome-headless-shell); SwiftShader is not
-// acceptance evidence, and the spec records the adapter it ran on.
-const gpuArgs = (process.env.IFC_GPU_CHROME_ARGS ?? '--enable-unsafe-webgpu --ignore-gpu-blocklist --enable-features=Vulkan --use-angle=vulkan')
-  .split(/\s+/).filter(Boolean);
+// real WebGPU adapter; SwiftShader is not acceptance evidence, and the spec
+// records the adapter it ran on. On Pop (hybrid NVIDIA laptop) headless
+// Chrome loses the device when the canvas presents, so run a full Chromium
+// headed on a private Xvfb (GPU_PICK_HEADED=1, GPU_PICK_CHROME=<chrome>) under
+// ~/build-workers/ifc-gpu-check, as scripts/perf/retained-qual-browser.mjs does.
+const HARDWARE_ARGS = ['--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan', '--use-angle=vulkan', '--enable-unsafe-webgpu',
+  '--ignore-gpu-blocklist', '--enable-gpu', '--use-webgpu-power-preference=default-high-performance'];
 
 export default defineConfig({
   testDir: '.',
@@ -18,12 +20,8 @@ export default defineConfig({
   outputDir: '../../test-results/gpu-batch-pick',
   reporter: [['list'], ['json', { outputFile: '../../test-results/gpu-batch-pick-results.json' }]],
   use: {
-    channel: process.env.GPU_PICK_CHROME ? undefined : 'chrome', headless: true,
+    channel: process.env.GPU_PICK_CHROME ? undefined : 'chrome', headless: process.env.GPU_PICK_HEADED !== '1',
     viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1, locale: 'en-US',
-    launchOptions: {
-      executablePath: process.env.GPU_PICK_CHROME,
-      // A hybrid laptop's default adapter can be either GPU: pin the discrete one.
-      args: [...gpuArgs, '--use-webgpu-power-preference=default-high-performance', '--no-sandbox', '--disable-dev-shm-usage'],
-    },
+    launchOptions: { executablePath: process.env.GPU_PICK_CHROME, args: [...HARDWARE_ARGS, '--no-sandbox', '--disable-dev-shm-usage'] },
   },
 });

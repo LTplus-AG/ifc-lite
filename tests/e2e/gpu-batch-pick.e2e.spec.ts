@@ -16,7 +16,8 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { startViewerDevServer, type ViewerDevServer } from './viewer-dev-server.js';
 
 const FIXTURES = {
-  fzk: 'tests/models/ara3d/AC20-FZK-Haus.ifc',
+  // Over the 500-piece pick-mesh budget (FZK-Haus, at 245, is not).
+  institute: 'tests/models/ara3d/C20-Institute-Var-2.ifc',
   duplex: 'tests/models/ara3d/duplex.ifc',
   textured: 'tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc',
   georef: 'tests/models/ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC',
@@ -82,7 +83,7 @@ async function settleFrames(page: Page): Promise<void> {
 
 async function parity(page: Page, info: TestInfo, name: string, rect?: boolean): Promise<Report> {
   const report = await page.evaluate(async (withRect) => (globalThis as ProbeWindow).__ifc_lite_pick_parity__!({
-    columns: 48, rows: 27, ...(withRect ? { rect: { x0: 560, y0: 300, x1: 640, y1: 360 } } : {}),
+    columns: 48, rows: 27, ...(withRect ? { rect: { x0: 300, y0: 250, x1: 380, y1: 310 } } : {}),
   }), rect ?? false);
   await info.attach(`${name}.json`, { body: JSON.stringify({ summary: summarize(report), ...report }, null, 2), contentType: 'application/json' });
   await info.attach(`${name}.png`, { body: await page.locator('canvas').first().screenshot(), contentType: 'image/png' });
@@ -147,18 +148,18 @@ async function adapter(page: Page): Promise<unknown> {
   });
 }
 
-test('FZK-Haus: click, hover, marquee, hide, isolate and section match the CPU raycast (#10264)', async ({ page }, info) => {
+test('C20-Institute: click, hover, marquee, hide, isolate and section match the CPU raycast (#10264)', async ({ page }, info) => {
   await open(page);
-  await load(page, FIXTURES.fzk, 1);
+  await load(page, FIXTURES.institute, 1);
   await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
 
-  const base = await parity(page, info, 'fzk-default', true);
+  const base = await parity(page, info, 'institute-default', true);
   expectParity(base, 300);
   expect(base.batches.quantized, 'default viewer quantizes its batches').toBeGreaterThan(0);
   expect(base.rect!.gpu, 'GPU marquee: pixel-exact ids equal the CPU raycast at every texel centre').toEqual(base.rect!.cpu);
 
   // A real hover and click through the viewer's own pointer handlers.
-  const target = base.rows.find((r) => r.gpu && r.cpu && r.gpu.expressId === r.cpu.expressId && r.x > 100 && r.y > 100 && r.x < 1180 && r.y < 620)!;
+  const target = base.rows.find((r) => r.gpu && r.cpu && r.gpu.expressId === r.cpu.expressId && r.x > 40 && r.y > 40 && r.x < base.canvas.width - 40 && r.y < base.canvas.height - 40)!;
   const box = (await page.locator('canvas').first().boundingBox())!;
   await page.mouse.move(box.x + target.x, box.y + target.y);
   await page.waitForFunction((id) => (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().hoverState.entityId === id, target.gpu!.expressId, { timeout: 10_000 });
@@ -168,7 +169,7 @@ test('FZK-Haus: click, hover, marquee, hide, isolate and section match the CPU r
   const [hidden] = mostHit(base, 1);
   await page.evaluate((id) => (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().hideEntities([id]), hidden!);
   await settleFrames(page);
-  const hide = await parity(page, info, 'fzk-hidden');
+  const hide = await parity(page, info, 'institute-hidden');
   expectParity(hide, 200);
   expect(hide.rows.filter((r) => r.gpu?.expressId === hidden), 'a hidden entity is never picked').toEqual([]);
 
@@ -179,7 +180,7 @@ test('FZK-Haus: click, hover, marquee, hide, isolate and section match the CPU r
     s.isolateEntities(ids);
   }, isolated);
   await settleFrames(page);
-  const iso = await parity(page, info, 'fzk-isolated');
+  const iso = await parity(page, info, 'institute-isolated');
   expectParity(iso, 50);
   expect(iso.rows.filter((r) => r.gpu && !isolated.includes(r.gpu.expressId)), 'only isolated entities are picked').toEqual([]);
 
@@ -191,13 +192,13 @@ test('FZK-Haus: click, hover, marquee, hide, isolate and section match the CPU r
     s.setSectionPlaneEnabled(true);
   });
   await settleFrames(page);
-  expectParity(await parity(page, info, 'fzk-section', true), 200);
+  expectParity(await parity(page, info, 'institute-section', true), 200);
 });
 
-test('FZK-Haus with f32 (unquantized) batches matches the CPU raycast (#10264)', async ({ page }, info) => {
+test('C20-Institute with f32 (unquantized) batches matches the CPU raycast (#10264)', async ({ page }, info) => {
   await open(page, { quantized: false });
-  await load(page, FIXTURES.fzk, 1);
-  const report = await parity(page, info, 'fzk-f32', true);
+  await load(page, FIXTURES.institute, 1);
+  const report = await parity(page, info, 'institute-f32', true);
   expect(report.batches.quantized, 'the kill switch keeps every batch on the 28-byte f32 layout').toBe(0);
   expectParity(report, 300);
   expect(report.rect!.gpu).toEqual(report.rect!.cpu);
@@ -205,7 +206,7 @@ test('FZK-Haus with f32 (unquantized) batches matches the CPU raycast (#10264)',
 
 test('federation: two IFC models and a textured model keep model identity (#10264)', async ({ page }, info) => {
   await open(page);
-  await load(page, FIXTURES.fzk, 1);
+  await load(page, FIXTURES.institute, 1);
   await load(page, FIXTURES.duplex, 2);
   await load(page, FIXTURES.textured, 3);
   const report = await parity(page, info, 'federation', true);

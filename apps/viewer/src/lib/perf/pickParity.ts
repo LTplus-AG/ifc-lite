@@ -20,7 +20,7 @@ export interface PickParityRequest {
   columns: number;
   rows: number;
   options: PickOptions;
-  /** A marquee (CSS px) to compare with the CPU raycast at every texel centre inside it. */
+  /** A marquee in pick texels (inclusive) to compare with the CPU raycast at every texel centre inside it. */
   rect?: { x0: number; y0: number; x1: number; y1: number };
 }
 
@@ -41,6 +41,7 @@ export interface PickParityRow {
 }
 
 export interface PickParityReport {
+  /** Pick texture size (the canvas CSS size, rounded). */
   canvas: { width: number; height: number };
   batches: { total: number; quantized: number };
   /** Hydrated individual pick meshes before and after the grid: unchanged on the batch route. */
@@ -73,16 +74,21 @@ const hydrated = (renderer: Renderer): number => renderer.getScene().getMeshes()
 
 /** Run the grid (and the optional marquee) against the current frame. */
 export async function runPickParity(renderer: Renderer, request: PickParityRequest): Promise<PickParityReport> {
-  const canvas = renderer.getCanvas();
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
+  // The pick pass renders at the rounded CSS size and reads texel floor(x * scale);
+  // the CPU raycast unprojects x over the fractional CSS rect. Sampling at
+  // (texel + 0.5) / scale puts both at the same NDC: the texel centre.
+  const css = renderer.getCanvas().getBoundingClientRect();
+  const width = Math.max(1, Math.round(css.width));
+  const height = Math.max(1, Math.round(css.height));
+  const toCssX = (texel: number) => (texel + 0.5) * (css.width / width);
+  const toCssY = (texel: number) => (texel + 0.5) * (css.height / height);
   const batches = renderer.getScene().getBatchedMeshes();
   const before = hydrated(renderer);
   const rows: PickParityRow[] = [];
   for (let r = 0; r < request.rows; r++) {
     for (let c = 0; c < request.columns; c++) {
-      const x = Math.floor(((c + 0.5) / request.columns) * width) + 0.5;
-      const y = Math.floor(((r + 0.5) / request.rows) * height) + 0.5;
+      const x = toCssX(Math.floor(((c + 0.5) / request.columns) * width));
+      const y = toCssY(Math.floor(((r + 0.5) / request.rows) * height));
       const gpu = await renderer.pick(x, y, request.options);
       const cpu = renderer.raycastScene(x, y, request.options)?.intersection ?? null;
       const g = gpu?.worldXYZ;
@@ -102,12 +108,13 @@ export async function runPickParity(renderer: Renderer, request: PickParityReque
     rows,
   };
   if (request.rect) {
+    // Texel bounds, as the picker floors them; CSS corners at those texel centres.
     const { x0, y0, x1, y1 } = request.rect;
-    const gpu = await renderer.pickRect(x0, y0, x1, y1, request.options);
+    const gpu = await renderer.pickRect(toCssX(x0), toCssY(y0), toCssX(x1), toCssY(y1), request.options);
     const cpu = new Set<number>();
-    for (let y = Math.floor(y0); y <= Math.floor(y1); y++) {
-      for (let x = Math.floor(x0); x <= Math.floor(x1); x++) {
-        const id = renderer.raycastScene(x + 0.5, y + 0.5, request.options)?.intersection.expressId;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const id = renderer.raycastScene(toCssX(x), toCssY(y), request.options)?.intersection.expressId;
         if (id !== undefined) cpu.add(id);
       }
     }

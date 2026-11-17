@@ -80,11 +80,12 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(result.stats.warnings.join('\n')).toContain('2 structural conversion record(s): an IFC4 curve or surface action with an IfcStructuralLoadConfiguration is written as an IFC2X3 varying action');
   });
 
-  it('reports a CausedBy that IFC4 cannot hold', async () => {
+  it('writes the CausedBy of a varying action as a Causes relationship', async () => {
     const withReaction = IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', ',.F.,#40,.PROJECTED_LENGTH.')
       .replace('#30=', "#40=IFCSTRUCTURALPOINTREACTION('2wmGMbnLPTYekiqaYJVorK',$,$,$,$,$,$,#20,.GLOBAL_COORDS.);\n#30=");
     const result = new StepExporter(await parse(withReaction)).export({ schema: 'IFC4' });
-    expect(result.stats.warnings.join('\n')).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4');
+    expect(result.stats.warnings.join('\n')).toContain("IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes'");
+    expect(records(new TextDecoder().decode(result.content), 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#40\),\$,#30\);$/)]);
   });
 
   it('reports an unknown DestabilizingLoad and refuses loads of mixed types', async () => {

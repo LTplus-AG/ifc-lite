@@ -3,6 +3,8 @@
 # Mark generated files to exclude from language statistics
 packages/codegen/generated/** linguist-generated=true
 packages/parser/src/generated/** linguist-generated=true
+# Byte-checked by scripts/check-viewer-operations.mjs: keep LF on every platform
+apps/viewer/src/lib/agent-tools/operations/generated/** -text linguist-generated=true
 # Mark schema files as vendored (not our code)
 packages/codegen/schemas/** linguist-vendored=true
 # Exclude dist/build output

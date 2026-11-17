@@ -4,7 +4,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { readStepSlots } from './step-argument-parser.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { decodeRange } from './source-ref-bounds.js';
-const ref = (s: string): number | null => /^#\s*\d+$/.test(s.trim()) ? Number(s.trim().slice(1)) : null;
+// A cycle with the source module, which reads lists here; only functions cross it, called after load.
+import { slotRef } from './schema-converter-structural-source.js';
 
 export function listItems(token: string | undefined): readonly string[] | null {
   if (token === undefined) return null;
@@ -26,9 +27,9 @@ export class StructuralAxes {
       const values = listItems(rec.slots[0] ?? '')?.map(parseStepNumber);
       if (values?.length === 3 && values.every(Number.isFinite) && values.some(x => x !== 0)) this.directions.add(Number(id));
     } else if (rec.type === 'IFCRELASSOCIATESPROFILEPROPERTIES' && rec.slots.length === 8) {
-      const axis = ref(rec.slots[7]);
+      const axis = slotRef(rec.slots[7]);
       for (const token of listItems(rec.slots[4]) ?? []) {
-        const member = ref(token);
+        const member = slotRef(token);
         if (member === null) continue;
         this.axes.set(member, this.axes.has(member) && this.axes.get(member) !== axis ? null : axis);
       }

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 import { describe, expect, it } from 'vitest';
-import { listItems } from './schema-converter-structural-axes.js';
+import { listItems, StructuralAxes } from './schema-converter-structural-axes.js';
 import { slotRef, slotUnset } from './schema-converter-structural-source.js';
 
 // #9668 review (PR #10551): optional slots reach these readers as undefined
@@ -25,5 +25,21 @@ describe('structural slot readers #9668', () => {
 
   it('reads a missing list as no list', () => {
     expect(listItems(undefined)).toBeNull();
+  });
+});
+
+// #9668 review (PR #10551): the axes prepass reads references beside STEP comments (#10248).
+describe('StructuralAxes references beside STEP comments #9668', () => {
+  it('finds the axis of a member named with comments', () => {
+    // As schema-converter-structural-r2.test.ts's section-axis fixture.
+    const member = "#50=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#1,$,$,$,$,$,.RIGID_JOINED_MEMBER.);";
+    const axis = (rel: string) => {
+      const axes = new StructuralAxes();
+      axes.note('#80=IFCDIRECTION((0.,1.,0.));');
+      axes.note(rel);
+      return axes.axis(member);
+    };
+    expect(axis("#90=IFCRELASSOCIATESPROFILEPROPERTIES('3Npn749xX3h8J7ezZM_AKg',#1,$,$,(#50),#81,$,#80);")).toBe('#80');
+    expect(axis("#90=IFCRELASSOCIATESPROFILEPROPERTIES('3Npn749xX3h8J7ezZM_AKg',#1,$,$,(#50 /* member */),#81,$,#80 /* axis */);")).toBe('#80');
   });
 });

@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
 import { parse as parseYaml } from 'yaml';
-import { permissionBlocks } from './lib/workflow-permissions.mjs';
+import { permissionBlocks, scan } from './lib/workflow-permissions.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -340,7 +340,12 @@ test('permissionBlocks agrees with a YAML parser on every workflow in the repo',
     const doc = parseYaml(ymlText);
     const parsed = [doc.permissions, ...Object.values(doc.jobs ?? {}).map((j) => j?.permissions)].filter((p) => p !== undefined);
     const problems = [];
-    const lines = permissionBlocks(ymlText, problems, name).map((b) => b.scopes);
+    const { blocks, calls } = scan(ymlText, problems, name);
+    const lines = blocks.map((b) => b.scopes);
+    // Every local reusable call a parser sees, the scan follows.
+    // @source-text-assertion-ok filters a YAML parser's job values to local calls; the assertion compares those with the scan
+    const parsedCalls = Object.values(doc.jobs ?? {}).map((j) => j?.uses).filter((u) => typeof u === 'string' && u.startsWith('./.github/workflows/')).map((u) => u.slice(2));
+    assert.deepEqual(calls, parsedCalls, `${name}: calls`);
     const scalars = parsed.filter((p) => typeof p !== 'object' || p === null).length;
     assert.equal(problems.length, scalars, `${name}: exactly the scalar permissions values are reported: ${problems}`);
     assert.deepEqual(lines, parsed.filter((p) => typeof p === 'object' && p !== null), name);
@@ -382,7 +387,21 @@ test('the call\'s own grant is the block at job level, and it must be readable',
   assert.ok(quotedFailures.some((f) => f.includes('must grant pull-requests: write')), quotedFailures.join('\n'));
   const scripted = copyTree(context);
   mutate(scripted, (t) => `${t}  echo:\n    runs-on: x\n    steps:\n      - run: |\n          uses: ./.github/workflows/not-there.yml\n`, '.github/workflows/report-scheduled-failure.yml');
-  assert.equal(audit(scripted).some((f) => f.includes('not-there')), false);
+  mutate(scripted, (t) => t.replace('permissions:\n  actions: read\n', 'permissions:\n  pull-requests: write\n  actions: read\n'), '.github/workflows/report-scheduled-failure.yml');
+  const scriptedFailures = audit(scripted);
+  assert.equal(scriptedFailures.some((f) => f.includes('not-there')), false, scriptedFailures.join('\n'));
+  // The real call is still followed past the script.
+  assert.ok(scriptedFailures.some((f) => f.includes('must grant pull-requests: write')), scriptedFailures.join('\n'));
+  // A call it cannot follow is reported, not skipped.
+  for (const spelling of ['uses: LTplus-AG/ifc-lite/.github/workflows/report-scheduled-failure.yml@main', 'uses: >-']) {
+    const other = copyTree(context);
+    mutate(other, (t) => t.replace('    uses: ./.github/workflows/report-scheduled-failure.yml\n', `    ${spelling}\n`));
+    assert.ok(audit(other).some((f) => f.includes('cannot follow')), spelling);
+  }
+  assert.ok(scan('jobs:\n  a: { needs: [b], uses: ./.github/workflows/x.yml }\n', [], 'w').calls.length === 0);
+  const flowProblems = [];
+  scan('jobs:\n  a: { needs: [b], uses: ./.github/workflows/x.yml }\n', flowProblems, 'w');
+  assert.ok(flowProblems.some((f) => f.includes('cannot follow')), flowProblems.join('\n'));
 });
 
 const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');

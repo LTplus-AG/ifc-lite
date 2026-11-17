@@ -17,6 +17,9 @@ const HEAD = new RegExp(String.raw`^( *)(?:- +)?${PROPS}["']?permissions["']?\s*
 const OTHER_KEY = /[{,]\s*["']?permissions["']?\s*:|^\s*(?:-\s+)?\?\s*["']?permissions\b/;
 // A local reusable workflow call, quoted or not.
 const USES = /^\s*(?:-\s+)?uses:\s*["']?\.\/(\.github\/workflows\/[^\s"'#]+\.ya?ml)["']?$/;
+// A workflow call it cannot follow: by repository name, in a flow mapping, or
+// as a block scalar. An action (`owner/repo@ref`, `./.github/actions/x`) is fine.
+const OTHER_CALL = /(?:^\s*(?:-\s+)?|[{,]\s*)uses\s*:\s*(?:["']?[^\s"'./][^\s"']*\/\.github\/workflows\/|[|>]|["']?\.\/\.github\/workflows\/.*[,}])/;
 
 /**
  * Every `permissions:` block in `text` as { indent, scopes: { scope: level } },
@@ -32,7 +35,7 @@ export function permissionBlocks(text, out, file) {
 }
 
 /** The blocks, plus the local reusable workflows `text` calls (outside scripts). */
-function scan(text, out, file) {
+export function scan(text, out, file) {
   const lines = text.split('\n');
   const blocks = [];
   const calls = [];
@@ -47,6 +50,7 @@ function scan(text, out, file) {
     if (SCALAR.test(line)) scalarIndent = indentOf(line);
     const call = line.match(USES);
     if (call) calls.push(call[1]);
+    else if (OTHER_CALL.test(line)) out.push(`${file}: cannot follow \`${line.trim()}\`; call a local workflow as \`uses: ./.github/workflows/<file>\``);
     const head = line.match(HEAD);
     if (!head) {
       if (OTHER_KEY.test(line)) out.push(`${file}: cannot judge \`${line.trim()}\`; spell permissions out as a block`);

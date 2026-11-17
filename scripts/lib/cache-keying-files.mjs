@@ -205,7 +205,9 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
         const otherRepo = sub && outside;
         const checkout = /^actions\/checkout@/i.test(v) && w && typeof w === 'object';
         if (checkout && 'path' in w && !otherRepo) {
-          errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
+          errors.push(outside
+            ? `${file}: actions/checkout of ${w.repository} with path: ${w.path} lands on the workspace root or in .github, not in a subdirectory of its own`
+            : `${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }
         // An outside repository with no `path:` replaces this one at the workspace root.
         if (checkout && !('path' in w) && outside) {

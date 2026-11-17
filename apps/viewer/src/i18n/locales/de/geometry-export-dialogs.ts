@@ -5,6 +5,16 @@
 import type { Catalogue } from '../../registry';
 
 export const geometryExportDialogsDe = {
+  "cityJsonExport.description": "Das gewählte IFC-Modell als CityJSON 2.0 oder CityJSONSeq exportieren.",
+  "cityJsonExport.localNotice": "Dieses Modell hat keine Georeferenzierung. Die Datei verwendet die lokalen Modellkoordinaten, keine Kartenkoordinaten.",
+  "cityJsonExport.sessionGeorefNotice": "Georeferenzierungsänderungen aus dieser Sitzung sind in diesem Export nicht enthalten.",
+  "cityJsonExport.noSource": "Laden Sie ein IFC- oder IFCZIP-Modell zum Exportieren.",
+  "cityJsonExport.document": "CityJSON (.city.json)",
+  "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",
+  "cityJsonExport.exported": "CityJSON exportiert",
+  "cityJsonExport.warnings": "Exportiert mit {count} Warnungen:\n{warnings}",
+  "cityJsonExport.failed": "CityJSON-Export fehlgeschlagen: {reason}",
+
   "geometryExport.shared.currentModelFallbackName": "Aktuelles Modell",
   "geometryExport.shared.unknownError": "Unbekannter Fehler",
   "geometryExport.shared.geometryEngineUnavailableError": "Geometrie-Engine nicht verfügbar",

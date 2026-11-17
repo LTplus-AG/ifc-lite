@@ -5,6 +5,16 @@
 import type { Catalogue } from '../../registry';
 
 export const geometryExportDialogsFr = {
+  "cityJsonExport.description": "Exporter le modèle IFC sélectionné en CityJSON 2.0 ou CityJSONSeq.",
+  "cityJsonExport.localNotice": "Ce modèle n’est pas géoréférencé. Le fichier utilisera les coordonnées locales du modèle, et non les coordonnées cartographiques.",
+  "cityJsonExport.sessionGeorefNotice": "Les modifications de géoréférencement effectuées dans cette session ne sont pas incluses dans cet export.",
+  "cityJsonExport.noSource": "Chargez un modèle IFC ou IFCZIP à exporter.",
+  "cityJsonExport.document": "CityJSON (.city.json)",
+  "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",
+  "cityJsonExport.exported": "CityJSON exporté",
+  "cityJsonExport.warnings": "Exporté avec {count} avertissements :\n{warnings}",
+  "cityJsonExport.failed": "Échec de l’export CityJSON : {reason}",
+
   "geometryExport.shared.currentModelFallbackName": "Modèle actuel",
   "geometryExport.shared.unknownError": "Erreur inconnue",
   "geometryExport.shared.geometryEngineUnavailableError": "Moteur géométrique indisponible",

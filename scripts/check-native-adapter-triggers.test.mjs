@@ -20,7 +20,7 @@ const TEST_WORKFLOW = '.github/workflows/test.yml';
 function copyTree(context) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-triggers-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/is-main-entry.mjs', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
+  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', '.github/workflows/report-scheduled-failure.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
   for (const f of files) {
     mkdirSync(join(root, dirname(f)), { recursive: true });
     cpSync(join(REPO, f), join(root, f));
@@ -313,12 +313,18 @@ test('permissionBlocks reads every spelling of a block and fails closed on the r
   assert.deepEqual(scopes('permissions:\n  contents: read\njobs:\n  a:\n    permissions:\n      issues: write # why\n'), [{ contents: 'read' }, { issues: 'write' }]);
   assert.deepEqual(scopes('jobs:\n  a:\n    "permissions" :\n      "pull-requests": \'write\'\n'), [{ 'pull-requests': 'write' }]);
   assert.deepEqual(scopes('jobs:\n  a:\n    permissions: {}\n'), [{}]);
+  // A comment that looks like a block scalar opens nothing; anchors and tags are keys.
+  assert.deepEqual(scopes('jobs:\n# usage: |\n  a: # note: >\n    permissions:\n      contents: write\n'), [{ contents: 'write' }]);
+  assert.deepEqual(scopes('jobs:\n  a:\n    &p permissions:\n      issues: write\n  b:\n    !!str permissions:\n      actions: read\n'), [{ issues: 'write' }, { actions: 'read' }]);
+  // A sequence-item script is skipped like a `run: |` one.
+  assert.deepEqual(parse('jobs:\n  a:\n    with:\n      args:\n        - |\n          permissions:\n            issues: write\n').blocks, []);
   // A run script mentioning permissions is not a block.
   assert.deepEqual(parse('jobs:\n  a:\n    steps:\n      - run: |\n          cat <<X\n          permissions:\n            pull-requests: write\n          X\n').blocks, []);
   for (const [wf, expected] of [
     ['jobs:\n  a:\n    permissions: write-all\n', 'cannot judge `permissions: write-all`'],
     ['jobs:\n  a:\n    permissions:\n      { actions: read }\n', 'cannot judge permissions entry'],
     ['jobs:\n  a: { runs-on: x, permissions: { issues: write } }\n', 'spell permissions out as a block'],
+    ['jobs:\n  a:\n    ? permissions\n    : { issues: write }\n', 'spell permissions out as a block'],
   ]) assert.ok(parse(wf).out.some((f) => f.includes(expected)), `${expected}: ${parse(wf).out}`);
 });
 
@@ -331,12 +337,9 @@ test('permissionBlocks agrees with a YAML parser on every workflow in the repo',
     const parsed = [doc.permissions, ...Object.values(doc.jobs ?? {}).map((j) => j?.permissions)].filter((p) => p !== undefined);
     const problems = [];
     const lines = permissionBlocks(ymlText, problems, name).map((b) => b.scopes);
-    if (parsed.some((p) => typeof p !== 'object' || p === null)) {
-      assert.ok(problems.length > 0, `${name}: a scalar permissions value must be reported, not read`);
-      continue;
-    }
-    assert.deepEqual(problems, [], name);
-    assert.deepEqual(lines, parsed, name);
+    const scalars = parsed.filter((p) => typeof p !== 'object' || p === null).length;
+    assert.equal(problems.length, scalars, `${name}: exactly the scalar permissions values are reported: ${problems}`);
+    assert.deepEqual(lines, parsed.filter((p) => typeof p === 'object' && p !== null), name);
   }
 });
 
@@ -352,6 +355,13 @@ test('the call\'s own grant is the block at job level, and it must be readable',
     const failures = audit(root);
     assert.ok(failures.some((f) => f.includes(expected)), `${expected}:\n${failures.join('\n')}`);
   }
+  // A local reusable workflow the callee calls is held to the same grant.
+  const nested = copyTree(context);
+  mutate(nested, (t) => t.replace('permissions:\n  actions: read\n', 'permissions:\n  pull-requests: write\n  actions: read\n'), '.github/workflows/report-scheduled-failure.yml');
+  assert.ok(audit(nested).some((f) => f.includes('must grant pull-requests: write')), audit(nested).join('\n'));
+  const missing = copyTree(context);
+  rmSync(join(missing, '.github/workflows/report-scheduled-failure.yml'));
+  assert.ok(audit(missing).some((f) => f.includes('cannot read .github/workflows/report-scheduled-failure.yml')), audit(missing).join('\n'));
 });
 
 const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');

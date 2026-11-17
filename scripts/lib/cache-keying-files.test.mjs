@@ -142,6 +142,8 @@ test('what cannot be judged is an error, not a pass', () => {
     ['outside repository, path absolute', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: "/home/runner/work/x" } } ] } }' }],
     ['outside repository, path climbing', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: "a/../.." } } ] } }' }],
     ['outside repository, path ./', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: "./" } } ] } }' }],
+    ['outside repository with no path', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk } } ] } }' }],
+    ['outside repository, Windows path into .github', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: ".\\\\.github\\\\emsdk" } } ] } }' }],
     ['outside repository checked out into .github', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: .github/emsdk } } ] } }' }],
     ['outside repository checked out over this one', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: . } } ] } }' }],
     ['checkout path, an unlisted repository', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: someone/else, path: repo } } ] } }' }],

@@ -199,10 +199,12 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
         // Only a checkout of THIS repository moves the files hashFiles reads.
         // A known outside repository in a real subdirectory does not.
         const w = parent?.with;
-        const rel = typeof w?.path === 'string' && !w.path.includes('${{') ? posix.normalize(w.path.trim()).replace(/(.)\/+$/, '$1') : '/';
+        const rel = typeof w?.path === 'string' && !/\$\{\{|\\/.test(w.path) ? posix.normalize(w.path.trim()).replace(/(.)\/+$/, '$1') : '/';
         const sub = !rel.startsWith('/') && rel !== '.' && !rel.startsWith('..') && !/^\.github(?:\/|$)/i.test(rel);
         const otherRepo = sub && typeof w.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase());
-        if (/^actions\/checkout@/i.test(v) && w && typeof w === 'object' && 'path' in w && !otherRepo) {
+        // A literal repository with no `path:` lands on the workspace root.
+        const rootRepo = typeof w?.repository === 'string' && !w.repository.includes('${{') && !('path' in w);
+        if (/^actions\/checkout@/i.test(v) && w && typeof w === 'object' && (('path' in w && !otherRepo) || rootRepo)) {
           errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }
         if (v.startsWith('./')) {

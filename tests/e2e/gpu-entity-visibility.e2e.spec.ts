@@ -259,7 +259,7 @@ const firstStorey = async (page: Page): Promise<number[]> => page.evaluate(() =>
 });
 
 /** The three flat entities the unfiltered pick grid hits most: on screen by construction. */
-const spreadIds = async (page: Page): Promise<number[]> => {
+const spreadIds = async (page: Page, minId = 0, count = 3): Promise<number[]> => {
   const report = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_pick_parity__!({ columns: 40, rows: 24 }));
   const flat = new Set(await page.evaluate(async () => {
     const module = '/src/hooks/useBCF.ts';
@@ -267,9 +267,9 @@ const spreadIds = async (page: Page): Promise<number[]> => {
     return getGlobalRenderer()!.getScene().getAllMeshDataExpressIds();
   }));
   const tally = new Map<number, number>();
-  for (const r of report.rows) if (!r.annotation && r.gpu && flat.has(r.gpu.expressId)) tally.set(r.gpu.expressId, (tally.get(r.gpu.expressId) ?? 0) + 1);
-  const ids = [...tally].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([id]) => id);
-  expect(ids.length, 'the grid meets three flat entities').toBe(3);
+  for (const r of report.rows) if (!r.annotation && r.gpu && r.gpu.expressId >= minId && flat.has(r.gpu.expressId)) tally.set(r.gpu.expressId, (tally.get(r.gpu.expressId) ?? 0) + 1);
+  const ids = [...tally].sort((x, y) => y[1] - x[1]).slice(0, count).map(([id]) => id);
+  expect(ids.length, 'the grid meets the required flat entities').toBe(count);
   return ids;
 };
 
@@ -311,9 +311,8 @@ test('federation (two models): hide in the second model draws what the visible p
   const c = await capture(page, info, 'federation-C-unfiltered');
   await compareScenario(page, info, { name: 'federation-hide', steps: [['hideEntities', 'ids']], ids: async (p) => {
     const offsets = second.slice().sort((x, y) => x - y);
-    const ids = await spreadIds(p);
     expect(offsets).toHaveLength(2);
-    const targets = [...new Set(ids.filter((id) => id >= offsets[1]!))].slice(0, 2);
+    const targets = await spreadIds(p, offsets[1]!, 2);
     expect(targets, 'the federation scenario must hide two distinct second-model entities').toHaveLength(2);
     return targets;
   } }, c);

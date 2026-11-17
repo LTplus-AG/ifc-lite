@@ -180,9 +180,22 @@ test('C20-Institute: click, hover, marquee, hide, isolate and section match the 
   await load(page, FIXTURES.institute, 1);
   await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
 
-  const base = await parity(page, info, 'institute-default', true);
-  expectParity(base, 60);
-  expect(base.batches.quantized, 'default viewer quantizes its batches').toBeGreaterThan(0);
+  const annotated = await parity(page, info, 'institute-default', true);
+  expectParity(annotated, 60);
+  expect(annotated.batches.quantized, 'default viewer quantizes its batches').toBeGreaterThan(0);
+  // The fixture's IFC grid draws annotation lines across the building, and a
+  // click near one answers the line. Hide the grid owners the samples met so
+  // the mesh comparison covers the building itself.
+  const grid = [...new Set([...annotated.rows, ...annotated.rect!.texels].filter((r) => r.annotation).map((r) => r.gpu!.expressId))];
+  const meshOnly = async () => page.evaluate((ids) => {
+    const s = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState();
+    s.showAll();
+    s.hideEntities(ids);
+  }, grid);
+  await meshOnly();
+  await settleFrames(page);
+  const base = await parity(page, info, 'institute-mesh', true);
+  expectParity(base, 120);
 
   // A real hover and click through the viewer's own pointer handlers.
   const target = base.rows.find((r) => !r.annotation && r.gpu && r.cpu && r.gpu.expressId === r.cpu.expressId && r.x > 40 && r.y > 40 && r.x < base.canvas.width - 40 && r.y < base.canvas.height - 40)!;
@@ -199,20 +212,20 @@ test('C20-Institute: click, hover, marquee, hide, isolate and section match the 
   expectParity(hide, 40);
   expect(hide.rows.filter((r) => r.gpu?.expressId === hidden), 'a hidden entity is never picked').toEqual([]);
 
+  await meshOnly();
   const isolated = mostHit(base, 6).slice(1);
   await page.evaluate((ids) => {
-    const s = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState();
-    s.showAll();
-    s.isolateEntities(ids);
+    (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().isolateEntities(ids);
   }, isolated);
   await settleFrames(page);
   const iso = await parity(page, info, 'institute-isolated');
   expectParity(iso, 5);
   expect(iso.rows.filter((r) => r.gpu && !isolated.includes(r.gpu.expressId)), 'only isolated entities are picked').toEqual([]);
 
+  await meshOnly();
   await page.evaluate(() => {
     const s = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState();
-    s.showAll();
+    s.clearIsolation();
     s.setSectionPlaneAxis('down');
     s.setSectionPlanePosition(40);
     s.setSectionPlaneEnabled(true);

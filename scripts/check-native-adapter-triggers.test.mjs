@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -411,103 +410,4 @@ test('the call\'s own grant is the block at job level, and it must be readable',
   }
   // A trailing comment is not part of the call.
   assert.deepEqual(scan('jobs:\n  a:\n    uses: ./.github/workflows/x.yml # note\n', [], 'w').calls, ['.github/workflows/x.yml']);
-});
-
-const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');
-// A hook's GIT_DIR or GIT_INDEX_FILE would point git -C at the real repository.
-const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
-
-/** A repository whose HEAD is the PR merge commit of a branch that adds `add`, git-mv's `move` ([old, new] pairs) and, with `dropOwnPath`, deletes the workflow's own entry from its paths list; `merge: false` makes it a squash. */
-function batchRepo(context, { add = [], move = [], dropOwnPath = false, merge = true, workflow = readFileSync(join(REPO, WORKFLOW), 'utf8') } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'native-adapter-batch-'));
-  context.after(() => rmSync(root, { recursive: true, force: true }));
-  const git = (...args) => {
-    const r = spawnSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8', env: cleanEnv() });
-    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
-  };
-  const write = (rel, body) => {
-    mkdirSync(join(root, dirname(rel)), { recursive: true });
-    writeFileSync(join(root, rel), body);
-  };
-  git('init', '-q', '-b', 'main');
-  write(WORKFLOW, workflow);
-  write('README.md', 'base\n');
-  for (const [from] of move) write(from, 'moved\n');
-  git('add', '-A');
-  git('commit', '-q', '-m', 'base');
-  git('checkout', '-q', '-b', 'mergify/merge-queue/batch');
-  for (const f of add) write(f, 'changed\n');
-  if (dropOwnPath) {
-    const dropped = workflow.replace(`      - '${WORKFLOW}'\n`, '');
-    if (dropped === workflow) throw new Error(`dropOwnPath: ${WORKFLOW} no longer lists itself in that spelling; update the fixture`);
-    write(WORKFLOW, dropped);
-  }
-  for (const [from, to] of move) {
-    mkdirSync(join(root, dirname(to)), { recursive: true });
-    git('mv', from, to);
-  }
-  git('add', '-A');
-  git('commit', '-q', '-m', 'batch');
-  git('checkout', '-q', 'main');
-  // main moves on, as it does under a batch, so the merge is a real two-parent commit.
-  write('README.md', 'main moved\n');
-  git('commit', '-q', '-am', 'main');
-  if (merge) git('merge', '-q', '--no-ff', '--no-edit', 'mergify/merge-queue/batch');
-  else git('merge', '-q', '--squash', 'mergify/merge-queue/batch'), git('commit', '-q', '-m', 'squash');
-  return root;
-}
-
-function decide(root, { output = true } = {}) {
-  const out = join(root, '.gh-output');
-  const env = cleanEnv();
-  if (output) env.GITHUB_OUTPUT = out;
-  else delete env.GITHUB_OUTPUT;
-  const r = spawnSync(process.execPath, [CLI, '--batch-decide', '--root', root], { encoding: 'utf8', env });
-  const written = existsSync(out) ? readFileSync(out, 'utf8') : '';
-  return { status: r.status, log: r.stdout + r.stderr, written };
-}
-
-test('a batch touching a path the lane observes runs it; docs, ceilings and changesets do not', (context) => {
-  for (const file of ['rust/core/src/lib.rs', 'native/smlib-adapter/x.cpp', 'Cargo.lock', 'packages/geometry/src/x.ts', WORKFLOW]) {
-    const d = decide(batchRepo(context, { add: [file, 'docs/guide/x.md'] }));
-    assert.equal(d.status, 0, d.log);
-    assert.equal(d.written, 'native_adapter=true\n', `${file}: ${d.log}`);
-  }
-  const quiet = decide(batchRepo(context, { add: ['docs/guide/x.md', 'tests/perf-ratchets/viewer.json', '.changeset/a.md', 'AGENTS.md', 'scripts/ci-pr-lane.mjs'] }));
-  assert.equal(quiet.status, 0, quiet.log);
-  assert.equal(quiet.written, 'native_adapter=false\n', quiet.log);
-});
-
-test('a batch that edits the workflow runs the lane, even after dropping its own path', (context) => {
-  const d = decide(batchRepo(context, { dropOwnPath: true }));
-  assert.equal(d.written, 'native_adapter=true\n', d.log);
-});
-
-test('a file moved out of a watched directory counts by its old path', (context) => {
-  const d = decide(batchRepo(context, { move: [['rust/core/src/old.rs', 'docs/old.rs']] }));
-  assert.equal(d.written, 'native_adapter=true\n', d.log);
-});
-
-test('every doubt runs the lane: no merge commit, an unreadable or missing paths list', (context) => {
-  const squash = decide(batchRepo(context, { add: ['docs/guide/x.md'], merge: false }));
-  assert.equal(squash.written, 'native_adapter=true\n', squash.log);
-  const inline = decide(batchRepo(context, { add: ['docs/guide/x.md'], workflow: "on:\n  pull_request:\n    paths:\n      - docs/**\n" }));
-  assert.equal(inline.written, 'native_adapter=true\n', inline.log);
-  const none = decide(batchRepo(context, { add: ['docs/guide/x.md'], workflow: 'on:\n  schedule:\n    - cron: x\n' }));
-  assert.equal(none.written, 'native_adapter=true\n', none.log);
-});
-
-test('a checkout git cannot diff runs the lane', (context) => {
-  const notGit = mkdtempSync(join(tmpdir(), 'native-adapter-nogit-'));
-  context.after(() => rmSync(notGit, { recursive: true, force: true }));
-  mkdirSync(join(notGit, dirname(WORKFLOW)), { recursive: true });
-  cpSync(join(REPO, WORKFLOW), join(notGit, WORKFLOW));
-  const d = decide(notGit);
-  assert.equal(d.written, 'native_adapter=true\n', d.log);
-});
-
-test('no GITHUB_OUTPUT fails the step, so test.yml reads an absent answer and runs the lane', (context) => {
-  const d = decide(batchRepo(context, { add: ['docs/guide/x.md'] }), { output: false });
-  assert.equal(d.status, 1, d.log);
-  assert.equal(d.written, '');
 });

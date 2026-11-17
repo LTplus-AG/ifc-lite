@@ -464,7 +464,7 @@ describe('ShadowPass clipping', () => {
       { hiddenIds: new Set([102]) },
     );
     pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, filtered,
-      { extraPlanes: [{ normal: [0, 0, 1], distance: 1 }] });
+      { extraPlanes: [{ normal: [0, 0, 1], distance: 1, flipped: false }] });
     assert.ok(dev.clipWrite);
     assert.notEqual(new Uint32Array(dev.clipWrite!.buffer)[16], 0);
     dev.clipWrite = null;

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isEntityVisible } from './entity-visibility.js';
-import { EntityVisibilityCache, entityVisibilityImage, entityVisibleInImage } from './entity-visibility-table.js';
+import { EntityVisibilityCache, FrameEntityVisibility, entityVisibilityImage, entityVisibleInImage } from './entity-visibility-table.js';
 
 // #10264 S1/S2: the batch pick pass and partly visible colour/shadow draws
 // draw whole batches and decide hide/isolate per fragment from this table, so it
@@ -49,5 +49,29 @@ describe('entity visibility table (#10264)', () => {
     assert.equal(entityVisibleInImage(edited, 8), false);
     assert.notEqual(cache.resolve(hidden, new Set([5])), edited, 'isolation switching on is a change');
     assert.notEqual(cache.resolve(hidden, null), edited, 'and switching it off again too');
+  });
+});
+
+describe('FrameEntityVisibility redraws once when a pending table is confirmed (#10636)', () => {
+  const table = (pending: Promise<boolean> | null) => ({ visibilityPending: pending, writeVisibility: () => false });
+  const flush = async () => { for (let i = 0; i < 3; i++) await Promise.resolve(); };
+
+  it('requests one render per confirmed growth, however many frames waited on it', async () => {
+    const frame = new FrameEntityVisibility();
+    let renders = 0;
+    let confirm!: (ready: boolean) => void;
+    const pending = new Promise<boolean>(resolve => { confirm = resolve; });
+    for (let i = 0; i < 3; i++) assert.equal(frame.write(table(pending), 1, new Set([1]), null, () => renders++), false);
+    confirm(true); await flush();
+    assert.equal(renders, 1);
+  });
+
+  it('requests nothing for a rejected growth or a table that cannot grow', async () => {
+    const frame = new FrameEntityVisibility();
+    let renders = 0;
+    frame.write(table(Promise.resolve(false)), 1, new Set([1]), null, () => renders++);
+    frame.write(table(null), 1, new Set([1]), null, () => renders++);
+    await flush();
+    assert.equal(renders, 0);
   });
 });

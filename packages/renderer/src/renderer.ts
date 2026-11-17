@@ -1874,7 +1874,7 @@ export class Renderer {
                 : null;
             this._sectionExcludedIds = new Set(options.sectionExcludedIds);
             sectionExclusions(device).update(this._sectionExcludedIds);
-            this._gpuVisibility = this._frameVisibility.write(sectionExclusions(device), this._visibilityVersion, options.hiddenIds, options.isolatedIds);
+            this._gpuVisibility = this._frameVisibility.write(sectionExclusions(device), this._visibilityVersion, options.hiddenIds, options.isolatedIds, () => this.requestRender());
             this._activePickExtraPlanes = extraClipPlanes.length > 0 ? extraClipPlanes.map((p) => ({ normal: [...p.normal] as [number, number, number], distance: p.distance, flipped: p.flipped })) : null;
             this._activePickClipBox = options.clipBox?.enabled
                 ? {

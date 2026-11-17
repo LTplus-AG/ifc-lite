@@ -125,10 +125,18 @@ export class LanePickPass {
     }, (err: unknown) => console.warn('[LanePickPass] could not confirm the batch pick pipelines; large models keep the CPU raycast:', err));
   }
 
-  /** Grow shared storage before any bind group referencing it enters the pick pass. */
+  /**
+   * Write this pick's hide/isolate image into the shared table. False when the
+   * table cannot hold it yet: a larger table may be pending
+   * (`visibilityPending`), so `Picker` awaits that before encoding.
+   */
+  writeVisibility(input: LanePickInput): boolean {
+    return sectionExclusions(this.device).writeVisibility(this.visibilityCache.resolve(input.hiddenIds, input.isolatedIds));
+  }
+
+  /** Write shared storage before any bind group referencing it enters the pick pass. */
   prepareVisibility(input: LanePickInput): void {
-    const image = this.visibilityCache.resolve(input.hiddenIds, input.isolatedIds);
-    if (!sectionExclusions(this.device).writeVisibility(image)) throw new RangeError('Pick visibility ids exceed the GPU storage buffer limit');
+    if (!this.writeVisibility(input)) throw new RangeError('Pick visibility ids exceed the GPU visibility table (storage limit or rejected allocation)');
   }
 
   /**

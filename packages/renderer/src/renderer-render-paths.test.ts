@@ -115,6 +115,8 @@ interface Harness {
         pickFault: 'id-copy' | 'depth-encode' | 'depth-copy' | 'finish' | 'mapped-range' | null;
         /** make popErrorScope() reject (device lost while scope pending) */
         popRejects: boolean;
+        /** when set, every popErrorScope() returns this for the popped filter (a delayed scope outcome) */
+        scopeOutcome: ((filter: GPUErrorFilter) => Promise<GPUError | null>) | null;
         /**
          * The GPU device behind the stub is gone (destroyed by us, or lost to a
          * driver reset / GPU-process crash). Set automatically by
@@ -147,8 +149,9 @@ function makeHarness(): Harness {
     const stats: Harness['stats'] = { push: 0, pop: 0, submissions: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], gpuBytes: new Map(), commands: [], passes: [], createdTextures: 0, textures: [], destroyedTextures: [], boundColorTables: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', visibilityCompilation: null, encodeThrows: false, submitThrows: false, popRejects: false, gpuDead: false,
-        deferMaps: false, pickFault: null,
+        deferMaps: false, pickFault: null, scopeOutcome: null,
     };
+    const scopes: GPUErrorFilter[] = [];
     let loseDevice!: () => void;
     const lost = new Promise<void>((resolve) => { loseDevice = resolve; });
     const parkedMaps: { resolve: () => void; reject: (e: unknown) => void }[] = [];
@@ -267,9 +270,11 @@ function makeHarness(): Harness {
                 case 'lost': return lost;
                 case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 256 * 1024 * 1024, maxStorageBufferBindingSize: 128 * 1024 * 1024 };
                 case 'queue': return queue;
-                case 'pushErrorScope': return () => { stats.push++; };
+                case 'pushErrorScope': return (filter: GPUErrorFilter) => { stats.push++; scopes.push(filter); };
                 case 'popErrorScope': return () => {
                     stats.pop++;
+                    const filter = scopes.pop() ?? 'validation';
+                    if (knobs.scopeOutcome) return knobs.scopeOutcome(filter);
                     return knobs.popRejects
                         ? Promise.reject(new Error('Instance dropped in popErrorScope'))
                         : Promise.resolve(null);
@@ -1054,6 +1059,76 @@ describe('a partly visible batch is drawn whole, so residency keeps it like any 
         } finally {
             table.writeVisibility = write;
         }
+    });
+
+    it('a table growth rejected later by out-of-memory is never bound, is not retried, and recovers (#10636)', async () => {
+        const h = makeHarness();
+        const { grey, red } = seedBatches(h);
+        const table = sectionExclusions(h.renderer['device'].getDevice());
+        const bound = table.visibility as unknown as { size: number; destroyed: number };
+        // Each growth's two scopes settle only when the test says so: WebGPU
+        // reports createBuffer OOM through the scope, after the call returned.
+        // Frame-level scopes settle clean at once.
+        const outcomes: Array<(error: GPUError | null) => void> = [];
+        h.knobs.scopeOutcome = filter => filter === 'out-of-memory'
+            ? new Promise(resolve => outcomes.push(resolve)) : Promise.resolve(null);
+        const settleGrowth = async (memory: GPUError | null) => {
+            assert.strictEqual(outcomes.length, 1, 'one growth, one pending out-of-memory scope');
+            outcomes.splice(0)[0]!(memory);
+            await h.settle();
+        };
+        const large = (base: number) => new Set([1, ...Array.from({ length: 20_000 }, (_, i) => base + i)]);
+        const groupBuffers = () => h.stats.commands.flatMap(c => c.op === 'setBindGroup' && c.index === 3
+            ? (c.bindGroup?.entries ?? []).flatMap(e => 'buffer' in e.resource ? [e.resource.buffer as unknown as { size: number; destroyed: number }] : [])
+            : []);
+        const frame = (options: RenderOptions) => {
+            h.stats.draws.length = 0; h.stats.commands.length = 0;
+            h.render({ ...options, sunShadows: { enabled: true } });
+        };
+
+        // 20k ids outgrow the initial table; growth doubles it.
+        const grown = () => h.stats.createdBuffers.filter(b => b.size === 2 * bound.size) as unknown as Array<{ size: number; destroyed: number }>;
+        frame({ hiddenIds: large(1000) });
+        assert.strictEqual(grown().length, 1, 'one replacement allocated');
+        const candidate = grown()[0]!;
+        assert.ok(!h.stats.draws.includes(grey.vertexBuffer), 'no colour or shadow draw relies on the unconfirmed table');
+        assert.ok(h.stats.draws.includes(red.vertexBuffer), 'fully visible batches still draw');
+        assert.ok(groupBuffers().length > 0 && !groupBuffers().includes(candidate), 'the unconfirmed buffer is never in a submitted group');
+        assert.strictEqual(bound.destroyed, 0, 'the validated table stays alive and bound');
+        h.renderer.consumeRenderRequest();
+
+        await settleGrowth({ message: 'Out of memory' } as GPUError);
+        assert.strictEqual(candidate.destroyed, 1, 'the rejected buffer is released');
+        assert.strictEqual(table.visibility, bound as unknown as GPUBuffer);
+        assert.strictEqual(h.renderer.consumeRenderRequest(), false, 'a rejected growth requests no redraw');
+
+        // Sustained OOM: the same state neither reallocates nor asks for frames.
+        for (let i = 0; i < 3; i++) frame({ hiddenIds: large(1000) });
+        assert.strictEqual(grown().length, 1, 'a rejected image is not retried');
+        assert.strictEqual(outcomes.length, 0);
+        assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
+        assert.strictEqual(h.renderer.consumeRenderRequest(), false, 'no render loop under sustained OOM');
+
+        // A state that fits the validated table works at once.
+        frame({ hiddenIds: new Set([1]) });
+        assert.ok(h.stats.draws.includes(grey.vertexBuffer), 'recovered with a smaller image');
+        assert.strictEqual(visibilityTested(h, grey), true);
+        assert.strictEqual(h.renderer.getFrameStats()?.batchesNotResident, 0);
+
+        // A new large state may try once more; a clean outcome is bound and redrawn.
+        frame({ hiddenIds: large(50_000) });
+        assert.strictEqual(grown().length, 2, 'a new state retries once');
+        const retry = grown()[1]!;
+        assert.ok(!h.stats.draws.includes(grey.vertexBuffer));
+        h.renderer.consumeRenderRequest();
+        await settleGrowth(null);
+        assert.strictEqual(h.renderer.consumeRenderRequest(), true, 'the confirmed table redraws the frame');
+        assert.strictEqual(bound.destroyed, 1, 'the old table is released once replaced');
+        frame({ hiddenIds: large(50_000) });
+        assert.ok(h.stats.draws.includes(grey.vertexBuffer));
+        assert.ok(groupBuffers().includes(retry) && !groupBuffers().includes(bound), 'every group now binds the confirmed table');
+        const written = h.stats.gpuBytes.get(retry as never);
+        assert.ok(written && new Uint32Array(written.buffer, written.byteOffset, 1)[0] === 20_001, 'the current image was written into the new table');
     });
 });
 
@@ -2015,14 +2090,20 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         const device = h.renderer['device'].getDevice();
         const table = sectionExclusions(device);
         table.writeVisibility(new Uint32Array(4));
+        const initial = table.visibility;
         h.stats.commands.length = 0;
         const buffer = device.createBuffer({ size: 256, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX });
+        // 20k ids outgrow the initial table: the pick waits for the confirmed
+        // replacement rather than failing or binding it unconfirmed.
         await picker.pick(0, 0, 64, 64, [], new Float32Array(16),
             undefined, undefined, [], null, h.renderer.getCamera().getRelativeToEyeFrame().snapshot(),
             { draws: [{ layout: 'flat', vertexBuffer: buffer, indexBuffer: buffer, indexCount: 3, origin: [0, 0, 0], anchor: 0 }],
-              hiddenIds: new Set(Array.from({ length: 100 }, (_, i) => i + 100)) });
+              hiddenIds: new Set(Array.from({ length: 20_000 }, (_, i) => i + 100)) });
+        assert.notStrictEqual(table.visibility, initial, 'the table grew before the pick encoded');
         const groups = h.stats.commands.filter(command => command.op === 'setBindGroup' && command.index === 3);
         assert.ok(groups.length > 0, 'the actual pick encoded the shared group');
+        assert.ok(groups.every(command => command.bindGroup?.entries.some(e => 'buffer' in e.resource && e.resource.buffer === table.visibility)),
+            'the pick binds only the confirmed table');
         for (const command of groups) for (const entry of command.bindGroup?.entries ?? []) {
             if ('buffer' in entry.resource) {
                 const held = entry.resource.buffer as unknown as { destroyed: number };

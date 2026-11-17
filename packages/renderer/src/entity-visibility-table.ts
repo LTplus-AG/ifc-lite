@@ -148,18 +148,31 @@ export class EntityVisibilityCache {
 export class FrameEntityVisibility {
   private version = -1;
   private image: Uint32Array = entityVisibilityImage(null, null);
+  private awaited: Promise<boolean> | null = null;
 
-  /** False when the table could not hold the image (see `writeVisibility`). */
+  /**
+   * False when the table could not hold the image (see `writeVisibility`).
+   * While a larger table is being confirmed, `onReady` runs once when it is
+   * bound, so the frame that left partly hidden batches out is redrawn; a
+   * rejected table requests nothing.
+   */
   write(
-    table: { writeVisibility(image: Uint32Array): boolean },
+    table: { writeVisibility(image: Uint32Array): boolean; readonly visibilityPending?: Promise<boolean> | null },
     version: number,
     hiddenIds: ReadonlySet<number> | null | undefined,
     isolatedIds: ReadonlySet<number> | null | undefined,
+    onReady?: () => void,
   ): boolean {
     if (version !== this.version) {
       this.image = entityVisibilityImage(hiddenIds, isolatedIds);
       this.version = version;
     }
-    return table.writeVisibility(this.image);
+    if (table.writeVisibility(this.image)) return true;
+    const pending = table.visibilityPending;
+    if (pending && pending !== this.awaited) {
+      this.awaited = pending;
+      void pending.then(ready => { if (ready) onReady?.(); });
+    }
+    return false;
   }
 }

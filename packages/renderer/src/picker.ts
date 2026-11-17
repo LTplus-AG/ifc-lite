@@ -196,6 +196,20 @@ export class Picker {
   }
 
   /**
+   * Wait for a pending growth of the shared visibility table, which a
+   * batch pick's image may need: an unconfirmed table is never bound, and a
+   * pick must not fail only because its allocation is still settling. False
+   * once the picker can no longer pick. A rejected growth still makes
+   * `renderPickPass` throw, as an over-limit image does.
+   */
+  private async settleLaneVisibility(lanes: LanePickInput | undefined): Promise<boolean> {
+    if (this.destroyed || this.readbacks.deviceLost) return false;
+    if (!lanes || !this.lanePass || this.lanePass.writeVisibility(lanes)) return true;
+    await sectionExclusions(this.device).visibilityPending;
+    return !this.destroyed && !this.readbacks.deviceLost;
+  }
+
+  /**
    * Whether a pick can draw colour batches whole (#10264 S1). `withInstanced`:
    * the scene also has instanced occurrences, which then must be drawable too,
    * or the pass would be missing them rather than answering for them.
@@ -233,7 +247,7 @@ export class Picker {
     pointRteSnapshot?: RelativeToEyeSnapshot,
     lanes?: LanePickInput,
   ): Promise<PickResult | null> {
-    if (this.destroyed || this.readbacks.deviceLost) return null;
+    if (!(await this.settleLaneVisibility(lanes))) return null;
     // Border clicks and pointer-captured drags use the same clamped ID/depth texel.
     const sampleX = Math.max(0, Math.min(width - 1, Math.floor(x)));
     const sampleY = Math.max(0, Math.min(height - 1, Math.floor(y)));
@@ -339,7 +353,7 @@ export class Picker {
     pointRteSnapshot?: RelativeToEyeSnapshot,
     lanes?: LanePickInput,
   ): Promise<Set<number>> {
-    if (this.destroyed || this.readbacks.deviceLost) return new Set();
+    if (!(await this.settleLaneVisibility(lanes))) return new Set();
     // Normalise + clip rect to texture bounds.
     const lx = Math.max(0, Math.floor(Math.min(x0, x1)));
     const ly = Math.max(0, Math.floor(Math.min(y0, y1)));

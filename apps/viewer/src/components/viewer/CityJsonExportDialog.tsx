@@ -31,8 +31,10 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     if (!modelList.some((m) => m.id === selectedId)) setSelectedId(modelList[0]?.id ?? '');
   }, [modelList, selectedId]);
   const model = modelList.find((m) => m.id === selectedId);
-  const localCoordinates = useMemo(() => open && !!model &&
-    (!model.ifcDataStore || !extractGeoreferencingOnDemand(model.ifcDataStore)?.hasGeoreference), [open, model]);
+  // Georeferencing added in this session is written into the exported bytes too, so it counts.
+  const sessionGeoref = useViewerStore((s) => (model ? s.georefMutations.get(model.id)?.mapConversion !== undefined : false));
+  const localCoordinates = useMemo(() => open && !!model && !sessionGeoref &&
+    (!model.ifcDataStore || !extractGeoreferencingOnDemand(model.ifcDataStore)?.hasGeoreference), [open, model, sessionGeoref]);
 
   async function handleExport(): Promise<ExportDialogShellResult> {
     if (!model) return { success: false, message: t('cityJsonExport.noSource') };

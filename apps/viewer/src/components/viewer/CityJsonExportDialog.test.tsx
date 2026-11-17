@@ -71,6 +71,15 @@ it('local fixture shows notice before export and surfaces producer warnings (#10
   assert.match(info[0], /not georeferenced/i);
 });
 
+it('georeferencing added in this session suppresses the local-coordinates notice (#10607 review)', { skip }, async () => {
+  useViewerStore.setState({ georefMutations: new Map([['m', { mapConversion: { eastings: 2_600_000, northings: 1_200_000 } }]]) });
+  await open('hello-wall.ifc');
+  useViewerStore.setState({ georefMutations: new Map([['m', { mapConversion: { eastings: 2_600_000, northings: 1_200_000 } }]]) });
+  await advance(1);
+  assert.equal(document.body.textContent?.includes('local coordinates, not map coordinates'), false);
+  useViewerStore.setState({ georefMutations: new Map() });
+});
+
 it('model without IfcBuilding shows the real refusal inline and never downloads (#10607)', { skip }, async () => {
   const blobs = await open('hello-wall.ifc', true);
   click(button('Export'));

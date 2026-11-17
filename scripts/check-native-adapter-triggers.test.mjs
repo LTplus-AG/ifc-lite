@@ -283,6 +283,17 @@ test('test.yml must call, decide and judge the batch run', (context) => {
     // The caller once granted contents+issues only, after the reporter gained `actions: read`.
     [(t) => t.replace('      actions: read\n      contents: read\n      issues: write\n    uses: ./.github/workflows/geometry-platform.yml', '      contents: read\n      issues: write\n    uses: ./.github/workflows/geometry-platform.yml'), 'must grant actions: read'],
   ];
+  // The callee's own permissions, in each form the grant check must not pass over.
+  for (const [fn, expected] of [
+    [(t) => t.replace('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n  pull-requests: write\n'), 'must grant pull-requests: write'],
+    [(t) => t.replace('    permissions:\n      actions: read\n      contents: read\n      issues: write\n', '    permissions: write-all\n'), 'cannot judge `permissions: write-all`'],
+    [(t) => t.replace('    permissions:\n      actions: read\n', '    permissions:\n      { actions: read }\n'), 'cannot judge permissions entry'],
+  ]) {
+    const root = copyTree(context);
+    mutate(root, fn);
+    const failures = audit(root);
+    assert.ok(failures.some((f) => f.includes(expected)), `${expected}:\n${failures.join('\n')}`);
+  }
   for (const [fn, expected] of cases) {
     const root = copyTree(context);
     mutate(root, fn, TEST_WORKFLOW);

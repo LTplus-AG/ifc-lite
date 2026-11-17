@@ -48,6 +48,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matchesAny } from './lib/ci-path-coverage.mjs';
+import { permissionBlocks } from './lib/workflow-permissions.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -313,11 +314,10 @@ function batchWiringProblems(text, root) {
   if (!/^ {4}uses: \.\/\.github\/workflows\/geometry-platform\.yml\s*$/m.test(caller) || !/^ {4}with:\n {6}batch: true\s*$/m.test(caller)) {
     out.push(`${TEST_WORKFLOW}: the native-adapter job must call ./${WORKFLOW} with batch: true`);
   }
-  const grants = (block) => Object.fromEntries([...block.matchAll(/^ {4,6}([a-z-]+): (read|write)\s*$/gm)].map((m) => [m[1], m[2]]));
-  const granted = grants(caller.match(/^ {4}permissions:\n((?: {6}.*\n)+)/m)?.[1] ?? '');
-  for (const [, block] of text.matchAll(/^ {2,4}permissions:\n((?: {4,6}.*\n)+)/gm)) {
-    for (const [scope, level] of Object.entries(grants(block))) {
-      if (granted[scope] !== level && granted[scope] !== 'write') out.push(`${TEST_WORKFLOW}: the native-adapter call must grant ${scope}: ${level}; ${WORKFLOW} asks for it and GitHub refuses the whole Test run otherwise`);
+  const callerGrant = permissionBlocks(caller, out, TEST_WORKFLOW)[0] ?? {};
+  for (const asked of permissionBlocks(text, out, WORKFLOW)) {
+    for (const [scope, level] of Object.entries(asked)) {
+      if (level !== 'none' && callerGrant[scope] !== level && callerGrant[scope] !== 'write') out.push(`${TEST_WORKFLOW}: the native-adapter call must grant ${scope}: ${level}; ${WORKFLOW} asks for it and GitHub refuses the whole Test run otherwise`);
     }
   }
   if (!caller.split('\n').some((l) => l === `    if: ${BATCH_CALL_IF}`)) {

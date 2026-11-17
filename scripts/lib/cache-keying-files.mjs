@@ -42,7 +42,9 @@ const CACHE_DEFAULTS = {
   pnpm: ['**/pnpm-lock.yaml'], npm: ['**/package-lock.json', '**/npm-shrinkwrap.json'], yarn: ['**/yarn.lock'],
   pip: ['**/requirements.txt'], pipenv: ['**/Pipfile.lock'], poetry: ['**/poetry.lock'],
 };
-// Repositories checked out with `path:` beside this one (geometry-platform.yml).
+// Outside repositories checked out with `path:` into a subdirectory
+// (geometry-platform.yml, retained-engine.yml). Never under .github, so no
+// file this list judges moves.
 const OUTSIDE_CHECKOUTS = new Set(['nvidia-omniverse/usd-brep', 'emscripten-core/emsdk']);
 // A key-producing run that may hash .github without naming a file.
 const BROAD_RUN = /\.github(?!\/)|\bgit\s+ls-(?:files|tree)\b|\bfind\s/;
@@ -195,9 +197,10 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
       if (key === 'uses') {
         const v = value.trim();
         // Only a checkout of THIS repository moves the files hashFiles reads.
-        // A known outside repository lands beside it; anything else counts.
+        // A known outside repository in a real subdirectory does not.
         const w = parent?.with;
-        const otherRepo = typeof w?.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase());
+        const sub = typeof w?.path === 'string' && !['', '.', './'].includes(w.path.trim()) && !w.path.includes('..');
+        const otherRepo = sub && typeof w.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase());
         if (/^actions\/checkout@/i.test(v) && w && typeof w === 'object' && 'path' in w && !otherRepo) {
           errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }

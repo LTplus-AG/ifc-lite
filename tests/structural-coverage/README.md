@@ -86,8 +86,8 @@ upstream), each with a citation its `holds` re-checks on every run with the
 whole corpus. A stale or false limit is printed to stderr after the summary is
 written; the ratchet still runs, and the run exits 1. So a change that fixes a
 limited cell removes its limit too. Offline runs skip limits. A limit never
-changes a status or a point. The ledger calls a cell out of reach
-only when every one of its problems is labelled.
+changes a status or a point. The ledger calls a cell out of reach only when
+every one of its problems is labelled.
 
 ## Scoring and the ratchet
 

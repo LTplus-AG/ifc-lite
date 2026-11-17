@@ -39,7 +39,7 @@ The surface member varying keeps passing: the R10 thickness carrier takes any as
 
 - `schema-converter-structural-varying.test.ts`, `converts the IFC2X3 coverage fixture varying actions both ways`: on the R11 fixture it fails (the upgrade leaves both actions as IFC2X3 entities); on the R12 fixture it passes, and both records come back byte for byte. Case B (the refusal) is unchanged and passes.
 - `scripts/generate-structural-coverage-ledger.test.mjs`, `limits (#9668): ...`: a limit labels only the problems it matches and counts the rest open, and a labelled cell scores the same. A limit whose fact does not hold (or throws), that matches nothing, that sits on a passing or errored cell, or that names no cell is reported. A second test checks every limit names a catalogue row, an applicable level, a kind and a citation.
-- `score.mjs` `main` exits 1 when any limit is reported, after writing the summary and running the ratchet. No test covers that exit path (it would need an injection point in `main`). So a change that fixes a limited cell must remove its limit in the same change.
+- `score.mjs` `main` exits 1 when any limit is reported, after writing the summary and running the ratchet. No test covers that exit path. So a change that fixes a limited cell must remove its limit in the same change.
 - Every limit's fact is checked on the real corpus in each complete run. Writing the reaction check exposed an error of mine (it skipped the CONST curve and surface reactions as if they mapped like CONST actions); the check reported it until it was fixed.
 
 ## The 19 R11 partial rows

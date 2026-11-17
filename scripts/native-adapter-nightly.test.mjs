@@ -210,9 +210,9 @@ test('#10619: every path BATCH_EXCLUDE takes off merge-queue batches lands in th
 const NIGHTLY = { NIGHTLY_RUN_ID: '1', NIGHTLY_RUN_URL: 'https://x/run/1', BISECT_RUN_URL: 'https://x/bisect', SERVER: 'https://github.com' };
 const RED_JOBS = [job('native-adapter', 'failure'), job('Native corpus (shard 0/2)', 'success'), job('Native corpus (shard 1/2)', 'failure'), job('Native corpus result', 'failure')];
 
-const BISECT_RUNS = (status) => `repos/o/r/actions/workflows/native-adapter-bisect.yml/runs?status=${status}&per_page=100`;
-/** No other bisect is running unless the world says so. */
-const IDLE = { [BISECT_RUNS('in_progress')]: { workflow_runs: [] }, [BISECT_RUNS('queued')]: { workflow_runs: [] } };
+const BISECT_RUNS = 'repos/o/r/actions/workflows/native-adapter-bisect.yml/runs?per_page=20';
+/** No other bisect is running unless the world says so; finished runs and this run itself never count. */
+const IDLE = { [BISECT_RUNS]: { workflow_runs: [{ id: 3, status: 'completed' }, { id: 50, status: 'in_progress' }] } };
 const plan = (context, cwd, env, world) => run(context, BISECT, ['plan'], { cwd, env: { ...NIGHTLY, GITHUB_RUN_ID: '50', ...env }, world: { ...world, api: { ...IDLE, ...world.api } } });
 /** The value after `flag` in a recorded gh call. */
 const arg = (call, flag) => call[call.findIndex((a) => a === flag) + 1];
@@ -343,7 +343,7 @@ test('a red night a probe cannot reproduce, or another bisect already covers, is
   const same = notice(RED_JOBS, { last_green: shas[2], head: shas[2] });
   assert.match(same, /ran the same commit as the last green run .* the cause is outside the repo/); // @source-text-assertion-ok subject is the CLI's own output
   // A bisect already running: red nights in a row share their last green commit.
-  const busy = notice(RED_JOBS, record, { [BISECT_RUNS('queued')]: { workflow_runs: [{ id: 7, html_url: 'https://x/bisect/7' }] } });
+  const busy = notice(RED_JOBS, record, { [BISECT_RUNS]: { workflow_runs: [{ id: 7, status: 'waiting', html_url: 'https://x/bisect/7' }] } });
   assert.match(busy, /one is already running \(https:\/\/x\/bisect\/7\)/); // @source-text-assertion-ok subject is the CLI's own output
 });
 

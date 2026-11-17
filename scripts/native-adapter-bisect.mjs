@@ -70,7 +70,8 @@ export function plan(env, { api, cwd, download }) {
       return skip(`No bisect for ${red}: no native-adapter or corpus shard job failed, so there is nothing to re-run.${missing} Jobs that did not succeed: ${notGreen.join(', ') || 'none listed'}. Read their logs in the run.`);
     }
     // One bisect at a time: red nights in a row share their last green commit, so a second one would redo the first.
-    const running = ['in_progress', 'queued'].flatMap((status) => api(`repos/${repo}/actions/workflows/${BISECT_FILE}/runs?status=${status}&per_page=100`)?.workflow_runs ?? []).filter((r) => String(r.id) !== String(env.GITHUB_RUN_ID));
+    // Newest first; anything not completed (queued, waiting, pending, in progress) is a bisect still going.
+    const running = (api(`repos/${repo}/actions/workflows/${BISECT_FILE}/runs?per_page=20`)?.workflow_runs ?? []).filter((r) => r.status !== 'completed' && String(r.id) !== String(env.GITHUB_RUN_ID));
     if (running.length > 0) return skip(`No new bisect for ${red}: one is already running (${running[0].html_url}) over an overlapping range. If its verdict does not explain this night, bisect by hand: ${resume('<last green sha>', '<red sha>', 'confirm', target)}.`);
     let record;
     try {
@@ -80,7 +81,7 @@ export function plan(env, { api, cwd, download }) {
     }
     const good = assertSha('the record\'s last_green', record.last_green);
     const bad = assertSha('the record\'s head', record.head);
-    const count = firstParentRange(cwd, good, bad).length;
+    const count = Array.isArray(record.commits) ? record.commits.length : firstParentRange(cwd, good, bad).length;
     if (count === 0) return skip(`No bisect for ${red}: it ran the same commit as the last green run (${short(bad)}), so the cause is outside the repo (runner image, fetched SDK or corpus, a service) or a flake. Re-run the failed jobs to tell which.${aggregateNote}`);
     const notes = [aggregateNote];
     // Shards are cut by model bytes from these inputs, so the same index can hold other models at another commit.
@@ -114,7 +115,7 @@ export function next(env, { cwd }) {
   const run = `Bisect run: ${env.BISECT_RUN_URL}`;
   if (step.done) {
     const body = {
-      culprit: () => `First bad commit: ${env.SERVER}/${env.GITHUB_REPOSITORY}/commit/${step.culprit?.sha} (${step.culprit?.subject}). Its parent ${short(step.good)} passes ${what(target)}.${changedBetween(cwd, step.culprit.sha, 'HEAD', PROBE_HARNESS) ? ` The probes ran main's ${PROBE_HARNESS.join(' and ')}, which differ from this commit's; re-check by hand.` : ''} ${run}`,
+      culprit: () => `First bad commit: ${env.SERVER}/${env.GITHUB_REPOSITORY}/commit/${step.culprit.sha} (${step.culprit.subject}). Its parent ${short(step.good)} passes ${what(target)}.${changedBetween(cwd, step.culprit.sha, 'HEAD', PROBE_HARNESS) ? ` The probes ran main's ${PROBE_HARNESS.join(' and ')}, which differ from this commit's; re-check by hand.` : ''} ${run}`,
       flaky: () => `The failure did not reproduce: ${what(target)} passed on a re-run of ${short(step.bad)}. Not bisecting; treat the nightly failure as flaky, and check the failed run's logs. ${run}`,
       interrupted: () => `Bisect stopped: the probe of ${short(state.probe)} ended \`${state.result}\`, not success or failure. Resume with ${resume(step.good, step.bad, state.phase, target)}. ${run}`,
       empty: () => `Bisect stopped: no commits between ${short(step.good)} and ${short(step.bad)}. ${run}`,

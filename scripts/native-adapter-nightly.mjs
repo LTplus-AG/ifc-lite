@@ -19,9 +19,8 @@
  */
 
 import { appendFileSync, writeFileSync } from 'node:fs';
-import { posix } from 'node:path';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { assertSha, firstParentRange, isAncestor, jobsOf, lastGreenRun, rangeDetail, WORKFLOW, writeOutputs } from './lib/native-adapter-nightly.mjs';
+import { assertSha, firstParentRange, isAncestor, jobsOf, lastGreenRun, rangeDetail, WORKFLOW, WORKFLOW_FILE, writeOutputs } from './lib/native-adapter-nightly.mjs';
 import { gh } from './lib/gh.mjs';
 
 /** Runs scanned for a record: 300, months of nights. Older than that is a broken lane, not a range. */
@@ -30,7 +29,7 @@ const MAX_PAGES = 3;
 /** Every completed run of the lane, newest first, fetched a page at a time as the scan needs it. */
 function* completedRuns(repo, api) {
   for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const runs = api(`repos/${repo}/actions/workflows/${posix.basename(WORKFLOW)}/runs?branch=main&status=completed&per_page=100&page=${page}`)?.workflow_runs;
+    const runs = api(`repos/${repo}/actions/workflows/${WORKFLOW_FILE}/runs?branch=main&status=completed&per_page=100&page=${page}`)?.workflow_runs;
     if (!Array.isArray(runs)) throw new Error('the workflow runs listing has no workflow_runs array');
     yield* runs;
     if (runs.length < 100) return;

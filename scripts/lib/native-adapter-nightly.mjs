@@ -26,8 +26,9 @@ import { join, posix } from 'node:path';
 import { permissionBlocks, workflowAsks } from './workflow-permissions.mjs';
 
 export const WORKFLOW = '.github/workflows/geometry-platform.yml';
+export const WORKFLOW_FILE = posix.basename(WORKFLOW);
 export const WORKFLOW_NAME = 'Geometry platform (native adapter)';
-export const BISECT_WORKFLOW = '.github/workflows/native-adapter-bisect.yml';
+const BISECT_WORKFLOW = '.github/workflows/native-adapter-bisect.yml';
 export const BISECT_FILE = posix.basename(BISECT_WORKFLOW);
 /** The label every nightly failure report and bisect verdict carries. */
 export const NIGHTLY_LABEL = 'nightly-red';

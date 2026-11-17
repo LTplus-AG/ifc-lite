@@ -51,11 +51,10 @@ import { matchesAny } from './lib/ci-path-coverage.mjs';
 import { permissionBlocks, workflowAsks } from './lib/workflow-permissions.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { BATCH_EXCLUDE, BATCH_KEEP, batchGlobs, decideBatch, scriptImports } from './lib/native-adapter-batch.mjs';
-import { jobBlock, NIGHTLY_IF, nightlyProblems } from './lib/native-adapter-nightly.mjs';
+import { jobBlock, NIGHTLY_IF, nightlyProblems, WORKFLOW } from './lib/native-adapter-nightly.mjs';
 
 export { jobBlock };
 
-const WORKFLOW = '.github/workflows/geometry-platform.yml';
 const TEST_WORKFLOW = '.github/workflows/test.yml';
 /** Crates the lane builds or drives: the native consumer and the browser worker's wasm crate. */
 export const ROOT_CRATES = ['rust/retained-native', 'rust/wasm-bindings'];
@@ -290,7 +289,6 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
   const browser = jobBlock(text, 'browser-corpus');
   if (browser !== null && !/pnpm fixtures[\s\S]*browser\.mjs/.test(browser)) failures.push(`${WORKFLOW}: browser-corpus must download the corpus (pnpm fixtures) before comparing; the checkout does not hold the models`);
   failures.push(...corpusJobProblems(text));
-  if (!/^ {2}report-scheduled-failure:/m.test(text)) failures.push(`${WORKFLOW}: no report-scheduled-failure job for a failing nightly run`);
   failures.push(...nightlyProblems(root, text));
   return failures;
 }

@@ -136,6 +136,8 @@ it('sectioned merged STEP export keeps each cropped model\'s warnings (#10606)',
   assert.equal(toasts.success.mock.callCount(), 0);
   assert.equal(toasts.info.mock.callCount(), 1);
   assert.match(details(), /ConditionCoordinateSystem has no slot in IFC2X3/);
+  const listed = [...document.querySelectorAll('details li')].map(li => li.textContent);
+  assert.equal(new Set(listed).size, listed.length, 'both cropped models report the same diagnostic once');
 });
 
 it('caps displayed diagnostics while retaining their total count (#10606)', async () => {

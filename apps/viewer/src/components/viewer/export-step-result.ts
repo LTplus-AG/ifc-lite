@@ -7,13 +7,17 @@ import { localeCount, type UseTranslationResult } from '@/i18n';
 import type { ExportDialogShellResult } from './ExportDialogShell';
 
 /** Toast and dialog result for a finished STEP export (single or merged): an
- * export with exporter warnings toasts as info and lists them (#10606). */
-export function stepExportResult(summary: string, warnings: readonly string[], t: UseTranslationResult['t'], locale: string): ExportDialogShellResult {
+ * export with exporter warnings toasts as info and lists them (#10606).
+ * Each cropped source of a sectioned merge reports its own warnings, so the
+ * same diagnostic is listed once, as `MergedExporter` does. */
+export function stepExportResult(summary: string, allWarnings: readonly string[], t: UseTranslationResult['t'], locale: string): ExportDialogShellResult {
+  const warnings = [...new Set(allWarnings)];
   if (!warnings.length) {
     toast.success(summary);
     return { success: true, message: summary };
   }
-  const message = `${summary}. ${t('geometryExport.shell.warningsSummary', localeCount(locale, warnings.length))}`;
+  // A summary that ends with a skip notice already ends in a period.
+  const message = `${summary.replace(/\.$/, '')}. ${t('geometryExport.shell.warningsSummary', localeCount(locale, warnings.length))}`;
   toast.info(message);
   return { success: true, message, warnings, warningLimit: 5 };
 }

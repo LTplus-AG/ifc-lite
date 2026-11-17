@@ -12,6 +12,11 @@
 /** Storeys closer than this (metres) are refused as zero spacing. */
 export const MIN_STOREY_SPACING = 0.001;
 
+/** The planner's common tolerance, including indexed attachment boundaries. */
+export function storeyDeltasDiffer(own: number, target: number): boolean {
+  return Math.abs(target - own) >= 1e-9;
+}
+
 export type StoreyRefusalCode =
   | 'notFound'
   | 'invalidValue'

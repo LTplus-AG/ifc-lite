@@ -287,6 +287,9 @@ importers:
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../../packages/extensions
+      '@ifc-lite/flood-check':
+        specifier: workspace:^
+        version: link:../../packages/flood-check
       '@ifc-lite/flow':
         specifier: workspace:^
         version: link:../../packages/flow
@@ -675,6 +678,9 @@ importers:
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../../packages/extensions
+      '@ifc-lite/flood-check':
+        specifier: workspace:^
+        version: link:../../packages/flood-check
       '@ifc-lite/flow':
         specifier: workspace:^
         version: link:../../packages/flow

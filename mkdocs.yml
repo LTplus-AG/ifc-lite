@@ -250,6 +250,7 @@ nav:
     - Retained Chained Clips: architecture/retained-m5-clips.md
     - Retained Bounded and Boxed Halfspaces: architecture/retained-halfspaces.md
     - Retained Viewer Memory: architecture/retained-viewer-memory.md
+    - Viewer CPU Geometry After Upload: architecture/viewer-cpu-geometry.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - Modelling Parity Ledger: architecture/modelling-parity-ledger.md
     - Structural Coverage Ledger: architecture/structural-coverage-ledger.md

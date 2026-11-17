@@ -138,6 +138,17 @@ const CONSTANT_SUBTYPE = new Map([
   ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
 ]);
 
+/**
+ * IFC4's stiffness SELECTs of IfcBoolean and a measure (IFC4_ADD2_TC1.exp:2964,
+ * :2969, :2974, :3048, :3138, :3165). IFC2X3 holds each such boundary-condition
+ * value as a plain REAL where 0 means free and -1 rigid (IfcBoundaryNodeCondition
+ * and siblings, IFC2X3_TC1.exp), so IfcBoolean false and a zero measure, both
+ * free in IFC4, are one value there and the upgrade writes the zero measure. A
+ * false that comes back as 0 in one of these slots holds; true already comes back.
+ */
+const STIFFNESS_SELECTS = new Set(['IfcTranslationalStiffnessSelect', 'IfcRotationalStiffnessSelect', 'IfcWarpingStiffnessSelect',
+  'IfcModulusOfTranslationalSubgradeReactionSelect', 'IfcModulusOfRotationalSubgradeReactionSelect', 'IfcModulusOfSubgradeReactionSelect']);
+
 const slotOf = (registry, keyword, name) => {
   const entity = entityName(registry, keyword);
   const slots = entity ? registry.entities[entity].allAttributes : [];
@@ -246,9 +257,12 @@ export function compareFile(row, file, { there, step: back }, schemas) {
     }
   } else {
     const pool = back.of(row.entity).map((r) => tuple(row, r, back, types));
+    // Whole-tuple `equal` compares string-only tuples as multisets, so it is kept before the per-slot check.
+    const stiffness = row.own.map((a) => STIFFNESS_SELECTS.has(slotOf(schemas.own.registry, row.entity.toUpperCase(), a)?.type));
+    const sameValue = (i, want, have) => equal(want, have) || (stiffness[i] && want === false && have === 0);
     for (const rec of sample) {
       const want = tuple(row, rec, file.step, types);
-      const at = pool.findIndex((t) => equal(t, want));
+      const at = pool.findIndex((t) => equal(t, want) || (t.length === want.length && t.every((have, i) => sameValue(i, want[i], have))));
       if (at === -1) problems.push(`${file.path}#${rec.id}: no ${row.entity} with its values came back`);
       else { pool.splice(at, 1); anyHeld = true; }
     }

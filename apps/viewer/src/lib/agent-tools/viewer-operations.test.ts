@@ -5,12 +5,13 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
+import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import type { Renderer } from '@ifc-lite/renderer';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configuredView } from '@/test/agent-tools-fixture';
-import { createBimContext } from '@ifc-lite/sdk';
+import { ClashNamespace, createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
@@ -262,7 +263,17 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     useViewerStore.setState({ mutationVersion: 1 });
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
   });
-  it('cancels a real clash job and waits for native runner settlement', async () => {
+  it('cancels a real clash job and waits for native runner settlement', async (t) => {
+    // The fixture's clash finishes in milliseconds, which raced the cancel request. Hold the run
+    // until cancellation reaches it. The cancel can also land earlier, during the operation's
+    // own checkpoints; either way the job must end 'cancelled'.
+    const run = ClashNamespace.prototype.run;
+    t.mock.method(ClashNamespace.prototype, 'run', async function (this: ClashNamespace, ...args: Parameters<typeof run>) {
+      const signal = args[2]?.signal;
+      assert.ok(signal, 'clash.analyze must pass its abort signal to the engine');
+      if (!signal.aborted) await once(signal, 'abort');
+      return run.apply(this, args);
+    });
     const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
     const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
     const requested = await dispatchMainViewerTool(host, 'viewer_operation_cancel', { job_id: queued.job.id });

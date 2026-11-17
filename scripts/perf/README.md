@@ -1031,19 +1031,46 @@ original authoring pair and the branch's sustained default-heap witness.
 Its source and descendants finalized unchanged after a client interruption;
 no timing was replayed.
 
-**Scoped verdict: accepted under the original paired noise gate.** Every timed
-row remains below the slowdown decision boundary, and the memory, selected
-join, storey and warm-planner gains hold. Small hosted-window insertion still
-has a higher point estimate inside its observed spread; this is not a speedup
-claim for that cell or proof that allocation counts explain all latency.
-The cold planner still constructs its inventory; F5 latency remains in #10535.
+**Scoped verdict: land the gains with an explicitly accepted small-session
+trade-off; the full noise gate did not pass.** The user accepted the remaining
+`session/1000/addHostedWindow` cost after the bounded correction failed.
+Follow-up [#10555](https://github.com/LTplus-AG/ifc-lite/issues/10555) tracks that
+fixed cost. F5 latency remains separately unmet in #10535; cold planning still
+builds its inventory with N+1 reads.
 
-The cohort pins `b8cd2415` against captured main `80f01cc5`. The later rebase
-adds georeferencing setup before the worker's timed intervals and viewer work;
-a path audit finds the mutation, create, planner, parser, exporter, encoding
-and Rust trees unchanged. Retain those source pins with the result rather
-than presenting the rebased revision as a newly timed cohort. Refresh focused
-correctness and identities on the rebased head before publication.
+Historical cohort `46a0ecd6` covered measured implementation `b8cd2415` versus
+captured main `80f01cc5`, including path-identical rebased/ledger head `a7882871`.
+Its gate was accepted for those trees only. The round-3 correctness fixes
+changed the timed mutation, relationship and planner paths, so the old gate
+does not cover those fixes.
+
+Original exclusive cohort `ca7d9f29` covers implementation `0e280a3f` and this
+final documentation-only head: production and test trees are unchanged from
+that implementation. All original pairs completed; 38 of 39 registered rows
+passed. Storey, join and planner gains held, memory was lower, and the fresh
+main default-heap witness exhausted its heap while the branch completed its
+sustained edit/export witness. This is an accepted scope trade-off, not a
+claim that all rows passed. The one failed row, 1K hosted-window insertion,
+was +4.26%; the same row improved approximately 13% at 10K and 31% at 50K.
+[The full original gate](https://github.com/LTplus-AG/ifc-lite/pull/10420#issuecomment-6931259750)
+retains source pins, pairs, identities and the unchanged noise-floor rule.
+
+One bounded empty-opening shortcut was tested in original exclusive row job
+`3ce943f6`. At 1K it measured 4.70 to 4.94 ms, about +0.24 ms per call, above
+its approximately 3.0% noise boundary; it did not recover the regression.
+That candidate (`bb492a5e`) is discarded and absent from this PR. Its evidence
+is preserved, not reused as a passing measurement of the retained code.
+[The bounded attempt](https://github.com/LTplus-AG/ifc-lite/pull/10420#issuecomment-6933690407)
+records the failed row and passing 10K guard separately.
+
+Lesson: ordinary profiles locate added fixed work in cold empty-opening
+discovery, reference-slot queries and temporary candidate collections. A
+shortcut removed countable query/allocation work but did not recover the 1K
+throughput, so the profile lead is not a complete causal explanation. Keep
+the accessor/alias, retained-draft journal and planner ownership correctness
+contracts; do not infer latency from allocation counts or relax the gate.
+The user explicitly accepted the small absolute cost to retain the broader
+gains, with further investigation bounded by #10555.
 
 ## First selection reads typing relationships from the graph (#9192)
 

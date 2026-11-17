@@ -194,7 +194,7 @@ export class Picker {
    * or the pass would be missing them rather than answering for them.
    */
   canPickLanes(withInstanced: boolean): boolean {
-    return !this.destroyed && this.lanePass !== null && (!withInstanced || this.instancedPickPipeline !== null);
+    return !this.destroyed && this.lanePass?.ready === true && (!withInstanced || this.instancedPickPipeline !== null);
   }
 
   /**

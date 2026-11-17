@@ -106,5 +106,8 @@ describe('batch pick route (#10264 S1)', () => {
     scene.getBatchedMeshes = () => [batch([4, 6], { modelIndices: [0, 3] })];
     assert.deepEqual(refineLaneHit(scene, { expressId: 6 }, DOWN, undefined, null), { expressId: 6, modelIndex: 3 });
     assert.deepEqual(refineLaneHit(scene, { expressId: 11 }, DOWN, undefined, null), { expressId: 11 });
+    // A textured-only entity has no batch entry; its textured mesh names the model.
+    scene.getTexturedMeshes = () => [{ expressId: 42, modelIndex: 2 } as ReturnType<Scene['getTexturedMeshes']>[number]];
+    assert.deepEqual(refineLaneHit(scene, { expressId: 42 }, DOWN, undefined, null), { expressId: 42, modelIndex: 2 });
   });
 });

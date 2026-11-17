@@ -170,7 +170,8 @@ export function refineLaneHit(
   const flat = scene.getMeshDataPieceList(id) ?? [];
   const instanced = scene.isInstancedEntity(id) ? scene.getInstancedMeshDataPieces(id) ?? [] : [];
   if (flat.length === 0 && instanced.length === 0) {
-    const modelIndex = batchModelIndex(scene.getBatchedMeshes(), id);
+    const modelIndex = batchModelIndex(scene.getBatchedMeshes(), id)
+      ?? soleModelIndex(scene.getTexturedMeshes().filter((mesh) => mesh.expressId === id).map((mesh) => mesh.modelIndex));
     return modelIndex === undefined ? hit : { ...hit, modelIndex };
   }
   const { rayDirInv, rayDirSign } = prepareRayDirInv(ray.direction);

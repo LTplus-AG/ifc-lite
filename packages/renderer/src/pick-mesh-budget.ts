@@ -109,12 +109,14 @@ export function planPickMeshHydration(scene: PickMeshScene, options?: PickOption
 
 /**
  * Create the pick meshes `plan` found missing, so a following
- * `scene.getMeshes()` covers every visible entity. Returns false when any
+ * `scene.getMeshes()` covers every visible entity. Returns false when a
  * creation failed (#4885 review) — a lost device, or a mapped createBuffer
  * allocation failure — because `scene.getMeshes()` then lacks that piece's
  * buffers, and a GPU pick would silently skip it rather than fall back. One
  * failure fails the whole call: a mix of hydrated and un-hydrated pieces has
- * no correct partial GPU answer.
+ * no correct partial GPU answer. It also stops there: the next plan counts
+ * existing pieces as a prefix of each entity's pieces, so a later piece
+ * created past the gap would be taken for the missing one.
  */
 export function hydratePickMeshes(
   scene: Pick<Scene, 'getMeshDataPieces'>,
@@ -123,7 +125,6 @@ export function hydratePickMeshes(
 ): boolean {
   // For multi-model support: create meshes for ALL (expressId, modelIndex) pairs.
   const seenOrdinalsByKey = new Map<string, number>();
-  let ok = true;
   for (const expressId of plan.visibleExpressIds) {
     for (const piece of scene.getMeshDataPieces(expressId) ?? []) {
       const meshKey = pickPieceKey(piece);
@@ -131,8 +132,8 @@ export function hydratePickMeshes(
       seenOrdinalsByKey.set(meshKey, ordinal + 1);
       // Assume existing pieces correspond to the first N pieces in stable order.
       if (ordinal < (plan.existingPieceCounts.get(meshKey) ?? 0)) continue;
-      if (!createMesh(piece).ok) ok = false;
+      if (!createMesh(piece).ok) return false;
     }
   }
-  return ok;
+  return true;
 }

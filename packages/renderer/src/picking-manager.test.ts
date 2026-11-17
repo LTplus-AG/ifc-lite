@@ -232,7 +232,10 @@ describe('PickingManager', () => {
       /** Scene state that keeps the batch route from answering. */
       pendingBatches?: boolean;
       evicted?: boolean;
+      /** An edit lands while the marquee readback is in flight. */
+      editDuringReadback?: boolean;
     } = {}) {
+      let geometryRevision = 0;
       const createdMeshes: Array<{ expressId: number; hydrated?: boolean }> = [
         ...(overrides.existingMeshes ?? []),
       ];
@@ -260,6 +263,7 @@ describe('PickingManager', () => {
           ...(overrides.evicted ? { gpuResident: false } : {}),
         }],
         hasPendingBatches: () => overrides.pendingBatches ?? false,
+        getPickGeometryRevision: () => geometryRevision,
         isFinalizeInProgress: () => false,
         getTexturedMeshes: () => overrides.texturedOnly ? [{ expressId: WALL }, { expressId: SLAB }] : [],
         isGeometryDataReleased: () => overrides.released ?? false,
@@ -292,6 +296,7 @@ describe('PickingManager', () => {
           pickerRectPointNodes = pointNodes;
           pickerRectTemplates = instancedTemplates;
           pickerRectLanes = lanes;
+          if (overrides.editDuringReadback) geometryRevision++;
           if (overrides.pointPassError) throw overrides.pointPassError;
           // Mirrors the real picker: mesh samples resolve through the mesh list,
           // lane samples carry their entity, point samples the asset's federated id.
@@ -475,6 +480,12 @@ describe('PickingManager', () => {
         assert.deepStrictEqual(result, new Set([WALL, SLAB]));
       });
     }
+
+    it('drops a batch marquee when an edit lands during its readback (#10264)', async () => {
+      const h = harness({ lanes: true, released: true, editDuringReadback: true });
+
+      assert.deepStrictEqual(await h.manager.pickRect(0, 0, 100, 100), new Set());
+    });
 
     it('keeps hydrated pick copies out of the batch pass (#10264)', async () => {
       const h = harness({ lanes: true, released: true, existingMeshes: [{ expressId: SLAB, hydrated: true }] });

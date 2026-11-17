@@ -20,6 +20,8 @@ export interface PickParityRequest {
   columns: number;
   rows: number;
   options: PickOptions;
+  /** True for an id the viewer draws as an annotation overlay (IfcAnnotation, IfcGrid, IfcGridAxis). */
+  isAnnotationOwner: (globalId: number) => boolean;
   /** A marquee in pick texels (inclusive) to compare with the CPU raycast at every texel centre inside it. */
   rect?: { x0: number; y0: number; x1: number; y1: number };
 }
@@ -36,8 +38,9 @@ export interface PickParityRow {
   y: number;
   /**
    * `renderer.pick` also answers annotation overlays (grid axes, symbolic
-   * lines) on the CPU; such a hit names an id that owns no mesh, so the mesh
-   * raycast has nothing to compare it with. Reported, kept out of mesh parity.
+   * lines) on the CPU. A hit counts as one only when its id owns no mesh AND
+   * names an annotation-type entity; any other id stays in the mesh parity.
+   * Reported, kept out of mesh parity.
    */
   annotation: boolean;
   gpu: PickParityHit | null;
@@ -99,7 +102,8 @@ export async function runPickParity(renderer: Renderer, request: PickParityReque
     const g = gpu?.worldXYZ;
     return {
       x, y,
-      annotation: gpu !== null && !scene.hasMeshData(gpu.expressId) && !scene.isInstancedEntity(gpu.expressId),
+      annotation: gpu !== null && !scene.hasMeshData(gpu.expressId) && !scene.isInstancedEntity(gpu.expressId)
+        && request.isAnnotationOwner(gpu.expressId),
       gpu: gpu ? hit(gpu, g) : null,
       cpu: cpu ? hit(cpu, cpu.point) : null,
       distanceMetres: g && cpu ? Math.hypot(g.x - cpu.point.x, g.y - cpu.point.y, g.z - cpu.point.z) : null,

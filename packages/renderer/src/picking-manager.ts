@@ -363,6 +363,7 @@ export class PickingManager {
 
         const viewProj = this.camera.getViewProjMatrix().m;
         const pointSnap = this.pointPickProvider?.(options) ?? null;
+        const geometryRevision = plan.lanes ? this.scene.getPickGeometryRevision() : 0;
         const hits = await picker.pickRect(
             sx0, sy0, sx1, sy1,
             viewport.width, viewport.height,
@@ -377,6 +378,7 @@ export class PickingManager {
         );
         return !this.isPickRequestCurrent(viewport, pickerEpoch, invalidationEpoch)
             || (pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot))
+            || (plan.lanes && this.scene.getPickGeometryRevision() !== geometryRevision)
             ? new Set()
             : hits;
     }

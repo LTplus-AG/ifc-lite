@@ -65,45 +65,68 @@ export class LanePickPass {
   private readonly scratch = new Float32Array(SLOT_BYTES / 4);
   private readonly clipFlags = new Uint32Array(this.scratch.buffer, 44 * 4, 4);
 
-  /** Throws when the backend rejects a pipeline; `Picker` then leaves the pass off. */
+  /**
+   * True once WebGPU confirmed every pipeline is valid. A rejected pipeline is
+   * not an exception: `createRenderPipeline` returns an invalid object and
+   * reports through an error scope, so until the scope settles cleanly the
+   * pass stays off and large models keep the CPU raycast.
+   */
+  private validated = false;
+  get ready(): boolean { return this.validated; }
+
+  /** Throws when pipeline creation throws; `Picker` then leaves the pass off. */
   constructor(private readonly device: GPUDevice, private readonly extraClipBuffer: GPUBuffer) {
-    this.layout = device.createBindGroupLayout({
-      label: 'lane-pick-bgl',
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: SLOT_BYTES } },
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-        { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', minBindingSize: EXTRA_CLIP_BYTES } },
-      ],
-    });
-    const module = device.createShaderModule({ label: 'lane-pick', code: lanePickShaderWgsl });
-    const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(device, [this.layout]) });
-    const make = (entryPoint: string, buffer: GPUVertexBufferLayout): GPURenderPipeline => device.createRenderPipeline({
-      label: `lane-pick-${entryPoint}`,
-      layout: pipelineLayout,
-      vertex: { module, entryPoint, buffers: [buffer] },
-      fragment: { module, entryPoint: 'fs_main', targets: [{ format: 'r32uint' }] },
-      // cullMode and reverse-Z depth match the flat pick pipeline.
-      primitive: { topology: 'triangle-list', cullMode: 'none' },
-      depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
-    });
-    const f32 = (arrayStride: number): GPUVertexBufferLayout => ({
-      arrayStride,
-      attributes: [
-        { shaderLocation: 0, offset: 0, format: 'float32x3' },
-        { shaderLocation: 2, offset: 24, format: 'uint32' },
-      ],
-    });
-    this.pipelines = {
-      flat: make('vs_lane', f32(28)),
-      textured: make('vs_lane', f32(36)),
-      quantized: make('vs_lane_quantized', {
-        arrayStride: 12,
-        attributes: [
-          { shaderLocation: 0, offset: 0, format: 'uint16x4' },
-          { shaderLocation: 2, offset: 8, format: 'uint32' },
+    device.pushErrorScope('internal');
+    device.pushErrorScope('validation');
+    const settle = () => Promise.all([device.popErrorScope(), device.popErrorScope()]);
+    try {
+      this.layout = device.createBindGroupLayout({
+        label: 'lane-pick-bgl',
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: SLOT_BYTES } },
+          { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', minBindingSize: EXTRA_CLIP_BYTES } },
         ],
-      }),
-    };
+      });
+      const module = device.createShaderModule({ label: 'lane-pick', code: lanePickShaderWgsl });
+      const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(device, [this.layout]) });
+      const make = (entryPoint: string, buffer: GPUVertexBufferLayout): GPURenderPipeline => device.createRenderPipeline({
+        label: `lane-pick-${entryPoint}`,
+        layout: pipelineLayout,
+        vertex: { module, entryPoint, buffers: [buffer] },
+        fragment: { module, entryPoint: 'fs_main', targets: [{ format: 'r32uint' }] },
+        // cullMode and reverse-Z depth match the flat pick pipeline.
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
+      });
+      const f32 = (arrayStride: number): GPUVertexBufferLayout => ({
+        arrayStride,
+        attributes: [
+          { shaderLocation: 0, offset: 0, format: 'float32x3' },
+          { shaderLocation: 2, offset: 24, format: 'uint32' },
+        ],
+      });
+      this.pipelines = {
+        flat: make('vs_lane', f32(28)),
+        textured: make('vs_lane', f32(36)),
+        quantized: make('vs_lane_quantized', {
+          arrayStride: 12,
+          attributes: [
+            { shaderLocation: 0, offset: 0, format: 'uint16x4' },
+            { shaderLocation: 2, offset: 8, format: 'uint32' },
+          ],
+        }),
+      };
+    } catch (err) {
+      // Keep the error scopes balanced; the caller logs and leaves the pass off.
+      void settle().catch((scopeError: unknown) => console.warn('[LanePickPass] error scope cleanup failed:', scopeError));
+      throw err;
+    }
+    void settle().then(([validation, internal]) => {
+      const error = validation ?? internal;
+      if (error) console.warn('[LanePickPass] batch pick pipelines rejected; large models keep the CPU raycast:', error.message);
+      else this.validated = true;
+    }, (err: unknown) => console.warn('[LanePickPass] could not confirm the batch pick pipelines; large models keep the CPU raycast:', err));
   }
 
   /**

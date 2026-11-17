@@ -8,6 +8,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { isSceneSettled } from '@/lib/scene-settled';
 import { geometryRestoreBackstopFires } from './geometry-restore-gate.js';
 import type { PickParityRequest } from './perf/pickParity.js';
@@ -174,10 +175,15 @@ export function installViewportDebugHooks(
   };
   // GPU click pick vs the exact CPU raycast over a texel grid, under the current
   // hide/isolate (#10264 S1). Loaded on first use; drives no frame or load path.
-  host.__ifc_lite_pick_parity__ = async (request: Omit<PickParityRequest, 'options'>) => {
+  host.__ifc_lite_pick_parity__ = async (request: Omit<PickParityRequest, 'options' | 'isAnnotationOwner'>) => {
     const { runPickParity } = await import('./perf/pickParity.js');
     const { hiddenIds, isolatedIds } = visibility();
-    return runPickParity(renderer, { ...request, options: { hiddenIds: new Set(hiddenIds), isolatedIds: isolatedIds ? new Set(isolatedIds) : null } });
+    const isAnnotationOwner = (globalId: number): boolean => {
+      const ref = resolveEntityRef(globalId);
+      const type = useViewerStore.getState().models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId) ?? '';
+      return /^Ifc(Annotation|Grid|GridAxis)$/i.test(type);
+    };
+    return runPickParity(renderer, { ...request, isAnnotationOwner, options: { hiddenIds: new Set(hiddenIds), isolatedIds: isolatedIds ? new Set(isolatedIds) : null } });
   };
   // The camera's world view-projection, the matrix every mesh draw packs as
   // `uniforms.viewProj` (the depth nudge reads its projection from it, #6729).

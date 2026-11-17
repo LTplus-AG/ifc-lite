@@ -46,6 +46,14 @@ test('the attribution line shows while a site-context model is visible and goes 
   }));
   assert.match(line()?.textContent ?? '', /CNES, Spot Image, swisstopo, NPOC/);
 
+  // The overland flow map carries its own source line while it is draped, and takes it away with it.
+  act(() => useViewerStore.getState().updateSiteContextModel('terrain', {
+    hazard: { attribution: attribution('surfaceRunoff', '© FOEN'), groundSampleDistance: 0.25 },
+  }));
+  assert.match(line()?.textContent ?? '', /© FOEN/);
+  act(() => useViewerStore.getState().updateSiteContextModel('terrain', { hazard: undefined }));
+  assert.doesNotMatch(line()?.textContent ?? '', /FOEN/);
+
   // Hiding one context model keeps the line for the other; hiding both removes it.
   act(() => useViewerStore.setState({ models: new Map([...useViewerStore.getState().models].map(([id, m]) => [id, id === 'terrain' ? { ...m, visible: false } : m])) }));
   assert.equal(line()?.textContent, '© Cadastral surveying (CS) and the cantons · © swisstopo');

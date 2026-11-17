@@ -36,6 +36,7 @@ import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { displayStoreyElevationMeters } from '@/lib/geo/storey-elevation';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { PropertySetCard } from './properties/PropertySetCard';
+import { FloodExposureCard } from './properties/FloodExposureCard';
 import { EditedQuantitiesSwitch, QuantitySetCard } from './properties/QuantitySetCard';
 import { SweptDiskInspection } from './properties/SweptDiskInspection';
 import { ExtrusionInspection } from './properties/ExtrusionInspection';
@@ -1329,11 +1330,9 @@ export function PropertiesPanel() {
 
         <ScrollArea className="flex-1 bg-background">
           <TabsContent value="properties" className="m-0 p-0 overflow-hidden">
-            {/* Task edit card — renders when exactly one Gantt task is
-                selected. Shown above any entity properties because the
-                user's attention shifted to editing the task, not the 3D
-                element. Other tabs (quantities / relationships / bSDD)
-                still show entity content regardless. */}
+            {/* Task edit card — renders when exactly one Gantt task is selected. Shown above any
+                entity properties because the user's attention shifted to editing the task, not the
+                3D element. Other tabs (quantities / relationships / bSDD) still show entity content. */}
             {singleSelectedTaskGlobalId && (
               <div className="border-b border-border p-2">
                 <TaskEditCard taskGlobalId={singleSelectedTaskGlobalId} />
@@ -1358,6 +1357,8 @@ export function PropertiesPanel() {
                 />
               </div>
             )}
+            {/* A flood-check verdict, when this element was checked (a screening result, not in the model). */}
+            {selectedEntity && <FloodExposureCard modelId={selectedEntity.modelId} expressId={selectedEntity.expressId} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} />}
             {foundOccurrence.length === 0 && foundInherited.length === 0 && foundMaterialProperties.length === 0
               && (findQuery ? !hasAssociationHits : (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
                 && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0 && !documentData.membershipUnavailable

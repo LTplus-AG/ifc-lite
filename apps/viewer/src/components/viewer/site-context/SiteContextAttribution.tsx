@@ -10,7 +10,8 @@
  *
  * It reads the model records, not the fetch, so a site-context GLB dropped on
  * the viewer is attributed exactly like a fetched one, and the imagery's own
- * line appears once it is draped.
+ * line appears once it is draped, and the overland flow map's (© FOEN) while
+ * that is draped.
  */
 
 import { useMemo } from 'react';
@@ -27,6 +28,7 @@ export function siteContextAttributionTexts(
   for (const [, info] of visibleSiteContextModels(records, models)) {
     for (const entry of info.attribution) if (!texts.includes(entry.text)) texts.push(entry.text);
     if (info.imagery && !texts.includes(info.imagery.attribution.text)) texts.push(info.imagery.attribution.text);
+    if (info.hazard && !texts.includes(info.hazard.attribution.text)) texts.push(info.hazard.attribution.text);
   }
   return texts;
 }

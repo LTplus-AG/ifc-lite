@@ -4324,6 +4324,3116 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "pointCloudOperations"
   },
   {
+    "id": "authoring.describe",
+    "version": 1,
+    "owner": "model",
+    "description": "Discover the complete native reviewed authoring vocabulary and its exact input guidance. No arbitrary STEP or method-path execution.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "operations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "guidance": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operations",
+        "guidance"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-native",
+    "exportName": "authoringOperations"
+  },
+  {
+    "id": "authoring.prepare",
+    "version": 1,
+    "owner": "model",
+    "description": "Prepare a complete canonical model.authoring proposal through the native parser, alignment preparation and detached native dry run. All rows must resolve to the selected model. Preview contains real before/after expectations, availability and dependencies.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "proposal_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "preview_json": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "token",
+        "preview_json",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-native",
+    "exportName": "authoringOperations"
+  },
+  {
+    "id": "properties.prepare",
+    "version": 1,
+    "owner": "properties",
+    "description": "Prepare a canonical model.changes batch for property, quantity or exact IFC attribute edits. Native expected-value checks and role gates are preserved.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "proposal_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "preview_json": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "token",
+        "preview_json",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-native",
+    "exportName": "authoringOperations"
+  },
+  {
+    "id": "authoring.apply",
+    "version": 1,
+    "owner": "model",
+    "description": "Apply every ready row of the exact prepared model/attribute/property candidate as a native transaction. Refuses an incomplete/conflicting preview; repeated apply returns the same receipt.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "receipt_json": {
+          "type": "string"
+        },
+        "persisted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "receipt_json",
+        "persisted"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-native",
+    "exportName": "authoringOperations"
+  },
+  {
+    "id": "authoring.discard",
+    "version": 1,
+    "owner": "model",
+    "description": "Discard a prepared model candidate without applying it.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "discarded": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "discarded"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-native",
+    "exportName": "authoringOperations"
+  },
+  {
+    "id": "authoring.graphs.describe",
+    "version": 1,
+    "owner": "model",
+    "description": "Describe canonical reviewed generic Group memberships, Structural graphs, evaluated zone emission and Room command proposals.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-graphs",
+    "exportName": "graphAuthoringOperations"
+  },
+  {
+    "id": "authoring.nativeEvidence",
+    "version": 1,
+    "owner": "model",
+    "description": "Read complete bounded native authoring grounding for validated entities: identities, dimensions, profiles, placement, type/material layers, replacement, split, hosted fills, reach/trim, stairs, grid, Storey reassignment, Group memberships, Structural and zone evidence. Uses the same pure capture as the Assistant without changing selection; unavailable/truncated pins stay explicit.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxItems": 1000
+        }
+      },
+      "required": [
+        "express_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-graphs",
+    "exportName": "graphAuthoringOperations"
+  },
+  {
+    "id": "authoring.group.prepare",
+    "version": 1,
+    "owner": "model",
+    "description": "Prepare the canonical group proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "proposal_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "preview_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "preview_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-graphs",
+    "exportName": "graphAuthoringOperations"
+  },
+  {
+    "id": "authoring.structural.prepare",
+    "version": 1,
+    "owner": "model",
+    "description": "Prepare the canonical structural proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "proposal_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "preview_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "preview_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-graphs",
+    "exportName": "graphAuthoringOperations"
+  },
+  {
+    "id": "authoring.zone.prepare",
+    "version": 1,
+    "owner": "zones",
+    "description": "Prepare the canonical zone proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "proposal_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "preview_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "preview_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-graphs",
+    "exportName": "graphAuthoringOperations"
+  },
+  {
+    "id": "authoring.room.prepare",
+    "version": 1,
+    "owner": "model",
+    "description": "Prepare the canonical room proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "proposal_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "proposal_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "preview_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "preview_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-graphs",
+    "exportName": "graphAuthoringOperations"
+  },
+  {
+    "id": "authoring.graph.apply",
+    "version": 1,
+    "owner": "model",
+    "description": "Apply one exact prepared native graph/Room candidate through its native synchronous review commit. Preserves all native roles, source/evidence checks and native undo. A token applies once.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-graphs",
+    "exportName": "graphAuthoringOperations"
+  },
+  {
+    "id": "authoring.graph.discard",
+    "version": 1,
+    "owner": "model",
+    "description": "Dispose a native graph or Room preview and release its native handles.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-graphs",
+    "exportName": "graphAuthoringOperations"
+  },
+  {
+    "id": "changes.read",
+    "version": 1,
+    "owner": "changes",
+    "description": "Read native change operations for the selected model, including stable operation IDs, exact mutation records and current top-of-history state.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changes.revert.prepare",
+    "version": 1,
+    "owner": "changes",
+    "description": "Capture the exact native operation to revert. Apply rechecks native conflicts and shared-session restrictions.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "native_json"
+      ]
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changes.revert.apply",
+    "version": 1,
+    "owner": "changes",
+    "description": "Revert the captured native operation through the existing conflict-aware Changes-panel handler. Shared rooms and stale/overwritten values remain refused.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changes.history",
+    "version": 1,
+    "owner": "changes",
+    "description": "Undo or redo the selected model through its native SDK history; native mutation/role gates remain active.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "undo",
+            "redo"
+          ]
+        }
+      },
+      "required": [
+        "direction"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changes.select",
+    "version": 1,
+    "owner": "changes",
+    "description": "Select and frame a changed entity through the native Changes-panel selection handler.",
+    "needs": "model",
+    "effects": [
+      "selection"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "express_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changeSets.read",
+    "version": 1,
+    "owner": "changeSets",
+    "description": "Read all native change sets, active collection target and exact grouped contents. Importing a set stages its records and never applies its edits.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changeSets.create",
+    "version": 1,
+    "owner": "changeSets",
+    "description": "Create and activate a native change set for subsequent native edits.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changeSets.rename",
+    "version": 1,
+    "owner": "changeSets",
+    "description": "Rename an existing native change set.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changeSets.activate",
+    "version": 1,
+    "owner": "changeSets",
+    "description": "Activate an existing set. An empty ID stops collecting edits.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changeSets.discard",
+    "version": 1,
+    "owner": "changeSets",
+    "description": "Discard a set record through the native panel handler. The edits remain in the model, matching the panel behavior.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changeSets.import",
+    "version": 1,
+    "owner": "changeSets",
+    "description": "Import an exported native change-set record using its authoritative parser. This stages metadata and does not replay edits.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "changeSets.export",
+    "version": 1,
+    "owner": "changeSets",
+    "description": "Create a host-owned JSON artifact using the native change-set exporter.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ]
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "changes-native",
+    "exportName": "changesOperations"
+  },
+  {
+    "id": "placement.read",
+    "version": 1,
+    "owner": "placement",
+    "description": "Read native whole-model placements and the current numerical preview. Engineering coordinates are IFC Z-up metres; rotations are radians.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-placement",
+    "exportName": "placementOperations"
+  },
+  {
+    "id": "placement.translation.preview",
+    "version": 1,
+    "owner": "placement",
+    "description": "Start an explicit native reposition session for the selected model or an explicit model_ids set and preview a numerical engineering Z-up metre translation. Refuses an existing interactive preview.",
+    "needs": "model",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "delta": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "model_ids": {
+          "type": "array",
+          "nullable": true,
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "placement_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "delta",
+        "placement_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-placement",
+    "exportName": "placementOperations"
+  },
+  {
+    "id": "placement.translation.action",
+    "version": 1,
+    "owner": "placement",
+    "description": "Apply/cancel the exact current numerical preview, or use native placement undo/redo/reset. Preview must include the selected model. Undo/redo refuse history belonging to another model.",
+    "needs": "model",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "placement_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "apply",
+            "cancel",
+            "undo",
+            "redo",
+            "reset"
+          ]
+        }
+      },
+      "required": [
+        "placement_revision",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-placement",
+    "exportName": "placementOperations"
+  },
+  {
+    "id": "placement.rotation",
+    "version": 1,
+    "owner": "placement",
+    "description": "Set absolute native whole-model yaw in radians about an explicit engineering Z-up metre pivot; preserves native geometry/rotation refusals and placement history.",
+    "needs": "model",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "angle": {
+          "type": "number",
+          "minimum": -1000,
+          "maximum": 1000
+        },
+        "pivot": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "placement_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "angle",
+        "pivot",
+        "placement_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-placement",
+    "exportName": "placementOperations"
+  },
+  {
+    "id": "placement.lock",
+    "version": 1,
+    "owner": "placement",
+    "description": "Set the selected model’s native placement lock.",
+    "needs": "model",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "locked": {
+          "type": "boolean"
+        },
+        "placement_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "locked",
+        "placement_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-placement",
+    "exportName": "placementOperations"
+  },
+  {
+    "id": "georeference.read",
+    "version": 1,
+    "owner": "placement",
+    "description": "Read native effective projected CRS and map conversion, including unsaved edits.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-placement",
+    "exportName": "placementOperations"
+  },
+  {
+    "id": "georeference.edit",
+    "version": 1,
+    "owner": "placement",
+    "description": "Set a validated native georeferencing field batch as one native history operation. Exact current expected values are required. Existing field casing follows the georeference API.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "entity": {
+          "type": "string",
+          "enum": [
+            "mapConversion",
+            "projectedCRS"
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "oldValue": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "field",
+              "value",
+              "oldValue"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "entity",
+        "fields"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-placement",
+    "exportName": "placementOperations"
+  },
+  {
+    "id": "zones.read",
+    "version": 1,
+    "owner": "zones",
+    "description": "Inspect complete native zone configuration and current assignment/apportionment results. Coordinates are renderer Y-up metres; rotations are radians.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.set.create",
+    "version": 1,
+    "owner": "zones",
+    "description": "Create a native zone set after checking the exact configuration snapshot.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_configuration": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "name",
+        "expected_configuration"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.set.edit",
+    "version": 1,
+    "owner": "zones",
+    "description": "Remove/rename/show a native zone set through the exact panel store handlers.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "remove",
+            "rename",
+            "visibility"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "expected_configuration": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "set_id",
+        "action",
+        "name",
+        "visible",
+        "expected_configuration"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.box.write",
+    "version": 1,
+    "owner": "zones",
+    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "zone_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "center": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "size": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotationY": {
+          "type": "number"
+        },
+        "expected_configuration": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "set_id",
+        "zone_id",
+        "name",
+        "center",
+        "size",
+        "rotationY",
+        "expected_configuration"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.box.remove",
+    "version": 1,
+    "owner": "zones",
+    "description": "Remove an exact existing native zone.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "zone_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_configuration": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "set_id",
+        "zone_id",
+        "expected_configuration"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.import",
+    "version": 1,
+    "owner": "zones",
+    "description": "Import complete zone sets through the authoritative native parser. Supports native box/prism footprints and colors without a second geometry implementation.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "expected_configuration": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "json",
+        "expected_configuration"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.generateStoreys",
+    "version": 1,
+    "owner": "zones",
+    "description": "Generate and replace a zone set using the same native current-storey geometry/frame service as the panel.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_configuration": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "set_id",
+        "expected_configuration"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.assign",
+    "version": 1,
+    "owner": "zones",
+    "description": "Recompute native assignments using the live renderer’s canonical entity bounds. Requires a mounted renderer; never fabricates an empty successful evaluation.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.select",
+    "version": 1,
+    "owner": "zones",
+    "description": "Select native assigned elements in a zone. Empty zone_id selects the unassigned bucket using the same federation-aware handler as the panel.",
+    "needs": "viewer",
+    "effects": [
+      "selection"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "zone_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "set_id",
+        "zone_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.apportion",
+    "version": 1,
+    "owner": "zones",
+    "description": "Run native proved-solid volume apportionment for a current zone set. Native unavailable/unproved-solid diagnostics remain explicit.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "set_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.export",
+    "version": 1,
+    "owner": "zones",
+    "description": "Export native zone definitions as a host-owned JSON artifact.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "zones.table.export",
+    "version": 1,
+    "owner": "zones",
+    "description": "Export the canonical native per-element zone table as CSV or Parquet through the existing safe exporter.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "mesh",
+            "net",
+            "gross",
+            "unqualified"
+          ]
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "csv",
+            "parquet"
+          ]
+        }
+      },
+      "required": [
+        "set_id",
+        "basis",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "authoring-zones",
+    "exportName": "zoneOperations"
+  },
+  {
+    "id": "ids.document.read",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Read the current structured IDS document, node identities and revision.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.operations.schema",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Discover the canonical complete StudioOp vocabulary and runtime JSON Schema (specs, facets, values, metadata and comments).",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.document.prepare",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Prepare an immutable new/imported IDS document; XML or base64 IDSZ. Does not replace the open document.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "new",
+            "xml",
+            "idsz"
+          ]
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 2000000
+        },
+        "document_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "format",
+        "content",
+        "document_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.operations.prepare",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Validate and ground a complete StudioOp batch through the native schema/gate/reducer. Returns an immutable revision-bound candidate and its resulting document.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ops_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "document_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "ops_json",
+        "document_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.candidate.apply",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Apply exactly one prepared IDS candidate through native open or gated dispatch; one native history step for an op batch. Repeated apply does not duplicate edits.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.candidate.discard",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Discard a pending IDS candidate.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.lint",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Lint the current document through the native IDS Studio linter and IFC grounding tables.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.history",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Undo or redo one gated native IDS history entry.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "document_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "undo",
+            "redo"
+          ]
+        }
+      },
+      "required": [
+        "document_revision",
+        "direction"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.document.xml",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Render current IDS XML through the same writer used by the panel and export.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.document.bundle",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Return the current native IDSZ bundle as base64, preserving node identities and sidecar metadata.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.document.export",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Export the current IDS or IDSZ through the native writer as a host-owned artifact.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "ids",
+            "idsz"
+          ]
+        }
+      },
+      "required": [
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.document.close",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Close the native IDS document after checking its exact revision.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "document_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "document_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.settings",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Set the native Studio view and selected document/spec/facet node; empty selection_id clears selection.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "document_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "view": {
+          "type": "string",
+          "enum": [
+            "inspector",
+            "xml"
+          ]
+        },
+        "selection_id": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "document_revision",
+        "view",
+        "selection_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "ids.document.validate",
+    "version": 1,
+    "owner": "idsStudio",
+    "description": "Validate the open Studio document against the selected effective IFC model through the existing IDS validation service.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-studio",
+    "exportName": "idsOperations"
+  },
+  {
+    "id": "zones.writeback.prepare",
+    "version": 1,
+    "owner": "zones",
+    "description": "Prepare native zone property/quantity writeback or removal with explicit complete target model population. The preview is the same native facts table as export. Native writeback reports per-model partial outcomes and uses explicit Remove as its inverse; it does not enter native Undo history.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "model_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "basis": {
+          "type": "string",
+          "enum": [
+            "mesh",
+            "net",
+            "gross",
+            "unqualified"
+          ]
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "write",
+            "remove"
+          ]
+        }
+      },
+      "required": [
+        "set_id",
+        "model_ids",
+        "basis",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-zone-writes",
+    "exportName": "zoneWriteOperations"
+  },
+  {
+    "id": "zones.writeback.apply",
+    "version": 1,
+    "owner": "zones",
+    "description": "Apply the exact reviewed whole-set native writeback/removal. Preserves native per-model eligibility, role checks, volume proofs and explicit partial outcome diagnostics.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-zone-writes",
+    "exportName": "zoneWriteOperations"
+  },
+  {
+    "id": "zones.geometry.export",
+    "version": 1,
+    "owner": "zones",
+    "description": "Build a native GLB geometric section using the same proved-solid exact split service as the panel. Cancellation suppresses artifact publication; an already dispatched native worker may finish.",
+    "needs": "model",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "set_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "zone_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "set_id",
+        "zone_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "authoring-zone-writes",
+    "exportName": "zoneWriteOperations"
+  },
+  {
+    "id": "storeys.read",
+    "version": 1,
+    "owner": "model",
+    "description": "Read all live native storey elevations, floor heights, element counts and constraints; source lengths are native metres.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "module": "authoring-storeys",
+    "exportName": "storeyOperations"
+  },
+  {
+    "id": "storeys.suggest",
+    "version": 1,
+    "owner": "model",
+    "description": "Read the native naming/elevation suggestion above or below an explicit existing storey.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "above",
+            "below"
+          ]
+        }
+      },
+      "required": [
+        "express_id",
+        "side"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "module": "authoring-storeys",
+    "exportName": "storeyOperations"
+  },
+  {
+    "id": "storeys.prepare",
+    "version": 1,
+    "owner": "model",
+    "description": "Use the authoritative native Storey planner for add, elevation/floor-height edit or delete. params_json uses AddStoreyParams, StoreyLevelEdit or StoreyDeleteMode; delete modes explicitly move contents or deleteContents. Returns the actual immutable native impact plan.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "add",
+            "edit",
+            "delete"
+          ]
+        },
+        "express_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "params_json": {
+          "type": "string",
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "kind",
+        "express_id",
+        "params_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "module": "authoring-storeys",
+    "exportName": "storeyOperations"
+  },
+  {
+    "id": "storeys.apply",
+    "version": 1,
+    "owner": "model",
+    "description": "Apply the exact prepared native Storey plan with its native expected-plan checks, transaction/constraint updates, remeshing and Undo. A candidate applies once.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-storeys",
+    "exportName": "storeyOperations"
+  },
+  {
+    "id": "storeys.rename",
+    "version": 1,
+    "owner": "model",
+    "description": "Rename a validated storey through the native SDK transaction.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "Name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "express_id",
+        "Name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-storeys",
+    "exportName": "storeyOperations"
+  },
+  {
+    "id": "storeys.topConstraint",
+    "version": 1,
+    "owner": "model",
+    "description": "Set an element top using the native TopConstraint contract (fixed/storeyAbove/storey/slab). Uses native authoritative attachment and dimension checks and native Undo.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "constraint_json": {
+          "type": "string",
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "express_id",
+        "constraint_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-storeys",
+    "exportName": "storeyOperations"
+  },
+  {
     "id": "model.inspect",
     "version": 1,
     "owner": "properties",
@@ -5139,6 +8249,1002 @@ export const operationContracts: readonly OperationContract[] = [
     "implementation": "sdk",
     "module": "queries",
     "exportName": "queryOperations"
+  },
+  {
+    "id": "validation.state",
+    "version": 1,
+    "owner": "validation",
+    "description": "Inspect current native IDS/rule definitions, active drafts, definition revision and live report summary.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.definitions.write",
+    "version": 1,
+    "owner": "validation",
+    "description": "Import/replace/select/remove a native check definition or edit the active rule draft using its authoritative parser and definition-library writer. Empty id creates a new imported definition.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "rules.import",
+            "ids.import",
+            "activate",
+            "remove",
+            "deactivate",
+            "rules.draft"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "rules",
+            "ids"
+          ]
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "definition_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "action",
+        "id",
+        "kind",
+        "content",
+        "definition_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.ids.run",
+    "version": 1,
+    "owner": "validation",
+    "description": "Execute canonical IDS XML through the panel’s shared native IDS runner, including pending edits and explicit whole/subset scope. Produces the same revision-bound run handles as information rules.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "xml": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "whole",
+            "subset"
+          ]
+        },
+        "entity_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "required": [
+        "xml",
+        "scope",
+        "entity_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.fix.prepare",
+    "version": 1,
+    "owner": "validation",
+    "description": "Draft a native IDS property correction from explicit target IDs and a supplied raw value. Uses native type inference, IDS-to-model unit conversion and expected-value capture, then the existing properties review/apply service.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "pset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "facet_data_type": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "raw_value": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "express_ids",
+        "pset",
+        "name",
+        "facet_data_type",
+        "raw_value",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.rules.run",
+    "version": 1,
+    "owner": "validation",
+    "description": "Run a canonical information-rule definition over an explicit loaded model population through the shared native rule executor. Pending edits are materialized by its canonical effective-store path. Returns a host-owned, revision-bound run handle; native cancellation is forwarded.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "rules_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "model_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "required": [
+        "rules_json",
+        "model_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.results",
+    "version": 1,
+    "owner": "validation",
+    "description": "Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": [
+        "run_id",
+        "offset",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.publish",
+    "version": 1,
+    "owner": "validation",
+    "description": "Publish an exact current native run into the existing Validation-panel report slot, without rerunning or reinterpreting its findings.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.report.export",
+    "version": 1,
+    "owner": "validation",
+    "description": "Render the exact native run through the panel’s shared JSON/HTML report writers into a host-owned artifact.",
+    "needs": "model",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "html"
+          ]
+        }
+      },
+      "required": [
+        "run_id",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.report.bcf",
+    "version": 1,
+    "owner": "validation",
+    "description": "Export an exact current native report through the existing BCF pipeline into a host artifact. Native topic caps and snapshot failures stay explicit. Cancellation stops publication; a capture already running may finish.",
+    "needs": "model",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "topic_grouping": {
+          "type": "string",
+          "enum": [
+            "per-entity",
+            "per-specification"
+          ]
+        },
+        "include_passing": {
+          "type": "boolean"
+        },
+        "include_camera": {
+          "type": "boolean"
+        },
+        "include_snapshots": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "run_id",
+        "topic_grouping",
+        "include_passing",
+        "include_camera",
+        "include_snapshots"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.report.save",
+    "version": 1,
+    "owner": "validation",
+    "description": "Save an exact current validation result through the native durable report library.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "run_id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.reports.read",
+    "version": 1,
+    "owner": "validation",
+    "description": "Read the native durable report library and its persistence diagnostics with no model required. Historical evidence never installs old entity IDs into the scene.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.reports.manage",
+    "version": 1,
+    "owner": "validation",
+    "description": "Rename/remove saved native reports, restore/retry native durable storage or create an independent editable copy of an eligible saved Manual report. Native fingerprint eligibility remains authoritative.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "rename",
+            "remove",
+            "reuseManual",
+            "restore",
+            "retry"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "expected_reports": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "action",
+        "id",
+        "name",
+        "expected_reports"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-validation",
+    "exportName": "nativeValidationOperations"
+  },
+  {
+    "id": "validation.manual.read",
+    "version": 1,
+    "owner": "validation",
+    "description": "Read native independent checklists, active template, model-fingerprint answers and persistence diagnostics. A recorded verdict is a supplied observation, not an automated model check.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-manual",
+    "exportName": "manualValidationOperations"
+  },
+  {
+    "id": "validation.manual.import",
+    "version": 1,
+    "owner": "validation",
+    "description": "Import/select a canonical native checklist template, retaining its own model-fingerprint answers according to the existing native library contract.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "expected_library": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "json",
+        "expected_library"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-manual",
+    "exportName": "manualValidationOperations"
+  },
+  {
+    "id": "validation.manual.edit",
+    "version": 1,
+    "owner": "validation",
+    "description": "Run exact native checklist/library/group/item editing actions, including ordering. Uses the same store handlers as the Manual-validation controls; never writes an observation implicitly.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "new",
+            "close",
+            "select",
+            "remove",
+            "duplicate",
+            "rename",
+            "group.add",
+            "group.rename",
+            "group.remove",
+            "group.move",
+            "item.add",
+            "item.update",
+            "item.remove",
+            "item.move"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "group_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "item_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "delta": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "expected_library": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "action",
+        "id",
+        "group_id",
+        "item_id",
+        "text",
+        "description",
+        "delta",
+        "expected_library"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-manual",
+    "exportName": "manualValidationOperations"
+  },
+  {
+    "id": "validation.manual.answer",
+    "version": 1,
+    "owner": "validation",
+    "description": "Record a supplied verdict/comment against an exact durable model fingerprint and checklist item. This does not establish that a physical/manual check was performed.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "fingerprint": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "item_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "warning",
+            "unanswered"
+          ]
+        },
+        "comment": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "expected_library": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "fingerprint",
+        "item_id",
+        "status",
+        "comment",
+        "expected_library"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-manual",
+    "exportName": "manualValidationOperations"
+  },
+  {
+    "id": "validation.manual.export",
+    "version": 1,
+    "owner": "validation",
+    "description": "Export the active native checklist template as a host-owned JSON artifact.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "ids-manual",
+    "exportName": "manualValidationOperations"
+  },
+  {
+    "id": "validation.manual.saveReport",
+    "version": 1,
+    "owner": "validation",
+    "description": "Snapshot the explicit current checklist and supplied model-fingerprint answers into the native durable report library. An empty fingerprint creates an unbound report; no verdict is invented.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "fingerprint": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "expected_library": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "name",
+        "fingerprint",
+        "expected_library"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-manual",
+    "exportName": "manualValidationOperations"
   },
   {
     "id": "preferences.read",
@@ -6580,6 +10686,1137 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "preferenceOperations"
   },
   {
+    "id": "authoring.defaults.read",
+    "version": 1,
+    "owner": "model",
+    "description": "Read the exact native per-kind dimensions, type/layer picks, profile choices, drawing modes and Room defaults.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-inspector",
+    "exportName": "inspectorOperations"
+  },
+  {
+    "id": "authoring.type.create",
+    "version": 1,
+    "owner": "model",
+    "description": "Create a native element type through the Model inspector transaction. express_id=0 creates only the type; otherwise native typing and inherited layer-set behavior apply to that validated element.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "wall",
+            "slab",
+            "beam",
+            "column",
+            "door",
+            "window",
+            "space",
+            "roof",
+            "plate",
+            "member"
+          ]
+        },
+        "Name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "express_id": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "Name",
+        "express_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-inspector",
+    "exportName": "inspectorOperations"
+  },
+  {
+    "id": "authoring.material.createAndAssign",
+    "version": 1,
+    "owner": "model",
+    "description": "Create and assign a material using the same native Model-inspector transaction, including supported color/category/description.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "Name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "Color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "Category": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "Description": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "express_id",
+        "Name",
+        "Color",
+        "Category",
+        "Description"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-inspector",
+    "exportName": "inspectorOperations"
+  },
+  {
+    "id": "authoring.defaults.dimension",
+    "version": 1,
+    "owner": "model",
+    "description": "Set one existing native default dimension in metres, preserving the command HUD/inspector’s shared state.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "wall",
+            "slab",
+            "beam",
+            "column",
+            "door",
+            "window",
+            "space",
+            "roof",
+            "plate",
+            "member"
+          ]
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "metres": {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "expected_defaults": {
+          "type": "string",
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "kind",
+        "field",
+        "metres",
+        "expected_defaults"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-inspector",
+    "exportName": "inspectorOperations"
+  },
+  {
+    "id": "authoring.defaults.drawing",
+    "version": 1,
+    "owner": "model",
+    "description": "Set all native drawing modes/alignment/top/chain/class defaults after inspecting their exact snapshot.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "wallAlign": {
+          "type": "string",
+          "enum": [
+            "left",
+            "centre",
+            "right"
+          ]
+        },
+        "wallTop": {
+          "type": "string",
+          "enum": [
+            "storeyAbove",
+            "fixed"
+          ]
+        },
+        "chain": {
+          "type": "boolean"
+        },
+        "slabMode": {
+          "type": "string",
+          "enum": [
+            "rectangle",
+            "polygon"
+          ]
+        },
+        "spaceMode": {
+          "type": "string",
+          "enum": [
+            "rectangle",
+            "polygon"
+          ]
+        },
+        "slabClass": {
+          "type": "string",
+          "enum": [
+            "slab",
+            "roof",
+            "plate"
+          ]
+        },
+        "beamClass": {
+          "type": "string",
+          "enum": [
+            "beam",
+            "member"
+          ]
+        },
+        "expected_defaults": {
+          "type": "string",
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "wallAlign",
+        "wallTop",
+        "chain",
+        "slabMode",
+        "spaceMode",
+        "slabClass",
+        "beamClass",
+        "expected_defaults"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-inspector",
+    "exportName": "inspectorOperations"
+  },
+  {
+    "id": "authoring.defaults.profile",
+    "version": 1,
+    "owner": "model",
+    "description": "Set a native cross-section choice using the same canonical profile parser and native per-kind dimension storage. profile_json is a ProfileSection in metres (Type plus exact EXPRESS dimension names).",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "owner": {
+          "type": "string",
+          "enum": [
+            "column",
+            "beam",
+            "member"
+          ]
+        },
+        "profile_json": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "expected_defaults": {
+          "type": "string",
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "owner",
+        "profile_json",
+        "expected_defaults"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-inspector",
+    "exportName": "inspectorOperations"
+  },
+  {
+    "id": "authoring.defaults.room",
+    "version": 1,
+    "owner": "model",
+    "description": "Set the Room tool’s native minimum area, name pattern, exact PredefinedType and ObjectType defaults.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "minArea": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "namePattern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "PredefinedType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "ObjectType": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "expected_defaults": {
+          "type": "string",
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "minArea",
+        "namePattern",
+        "PredefinedType",
+        "ObjectType",
+        "expected_defaults"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-inspector",
+    "exportName": "inspectorOperations"
+  },
+  {
+    "id": "authoring.defaults.pick",
+    "version": 1,
+    "owner": "model",
+    "description": "Set or clear the current model’s exact native default type/layer-set pick for one construction kind. express_id=0 clears; cross-model/incorrect IFC classes are refused.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "wall",
+            "slab",
+            "beam",
+            "column",
+            "door",
+            "window",
+            "space",
+            "roof",
+            "plate",
+            "member"
+          ]
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "type",
+            "layers"
+          ]
+        },
+        "express_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_defaults": {
+          "type": "string",
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "kind",
+        "channel",
+        "express_id",
+        "expected_defaults"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-inspector",
+    "exportName": "inspectorOperations"
+  },
+  {
+    "id": "placement.manifest.export",
+    "version": 1,
+    "owner": "placement",
+    "description": "Export the native placement manifest with source hashes, instance IDs, frame identity, rotation pivots and locks. Metres, engineering Z-up.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "authoring-placement-files",
+    "exportName": "placementFileOperations"
+  },
+  {
+    "id": "placement.manifest.import",
+    "version": 1,
+    "owner": "placement",
+    "description": "Import the complete native manifest atomically, with explicit source-instance bindings for ambiguous copies. Preserves native frame/source mismatch and rotation refusals.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "maxLength": 2000000
+        },
+        "placement_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bindings": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "saved_instance_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "model_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "required": [
+              "saved_instance_id",
+              "model_id"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "content",
+        "bindings",
+        "placement_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-placement-files",
+    "exportName": "placementFileOperations"
+  },
+  {
+    "id": "properties.inherited.read",
+    "version": 1,
+    "owner": "properties",
+    "description": "Read native occurrence and inherited type property sets, with an exact snapshot for lossless occurrence overrides.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "express_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "authoring-properties",
+    "exportName": "propertyInspectorOperations"
+  },
+  {
+    "id": "properties.add",
+    "version": 1,
+    "owner": "properties",
+    "description": "Add native scalar properties using the exact Properties/bSDD shared handler. Inherited-only sets carry forward their type values; non-copyable complex or explicitly-unitized inherited values are refused. One native transaction/Undo.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_properties": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "properties": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  }
+                ]
+              },
+              "type": {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "value",
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "express_id",
+        "pset",
+        "properties",
+        "expected_properties"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-properties",
+    "exportName": "propertyInspectorOperations"
+  },
+  {
+    "id": "properties.reassignClass",
+    "version": 1,
+    "owner": "properties",
+    "description": "Reassign the exact element IFC class/PredefinedType using the native Properties writer inside one rollback-capable transaction. expected_class guards against a concurrent retype; native keyword/export constraints remain authoritative.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "IfcClass": {
+          "type": "string",
+          "pattern": "^Ifc[A-Za-z][A-Za-z0-9_]*$",
+          "maxLength": 200
+        },
+        "PredefinedType": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "expected_class": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "express_id",
+        "IfcClass",
+        "PredefinedType",
+        "expected_class"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "authoring-properties",
+    "exportName": "propertyInspectorOperations"
+  },
+  {
+    "id": "validation.rules.importIds",
+    "version": 1,
+    "owner": "validation",
+    "description": "Convert IDS to native information rules through the exact IDS-to-rules converter, preserving converted/refused/notes diagnostics, then stage the resulting draft. Does not pretend unrepresentable IDS facets converted.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "xml": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "definition_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "xml",
+        "definition_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "ids-rule-interchange",
+    "exportName": "ruleInterchangeOperations"
+  },
+  {
+    "id": "validation.rules.export",
+    "version": 1,
+    "owner": "validation",
+    "description": "Export canonical rules JSON or convert representable rules to IDS using the same native converter and effective-model/unit targets as the panel. Returns explicit refused-rule diagnostics and an artifact only when native conversion produced output.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "rules_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "ids"
+          ]
+        }
+      },
+      "required": [
+        "rules_json",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "ids-rule-interchange",
+    "exportName": "ruleInterchangeOperations"
+  },
+  {
+    "id": "properties.bsdd.search",
+    "version": 1,
+    "owner": "properties",
+    "features": [
+      "privacy.third-party"
+    ],
+    "description": "Search live bSDD classes/dictionaries using the canonical native provider. Uses the host's native bSDD provider and its rate-limit/error contract. Requests send search terms/class names, never IFC model content. Cancellation suppresses the result; the provider's admitted HTTP call may settle.",
+    "needs": "viewer",
+    "effects": [
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "authoring-bsdd",
+    "exportName": "bsddOperations"
+  },
+  {
+    "id": "properties.bsdd.class",
+    "version": 1,
+    "owner": "properties",
+    "features": [
+      "privacy.third-party"
+    ],
+    "description": "Inspect a canonical bSDD class and its property definitions, allowed values and units. Uses the host's native bSDD provider and its rate-limit/error contract. Requests send search terms/class names, never IFC model content. Cancellation suppresses the result; the provider's admitted HTTP call may settle.",
+    "needs": "viewer",
+    "effects": [
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ifc_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "ifc_type"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "authoring-bsdd",
+    "exportName": "bsddOperations"
+  },
+  {
+    "id": "properties.bsdd.property_sets",
+    "version": 1,
+    "owner": "properties",
+    "features": [
+      "privacy.third-party"
+    ],
+    "description": "Inspect complete canonical bSDD property-set groups for a class. Uses the host's native bSDD provider and its rate-limit/error contract. Requests send search terms/class names, never IFC model content. Cancellation suppresses the result; the provider's admitted HTTP call may settle.",
+    "needs": "viewer",
+    "effects": [
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ifc_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "ifc_type"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "authoring-bsdd",
+    "exportName": "bsddOperations"
+  },
+  {
+    "id": "properties.bsdd.match",
+    "version": 1,
+    "owner": "properties",
+    "features": [
+      "privacy.third-party"
+    ],
+    "description": "Find bSDD classification candidates for the validated model-qualified entity class through the existing native matching service. Uses the host's native bSDD provider and its rate-limit/error contract. Requests send search terms/class names, never IFC model content. Cancellation suppresses the result; the provider's admitted HTTP call may settle.",
+    "needs": "model",
+    "effects": [
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "express_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "authoring-bsdd",
+    "exportName": "bsddOperations"
+  },
+  {
     "id": "basket.read",
     "version": 1,
     "owner": "hierarchy",
@@ -7353,6 +12590,119 @@ export const operationContracts: readonly OperationContract[] = [
     "implementation": "native-store",
     "module": "fields",
     "exportName": "fieldOperations"
+  },
+  {
+    "id": "exports.changedModels",
+    "version": 1,
+    "owner": "changes",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce full native IFC/IFCX files with pending edits for every changed model, using the same exporter and ZIP bundler as Export modified IFC. Retains schedule attribution, portable appearance resources, native skips and format-loss diagnostics. Returns one connection-owned file or ZIP; no browser download or remote publication. Model/federation changes during production refuse the result.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "model_id": {
+                "type": "string"
+              },
+              "changes": {
+                "type": "integer"
+              },
+              "skipped_psets": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "filename",
+              "model_id",
+              "changes",
+              "skipped_psets"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "schedule_spliced": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "artifact",
+        "files",
+        "skipped",
+        "schedule_spliced"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-exports",
+    "exportName": "modelExportOperations"
   },
   {
     "id": "section.nativeState",
@@ -8162,6 +13512,492 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "annotationOperations"
   },
   {
+    "id": "exports.modelStep",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce one native full/visible STEP IFC or portable IFCZIP with the Export dialog schema, geometry, mutation and trim/whole-section options. Uses its exact shared exportModelStep producer, room/source ID mapping, appearance packaging and schedule splicing; refuses unsupported native source/section modes. No download.",
+    "needs": "model",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "IFC2X3",
+            "IFC4",
+            "IFC4X3"
+          ]
+        },
+        "include_geometry": {
+          "type": "boolean"
+        },
+        "apply_mutations": {
+          "type": "boolean"
+        },
+        "visible_only": {
+          "type": "boolean"
+        },
+        "section_mode": {
+          "type": "string",
+          "enum": [
+            "trim",
+            "whole"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "include_geometry",
+        "apply_mutations",
+        "visible_only",
+        "section_mode"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-step",
+    "exportName": "stepExportOperations"
+  },
+  {
+    "id": "exports.mergedStep",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce an explicit set of native merged STEP models, using the Export dialog merge-input, room visibility, unit reconciliation and section-cropping services. Skipped sources remain explicit diagnostics. Captures are rejected as inputs; no implicit active-model target and no download.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "IFC2X3",
+            "IFC4",
+            "IFC4X3"
+          ]
+        },
+        "include_geometry": {
+          "type": "boolean"
+        },
+        "apply_mutations": {
+          "type": "boolean"
+        },
+        "visible_only": {
+          "type": "boolean"
+        },
+        "section_mode": {
+          "type": "string",
+          "enum": [
+            "trim",
+            "whole"
+          ]
+        },
+        "model_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "unit_reconciliation": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "normalize",
+            "assume-shared"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "include_geometry",
+        "apply_mutations",
+        "visible_only",
+        "section_mode",
+        "model_ids",
+        "unit_reconciliation"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-step",
+    "exportName": "stepExportOperations"
+  },
+  {
+    "id": "exports.models",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Read the exact native Export dialog model choices, including source-independent/native-metadata models and legacy IDs. Gaussian captures are omitted with an explicit count.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "models_json": {
+          "type": "string"
+        },
+        "omitted_captures": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "models_json",
+        "omitted_captures"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "model-ifcx",
+    "exportName": "ifcxExportOperations"
+  },
+  {
+    "id": "exports.modelIfcx",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce native IFCX with the Export dialog geometry, mutation, visible-only, changes-only and known-property options. Shares its exact instanced-mesh scoped producer and room path mapping. Native empty-pset/property-collision diagnostics remain in diagnostics_json; no download.",
+    "needs": "model",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "include_geometry": {
+          "type": "boolean"
+        },
+        "apply_mutations": {
+          "type": "boolean"
+        },
+        "visible_only": {
+          "type": "boolean"
+        },
+        "changes_only": {
+          "type": "boolean"
+        },
+        "only_known_properties": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "include_geometry",
+        "apply_mutations",
+        "visible_only",
+        "changes_only",
+        "only_known_properties"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-ifcx",
+    "exportName": "ifcxExportOperations"
+  },
+  {
+    "id": "exports.changesJson",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce the exact native source-independent JSON mutation delta for an explicit Export dialog model ID. Uses its active history/revert/georeference filter, including models without parsed IFC. No download and no source replacement.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "target_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-ifcx",
+    "exportName": "ifcxExportOperations"
+  },
+  {
+    "id": "exports.landXmlIfc",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce the native mapped IFC4X3/IFCZIP conversion of an explicit loaded LandXML model, including source hashing, terrain/survey/alignment semantics, CRS naming and draped imagery. Shares the Export dialog producer and its exact refusal/imagery diagnostics. Native conversion may finish after cancellation; no artifact is retained after cancelled preparation. No download.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "target_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-landxml",
+    "exportName": "landXmlExportOperations"
+  },
+  {
     "id": "filters.state",
     "version": 1,
     "owner": "search",
@@ -8458,6 +14294,1342 @@ export const operationContracts: readonly OperationContract[] = [
     },
     "module": "search",
     "exportName": "searchOperations"
+  },
+  {
+    "id": "exports.glb",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the exact native GLB dialog assembler for one explicitly targeted model. Native source-versus-mesh selection, merge-layer fidelity, instanced occurrences, class/storey/Lens visibility, apparent/shading color and lit/material metadata options are preserved. Refuse retained shape-only or stale output.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "visible_only": {
+          "type": "boolean"
+        },
+        "include_metadata": {
+          "type": "boolean"
+        },
+        "lit": {
+          "type": "boolean"
+        },
+        "color_source": {
+          "type": "string",
+          "enum": [
+            "rendering",
+            "shading"
+          ]
+        }
+      },
+      "required": [
+        "target_model_id",
+        "visible_only",
+        "include_metadata",
+        "lit",
+        "color_source"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.usd",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await native edited STEP source resolution and Rust USDA production, with deterministic WASM disposal and native retained-geometry refusal. One explicit model; return actual UTF-8 stage bytes.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "target_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.rhino",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the exact native cancellable Rhino worker and edited STEP resolver with all existing units/coordinates/layers/instancing/property/space/version/visibility controls. Return the actual .3dm bytes and native warnings; no main-thread fallback.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "units": {
+              "type": "string",
+              "enum": [
+                "source",
+                "meters",
+                "millimeters",
+                "centimeters",
+                "feet",
+                "inches"
+              ]
+            },
+            "coordinates": {
+              "type": "string",
+              "enum": [
+                "local",
+                "world"
+              ]
+            },
+            "layerScheme": {
+              "type": "string",
+              "enum": [
+                "spatial-class",
+                "class",
+                "presentation"
+              ]
+            },
+            "properties": {
+              "type": "string",
+              "enum": [
+                "all",
+                "attributes",
+                "none"
+              ]
+            },
+            "instancing": {
+              "type": "boolean"
+            },
+            "includeSpaces": {
+              "type": "boolean"
+            },
+            "visibleOnly": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": "integer",
+              "enum": [
+                8,
+                7
+              ]
+            }
+          },
+          "required": [
+            "units",
+            "coordinates",
+            "layerScheme",
+            "properties",
+            "instancing",
+            "includeSpaces",
+            "visibleOnly",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "target_model_id",
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.energy",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await native Honeybee/Dragonfly energy export from the current edited model, including Room-tool spaces. Preserve no-space/source/retained refusals and HBJSON skipped-space counts instead of reporting truncated output as unqualified success.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "hbjson",
+            "dfjson"
+          ]
+        }
+      },
+      "required": [
+        "target_model_id",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.kmz",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the native georeference-to-WGS84/COLLADA KMZ producer, one model including its own instanced occurrences, explicit terrain-clamped versus MSL altitude, pending georeference edits and native refusal diagnostics.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "altitude_mode": {
+          "type": "string",
+          "enum": [
+            "clampToGround",
+            "absolute"
+          ]
+        }
+      },
+      "required": [
+        "target_model_id",
+        "altitude_mode"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-scenes",
+    "exportName": "exportNativeSceneOperations"
+  },
+  {
+    "id": "exports.csv",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await one native registry CSV table (entities with properties, properties, quantities or spatial hierarchy), from an explicit model including its pending edits. Uses the exact Rust CSV producer shared by toolbar exports. Does not silently combine federated express IDs.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "table": {
+          "type": "string",
+          "enum": [
+            "entities",
+            "properties",
+            "quantities",
+            "spatial"
+          ]
+        }
+      },
+      "required": [
+        "target_model_id",
+        "table"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-data",
+    "exportName": "exportNativeDataOperations"
+  },
+  {
+    "id": "exports.json",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce the native toolbar JSON entity envelope for one explicit model using its effective pending-edit view and canonical row builder. Preserve exact IFC EXPRESS names and native JSON value representation.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "target_model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-data",
+    "exportName": "exportNativeDataOperations"
+  },
+  {
+    "id": "exports.terrainLandXml",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Run the exact native IFC terrain-to-LandXML preflight/producer over explicit model-local terrain products, with native eligibility/refusal diagnostics, precision, units and per-surface names. Export is the producer acceptance, never a fabricated terrain mesh.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "express_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "linear_unit": {
+          "type": "string",
+          "enum": [
+            "metre",
+            "internationalFoot",
+            "usSurveyFoot"
+          ]
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        },
+        "surface_names": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "express_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 10000
+              }
+            },
+            "required": [
+              "express_id",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "target_model_id",
+        "express_ids",
+        "linear_unit",
+        "decimals",
+        "surface_names"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-data",
+    "exportName": "exportNativeDataOperations"
+  },
+  {
+    "id": "exports.screenshot",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the native viewport-frame capture and return real PNG bytes for the current rendered federation. Requires the live native renderer; this is a current-view snapshot with the same effects as the toolbar screenshot action.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "current-view"
+        }
+      },
+      "required": [
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-view",
+    "exportName": "exportNativeViewOperations"
+  },
+  {
+    "id": "exports.viewPdf",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Await the toolbar to-scale current-view PDF producer with explicit displayed/numerical scale, shaded/line mode, hidden edges and scale stamp. Preserves current view visibility, all section cuts, native camera orientation and PDF page-size refusal; return actual PDF bytes plus native page/stroke/raster diagnostics.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "current-view"
+        },
+        "scale_mode": {
+          "type": "string",
+          "enum": [
+            "displayed",
+            "numerical"
+          ]
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "include_hidden_lines": {
+          "type": "boolean"
+        },
+        "render_mode": {
+          "type": "string",
+          "enum": [
+            "shaded",
+            "lines"
+          ]
+        },
+        "include_scale_stamp": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scope",
+        "scale_mode",
+        "scale",
+        "include_hidden_lines",
+        "render_mode",
+        "include_scale_stamp"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-view",
+    "exportName": "exportNativeViewOperations"
+  },
+  {
+    "id": "exports.anonymized.prepare",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "seed_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "excluded_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "excluded_types": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^Ifc[A-Za-z0-9]+$"
+          }
+        },
+        "file_stem": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "relations": {
+          "type": "object",
+          "properties": {
+            "IfcRelVoidsElement": {
+              "type": "boolean"
+            },
+            "IfcRelFillsElement": {
+              "type": "boolean"
+            },
+            "IfcRelAggregates": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "both",
+                "none"
+              ]
+            },
+            "IfcRelNests": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "both",
+                "none"
+              ]
+            },
+            "IfcRelDefinesByType": {
+              "type": "boolean"
+            },
+            "IfcRelAssociatesMaterial": {
+              "type": "boolean"
+            },
+            "IfcRelContainedInSpatialStructure": {
+              "type": "boolean"
+            },
+            "IfcRelDefinesByProperties": {
+              "type": "boolean"
+            },
+            "IfcRelConnectsPathElementsDepth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "required": [
+            "IfcRelVoidsElement",
+            "IfcRelFillsElement",
+            "IfcRelAggregates",
+            "IfcRelNests",
+            "IfcRelDefinesByType",
+            "IfcRelAssociatesMaterial",
+            "IfcRelContainedInSpatialStructure",
+            "IfcRelDefinesByProperties",
+            "IfcRelConnectsPathElementsDepth"
+          ],
+          "additionalProperties": false
+        },
+        "anonymize": {
+          "type": "object",
+          "properties": {
+            "names": {
+              "type": "boolean"
+            },
+            "otherNames": {
+              "type": "boolean"
+            },
+            "globalIds": {
+              "type": "boolean"
+            },
+            "propertySets": {
+              "type": "boolean"
+            },
+            "rootPlacementPosition": {
+              "type": "boolean"
+            },
+            "georeferencing": {
+              "type": "boolean"
+            },
+            "currency": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "names",
+            "otherNames",
+            "globalIds",
+            "propertySets",
+            "rootPlacementPosition",
+            "georeferencing",
+            "currency"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "target_model_id",
+        "seed_ids",
+        "excluded_ids",
+        "excluded_types",
+        "relations",
+        "anonymize",
+        "file_stem"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "included_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "locked_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "groups": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "included_ids",
+        "locked_ids",
+        "groups"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-anonymized",
+    "exportName": "exportNativeAnonymizedOperations"
+  },
+  {
+    "id": "exports.anonymized",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns native scrub/pruning warnings; GUID correlation maps stay private and are not exported.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "seed_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        },
+        "excluded_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "excluded_types": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^Ifc[A-Za-z0-9]+$"
+          }
+        },
+        "file_stem": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "relations": {
+          "type": "object",
+          "properties": {
+            "IfcRelVoidsElement": {
+              "type": "boolean"
+            },
+            "IfcRelFillsElement": {
+              "type": "boolean"
+            },
+            "IfcRelAggregates": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "both",
+                "none"
+              ]
+            },
+            "IfcRelNests": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "both",
+                "none"
+              ]
+            },
+            "IfcRelDefinesByType": {
+              "type": "boolean"
+            },
+            "IfcRelAssociatesMaterial": {
+              "type": "boolean"
+            },
+            "IfcRelContainedInSpatialStructure": {
+              "type": "boolean"
+            },
+            "IfcRelDefinesByProperties": {
+              "type": "boolean"
+            },
+            "IfcRelConnectsPathElementsDepth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            }
+          },
+          "required": [
+            "IfcRelVoidsElement",
+            "IfcRelFillsElement",
+            "IfcRelAggregates",
+            "IfcRelNests",
+            "IfcRelDefinesByType",
+            "IfcRelAssociatesMaterial",
+            "IfcRelContainedInSpatialStructure",
+            "IfcRelDefinesByProperties",
+            "IfcRelConnectsPathElementsDepth"
+          ],
+          "additionalProperties": false
+        },
+        "anonymize": {
+          "type": "object",
+          "properties": {
+            "names": {
+              "type": "boolean"
+            },
+            "otherNames": {
+              "type": "boolean"
+            },
+            "globalIds": {
+              "type": "boolean"
+            },
+            "propertySets": {
+              "type": "boolean"
+            },
+            "rootPlacementPosition": {
+              "type": "boolean"
+            },
+            "georeferencing": {
+              "type": "boolean"
+            },
+            "currency": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "names",
+            "otherNames",
+            "globalIds",
+            "propertySets",
+            "rootPlacementPosition",
+            "georeferencing",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "expected_included_ids": {
+          "type": "array",
+          "maxItems": 100000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "required": [
+        "target_model_id",
+        "seed_ids",
+        "excluded_ids",
+        "excluded_types",
+        "relations",
+        "anonymize",
+        "file_stem",
+        "expected_included_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "export-native-anonymized",
+    "exportName": "exportNativeAnonymizedOperations"
   },
   {
     "id": "viewport.pick",

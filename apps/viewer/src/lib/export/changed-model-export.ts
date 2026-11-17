@@ -17,7 +17,8 @@
  */
 
 import { viewerDrawingAnnotations } from '@/lib/export/viewer-drawing-annotations';
-import { StepExporter, Ifc5Exporter } from '@ifc-lite/export';
+import { StepExporter } from '@ifc-lite/export';
+import { exportModelIfcx } from './model-ifcx-export';
 import { prepareAppearanceSerialization } from '../appearance/serialization.js';
 import { packagePortableIfcAsync } from './portable-ifc.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -75,37 +76,11 @@ export async function exportChangedModelToIfcx(
   view: MutablePropertyView | undefined,
   invocation: IfcxExportInvocation,
 ): Promise<ChangesExportArtifact> {
-  const { withInstancedMeshes } = await import('../../utils/instancedExport.js');
-  // GPU instancing stopped being primary-only on 2026-08-06 (#2255) — scope by
-  // THIS model's `{ idOffset, maxExpressId }` bracket rather than an
-  // `idOffset === 0` gate, or a federation of N models would splice every
-  // other model's instanced entities into this one's export.
-  // `invocation.maxExpressId` is undefined only for the legacy slot, which is
-  // provably the sole model loaded (#2865/#2878 follow-up).
-  const exportGeometry = invocation.geometryResult
-    ? withInstancedMeshes(
-        invocation.geometryResult,
-        invocation.maxExpressId !== undefined
-          ? { modelId, idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId }
-          : null,
-      )
-    : invocation.geometryResult;
-
-  const exporter = new Ifc5Exporter(dataStore, exportGeometry, view, invocation.idOffset);
-  const result = exporter.export({
-    includeGeometry: true,
-    includeProperties: true,
-    applyMutations: true,
-    visibleOnly: false,
-    // A recipient's room model is keyed by room path; `buildChangedArtifacts`
-    // resolves the slot to drop so the file carries its own paths (#4444).
-    stripPathPrefix: invocation.stripPathPrefix,
-    // A round-trip "export my edits" should not silently drop properties that
-    // lack an official IFC5 schema, so keep full fidelity here. (The Export
-    // dialog exposes this as a user toggle that defaults to on; the one-click
-    // changes button deliberately favors completeness.)
-    onlyKnownProperties: false,
-    author: 'ifc-lite',
+  const result = await exportModelIfcx({
+    modelId, dataStore, geometryResult: invocation.geometryResult, mutationView: view,
+    idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId,
+    options: { includeGeometry: true, includeProperties: true, applyMutations: true, visibleOnly: false,
+      stripPathPrefix: invocation.stripPathPrefix, onlyKnownProperties: false, author: 'ifc-lite' },
   });
 
   // An empty pset has no IFCX wire representation (#5201); the exporter

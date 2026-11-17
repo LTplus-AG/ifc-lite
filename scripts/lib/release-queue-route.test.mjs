@@ -115,6 +115,7 @@ test('REFUSE (#9783 review): any other route that can queue or merge the release
   }
   // A top-level key it does not read can add a route (`extends` merges another config).
   assert.match(releaseQueueRoute(`extends: org/.github\n${MERGIFY}`, { labels: ['mergify-trial'], draft: false }).reason, /top-level line\(s\) this script does not read: extends: org\/\.github/);
+  assert.match(releaseQueueRoute(MERGIFY.replace('merge_queue:\n', 'merge_queue:\n  mode: parallel\n'), { labels: ['mergify-trial'], draft: false }).reason, /does not read: +mode: parallel/, 'a merge_queue setting it does not know');
   for (const top of ['---', 'queue_rules: []', '? extends']) {
     assert.match(releaseQueueRoute(`${MERGIFY}\n${top}\n`, { labels: ['mergify-trial'], draft: false }).reason, /top-level line\(s\) this script does not read/, top);
   }

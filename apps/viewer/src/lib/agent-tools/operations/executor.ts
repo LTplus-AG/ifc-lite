@@ -7,6 +7,7 @@ import { useViewerStore } from '@/store';
 import { assertToolActive } from '../cancellation';
 import type { ReadyModel, ToolCallContext, ToolHost } from '../types';
 import { operationArtifacts } from './artifacts';
+import { contractFingerprint } from './metadata';
 import type { Operation } from './contract';
 import { viewerOperation, operationUnavailable } from './registry';
 
@@ -40,7 +41,8 @@ function boundedResult(result: unknown): unknown {
     if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Operation returned a non-finite number.');
     return value;
   });
-  if (new TextEncoder().encode(text).byteLength > MAX_RESULT_BYTES) throw new Error('Result exceeds the 1 MB operation result limit. Narrow the query.');
+  // UTF-8 is at most 3 bytes per UTF-16 unit, so only a long text needs encoding to measure.
+  if (text.length * 3 > MAX_RESULT_BYTES && new TextEncoder().encode(text).byteLength > MAX_RESULT_BYTES) throw new Error('Result exceeds the 1 MB operation result limit. Narrow the query.');
   return JSON.parse(text) as unknown;
 }
 
@@ -70,29 +72,6 @@ export async function executeOperation(
   const revision = useViewerStore.getState().mutationVersion;
   let activeRevision = revision;
   let committed = false;
-  const authorized = () => {
-    host.lifetimeSignal?.throwIfAborted();
-    assertToolActive(context);
-    const reason = operationUnavailable(entry);
-    if (reason) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: reason });
-    if (writes && !context.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant was revoked or is absent.' });
-  };
-  authorized();
-  const signature = JSON.stringify([model?.id ?? null, entry.id, args.input ?? {}, args.expected_revision ?? null], (_key, value: unknown) =>
-    value && typeof value === 'object' && !Array.isArray(value)
-      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, (value as Record<string, unknown>)[key]])) : value);
-  const previous = typeof args.idempotency_key === 'string' ? applied.get(host)?.get(args.idempotency_key) : undefined;
-  if (previous) {
-    if (previous.store !== model?.store || previous.signature !== signature) invalid('Idempotency key already belongs to another request or model.');
-    return previous.result;
-  }
-  if (args.expected_revision !== undefined && args.expected_revision !== revision) {
-    throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, message: 'The model revision changed. Inspect it again.' });
-  }
-  if (args.background !== undefined && typeof args.background !== 'boolean') invalid('background must be boolean.');
-  if (writes && args.background) invalid('View and settings operations execute synchronously; background is only supported for reads.');
-  const input = args.input ?? {};
-  try { entry.validate(input); } catch (error) { invalid(error instanceof Error ? error.message : 'Invalid operation input.'); }
   const check = () => {
     host.lifetimeSignal?.throwIfAborted();
     assertToolActive(context);
@@ -105,17 +84,35 @@ export async function executeOperation(
     }
     if (writes && !context.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant was revoked or is absent.' });
   };
+  check();
+  const signature = typeof args.idempotency_key === 'string'
+    ? contractFingerprint([model?.id ?? null, entry.id, args.input ?? {}, args.expected_revision ?? null]) : '';
+  const previous = typeof args.idempotency_key === 'string' ? applied.get(host)?.get(args.idempotency_key) : undefined;
+  if (previous) {
+    if (previous.store !== model?.store || previous.signature !== signature) invalid('Idempotency key already belongs to another request or model.');
+    return previous.result;
+  }
+  if (args.expected_revision !== undefined && args.expected_revision !== revision) {
+    throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, message: 'The model revision changed. Inspect it again.' });
+  }
+  if (args.background !== undefined && typeof args.background !== 'boolean') invalid('background must be boolean.');
+  if (writes && args.background) invalid('View and settings operations execute synchronously; background is only supported for reads.');
+  const input = args.input ?? {};
+  try { entry.validate(input); } catch (error) { invalid(error instanceof Error ? error.message : 'Invalid operation input.'); }
   let checkpoint = check;
+  const markCommitted = () => {
+    committed = true;
+    if (context.commitState) context.commitState.committed = true;
+    activeRevision = useViewerStore.getState().mutationVersion;
+    nativeModel = model ? useViewerStore.getState().models.get(model.id) : undefined;
+  };
   const commit = <T>(write: () => T): T => {
     if (!writes || readOnly) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'A read operation cannot commit changes.' });
     checkpoint();
     if (context.commitState) context.commitState.committing = true;
     try {
       const value = write();
-      committed = true;
-      if (context.commitState) context.commitState.committed = true;
-      activeRevision = useViewerStore.getState().mutationVersion;
-      nativeModel = model ? useViewerStore.getState().models.get(model.id) : undefined;
+      markCommitted();
       return value;
     } finally { if (context.commitState) context.commitState.committing = false; }
   };
@@ -126,10 +123,7 @@ export async function executeOperation(
     try {
       const value = await write();
       if (didCommit(value)) {
-        committed = true;
-        if (context.commitState) context.commitState.committed = true;
-        activeRevision = useViewerStore.getState().mutationVersion;
-        nativeModel = model ? useViewerStore.getState().models.get(model.id) : undefined;
+        markCommitted();
       }
       return value;
     } finally { if (context.commitState) context.commitState.committing = false; }

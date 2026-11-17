@@ -214,8 +214,8 @@ export function corpusJobProblems(text) {
 const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
 
 /**
- * True when `globs` match every path `glob` can: all of `<dir>/**`, not one probe file in it (a keep
- * entry `rust/geometry/x/x` must not cover `rust/geometry/**`). Other wildcards need the identical entry.
+ * True when `globs` match all of `<dir>/**`, not one probe file in it (`rust/geometry/x/x` does not cover
+ * `rust/geometry/**`). Other wildcards need the identical entry; `<dir>/**` with a wildcard in `<dir>` never is.
  */
 function coversAll(glob, globs) {
   if (!glob.endsWith('/**')) return /[*?]/.test(glob) ? globs.includes(glob) : matchesAny(glob, globs);

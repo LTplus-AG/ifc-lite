@@ -37,9 +37,10 @@ export interface PointPickNode {
 
 const POINT_PICK_MARKER = 0x80000000;
 const POINT_PICK_MASK = 0x7fffffff;
-/** bit 30 marks a GPU-instanced occurrence; the express id is in the low 30 bits.
- *  Checked AFTER the point marker (bit 31), so a point's express-id that happens
- *  to set bit 30 still decodes as a point. The instanced picker shader writes
+/** bit 30 marks a sample that names its entity directly: a GPU-instanced
+ *  occurrence, or a colour-batch lane (#10264 S1); the express id is in the low
+ *  30 bits. Checked AFTER the point marker (bit 31), so a point's express-id
+ *  that happens to set bit 30 still decodes as a point. Both shaders write
  *  `INSTANCED_PICK_MARKER | (entityId & INSTANCED_PICK_MASK)`. */
 export const INSTANCED_PICK_MARKER = 0x40000000;
 export const INSTANCED_PICK_MASK = 0x3fffffff;

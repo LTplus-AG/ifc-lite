@@ -26,6 +26,7 @@ import { drawInstanceRuns, uploadInstancedRteDeltas } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { EXTRA_CLIP_BYTES, EXTRA_CLIP_FLOATS, packExtraClip } from './extra-clip-planes.js';
 import { flatPickShaderWgsl, instancedPickShaderWgsl } from './picker-shaders.js';
+import { LanePickPass, type LanePickInput } from './lane-pick-pass.js';
 
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
 export interface PointPickSizing {
@@ -45,6 +46,7 @@ export class Picker {
   private pipeline: GPURenderPipeline;
   private instancedPickPipeline: GPURenderPipeline | null = null;  // GPU-instancing: pick pass for instanced occurrences; null if the backend rejected it
   private instancedPickBindGroup: GPUBindGroup | null = null;
+  private instancedPickReady = false;
   private instancedUniformBuffer: GPUBuffer;
   /** Extra cutting planes (#7545), one block shared by every pick draw; rewritten per pass. */
   private extraClipBuffer: GPUBuffer;
@@ -52,10 +54,9 @@ export class Picker {
   private depthSample: PickDepthSample;
   /**
    * The id/depth targets and the per-mesh slots are allocated on the first GPU
-   * pick and sized to it, not at init: a session that never GPU-picks (large
-   * models pick on the CPU) holds none of the canvas-sized pair, and the slot
-   * buffers grow with the meshes actually drawn instead of reserving 100K
-   * 256-byte slots (25.6 MB) up front.
+   * pick and sized to it, not at init: a session that never GPU-picks holds
+   * none of the canvas-sized pair, and the slot buffers grow with the meshes
+   * actually drawn instead of reserving 100K 256-byte slots up front.
    */
   private targets: { color: GPUTexture; depth: GPUTexture } | null = null;
   private meshSlots: { uniform: GPUBuffer; expressIds: GPUBuffer; bindGroup: GPUBindGroup; capacity: number } | null = null;
@@ -63,6 +64,8 @@ export class Picker {
   private destroyed = false;
   private readonly readbacks: PickerReadbackOwner;
   private pointPicker: PointPicker | null = null;
+  /** Colour-batch pick pass (#10264 S1); null when the backend rejected its pipelines. */
+  private lanePass: LanePickPass | null = null;
   // Flat meshes each bind a dynamic 256-byte slot: RTE view projection +
   // model linear transform + clip state + split drawable origin. A single
   // uniform rewritten in a loop would make every draw observe the last mesh.
@@ -134,20 +137,15 @@ export class Picker {
     });
 
     // ── Instanced pick pipeline ──
-    // Draws scene.getInstancedTemplates() into the SAME r32uint + depth32float
-    // pick target, applying the per-instance mat4 (slot 1, 88B stride) and
-    // writing the express id WITH bit 30 set so the decoder distinguishes it
-    // from a flat mesh-index (bit 30 clear) or a point (bit 31). No expressId
-    // storage buffer — the id rides the instance buffer per occurrence.
-    const instancedPickModule = this.device.createShaderModule({
-      code: instancedPickShaderWgsl,
-    });
-    // NON-FATAL: the instanced pick pipeline is an add-on (instanced occurrences are
-    // also resolvable via the GPU/CPU flat paths). A degraded WebGPU backend (e.g.
-    // CI's SwiftShader) rejecting it must NOT abort the Picker — and therefore the
-    // whole renderer init — and blank the canvas. On failure we leave it null and
-    // renderPickPass skips the instanced pick draw.
+    // Draws scene.getInstancedTemplates() into the same pick targets, writing the
+    // express id with bit 30 set. NON-FATAL: a degraded backend (CI SwiftShader)
+    // rejecting it must not abort the Picker, and with it renderer init. Its
+    // validation must also settle before lane picks may rely on it.
+    this.device.pushErrorScope('internal');
+    this.device.pushErrorScope('validation');
+
     try {
+      const instancedPickModule = this.device.createShaderModule({ code: instancedPickShaderWgsl });
       this.instancedPickPipeline = this.device.createRenderPipeline({
         layout: this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.device.createBindGroupLayout({ entries: [
           { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
@@ -176,6 +174,34 @@ export class Picker {
       this.instancedPickPipeline = null;
       this.instancedPickBindGroup = null;
     }
+    void Promise.all([this.device.popErrorScope(), this.device.popErrorScope()]).then(errors => {
+      const error = errors.find(value => value !== null);
+      if (error) {
+        console.warn('[Picker] instanced pick pipeline rejected:', error.message);
+        this.instancedPickPipeline = null;
+        this.instancedPickBindGroup = null;
+      } else this.instancedPickReady = !this.destroyed && this.instancedPickPipeline !== null;
+    }, (error: unknown) => {
+      console.warn('[Picker] instanced pick pipeline validation failed:', error);
+      this.instancedPickPipeline = null;
+      this.instancedPickBindGroup = null;
+    });
+    // Also an add-on: without it, models over the pick-mesh budget keep the CPU raycast.
+    try {
+      this.lanePass = new LanePickPass(this.device, this.extraClipBuffer);
+    } catch (err) {
+      console.warn('[Picker] batch pick pipelines unavailable; large models pick on the CPU:', err);
+      this.lanePass = null;
+    }
+  }
+
+  /**
+   * Whether a pick can draw colour batches whole (#10264 S1). `withInstanced`:
+   * the scene also has instanced occurrences, which then must be drawable too,
+   * or the pass would be missing them rather than answering for them.
+   */
+  canPickLanes(withInstanced: boolean): boolean {
+    return !this.destroyed && this.lanePass?.ready === true && (!withInstanced || this.instancedPickReady);
   }
 
   /**
@@ -205,15 +231,16 @@ export class Picker {
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
     pointRteSnapshot?: RelativeToEyeSnapshot,
+    lanes?: LanePickInput,
   ): Promise<PickResult | null> {
     if (this.destroyed || this.readbacks.deviceLost) return null;
-    const { encoder, targets } = this.renderPickPass(
-      width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
-    );
-
     // Border clicks and pointer-captured drags use the same clamped ID/depth texel.
     const sampleX = Math.max(0, Math.min(width - 1, Math.floor(x)));
     const sampleY = Math.max(0, Math.min(height - 1, Math.floor(y)));
+    const { encoder, targets } = this.renderPickPass(
+      width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
+      lanes, { x: sampleX, y: sampleY, width: 1, height: 1 },
+    );
 
     // Read pixel at click position. WebGPU requires bytesPerRow to be a
     // multiple of 256 for copyTextureToBuffer, even for a 1×1 read.
@@ -273,8 +300,10 @@ export class Picker {
       : projectedWorld;
 
     // Which entity (and which representation item) the sample landed on is a
-    // pure lookup — see resolvePickSample.
-    return resolvePickSample(decoded, meshes, pointNodes, worldXYZ);
+    // pure lookup — see resolvePickSample. A sample that named its entity
+    // directly (batch lane or instanced occurrence) is completed by the caller.
+    const result = resolvePickSample(decoded, meshes, pointNodes, worldXYZ);
+    return result && decoded.kind === 'instanced' && lanes?.refine ? lanes.refine(result) : result;
   }
 
   updateUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
@@ -308,6 +337,7 @@ export class Picker {
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
     pointRteSnapshot?: RelativeToEyeSnapshot,
+    lanes?: LanePickInput,
   ): Promise<Set<number>> {
     if (this.destroyed || this.readbacks.deviceLost) return new Set();
     // Normalise + clip rect to texture bounds.
@@ -321,6 +351,7 @@ export class Picker {
 
     const { encoder, targets } = this.renderPickPass(
       width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip, pointRteSnapshot,
+      lanes, { x: lx, y: ly, width: rectW, height: rectH },
     );
 
     // copyTextureToBuffer requires bytesPerRow to be a multiple of 256.
@@ -394,7 +425,13 @@ export class Picker {
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
     pointRteSnapshot?: RelativeToEyeSnapshot,
+    lanes?: LanePickInput,
+    readRegion?: { x: number; y: number; width: number; height: number },
   ): { encoder: GPUCommandEncoder; targets: { color: GPUTexture; depth: GPUTexture } } {
+    // Batches are drawn whole, so they need the pass and the RTE frame they project in.
+    if (lanes && lanes.draws.length > 0 && (!this.lanePass || !pointRteSnapshot)) {
+      throw new Error('Batch pick requested without its pipelines or an RTE snapshot; check canPickLanes first.');
+    }
     const targets = this.ensureTargets(width, height);
     // WebGPU texture views can't be reused after submit, so build fresh ones.
     const colorView = targets.color.createView();
@@ -415,6 +452,9 @@ export class Picker {
         depthStoreOp: 'store',
       },
     });
+    // Only the read texels are shaded: whole batches are drawn, the readback
+    // touches one texel (or the marquee), and the clear still covers the target.
+    if (readRegion) pass.setScissorRect(readRegion.x, readRegion.y, readRegion.width, readRegion.height);
 
     const slots = this.ensureMeshSlots(meshes.length);
     const meshIndexArray = new Uint32Array(meshes.length);
@@ -457,6 +497,7 @@ export class Picker {
       pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
       pass.drawIndexed(mesh.indexCount, 1, 0, 0, i);
     }
+    if (lanes && pointRteSnapshot) this.lanePass?.encode(pass, lanes, pointRteSnapshot, clip);
 
     // GPU-instanced occurrences — drawn into the SAME r32uint + depth target so
     // occlusion is shared with flat meshes/points. The shader writes
@@ -563,5 +604,7 @@ export class Picker {
     this.extraClipBuffer.destroy();
     this.pointPicker?.destroy();
     this.pointPicker = null;
+    this.lanePass?.destroy();
+    this.lanePass = null;
   }
 }

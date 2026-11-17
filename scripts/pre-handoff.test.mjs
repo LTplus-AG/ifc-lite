@@ -105,7 +105,7 @@ function write(root, path, text) {
 }
 
 /** A git repo whose origin/main is one commit behind HEAD, with stub gate scripts. */
-function mirrorRepo(t, { changed, oracleExit = 0, driftExit = 0 }) {
+function mirrorRepo(t, { changed, oracleExit = 0, driftExit = 0, workflow = MIRROR_WORKFLOW }) {
   const root = mkdtempSync(join(tmpdir(), 'handoff-mirror-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
@@ -117,7 +117,7 @@ function mirrorRepo(t, { changed, oracleExit = 0, driftExit = 0 }) {
   git('init', '-q', '-b', 'main');
   commit({
     'package.json': '{}',
-    '.github/workflows/test.yml': MIRROR_WORKFLOW,
+    '.github/workflows/test.yml': workflow,
     'scripts/check-test-revert-oracle.mjs': `process.exit(${oracleExit});`,
     'scripts/check-ui-drift.mjs': `process.exit(${driftExit});`,
   });
@@ -134,7 +134,7 @@ function runMirror(root, argv = []) {
   try {
     const exitCode = main(argv, root, () => []);
     const rows = Object.fromEntries(tables[0].map((row) => [row.gate, row]));
-    return { exitCode, oracle: rows['revert-oracle (CI changed-tests)'], drift: rows['ui-drift'] };
+    return { exitCode, oracle: rows['revert-oracle (CI changed-tests)'], drift: rows['ui-drift'], mirror: rows['CI mirror'] };
   } finally { Object.assign(console, { log, table }); }
 }
 
@@ -172,12 +172,12 @@ test('the oracle is SKIPPED when CI would run but nothing changed is production'
   assert.equal(result.drift.result, 'PASS');
 });
 
-test('a missing base skips the oracle with the reason and still runs ui-drift', (t) => {
+test('a missing base skips the oracle with the reason, still runs ui-drift, and fails the handoff', (t) => {
   const result = runMirror(mirrorRepo(t, { changed: SCRIPT_CHANGE, oracleExit: 1 }), ['--base', 'origin/absent']);
   assert.equal(result.oracle.result, 'SKIPPED');
   assert.match(result.oracle.detail, /origin\/absent not found/);
   assert.equal(result.drift.result, 'PASS');
-  assert.equal(result.exitCode, 0);
+  assert.equal(result.exitCode, 1);
 });
 
 test('an unbuilt workspace dependency is named as a missing prerequisite', (t) => {
@@ -190,4 +190,17 @@ test('an unbuilt workspace dependency is named as a missing prerequisite', (t) =
   assert.match(oraclePrerequisites(root, { test: 'packages/app/witness.test.mjs' }, 'unused'), /built packages \(1 unbuilt, e\.g\. @x\/lib; run pnpm build\)/);
   write(root, 'packages/app/node_modules/@x/lib/dist/index.js', '');
   assert.equal(oraclePrerequisites(root, { test: 'packages/app/witness.test.mjs' }, 'unused'), null);
+});
+
+test('a job gated only by a negative filter term runs on any path, as in CI', (t) => {
+  const workflow = MIRROR_WORKFLOW.replace("if: needs.changes.outputs.frontend == 'true'", "if: needs.changes.outputs.docs != 'true'");
+  const result = runMirror(mirrorRepo(t, { changed: { 'README.md': 'x\n' }, workflow, driftExit: 1 }));
+  assert.deepEqual([result.drift.result, result.exitCode], ['FAIL', 1]);
+});
+
+test('an unreadable CI job still runs ui-drift and fails the mirror row', (t) => {
+  const workflow = MIRROR_WORKFLOW.replace('  revert-oracle:', '  renamed-oracle:');
+  const result = runMirror(mirrorRepo(t, { changed: SCRIPT_CHANGE, workflow, driftExit: 1 }));
+  assert.match(result.mirror.detail, /no revert-oracle job/);
+  assert.deepEqual([result.mirror.result, result.drift.result, result.exitCode], ['FAIL', 'FAIL', 1]);
 });

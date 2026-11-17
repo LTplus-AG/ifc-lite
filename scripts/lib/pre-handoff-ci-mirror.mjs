@@ -39,11 +39,15 @@ export function ciJobSkipReason(workflowText, jobId, paths) {
   const job = splitJobs(workflowText).find((entry) => entry.id === jobId);
   if (!job) throw new Error(`test.yml has no ${jobId} job; update scripts/lib/pre-handoff-ci-mirror.mjs`);
   const filters = gatingFilters(`    if: ${jobCondition(job.text)}`);
-  if (filters === null) return null;
+  // Only positive filter terms gate a job; with none, it runs on any path.
+  if (!filters?.length) return null;
   const globs = parseFilterBlock(workflowText);
   if (filters.some((name) => paths.some((path) => matchesAny(path, globs.get(name) ?? [])))) return null;
   return `CI's ${jobId} job would not run: no changed path matches its ${filters.join('/')} filter`;
 }
+
+/** test.yml node-guards' drift ratchet; it needs no diff, so it runs even when the oracle row cannot be built. */
+export const UI_DRIFT = Object.freeze({ name: 'ui-drift', args: ['scripts/check-ui-drift.mjs'] });
 
 /**
  * Gate rows for runGates. `baseMissing` and `production` come from the
@@ -56,7 +60,7 @@ export function ciMirrorGates({ base, baseMissing, workflowText, paths, producti
   const oracle = { name: 'revert-oracle (CI changed-tests)', deps, args: [
     'scripts/check-test-revert-oracle.mjs', '--base', base, '--ci', '--json', ...oracleArgs,
   ] };
-  const uiDrift = { name: 'ui-drift', args: ['scripts/check-ui-drift.mjs'] };
+  const uiDrift = { ...UI_DRIFT };
   if (baseMissing) {
     // Without a base there is no diff to classify; the drift ratchet needs none.
     return [{ ...oracle, unavailable: baseMissing }, uiDrift];

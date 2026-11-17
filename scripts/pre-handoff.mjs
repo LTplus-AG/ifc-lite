@@ -10,7 +10,7 @@ import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
 import { resolveCommand } from './lib/revert-oracle-run-plan.mjs';
 import { classifyDiff, parseNameStatus } from './lib/revert-oracle.mjs';
 import { discoverOracles, oracleArgs } from './revert-oracle-discover.mjs';
-import { ciMirrorGates } from './lib/pre-handoff-ci-mirror.mjs';
+import { ciMirrorGates, UI_DRIFT } from './lib/pre-handoff-ci-mirror.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export function gateCommands(base) {
@@ -59,11 +59,11 @@ export function runGates(root, commands, log = console.log) {
 }
 
 /** Workspace packages a test dir loads (transitively) whose build output is absent. */
-function unbuiltWorkspaceDeps(dir, seen = new Set()) {
+function unbuiltWorkspaceDeps(dir, seen = new Set(), top = true) {
   const manifest = resolve(dir, 'package.json');
   if (!existsSync(manifest)) return [];
   const pkg = JSON.parse(readFileSync(manifest, 'utf8'));
-  const deps = seen.size ? pkg.dependencies : { ...pkg.dependencies, ...pkg.devDependencies };
+  const deps = top ? { ...pkg.dependencies, ...pkg.devDependencies } : pkg.dependencies;
   const unbuilt = [];
   for (const [name, spec] of Object.entries(deps ?? {})) {
     const depDir = resolve(dir, 'node_modules', name);
@@ -71,7 +71,7 @@ function unbuiltWorkspaceDeps(dir, seen = new Set()) {
     seen.add(name);
     const dep = JSON.parse(readFileSync(resolve(depDir, 'package.json'), 'utf8'));
     if (dep.scripts?.build && dep.main && !existsSync(resolve(depDir, dep.main))) unbuilt.push(name);
-    unbuilt.push(...unbuiltWorkspaceDeps(depDir, seen));
+    unbuilt.push(...unbuiltWorkspaceDeps(depDir, seen, false));
   }
   return unbuilt;
 }
@@ -172,10 +172,14 @@ export function main(argv = process.argv.slice(2), root = fileURLToPath(new URL(
     mirror = ciMirrorGates({
       base, baseMissing, paths: diff, production, oracleArgs: oracleArgs(oracles),
       workflowText: readFileSync(resolve(root, '.github/workflows/test.yml'), 'utf8'),
-      prerequisites: () => oraclePrerequisites(root, {}, base),
+      // The diff's own tests plus every manifest slice's --test witness.
+      prerequisites: () => [{}, ...oracles].map((oracle) => oraclePrerequisites(root, oracle, base))
+        .filter(Boolean).join('; ') || null,
     });
-  } catch (error) { mirror = []; results.push({ gate: 'CI mirror', result: 'FAIL', detail: error.message }); }
+  } catch (error) { mirror = [UI_DRIFT]; results.push({ gate: 'CI mirror', result: 'FAIL', detail: error.message }); }
   results.push(...runGates(root, mirror));
+  // Every diff-scoped gate above is SKIPPED without a base; that is not a passing handoff.
+  if (baseMissing) results.push({ gate: 'base', result: 'FAIL', detail: baseMissing });
   console.table(results);
   return results.some((row) => row.result === 'FAIL') ? 1 : 0;
 }

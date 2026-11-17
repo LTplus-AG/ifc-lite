@@ -19,19 +19,20 @@
  * Everything else keeps its shape and only moves (`storey-level-plan.ts`).
  */
 
+import { storeyPlanningInventory } from './storey-planning-inventory.js';
 import { attachmentNotices } from './storey-attachment-notices.js';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { railingsOnStair, type RailingRefit } from '../railing-stair-refit.js';
 import { readStairDimensions } from '../stair-edit.js';
-import { attachedKind, attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, MIN_ATTACHED_EXTENT, type AttachedKind } from './storey-attached.js';
-import { readTopAttachment, topAttachmentProblem } from './storey-attachment.js';
+import { attachedKind, attachedTopDependency, attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, MIN_ATTACHED_EXTENT, type AttachedKind } from './storey-attached.js';
+import { readTopAttachment } from './storey-attachment.js';
 import { attachedTopTarget } from './storey-attachment-target.js';
 import { wallQuantitySetCount } from './storey-level-write.js';
 import { siblingStoreys, storeyContents, storeyNeighbour, type StoreyInventory } from './storey-model.js';
 import { storeyFloorWorld } from './storey-floor-frame.js';
-import { describeLength, type StoreyNotice, type StoreyRefusal } from './storey-validation.js';
+import { describeLength, storeyDeltasDiffer, type StoreyNotice, type StoreyRefusal } from './storey-validation.js';
 
 /** A storey's top tread lands on a storey when the two agree to this, metres. */
 export const LANDING_TOLERANCE = 0.001;
@@ -83,17 +84,6 @@ export interface StoreyDependents {
 
 const KIND_NAMES: Record<AttachedKind, string> = { wall: 'Wall', column: 'Column', linear: 'Beam', curtainWall: 'Curtain wall' };
 
-/**
- * Products on each storey, by the storey that holds them. A read, so not
- * bounded: the planner has already refused (`tooLarge`) any MOVED storey past
- * the limit, and what this finds is written only for attached elements, stairs and their railings.
- */
-function productsByStorey(inventory: StoreyInventory): Map<number, number[]> {
-  const result = new Map<number, number[]>();
-  for (const storey of inventory.storeys) result.set(storey.expressId, [...storeyContents(inventory, storey.expressId, Infinity)]);
-  return result;
-}
-
 /** World Z of a product's placement relative to its storey's, metres; null when unreadable. */
 function heightAboveStorey(inventory: StoreyInventory, productId: number, storeyId: number): number | null {
   const { reader, scale } = inventory;
@@ -131,25 +121,25 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
   };
   // The element readers take an edit target; this one is only read through.
   const target = editTarget(inventory);
-  const byStorey = productsByStorey(inventory);
+  const planning = storeyPlanningInventory(inventory);
+  const byStorey = planning.dependentCandidates(inventory, deltas);
 
   for (const [storeyId, products] of byStorey) {
     for (const id of products) {
       const type = inventory.reader.entity(id)?.type.toUpperCase() ?? '';
       const kind = attachedKind(type);
       if (kind) {
-        const attachment = readTopAttachment(inventory, id);
+        const { attachment, problem } = attachedTopDependency(inventory, id);
         if (!attachment) {
           // A record naming nothing it can follow is reported, not guessed at.
           // Reported whenever the edit touches the element: its storey moves, or the spacing above it changes.
           const touched = Math.abs(delta(storeyId)) > 1e-9 || spacingAboveChanges(storeyId);
-          const problem = touched ? topAttachmentProblem(inventory, id) : null;
-          if (problem) unresolved.push({ id, problem });
+          if (touched && problem) unresolved.push({ id, problem });
           continue;
         }
         if (attachment.targetStoreyId === null || (attachment.kind === 'storey' && attachment.targetStoreyId === storeyId)) continue;
         const ownDelta = delta(storeyId), targetDelta = delta(attachment.targetStoreyId);
-        if (Math.abs(targetDelta - ownDelta) < 1e-9) continue;
+        if (!storeyDeltasDiffer(ownDelta, targetDelta)) continue;
         const from = readAttachedTop(target, id, kind);
         const to = from === null ? null : attachedTopTarget(target, id, kind, attachment, from, ownDelta, targetDelta);
         if (from === null || to === null) { unreadable.set(kind, [...(unreadable.get(kind) ?? []), id]); continue; }
@@ -172,7 +162,7 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
       message: `${KIND_NAMES[change.kind]} #${change.elementId} would end ${describeLength(change.to)} tall: its top is attached to a level the edit brings down to its base`,
     });
   }
-  const railings = planStairRailings(inventory, stairs, byStorey);
+  const railings = planStairRailings(inventory, stairs, planning.railingsByStorey);
   notices.push(...attachmentNotices(inventory, [...unreadable.values()].flatMap(ids => ids.map(id => ({ id }))), false));
   // The overlay keeps one same-named quantity set per wall true; a second instance would keep old values.
   const partial = walls.filter((wall) => wallQuantitySetCount(inventory.store, inventory.view, wall.wallId) > 1).map((wall) => wall.wallId);
@@ -190,12 +180,12 @@ export function planStoreyDependents(inventory: StoreyInventory, deltas: Readonl
 }
 
 /** Railings on each refit stair's storey that run up it. */
-function planStairRailings(inventory: StoreyInventory, stairs: readonly StairRefit[], byStorey: ReadonlyMap<number, readonly number[]>): RailingRefit[] {
+function planStairRailings(inventory: StoreyInventory, stairs: readonly StairRefit[], byStorey: ReadonlyMap<number, Iterable<number>>): RailingRefit[] {
   const target = editTarget(inventory);
   return stairs.flatMap((stair) => {
     const dims = readStairDimensions(inventory.store, stair.stairId, inventory.view);
     if (!dims) return [];
-    const railings = (byStorey.get(stair.storeyId) ?? []).filter((id) => inventory.reader.entity(id)?.type.toUpperCase() === 'IFCRAILING');
+    const railings = [...byStorey.get(stair.storeyId) ?? []].filter((id) => inventory.reader.entity(id)?.type.toUpperCase() === 'IFCRAILING');
     const extent = { stairId: stair.stairId, run: dims.NumberOfRisers * dims.TreadLength, rise: dims.NumberOfRisers * dims.RiserHeight, width: dims.Width };
     return railings.length ? railingsOnStair(target, extent, railings) : [];
   });

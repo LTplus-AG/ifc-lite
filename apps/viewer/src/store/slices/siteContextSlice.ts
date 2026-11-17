@@ -85,6 +85,8 @@ export interface SiteContextModelInfo {
   heightAssumed?: boolean;
   /** Set once aerial imagery is draped on this (terrain) model. */
   imagery?: { attribution: Attribution; groundSampleDistance: number; /** The sharper drape on the chunks around the model. */ nearGroundSampleDistance?: number };
+  /** Set while the overland flow hazard map (BAFU) is draped on this (terrain) model, over the imagery or alone. */
+  hazard?: { attribution: Attribution; groundSampleDistance: number; nearGroundSampleDistance?: number };
 }
 
 /** What the user last asked for, kept after the run ends so the section can offer it again. */

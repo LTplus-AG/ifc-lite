@@ -10,8 +10,8 @@
 # only with more runners.
 #
 # A labelled PR (other than Version Packages) enters the queue only once it is
-# ready: `PR review signal` and `Review posted` green and no unresolved review
-# thread (`auto_merge_conditions`, at the foot). The label can go on early. Once
+# ready: `PR review signal` green and no unresolved review thread
+# (`auto_merge_conditions`, at the foot). The label can go on early. Once
 # queued, a push or removing the label takes it out and its queue run is lost.
 #
 # Ceiling PRs (tests/perf-ratchets/*.json) keep their own queue, from when
@@ -137,18 +137,13 @@ pull_request_rules:
       queue:
         name: release
 
-# Auto-merge is what queues a labelled PR (#8526: the queue actions above do
-# not enter it by themselves). The review gate lives here, not in
-# queue_conditions, because Mergify re-checks queue_conditions while a PR is
-# queued and dequeues it on a miss (docs: merge-queue/lifecycle): a late review
-# thread would throw away the run it is in. The Version Packages PR has no
-# review gate.
+# Auto-merge is what queues a labelled PR (#8526). The review gate lives here
+# because queue_conditions are re-checked while queued, so a late thread there
+# would dequeue the PR mid-run (docs: merge-queue/lifecycle).
 merge_protections_settings:
   auto_merge_conditions:
     - or:
       - head=changeset-release/main
       - and:
         - check-success=PR review signal
-        # After the Claude review lane (claude-review.yml), so its threads are in.
-        - check-success=Review posted
         - "#review-threads-unresolved=0"

@@ -8,7 +8,7 @@
  * compares with the physical model now, each finding's entities selectable,
  * and a way to show each analysis model.
  */
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { StructuralConsistencyIssue } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
@@ -46,14 +46,21 @@ export function StructuralConsistencyFindings({ modelId, prepared }: { modelId: 
   }, [modelId, prepared]);
   if (result === 'checking') return <output className="block">{t('structuralDerive.consistency.checking')}</output>;
   if ('failed' in result) return <p role="alert">{t('structuralDerive.consistency.failed', { error: result.failed })}</p>;
+  const { linked, skipped } = result.axisCoverage;
   return <section aria-label={t('structuralDerive.consistency.title')} className="space-y-2">
     {result.analysisModels.map((model) => <div key={model.expressId} className="flex items-center gap-2">
       <ElementLink modelId={modelId} expressId={model.expressId} />
       <ShowAnalyticalModelButton modelId={modelId} analysisModelId={model.expressId} memberIds={model.memberIds} />
     </div>)}
     {result.issues.length === 0
-      ? <output className="block">{t(result.checkedAxes ? 'structuralDerive.consistency.consistent' : 'structuralDerive.consistency.consistentWithoutAxes')}</output>
+      ? <output className="block">{skipped.length === 0 ? t('structuralDerive.consistency.consistent')
+        : t('structuralDerive.consistency.partial', { count: skipped.length, total: linked })}</output>
       : <Listing open summary={t('structuralDerive.consistency.findings', { count: result.issues.length })} rows={result.issues}
         row={(issue) => <FindingRow modelId={modelId} issue={issue} />} />}
+    <Listing open summary={t('structuralDerive.consistency.unchecked', { count: skipped.length })} rows={skipped}
+      row={({ memberId, elementIds }) => linkedText(t, 'structuralDerive.consistency.uncheckedRow', {}, {
+        item: <ElementLink modelId={modelId} expressId={memberId} />,
+        elements: elementIds.map((id, index) => <Fragment key={id}>{index > 0 && ', '}<ElementLink modelId={modelId} expressId={id} /></Fragment>),
+      })} />
   </section>;
 }

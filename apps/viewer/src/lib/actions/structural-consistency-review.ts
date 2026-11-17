@@ -15,7 +15,7 @@
  * come from the structural write path, loaded in its own chunk.
  */
 
-import { extractStructuralOnDemand, structuralConsistencyIssues, type StructuralConsistencyIssue, type StructuralConsistencyRule } from '@ifc-lite/parser';
+import { extractStructuralOnDemand, getInheritanceChainAcrossSchemas, structuralConsistencyIssues, structuralCounterparts, type StructuralConsistencyIssue, type StructuralConsistencyRule, type StructuralExtraction, type StructuralLine } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import { loadStructuralWrites } from '@/sdk/adapters/store-adapter-structural';
 import { materializeEffectiveIfcStore } from '@/lib/effective-ifc-store';
@@ -26,8 +26,30 @@ export interface StructuralConsistencyReview {
   issues: StructuralConsistencyIssue[];
   /** Each analysis model, with the members assigned to it, by model-local express id. */
   analysisModels: Array<{ expressId: number; name?: string; memberIds: number[] }>;
-  /** Whether the movement and axis-drift checks ran; they need the physical axes, which IFC5 cannot give. */
-  checkedAxes: boolean;
+  /**
+   * The linked curve members, and those the movement and axis-drift rules
+   * skipped because no axis was read for any of their elements: the element's
+   * shape could not be read or its class has no axis rule. In IFC5 no axes are
+   * read at all, so every linked member is skipped.
+   */
+  axisCoverage: { linked: number; skipped: Array<{ memberId: number; elementIds: readonly number[] }> };
+}
+
+/**
+ * The rules' own condition (`structuralConsistencyIssues`): a curve member is
+ * compared when one of its linked elements has a readable axis. The parser
+ * skips the rest without saying so.
+ */
+function axisCoverage(structural: StructuralExtraction, physicalAxes: ReadonlyMap<number, StructuralLine> | undefined): StructuralConsistencyReview['axisCoverage'] {
+  const coverage: StructuralConsistencyReview['axisCoverage'] = { linked: 0, skipped: [] };
+  for (const member of structural.members) {
+    if (!getInheritanceChainAcrossSchemas(member.type).includes('IfcStructuralCurveMember')) continue;
+    const elementIds = structuralCounterparts(structural, member.expressId)?.expressIds ?? [];
+    if (elementIds.length === 0) continue;
+    coverage.linked++;
+    if (!physicalAxes || !elementIds.some((id) => physicalAxes.has(id))) coverage.skipped.push({ memberId: member.expressId, elementIds });
+  }
+  return coverage;
 }
 
 /** Findings about the physical element having moved lead: they are why a derived model goes out of date. */
@@ -56,5 +78,5 @@ export async function reviewStructuralConsistency(state: Pick<ViewerState, 'mode
     expressId, name,
     memberIds: itemGlobalIds.flatMap((globalId) => memberIdByGlobalId.get(globalId) ?? []),
   }));
-  return { modelId, issues, analysisModels, checkedAxes: physicalAxes !== undefined };
+  return { modelId, issues, analysisModels, axisCoverage: axisCoverage(structural, physicalAxes) };
 }

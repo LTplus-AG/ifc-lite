@@ -28,6 +28,9 @@ afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 const buttons = (root: HTMLElement) => [...root.querySelectorAll('button')];
 const button = (root: HTMLElement, text: RegExp) => buttons(root).find((b) => text.test(b.textContent ?? ''));
 const text = (root: HTMLElement) => root.textContent ?? '';
+/** The two verdicts of the analysis model check, as rendered. */
+const CONSISTENT = /The checks found no disagreement between the analysis model and the physical model\./;
+const DISAGREES = /Where the analysis model and the physical model disagree/;
 
 /** The frame model alone, or behind another model so its ids are offset (federation, models.size N). */
 async function seed(federated: boolean, bytes: Uint8Array = FRAME) {
@@ -122,8 +125,10 @@ test('#10605 an analysis model derived this session is reported consistent, with
   const root = render(<StructuralDerivationReview origin="test" />);
   await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
   click(button(root, /Derive and review/)!);
-  await waitFor(() => /consistent with the physical model/.test(text(root)), `the check finishes: ${text(root)}`);
-  assert.doesNotMatch(text(root), /disagree/);
+  await waitFor(() => CONSISTENT.test(text(root)), `the check finishes: ${text(root)}`);
+  assert.doesNotMatch(text(root), DISAGREES);
+  // The verdict claims only what the checks found, not which inputs they covered.
+  assert.doesNotMatch(text(root), /has moved|lost its link/);
   assert.ok(button(root, /Show analytical model/));
   assert.ok(button(root, /\(IfcStructuralAnalysisModel\)$/), 'the analysis model itself is a link');
 });
@@ -137,7 +142,7 @@ test('#10605 a physical element moved since derivation is listed as stale, and i
   const root = render(<StructuralDerivationReview origin="test" />);
   await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
   click(button(root, /Derive and review/)!);
-  await waitFor(() => /disagree/.test(text(root)), `the check finishes: ${text(root)}`);
+  await waitFor(() => DISAGREES.test(text(root)), `the check finishes: ${text(root)}`);
   const rows = [...root.querySelectorAll('section[aria-label="Analysis model check"] li')].map((li) => li.textContent ?? '');
   assert.match(rows[0], /is out of date: #65 B1 \(IfcBeam\) moved 0\.500 m since it was derived/);
   assert.ok(rows.some((row) => /lies 0\.500 m off the axis of #65 B1 \(IfcBeam\)/.test(row)), rows.join('\n'));
@@ -154,16 +159,16 @@ test('#10605 each "Derive and review" checks the model again: a beam moved after
   const root = render(<StructuralDerivationReview origin="test" />);
   await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
   click(button(root, /Derive and review/)!);
-  await waitFor(() => /consistent with the physical model/.test(text(root)), `the first check finishes: ${text(root)}`);
+  await waitFor(() => CONSISTENT.test(text(root)), `the first check finishes: ${text(root)}`);
   // Raise the beam B1 (#65) 0.5 m in the session, by its axis points, then review the same model again.
   recordModellingCommit(useViewerStore, SAMPLE_MODEL, (editor) => {
     editor.setPositionalAttribute(60, 0, [0, 0, 3.5]);
     editor.setPositionalAttribute(61, 0, [6, 0, 3.5]);
   });
   click(button(root, /Derive and review/)!);
-  await waitFor(() => /disagree/.test(text(root)), `the second check reports the move: ${text(root)}`);
+  await waitFor(() => DISAGREES.test(text(root)), `the second check reports the move: ${text(root)}`);
   assert.match(text(root), /is out of date: #65 B1 \(IfcBeam\) moved 0\.500 m since it was derived/);
-  assert.doesNotMatch(text(root), /consistent with the physical model/);
+  assert.doesNotMatch(text(root), CONSISTENT);
 });
 
 test('#10605 with no readable axes (IFC5), "no findings" does not claim the movement and drift checks ran', async () => {
@@ -175,6 +180,25 @@ test('#10605 with no readable axes (IFC5), "no findings" does not claim the move
   // The physical axes are read for every schema but IFC5 (the derivation itself refuses IFC5 up front).
   dataStore.schemaVersion = 'IFC5';
   const root = render(<DerivationSummary review={review} />);
-  await waitFor(() => /Movement and axis drift were not checked/.test(text(root)), `the check finishes: ${text(root)}`);
-  assert.doesNotMatch(text(root), /consistent with the physical model|no structural item has moved/);
+  await waitFor(() => /Movement and axis drift were not checked on 3 of 3 linked curve members/.test(text(root)), `the check finishes: ${text(root)}`);
+  assert.doesNotMatch(text(root), CONSISTENT);
+});
+
+test('#10605 a linked beam whose axis cannot be read is reported unchecked, never "consistent"', async () => {
+  await seed(false);
+  commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
+  // Clear the beam B1's Representation (attribute 6): its derived member stays linked to it, but it has no axis to read.
+  recordModellingCommit(useViewerStore, SAMPLE_MODEL, (editor) => { editor.setPositionalAttribute(65, 6, null); });
+  const root = render(<StructuralDerivationReview origin="test" />);
+  await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
+  click(button(root, /Derive and review/)!);
+  await waitFor(() => /Movement and axis drift were not checked on 1 of 3 linked curve members/.test(text(root)), `the check finishes: ${text(root)}`);
+  assert.doesNotMatch(text(root), CONSISTENT);
+  const rows = [...root.querySelectorAll('section[aria-label="Analysis model check"] li')];
+  assert.equal(rows.length, 1, rows.map((li) => li.textContent).join('\n'));
+  assert.match(rows[0].textContent ?? '', /\(IfcStructuralCurveMember\): no axis was read for #65 B1 \(IfcBeam\)$/);
+  const beam = [...rows[0].querySelectorAll('button')].find((b) => b.textContent === '#65 B1 (IfcBeam)');
+  assert.ok(beam);
+  click(beam);
+  assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: SAMPLE_MODEL, expressId: 65 });
 });

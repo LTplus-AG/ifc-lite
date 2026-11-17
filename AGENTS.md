@@ -41,12 +41,13 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 
 **The ~400-line rule is enforced on both sides**: for Rust by the `module_size_ratchet` test in `rust/processing/tests/`, for TypeScript by `scripts/check-module-size.mjs`. A new non-generated, non-test file over 400 lines fails unless it has an allowlist row, and an allowlisted file may not grow past its recorded budget. Prefer splitting to allowlisting. For a module whose bulk is `#[cfg(test)]`, the house pattern is a sibling `<name>_tests.rs` included via `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;` (see `stream_meta.rs`). The rule binds production modules only; test files are exempt, though a long test file should still be split where it has a genuine logical seam, never merely to hit a line count.
 
-**Do not trust any list of CI gates written down in this file.** The authoritative list of gates is `.github/workflows/`; the authoritative list of REQUIRED ones is the `main` ruleset, `gh api repos/:owner/:repo/rulesets`. Read them; a gate list in prose goes stale.
+**Do not trust any list of CI gates written down in this file.** The gates are `.github/workflows/`; the REQUIRED ones are the `main` ruleset, `gh api repos/:owner/:repo/rulesets`. Prose lists go stale.
 
 ## Before handing work back
 
-Run `node scripts/pre-handoff.mjs` after committing. A delegated task is not done
-until it passes or each failure is explained. Report SKIPPED coverage too.
+Run `node scripts/pre-handoff.mjs` after committing; it runs CI's revert oracle
+and UI drift gates too. A delegated task is not done until it passes or each
+failure is explained. Report SKIPPED coverage too.
 
 **Push when ready.** Every push runs CI: verify locally or on the fleet first,
 not per intermediate commit. Merge: label `mergify-trial` on `main`;

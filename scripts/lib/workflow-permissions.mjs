@@ -11,12 +11,16 @@
 export function permissionBlocks(text, out, file) {
   const lines = text.split('\n');
   const blocks = [];
-  lines.forEach((line, i) => {
+  for (const [i, line] of lines.entries()) {
     const head = line.match(/^( *)permissions:\s*(.*?)\s*(?:#.*)?$/);
-    if (!head) return;
-    if (head[2] !== '') return void out.push(`${file}: cannot judge \`permissions: ${head[2]}\`; spell each scope out`);
+    if (!head) continue;
+    if (head[2] !== '') {
+      out.push(`${file}: cannot judge \`permissions: ${head[2]}\`; spell each scope out`);
+      continue;
+    }
     const block = {};
-    for (const entry of lines.slice(i + 1)) {
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const entry = lines[j];
       if (entry.trim() === '' || entry.trim().startsWith('#')) continue;
       if (entry.length - entry.trimStart().length <= head[1].length) break;
       const m = entry.match(/^ +([a-z-]+): (read|write|none)\s*(?:#.*)?$/);
@@ -27,6 +31,6 @@ export function permissionBlocks(text, out, file) {
       block[m[1]] = m[2];
     }
     blocks.push(block);
-  });
+  }
   return blocks;
 }

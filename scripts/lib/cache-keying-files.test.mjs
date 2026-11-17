@@ -135,6 +135,7 @@ test('what cannot be judged is an error, not a pass', () => {
     ['absolute pattern', { [ROOT]: "env: { K: \"${{ hashFiles('/home/runner/work') }}\" }" }],
     ['glob class', { [ROOT]: "env: { K: \"${{ hashFiles('.github/[wa]*/**') }}\" }" }],
     ['checkout path', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { path: repo } } ] } }' }],
+    ['outside repository checked out into .github', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: .github/emsdk } } ] } }' }],
     ['outside repository checked out over this one', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: . } } ] } }' }],
     ['checkout path, an unlisted repository', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: someone/else, path: repo } } ] } }' }],
     ['checkout path, this repository by name', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: LTplus-AG/ifc-lite, path: repo } } ] } }' }],

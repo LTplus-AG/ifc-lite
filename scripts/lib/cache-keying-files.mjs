@@ -196,7 +196,7 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
         // literal other repository (geometry-platform.yml's SMLib and emsdk)
         // lands beside it; an expression could name this one, so it counts.
         const w = parent?.with;
-        const otherRepo = typeof w?.repository === 'string' && !w.repository.includes('${{');
+        const otherRepo = typeof w?.repository === 'string' && !w.repository.includes('${{') && w.repository.trim().toLowerCase() !== 'ltplus-ag/ifc-lite';
         if (/^actions\/checkout@/i.test(v) && w && typeof w === 'object' && 'path' in w && !otherRepo) {
           errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }

@@ -313,6 +313,13 @@ function batchWiringProblems(text, root) {
   if (!/^ {4}uses: \.\/\.github\/workflows\/geometry-platform\.yml\s*$/m.test(caller) || !/^ {4}with:\n {6}batch: true\s*$/m.test(caller)) {
     out.push(`${TEST_WORKFLOW}: the native-adapter job must call ./${WORKFLOW} with batch: true`);
   }
+  const grants = (block) => Object.fromEntries([...block.matchAll(/^ {4,6}([a-z-]+): (read|write)\s*$/gm)].map((m) => [m[1], m[2]]));
+  const granted = grants(caller.match(/^ {4}permissions:\n((?: {6}.*\n)+)/m)?.[1] ?? '');
+  for (const [, block] of text.matchAll(/^ {2,4}permissions:\n((?: {4,6}.*\n)+)/gm)) {
+    for (const [scope, level] of Object.entries(grants(block))) {
+      if (granted[scope] !== level && granted[scope] !== 'write') out.push(`${TEST_WORKFLOW}: the native-adapter call must grant ${scope}: ${level}; ${WORKFLOW} asks for it and GitHub refuses the whole Test run otherwise`);
+    }
+  }
   if (!caller.split('\n').some((l) => l === `    if: ${BATCH_CALL_IF}`)) {
     out.push(`${TEST_WORKFLOW}: the native-adapter job must be gated on exactly: if: ${BATCH_CALL_IF} (batches only, and only an explicit \`false\` skips)`);
   }

@@ -4084,11 +4084,13 @@ jobs:
     name: Native adapter (merge-queue batch)
     needs: changes
     if: needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop != 'true' && needs.changes.outputs.native_adapter != 'false'
-    # The called workflow's nightly reporter job declares `issues: write`, and
     # GitHub checks nested permissions when the run starts, skipped jobs
-    # included. The native-adapter job itself gets geometry-platform.yml's
+    # included, so this grants what geometry-platform.yml's nightly
+    # report-scheduled-failure job asks for (check-native-adapter-triggers.mjs
+    # holds the two together). The native-adapter job itself gets the callee's
     # workflow-level `contents: read`.
     permissions:
+      actions: read
       contents: read
       issues: write
     uses: ./.github/workflows/geometry-platform.yml

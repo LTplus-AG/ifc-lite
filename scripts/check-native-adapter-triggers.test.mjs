@@ -280,6 +280,8 @@ test('test.yml must call, decide and judge the batch run', (context) => {
     [(t) => t.replace(/      native_adapter: \$\{\{ steps\.nativeadapter\.outputs\.native_adapter \}\}\n/, ''), 'must publish native_adapter'],
     [(t) => t.replace(/(        id: nativeadapter\n(?: {8}.*\n)*?) {8}continue-on-error: true\n/, '$1'), 'continue-on-error step with id nativeadapter'],
     [(t) => t.replace(', release-pr, native-adapter]', ', release-pr]'), 'aggregate must need native-adapter'],
+    // The caller once granted contents+issues only, after the reporter gained `actions: read`.
+    [(t) => t.replace('      actions: read\n      contents: read\n      issues: write\n    uses: ./.github/workflows/geometry-platform.yml', '      contents: read\n      issues: write\n    uses: ./.github/workflows/geometry-platform.yml'), 'must grant actions: read'],
   ];
   for (const [fn, expected] of cases) {
     const root = copyTree(context);

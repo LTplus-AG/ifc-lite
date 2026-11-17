@@ -48,6 +48,9 @@ name: Export schema conformance
 on:
   pull_request:
     paths:
+      - "apps/viewer/src/lib/export/drawing-annotation*"
+      - "apps/viewer/src/lib/drawing2d-markup/drawing-markup-embedded-sweep.ts"
+      - "apps/viewer/src/lib/drawing2d-markup/drawing-markup-save*"
       - "packages/export/**"
       - "packages/parser/**"
       # The rest of the workspace closure of the ONE file this job runs,
@@ -264,6 +267,12 @@ jobs:
         run: >-
           pnpm exec tsx --import ./src/test/vite-module-hooks.mjs --test
           src/lib/export/landXmlIfcImagery.test.ts
+      - name: Validate drawing annotation round trips in all supported schemas
+        env:
+          IFCOPENSHELL_PYTHON: python
+          TEST_PATTERN: (drawing-annotations|drawing-markup-save).test
+        run: pnpm test --filter=@ifc-lite/viewer
+
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
         continue-on-error: true

@@ -32,7 +32,7 @@ import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometr
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
-import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
+import { FORMAT_HEAD_BYTES, headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
 import { compactSource } from '../lib/source-compaction/source-compaction.js';
 import { runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import {
@@ -711,7 +711,7 @@ export function useIfcLoader() {
       commitPrimarySession(); // supersede old work before the new pick starter installs its own watchers
       runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
       initializeModel();
-      const headBuf = preflightHead ?? await file.slice(0, 4096).arrayBuffer();
+      const headBuf = preflightHead ?? await file.slice(0, FORMAT_HEAD_BYTES).arrayBuffer();
 
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);

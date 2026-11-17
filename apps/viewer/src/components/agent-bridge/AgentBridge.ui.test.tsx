@@ -22,7 +22,7 @@ import { LocalBackend } from '@/sdk/local-backend';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { installPairingFragmentStrip } from '@/lib/agent-bridge/pairing-fragment';
 import {
-  getAgentBridgeState, registerAgentBridgeControls, resetAgentBridgeStateForTests, updateAgentBridgeState,
+  foldActivity, getAgentBridgeState, registerAgentBridgeControls, resetAgentBridgeStateForTests, updateAgentBridgeState,
   type AgentBridgePermission, type AgentBridgeStatus,
 } from '@/lib/agent-bridge/state';
 import { AgentBridgeHost, AgentBridgeStatusSlot } from './AgentBridgeHost';
@@ -515,5 +515,28 @@ describe('allowing the agent to edit (#9523)', () => {
     assert.match(rows[0].textContent ?? '', /was already “EI60”; nothing changed/);
     assert.match(rows[2].textContent ?? '', /IfcWall #7 · Pset_WallCommon\.FireRating: — → “EI60”/);
     assert.doesNotMatch(rows[3].textContent ?? '', /→/);
+  });
+  it('folds repeated read calls into one counted row, never edits, and names models', async () => {
+    const { AgentBridgeActivityLog } = await import('./AgentBridgeConnectionPanel');
+    const before = useViewerStore.getState().models;
+    useViewerStore.setState({ models: new Map([['m', { id: 'm', name: 'house.ifc' }]]) as never });
+    const read = (seq: number, tool = 'viewer_operations', modelId: string | null = null) =>
+      ({ seq, tool, modelId, startedAt: 0, durationMs: 1, outcome: 'ok' as const });
+    const edit = (seq: number) => ({ ...read(seq, 'entity_set_property', 'm'), mutating: true });
+    updateAgentBridgeState({
+      status: { ...CONNECTED, permission: 'read-write' },
+      // The session folds rows as they arrive (foldActivity); the panel shows the folded count.
+      activity: foldActivity([edit(7), edit(6), read(5, 'get_entity', 'm'), read(4), read(3), read(2), read(1, 'model_list')]),
+    });
+    try {
+      const ui = render(<AgentBridgeActivityLog />);
+      const rows = [...ui.querySelectorAll('[data-agent-bridge-activity]')].map((row) => row.textContent);
+      assert.deepEqual(rows, [
+        'entity_set_propertyhouse.ifc1 msok', 'entity_set_propertyhouse.ifc1 msok',
+        'get_entityhouse.ifc1 msok', 'viewer_operations×3no model1 msok', 'model_listno model1 msok',
+      ]);
+    } finally {
+      useViewerStore.setState({ models: before });
+    }
   });
 });

@@ -23,7 +23,7 @@ import { isFeatureEnabled } from '../features/index.js';
 import { costTools } from './cost-tools.js';
 import { mainViewerIdsTools } from './main-viewer-ids.js';
 import { EDIT_TOOL_NAMES, editNotAllowed, editTools, isEditTool } from './edit-tools.js';
-import type { AgentEdit, AgentTool, ModelHandle, ReadyModel, ToolHost, ToolNeeds } from './types.js';
+import type { AgentEdit, AgentTool, AgentToolImage, ModelHandle, ReadyModel, ToolHost, ToolNeeds, ToolOutput } from './types.js';
 
 /** Every tool the main viewer serves. Each must be a `read`-scope catalog tool (enforced by test). */
 export const MAIN_VIEWER_TOOL_ALLOWLIST = [
@@ -64,6 +64,8 @@ export interface AgentToolResult {
   hint?: string;
   /** What an edit tool changed. Tab-side only: the result frame carries `structured`, not this. */
   edit?: AgentEdit;
+  /** An image for the agent; the result frame carries it only when the bridge supports images. */
+  image?: AgentToolImage;
 }
 
 const LEGACY_ALIASES = new Set(['legacy', LEGACY_MUTATION_MODEL_ID]);
@@ -204,6 +206,11 @@ export interface DispatchContext {
   canEdit?: () => boolean;
 }
 
+/** A tool's success as an outcome: every success path carries the edit and image a tool returned. */
+function succeeded(out: ToolOutput): AgentToolResult {
+  return { text: out.text, structured: out.structured, isError: false, ...(out.edit ? { edit: out.edit } : {}), ...(out.image ? { image: out.image } : {}) };
+}
+
 /**
  * Run one tool call against the main viewer. Never throws: every failure,
  * including a refused tool name, comes back as an error result.
@@ -232,18 +239,17 @@ export async function dispatchMainViewerTool(
     const commitState: { committed: boolean; committing?: boolean } = { committed: false };
     if (tool.needs === 'none') {
       const out = await untilAborted(tool.run(host, input, { ...ctx, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true);
-      return { text: out.text, structured: out.structured, isError: false };
+      return succeeded(out);
     }
     const model = usableModel(resolveModel(host, input), tool.needs, toolName);
     const stillCurrent = () => assertModelCurrent(host, model);
     const out = await untilAborted(
       tool.run(host, model, input, { signal: ctx.signal, checkpoint: stillCurrent, canEdit: ctx.canEdit, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true);
     // An edit is written synchronously and is in the undo history: report it as done.
-    if (commitState.committed) return { text: out.text, structured: out.structured, isError: false, ...(out.edit ? { edit: out.edit } : {}) };
-    if (out.edit) return { text: out.text, structured: out.structured, isError: false, edit: out.edit };
+    if (commitState.committed || out.edit) return succeeded(out);
     // The work read whatever the store held; answer only if that is still this model.
     stillCurrent();
-    return { text: out.text, structured: out.structured, isError: false };
+    return succeeded(out);
   } catch (caught) {
     const err = isAbortError(caught) ? cancelledDispatch() : caught;
     if (err instanceof ToolExecutionError) {

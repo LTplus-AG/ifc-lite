@@ -40,6 +40,7 @@ export const agentBridgeFr = {
   "agentBridge.panel.error": "erreur {code}",
   "agentBridge.panel.cancelled": "annulé",
   "agentBridge.panel.duration": "{ms} ms",
+  "agentBridge.panel.repeated": "×{count}",
   "agentBridge.failure.unreachable": "Connexion impossible au pont sur le port {port}, ou il a coupé la connexion. Démarrez le pont sur cet ordinateur avec la commande ci-dessous, vérifiez le port, puis appairez avec le code affiché. S’il fonctionne déjà, il a peut-être refusé la connexion parce que trop d’onglets tentaient de s’appairer : fermez-les et réessayez.",
   "agentBridge.failure.origin": "Visionneuse hors de ifclite.com ? Démarrez le pont avec --bridge-viewer-url {origin} pour qu’il accepte cette page.",
   "agentBridge.failure.permissionDenied": "Le navigateur a empêché ce site d’accéder aux applications de cet ordinateur. Autorisez-le dans les paramètres du site (l’icône à gauche de l’adresse) : « Apps on device » dans Chrome, « Device apps and services » dans Firefox (libellés traduits selon la langue du navigateur). Puis réessayez.",

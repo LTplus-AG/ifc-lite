@@ -10,7 +10,7 @@ import { operationArtifacts } from './artifacts';
 import { contractFingerprint } from './metadata';
 import { MAX_RESULT_BYTES } from './result-limit';
 import type { Operation } from './contract';
-import { viewerOperation, operationUnavailable } from './registry';
+import { viewerOperation, operationUnavailable, unknownOperationMessage } from './registry';
 
 export interface OperationJob {
   id: string;
@@ -62,7 +62,7 @@ export async function executeOperation(
   if (Object.keys(args).some(key => !allowed.includes(key))) invalid('Unknown execution argument.');
   if (typeof args.operation_id !== 'string') invalid('operation_id is required.');
   let entry: Operation;
-  try { entry = viewerOperation(args.operation_id); } catch { invalid('Unknown operation_id. Discover an exact registered ID first.'); }
+  try { entry = viewerOperation(args.operation_id); } catch { invalid(unknownOperationMessage(args.operation_id)); }
   if (entry.needs === 'model' && !model) invalid('This operation requires a loaded model.');
   const writes = entry.effects.some(effect => effect !== 'read');
   if (readOnly && writes) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Inspect only accepts read operations.' });
@@ -222,7 +222,7 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
 export async function executeOperationRequest(host: ToolHost, args: Record<string, unknown>, context: ToolCallContext, readOnly: boolean) {
   if (typeof args.operation_id !== 'string') invalid('operation_id is required.');
   let entry: Operation;
-  try { entry = viewerOperation(args.operation_id); } catch { invalid('Unknown operation_id.'); }
+  try { entry = viewerOperation(args.operation_id); } catch { invalid(unknownOperationMessage(args.operation_id)); }
   let model: ReadyModel | undefined;
   if (entry.needs === 'model') {
     const { resolveModel, usableModel } = await import('../main-viewer-dispatch');

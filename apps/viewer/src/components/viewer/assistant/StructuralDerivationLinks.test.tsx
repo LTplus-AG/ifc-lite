@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // #10605: the derivation review does not dead-end. Element ids select and frame
 // their element, Apply offers the analytical model, and a model that already has
-// an analysis model gets its consistency findings instead of a bare refusal.
+// an analysis model still gets the refusal, with its consistency findings below it.
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';

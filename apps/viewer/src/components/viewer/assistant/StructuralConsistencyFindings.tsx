@@ -4,9 +4,9 @@
 
 /**
  * A model that already has an analysis model derives nothing beside it
- * (#9668). In place of that bare refusal (#10605): how the analysis model
+ * (#9668). Below the line that says so (#10605): how the analysis model
  * compares with the physical model now, each finding's entities selectable,
- * and a way to show the analytical model.
+ * and a way to show each analysis model.
  */
 import { useEffect, useState } from 'react';
 import type { StructuralConsistencyIssue } from '@ifc-lite/parser';

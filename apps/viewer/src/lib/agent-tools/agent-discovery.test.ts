@@ -29,6 +29,11 @@ describe('agent discovery and orientation', () => {
     assert.equal(found.hint, undefined);
   });
 
+  it('viewer_operations treats a blank operation_id as no filter (the schema allows it)', async () => {
+    const found = ok(await call('viewer_operations', { query: 'measure distance', operation_id: '', limit: 3 })).structured as { operations: Array<{ id: string }> };
+    assert.ok(found.operations.some(op => op.id === 'measurements.distance'), JSON.stringify(found.operations));
+  });
+
   it('a query matching nothing returns a hint naming owner families', async () => {
     const found = ok(await call('viewer_operations', { query: 'qqqxyzzy' })).structured as { total: number; hint: string };
     assert.equal(found.total, 0);

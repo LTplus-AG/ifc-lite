@@ -55,7 +55,8 @@ export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
   viewer_operations: { needs: 'none', async run(_host, args) {
     keys(args, ['query', 'operation_id', 'offset', 'limit']);
     const query = boundedString(args, 'query', 200, true) ?? '';
-    const operationId = boundedString(args, 'operation_id', 200);
+    // A blank operation_id means no filter, as before (the schema allows it).
+    const operationId = boundedString(args, 'operation_id', 200, true) || undefined;
     const offset = integer(args, 'offset', 0, 0, Number.MAX_SAFE_INTEGER), limit = integer(args, 'limit', 25, 1, 50);
     const { viewerOperations, rankOperations, operationOwners, describeOperation, operationUnavailable, unknownOperationMessage } = await import('./operations/registry');
     // An exact operation_id describes that operation; query only ranks a search.

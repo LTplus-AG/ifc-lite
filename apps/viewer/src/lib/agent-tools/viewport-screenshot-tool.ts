@@ -18,6 +18,15 @@ import type { ViewCameraSnapshot } from '@/lib/export/view-pdf/generate-view-pdf
 import { assertDispatchActive } from './cancellation';
 import type { AgentInputSchema, ModelFreeTool, ToolOutput } from './types';
 
+/** First opaque background behind the viewport canvas, or null outside a DOM. */
+function viewportBackground(canvas: HTMLCanvasElement): string | null {
+  if (typeof getComputedStyle !== 'function') return null;
+  for (let el: Element | null = canvas; el; el = el.parentElement) {
+    const color = getComputedStyle(el).backgroundColor;
+    if (color && color !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(color)) return color;
+  }
+  return null;
+}
 export const SCREENSHOT_WIDTH = { min: 256, max: 1920, default: 1024 } as const;
 const JPEG_QUALITY = 0.8;
 
@@ -84,6 +93,9 @@ export function createScreenshotTool(load: () => Promise<ScreenshotDeps> = nativ
         out.height = frame.size.height;
         const g = out.getContext('2d');
         if (!g) throw new Error('No 2D canvas context to scale the capture.');
+        // The viewport clears to transparent (e.g. under the map overlay); JPEG would turn that black.
+        const background = viewportBackground(canvas);
+        if (background) { g.fillStyle = background; g.fillRect(0, 0, frame.size.width, frame.size.height); }
         g.drawImage(canvas, 0, 0, frame.size.width, frame.size.height);
         frame.camera = deps.camera();
         return out.toDataURL(mimeType, JPEG_QUALITY);
@@ -96,7 +108,9 @@ export function createScreenshotTool(load: () => Promise<ScreenshotDeps> = nativ
     // The browser may fall back to PNG for an unsupported type: report what was actually encoded.
     const match = url ? DATA_URL.exec(url) : null;
     if (!url || !match) {
-      fail(ToolErrorCode.INTERNAL_ERROR, 'The viewport capture produced no image.', 'Retry once the view has finished rendering.');
+      // The capture service reports a missing or unready viewport as no image.
+      fail(ToolErrorCode.UNSUPPORTED_OPERATION, 'The viewport capture produced no image.',
+        'Make sure a model is open and the 3D viewport is showing in the viewer tab, then retry.');
     }
     const data = url.slice(match[0].length);
     const encoded = match[1] as 'image/png' | 'image/jpeg';

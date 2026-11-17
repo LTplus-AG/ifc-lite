@@ -96,7 +96,7 @@ describe('viewer_screenshot', () => {
   });
 
   it('fails clearly when the capture produced nothing or too much', async () => {
-    await assert.rejects(run({ ...fakeDeps({ width: 10, height: 10 }), capture: async () => null }), { code: 'INTERNAL_ERROR' });
+    await assert.rejects(run({ ...fakeDeps({ width: 10, height: 10 }), capture: async () => null }), { code: 'UNSUPPORTED_OPERATION', message: /produced no image/ });
     const huge = { ...fakeDeps({ width: 10, height: 10 }), capture: async () => `data:image/png;base64,${PNG}${'A'.repeat(4 * 1024 * 1024)}` };
     await assert.rejects(run(huge), { code: 'INVALID_INPUT', message: /limit is 3145728/ });
   });

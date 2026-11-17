@@ -47,7 +47,7 @@
  * instructions; the bridge says so in its MCP `instructions`.
  */
 
-import { checkJsonBounds, checkSchemaShape, utf8Length } from './json-bounds.js';
+import { checkJsonBounds, checkSchemaShape, isRecord, utf8Length } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';
 import { BRIDGE_IMAGE_LIMITS, validateResultContent, type BridgeContent } from './result-content.js';
 
@@ -252,10 +252,6 @@ export const BridgeCloseCode = {
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const TOOL_NAME = /^[A-Za-z0-9_.-]+$/;
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
 
 function isPermission(v: unknown): v is BridgePermission {
   return v === 'read-only' || v === 'read-write';

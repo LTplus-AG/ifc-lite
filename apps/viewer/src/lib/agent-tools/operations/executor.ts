@@ -85,6 +85,10 @@ export async function executeOperation(
     if (writes && !context.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant was revoked or is absent.' });
   };
   check();
+  if (args.background !== undefined && typeof args.background !== 'boolean') invalid('background must be boolean.');
+  if (writes && args.background) invalid('View and settings operations execute synchronously; background is only supported for reads.');
+  // Before replay: a keyed foreground result must not answer a background request.
+  if (args.background && args.idempotency_key !== undefined) invalid('Background reads do not accept idempotency_key.');
   const signature = typeof args.idempotency_key === 'string'
     ? contractFingerprint([model?.id ?? null, entry.id, args.input ?? {}, args.expected_revision ?? null]) : '';
   const previous = typeof args.idempotency_key === 'string' ? applied.get(host)?.get(args.idempotency_key) : undefined;
@@ -95,8 +99,6 @@ export async function executeOperation(
   if (args.expected_revision !== undefined && args.expected_revision !== revision) {
     throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, message: 'The model revision changed. Inspect it again.' });
   }
-  if (args.background !== undefined && typeof args.background !== 'boolean') invalid('background must be boolean.');
-  if (writes && args.background) invalid('View and settings operations execute synchronously; background is only supported for reads.');
   const input = args.input ?? {};
   try { entry.validate(input); } catch (error) { invalid(error instanceof Error ? error.message : 'Invalid operation input.'); }
   let checkpoint = check;
@@ -159,7 +161,6 @@ export async function executeOperation(
     prior.set(args.idempotency_key, { signature, store: model?.store, result });
     return result;
   }
-  if (args.idempotency_key !== undefined) invalid('Background reads do not accept idempotency_key.');
   const owned = jobs(host);
   for (const [id, job] of owned) if (owned.size >= MAX_JOBS && job.snapshot.state !== 'running') owned.delete(id);
   if (owned.size >= MAX_JOBS) invalid('This host already has 32 running operation jobs.');

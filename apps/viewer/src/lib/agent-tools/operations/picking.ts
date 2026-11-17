@@ -15,7 +15,6 @@ function pickingOperation(id: string, method: 'gpu' | 'ray') {
 }, { type: 'object', properties: { x: { type: 'number', minimum: 0, exclusiveMaximum: 1 }, y: { type: 'number', minimum: 0, exclusiveMaximum: 1 } }, required: ['x', 'y'], additionalProperties: false }, async (i, c) => {
   const host = getAgentViewportHost();
   if (!host?.renderer.getGPUDevice()) throw new Error('A live mounted viewport is required for native picking.');
-  const state = useViewerStore.getState();
   const request = captureViewportPick({ ...host, channel: 'agent', getTool: () => useViewerStore.getState().activeTool,
     isOwnerCurrent: () => getAgentViewportHost() === host });
   if (request.rect.width <= 0 || request.rect.height <= 0 || request.pickOptions.isStreaming) throw new Error('The native viewport must be visible and finished loading before picking.');
@@ -26,6 +25,8 @@ function pickingOperation(id: string, method: 'gpu' | 'ray') {
   if (!request.current() || !host.renderer.getGPUDevice()) throw new Error('The native camera, scene or viewport changed during picking.');
   let ref: ReturnType<typeof resolveRef> | null = null, reason = hit ? 'unresolved_native_renderer_entity' : 'no_hit';
   if (hit) {
+    // Read the store after the awaited pick: a model added or replaced meanwhile must not resolve the hit.
+    const state = useViewerStore.getState();
     const owner = state.resolveGlobalIdFromModels(hit.expressId);
     const models = c.host.models();
     const model = owner ? models.find(candidate => candidate.id === owner.modelId)

@@ -52,7 +52,12 @@ export class Picker {
   private extraClipBuffer: GPUBuffer;
   private readonly extraClipScratch = new Float32Array(EXTRA_CLIP_FLOATS);
   private depthSample: PickDepthSample;
-  /** Targets and mesh slots are allocated lazily on the first GPU pick. */
+  /**
+   * The id/depth targets and the per-mesh slots are allocated on the first GPU
+   * pick and sized to it, not at init: a session that never GPU-picks holds
+   * none of the canvas-sized pair, and the slot buffers grow with the meshes
+   * actually drawn instead of reserving 100K 256-byte slots up front.
+   */
   private targets: { color: GPUTexture; depth: GPUTexture } | null = null;
   private meshSlots: { uniform: GPUBuffer; expressIds: GPUBuffer; bindGroup: GPUBindGroup; capacity: number } | null = null;
   /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
@@ -132,7 +137,10 @@ export class Picker {
     });
 
     // ── Instanced pick pipeline ──
-    // Instanced validation must settle before lane picks may rely on it.
+    // Draws scene.getInstancedTemplates() into the same pick targets, writing the
+    // express id with bit 30 set. NON-FATAL: a degraded backend (CI SwiftShader)
+    // rejecting it must not abort the Picker, and with it renderer init. Its
+    // validation must also settle before lane picks may rely on it.
     this.device.pushErrorScope('internal');
     this.device.pushErrorScope('validation');
 

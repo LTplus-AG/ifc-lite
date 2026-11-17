@@ -30,6 +30,8 @@
     "selective-clipping.gpu.ts",
     "selective-clipping.e2e.spec.ts",
     "perspective-distance-depth.gpu.ts",
-    "perspective-distance-depth.e2e.spec.ts"
+    "perspective-distance-depth.e2e.spec.ts",
+    "gpu-batch-pick.config.ts",
+    "gpu-batch-pick.e2e.spec.ts"
   ]
 }

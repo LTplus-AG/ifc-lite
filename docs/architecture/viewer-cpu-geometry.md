@@ -172,3 +172,14 @@ S1 (GPU pick that draws the existing batches) is the first consumer to move off 
 - Hide / isolate (S2) is the stage that must land before any release: today's failure mode there is visible geometry disappearing, which is worse than the note assumed.
 
 Probe diagnostic status: samples and settled results report cpuGeometryMeasurement as available, unavailable (viewer has no hook), error (with a diagnostic message), or timeout. A failed walk is never silently treated as an absent hook. scene.fragmentPieces includes retained built-batch snapshots and its drawn-mesh memo, even when a bucket no longer holds those arrays.
+
+## Stage S1: GPU pick from the batches
+
+Picks on models over the pick-mesh budget, and on scenes whose CPU geometry was released, now draw the colour batches whole instead of taking the CPU raycast (see [Pick routes](rendering-pipeline.md#pick-routes)). The route reads the entity from the vertex lane, hide/isolate from a GPU id table, and the hit point from depth under the pass's camera-relative snapshot. This covers click, hover and rectangle select.
+
+What still reads the CPU copy on this route, and why:
+
+- **The representation item.** The lane carries the entity only. A model that keeps its CPU geometry raycasts the picked entity alone (its flat pieces and any instanced occurrences) along the same texel-centre ray, so `modelIndex` and `geometryItemId` match the CPU route. A released scene reports the entity and its model index (from the batches' own entries), as the design decisions allow until a local spill exists.
+- **The fallback.** When the batches cannot answer for every drawable (pending rebuild, finalize, an evicted batch on the ray, ids outside the lane range, missing pipelines), the whole pick takes the CPU raycast. A released scene then still has only the box raycast; on the ephemeral path that can miss flat entities, as recorded above.
+
+S1 frees nothing: release stays disabled, and hide/isolate (row 4) and highlight (row 5) still read the pieces. `__ifc_lite_pick_parity__({ columns, rows, rect? })` compares the GPU pick with `raycastScene` over a texel grid under the current visibility; `tests/e2e/gpu-batch-pick.e2e.spec.ts` runs it on public fixtures on a real adapter.

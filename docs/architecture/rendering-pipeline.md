@@ -431,6 +431,20 @@ function unprojectPickSample(viewProj, pickX, pickY, width, height, depth) {
 
 The decoded ID is a **global ID**; the application resolves it back to `{ modelId, expressId }` via the federation registry (see [Federation](federation.md)). A BVH-based CPU raycaster (`bvh.ts`, `raycast-engine.ts`) complements GPU picking for snapping and measurement.
 
+### Pick routes
+
+`PickingManager` chooses one of three routes per pick (click, hover and rectangle select alike):
+
+| Route | When | What the pick pass draws |
+|---|---|---|
+| Per-piece meshes | the visible pieces missing a pick mesh fit `MAX_PICK_MESH_CREATION` (500) | one GPU mesh per visible piece, hydrated from the CPU copy |
+| Colour batches | over that budget, or CPU geometry released (#10264 S1) | the scene's own batch and textured vertex buffers, whole |
+| CPU raycast | neither GPU route can answer for every drawable | nothing; triangles (or boxes for a marquee) on the CPU |
+
+The batch route (`lane-pick-pass.ts`, `pick-lane-route.ts`) reads the entity from the per-vertex lane the colour pass already uses: the low 24 bits under the batch's anchor, like section exclusions. Flat (28-byte), textured (36-byte) and quantized (12-byte) layouts each have a pipeline variant. Because a batch is drawn whole, hide/isolate is a fragment test against a sorted id table (`pick-visibility.ts`); section planes, extra planes, crop boxes and section exclusions discard as in the flat pick pass. Instanced occurrences, point splats and non-hydrated individual meshes share the same pass and depth target. A single click draws only the batches whose bounds the texel-centre line meets, scissored to that texel.
+
+The route never answers partially. It falls back to the CPU raycast when batches are pending a rebuild or being finalized, a batch the ray meets is evicted from the GPU, a batch's ids span more than one 2^24 page or exceed the 30-bit sample, the instanced pick pipeline is missing while instanced occurrences exist, or the backend rejected the batch pipelines. An edit landing while the readback is in flight voids the pick.
+
 ## Section Planes
 
 ### Clipping Implementation

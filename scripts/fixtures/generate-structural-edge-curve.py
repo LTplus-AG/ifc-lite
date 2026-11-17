@@ -276,6 +276,8 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
 
     if v2:
         activities.append(root("IfcStructuralLinearAction", place(), None, temperature, "GLOBAL_COORDS", *action_tail("CONST"), tag=" temperature"))
+        # #9668: prove IFC2X3 point-action CausedBy in the read model and card.
+        activities[0].CausedBy = reactions[0]
         for activity in activities:
             if not activity.is_a("IfcStructuralPointAction"):
                 activity.CausedBy = reactions[0]

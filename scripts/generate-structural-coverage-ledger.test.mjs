@@ -292,6 +292,26 @@ test('convert (#9668): only the values the schemas force are excused, and only a
   assert.ok(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.BILINEAR.);`).some((why) => why.includes('ConstPredefinedType')), 'BILINEAR on the planar action is schema-invalid');
 });
 
+test('convert (#9668): an IFC4 stiffness false may come back as the zero measure IFC2X3 forces, and nothing else is excused', () => {
+  const step = (data) => stepFile('', '', data).step;
+  const slot = (name, type) => ({ name, type, optional: true });
+  // As slab_01.ifc #74: IfcBoolean in IfcModulusOfTranslationalSubgradeReactionSelect slots; a label slot is not one.
+  const attributes = [slot('Name', 'IfcLabel'), slot('X', 'IfcModulusOfTranslationalSubgradeReactionSelect'), slot('Y', 'IfcModulusOfTranslationalSubgradeReactionSelect'), slot('Z', 'IfcLabel')];
+  const registry = { entities: { IfcBoundaryEdgeCondition: { allAttributes: attributes, inheritanceChain: ['IfcBoundaryEdgeCondition'] } }, selects: {}, types: {}, enums: {} };
+  const row = { schema: 'IFC4', entity: 'IfcBoundaryEdgeCondition', rooted: false, attributes: attributes.map((a) => a.name), own: attributes.map((a) => a.name) };
+  const file = { path: 'e.ifc', step: step("#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCBOOLEAN(.F.));") };
+  const problems = (back) => compareFile(row, file, { there: step(''), step: step(back) }, { own: { types: new Map(), registry } }).problems;
+  assert.deepEqual(problems('#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(0.),IFCBOOLEAN(.F.));'), [],
+    'false and a zero stiffness are both free; IFC2X3 writes both as 0.');
+  for (const back of [
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(5.),IFCBOOLEAN(.F.));',
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(0.),IFCBOOLEAN(.F.),IFCBOOLEAN(.F.));',
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),$,IFCBOOLEAN(.F.));',
+    // Z is no stiffness SELECT, so 0 for false there is still a change.
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),0.);',
+  ]) assert.equal(problems(back).length, 1, `${back} must not hold`);
+});
+
 const stepFile = (path, sha256, data) => ({ path, sha256, step: readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n${data}\nENDSEC;END-ISO-10303-21;`) });
 
 /** A read model holding one point connection, with only the fields the product exposes today. */

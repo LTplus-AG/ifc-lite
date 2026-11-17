@@ -32,7 +32,6 @@ export const siteContextFr = {
   "siteContext.refusal.outsideSwitzerland": "Le contexte du site est disponible pour les sites en Suisse ; ce modèle est situé ailleurs.",
   "siteContext.refusal.heightDatum": "Les altitudes du contexte sont en LN02 ; ce modèle déclare {datum}. Les systèmes altimétriques ne sont pas mélangés.",
   "siteContext.refusal.heightUnknown": "Les altitudes du contexte sont en LN02 ; ce modèle n’indique aucun système altimétrique, et pour ce format aucun n’est supposé. Définissez son système altimétrique pour charger le contexte autour.",
-  "siteContext.refusal.openEditor": "Ajouter un géoréférencement",
   "siteContext.card.title": "Contexte du site",
   "siteContext.card.category": "Catégorie",
   "siteContext.card.complete": "Complet",
@@ -52,4 +51,10 @@ export const siteContextFr = {
   "siteContext.card.subjectMatchFootprint": "son emprise recouvre le modèle à {overlap} %",
   "siteContext.card.showSubject": "Afficher",
   "siteContext.card.hideSubject": "Masquer à nouveau",
+  "siteContext.refusal.addHint": "Ajoutez un géoréférencement ci-dessus : choisissez le système de coordonnées (pour les sites suisses, EPSG:2056 · CH1903+ / MN95), puis placez le modèle sur la carte.",
+  "siteContext.refusal.outsideHint": "Si ce modèle se trouve en Suisse, vérifiez son système de coordonnées et définissez sa position sur la carte ci-dessus.",
+  "siteContext.command.noModel": "Ouvrez d’abord un modèle : le contexte du site est chargé autour d’un modèle.",
+  "siteContext.ribbon.label": "Contexte du site",
+  "siteContext.ribbon.tooltip": "Terrain, parcelle et bâtiments voisins de swisstopo autour d’un modèle suisse géoréférencé",
+  "siteContext.refusal.crsHint": "Ouvrez « SRC projeté » ci-dessus pour corriger son Name (pour les sites suisses, EPSG:2056) et son VerticalDatum (NF02).",
 } satisfies Catalogue;

@@ -139,8 +139,8 @@ export function writeSourceEntityLines(
   // Export original entities from source buffer, SKIPPING modified property sets
   if (!options.deltaOnly && ctx.dataStore.source) {
     const source = ctx.dataStore.source;
-    // A converted IFC2X3 varying action needs a new load configuration record.
-    if (pass.converting) pass.enums.structural.varying.ids = ctx.propertySetContext().allocateExpressId;
+    // Structural conversion adds records: load configurations, 'Causes' relationships, property sets.
+    if (pass.converting) pass.enums.structural.ids = ctx.propertySetContext().allocateExpressId;
 
     // Extract existing entities from source. The effective index has already
     // dropped everything the overlay tombstoned, so there is no separate
@@ -347,7 +347,8 @@ export function writeSourceEntityLines(
         pass.entities.push(nextEntityText);
       }
     }
-    pass.entities.push(...pass.enums.structural.varying.added());
+    // IFC2X3 requires an OwnerHistory on the rooted records added there.
+    pass.entities.push(...pass.enums.structural.added().map((line) => (pass.schema === 'IFC2X3' ? pass.slotFill.apply(line) : line)));
   }
 }
 

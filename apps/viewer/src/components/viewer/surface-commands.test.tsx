@@ -34,7 +34,8 @@ const VISIBILITY_IDS = [
   'vis:hide', 'vis:show', 'vis:reset-filters', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',
   'vis:toggle-iso', 'vis:save-view', 'vis:toggle-presentation', 'vis:clear-iso',
   'vis:spaces', 'vis:spatialZones', 'vis:openings', 'vis:site',
-  'vis:ifcAnnotations', 'vis:ifcGrid', 'vis:structural-view', 'vis:structuralGlyphs', 'vis:reset-colors',
+  'vis:ifcAnnotations', 'vis:ifcGrid', 'vis:structural-view',
+  'vis:structural-both', 'vis:structural-analytical', 'vis:structural-physical', 'vis:structuralGlyphs', 'vis:reset-colors',
 ] as const;
 
 const FILE_COMMANDS: FileCommands = {

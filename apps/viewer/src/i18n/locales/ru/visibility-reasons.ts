@@ -42,6 +42,8 @@ export const visibilityReasonsRu = {
   "visibilityChips.modelHiddenSingleCount": "Модель скрыта · моделей {hidden} из {total}",
   "visibilityChips.typeVisibilityCount": "Скрытые классы IFC · {count}",
   "visibilityChips.hostTypesCount": "Классы скрыты хостом · {count}",
+  'visibilityChips.structuralAnalyticalOnly': 'Только расчётная',
+  'visibilityChips.structuralPhysicalOnly': 'Только физическая',
   "visibilityChips.clearAriaLabel": "Сбросить {reason}",
   "visibilityChips.keptTooltip": "Показать всё сохраняет эту настройку. Измените её соответствующим элементом управления.",
   "visibilityChips.resetEverything": "Сбросить всё",

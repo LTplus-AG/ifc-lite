@@ -114,6 +114,7 @@ const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.availability.textSelection',
   // Catalogue reservation: no production consumer currently requests this key.
   'commandPalette.availability.world',
+  'commandPalette.availability.structuralDerivable', // Derive needs an editable model in edit mode
   // No startBlank host: missing-host refusal precedes the nonempty-session check.
   'commandPalette.availability.blankSession',
   // Inactive recovery is search-only (#8947); this seed exercises browse and Learn.

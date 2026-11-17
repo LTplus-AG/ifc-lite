@@ -111,6 +111,7 @@ export const sharedCommandsIt = {
   "classVisibility.grids.description": "Assi strutturali",
   "classVisibility.structuralGlyphs.label": "Vincoli e carichi",
   "classVisibility.structuralGlyphs.description": "Simboli dell'analisi strutturale",
+  'classVisibility.structuralGlyphs.maskedHint': 'Nascosti nella vista strutturale solo fisica',
   "classVisibility.mergeLayers.label": "Unisci i muri multistrato",
   "classVisibility.mergeLayers.description": "Mostra i muri come un unico solido · al ricaricamento",
   "classVisibility.fastGeometry.label": "Geometria rapida",

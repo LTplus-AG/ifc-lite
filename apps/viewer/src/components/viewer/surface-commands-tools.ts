@@ -130,7 +130,8 @@ export const TOOL_SURFACE_COMMANDS = [
     // Derive the analytical model from the physical one, through the structural review (#9668).
     id: 'model:derive-structural', labelKey: 'commandPalette.tool.deriveStructural.label',
     searchLabel: 'Derive structural analysis model', keywords: 'analytical members nodes supports idealise beams columns slabs walls footings',
-    category: 'Tools', icon: GitFork, surfaces: paletteOnly, enabled: editable,
+    ribbonLabelKey: 'ribbon.view.structural.derive', ribbonTooltipKey: 'ribbon.view.structural.deriveTooltip',
+    category: 'Tools', icon: GitFork, surfaces: ['palette', 'ribbon'], enabled: editable,
     run: (context) => { context.openStructuralDerivation?.(); },
   },
   {

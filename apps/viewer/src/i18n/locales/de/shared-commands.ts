@@ -111,6 +111,7 @@ export const sharedCommandsDe = {
   "classVisibility.grids.description": "Tragwerksachsen",
   "classVisibility.structuralGlyphs.label": "Lager & Lasten",
   "classVisibility.structuralGlyphs.description": "Symbole der Tragwerksanalyse",
+  'classVisibility.structuralGlyphs.maskedHint': 'In der rein physischen Tragwerksansicht ausgeblendet',
   "classVisibility.mergeLayers.label": "Mehrschichtige Wände zusammenführen",
   "classVisibility.mergeLayers.description": "Rendern Sie Wände beim Neuladen als einen einzigen Volumenkörper",
   "classVisibility.fastGeometry.label": "Schnelle Geometrie",

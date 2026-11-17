@@ -51,4 +51,17 @@ test('discovery and execution use the same live section feature prerequisites', 
   const before = useViewerStore.getState().sectionPlane;
   assert.equal((await execute('section.box', { min: [0, 0, 0], max: [1, 2, 3] })).isError, true);
   assert.equal(useViewerStore.getState().sectionPlane, before);
+  // Every section operation, not only section.box, carries the feature prerequisite.
+  const { viewerOperations } = await import('./operations/registry');
+  const sectionIds = viewerOperations().filter(op => op.id.startsWith('section.')).map(op => op.id);
+  assert.ok(sectionIds.length > 1);
+  for (const id of sectionIds) {
+    const listed = await dispatchMainViewerTool(host, 'viewer_operations', { operation_id: id });
+    assert.match((listed.structured as { operations: Array<{ unavailable?: string }> }).operations[0].unavailable ?? '', /tools.section/, id);
+  }
+});
+test('section.customDistance refuses distances beyond the coordinate bound', async () => {
+  const result = await execute('section.customDistance', { distance: 1e308 });
+  assert.equal(result.isError, true);
+  assert.match(result.text, /1e9/);
 });

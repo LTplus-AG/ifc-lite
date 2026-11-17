@@ -46,6 +46,7 @@ export const nativeSectionOperations = [
   change<{ distance: number }>('section.customDistance', 'Move the current native custom plane by its signed distance. Refuses cardinal/box mode.', {
     type: 'object', properties: { distance: { type: 'number' } }, required: ['distance'], additionalProperties: false,
   }, i => {
+    if (Math.abs(i.distance) > 1e9) throw new Error('distance must be within ±1e9 metres, like section.box coordinates.');
     const s = useViewerStore.getState(); if (!s.sectionPlane.custom) throw new Error('No active custom plane.');
     s.setSectionCustomDistance(i.distance);
   }),

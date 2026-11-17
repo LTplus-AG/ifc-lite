@@ -142,8 +142,9 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const began = new Promise<void>(resolve => { started = resolve; });
     const gate = new Promise<void>(resolve => { release = resolve; });
     const matrix = new Float32Array(16);
+    let clipRevision = 0;
     const renderer = {
-      getGPUDevice: () => ({}), getCamera: () => ({ getViewProjMatrix: () => ({ m: matrix }) }),
+      getGPUDevice: () => ({}), getCamera: () => ({ getViewProjMatrix: () => ({ m: matrix }) }), getPickClipRevision: () => clipRevision,
       async pick(x: number, y: number, nativeOptions: unknown) {
         assert.equal(x, 100); assert.equal(y, 100); assert.equal(nativeOptions, options);
         if (defer) { started(); await gate; }
@@ -160,6 +161,17 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
       await began; useViewerStore.getState().setSectionPlanePosition(123); release();
       assert.equal((await pending).isError, true);
       assert.equal(useViewerStore.getState().selectedEntityId, null);
+      // A frame that applies a new clip during readback invalidates the hit even with no further store change.
+      let startedAgain!: () => void; const beganAgain = new Promise<void>(resolve => { startedAgain = resolve; });
+      let releaseAgain!: () => void; const gateAgain = new Promise<void>(resolve => { releaseAgain = resolve; });
+      renderer.pick = async () => { startedAgain(); await gateAgain; return { expressId: 1 }; };
+      const clipped = inspect('viewport.pick', { x: 0.25, y: 0.5 });
+      await beganAgain; clipRevision += 1; releaseAgain();
+      assert.equal((await clipped).isError, true);
+      // Two independent agent reads do not supersede each other.
+      renderer.pick = async () => ({ expressId: 1 });
+      const [a, b] = await Promise.all([inspect('viewport.pick', { x: 0.25, y: 0.5 }), inspect('viewport.pick', { x: 0.25, y: 0.5 })]);
+      assert.equal(a.isError, false, a.text); assert.equal(b.isError, false, b.text);
     } finally { unregister(); }
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {

@@ -78,6 +78,7 @@ export const searchOperations = [
   viewerOperation<{ expected_json: string; name: string; action: 'save' | 'delete'; expected_catalog_json: string }>(metadata('filters.preset', 'Save the exact current native filter or delete a named native preset using the same durable codec/catalog as the builder. expected_catalog_json must match JSON.stringify(presets) from filters.state. Reports native storage refusal without claiming persistence.', true), {
     type: 'object', properties: { expected_json: expected, name: { type: 'string', minLength: 1, maxLength: 80 }, action: { type: 'string', enum: ['save', 'delete'] }, expected_catalog_json: expected }, required: ['expected_json', 'name', 'action', 'expected_catalog_json'], additionalProperties: false,
   }, (i, c) => {
+    if (!i.name.trim()) throw new Error('A native filter preset name cannot be blank.');
     unchanged(i.expected_json);
     return c.commit(() => {
       if (JSON.stringify(loadSavedFilters()) !== i.expected_catalog_json) throw new Error('Native saved filter catalog changed.');

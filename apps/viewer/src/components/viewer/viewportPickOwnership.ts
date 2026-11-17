@@ -27,16 +27,18 @@ export function captureViewportPick(options: {
   canvas: HTMLCanvasElement; renderer: Renderer; channel: PickChannel;
   getTool: () => string; getPickOptions: () => PickOptions;
   isOwnerCurrent?: () => boolean;
+  /** false: independent reads on this channel do not supersede each other. */
+  exclusive?: boolean;
 }) {
   const { canvas, renderer, channel } = options;
-  const request = invalidateViewportPick(canvas, channel);
+  const request = options.exclusive === false ? null : invalidateViewportPick(canvas, channel);
   const camera = renderer.getCamera(), tool = options.getTool();
   const matrix = Array.from(camera.getViewProjMatrix().m);
   const before = useViewerStore.getState(), stamp = sceneStamp(before);
   const pickOptions = options.getPickOptions(), rect = canvas.getBoundingClientRect();
   const current = () => {
     const next = options.getPickOptions(), bounds = canvas.getBoundingClientRect();
-    return requests.get(canvas)?.[channel] === request && options.getTool() === tool
+    return (request === null || requests.get(canvas)?.[channel] === request) && options.getTool() === tool
       && (options.isOwnerCurrent?.() ?? true)
       && matrix.every((value, index) => value === camera.getViewProjMatrix().m[index])
       && sceneStamp(useViewerStore.getState()).every((value, index) => Object.is(value, stamp[index]))

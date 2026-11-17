@@ -26,7 +26,7 @@ const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
 const MAX_JOBS = 32;
 interface AppliedRequest { signature: string; store: ReadyModel['store'] | undefined; result: Promise<unknown> }
 const applied = new WeakMap<ToolHost, Map<string, AppliedRequest>>();
-const MAX_RESULT_BYTES = 1_000_000;
+export const MAX_RESULT_BYTES = 1_000_000;
 function jobs(host: ToolHost) {
   let owned = hosts.get(host);
   if (!owned) { owned = new Map(); hosts.set(host, owned); }

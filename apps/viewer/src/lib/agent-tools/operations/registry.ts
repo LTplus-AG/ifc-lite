@@ -24,7 +24,10 @@ function lazyOperation(contract: OperationContract): Operation {
       throw new Error(`Native operation contract changed: ${metadata.id}. Rebuild the verified operation catalogue.`);
     }
     return native;
-  })();
+  })().catch((error: unknown) => {
+    // A transient import failure (chunk 404 after a redeploy, network drop) must stay retryable.
+    implementation = undefined; throw error;
+  });
   return { ...metadata, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema),
     async execute(input, context) { return (await load()).execute(input, context); },
   };

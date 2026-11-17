@@ -22,6 +22,11 @@ function artifacts(host: ToolHost) {
   return entries;
 }
 function live(host: ToolHost) { host.lifetimeSignal?.throwIfAborted(); }
+/** Sanitize the stem only, so truncation never drops the extension. */
+function artifactFilename(name: string): string {
+  const ext = /\.[A-Za-z0-9]{1,10}$/.exec(name)?.[0] ?? '';
+  return sanitizeFilename(name.slice(0, name.length - ext.length)) + ext.toLowerCase();
+}
 export function operationArtifacts(host: ToolHost, commit: <T>(write: () => T) => T): OperationArtifacts {
   return { async create(input) {
     live(host);
@@ -32,7 +37,7 @@ export function operationArtifacts(host: ToolHost, commit: <T>(write: () => T) =
     const entries = artifacts(host);
     const total = [...entries.values()].reduce((sum, entry) => sum + entry.blob.size, 0);
     if (entries.size >= MAX_ARTIFACTS || total + blob.size > MAX_BYTES) throw new Error('Host artifact quota reached. Download or delete artifacts before creating more.');
-    const metadata: ArtifactMetadata = { artifact_id: crypto.randomUUID(), filename: sanitizeFilename(input.filename), mime_type: input.mimeType, bytes: blob.size };
+    const metadata: ArtifactMetadata = { artifact_id: crypto.randomUUID(), filename: artifactFilename(input.filename), mime_type: input.mimeType, bytes: blob.size };
     return commit(() => { entries.set(metadata.artifact_id, { metadata, blob }); return { ...metadata }; });
   } };
 }

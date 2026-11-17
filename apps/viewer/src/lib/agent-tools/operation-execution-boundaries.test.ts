@@ -99,11 +99,14 @@ test('artifacts are bounded, model independent, connection owned and removed on 
   assert.equal(metadata.filename.includes('/'), false);
   const first = await readArtifact(host, metadata.artifact_id, 0, 3);
   assert.equal(first.length, 3); assert.equal(first.next_offset, 3);
+  assert.deepEqual([...Uint8Array.from(atob(first.data), ch => ch.charCodeAt(0))], [0x47, 0x72, 0xc3]);
+  const long = await artifacts.create({ filename: `${'A'.repeat(80)}.csv`, mimeType: 'text/csv', data: 'a' });
+  assert.match(long.filename, /\.csv$/, 'truncating a long name keeps its extension');
   const other = createMainViewerToolHost(useViewerStore, host.bim!);
   assert.deepEqual(listArtifacts(other), []);
   await assert.rejects(readArtifact(other, metadata.artifact_id, 0, 1), /Unknown artifact/);
   await assert.rejects(readArtifact(host, metadata.artifact_id, 0, 65537), /65536/);
-  removeArtifact(host, metadata.artifact_id);
+  removeArtifact(host, metadata.artifact_id); removeArtifact(host, long.artifact_id);
   assert.deepEqual(listArtifacts(host), []);
   lifetime.abort();
   await assert.rejects(artifacts.create({ filename: 'closed.txt', mimeType: 'text/plain', data: 'no' }));

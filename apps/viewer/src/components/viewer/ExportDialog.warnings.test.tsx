@@ -5,7 +5,6 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it, mock } from 'node:test';
-import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
@@ -13,11 +12,13 @@ import { render, cleanup, click, press, advance, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ExportDialog } from './ExportDialog';
 import { ExportDialogShell } from './ExportDialogShell';
-import { chooseMerged } from './export-dialog-scope.test-support';
+import { downloadedNames, clearDownloads } from '@/test/download-capture';
+import { chooseMerged, exportButton, openExportDialog } from './export-dialog-scope.test-support';
 
 const initialState = useViewerStore.getState();
 afterEach(() => {
   cleanup();
+  clearDownloads();
   mock.restoreAll();
   useViewerStore.setState(initialState);
 });
@@ -45,10 +46,7 @@ async function structuralModel(id: string, idOffset = 0) {
   return model;
 }
 
-function mockExportSideEffects() {
-  mock.method(URL, 'createObjectURL', () => 'blob:export-test');
-  mock.method(URL, 'revokeObjectURL', () => {});
-  mock.method(HTMLAnchorElement.prototype, 'click', () => {});
+function mockToasts() {
   return {
     success: mock.method(toast, 'success', () => {}),
     info: mock.method(toast, 'info', () => {}),
@@ -66,29 +64,21 @@ async function chooseIfc2x3() {
   click(option);
 }
 
-async function runExport(toasts: ReturnType<typeof mockExportSideEffects>) {
-  const button = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Export');
-  assert.ok(button);
-  await act(async () => {
-    click(button);
-    for (let tick = 0; tick < 100 && !toasts.success.mock.callCount() && !toasts.info.mock.callCount() && !toasts.error.mock.callCount(); tick++) {
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
-  });
+async function runExport(toasts: ReturnType<typeof mockToasts>) {
+  click(exportButton());
+  await waitFor(() => toasts.success.mock.callCount() + toasts.info.mock.callCount() + toasts.error.mock.callCount() > 0, 'the export never reported');
   assert.equal(toasts.error.mock.callCount(), 0);
+  assert.equal(downloadedNames().length, 1);
 }
 
-const trigger = () => [...document.querySelectorAll('button')].find(b => b.textContent?.includes('Export IFC'));
 const details = () => document.body.querySelector('details')?.textContent ?? '';
 
 for (const convert of [true, false]) {
   it(`STEP export ${convert ? 'shows structural warnings without a success toast' : 'keeps a success toast for a warning-free export'} (#10606)`, async () => {
     useViewerStore.setState({ ...fixtureModels(await structuralModel('structural.ifc')), dirtyModels: new Set() });
-    const toasts = mockExportSideEffects();
-    render(<ExportDialog surface="ribbon" />);
-    const open = trigger();
-    assert.ok(open);
-    click(open);
+    const toasts = mockToasts();
+    const ui = render(<ExportDialog surface="ribbon" />);
+    openExportDialog(ui, 'Export IFC');
     if (convert) await chooseIfc2x3();
     await runExport(toasts);
     assert.equal(toasts.success.mock.callCount(), convert ? 0 : 1);
@@ -100,21 +90,18 @@ for (const convert of [true, false]) {
       const cancel = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Cancel');
       assert.ok(cancel);
       click(cancel);
-      click(open);
+      openExportDialog(ui, 'Export IFC');
       assert.equal(document.querySelector('details'), null, 'reopening clears diagnostics from the previous export');
     }
   });
 }
 
 it('merged STEP export shows its warnings like the single-model export (#10606)', async () => {
-  const first = await structuralModel('structural.ifc');
-  const second = await structuralModel('annex.ifc', 1_000_000);
+  const [first, second] = await Promise.all([structuralModel('structural.ifc'), structuralModel('annex.ifc', 1_000_000)]);
   useViewerStore.setState({ ...fixtureModels(first, second), dirtyModels: new Set() });
-  const toasts = mockExportSideEffects();
-  render(<ExportDialog surface="ribbon" />);
-  const open = trigger();
-  assert.ok(open);
-  click(open);
+  const toasts = mockToasts();
+  const ui = render(<ExportDialog surface="ribbon" />);
+  openExportDialog(ui, 'Export IFC');
   await chooseMerged();
   await chooseIfc2x3();
   await runExport(toasts);
@@ -133,7 +120,7 @@ it('caps displayed diagnostics while retaining their total count (#10606)', asyn
     </ExportDialogShell>,
   );
   click([...document.querySelectorAll('button')].find(b => b.textContent === 'Open export dialog')!);
-  click([...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Export')!);
+  click(exportButton());
   await waitFor(() => document.querySelector('details') !== null, 'the warnings render with the result');
   assert.equal(document.querySelectorAll('details li').length, 5);
   assert.equal(document.querySelector('summary')?.textContent, '8 warnings');

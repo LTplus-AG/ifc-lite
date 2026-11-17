@@ -31,27 +31,23 @@
  * silently shrinking the closure.
  *
  * MERGE-QUEUE BATCHES. Nothing above ran the lane on a batch, so #8408 and
- * #8415 merged untested retained failures. A batch now runs it when its diff
- * touches `on.pull_request.paths` above, the one list both routes read:
- * test.yml's `changes` job runs `--batch-decide`, which writes
- * `native_adapter=true|false` to $GITHUB_OUTPUT, and test.yml's
- * `native-adapter` job calls this workflow with `batch: true` unless the
- * answer is exactly `false`. It FAILS CLOSED: an unreadable paths list, a
- * checkout that is not the two-parent merge commit, an empty or unreadable
- * diff, and any change to the workflow itself (whose paths list is read from
- * the batch's HEAD) all answer `true`. The audit also holds that wiring in
- * test.yml.
+ * #8415 merged untested retained failures. test.yml's `changes` job runs
+ * `--batch-decide`, which writes `native_adapter=true|false` to
+ * $GITHUB_OUTPUT, and its `native-adapter` job calls this workflow with
+ * `batch: true` unless the answer is exactly `false`. Which paths count, and
+ * every way the decision fails closed, are in scripts/lib/native-adapter-batch.mjs.
+ * The audit holds the lists against `on.pull_request.paths` and the wiring in test.yml.
  *
  * `--root <dir>` points it at a mutated copy of the tree (see the test).
  */
 
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matchesAny } from './lib/ci-path-coverage.mjs';
 import { permissionBlocks, workflowAsks } from './lib/workflow-permissions.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { BATCH_EXCLUDE, BATCH_KEEP, batchGlobs, decideBatch, scriptImports } from './lib/native-adapter-batch.mjs';
 
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
 const TEST_WORKFLOW = '.github/workflows/test.yml';
@@ -60,6 +56,7 @@ export const ROOT_CRATES = ['rust/retained-native', 'rust/wasm-bindings'];
 /** Non-crate inputs every Rust build of the lane reads. */
 export const EXTRA_GLOBS = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/**'];
 
+const SELF = 'scripts/check-native-adapter-triggers.mjs';
 const DEP_SECTION = /^\[(?:target\.[^\]]+\.)?(?:dev-|build-)?dependencies\]$/;
 
 /** Path deps of one manifest as repo-relative crate dirs. Workspace-inherited deps resolve through `workspace`. */
@@ -213,7 +210,14 @@ export function corpusJobProblems(text) {
   return out;
 }
 
-export function audit(root) {
+/** A path inside `glob`, to test coverage with a matcher. */
+const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
+
+/** Crates a merge-queue batch must always run on. */
+const ENGINE_CRATES = [...ROOT_CRATES, 'rust/geometry', 'rust/geometry-runtime'];
+
+/** `exclude` and `keep` stand in for BATCH_EXCLUDE and BATCH_KEEP (see the test). */
+export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
   const failures = [];
   const wfPath = join(root, WORKFLOW);
   if (!existsSync(wfPath)) return [`${WORKFLOW} is missing`];
@@ -260,28 +264,28 @@ export function audit(root) {
       }
     }
     for (const extra of EXTRA_GLOBS) {
-      const probe = extra.replace('/**', '/probe');
-      if (!matchesAny(probe, pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
+      if (!matchesAny(probe(extra), pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
     }
-    for (const action of new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]))) {
+    for (const glob of exclude) {
+      if (!pr.includes(glob)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE entry '${glob}' is not in on.pull_request.paths; drop it from scripts/lib/native-adapter-batch.mjs`);
+    }
+    // A keep glob outside the list would make a batch run on a path no labelled PR can.
+    for (const glob of keep) {
+      if (!matchesAny(probe(glob), pr)) failures.push(`${WORKFLOW}: BATCH_KEEP entry '${glob}' is not under on.pull_request.paths`);
+    }
+    const actions = new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]));
+    for (const action of actions) {
       if (!pr.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.pull_request.paths -- add '${action}/**'`);
     }
-  }
-
-  if (pr) {
-    // Every script the lane runs, and what those scripts import, must be able to trigger it.
-    const queue = [...new Set([...text.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]))];
-    const seen = new Set();
-    while (queue.length > 0) {
-      const script = queue.pop();
-      if (seen.has(script)) continue;
-      seen.add(script);
+    // The engine core a batch must never skip: the engine crates, the native adapter, the Rust build inputs and the local actions.
+    const batch = batchGlobs(pr, exclude, keep);
+    for (const glob of [...ENGINE_CRATES.map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
+      if (!matchesAny(probe(glob), batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
+    }
+    // Every .mjs the lane runs with `node [--flags]`, and its scripts/ imports, must be able to trigger it, on a batch too.
+    for (const script of scriptImports(root, [...text.matchAll(/\bnode (?:--[\w-]+(?:=\S+)? )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {
       if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
-      if (!existsSync(join(root, script))) continue;
-      for (const m of readFileSync(join(root, script), 'utf8').matchAll(/from '(\.{1,2}\/[^']+\.mjs)'/g)) {
-        const next = posix.normalize(posix.join(posix.dirname(script), m[1]));
-        if (next.startsWith('scripts/')) queue.push(next);
-      }
+      else if (!matchesAny(script, batch)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but BATCH_EXCLUDE drops it from merge-queue batches`);
     }
   }
   const browser = jobBlock(text, 'browser-corpus');
@@ -293,7 +297,7 @@ export function audit(root) {
 
 // The test.yml lines that carry a batch's verdict into the required aggregate.
 const BATCH_CALL_IF = "needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop != 'true' && needs.changes.outputs.native_adapter != 'false'";
-const BATCH_DECIDE_RUN = 'node scripts/check-native-adapter-triggers.mjs --batch-decide';
+const BATCH_DECIDE_RUN = `node ${SELF} --batch-decide`;
 
 /**
  * The merge-queue route: geometry-platform.yml is callable with a `batch`
@@ -345,35 +349,19 @@ function batchWiringProblems(text, root) {
   return out;
 }
 
-// -z: without it git quotes a non-ASCII path, which then matches no glob.
-const gitPaths = (root, args) => execFileSync('git', ['-C', root, ...args, '-z'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
-
-/**
- * Whether a merge-queue batch must run the lane. The `pull_request` checkout is
- * the merge of the batch into `main`, so its first parent is `main` and the
- * diff against it is the batch. Every doubt answers `run: true`.
- */
+/** The batch decision, reading the lists and the matcher from the batch's HEAD. */
 function batchDecision(root) {
-  let changed;
-  let hits;
+  let pr;
+  let decider;
   try {
-    const globs = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
-    if (!globs || globs.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
-    const parents = execFileSync('git', ['-C', root, 'rev-list', '--parents', '-n', '1', 'HEAD'], { encoding: 'utf8' }).trim().split(' ').filter(Boolean);
-    if (parents.length !== 3) return { run: true, reason: `HEAD has ${Math.max(parents.length - 1, 0)} parent(s), not the two of a PR merge commit; running` };
-    // --no-renames: a file moved out of a watched directory must count by its old path too.
-    changed = gitPaths(root, ['diff', '--name-only', '--no-renames', parents[1], 'HEAD']);
-    if (changed.length === 0) return { run: true, reason: 'the batch diff is empty, which a real batch never is; running' };
-    // The paths list is read from HEAD, so a batch that edits it could drop the
-    // very path it touches; any change to the workflow runs the lane.
-    if (changed.includes(WORKFLOW)) return { run: true, reason: `the batch changes ${WORKFLOW} itself; running` };
-    hits = changed.filter((f) => matchesAny(f, globs));
+    pr = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
+    // A batch that edits the lists or the matcher could drop the very path it touches.
+    decider = scriptImports(root, [SELF]).add(WORKFLOW);
   } catch (err) {
-    return { run: true, reason: `cannot decide (${err.message.split('\n')[0]}); running` };
+    return { run: true, reason: `cannot read what the decision reads (${err.message.split('\n')[0]}); running` };
   }
-  if (hits.length === 0) return { run: false, reason: `none of the batch's ${changed.length} changed file(s) is a path the lane observes` };
-  const shown = hits.slice(0, 10).join(', ');
-  return { run: true, reason: `${hits.length} of ${changed.length} changed file(s) are paths the lane observes: ${shown}${hits.length > 10 ? ', ...' : ''}` };
+  if (!pr || pr.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
+  return decideBatch(root, pr, decider);
 }
 
 if (isMainEntry(import.meta.url)) {

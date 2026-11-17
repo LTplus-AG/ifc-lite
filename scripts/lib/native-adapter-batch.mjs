@@ -61,8 +61,10 @@ export const BATCH_KEEP = [
   'packages/cli/src/retained/**',
   'packages/cli/src/**/*retained*',
   'packages/cli/src/**/*Retained*',
+  'packages/cli/src/**/*retained*/**',
   'rust/processing/**/*retained*',
   'rust/processing/**/*Retained*',
+  'rust/processing/**/*retained*/**',
 ];
 
 /** On a batch, the paths list less `exclude`, plus `keep`. */
@@ -111,7 +113,7 @@ export function decideBatch(root, pr, decider) {
   } catch (err) {
     return { run: true, reason: `cannot decide (${err.message.split('\n')[0]}); running` };
   }
-  if (hits.length === 0) return { run: false, reason: `none of the batch's ${changed.length} changed file(s) is a path the lane observes` };
+  if (hits.length === 0) return { run: false, reason: `none of the batch's ${changed.length} changed file(s) is a batch trigger (the paths list less BATCH_EXCLUDE, plus BATCH_KEEP)` };
   const shown = hits.slice(0, 10).join(', ');
   return { run: true, reason: `${hits.length} of ${changed.length} changed file(s) are paths the lane observes: ${shown}${hits.length > 10 ? ', ...' : ''}` };
 }

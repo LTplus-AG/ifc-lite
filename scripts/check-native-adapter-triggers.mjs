@@ -210,10 +210,13 @@ export function corpusJobProblems(text) {
   return out;
 }
 
-/** `exclude` and `keep` stand in for BATCH_EXCLUDE and BATCH_KEEP (see the test). */
 /** A path inside `glob`, to test coverage with a matcher. */
 const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
 
+/** Engine crates a merge-queue batch must always run on, beyond ROOT_CRATES. */
+const ENGINE_CRATES = ['rust/geometry', 'rust/geometry-runtime'];
+
+/** `exclude` and `keep` stand in for BATCH_EXCLUDE and BATCH_KEEP (see the test). */
 export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
   const failures = [];
   const wfPath = join(root, WORKFLOW);
@@ -274,13 +277,13 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
     for (const action of actions) {
       if (!pr.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.pull_request.paths -- add '${action}/**'`);
     }
-    // The engine core a batch must never skip: the root crates, the native adapter, the Rust build inputs and the local actions.
+    // The engine core a batch must never skip: the engine crates, the native adapter, the Rust build inputs and the local actions.
     const batch = batchGlobs(pr, exclude, keep);
-    for (const glob of [...ROOT_CRATES.map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
+    for (const glob of [...[...ROOT_CRATES, ...ENGINE_CRATES].map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
       if (!matchesAny(probe(glob), batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
     }
     // Every .mjs the lane runs with `node [--flags]`, and its scripts/ imports, must be able to trigger it, on a batch too.
-    for (const script of scriptImports(root, [...text.matchAll(/\bnode (?:--[\w-]+ )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {
+    for (const script of scriptImports(root, [...text.matchAll(/\bnode (?:--[\w-]+(?:=\S+)? )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {
       if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
       else if (!matchesAny(script, batch)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but BATCH_EXCLUDE drops it from merge-queue batches`);
     }

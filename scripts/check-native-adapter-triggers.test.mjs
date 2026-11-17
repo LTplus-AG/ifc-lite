@@ -495,7 +495,7 @@ const PR_10595 = [
 ];
 
 test('a batch touching the native/retained engine runs the lane', (context) => {
-  for (const file of ['rust/geometry/src/lib.rs', 'rust/retained-native/src/lib.rs', 'rust/wasm-bindings/src/lib.rs', 'rust/processing/src/processor/x.rs', 'rust/processing/src/retained_geometry.rs', 'packages/cli/src/retained/run.ts', 'packages/cli/src/commands/export-retained.ts', 'packages/cli/src/RetainedRunner.ts', 'native/smlib-adapter/x.cpp', 'Cargo.lock', WORKFLOW, 'scripts/check-native-adapter-triggers.mjs']) {
+  for (const file of ['rust/geometry/src/lib.rs', 'rust/retained-native/src/lib.rs', 'rust/wasm-bindings/src/lib.rs', 'rust/processing/src/processor/x.rs', 'rust/processing/src/retained_geometry.rs', 'packages/cli/src/retained/run.ts', 'packages/cli/src/commands/export-retained.ts', 'packages/cli/src/RetainedRunner.ts', 'rust/processing/src/retained/mod.rs', 'native/smlib-adapter/x.cpp', 'Cargo.lock', WORKFLOW, 'scripts/check-native-adapter-triggers.mjs']) {
     const d = decide(batchRepo(context, { add: [file, 'docs/guide/x.md'] }));
     assert.equal(d.status, 0, d.log);
     assert.equal(d.written, 'native_adapter=true\n', `${file}: ${d.log}`);
@@ -528,7 +528,7 @@ test('a lane-run script added to BATCH_EXCLUDE is reported', () => {
 });
 
 test('excluding the engine core from batches is reported', () => {
-  for (const glob of ['rust/retained-native/**', 'native/**', 'Cargo.lock', '.github/actions/setup-wasm-build/**']) {
+  for (const glob of ['rust/retained-native/**', 'rust/geometry-runtime/**', 'native/**', 'Cargo.lock', '.github/actions/setup-wasm-build/**']) {
     assert.ok(audit(REPO, [...BATCH_EXCLUDE, glob]).some((f) => f.includes(`BATCH_EXCLUDE drops ${glob}`)), glob);
   }
 });

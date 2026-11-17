@@ -398,10 +398,11 @@ test('the call\'s own grant is the block at job level, and it must be readable',
     mutate(other, (t) => t.replace('    uses: ./.github/workflows/report-scheduled-failure.yml\n', `    ${spelling}\n`));
     assert.ok(audit(other).some((f) => f.includes('cannot follow')), spelling);
   }
-  assert.ok(scan('jobs:\n  a: { needs: [b], uses: ./.github/workflows/x.yml }\n', [], 'w').calls.length === 0);
   const flowProblems = [];
-  scan('jobs:\n  a: { needs: [b], uses: ./.github/workflows/x.yml }\n', flowProblems, 'w');
+  assert.deepEqual(scan('jobs:\n  a: { needs: [b], uses: ./.github/workflows/x.yml }\n', flowProblems, 'w').calls, []);
   assert.ok(flowProblems.some((f) => f.includes('cannot follow')), flowProblems.join('\n'));
+  // A trailing comment is not part of the call.
+  assert.deepEqual(scan('jobs:\n  a:\n    uses: ./.github/workflows/x.yml # note\n', [], 'w').calls, ['.github/workflows/x.yml']);
 });
 
 const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');

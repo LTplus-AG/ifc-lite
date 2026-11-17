@@ -214,17 +214,14 @@ export function corpusJobProblems(text) {
 const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
 
 /**
- * True when some glob in `globs` matches every path `glob` can, as a whole subtree for `<dir>/**`.
- * A probe file is not enough: a keep entry `rust/geometry/x/x` matches the probe of
- * `rust/geometry/**` and leaves the rest of the directory untriggered.
+ * True when `globs` match every path `glob` can: all of `<dir>/**`, not one probe file in it (a keep
+ * entry `rust/geometry/x/x` must not cover `rust/geometry/**`). Other wildcards need the identical entry.
  */
 function coversAll(glob, globs) {
-  // Any other wildcard has no subset test here: only the identical entry covers it.
   if (!glob.endsWith('/**')) return /[*?]/.test(glob) ? globs.includes(glob) : matchesAny(glob, globs);
   const dir = glob.slice(0, -3);
   return globs.some((g) => {
-    if (g === '**') return true;
-    if (!g.endsWith('/**')) return false;
+    if (!g.endsWith('/**')) return g === '**';
     const base = g.slice(0, -3);
     return !/[*?]/.test(base) && (dir === base || dir.startsWith(`${base}/`));
   });

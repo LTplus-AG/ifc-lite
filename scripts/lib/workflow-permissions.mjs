@@ -16,10 +16,10 @@ const HEAD = new RegExp(String.raw`^( *)(?:- +)?${PROPS}["']?permissions["']?\s*
 // The key written another way: inside a flow mapping, or as an explicit `? key`.
 const OTHER_KEY = /[{,]\s*["']?permissions["']?\s*:|^\s*(?:-\s+)?\?\s*["']?permissions\b/;
 // A local reusable workflow call, quoted or not.
-const USES = /^\s*(?:-\s+)?uses:\s*["']?\.\/(\.github\/workflows\/[^\s"'#]+\.ya?ml)["']?$/;
+const USES = /^\s*(?:-\s+)?["']?uses["']?\s*:\s*["']?\.\/(\.github\/workflows\/[^\s"'#]+\.ya?ml)["']?$/;
 // Any other `uses:` that names a workflow, or opens a block scalar, is a call
 // it cannot follow. An action (`owner/repo@ref`, `./.github/actions/x`) is fine.
-const OTHER_CALL = /(?:^\s*(?:-\s+)?|[{,]\s*)uses\s*:\s*(?:.*\.github\/workflows\/|[|>])/;
+const OTHER_CALL = /(?:^\s*(?:-\s+)?|[{,]\s*)["']?uses["']?\s*:\s*(?:.*\.github\/workflows\/|[|>])/;
 
 /**
  * Every `permissions:` block in `text` as { indent, scopes: { scope: level } },

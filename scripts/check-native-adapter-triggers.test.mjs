@@ -11,6 +11,7 @@ import test from 'node:test';
 import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
 import { parse as parseYaml } from 'yaml';
 import { permissionBlocks, scan } from './lib/workflow-permissions.mjs';
+import { BATCH_BRANCH_PREFIX } from './ci-pr-lane.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -274,6 +275,11 @@ test('a batch call that loses its input, its gate or its corpus exclusion is rep
   assert.ok(audit(ungated).some((f) => f.includes('must keep its opt-in gate')));
 });
 
+test('the batch fallback names the same head-ref prefix as the lane classifier', () => {
+  // The guard pins the workflow's literal; this pins it to ci-pr-lane.mjs.
+  assert.equal(BATCH_BRANCH_PREFIX, 'mergify/merge-queue/');
+});
+
 test('test.yml must call, decide and judge the batch run', (context) => {
   const cases = [
     [(t) => t.replace(/\n  native-adapter:\n(?: {4}.*\n|\s*\n)+?(?=  test:)/, '\n'), 'no native-adapter job'],
@@ -284,6 +290,8 @@ test('test.yml must call, decide and judge the batch run', (context) => {
     [(t) => t.replace(/      native_adapter: \$\{\{ steps\.nativeadapter\.outputs\.native_adapter \}\}\n/, ''), 'must publish native_adapter'],
     [(t) => t.replace(/(        id: nativeadapter\n(?: {8}.*\n)*?) {8}continue-on-error: true\n/, '$1'), 'continue-on-error step with id nativeadapter'],
     [(t) => t.replace(', release-pr, native-adapter]', ', release-pr]'), 'aggregate must need native-adapter'],
+    // A crashed lane step once left batch at 'false' and skipped the lane.
+    [(t) => t.replace(" || (startsWith(github.head_ref, 'mergify/merge-queue/') && 'true' || 'false') }}", " || 'false' }}"), 'must fall back on the mergify/merge-queue/ head ref'],
     // The caller once granted contents+issues only, after the reporter gained `actions: read`.
     [(t) => t.replace('      actions: read\n      contents: read\n      issues: write\n    uses: ./.github/workflows/geometry-platform.yml', '      contents: read\n      issues: write\n    uses: ./.github/workflows/geometry-platform.yml'), 'must grant actions: read'],
   ];
@@ -403,6 +411,10 @@ test('the call\'s own grant is the block at job level, and it must be readable',
   const flowProblems = [];
   assert.deepEqual(scan('jobs:\n  a: { needs: [b], uses: ./.github/workflows/x.yml }\n', flowProblems, 'w').calls, []);
   assert.ok(flowProblems.some((f) => f.includes('cannot follow')), flowProblems.join('\n'));
+  // A quoted key is the same key, and is followed.
+  for (const key of ['"uses"', "'uses'"]) {
+    assert.deepEqual(scan(`jobs:\n  a:\n    ${key}: ./.github/workflows/x.yml\n`, [], 'w').calls, ['.github/workflows/x.yml'], key);
+  }
   // A trailing comment is not part of the call.
   assert.deepEqual(scan('jobs:\n  a:\n    uses: ./.github/workflows/x.yml # note\n', [], 'w').calls, ['.github/workflows/x.yml']);
 });

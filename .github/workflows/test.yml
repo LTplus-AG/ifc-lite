@@ -158,7 +158,10 @@ jobs:
       lane: ${{ steps.lane.outputs.lane || 'full' }}
       # `true` on a Mergify batch PR, which is the queue's full gate: it arrives as
       # `pull_request`, so the queue-only lanes below test this output as well.
-      batch: ${{ steps.lane.outputs.batch || 'false' }}
+      # The lane step is continue-on-error; if it writes nothing, the head ref
+      # (ci-pr-lane.mjs BATCH_BRANCH_PREFIX) still marks a batch, so a crash
+      # there cannot skip the queue-only lanes.
+      batch: ${{ steps.lane.outputs.batch || (startsWith(github.head_ref, 'mergify/merge-queue/') && 'true' || 'false') }}
       # On a batch, `false` only when its diff touches none of the native
       # adapter's trigger paths; anything else (empty included) runs it.
       native_adapter: ${{ steps.nativeadapter.outputs.native_adapter }}

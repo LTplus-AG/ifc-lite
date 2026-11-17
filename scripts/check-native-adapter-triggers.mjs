@@ -326,6 +326,10 @@ function batchWiringProblems(text, root) {
   if (!caller.split('\n').some((l) => l === `    if: ${BATCH_CALL_IF}`)) {
     out.push(`${TEST_WORKFLOW}: the native-adapter job must be gated on exactly: if: ${BATCH_CALL_IF} (batches only, and only an explicit \`false\` skips)`);
   }
+  // `batch` must not hang on the classifier alone: it is continue-on-error.
+  if (!(jobBlock(testText, 'changes') ?? '').includes(`batch: \${{ steps.lane.outputs.batch || (startsWith(github.head_ref, 'mergify/merge-queue/') && 'true' || 'false') }}`)) {
+    out.push(`${TEST_WORKFLOW}: the changes job's batch output must fall back on the mergify/merge-queue/ head ref, or a crashed lane step skips the native adapter on a queue run`);
+  }
   if (!/^ {6}native_adapter: \$\{\{ steps\.nativeadapter\.outputs\.native_adapter \}\}\s*$/m.test(jobBlock(testText, 'changes') ?? '')) {
     out.push(`${TEST_WORKFLOW}: the changes job must publish native_adapter from its nativeadapter step`);
   }

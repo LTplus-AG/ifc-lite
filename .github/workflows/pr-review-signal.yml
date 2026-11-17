@@ -94,7 +94,7 @@ jobs:
     # question, and leaving it in would mean the rollup never reads as settled.
     name: PR review signal
     # A Mergify batch PR is a temporary test branch with no reviews of its own.
-    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/')
+    if: "!startsWith(github.head_ref, 'mergify/merge-queue/')"
     # Free runner: two API reads and a poll, not compute-bound.
     runs-on: ubuntu-latest
     # Above the poll budget below, so a run that exhausts the budget still gets

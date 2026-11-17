@@ -155,8 +155,7 @@ impl DiagnosticCollectors {
         if total > 0 {
             let mut log = self.budget_refusals.lock().unwrap_or_else(|p| p.into_inner());
             log.0 += total;
-            let available = 16usize.saturating_sub(log.1.len());
-            log.1.extend(refusals.into_iter().take(available));
+            keep_budget_details(&mut log.1, refusals);
         }
         let drain = crate::execution::RouterDrain::take(router);
         let cls = drain.classification;
@@ -355,4 +354,40 @@ pub(super) fn warn_if_dropped(unsupported_items: &FxHashMap<String, u64>) {
         "Representation items dropped (no processor, or the processor failed) — \
          these elements are missing or incomplete in the output"
     );
+}
+
+/// Jobs drain in whatever order the pool finishes them, and the result cache
+/// and fingerprint hash this list, so keep the sixteen smallest by a fixed key
+/// rather than the first sixteen to arrive: the same set, in the same order,
+/// whatever the scheduling. Still bounded, so memory does not grow per job.
+fn keep_budget_details(kept: &mut Vec<ifc_lite_geometry::BudgetRefusal>, more: Vec<ifc_lite_geometry::BudgetRefusal>) {
+    kept.extend(more);
+    kept.sort_by(|a, b| {
+        (a.product_id, a.source_id, &a.budget, a.limit, a.reached, &a.product_type, &a.global_id)
+            .cmp(&(b.product_id, b.source_id, &b.budget, b.limit, b.reached, &b.product_type, &b.global_id))
+    });
+    kept.truncate(16);
+}
+
+#[cfg(test)]
+mod budget_detail_tests {
+    use super::keep_budget_details;
+
+    fn refusal(product: u32) -> ifc_lite_geometry::BudgetRefusal {
+        serde_json::from_value(serde_json::json!({ "budget": "mapped attempts", "limit": 3, "reached": 4,
+            "sourceId": product + 1000, "productId": product, "productType": "IfcWall", "GlobalId": null })).unwrap()
+    }
+
+    #[test]
+    fn the_kept_details_do_not_depend_on_drain_order() {
+        let drain = |order: &[u32]| {
+            let mut kept = Vec::new();
+            order.chunks(3).for_each(|job| keep_budget_details(&mut kept, job.iter().map(|&p| refusal(p)).collect()));
+            kept.iter().map(|r| r.product_id).collect::<Vec<_>>()
+        };
+        let forward: Vec<u32> = (1..=20).collect();
+        let backward: Vec<u32> = (1..=20).rev().collect();
+        assert_eq!(drain(&forward), drain(&backward));
+        assert_eq!(drain(&forward), (1..=16).map(Some).collect::<Vec<_>>());
+    }
 }

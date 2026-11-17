@@ -82,9 +82,13 @@ export const authoringOperations = [
     const preview = saved.authoring ?? saved.properties!;
     if (preview.rows.some(row => row.status !== 'ready' && row.status !== 'unchanged')) throw new Error('The preview contains refused/conflicting rows. Prepare a complete valid candidate.');
     const approved = new Set(preview.rows.filter(row => row.status === 'ready').map(row => row.index));
-    const outcome = c.commit(() => saved.authoring ? commitModelAuthoring(useViewerStore, saved.authoring, approved, 'viewer-agent')
-      : commitModelChanges(useViewerStore, saved.properties!, approved, 'viewer-agent'));
-    if (!outcome.ok) throw new Error(`Native commit refused: ${outcome.reason}${outcome.detail ? `: ${outcome.detail}` : ''}`);
+    // A refusal throws inside commit, so it is not recorded as a committed write.
+    const outcome = c.commit(() => {
+      const result = saved.authoring ? commitModelAuthoring(useViewerStore, saved.authoring, approved, 'viewer-agent')
+        : commitModelChanges(useViewerStore, saved.properties!, approved, 'viewer-agent');
+      if (!result.ok) throw new Error(`Native commit refused: ${result.reason}${result.detail ? `: ${result.detail}` : ''}`);
+      return result;
+    });
     saved.receipt = outcome.receipt; return persist(outcome.receipt);
   }),
   operation<{ token: string }>({ ...meta('authoring.discard', 'model', 'Discard a prepared model candidate without applying it.'), outputSchema: { type: 'object', properties: { discarded: { type: 'boolean' } }, required: ['discarded'], additionalProperties: false } }, tokenInput, (i, c) => {

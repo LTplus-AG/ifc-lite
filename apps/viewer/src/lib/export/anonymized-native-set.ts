@@ -17,7 +17,7 @@ export function lockedAnonymizedIds(related: RelatedEntities | null, seeds: read
 export function includedAnonymizedIds(related: RelatedEntities | null, lockedIds: ReadonlySet<number>, excludedIds: ReadonlySet<number>, excludedTypes: ReadonlySet<string>, typeOfId: ReadonlyMap<number, string>) {
   const out = new Set<number>();
   for (const id of related?.all ?? []) {
-    if (excludedIds.has(id) && !lockedIds.has(id)) continue;
+    if (excludedIds.has(id)) continue;
     const typeName = typeOfId.get(id);
     if (typeName !== undefined && excludedTypes.has(typeName) && !lockedIds.has(id)) continue;
     out.add(id);

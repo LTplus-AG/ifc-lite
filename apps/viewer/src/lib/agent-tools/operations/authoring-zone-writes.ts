@@ -8,6 +8,7 @@ import { operation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
+import { evictOldest } from './host-handles';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, effect: 'read' | 'model' | 'artifact' = 'read') => ({ id, owner: 'zones', description, effects: [effect],
@@ -32,7 +33,7 @@ export const zoneWriteOperations = [
     if (JSON.stringify([...i.model_ids].sort()) !== JSON.stringify(current) || !i.model_ids.includes(c.model.id)) throw new Error('model_ids must explicitly name every currently loaded IFC target.');
     const set = zoneSet(i.set_id), rows = buildZoneTable(set, i.basis);
     const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, configuration: JSON.stringify(set) };
-    validate(candidate); if (owned(c).size >= 32) throw new Error('Zone writeback candidate capacity reached.'); const token = crypto.randomUUID(); owned(c).set(token, candidate);
+    validate(candidate); evictOldest(owned(c), 32); const token = crypto.randomUUID(); owned(c).set(token, candidate);
     return out({ token, action: i.action, model_ids: i.model_ids, rows, undo: 'explicit-native-remove; not history Undo', partial_outcomes: true });
   }),
   operation<{ token: string }>(meta('zones.writeback.apply', 'Apply the exact reviewed whole-set native writeback/removal. Preserves native per-model eligibility, role checks, volume proofs and explicit partial outcome diagnostics.', 'model'), {

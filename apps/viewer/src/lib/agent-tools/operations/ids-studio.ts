@@ -146,7 +146,7 @@ export const idsOperations = [
   }, async (i, c) => {
     await dependencies(c); const { isUuid } = await import('@ifc-lite/ids-authoring'); revision(i.document_revision); writeGuard(c);
     const s = useViewerStore.getState(), doc = current().doc;
-    if (i.selection_id && (!isUuid(i.selection_id) || (doc.nodes.document !== i.selection_id && !s.idsStudioRuntime!.locateNode(doc, i.selection_id)))) throw new Error('Unknown current IDS node.');
+    if (i.selection_id && (!isUuid(i.selection_id) || (doc.nodes.document !== i.selection_id && !s.idsStudioRuntime?.locateNode(doc, i.selection_id)))) throw new Error('Unknown current IDS node.');
     return c.commit(() => { s.idsStudioSetView(i.view); s.idsStudioSelect(i.selection_id && isUuid(i.selection_id) ? i.selection_id : null); return read(); });
   }),
   modelOperation({ ...meta('ids.document.validate', 'Validate the open Studio document against the selected effective IFC model through the existing IDS validation service.'), outputSchema: jsonOutput }, emptySchema, async (_, c) => {

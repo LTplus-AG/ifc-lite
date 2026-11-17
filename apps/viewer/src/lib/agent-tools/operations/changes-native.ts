@@ -38,8 +38,11 @@ export const changesOperations = [
     const entry = owned(c).get(i.token); if (!entry) throw new Error('Unknown revert candidate for this host.');
     if (entry.modelIds.some(id => id !== c.model.id)) throw new Error('Wrong model for this revert.');
     const { revertChangeOperation } = await import('@/lib/changes/revert-change-operation');
-    const result = c.commit(() => revertChangeOperation(useViewerStore, entry));
-    if (!result.ok) throw new Error(`Native revert refused: ${result.reason}`);
+    const result = c.commit(() => {
+      const reverted = revertChangeOperation(useViewerStore, entry);
+      if (!reverted.ok) throw new Error(`Native revert refused: ${reverted.reason}`);
+      return reverted;
+    });
     owned(c).delete(i.token); return out(result);
   }),
   operation<{ direction: 'undo' | 'redo' }>(meta('changes.history', 'changes', 'Undo or redo the selected model through its native SDK history; native mutation/role gates remain active.', 'model'), {

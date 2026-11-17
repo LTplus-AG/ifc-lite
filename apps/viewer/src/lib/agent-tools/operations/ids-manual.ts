@@ -61,7 +61,7 @@ export const manualValidationOperations = [
       ...(i.fingerprint ? { modelFingerprint: i.fingerprint, modelName: model?.name } : {}) }, 'run');
     const scope = model ? reportModelScope(model.name, model.id, i.fingerprint) : null;
     const snapshot = { ...block, reportModels: scope ? [scope] : [] };
-    const id = await c.commitAsync(() => { expected(i.expected_library); return useViewerStore.getState().saveValidationReport(snapshot, i.name); });
+    const id = await c.commitAsync(() => { expected(i.expected_library); return useViewerStore.getState().saveValidationReport(snapshot, i.name); }, saved => !!saved);
     if (!id) throw new Error('Native report persistence failed.'); return out({ id });
   }),
 ];

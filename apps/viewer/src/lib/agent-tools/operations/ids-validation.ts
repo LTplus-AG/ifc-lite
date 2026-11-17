@@ -8,6 +8,7 @@ import { assertToolActive } from '../cancellation';
 import type { ValidationReport } from '@ifc-lite/ids';
 import type { IdsReportBlock } from '@/lib/document/ids-report-types';
 import type { ToolHost } from '../types';
+import { evictOldest } from './host-handles';
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const artifactOutput = { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer' } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
@@ -62,7 +63,7 @@ export const nativeValidationOperations = [
     const result = await runIdsCheck({ document, modelId: c.model.id, dataStore: c.model.store, mutationView: c.model.mutationView(), locale: 'en', models: state.models, signal: c.signal,
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
     assertToolActive(c); if (state.models !== useViewerStore.getState().models || revision !== useViewerStore.getState().mutationVersion) throw new Error('Models changed during IDS validation.');
-    if (runs(c).size >= 32) throw new Error('Native validation result capacity reached.'); const id = crypto.randomUUID(); runs(c).set(id, { ...result, models: state.models, mutationVersion: revision });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, models: state.models, mutationVersion: revision });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ express_ids: number[]; pset: string; name: string; facet_data_type: string; raw_value: string; title: string }>(meta('validation.fix.prepare', 'Draft a native IDS property correction from explicit target IDs and a supplied raw value. Uses native type inference, IDS-to-model unit conversion and expected-value capture, then the existing properties review/apply service.'), {
@@ -87,7 +88,7 @@ export const nativeValidationOperations = [
     const revision = s.mutationVersion;
     const result = await runInformationCheck({ ruleSet: parsed.file, models, definedModelTagIds: definedModelTagIdsOf(s), reportModels: s.models, signal: c.signal });
     assertToolActive(c); if (s.models !== useViewerStore.getState().models || revision !== useViewerStore.getState().mutationVersion) throw new Error('Models changed during validation. Discarded result.');
-    if (runs(c).size >= 32) throw new Error('Native validation result capacity reached.'); const id = crypto.randomUUID(); runs(c).set(id, { ...result, models: s.models, mutationVersion: revision });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, models: s.models, mutationVersion: revision });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ run_id: string; offset: number; limit: number }>(meta('validation.results', 'Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification.'), {
@@ -118,7 +119,7 @@ export const nativeValidationOperations = [
   }),
   operation<{ run_id: string; name: string }>(meta('validation.report.save', 'Save an exact current validation result through the native durable report library.', 'configuration'), {
     type: 'object', properties: { ...runInput.properties, name: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['run_id', 'name'], additionalProperties: false,
-  }, async (i, c) => { const value = run(c, i.run_id); const id = await c.commitAsync(() => useViewerStore.getState().saveValidationReport(value.snapshot, i.name));
+  }, async (i, c) => { const value = run(c, i.run_id); const id = await c.commitAsync(() => useViewerStore.getState().saveValidationReport(value.snapshot, i.name), saved => !!saved);
     if (!id) throw new Error('Native report persistence failed.'); return out({ id }); }),
   viewerOperation(meta('validation.reports.read', 'Read the native durable report library and its persistence diagnostics with no model required. Historical evidence never installs old entity IDs into the scene.'), emptySchema, async (_, c) => {
     await useViewerStore.getState().initializeValidationReports(); assertToolActive(c); const s = useViewerStore.getState(); return out({ reports: s.savedValidationReports, expected_reports: JSON.stringify(s.savedValidationReports), storage: s.validationReportsStorage });
@@ -130,12 +131,12 @@ export const nativeValidationOperations = [
     expected(); const s = useViewerStore.getState();
     if (i.action === 'reuseManual') {
       const report = s.savedValidationReports.find(row => row.id === i.id); if (!report) throw new Error('Unknown saved native report.');
-      const result = c.commit(() => { expected(); return s.reuseManualValidationReport(report); }); if (!result) throw new Error('Native manual report reuse is unavailable for the current fingerprints.');
+      c.commit(() => { expected(); if (!s.reuseManualValidationReport(report)) throw new Error('Native manual report reuse is unavailable for the current fingerprints.'); });
       return out({ reused: i.id });
     }
     const result = await c.commitAsync(() => { expected(); if (i.action === 'restore') return s.restoreValidationReports(); if (i.action === 'retry') return s.retryValidationReportsSave();
       if (!s.savedValidationReports.some(row => row.id === i.id)) throw new Error('Unknown saved native report.');
       return i.action === 'rename' ? s.renameValidationReport(i.id, i.name) : s.removeValidationReport(i.id);
-    }); if (!result) throw new Error('Native report storage operation failed.'); return out({ completed: true });
+    }, done => !!done); if (!result) throw new Error('Native report storage operation failed.'); return out({ completed: true });
   }),
 ];

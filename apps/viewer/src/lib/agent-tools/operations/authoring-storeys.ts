@@ -8,6 +8,7 @@ import { operation, emptySchema, type OperationContext } from './contract';
 import type { ToolHost } from '../types';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
+import { evictOldest } from './host-handles';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
 const meta = (id: string, description: string, write = false) => ({ id, owner: 'model', description, effects: write ? ['model'] as const : ['read'] as const,
@@ -30,7 +31,7 @@ export const storeyOperations = [
     if (i.kind === 'add') { const params = parse<AddStoreyParams>(i.params_json); preview = c.model.bim.store.planAddStorey(c.model.id, params); data = { kind: 'add', params }; }
     else if (i.kind === 'edit') { const params = parse<StoreyLevelEdit>(i.params_json), plan = c.model.bim.store.planStoreyEdit(c.model.id, params); preview = plan; data = { kind: 'edit', params, plan }; }
     else { const ref = resolveRef(c.model, { express_id: i.express_id }), params = parse<StoreyDeleteMode>(i.params_json), plan = c.model.bim.store.planStoreyDelete(ref, params); preview = plan; data = { kind: 'delete', expressId: ref.expressId, params, plan }; }
-    if (owned(c).size >= 64) throw new Error('Native Storey candidate capacity reached.'); const token = crypto.randomUUID();
+    evictOldest(owned(c), 64); const token = crypto.randomUUID();
     owned(c).set(token, { data: structuredClone(data), modelId: c.model.id, store: c.model.store, revision: useViewerStore.getState().mutationVersion }); return out({ token, plan: preview });
   }),
   operation<{ token: string }>(meta('storeys.apply', 'Apply the exact prepared native Storey plan with its native expected-plan checks, transaction/constraint updates, remeshing and Undo. A candidate applies once.', true), {

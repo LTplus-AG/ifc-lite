@@ -6,10 +6,10 @@
 # for main, with the corpus), on demand, and on a PR only with the `ci:native-adapter`
 # label and a change it can observe. Add the label to a PR whose retained or native
 # change needs this evidence. It does not run on every push to main.
-# A merge-queue batch whose diff touches the paths below also runs it, through
-# `workflow_call` from test.yml's `native-adapter` job, so a failure blocks the merge
-# via the required `Build + WASM + Rust + Node` aggregate. The batch decision reads
-# this paths list (scripts/check-native-adapter-triggers.mjs --batch-decide).
+# A merge-queue batch whose diff touches the native/retained engine also runs it,
+# through `workflow_call` from test.yml's `native-adapter` job, so a failure blocks the
+# merge via the required `Build + WASM + Rust + Node` aggregate. Which of the paths
+# below count for a batch: BATCH_EXCLUDE/BATCH_KEEP in scripts/lib/native-adapter-batch.mjs.
 name: Geometry platform (native adapter)
 
 on:
@@ -117,6 +117,7 @@ on:
       - 'scripts/check-native-adapter-triggers.mjs'
       - 'scripts/check-retained-corpus-summary.mjs'
       - 'scripts/lib/ci-path-coverage.mjs'
+      - 'scripts/lib/native-adapter-batch.mjs'
       - 'scripts/lib/is-main-entry.mjs'
       - 'scripts/lib/workflow-permissions.mjs'
       # check-viewer-retained-free.mjs --lazy reads the startup graph with its eagerScripts().

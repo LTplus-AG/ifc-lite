@@ -195,8 +195,9 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
         // Only a checkout of THIS repository moves the files hashFiles reads. A
         // literal other repository (geometry-platform.yml's SMLib and emsdk)
         // lands beside it; an expression could name this one, so it counts.
-        const other = typeof parent?.with?.repository === 'string' && !parent.with.repository.includes('${{');
-        if (/^actions\/checkout@/i.test(v) && parent?.with && typeof parent.with === 'object' && 'path' in parent.with && !other) {
+        const w = parent?.with;
+        const otherRepo = typeof w?.repository === 'string' && !w.repository.includes('${{');
+        if (/^actions\/checkout@/i.test(v) && w && typeof w === 'object' && 'path' in w && !otherRepo) {
           errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }
         if (v.startsWith('./')) {

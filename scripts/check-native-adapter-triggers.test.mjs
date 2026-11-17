@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
+import { permissionBlocks } from './lib/workflow-permissions.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -295,6 +296,38 @@ test('test.yml must call, decide and judge the batch run', (context) => {
     assert.ok(failures.some((f) => f.includes(expected)), `${expected}:\n${failures.join('\n')}`);
   }
   for (const [fn, expected] of cases) {
+    const root = copyTree(context);
+    mutate(root, fn, TEST_WORKFLOW);
+    const failures = audit(root);
+    assert.ok(failures.some((f) => f.includes(expected)), `${expected}:\n${failures.join('\n')}`);
+  }
+});
+
+test('permissionBlocks reads every spelling of a block and fails closed on the rest', () => {
+  const parse = (wf) => {
+    const out = [];
+    return { blocks: permissionBlocks(wf, out, 'w.yml'), out };
+  };
+  const scopes = (wf) => parse(wf).blocks.map((b) => b.scopes);
+  assert.deepEqual(scopes('permissions:\n  contents: read\njobs:\n  a:\n    permissions:\n      issues: write # why\n'), [{ contents: 'read' }, { issues: 'write' }]);
+  assert.deepEqual(scopes('jobs:\n  a:\n    "permissions" :\n      "pull-requests": \'write\'\n'), [{ 'pull-requests': 'write' }]);
+  assert.deepEqual(scopes('jobs:\n  a:\n    permissions: {}\n'), [{}]);
+  // A run script mentioning permissions is not a block.
+  assert.deepEqual(parse('jobs:\n  a:\n    steps:\n      - run: |\n          cat <<X\n          permissions:\n            pull-requests: write\n          X\n').blocks, []);
+  for (const [wf, expected] of [
+    ['jobs:\n  a:\n    permissions: write-all\n', 'cannot judge `permissions: write-all`'],
+    ['jobs:\n  a:\n    permissions:\n      { actions: read }\n', 'cannot judge permissions entry'],
+    ['jobs:\n  a: { runs-on: x, permissions: { issues: write } }\n', 'spell permissions out as a block'],
+  ]) assert.ok(parse(wf).out.some((f) => f.includes(expected)), `${expected}: ${parse(wf).out}`);
+});
+
+test('the call\'s own grant is the block at job level, and it must be readable', (context) => {
+  const grant = '    permissions:\n      actions: read\n      contents: read\n      issues: write\n    uses: ./.github/workflows/geometry-platform.yml';
+  for (const [fn, expected] of [
+    [(t) => t.replace(grant, '    permissions: write-all\n    uses: ./.github/workflows/geometry-platform.yml'), 'cannot judge `permissions: write-all`'],
+    [(t) => t.replace(grant, '    uses: ./.github/workflows/geometry-platform.yml'), 'must grant issues: write'],
+    [(t) => t.replace(grant, grant.replace('issues: write', 'issues: none')), 'must grant issues: write'],
+  ]) {
     const root = copyTree(context);
     mutate(root, fn, TEST_WORKFLOW);
     const failures = audit(root);

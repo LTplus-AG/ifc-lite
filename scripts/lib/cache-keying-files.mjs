@@ -199,7 +199,8 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
         // Only a checkout of THIS repository moves the files hashFiles reads.
         // A known outside repository in a real subdirectory does not.
         const w = parent?.with;
-        const sub = typeof w?.path === 'string' && !['', '.', './'].includes(w.path.trim()) && !w.path.includes('..') && !/^(?:\.\/)?\.github(?:\/|$)/i.test(w.path.trim());
+        const rel = typeof w?.path === 'string' && !w.path.includes('${{') ? posix.normalize(w.path.trim()).replace(/(.)\/+$/, '$1') : '/';
+        const sub = !rel.startsWith('/') && rel !== '.' && !rel.startsWith('..') && !/^\.github(?:\/|$)/i.test(rel);
         const otherRepo = sub && typeof w.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase());
         if (/^actions\/checkout@/i.test(v) && w && typeof w === 'object' && 'path' in w && !otherRepo) {
           errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);

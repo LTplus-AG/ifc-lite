@@ -314,9 +314,10 @@ function batchWiringProblems(text, root) {
   if (!/^ {4}uses: \.\/\.github\/workflows\/geometry-platform\.yml\s*$/m.test(caller) || !/^ {4}with:\n {6}batch: true\s*$/m.test(caller)) {
     out.push(`${TEST_WORKFLOW}: the native-adapter job must call ./${WORKFLOW} with batch: true`);
   }
-  const callerGrant = permissionBlocks(caller, out, TEST_WORKFLOW)[0] ?? {};
-  for (const asked of permissionBlocks(text, out, WORKFLOW)) {
-    for (const [scope, level] of Object.entries(asked)) {
+  // The job's own grant sits at indent 4; nothing deeper stands in for it.
+  const callerGrant = permissionBlocks(caller, out, TEST_WORKFLOW).find((b) => b.indent === 4)?.scopes ?? {};
+  for (const { scopes } of permissionBlocks(text, out, WORKFLOW)) {
+    for (const [scope, level] of Object.entries(scopes)) {
       if (level !== 'none' && callerGrant[scope] !== level && callerGrant[scope] !== 'write') out.push(`${TEST_WORKFLOW}: the native-adapter call must grant ${scope}: ${level}; ${WORKFLOW} asks for it and GitHub refuses the whole Test run otherwise`);
     }
   }

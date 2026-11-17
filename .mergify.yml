@@ -1,26 +1,38 @@
-# Batches PRs for the merge queue: one full `Test` run on a temporary
-# `mergify/merge-queue/*` PR covers up to five PRs, and a failure is split to find
-# the culprit. Ordinary PR pushes keep the fast lane (scripts/ci-pr-lane.mjs).
+# The merge queue tests each PR on its own: one full `Test` run on a temporary
+# `mergify/merge-queue/*` PR per queued PR. Ordinary PR pushes keep the fast lane
+# (scripts/ci-pr-lane.mjs).
 #
-# A batch is tested only at its TIP, but Mergify then squashes each PR onto
-# `main` as its own commit, so every commit before the tip lands untested. For
-# code that is a small gap. For a PR that edits tests/perf-ratchets/*.json it is
-# the common case: a lowering PR moves a ceiling down to what main measured
-# hours earlier, and when a later PR in the same batch shrinks the bundle, the
-# tip passes while the lowering commit alone is above its new ceiling. That is
-# how #8459 turned main red at c306ff57d4: batch #8497 failed its ratchet, and
-# the retry batch #8501 passed only because #8411, also in it, cut eager JS.
-# So ceiling PRs get their own queue with batch_size 1: the commit that lands is
-# the tip that was tested (scripts/perf-ratchet/merge-queue.test.mjs).
+# NO BATCHES. The Mergify plan stopped allowing `batch_size` above 1 on
+# 2026-11-16; every queue then refused to start ("The 'Merge Queue Batch'
+# feature requires a higher subscription tier", #10506). Parallel checks take
+# their place: up to `max_parallel_checks` PRs are tested at once, each stacked
+# on the ones ahead of it, so the commit that lands is always the tree that was
+# tested. A full run is about 50 jobs and the org has 60 hosted runners, so 2 is
+# the most that fits without starving PR lanes; 2 runs of ~40 min clear about 3
+# merges an hour, above the 2.2 an hour the batches managed (Nov 10-16).
+#
+# A PR enters the queue only once it is ready: `PR review signal` green and no
+# unresolved review threads. Before that, agents labelled a PR right after a
+# push, the review posted findings two minutes later, and the agent pulled the
+# label, fixed, and relabelled: 16 of 44 dequeues after Nov 14, each one
+# aborting the run it was in. Now the label can go on early and Mergify waits.
+#
+# Ceiling PRs (tests/perf-ratchets/*.json) keep their own queue. They were split
+# out when batches landed untested commits (#8459, c306ff57d4); with one PR per
+# check that gap is closed for every queue, and the split stays so a ceiling
+# change can never be batched again by a future plan or config
+# (scripts/perf-ratchet/merge-queue.test.mjs).
 #
 # The Version Packages PR (`changeset-release/main`) consumes every pending
 # changeset, so it is only correct against `main` exactly as it was generated.
-# Batched or stacked with PRs that carry changesets, its tested tree holds
-# changesets it did not consume and the late-changeset gate fails (#8621, #8630).
-# So it gets its own queue of one, first in priority, interrupting running
-# checks so it is tested on `main` itself rather than on top of other PRs.
-# release-pr-freshness.yml drafts it, which leaves the queue, whenever `main`
-# moves under it.
+# Stacked on PRs that carry changesets, its tested tree holds changesets it did
+# not consume and the late-changeset gate fails (#8621, #8630). So it gets its
+# own queue, first in priority, interrupting running checks so it is tested on
+# `main` itself rather than on top of other PRs. release-pr-freshness.yml drafts
+# it, which leaves the queue, whenever `main` moves under it.
+merge_queue:
+  max_parallel_checks: 2
+
 priority_rules:
   - name: Version Packages release first
     conditions:
@@ -30,7 +42,7 @@ priority_rules:
 
 queue_rules:
   # Every queue also requires the `CLA` status on the PR itself (cla.yml). The
-  # CLA gate does not re-check Mergify's own batch PRs, because their commits come
+  # CLA gate does not re-check Mergify's own draft PRs, because their commits come
   # from PRs that already passed; this condition is what makes that true.
   - name: release
     queue_conditions:
@@ -60,15 +72,15 @@ queue_rules:
       - status-success=CLA
       - -head=changeset-release/main
       - -files~=^tests/perf-ratchets/
-    # Skipped jobs do not satisfy check-success, so a batch that ran only the fast
+      - check-success=PR review signal
+      - "#review-threads-unresolved=0"
+    # Skipped jobs do not satisfy check-success, so a queue run that ran only the fast
     # lane cannot merge even if branch detection in test.yml ever broke.
     merge_conditions:
       - check-success=Build + WASM + Rust + Node
       - check-success=Viewer tests (shard 0)
       - check-success=Rust tests (feature builds)
-    batch_size: 5
-    batch_max_wait_time: 10 min
-    batch_max_failure_resolution_attempts: 3
+    batch_size: 1
     merge_method: squash
     # #10273: do not inherit agent trailers from individual commit messages.
     # Credit actual commit authors; PR descriptions should omit agent credits.
@@ -86,6 +98,8 @@ queue_rules:
       - status-success=CLA
       - -head=changeset-release/main
       - files~=^tests/perf-ratchets/
+      - check-success=PR review signal
+      - "#review-threads-unresolved=0"
     merge_conditions:
       - check-success=Build + WASM + Rust + Node
       - check-success=Viewer tests (shard 0)
@@ -108,6 +122,8 @@ pull_request_rules:
       - status-success=CLA
       - -head=changeset-release/main
       - -files~=^tests/perf-ratchets/
+      - check-success=PR review signal
+      - "#review-threads-unresolved=0"
     actions:
       queue:
         name: default
@@ -119,6 +135,8 @@ pull_request_rules:
       - status-success=CLA
       - -head=changeset-release/main
       - files~=^tests/perf-ratchets/
+      - check-success=PR review signal
+      - "#review-threads-unresolved=0"
     actions:
       queue:
         name: ceilings

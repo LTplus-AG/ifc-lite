@@ -116,8 +116,12 @@ function readRules(text, topKey) {
       }
       continue;
     }
-    if ((m = /^ {6}- (\S.*?)\s*$/.exec(line))) (rule.lists[section] ??= []).push(m[1]);
-    else unread(line);
+    // A condition starting with `#` must be quoted in YAML (`- "#review-threads-unresolved=0"`),
+    // so a quoted item with no escapes is unquoted; any other quoting stays as written.
+    if ((m = /^ {6}- (\S.*?)\s*$/.exec(line))) {
+      const quoted = /^"([^"\\]*)"$|^'([^']*)'$/.exec(m[1]);
+      (rule.lists[section] ??= []).push(quoted ? (quoted[1] ?? quoted[2]) : m[1]);
+    } else unread(line);
   }
   return rules;
 }
@@ -151,10 +155,11 @@ const SAFE_ACTIONS = ['label', 'assign', 'request_reviews', 'dismiss_reviews', '
 
 /**
  * Top-level .mergify.yml keys this module accounts for: the two rule lists
- * it reads in full, and two that cannot add a route. Any other (`extends`,
+ * it reads in full, and three that cannot add a route (`merge_queue` holds
+ * queue-wide settings such as `max_parallel_checks`). Any other (`extends`,
  * `defaults`, `shared`, ...) can, and is not read: it refuses.
  */
-const KNOWN_TOP_KEYS = ['queue_rules', 'pull_request_rules', 'priority_rules', 'merge_protections_settings'];
+const KNOWN_TOP_KEYS = ['queue_rules', 'pull_request_rules', 'priority_rules', 'merge_protections_settings', 'merge_queue'];
 
 /** Top-level lines that are not exactly `<known key>:` (as readRules sees top level). */
 function unknownTopLines(text) {

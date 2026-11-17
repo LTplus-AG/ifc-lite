@@ -16,6 +16,7 @@ use crate::types::mesh::{InstanceRecord, MeshData};
 use crate::types::response::{ModelMetadata, ProcessingStats};
 
 mod color_layer;
+mod budget_report;
 mod csg_summary;
 #[cfg(test)]
 #[path = "csg_summary_tests.rs"]

@@ -11,8 +11,8 @@
  * the view.
  */
 
-import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
-import { integer, keys, oneOf } from './tool-args';
+import { ToolErrorCode } from '@ifc-lite/mcp/browser';
+import { fail, integer, keys, oneOf } from './tool-args';
 import { BRIDGE_LIMITS } from '@ifc-lite/mcp/bridge-protocol';
 import type { ViewCameraSnapshot } from '@/lib/export/view-pdf/generate-view-pdf';
 import { assertDispatchActive } from './cancellation';
@@ -89,27 +89,21 @@ export function createScreenshotTool(load: () => Promise<ScreenshotDeps> = nativ
         return out.toDataURL(mimeType, JPEG_QUALITY);
       });
     } catch (err) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.UNSUPPORTED_OPERATION,
-        message: `No viewport to capture: ${err instanceof Error ? err.message : String(err)}`,
-        hint: 'Ask the user to open a model in the viewer tab so the 3D viewport is showing, then retry.',
-      });
+      fail(ToolErrorCode.UNSUPPORTED_OPERATION, `No viewport to capture: ${err instanceof Error ? err.message : String(err)}`,
+        'Ask the user to open a model in the viewer tab so the 3D viewport is showing, then retry.');
     }
     assertDispatchActive(ctx.signal);
     // The browser may fall back to PNG for an unsupported type: report what was actually encoded.
     const match = url ? DATA_URL.exec(url) : null;
     if (!url || !match) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'The viewport capture produced no image.', hint: 'Retry once the view has finished rendering.' });
+      fail(ToolErrorCode.INTERNAL_ERROR, 'The viewport capture produced no image.', 'Retry once the view has finished rendering.');
     }
     const data = url.slice(match[0].length);
     const encoded = match[1] as 'image/png' | 'image/jpeg';
     const { source, size, camera: cam } = frame;
     if (data.length > BRIDGE_LIMITS.maxImageBytes) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.INVALID_INPUT,
-        message: `The ${size.width}x${size.height} capture is ${data.length} base64 characters; the limit is ${BRIDGE_LIMITS.maxImageBytes}.`,
-        hint: "Retry with format 'jpeg' or a smaller max_width.",
-      });
+      fail(ToolErrorCode.INVALID_INPUT, `The ${size.width}x${size.height} capture is ${data.length} base64 characters; the limit is ${BRIDGE_LIMITS.maxImageBytes}.`,
+        "Retry with format 'jpeg' or a smaller max_width.");
     }
     const structured = {
       width: size.width, height: size.height, source_width: source.width, source_height: source.height, mime_type: encoded,

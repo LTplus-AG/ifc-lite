@@ -54,10 +54,13 @@ export function equal(a, b) {
 
 export const show = (v) => JSON.stringify(v) ?? 'undefined';
 
-/** Status from per-record checks: pass when every record holds, partial when some evidence holds, fail otherwise. */
+/**
+ * Status from per-record checks: pass when every record holds, partial when some evidence holds, fail otherwise.
+ * `problems` is the full list, for `markLimits`; the summary does not keep it.
+ */
 export function verdict(checked, problems, { anyHeld }) {
   if (!checked) return { status: 'fail', reason: 'no record was checked' };
   if (!problems.length) return { status: 'pass' };
   const reason = `${problems.length} problem(s) over ${checked} record(s): ${problems.slice(0, 4).join('; ')}${problems.length > 4 ? '; ...' : ''}`;
-  return { status: anyHeld ? 'partial' : 'fail', reason };
+  return { status: anyHeld ? 'partial' : 'fail', reason, problems };
 }

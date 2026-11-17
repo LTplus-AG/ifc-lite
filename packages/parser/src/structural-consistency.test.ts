@@ -348,7 +348,7 @@ describe('structuralConsistencyFacts on an IFC4X3 file', () => {
 // both ways, plus IfcRelConnectsStructuralElement in IFC2X3).
 const FIXTURES = [
   { path: 'ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc', schema: 'IFC4', element: [49, 1500, 2222, 2837, 3327, 3441], item: [] },
-  { path: 'ifcopenshell/generated_structural_coverage_ifc2x3.ifc', schema: 'IFC2X3', element: [], item: [32, 34, 40] },
+  { path: 'ifcopenshell/generated_structural_coverage_ifc2x3.ifc', schema: 'IFC2X3', element: [], item: [32, 34, 45] },
   { path: 'structural/ifc_structuralanalysisview/roof_truss--Axis-Struc.ifc', schema: 'IFC2X3', element: [], item: [] },
   { path: 'structural/ifc_structuralanalysisview/house_basement_floor--Axis-Struc.ifc', schema: 'IFC2X3', element: [], item: [] },
   { path: 'buildingsmart/Building-Structural.ifc', schema: 'IFC4', element: [], item: [] },

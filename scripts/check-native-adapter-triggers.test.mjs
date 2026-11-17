@@ -495,7 +495,7 @@ const PR_10595 = [
 ];
 
 test('a batch touching the native/retained engine runs the lane', (context) => {
-  for (const file of ['rust/geometry/src/lib.rs', 'rust/retained-native/src/lib.rs', 'rust/wasm-bindings/src/lib.rs', 'rust/processing/src/processor/x.rs', 'rust/processing/src/retained_geometry.rs', 'packages/cli/src/retained/run.ts', 'packages/cli/src/commands/export-retained.ts', 'native/smlib-adapter/x.cpp', 'Cargo.lock', WORKFLOW, 'scripts/check-native-adapter-triggers.mjs']) {
+  for (const file of ['rust/geometry/src/lib.rs', 'rust/retained-native/src/lib.rs', 'rust/wasm-bindings/src/lib.rs', 'rust/processing/src/processor/x.rs', 'rust/processing/src/retained_geometry.rs', 'packages/cli/src/retained/run.ts', 'packages/cli/src/commands/export-retained.ts', 'packages/cli/src/RetainedRunner.ts', 'native/smlib-adapter/x.cpp', 'Cargo.lock', WORKFLOW, 'scripts/check-native-adapter-triggers.mjs']) {
     const d = decide(batchRepo(context, { add: [file, 'docs/guide/x.md'] }));
     assert.equal(d.status, 0, d.log);
     assert.equal(d.written, 'native_adapter=true\n', `${file}: ${d.log}`);
@@ -525,6 +525,16 @@ test('an exclusion the paths list no longer holds is reported', (context) => {
 test('a lane-run script added to BATCH_EXCLUDE is reported', () => {
   assert.equal(BATCH_EXCLUDE.includes('scripts/fixtures/*.mjs'), false);
   assert.ok(audit(REPO, [...BATCH_EXCLUDE, 'scripts/fixtures/*.mjs']).some((f) => f.includes('BATCH_EXCLUDE drops it from merge-queue batches')));
+});
+
+test('excluding the engine core from batches is reported', () => {
+  for (const glob of ['rust/retained-native/**', 'native/**', 'Cargo.lock', '.github/actions/setup-wasm-build/**']) {
+    assert.ok(audit(REPO, [...BATCH_EXCLUDE, glob]).some((f) => f.includes(`BATCH_EXCLUDE drops ${glob}`)), glob);
+  }
+});
+
+test('a script the lane runs under node --test cannot be excluded from batches', () => {
+  assert.ok(audit(REPO, [...BATCH_EXCLUDE, 'scripts/cli-retained-engine/**']).some((f) => f.includes('BATCH_EXCLUDE drops it from merge-queue batches')));
 });
 
 test('a BATCH_KEEP glob outside the paths list is reported', () => {

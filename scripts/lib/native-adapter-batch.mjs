@@ -60,7 +60,9 @@ export const BATCH_EXCLUDE = [
 export const BATCH_KEEP = [
   'packages/cli/src/retained/**',
   'packages/cli/src/**/*retained*',
+  'packages/cli/src/**/*Retained*',
   'rust/processing/**/*retained*',
+  'rust/processing/**/*Retained*',
 ];
 
 /** On a batch, the paths list less `exclude`, plus `keep`. */

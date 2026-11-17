@@ -268,15 +268,21 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
     for (const glob of keep) {
       if (!matchesAny(glob.replaceAll('**', 'x/x').replaceAll('*', 'x'), pr)) failures.push(`${WORKFLOW}: BATCH_KEEP entry '${glob}' is not under on.pull_request.paths`);
     }
-    for (const action of new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]))) {
+    const actions = new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]));
+    for (const action of actions) {
       if (!pr.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.pull_request.paths -- add '${action}/**'`);
+    }
+    // The engine core a batch must never skip: the root crates, the native adapter, the Rust build inputs and the local actions.
+    const batch = batchGlobs(pr, exclude, keep);
+    for (const glob of [...ROOT_CRATES.map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
+      if (!matchesAny(glob.replace('/**', '/probe'), batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
     }
   }
 
   if (pr) {
-    // Every script the lane runs with `node scripts/...`, and its imports, must be able to trigger it, on a batch too.
+    // Every script the lane runs with `node [--test] scripts/...`, and its imports, must be able to trigger it, on a batch too.
     const batch = batchGlobs(pr, exclude, keep);
-    for (const script of scriptImports(root, [...text.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]))) {
+    for (const script of scriptImports(root, [...text.matchAll(/\bnode (?:--test )?(scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]))) {
       if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
       else if (!matchesAny(script, batch)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but BATCH_EXCLUDE drops it from merge-queue batches`);
     }

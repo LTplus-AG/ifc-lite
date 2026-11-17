@@ -5,7 +5,7 @@ import { readStepSlots } from './step-argument-parser.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { decodeRange } from './source-ref-bounds.js';
 // A cycle with the source module, which reads lists here; only functions cross it, called after load.
-import { slotRef } from './schema-converter-structural-source.js';
+import { slotRef, slotUnset } from './schema-converter-structural-source.js';
 
 export function listItems(token: string | undefined): readonly string[] | null {
   if (token === undefined) return null;
@@ -53,7 +53,7 @@ export class StructuralAxes {
     // Profile directions are in the analysis frame. A placed member needs a
     // coordinate transform; angles/defaults/conflicting orientations stay unknown.
     if (!rec || !id || !['IFCSTRUCTURALCURVEMEMBER', 'IFCSTRUCTURALCURVEMEMBERVARYING'].includes(rec.type)
-      || rec.slots.length !== 8 || rec.slots[5].trim() !== '$') return undefined;
+      || rec.slots.length !== 8 || !slotUnset(rec.slots[5])) return undefined;
     const axis = this.axes.get(Number(id));
     return axis != null && this.directions.has(axis) ? `#${axis}` : undefined;
   }

@@ -42,4 +42,11 @@ describe('StructuralAxes references beside STEP comments #9668', () => {
     expect(axis("#90=IFCRELASSOCIATESPROFILEPROPERTIES('3Npn749xX3h8J7ezZM_AKg',#1,$,$,(#50),#81,$,#80);")).toBe('#80');
     expect(axis("#90=IFCRELASSOCIATESPROFILEPROPERTIES('3Npn749xX3h8J7ezZM_AKg',#1,$,$,(#50 /* member */),#81,$,#80 /* axis */);")).toBe('#80');
   });
+
+  it('reads a commented unset placement as unplaced', () => {
+    const axes = new StructuralAxes();
+    axes.note('#80=IFCDIRECTION((0.,1.,0.));');
+    axes.note("#90=IFCRELASSOCIATESPROFILEPROPERTIES('3Npn749xX3h8J7ezZM_AKg',#1,$,$,(#50),#81,$,#80);");
+    expect(axes.axis("#50=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#1,$,$,$,$ /* placement */,$,.RIGID_JOINED_MEMBER.);")).toBe('#80');
+  });
 });

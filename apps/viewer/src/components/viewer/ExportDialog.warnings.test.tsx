@@ -5,15 +5,14 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it, mock } from 'node:test';
-import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
 import type { Renderer } from '@ifc-lite/renderer';
-import { initSync } from '@ifc-lite/wasm';
 import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { render, cleanup, click, press, advance, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { ensureWasm } from '@/test/scan-slab-fixture';
 import { ExportDialog } from './ExportDialog';
 import { ExportDialogShell } from './ExportDialogShell';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
@@ -116,8 +115,8 @@ it('merged STEP export shows its warnings like the single-model export (#10606)'
   assert.match(details(), /ConditionCoordinateSystem has no slot in IFC2X3/);
 });
 
-it('sectioned merged STEP export keeps each cropped model\'s warnings (#10606)', async () => {
-  initSync({ module: new Uint8Array(readFileSync(new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url))) });
+it('sectioned merged STEP export keeps each cropped model\'s warnings (#10606)', async (t) => {
+  if (!ensureWasm(t)) return;
   const [first, second] = await Promise.all([structuralModel('structural.ifc'), structuralModel('annex.ifc', 1_000_000)]);
   useViewerStore.setState({ ...fixtureModels(first, second), dirtyModels: new Set() });
   setGlobalRendererRef({ current: { getCamera: () => ({ getSceneBounds: () => ({ min: { x: -5, y: -4, z: -3 }, max: { x: 5, y: 4, z: 3 } }) }) } as unknown as Renderer });

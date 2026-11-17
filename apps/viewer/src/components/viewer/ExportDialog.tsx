@@ -71,7 +71,7 @@ interface ExportDialogProps {
   initialChangesOnly?: boolean;
 }
 export function ExportDialog({ surface, trigger, initialChangesOnly = false }: ExportDialogProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const dirtyModels = useViewerStore((s) => s.dirtyModels);
@@ -380,7 +380,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
             : '')
           + (skipNotice ? `. ${skipNotice}` : '');
         exportedFormat = 'ifc';
-        return stepExportResult(msg, [...prepared.warnings, ...result.stats.warnings], t);
+        return stepExportResult(msg, [...prepared.warnings, ...result.stats.warnings], t, locale);
       }
 
       if (!selectedModel) {
@@ -525,7 +525,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
         const stepMsg = stepExportSummary({ entityCount: result.stats.entityCount, pendingChanges: modifiedCount, applyMutations, visibleOnly });
         exportedFormat = artifact.ext;
-        return stepExportResult(stepMsg, result.stats.warnings, t);
+        return stepExportResult(stepMsg, result.stats.warnings, t, locale);
       }
     } catch (error) {
       console.error('Export failed:', error);

@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
 import { toast } from '@/components/ui/toast';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { registerLocale, resolve, setLocale } from '@/i18n/registry';
 import { geometryExportDialogsDe } from '@/i18n/locales/de/geometry-export-dialogs';
 import { geometryExportDialogsFr } from '@/i18n/locales/fr/geometry-export-dialogs';
@@ -14,20 +15,19 @@ import { stepExportResult } from './export-step-result';
 
 afterEach(() => { setLocale('en'); mock.restoreAll(); });
 
-function message(locale: 'en' | 'de' | 'fr' | 'it' | 'ru', count: number) {
-  if (locale === 'de') registerLocale('de', geometryExportDialogsDe);
-  if (locale === 'fr') registerLocale('fr', geometryExportDialogsFr);
-  if (locale === 'it') registerLocale('it', geometryExportDialogsIt);
-  if (locale === 'ru') registerLocale('ru', geometryExportDialogsRu);
+const catalogues = { de: geometryExportDialogsDe, fr: geometryExportDialogsFr, it: geometryExportDialogsIt, ru: geometryExportDialogsRu };
+
+function message(locale: 'en' | keyof typeof catalogues, count: number) {
+  if (locale !== 'en') registerLocale(locale, catalogues[locale]);
   setLocale(locale);
   const info = mock.method(toast, 'info', () => {});
-  const result = stepExportResult('Exported', Array.from({ length: count }, (_, i) => `w${i}`), resolve);
+  const result = stepExportResult('Exported', Array.from({ length: count }, (_, i) => `w${i}`), resolve, locale);
   assert.equal(info.mock.calls[0].arguments[0], result.message);
   info.mock.restore();
   return result.message;
 }
 
-const n = (locale: string, value: number) => new Intl.NumberFormat(locale).format(value);
+const n = formatLocaleNumber;
 
 test('#10606 STEP warning toasts join with a period and format the count for the locale', () => {
   assert.equal(message('en', 1), 'Exported. 1 warning');
@@ -44,7 +44,7 @@ test('#10606 STEP warning toasts join with a period and format the count for the
 
 test('#10606 every locale spells each CLDR plural category of the warning count', () => {
   const key = 'geometryExport.shell.warningsSummary';
-  for (const [locale, catalogue] of [['de', geometryExportDialogsDe], ['fr', geometryExportDialogsFr], ['it', geometryExportDialogsIt], ['ru', geometryExportDialogsRu]] as const) {
+  for (const [locale, catalogue] of Object.entries(catalogues)) {
     const forms = catalogue[key] as Record<string, string>;
     for (const category of new Intl.PluralRules(locale).resolvedOptions().pluralCategories) {
       assert.ok(forms[category], `${locale} ${key} lacks the "${category}" form`);

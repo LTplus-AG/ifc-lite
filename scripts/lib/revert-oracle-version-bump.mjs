@@ -26,11 +26,13 @@
  * crates are referenced via a path dependency, so a line lacking `path =` is
  * never treated as version-only here.
  *
- * One narrower carve-out does treat dependency versions as unobservable:
+ * One narrower carve-out is a maintainer policy, not an unobservability claim:
  * `isDependencyVersionOnlyPackageJson` (bottom of this file) ignores a
- * package.json whose parsed JSON differs only in dependency version specs.
- * The lockfile is ignored too, so reverting the manifest alone cannot change
- * what is installed; the build and test lanes judge the bump (#10492, #10562).
+ * package.json whose parsed JSON differs only in `dependencies`,
+ * `devDependencies` or `optionalDependencies` version specs. Reverting the
+ * manifest without its (ignored) lockfile is not a coherent experiment, so the
+ * build and test lanes judge such a bump (#10492, #10562). Peer ranges are a
+ * published contract and stay production.
  *
  * Pure functions over diff text, same shape as `revert-oracle.mjs`, so this
  * is tested against synthetic fixtures without touching git.
@@ -171,7 +173,9 @@ export function isVersionOnlyManifestDiff(path, diffText, contents = {}) {
   return true;
 }
 
-const DEPENDENCY_FIELDS = new Set(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']);
+// Not `peerDependencies`: a peer range is a published consumer contract, and
+// tests assert on it (sdk-peer-contract.test.ts, template-peer-ranges.test.ts).
+const DEPENDENCY_FIELDS = new Set(['dependencies', 'devDependencies', 'optionalDependencies']);
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 function parseObject(text) {
@@ -208,11 +212,11 @@ function sameDependencyNames(before, after) {
 
 /**
  * A Dependabot-shaped package.json bump: decided from the parsed merge-base and
- * head JSON, not from diff lines. Every field outside the four dependency maps
- * must be identical (key order included, since `exports` is order-sensitive),
- * and the dependency maps may differ only in their version strings. Adding or
- * removing a dependency, or any edit to `scripts`, `exports`, `main`, ... is
- * production. Fail-closed: an unreadable, unparseable or non-canonical side
+ * head JSON, not from diff lines. `dependencies`, `devDependencies` and
+ * `optionalDependencies` may differ only in version specs; every other field,
+ * `peerDependencies` included, must be identical (key order included, since
+ * `exports` is order-sensitive). Adding or removing a dependency, or any edit
+ * to `scripts`, `exports`, `main`, ... is production. Fail-closed: an unreadable, unparseable or non-canonical side
  * (which also rejects duplicate keys) returns false.
  *
  * @param {string} path repo-relative path of the changed file

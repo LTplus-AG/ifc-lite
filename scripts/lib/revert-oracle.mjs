@@ -45,9 +45,9 @@ export { cargoRunner } from './revert-oracle-cargo.mjs';
 // Diff classification
 // ---------------------------------------------------------------------------
 
-/** Paths no test can observe: release/CI/docs, and `licenses/retained/` (notices and their inputs, gated by `retained-notices.mjs --check`). `tests/e2e/**` is test scaffolding; its Playwright specs run in a browser (#6267). */
-const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/', 'licenses/retained/'];
-const IGNORED_EXACT = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'rust/python/Cargo.lock', 'CHANGELOG.md', 'playwright.config.ts']);
+/** Paths no test can observe: release/CI/docs, and the files `retained-notices.mjs --refresh` writes (gated by its `--check`; hand-edited `supplemental.json` stays production). `tests/e2e/**` is test scaffolding; its Playwright specs run in a browser (#6267). */
+const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/'];
+const IGNORED_EXACT = new Set(['licenses/retained/manifest.json', 'licenses/retained/README.md', 'licenses/retained/THIRD_PARTY_NOTICES.txt', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'rust/python/Cargo.lock', 'CHANGELOG.md', 'playwright.config.ts']);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 
 /**

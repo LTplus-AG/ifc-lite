@@ -712,9 +712,17 @@ test('classifyDiff: #10492 shape (Cargo.lock + generated retained notices) has n
   const { production, ignored } = classifyDiff(entries);
   assert.deepEqual(production, []);
   assert.equal(ignored.length, entries.length);
-  // .md/.txt were already ignored by suffix; these exercise the new prefix.
-  assert.equal(classifyPath('licenses/retained/manifest.json'), 'ignored');
-  assert.equal(classifyPath('licenses/retained/supplemental.json'), 'ignored');
+});
+
+test('classifyPath: only the files `retained-notices.mjs --refresh` writes under licenses/retained/ are ignored', () => {
+  for (const generated of ['manifest.json', 'README.md', 'THIRD_PARTY_NOTICES.txt']) {
+    assert.equal(classifyPath(`licenses/retained/${generated}`), 'ignored', generated);
+  }
+  // Refresh also writes content-addressed texts/<sha256>.txt; the global .txt suffix already ignores them.
+  assert.equal(classifyPath(`licenses/retained/texts/${'0'.repeat(64)}.txt`), 'ignored');
+  // Hand-edited licence elections stay production.
+  assert.equal(classifyPath('licenses/retained/supplemental.json'), 'production');
+  assert.equal(classifyPath('licenses/retained/new-input.json'), 'production');
 });
 
 const pkg = (overrides = {}) => JSON.stringify({
@@ -733,6 +741,7 @@ const classifyPackageJson = (before, after) => {
 test('classifyDiff: a package.json that changes only dependency version strings is ignored (#10562)', () => {
   const after = pkg({ dependencies: { three: '^0.171.0' }, devDependencies: { vitest: '^4.1.0' } });
   assert.equal(classifyPackageJson(pkg(), after), 'ignored');
+  assert.equal(classifyPackageJson(pkg({ optionalDependencies: { fsevents: '^2.3.2' } }), pkg({ optionalDependencies: { fsevents: '^2.3.3' } })), 'ignored');
   for (const spec of ['~0.171.0', '>=0.170.0 <0.172.0', '0.171.0-beta.1', '1.0.0+build.5', '0.x', '^1 || ^2', '1.0.0 - 2.0.0', '=1.2.3', '1.2.x', '>=1.2.3 <2.0.0-0', '0.0.0']) {
     assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: { three: spec } })), 'ignored', spec);
   }
@@ -750,6 +759,18 @@ test('classifyDiff: a dependency bump that also touches anything else in package
   assert.equal(classifyPackageJson(pkg(), pkg({ ...bumped, main: 'dist/index.js' })), 'production');
   assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: { three: '^0.170.0', zod: '^3.0.0' } })), 'production');
   assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: {} })), 'production');
+  assert.equal(
+    classifyPackageJson(pkg({ peerDependencies: { react: '^18.0.0 || ^19.0.0' } }), pkg({ peerDependencies: { react: '^19.0.0' } })),
+    'production',
+    'a peer-range-only edit is a published contract change',
+  );
+  const peer = { peerDependencies: { react: '^18.0.0' } };
+  assert.equal(classifyPackageJson(pkg(peer), pkg({ ...peer, dependencies: { three: '^0.171.0' } })), 'ignored', 'unchanged peers beside a bump');
+  assert.equal(
+    classifyPackageJson(pkg(peer), pkg({ peerDependencies: { react: '^19.0.0' }, dependencies: { three: '^0.171.0' } })),
+    'production',
+    'a bump that also moves a peer range',
+  );
   assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: { three: { version: '1' } } })), 'production');
   for (const source of ['npm:evil-three@1.0.0', 'github:someone/three#main', 'file:../three', 'someone/three', '..', '.', 'three.tgz', 'three.tar.gz', '\\\\host\\three', ' ..', 'three.tgz ', 'next', '*', 'next15', 'rc1', 'v8-canary', '1-beta', '', '-', '1.0.0 -', '- -', '1.x.3', '01.2.3', '>=1 - 2']) {
     assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: { three: source } })), 'production', source);

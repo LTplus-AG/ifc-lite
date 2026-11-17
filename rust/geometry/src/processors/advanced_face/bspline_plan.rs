@@ -43,6 +43,43 @@ impl BSplinePlan {
             None => Ok((Vec::new(), Vec::new())),
         }
     }
+
+    /// Whether every point of the admitted control net lies on one plane,
+    /// within a millionth of the net's size (#10590). A B-spline surface lies
+    /// in the convex hull of its control points (weights are positive once
+    /// admitted), so such a surface is that plane, and its face can be
+    /// trimmed by its bounds like an `IfcPlane` face. The net was already
+    /// bounded by [`lower_bspline`]'s work check, so these scans are too.
+    pub(crate) fn is_planar(&self) -> bool {
+        let points = || self.control_points.iter().flatten();
+        let Some(&origin) = points().next() else {
+            return false;
+        };
+        // The plane through the first point, the point farthest from it and
+        // the point farthest from that line: the widest triangle the net offers.
+        let Some(far) = points().max_by(|a, b| (*a - origin).norm().total_cmp(&(*b - origin).norm()))
+        else {
+            return false;
+        };
+        let axis = far - origin;
+        let size = axis.norm();
+        if !size.is_finite() || size == 0.0 {
+            return false;
+        }
+        let Some(normal) = points()
+            .map(|p| axis.cross(&(p - origin)))
+            .max_by(|a, b| a.norm().total_cmp(&b.norm()))
+        else {
+            return false;
+        };
+        let normal_length = normal.norm();
+        if normal_length <= size * size * 1e-9 {
+            return false;
+        }
+        let normal = normal / normal_length;
+        let tolerance = size * 1e-6;
+        points().all(|p| normal.dot(&(p - origin)).abs() <= tolerance)
+    }
 }
 pub(crate) fn lower_bspline(
     bspline: &DecodedEntity,

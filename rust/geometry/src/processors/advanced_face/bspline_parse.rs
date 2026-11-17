@@ -80,58 +80,6 @@ pub(super) fn control_point_grid_dims(bspline: &DecodedEntity) -> (usize, usize)
     (rows.len(), max_row_len)
 }
 
-/// Control nets larger than this are not checked for flatness: the check is
-/// for exporters' flat patches (Revit writes a 2x2 net for a sloped or
-/// trimmed slab face), and a dense net is almost never flat.
-const MAX_PLANAR_CHECK_POINTS: usize = 4096;
-
-/// Whether every point of the surface's control net lies on one plane, within
-/// a millionth of the net's size. A B-spline surface lies in the convex hull
-/// of its control points, rational or not, so such a surface is that plane,
-/// and its face can be trimmed by its bounds like an `IfcPlane` face.
-pub(super) fn is_planar_control_net(bspline: &DecodedEntity, decoder: &mut EntityDecoder) -> bool {
-    let (rows, cols) = control_point_grid_dims(bspline);
-    if rows.saturating_mul(cols) > MAX_PLANAR_CHECK_POINTS {
-        return false;
-    }
-    let Ok(net) = parse_control_points(bspline, decoder) else {
-        return false;
-    };
-    let points: Vec<Point3<f64>> = net.into_iter().flatten().collect();
-    let Some(&origin) = points.first() else {
-        return false;
-    };
-    // The plane through the first point, the point farthest from it and the
-    // point farthest from that line: the widest triangle the net offers.
-    let Some(far) = points
-        .iter()
-        .max_by(|a, b| (*a - origin).norm().total_cmp(&(*b - origin).norm()))
-    else {
-        return false;
-    };
-    let axis = far - origin;
-    let size = axis.norm();
-    if !size.is_finite() || size == 0.0 {
-        return false;
-    }
-    let Some(normal) = points
-        .iter()
-        .map(|p| axis.cross(&(p - origin)))
-        .max_by(|a, b| a.norm().total_cmp(&b.norm()))
-    else {
-        return false;
-    };
-    let normal_length = normal.norm();
-    if normal_length <= size * size * 1e-9 {
-        return false;
-    }
-    let normal = normal / normal_length;
-    let tolerance = size * 1e-6;
-    points
-        .iter()
-        .all(|p| normal.dot(&(p - origin)).abs() <= tolerance)
-}
-
 /// Parse control points from B-spline surface entity
 pub(super) fn parse_control_points(
     bspline: &DecodedEntity,

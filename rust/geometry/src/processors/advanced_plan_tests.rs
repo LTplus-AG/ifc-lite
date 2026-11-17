@@ -297,7 +297,8 @@ fn triangle_normals(positions: &[f32], indices: &[u32]) -> Vec<Vector3<f32>> {
 }
 
 /// A curved, unbounded B-spline face: a degree (2, 1) arch over the XY plane
-/// whose surface normal Su x Sv points up (+Z) everywhere.
+/// whose surface normal Su x Sv points up (+Z) everywhere. #10590: the grid
+/// used to wind along -(Su x Sv), so SameSense=.F. faces faced their solid.
 fn arch_face(same_sense: &str) -> String {
     format!(
         "#1=IFCADVANCEDFACE((),#10,{same_sense});\n\
@@ -326,7 +327,7 @@ fn bspline_face_winds_along_su_cross_sv_and_same_sense_reverses_it() {
 /// A flat 20 x 20 B-spline patch whose surface normal points down (-Z), used
 /// with SameSense=.F. (so the face faces up, as Revit writes sloped and
 /// trimmed slab faces) and bounded by a unit right triangle, wound
-/// counter-clockwise about +Z.
+/// counter-clockwise about +Z. #10590: the whole patch used to be drawn.
 fn trimmed_flat_bspline_face() -> String {
     trimmed_flat_bspline_face_weighted("((1.,1.),(1.,1.))")
 }
@@ -379,29 +380,52 @@ fn flat_rational_bspline_face_with_valid_weights_trims_to_its_bounds() {
     assert!(up, "faces up");
 }
 
-/// #10590: the planar shortcut must not admit weights the B-spline path
-/// refuses (zero, negative, missing or not one per control point).
+/// #10590: a flat face is trimmed only after its surface passes every check
+/// the B-spline path applies, so surface data that path refuses (weights,
+/// degree, knots, multiplicities) is refused on a flat face too; and bounds
+/// that cannot be read refuse the face as they refuse an `IfcPlane` face,
+/// instead of drawing the whole untrimmed patch.
 #[test]
-fn flat_rational_bspline_face_with_invalid_weights_is_refused() {
-    for weights in [
-        "((1.,1.),(1.,0.))",
-        "((1.,1.),(1.,-1.))",
-        "((1.,$),(1.,1.))",
-        "((1.,1.),(1.))",
-        "$",
-    ] {
+fn flat_bspline_face_refuses_what_the_spline_path_and_plane_faces_refuse() {
+    let valid = trimmed_flat_bspline_face();
+    let surface = "IFCRATIONALBSPLINESURFACEWITHKNOTS(1,1,";
+    let knots = "(2,2),(2,2),(0.,1.),(0.,1.)";
+    let cases = [
+        ("zero weight", trimmed_flat_bspline_face_weighted("((1.,1.),(1.,0.))")),
+        ("negative weight", trimmed_flat_bspline_face_weighted("((1.,1.),(1.,-1.))")),
+        ("missing weight", trimmed_flat_bspline_face_weighted("((1.,$),(1.,1.))")),
+        ("short weight row", trimmed_flat_bspline_face_weighted("((1.,1.),(1.))")),
+        ("no weights", trimmed_flat_bspline_face_weighted("$")),
+        (
+            "degree over the bound",
+            valid.replace(surface, "IFCRATIONALBSPLINESURFACEWITHKNOTS(100,1,"),
+        ),
+        (
+            "non-numeric knot",
+            valid.replace(knots, "(2,2),(2,2),(0.,'x'),(0.,1.)"),
+        ),
+        (
+            "missing multiplicities",
+            valid.replace(knots, "$,(2,2),(0.,1.),(0.,1.)"),
+        ),
+        (
+            "unresolvable bound",
+            valid.replace("IFCADVANCEDFACE((#2)", "IFCADVANCEDFACE((#2,#999)"),
+        ),
+    ];
+    for (case, source) in cases {
+        assert_ne!(source, valid, "{case}: the fixture edit applied");
         take_face_refused();
-        let source = trimmed_flat_bspline_face_weighted(weights);
         let mut decoder = EntityDecoder::new(&source);
         let face = decoder.decode_by_id(1).unwrap();
         assert!(
             lower_face(&face, &mut decoder, TessellationQuality::Medium, None).is_err(),
-            "weights {weights} must be refused"
+            "{case}: the face must be refused"
         );
         assert_eq!(
             take_face_refused(),
             [IfcType::IfcAdvancedFace],
-            "weights {weights}: the refusal is noted"
+            "{case}: the refusal is noted"
         );
     }
 }

@@ -102,28 +102,28 @@ pub(crate) fn lower_face(
             super::surfaces::lower_planar(face, decoder, quality, rtc_file_units)?,
             false,
         ),
-        "IFCBSPLINESURFACEWITHKNOTS" | "IFCRATIONALBSPLINESURFACEWITHKNOTS"
-            if has_bounds(face)
-                && has_admissible_weights(&surface, &surface_type, decoder)
-                && super::bspline_parse::is_planar_control_net(&surface, decoder) =>
-        {
+        "IFCBSPLINESURFACEWITHKNOTS" | "IFCRATIONALBSPLINESURFACEWITHKNOTS" => {
+            // Every B-spline face is admitted first, flat or not, so the flat
+            // case refuses exactly what the surface path refuses (#10590).
+            let plan = admit_bspline(face, &surface, &surface_type, decoder, quality, rtc)?;
             // A flat B-spline is its plane: triangulate its bounds, as for an
             // `IfcPlane`, rather than the whole untrimmed control patch. The
-            // bounds' winding carries the face's sense, so nothing reverses it.
-            match super::surfaces::lower_planar(face, decoder, quality, rtc_file_units) {
-                Ok(planar @ (FaceGeometry::Planar(_) | FaceGeometry::PlanarRegions(_))) => {
-                    (planar, false)
-                }
-                _ => (
-                    lower_untrimmed_bspline(face, &surface, &surface_type, decoder, quality, rtc)?,
-                    true,
-                ),
+            // bounds' winding carries the face's sense, so nothing reverses
+            // it, and bounds it cannot read refuse the face (`?`) as they
+            // refuse a plane face. Bounds with no outer ring trim nothing, so
+            // the face keeps the surface's own extent, as a curved one does.
+            let trimmed = if has_bounds(face) && plan.is_planar() {
+                super::surfaces::lower_planar(face, decoder, quality, rtc_file_units)?
+            } else {
+                FaceGeometry::Empty
+            };
+            if matches!(trimmed, FaceGeometry::Empty) {
+                note_untrimmed_bspline_face(face);
+                (FaceGeometry::BSpline(plan), true)
+            } else {
+                (trimmed, false)
             }
         }
-        "IFCBSPLINESURFACEWITHKNOTS" | "IFCRATIONALBSPLINESURFACEWITHKNOTS" => (
-            lower_untrimmed_bspline(face, &surface, &surface_type, decoder, quality, rtc)?,
-            true,
-        ),
         "IFCCYLINDRICALSURFACE" => (
             super::surfaces::lower_cylindrical(face, &surface, decoder, quality, rtc)?
                 .map_or(FaceGeometry::Empty, FaceGeometry::Cylinder),
@@ -195,39 +195,18 @@ fn has_bounds(face: &DecodedEntity) -> bool {
         .is_some_and(|bounds| !bounds.is_empty())
 }
 
-/// Whether a rational surface's weights pass the checks the B-spline path
-/// applies (#10590): present, finite, positive and one per control point. The
-/// planar shortcut never reads the weights, so it must not admit a surface
-/// that path refuses; a face that fails here falls through to it and is
-/// refused there. A non-rational surface has no weights to check.
-fn has_admissible_weights(
-    surface: &DecodedEntity,
-    surface_type: &str,
-    decoder: &mut EntityDecoder,
-) -> bool {
-    if surface_type != "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
-        return true;
-    }
-    let Ok(weights) = parse_rational_weights(surface) else {
-        return false;
-    };
-    super::bspline_parse::parse_control_points(surface, decoder)
-        .and_then(|net| super::bspline_parse::check_weights_match(&weights, &net))
-        .is_ok()
-}
-
-/// A curved B-spline face, tessellated over the surface's whole knot domain:
-/// its bounds are not applied yet (`note_untrimmed_bspline_face`).
-fn lower_untrimmed_bspline(
+/// The face's B-spline surface, admitted by every check the surface path
+/// applies (degree, sample-work bound before decoding, control points,
+/// weights, knots), with a refusal noted against the face when one fails.
+fn admit_bspline(
     face: &DecodedEntity,
     surface: &DecodedEntity,
     surface_type: &str,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
     rtc: (f64, f64, f64),
-) -> Result<FaceGeometry> {
-    note_untrimmed_bspline_face(face);
-    let plan = bounds::noting_refusal(
+) -> Result<BSplinePlan> {
+    bounds::noting_refusal(
         face,
         (|| {
             let weights = if surface_type == "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
@@ -237,6 +216,5 @@ fn lower_untrimmed_bspline(
             };
             super::bspline_plan::lower_bspline(surface, decoder, weights, quality, rtc)
         })(),
-    )?;
-    Ok(FaceGeometry::BSpline(plan))
+    )
 }

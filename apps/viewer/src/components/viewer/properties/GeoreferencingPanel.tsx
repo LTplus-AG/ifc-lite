@@ -6,10 +6,8 @@
  * Georeferencing panel - displays and allows editing of IfcProjectedCRS
  * and IfcMapConversion entities with field-specific editing assistance.
  *
- * Per-field rows (`GeorefRow`, `AngleRow`) live in `./georef-rows` (#5812),
- * and `TerrainHeightButton` lives in `./georef-terrain-height-button`.
- * They were extracted so this file — already over the repo's ~400-line module guideline before
- * this change — does not grow.
+ * Rows (`./georef-rows`, #5812), `TerrainHeightButton` and the georef-check diagnosis (`./georef-diagnosis-gate`,
+ * #10608) live in their own modules so this file, over the ~400-line module guideline, does not grow.
  */
 
 import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
@@ -50,6 +48,7 @@ import { SiteContextSection } from '../site-context/SiteContextSection';
 import { FloodCheckSection } from '../site-context/FloodCheckSection';
 import { CrsAssumedBadge } from './crs-assumed-badge';
 import { GeorefEmptyState } from './georef-empty-state';
+import { GeorefDiagnosis } from './georef-diagnosis-gate';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
 
@@ -391,6 +390,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           </EpsgLookupDialog>
         )}
       </div>
+      {modelId && <GeorefDiagnosis modelId={modelId} editable={editable} mapUnitScale={mergedCRS?.mapUnitScale} shownInPanel={{ doubleGeoref: !!doubleGeoref, scaleMismatch: !!scaleMismatch }} />}
 
       {/* Doubly-georeferenced model (#2526). Informational, not a warning, and
           deliberately without an action: the model on screen is already

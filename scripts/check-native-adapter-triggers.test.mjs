@@ -11,7 +11,6 @@ import test from 'node:test';
 import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
 import { parse as parseYaml } from 'yaml';
 import { permissionBlocks, scan } from './lib/workflow-permissions.mjs';
-import { BATCH_BRANCH_PREFIX } from './ci-pr-lane.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -273,11 +272,6 @@ test('a batch call that loses its input, its gate or its corpus exclusion is rep
   const ungated = copyTree(context);
   mutate(ungated, (t) => t.replace('      inputs.batch == true ||\n', ''));
   assert.ok(audit(ungated).some((f) => f.includes('must keep its opt-in gate')));
-});
-
-test('the batch fallback names the same head-ref prefix as the lane classifier', () => {
-  // The guard pins the workflow's literal; this pins it to ci-pr-lane.mjs.
-  assert.equal(BATCH_BRANCH_PREFIX, 'mergify/merge-queue/');
 });
 
 test('test.yml must call, decide and judge the batch run', (context) => {

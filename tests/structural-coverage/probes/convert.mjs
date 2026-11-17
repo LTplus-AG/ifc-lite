@@ -293,11 +293,8 @@ export default {
         const copied = nonConforming(rt.there, row.entity, schemas.other.registry);
         const renamed = row.rooted ? renamedNonConforming(row, file, rt.there, schemas.other) : [];
         const conforms = !copied.length && !renamed.length;
-        if (!conforms) {
-          problems.push(copied.length
-            ? `${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${reasons(copied)})`
-            : `${file.path}: ${renamed.length} ${row.entity} record(s) became records that do not conform to ${OTHER[row.schema]} (${reasons(renamed)})`);
-        }
+        if (copied.length) problems.push(`${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${reasons(copied)})`);
+        if (renamed.length) problems.push(`${file.path}: ${renamed.length} ${row.entity} record(s) became records that do not conform to ${OTHER[row.schema]} (${reasons(renamed)})`);
         // A file that does not conform earns no credit, but its values are still compared, so no loss hides behind it.
         const r = compareFile(row, file, rt, schemas);
         problems.push(...r.problems);

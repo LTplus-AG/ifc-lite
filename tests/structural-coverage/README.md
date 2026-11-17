@@ -82,8 +82,9 @@ connection records prevent a pass.
 ## Limits
 
 `limits.mjs` labels the problems no product change can fix (schema, policy or
-upstream), each with a citation its `holds` re-checks on every complete run; a
-stale or false limit stops the scorer. A limit never changes a status, a point
+upstream), each with a citation its `holds` re-checks on every run with the
+whole corpus; a stale or false limit is printed and fails `--check` after the
+ratchet. Offline runs skip limits. A limit never changes a status, a point
 or the ratchet. The ledger calls a cell out of reach only when every one of its
 problems is labelled.
 

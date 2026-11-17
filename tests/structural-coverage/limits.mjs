@@ -35,8 +35,11 @@ export const KINDS = ['schema', 'policy', 'upstream'];
 function proxied(f, step, act) {
   if (!act || f.has('IFC2X3', f.name('IFC4', act.type))) return false;
   if (!CONSTANT_SUBTYPE.has(act.type)) return true;
+  // An empty PredefinedType may come back CONST, as the convert probe allows.
+  const predefined = act.args.at(-1);
+  if (predefined === null || predefined?.enum === 'CONST') return false;
   const shape = act.args[6]?.ref;
-  return act.args.at(-1)?.enum !== 'CONST' && (shape === undefined || !step.of('IFCSHAPEASPECT').some((a) => a.args[4]?.ref === shape));
+  return shape === undefined || !step.of('IFCSHAPEASPECT').some((a) => a.args[4]?.ref === shape);
 }
 
 /** The source record a `<path>#<id>` problem names. */
@@ -192,15 +195,21 @@ export function markLimits(cells, facts, limits = LIMITS) {
     const cell = cells.get(row)?.[level];
     if (!cell) { issues.push(`${key} is not a probed cell`); continue; }
     const used = new Set();
+    const matched = new Set();
+    const holds = (l, match) => {
+      try { return l.holds(facts, match); } catch (e) { return e; }
+    };
     const labelled = (problem) => group.filter((l) => {
       const match = l.problem.exec(problem);
       if (!match) return false;
-      if (l.holds(facts, match)) { used.add(l); return true; }
-      issues.push(`${key} (${l.kind}): the cited fact does not hold for "${problem}"`);
+      matched.add(l);
+      const held = holds(l, match);
+      if (held === true) { used.add(l); return true; }
+      issues.push(`${key} (${l.kind}): the cited fact does not hold for "${problem}"${held instanceof Error ? ` (${held.message})` : ''}`);
       return false;
     }).length > 0;
     const open = (cell.problems ?? []).filter((p) => !labelled(p)).length;
-    const stale = group.filter((l) => !used.has(l));
+    const stale = group.filter((l) => !matched.has(l));
     if (stale.length) issues.push(`${key} (${stale.map((l) => l.kind).join(', ')}) labels no problem the probe reported (${cell.status}${cell.problems ? '' : ', no problem list'})`);
     if (used.size) cell.limits = { open, by: [...used].map(({ kind, cite }) => ({ kind, cite })) };
   }

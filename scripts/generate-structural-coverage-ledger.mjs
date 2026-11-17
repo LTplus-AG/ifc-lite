@@ -75,11 +75,12 @@ const KIND = { schema: 'out of reach (schema)', policy: 'policy-limited', upstre
 
 /**
  * What keeps a cell from passing: its limit kinds when every problem is labelled
- * (`tests/structural-coverage/limits.mjs`), 'not written' or 'skip' for those statuses, else 'reachable'.
+ * (`tests/structural-coverage/limits.mjs`), 'not written', 'skip' or 'probe error' for those statuses, else 'reachable'.
  */
 function reach(c) {
   if (c.status === 'unwritten') return 'not written';
   if (c.status === 'skip') return 'skip';
+  if (c.status === 'error') return 'probe error';
   return c.limits?.open === 0 ? [...new Set(c.limits.by.map((l) => KIND[l.kind]))].join(', ') : 'reachable';
 }
 

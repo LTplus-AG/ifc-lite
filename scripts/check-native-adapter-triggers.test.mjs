@@ -68,6 +68,12 @@ test('a non-crate Rust input (Cargo.lock) dropped from the list is reported', (c
   assert.ok(audit(root).some((f) => f.includes('Cargo.lock') && f.includes('on.pull_request.paths')));
 });
 
+test('a narrow entry under .cargo/ does not cover the whole directory', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replaceAll("      - '.cargo/**'\n", "      - '.cargo/x/x'\n"));
+  assert.ok(audit(root).some((f) => f.includes('.cargo/** is not covered by on.pull_request.paths')));
+});
+
 test('probe-file globs that leave the rest of a crate untriggered are reported', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replaceAll("      - 'rust/core/**'\n", "      - 'rust/core/Cargo.toml'\n      - 'rust/core/src/lib.rs'\n      - 'rust/core/tests/probe.rs'\n"));

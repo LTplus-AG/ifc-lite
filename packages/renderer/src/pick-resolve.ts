@@ -46,13 +46,14 @@ export interface PickResult {
    *     have none, mirroring `MeshData.geometryItemId` itself;
    *   - a colour-merged batch holds many entities, so whatever item id it
    *     carries belongs to none of them individually and is not reported;
-   *   - a GPU-instanced occurrence has none on the GPU route ONLY. The
-   *     instanced pick shader writes the express id straight into the sample,
-   *     with no per-instance item channel to look one up from. The CPU raycast
-   *     never runs that shader, and since #2985 carried the id onto instanced
-   *     occurrences it DOES report one: `Scene.getInstancedMeshDataPieces`
+   *   - a GPU-instanced occurrence has none on the per-piece GPU route ONLY.
+   *     The instanced pick shader writes the express id straight into the
+   *     sample, with no per-instance item channel to look one up from. The CPU
+   *     raycast never runs that shader, and since #2985 carried the id onto
+   *     instanced occurrences it DOES report one: `Scene.getInstancedMeshDataPieces`
    *     stamps `geometryItemId` on each synthetic `MeshData` it materialises.
-   *     So the two routes disagree here, and only the shader half is open.
+   *     The colour-batch route (#10264 S1) completes such a sample the same
+   *     way (`refineLaneHit`), so only the small-model GPU route leaves it open.
    * Rectangle/marquee pick returns bare express ids and never builds a
    * `PickResult` at all, so it cannot report this either.
    */

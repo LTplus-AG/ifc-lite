@@ -12,6 +12,7 @@
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 import { sectionExclusionsWgsl } from './section-exclusions.js';
 import { extraClipWgsl } from './extra-clip-planes.js';
+import { pickVisibilityWgsl } from './pick-visibility.js';
 
 /** Flat meshes: one dynamic-offset uniform slot per mesh, expressIds in a storage buffer. */
 export const flatPickShaderWgsl = `
@@ -156,5 +157,89 @@ export const instancedPickShaderWgsl = `
             }
           }
           return input.objectId;
+        }
+      `;
+
+/**
+ * Colour batches and textured meshes drawn whole for picking (#10264 S1). The
+ * entity comes from the per-vertex lane the colour pass already reads: low 24
+ * bits under the draw's anchor (`clipFlags.y`), resolved to the full scene id
+ * as `sectionEntityFromLane` does for section exclusions. The fragment writes
+ * it with the instanced marker (bit 30): like an instanced sample it names
+ * its entity directly, with no per-draw table to index.
+ *
+ * Hide/isolate is the fragment's own test against `pickVisibility`, because a
+ * batch is drawn whole. Clip discards mirror the flat pick pass. Same layout as
+ * the flat uniform block, plus `quantParams` for 12-byte lattice batches.
+ */
+export const lanePickShaderWgsl = `
+        ${relativeToEyeWgsl}
+        ${extraClipWgsl}
+        ${sectionExclusionsWgsl}
+        struct Uniforms {
+          viewProj: mat4x4<f32>, // translation-free RTE projection
+          model: mat4x4<f32>,    // linear transform; translation lives in originHigh/Low
+          clipBoxMin: vec4<f32>,
+          clipBoxMax: vec4<f32>,
+          sectionPlane: vec4<f32>,
+          clipFlags: vec4<u32>,    // x: bit0 section, bit1 flipped, bit2 clipBox; y: lane anchor
+          originHigh: vec4<f32>,
+          originLow: vec4<f32>,
+          quantParams: vec4<f32>,  // xyz = lattice min, w = step (quantized batches only)
+        }
+        @binding(0) @group(0) var<uniform> uniforms: Uniforms;
+        @binding(1) @group(0) var<storage, read> pickVisibility: array<u32>;
+        @binding(2) @group(0) var<uniform> extraClip: ExtraClip;
+        ${pickVisibilityWgsl}
+
+        struct VertexOutput {
+          @builtin(position) position: vec4<f32>,
+          @location(0) @interpolate(flat) entityId: u32,
+          @location(1) worldPos: vec3<f32>,
+        }
+
+        fn emitLane(localPos: vec3<f32>, lane: u32) -> VertexOutput {
+          var output: VertexOutput;
+          let linear = (uniforms.model * vec4<f32>(localPos, 0.0)).xyz;
+          let relative = rteWorldPosition(linear, RteDrawableUniform(uniforms.originHigh, uniforms.originLow)).xyz;
+          output.position = uniforms.viewProj * vec4<f32>(relative, 1.0);
+          output.worldPos = relative;
+          output.entityId = sectionEntityFromLane(uniforms.clipFlags.y, lane);
+          return output;
+        }
+
+        @vertex
+        fn vs_lane(@location(0) position: vec3<f32>, @location(2) lane: u32) -> VertexOutput {
+          return emitLane(position, lane);
+        }
+
+        @vertex
+        fn vs_lane_quantized(@location(0) q: vec4<u32>, @location(2) lane: u32) -> VertexOutput {
+          let p = uniforms.quantParams.xyz + vec3<f32>(f32(q.x), f32(q.y), f32(q.z)) * uniforms.quantParams.w;
+          return emitLane(p, lane);
+        }
+
+        @fragment
+        fn fs_main(input: VertexOutput) -> @location(0) u32 {
+          if (!pickVisible(input.entityId)) {
+            discard;
+          }
+          let excluded = sectionExcluded(input.entityId);
+          if (!excluded && (uniforms.clipFlags.x & 1u) != 0u) {
+            let side = select(1.0, -1.0, (uniforms.clipFlags.x & 2u) != 0u);
+            if ((dot(input.worldPos, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * side > 0.0) {
+              discard;
+            }
+          }
+          if (!excluded && extraClipClipped(extraClip, input.worldPos)) {
+            discard;
+          }
+          if ((uniforms.clipFlags.x & 4u) != 0u) {
+            let p = input.worldPos;
+            if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
+              discard;
+            }
+          }
+          return 0x40000000u | (input.entityId & 0x3FFFFFFFu);
         }
       `;

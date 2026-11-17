@@ -13,12 +13,15 @@ import { isEntityVisible } from './entity-visibility.js';
 import { Scene } from './scene.js';
 import { Picker, type PointPickSizing } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
-import type { PickOptions, PickResult, PickClipState } from './types.js';
+import type { Mesh, PickOptions, PickResult, PickClipState } from './types.js';
 import type { PointPickNode } from './point-picker.js';
 import type { GpuUploadOutcome } from './gpu-upload-guard.js';
 import { capturePointRteSnapshot, isPointRteSnapshotCurrent, isPointRteFrameAvailable, pointRteInvalidationEpoch } from './pick-rte-snapshot.js';
 import { computeDrawingBufferSize } from './renderer-viewport.js';
-import { pickPieceKey, planPickMeshHydration } from './pick-mesh-budget.js';
+import { hydratePickMeshes, planPickMeshHydration } from './pick-mesh-budget.js';
+import { collectLaneDraws, laneRouteMeshes, refineLaneHit, type Ray } from './pick-lane-route.js';
+import type { LanePickInput } from './lane-pick-pass.js';
+import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
 
 /**
  * Supplied by the renderer when point clouds are loaded — returns the
@@ -28,6 +31,18 @@ import { pickPieceKey, planPickMeshHydration } from './pick-mesh-budget.js';
 export type PointPickProvider = (filter?: PickOptions) =>
   | { nodes: ReadonlyArray<PointPickNode>; sizing: PointPickSizing }
   | null;
+
+/**
+ * How one pick reaches its answer:
+ * - `gpu`: individual pick meshes, hydrated from CPU pieces (small models);
+ * - `lanes`: the colour batches drawn whole, entity from the vertex lane
+ *   (#10264 S1; models over the pick-mesh budget, or without CPU pieces);
+ * - `cpu`: the CPU raycast, when neither GPU route can answer for everything.
+ */
+type PickRoute = 'gpu' | 'lanes' | 'cpu';
+
+/** What the GPU pass draws on the `gpu` or `lanes` route. */
+interface GpuPickPlan { meshes: Mesh[]; lanes?: LanePickInput }
 
 interface PickViewport {
     width: number;
@@ -100,61 +115,53 @@ export class PickingManager {
     }
 
     /**
-     * Prepare batched geometry for a GPU pick pass, shared by `pick()` and
-     * `pickRect()`.
-     *
-     * Returns `'cpu'` when the caller must fall back to a CPU test — either JS
-     * geometry data was released, or hydrating an individual mesh per visible
-     * piece would exceed the pick-mesh budget. Returns `'gpu'` after hydrating
-     * whatever was missing, so a following `scene.getMeshes()` covers every
-     * visible entity.
+     * Choose the route for a pick, shared by `pick()` and `pickRect()`, and
+     * hydrate the individual pick meshes when that is the route.
      *
      * Both pick paths MUST route through this. `pickRect` used to read
      * `scene.getMeshes()` directly, which on a batched model is empty or
      * partial, so rectangle select returned an empty set no matter how many
      * elements the rect covered (#1904).
      */
-    private prepareBatchedPick(options?: PickOptions): 'cpu' | 'gpu' {
-        const batchedMeshes = this.scene.getBatchedMeshes();
+    private pickRoute(options?: PickOptions): PickRoute {
         // Textured draws also keep separate GPU buffers and need pick-mesh hydration.
-        if (batchedMeshes.length === 0 && this.scene.getTexturedMeshes().length === 0) return 'gpu';
+        if (this.scene.getBatchedMeshes().length === 0 && this.scene.getTexturedMeshes().length === 0) return 'gpu';
+        // No CPU pieces to hydrate from: only the batches themselves can answer.
+        if (this.scene.isGeometryDataReleased()) return 'lanes';
+        const plan = planPickMeshHydration(this.scene, options);
+        if (plan.overBudget) return 'lanes';
+        return hydratePickMeshes(this.scene, plan, this.createMeshFromDataFn) ? 'gpu' : 'cpu';
+    }
 
-        if (this.scene.isGeometryDataReleased()) return 'cpu';
-
-        const { overBudget, visibleExpressIds, existingPieceCounts } = planPickMeshHydration(this.scene, options);
-        if (overBudget) return 'cpu';
-
-        // For smaller models, create GPU meshes for picking
-        // Only create meshes for VISIBLE elements (not hidden, and either no isolation or in isolated set)
-        // For multi-model support: create meshes for ALL (expressId, modelIndex) pairs
-        const baselineExistingCounts = new Map(existingPieceCounts);
-        const seenOrdinalsByKey = new Map<string, number>();
-        // Any hydration failing here (#4885 review) — a lost device, or a
-        // mapped createBuffer allocation failure — means `scene.getMeshes()`
-        // below the 'gpu' return is missing that piece's buffers. Reporting
-        // 'gpu' anyway would make a subsequent pick silently skip it rather
-        // than fall back to the CPU raycast, which needs no GPU resources at
-        // all. One failure degrades the WHOLE prepare call to 'cpu': a mix of
-        // hydrated and un-hydrated pieces has no correct partial GPU answer.
-        let hydrationFailed = false;
-        for (const expressId of visibleExpressIds) {
-            const pieces = this.scene.getMeshDataPieces(expressId);
-            if (pieces) {
-                for (const piece of pieces) {
-                    const meshKey = pickPieceKey(piece);
-                    const ordinal = seenOrdinalsByKey.get(meshKey) ?? 0;
-                    seenOrdinalsByKey.set(meshKey, ordinal + 1);
-                    const baselineExisting = baselineExistingCounts.get(meshKey) ?? 0;
-
-                    // Assume existing pieces correspond to the first N pieces in stable order.
-                    if (ordinal < baselineExisting) continue;
-
-                    if (!this.createMeshFromDataFn(piece).ok) hydrationFailed = true;
-                }
-            }
+    /**
+     * What the GPU pass draws for `route`, or null to take the CPU route: the
+     * batch pass needs its pipelines, an RTE snapshot to project in, and every
+     * batch `ray` can hit (all of them for a marquee) resident and resolvable.
+     */
+    private gpuPickPlan(
+        route: PickRoute,
+        options: PickOptions | undefined,
+        snapshot: RelativeToEyeSnapshot | undefined,
+        ray: Ray | null,
+        clip: PickClipState | null | undefined,
+    ): GpuPickPlan | null {
+        if (route === 'cpu') return null;
+        if (route === 'gpu') {
+            // Same hide/isolate rule as the draw paths: users can only select what they can see.
+            return { meshes: this.scene.getMeshes().filter(mesh => isEntityVisible(mesh.expressId, options?.hiddenIds, options?.isolatedIds)) };
         }
-
-        return hydrationFailed ? 'cpu' : 'gpu';
+        if (!snapshot || !this.picker?.canPickLanes(this.scene.getInstancedTemplates().length > 0)) return null;
+        const draws = collectLaneDraws(this.scene, ray);
+        if (!draws) return null;
+        return {
+            meshes: laneRouteMeshes(this.scene, options),
+            lanes: {
+                draws,
+                hiddenIds: options?.hiddenIds,
+                isolatedIds: options?.isolatedIds,
+                ...(ray ? { refine: (hit: PickResult) => refineLaneHit(this.scene, hit, ray, options, clip) } : {}),
+            },
+        };
     }
 
     /**
@@ -187,7 +194,18 @@ export class PickingManager {
         }
 
         const annotations = this.annotationPickProvider?.(x, y, viewport.width / viewport.scaleX, viewport.height / viewport.scaleY, options, clip) ?? null;
-        if (this.prepareBatchedPick(options) === 'cpu') {
+        // The point and batch passes project in this immutable RTE frame. Never
+        // decode a delayed readback with a later camera placement: that turns a
+        // valid click into an absolute-coordinate jump after navigation.
+        const pointRteSnapshot = capturePointRteSnapshot(this.camera);
+        // The batch route culls to, and refines along, the ray through the
+        // centre of the texel the picker reads (it clamps the same way).
+        const texelX = Math.max(0, Math.min(viewport.width - 1, Math.floor(scaledX))) + 0.5;
+        const texelY = Math.max(0, Math.min(viewport.height - 1, Math.floor(scaledY))) + 0.5;
+        const route = this.pickRoute(options);
+        const plan = this.gpuPickPlan(route, options, pointRteSnapshot,
+            route === 'lanes' ? this.camera.unprojectToRay(texelX, texelY, viewport.width, viewport.height) : null, clip);
+        if (!plan) {
             const ray = this.camera.unprojectToRay(scaledX, scaledY, viewport.width, viewport.height);
             const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds, clip);
             if (!hit) return resolveAnnotationPick(annotations, null);
@@ -203,39 +221,31 @@ export class PickingManager {
             } : undefined);
         }
 
-        let meshes = this.scene.getMeshes();
-
-        // Apply visibility filtering to meshes before picking, with the same
-        // rule the draw paths use — users can only select what they can see.
-        meshes = meshes.filter(mesh => isEntityVisible(mesh.expressId, options?.hiddenIds, options?.isolatedIds));
-
         const viewProj = this.camera.getViewProjMatrix().m;
         // The provider drops inline clouds the same filters hide from the draw (#10215).
         const pointSnap = this.pointPickProvider?.(options) ?? null;
-        const pointNodes = pointSnap?.nodes ?? undefined;
-        const pointSizing = pointSnap?.sizing ?? undefined;
-        // The point pass projects in this immutable RTE frame. Never decode a
-        // delayed readback with a later camera placement: that turns a valid
-        // click into an absolute-coordinate jump after navigation.
-        const pointRteSnapshot = capturePointRteSnapshot(this.camera);
+        // A refined batch hit reads the scene after the readback: an edit in between voids it.
+        const geometryRevision = plan.lanes ? this.scene.getPickGeometryRevision() : 0;
         const result = await picker.pick(
             scaledX,
             scaledY,
             viewport.width,
             viewport.height,
-            meshes,
+            plan.meshes,
             viewProj,
-            pointNodes,
-            pointSizing,
+            pointSnap?.nodes ?? undefined,
+            pointSnap?.sizing ?? undefined,
             this.scene.getInstancedTemplates(),
             clip,
             pointRteSnapshot,
+            plan.lanes,
         );
         if (!this.isPickRequestCurrent(viewport, pickerEpoch, invalidationEpoch)) return null;
         if (pointRteSnapshot
             && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot)) {
             return null;
         }
+        if (plan.lanes && this.scene.getPickGeometryRevision() !== geometryRevision) return null;
         return resolveAnnotationPick(annotations, result);
     }
 
@@ -250,8 +260,11 @@ export class PickingManager {
      * by the point provider (#10215).
      *
      * Batched models take the same route as `pick()`: hydrate the
-     * missing individual meshes when that is affordable, otherwise fall
-     * back to `Scene.selectRect`, which over-selects relative to the
+     * missing individual meshes when that is affordable, otherwise draw
+     * the colour batches whole (#10264 S1), which keeps the marquee
+     * pixel-exact, depth-tested and clip-aware on large models. Only when
+     * the batches cannot answer does it fall back to `Scene.selectRect`,
+     * which over-selects relative to the
      * pixel-exact GPU pass in three ways: it is bounding-box granular
      * (a rect over empty space inside an element's bounds selects it),
      * it has no depth test (occluded entities are selected), and it
@@ -284,7 +297,9 @@ export class PickingManager {
         const sx1 = x1 * viewport.scaleX, sy1 = y1 * viewport.scaleY;
         if (options?.isStreaming) return new Set();
 
-        if (this.prepareBatchedPick(options) === 'cpu') {
+        const pointRteSnapshot = capturePointRteSnapshot(this.camera);
+        const plan = this.gpuPickPlan(this.pickRoute(options), options, pointRteSnapshot, null, clip);
+        if (!plan) {
             const boxHits = this.scene.selectRect(
                 sx0, sy0, sx1, sy1,
                 viewport.width, viewport.height,
@@ -318,7 +333,6 @@ export class PickingManager {
             // that nothing else on this path can supply — point assets have no
             // entry in `boundingBoxes` at all.
             let pointHits: Set<number>;
-            const pointRteSnapshot = capturePointRteSnapshot(this.camera);
             try {
                 pointHits = await picker.pickRect(
                     sx0, sy0, sx1, sy1,
@@ -347,24 +361,24 @@ export class PickingManager {
             return boxHits;
         }
 
-        let meshes = this.scene.getMeshes();
-        meshes = meshes.filter((m) => isEntityVisible(m.expressId, options?.hiddenIds, options?.isolatedIds));
         const viewProj = this.camera.getViewProjMatrix().m;
         const pointSnap = this.pointPickProvider?.(options) ?? null;
-        const pointRteSnapshot = capturePointRteSnapshot(this.camera);
+        const geometryRevision = plan.lanes ? this.scene.getPickGeometryRevision() : 0;
         const hits = await picker.pickRect(
             sx0, sy0, sx1, sy1,
             viewport.width, viewport.height,
-            meshes,
+            plan.meshes,
             viewProj,
             pointSnap?.nodes ?? undefined,
             pointSnap?.sizing ?? undefined,
             this.scene.getInstancedTemplates(),
             clip,
             pointRteSnapshot,
+            plan.lanes,
         );
         return !this.isPickRequestCurrent(viewport, pickerEpoch, invalidationEpoch)
             || (pointRteSnapshot && !isPointRteSnapshotCurrent(this.camera, pointRteSnapshot))
+            || (plan.lanes && this.scene.getPickGeometryRevision() !== geometryRevision)
             ? new Set()
             : hits;
     }

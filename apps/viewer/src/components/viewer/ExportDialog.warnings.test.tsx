@@ -5,7 +5,11 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it, mock } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
+import type { Renderer } from '@ifc-lite/renderer';
+import { initSync } from '@ifc-lite/wasm';
+import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { render, cleanup, click, press, advance, waitFor } from '@/test/render';
@@ -19,6 +23,7 @@ const initialState = useViewerStore.getState();
 afterEach(() => {
   cleanup();
   clearDownloads();
+  clearGlobalRefs();
   mock.restoreAll();
   useViewerStore.setState(initialState);
 });
@@ -84,7 +89,7 @@ for (const convert of [true, false]) {
     assert.equal(toasts.success.mock.callCount(), convert ? 0 : 1);
     assert.equal(toasts.info.mock.callCount(), convert ? 1 : 0);
     if (convert) {
-      assert.match(toasts.info.mock.calls[0].arguments[0] ?? '', /Exported .* — \d+ warnings?/);
+      assert.match(toasts.info.mock.calls[0].arguments[0] ?? '', /^Exported .*\. \d+ warnings?$/);
       assert.match(details(), /ConditionCoordinateSystem has no slot in IFC2X3/);
       assert.match(details(), /restraint directions in that coordinate system are not preserved/);
       const cancel = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Cancel');
@@ -107,12 +112,35 @@ it('merged STEP export shows its warnings like the single-model export (#10606)'
   await runExport(toasts);
   assert.equal(toasts.success.mock.callCount(), 0);
   assert.equal(toasts.info.mock.callCount(), 1);
-  assert.match(toasts.info.mock.calls[0].arguments[0] ?? '', /Merged 2 models, .* — \d+ warnings?/);
+  assert.match(toasts.info.mock.calls[0].arguments[0] ?? '', /^Merged 2 models, .*\. \d+ warnings?$/);
+  assert.match(details(), /ConditionCoordinateSystem has no slot in IFC2X3/);
+});
+
+it('sectioned merged STEP export keeps each cropped model\'s warnings (#10606)', async () => {
+  initSync({ module: new Uint8Array(readFileSync(new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url))) });
+  const [first, second] = await Promise.all([structuralModel('structural.ifc'), structuralModel('annex.ifc', 1_000_000)]);
+  useViewerStore.setState({ ...fixtureModels(first, second), dirtyModels: new Set() });
+  setGlobalRendererRef({ current: { getCamera: () => ({ getSceneBounds: () => ({ min: { x: -5, y: -4, z: -3 }, max: { x: 5, y: 4, z: 3 } }) }) } as unknown as Renderer });
+  const plane = useViewerStore.getState().sectionPlane;
+  useViewerStore.setState({ sectionPlane: { ...plane, enabled: true, flipped: false, custom: { normal: [1, 0, 0], distance: 0, pickedAt: [0, 0, 0], tangent: [0, 1, 0], bitangent: [0, 0, 1] } } });
+  const toasts = mockToasts();
+  const ui = render(<ExportDialog surface="ribbon" />);
+  openExportDialog(ui, 'Export IFC');
+  await chooseMerged();
+  await chooseIfc2x3();
+  const visible = [...document.querySelectorAll('label')].find(el => el.textContent === 'Export Visible Only');
+  const visibleToggle = visible?.parentElement?.parentElement?.querySelector('[role="switch"]');
+  assert.ok(visibleToggle);
+  click(visibleToggle);
+  assert.ok(document.getElementById('trim-section-export'), 'the merged export is sectioned');
+  await runExport(toasts);
+  assert.equal(toasts.success.mock.callCount(), 0);
+  assert.equal(toasts.info.mock.callCount(), 1);
   assert.match(details(), /ConditionCoordinateSystem has no slot in IFC2X3/);
 });
 
 it('caps displayed diagnostics while retaining their total count (#10606)', async () => {
-  const warnings = Array.from({ length: 8 }, (_, i) => `Diagnostic ${i + 1}`);
+  const warnings = Array.from({ length: 1_234 }, (_, i) => `Diagnostic ${i + 1}`);
   render(
     <ExportDialogShell trigger={<button>Open export dialog</button>} icon={<span />} title="Export" description="" cancelLabel="Cancel"
       exportLabel="Export" exportingLabel="Exporting..." onExport={async () => ({ success: true, message: 'done', warnings, warningLimit: 5 })}>
@@ -123,7 +151,7 @@ it('caps displayed diagnostics while retaining their total count (#10606)', asyn
   click(exportButton());
   await waitFor(() => document.querySelector('details') !== null, 'the warnings render with the result');
   assert.equal(document.querySelectorAll('details li').length, 5);
-  assert.equal(document.querySelector('summary')?.textContent, '8 warnings');
-  assert.match(details(), /and 3 more/);
+  assert.equal(document.querySelector('summary')?.textContent, '1,234 warnings');
+  assert.match(details(), /and 1,229 more/);
   assert.doesNotMatch(details(), /Diagnostic 6/);
 });

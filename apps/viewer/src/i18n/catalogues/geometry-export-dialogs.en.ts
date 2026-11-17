@@ -31,8 +31,8 @@ export const geometryExportDialogsEn = {
   // --- ExportDialogShell.tsx (#5848) ---
   'geometryExport.shell.filenamePreviewLabel': 'Will save as:',
   'geometryExport.shell.warningsSummary': {
-    one: '{count} warning',
-    other: '{count} warnings',
+    one: '{countDisplay} warning',
+    other: '{countDisplay} warnings',
   },
 
   // --- GLBExportDialog.tsx ---

@@ -10,9 +10,9 @@ export const geometryExportDialogsIt = {
   "geometryExport.shared.geometryEngineUnavailableError": "Motore geometrico non disponibile",
   "geometryExport.shell.filenamePreviewLabel": "Verrà salvato come:",
   "geometryExport.shell.warningsSummary": {
-    "one": "{count} avviso",
-    "other": "{count} avvisi",
-    "many": "{count} avvisi"
+    "one": "{countDisplay} avviso",
+    "other": "{countDisplay} avvisi",
+    "many": "{countDisplay} avvisi"
   },
   "geometryExport.glb.triggerButton": "Esporta GLB",
   "geometryExport.glb.dialogTitle": "Esporta file GLB",

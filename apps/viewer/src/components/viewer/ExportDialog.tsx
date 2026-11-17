@@ -380,7 +380,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
             : '')
           + (skipNotice ? `. ${skipNotice}` : '');
         exportedFormat = 'ifc';
-        return stepExportResult(msg, result.stats.warnings, t);
+        return stepExportResult(msg, [...prepared.warnings, ...result.stats.warnings], t);
       }
 
       if (!selectedModel) {

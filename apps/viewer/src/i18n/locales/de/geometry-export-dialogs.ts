@@ -10,8 +10,8 @@ export const geometryExportDialogsDe = {
   "geometryExport.shared.geometryEngineUnavailableError": "Geometrie-Engine nicht verfügbar",
   "geometryExport.shell.filenamePreviewLabel": "Wird gespeichert als:",
   "geometryExport.shell.warningsSummary": {
-    "one": "{count} Warnung",
-    "other": "{count} Warnungen"
+    "one": "{countDisplay} Warnung",
+    "other": "{countDisplay} Warnungen"
   },
   "geometryExport.glb.triggerButton": "GLB exportieren",
   "geometryExport.glb.dialogTitle": "GLB-Datei exportieren",

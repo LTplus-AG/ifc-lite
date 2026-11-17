@@ -10,9 +10,10 @@ export const geometryExportDialogsRu = {
   "geometryExport.shared.geometryEngineUnavailableError": "Геометрический движок недоступен",
   "geometryExport.shell.filenamePreviewLabel": "Сохранится как:",
   "geometryExport.shell.warningsSummary": {
-    one: "{count} предупреждение",
-    many: "{count} предупреждений",
-    other: "{count} предупреждения",
+    one: "{countDisplay} предупреждение",
+    few: "{countDisplay} предупреждения",
+    many: "{countDisplay} предупреждений",
+    other: "{countDisplay} предупреждения",
   },
   "geometryExport.glb.triggerButton": "Экспортировать GLB",
   "geometryExport.glb.dialogTitle": "Экспорт файла GLB",

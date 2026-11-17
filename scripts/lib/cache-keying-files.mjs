@@ -23,7 +23,8 @@
  * and the tested tree is the one a replay needs a green run of: adding a file a
  * pattern matches fails this test in that very run. What cannot be matched is
  * an error: a non-literal hashFiles argument, an absolute or climbing path, a
- * checkout into a subdirectory (`actions/checkout` with `path:`), a reusable
+ * checkout of this repository into a subdirectory (`actions/checkout` with
+ * `path:` and no literal other `repository:`), a reusable
  * workflow called by owner/repo, a non-composite local action.
  */
 
@@ -41,6 +42,10 @@ const CACHE_DEFAULTS = {
   pnpm: ['**/pnpm-lock.yaml'], npm: ['**/package-lock.json', '**/npm-shrinkwrap.json'], yarn: ['**/yarn.lock'],
   pip: ['**/requirements.txt'], pipenv: ['**/Pipfile.lock'], poetry: ['**/poetry.lock'],
 };
+// Outside repositories checked out with `path:` into a subdirectory
+// (geometry-platform.yml, retained-engine.yml). Not into .github, so no file
+// this list judges moves; the rule below holds that.
+const OUTSIDE_CHECKOUTS = new Set(['nvidia-omniverse/usd-brep', 'emscripten-core/emsdk']);
 // A key-producing run that may hash .github without naming a file.
 const BROAD_RUN = /\.github(?!\/)|\bgit\s+ls-(?:files|tree)\b|\bfind\s/;
 const HASHFILES = /hashFiles\s*\(/gi;
@@ -191,8 +196,22 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
       if (key === null) continue;
       if (key === 'uses') {
         const v = value.trim();
-        if (/^actions\/checkout@/i.test(v) && parent?.with && typeof parent.with === 'object' && 'path' in parent.with) {
-          errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
+        // Only a checkout of THIS repository moves the files hashFiles reads.
+        // A known outside repository in a real subdirectory does not.
+        const w = parent?.with;
+        const rel = typeof w?.path === 'string' && !/\$\{\{|\\/.test(w.path) ? posix.normalize(w.path.trim()).replace(/(.)\/+$/, '$1') : '/';
+        const sub = !rel.startsWith('/') && rel !== '.' && !rel.startsWith('..') && !/^\.github(?:\/|$)/i.test(rel);
+        const outside = typeof w?.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase());
+        const otherRepo = sub && outside;
+        const checkout = /^actions\/checkout@/i.test(v) && w && typeof w === 'object';
+        if (checkout && 'path' in w && !otherRepo) {
+          errors.push(outside
+            ? `${file}: actions/checkout of ${w.repository} with path: ${w.path} lands on the workspace root or in .github, not in a subdirectory of its own`
+            : `${file}: actions/checkout with path: moves the repository under a subdirectory`);
+        }
+        // An outside repository with no `path:` replaces this one at the workspace root.
+        if (checkout && !('path' in w) && outside) {
+          errors.push(`${file}: actions/checkout of ${w.repository} with no path: replaces this repository at the workspace root`);
         }
         if (v.startsWith('./')) {
           const ref = posix.normalize(v);

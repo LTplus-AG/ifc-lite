@@ -343,6 +343,11 @@ test("the check's own config being outside its own trigger is itself a failure",
 test('globToRegExp follows picomatch separator rules', () => {
   assert.ok(globToRegExp('rust/**').test('rust/core/src/lib.rs'));
   assert.ok(globToRegExp('rust/**').test('rust'), '`a/**` must cover the bare directory');
+  // `**/` is zero or more directories, as GitHub's `paths:` reads it.
+  assert.ok(globToRegExp('apps/viewer/**/*retained*').test('apps/viewer/retained-engine.lock.json'));
+  assert.ok(globToRegExp('apps/viewer/**/*retained*').test('apps/viewer/src/lib/retained.ts'));
+  assert.ok(globToRegExp('**/*.ts').test('a.ts'));
+  assert.ok(!globToRegExp('apps/viewer/**/*retained*').test('apps/viewerx/retained.ts'));
   assert.ok(globToRegExp('packages/*/README.md').test('packages/parser/README.md'));
   assert.ok(
     !globToRegExp('packages/*/README.md').test('packages/parser/src/README.md'),

@@ -12,7 +12,9 @@
 # A labelled PR (other than Version Packages) enters the queue only once it is
 # ready: `PR review signal` green and no unresolved review thread
 # (`auto_merge_conditions`, at the foot). The label can go on early. Once
-# queued, a push or removing the label takes it out and its queue run is lost.
+# queued, a push, removing the label, or a new review thread takes it out and
+# its queue run is lost: main's branch protection requires resolved
+# conversations, and Mergify adds that to every queue's conditions itself.
 #
 # Ceiling PRs (tests/perf-ratchets/*.json) keep their own queue, from when
 # batches landed untested commits (#8459, c306ff57d4).
@@ -137,9 +139,10 @@ pull_request_rules:
       queue:
         name: release
 
-# Auto-merge is what queues a labelled PR (#8526). The review gate lives here
-# because queue_conditions are re-checked while queued, so a late thread there
-# would dequeue the PR mid-run (docs: merge-queue/lifecycle).
+# Auto-merge is what queues a labelled PR (#8526); pull_request_rules do not
+# run (Workflow Automation is not activated on this repo). This gate keeps a PR
+# out until its review has landed, so threads are found before a queue run
+# starts rather than during it.
 merge_protections_settings:
   auto_merge_conditions:
     - or:

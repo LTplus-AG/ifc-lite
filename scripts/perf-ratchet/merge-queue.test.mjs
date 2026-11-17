@@ -128,9 +128,3 @@ test('a labelled PR waits outside the queue until its review gate is green and i
   }
   assert.ok(entersQueue(pr(['Cargo.toml'], { head: RELEASE, statuses: ['CLA'], unresolvedThreads: 1 })), 'the release PR has no review gate');
 });
-
-test('a thread opened on a queued PR does not dequeue it: the review gate is not a queue condition', () => {
-  for (const files of QUEUED_FILES) {
-    assert.ok(queueFor(pr(files, { statuses: ['CLA'], unresolvedThreads: 3 })), JSON.stringify(files));
-  }
-});

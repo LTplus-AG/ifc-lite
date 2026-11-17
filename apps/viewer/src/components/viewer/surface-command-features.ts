@@ -58,6 +58,9 @@ export const COMMAND_FEATURE: Readonly<Partial<Record<SurfaceCommandId, FeatureI
   'context:export-anonymized': 'export.files',
   // 3D world context streams imagery and terrain from an outside service.
   'view:world': 'privacy.third-party',
+  // Site context and the runoff map are fetched from geo.admin.ch on the user's click.
+  'view:site-context': 'privacy.third-party',
+  'view:flood-check': 'privacy.third-party',
   // The hub lists the available tours (`isTourAvailable`); the ribbon tour needs no sample.
   'learn:hub': 'help.tours',
 };

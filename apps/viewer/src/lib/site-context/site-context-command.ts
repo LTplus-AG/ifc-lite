@@ -3,19 +3,24 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The command palette's "Load site context": open the model metadata panel
- * of the model the context would be fetched around, where the Georeference
- * panel holds the "Site context" section. It never fetches by itself (the
- * section's button does, owner's decision). A model that cannot host site
- * context is refused with the reason, and when it is not georeferenced the
- * refusal's action opens the existing georeference editor instead.
+ * The "Site context" and "Surface runoff" commands (palette and ribbon): open
+ * the Information panel on the model the context would be fetched around and
+ * bring the matching section of its Georeference panel into view. Neither
+ * fetches nor runs anything by itself (the section's button does, owner's
+ * decision). The section says what is missing when the model cannot host
+ * site context yet (no georeferencing, a CRS that does not resolve, a height
+ * datum, a site outside Switzerland) and offers the step that fixes it, so
+ * the command never answers with a toast the user cannot act on (#10603).
  */
 
 import { resolve as t } from '@/i18n/registry';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { findReferenceSpatialModel } from '@/hooks/ingest/federationAlign';
-import { resolveSiteContextAnchor } from './site-context-anchor';
+import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
+import { liftStartFold } from '@/components/viewer/welcome/useEmptyStartFold';
+import type { PanelOpenSource } from '@/lib/analytics-ui-events';
+import { requestGeorefSectionFocus, type GeorefSection } from './georef-section-focus';
 
 /** The model to fetch around: the selected model, else the federation anchor, else the first non-context model. */
 export function siteContextTargetModel(): string | null {
@@ -27,38 +32,34 @@ export function siteContextTargetModel(): string | null {
   return [...state.models.keys()].find(isHost) ?? null;
 }
 
-function openModelPanel(modelId: string): void {
+/**
+ * Show `modelId`'s Information panel and scroll `section` of its Georeference
+ * panel into view. `showWorkspacePanel` is what puts Information into the
+ * sidebar slot (un-collapsing the right panel alone does nothing on desktop).
+ */
+export function openGeorefSection(modelId: string, section: GeorefSection, surface: PanelOpenSource = 'programmatic'): void {
   const state = useViewerStore.getState();
+  closeActiveAnalysisExtension();
+  liftStartFold('right');
   state.setSelectedModelId(modelId);
   state.setRightPanelCollapsed(false);
+  state.showWorkspacePanel('properties', surface);
+  requestGeorefSectionFocus(modelId, section);
 }
 
-export async function openSiteContext(): Promise<void> {
+function openFor(section: GeorefSection, surface: PanelOpenSource): void {
   const modelId = siteContextTargetModel();
   if (!modelId) {
-    toast.info(t('siteContext.refusal.notGeoreferenced'));
+    toast.info(t('siteContext.command.noModel'));
     return;
   }
-  const anchor = await resolveSiteContextAnchor(modelId);
-  if (anchor.ok) {
-    openModelPanel(modelId);
-    return;
-  }
-  switch (anchor.reason) {
-    case 'stale': return;
-    case 'not-georeferenced':
-      toast.info(t('siteContext.refusal.notGeoreferenced'), { label: t('siteContext.refusal.openEditor'), onClick: () => openModelPanel(modelId) });
-      return;
-    case 'unknown-crs':
-      toast.info(t('siteContext.refusal.unknownCrs', { crs: anchor.detail ?? '' }), { label: t('siteContext.refusal.openEditor'), onClick: () => openModelPanel(modelId) });
-      return;
-    case 'height-datum':
-      toast.info(t('siteContext.refusal.heightDatum', { datum: anchor.detail ?? '' }));
-      return;
-    case 'height-unknown':
-      toast.info(t('siteContext.refusal.heightUnknown'));
-      return;
-    case 'outside-switzerland':
-      toast.info(t('siteContext.refusal.outsideSwitzerland'));
-  }
+  openGeorefSection(modelId, section, surface);
+}
+
+export function openSiteContext(surface: PanelOpenSource = 'programmatic'): void {
+  openFor('siteContext', surface);
+}
+
+export function openFloodCheck(surface: PanelOpenSource = 'programmatic'): void {
+  openFor('floodCheck', surface);
 }

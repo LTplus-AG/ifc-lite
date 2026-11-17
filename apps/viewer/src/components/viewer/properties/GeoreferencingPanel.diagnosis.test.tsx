@@ -12,18 +12,16 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { IfcParser, extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { advance, cleanup, click, render, type } from '@/test/render.js';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { georefCheckFixture as fixture, parseIfcBytes as parse, seedGeorefModel as seed } from '@/test/georef-check-fixture.js';
 import { useViewerStore } from '@/store';
 import { exportModelStep } from '@/lib/export/model-step-export';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
 import { EpsgLookupDialog } from './EpsgLookupDialog';
 
-const FIXTURES = new URL('../../../../../../packages/georef-check/fixtures/', import.meta.url);
 const initialState = useViewerStore.getState();
 const AREA_OF_USE_2056 = /Area of use: longitude 5\.\d+° to 10\.\d+°, latitude 45\.\d+° to 47\.\d+°\./;
 
@@ -31,22 +29,6 @@ afterEach(() => {
   cleanup();
   useViewerStore.setState(initialState, true);
 });
-
-async function parse(bytes: Uint8Array): Promise<IfcDataStore> {
-  return new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
-}
-
-async function fixture(name: string): Promise<IfcDataStore> {
-  return parse(new Uint8Array(readFileSync(new URL(`${name}.ifc`, FIXTURES))));
-}
-
-function seed(store: IfcDataStore): void {
-  useViewerStore.setState({
-    ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: store }),
-    editEnabled: true,
-    georefMutations: new Map(),
-  });
-}
 
 /** The fixtures are millimetre files in a metre CRS. */
 function panel(store: IfcDataStore, { editable = true, coordinateInfo }: { editable?: boolean; coordinateInfo?: CoordinateInfo } = {}): HTMLElement {

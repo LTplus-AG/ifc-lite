@@ -12,17 +12,15 @@ import '@/test/setup-dom.js';
 import { register } from 'node:module';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { IfcParser, extractGeoreferencingOnDemand } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import { advance, cleanup, click, render, type } from '@/test/render.js';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 register('../../../test/epsg-extents-unavailable.mjs', import.meta.url);
 const { EpsgLookupDialog } = await import('./EpsgLookupDialog');
 const { GeoreferencingPanel } = await import('./GeoreferencingPanel');
 const { useViewerStore } = await import('@/store');
+const { georefCheckFixture, seedGeorefModel } = await import('@/test/georef-check-fixture.js');
 
-const FIXTURES = new URL('../../../../../../packages/georef-check/fixtures/', import.meta.url);
 const UNAVAILABLE = 'Area of use unavailable.';
 const initialState = useViewerStore.getState();
 
@@ -31,10 +29,20 @@ afterEach(() => {
   useViewerStore.setState(initialState, true);
 });
 
-/** Poll until `text()` says the area of use is unavailable, or give up after 15 s. */
-async function untilUnavailable(text: () => string): Promise<string> {
-  for (const deadline = Date.now() + 15_000; Date.now() < deadline && !text().includes(UNAVAILABLE);) await advance(25);
-  return text();
+/** Poll until `find()` returns an element, or give up after 15 s. */
+async function until<T extends Element>(find: () => T | undefined, what: string): Promise<T> {
+  for (const deadline = Date.now() + 15_000; Date.now() < deadline; await advance(25)) {
+    const found = find();
+    if (found) return found;
+  }
+  const found = find();
+  assert.ok(found, `${what} never rendered`);
+  return found;
+}
+
+/** The element under `root` matching `selector` whose whole text is `text`. */
+function byText(root: ParentNode, selector: string, text: string): Element | undefined {
+  return [...root.querySelectorAll(selector)].find((el) => el.textContent?.trim() === text);
 }
 
 it('a lookup result says its area of use is unavailable when the EPSG extents fail to load (#10608)', async () => {
@@ -45,19 +53,17 @@ it('a lookup result says its area of use is unavailable when the EPSG extents fa
   const input = document.querySelector<HTMLInputElement>('[role="dialog"] input');
   assert.ok(input, 'the lookup dialog opens');
   type(input, '2056');
-  const text = await untilUnavailable(() => [...document.querySelectorAll('[role="dialog"] button')]
-    .find((b) => b.querySelector('code')?.textContent === '2056')?.textContent ?? '');
-  assert.match(text, /Area of use unavailable\./, 'the 2056 result says its area of use could not be loaded');
-  assert.doesNotMatch(text, /longitude/, 'and shows no box');
+  const row = await until(() => byText(document, '[role="dialog"] button code', '2056')?.closest('button') ?? undefined, 'the 2056 result');
+  await until(() => byText(row, 'div', UNAVAILABLE), 'the unavailable line in the 2056 result');
+  assert.equal([...row.querySelectorAll('div')].some((div) => /longitude/.test(div.textContent ?? '')), false, 'and the row shows no box');
 });
 
 it('the out-of-area warning says the area of use is unavailable when the EPSG extents fail to load (#10608)', async () => {
-  const bytes = new Uint8Array(readFileSync(new URL('outside-area-swapped.ifc', FIXTURES)));
-  const store = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
-  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: store }), georefMutations: new Map() });
+  const store = await georefCheckFixture('outside-area-swapped');
+  seedGeorefModel(store);
   const host = render(<GeoreferencingPanel georef={extractGeoreferencingOnDemand(store)} schemaVersion="IFC4" modelId="m" lengthUnitScale={0.001} />);
-  const text = await untilUnavailable(() => [...host.querySelectorAll('[role="alert"]')]
-    .find((a) => a.textContent?.includes('Outside the area of use'))?.textContent ?? '');
-  assert.match(text, /Outside the area of use of EPSG:2056\./, 'the warning still shows');
-  assert.match(text, /Area of use unavailable\./, 'and says its box could not be loaded');
+  const heading = await until(() => byText(host, '[role="alert"] strong', 'Outside the area of use of EPSG:2056.'), 'the out-of-area warning');
+  const body = heading.parentElement;
+  assert.ok(body, 'the heading sits in the warning text');
+  assert.ok(body.textContent?.trim().endsWith(UNAVAILABLE), 'the warning ends by saying its box could not be loaded');
 });

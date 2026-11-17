@@ -201,13 +201,14 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
         const w = parent?.with;
         const rel = typeof w?.path === 'string' && !/\$\{\{|\\/.test(w.path) ? posix.normalize(w.path.trim()).replace(/(.)\/+$/, '$1') : '/';
         const sub = !rel.startsWith('/') && rel !== '.' && !rel.startsWith('..') && !/^\.github(?:\/|$)/i.test(rel);
-        const otherRepo = sub && typeof w.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase());
+        const outside = typeof w?.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase());
+        const otherRepo = sub && outside;
         const checkout = /^actions\/checkout@/i.test(v) && w && typeof w === 'object';
         if (checkout && 'path' in w && !otherRepo) {
           errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }
         // An outside repository with no `path:` replaces this one at the workspace root.
-        if (checkout && !('path' in w) && typeof w.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase())) {
+        if (checkout && !('path' in w) && outside) {
           errors.push(`${file}: actions/checkout of ${w.repository} with no path: replaces this repository at the workspace root`);
         }
         if (v.startsWith('./')) {

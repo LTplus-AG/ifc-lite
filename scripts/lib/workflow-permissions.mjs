@@ -10,6 +10,8 @@ const indentOf = (line) => line.length - line.trimStart().length;
 const code = (line) => line.replace(/(^|\s)#.*$/, '').trimEnd();
 // An anchor or tag before a key (`&p permissions:`, `!!str permissions:`).
 const PROPS = String.raw`(?:[&!]\S*\s+)*`;
+// A line that opens a `|`/`>` block scalar (a script), tag or anchor allowed.
+const SCALAR = new RegExp(String.raw`(?::|^\s*-)\s*${PROPS}[|>][-+0-9]*$`);
 const HEAD = new RegExp(String.raw`^( *)(?:- +)?${PROPS}["']?permissions["']?\s*:\s*(.*)$`);
 // The key written another way: inside a flow mapping, or as an explicit `? key`.
 const OTHER_KEY = /[{,]\s*["']?permissions["']?\s*:|^\s*(?:-\s+)?\?\s*["']?permissions\b/;
@@ -42,7 +44,7 @@ function scan(text, out, file) {
       scalarIndent = -1;
     }
     if (line.trim() === '') continue;
-    if (new RegExp(String.raw`(?::|^\s*-)\s*${PROPS}[|>][-+0-9]*$`).test(line)) scalarIndent = indentOf(line);
+    if (SCALAR.test(line)) scalarIndent = indentOf(line);
     const call = line.match(USES);
     if (call) calls.push(call[1]);
     const head = line.match(HEAD);

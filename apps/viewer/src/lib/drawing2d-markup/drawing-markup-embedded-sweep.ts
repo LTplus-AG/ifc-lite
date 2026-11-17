@@ -192,20 +192,23 @@ function relatedIds(value: unknown): (number | null)[] {
 /**
  * Tombstone every IfcLite markup annotation the model was opened with whose
  * identity is in `absorbed`, and what only it uses (see the module doc).
+ * `tags` can limit replacement to selected kinds; `includeCreated` also
+ * replaces owned overlay saves during detached export.
  * Returns how many tagged annotations were removed.
  */
-export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEditor, absorbed: ReadonlySet<string>): number {
+export function removeEmbeddedDrawingMarkup(store: IfcDataStore, editor: StoreEditor, absorbed: ReadonlySet<string>, tags: ReadonlySet<unknown> = MARKUP_TAGS, includeCreated = false): number {
   if (absorbed.size === 0) return 0;
   const view = editor.getMutationView();
   const reader = new EffectiveReader(store, view);
 
   const annotations = new Set<number>();
   for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCANNOTATION'])) {
-    if (reader.isCreated(expressId)) continue;
+    const created = reader.isCreated(expressId);
+    if (created && !includeCreated) continue;
     const attributes = reader.attributes(expressId);
-    if (!MARKUP_TAGS.has(attributes?.[OBJECT_TYPE_INDEX])) continue;
+    if (!tags.has(attributes?.[OBJECT_TYPE_INDEX])) continue;
     // Match on the GlobalId the restore recorded (the source one), not a pending edit of it.
-    if (absorbed.has(embeddedMarkupIdentity(expressId, sourceMarkupGlobalId(store, expressId)))) annotations.add(expressId);
+    if (absorbed.has(embeddedMarkupIdentity(expressId, created ? view.getNewEntity(expressId)?.attributes[0] : sourceMarkupGlobalId(store, expressId)))) annotations.add(expressId);
   }
   if (annotations.size === 0) return 0;
 

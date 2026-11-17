@@ -112,7 +112,9 @@ pub(crate) fn lower_face(
             // it, and bounds it cannot read refuse the face (`?`) as they
             // refuse a plane face. Bounds with no outer ring trim nothing, so
             // the face keeps the surface's own extent, as a curved one does.
-            let trimmed = if has_bounds(face) && plan.is_planar() {
+            // Knots the evaluator cannot use keep it a B-spline plan, which
+            // draws nothing, as on every B-spline face before.
+            let trimmed = if has_bounds(face) && plan.is_evaluable() && plan.is_planar() {
                 super::surfaces::lower_planar(face, decoder, quality, rtc_file_units)?
             } else {
                 FaceGeometry::Empty

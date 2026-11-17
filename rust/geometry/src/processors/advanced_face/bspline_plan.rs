@@ -44,6 +44,20 @@ impl BSplinePlan {
         }
     }
 
+    /// Whether the evaluator would draw this surface at all: its knot vectors
+    /// cover its control net ([`super::bspline::knots_cover_net`]). One it
+    /// would not draw stays a B-spline plan and evaluates empty, as before
+    /// #10590, rather than being drawn by its bounds.
+    pub(crate) fn is_evaluable(&self) -> bool {
+        super::bspline::knots_cover_net(
+            self.u_degree,
+            self.v_degree,
+            &self.control_points,
+            &self.u_knots,
+            &self.v_knots,
+        )
+    }
+
     /// Whether every point of the admitted control net lies on one plane,
     /// within a millionth of the net's size (#10590). A B-spline surface lies
     /// in the convex hull of its control points (weights are positive once

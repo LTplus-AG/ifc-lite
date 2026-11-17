@@ -429,3 +429,32 @@ fn flat_bspline_face_refuses_what_the_spline_path_and_plane_faces_refuse() {
         );
     }
 }
+
+/// #10590: numeric knots too short to cover the control net are not
+/// refused by admission, but the evaluator draws nothing for them. A flat
+/// bounded face with such knots must not be drawn by its bounds instead: it
+/// stays a B-spline face and comes out empty, unrefused, as before.
+#[test]
+fn flat_bspline_face_with_knots_too_short_for_its_net_draws_nothing() {
+    let valid = trimmed_flat_bspline_face();
+    let knots = "(2,2),(2,2),(0.,1.),(0.,1.)";
+    for (case, edit) in [
+        ("short U knots", "(1,1),(2,2),(0.,1.),(0.,1.)"),
+        ("short V knots", "(2,2),(1,1),(0.,1.),(0.,1.)"),
+    ] {
+        let source = valid.replace(knots, edit);
+        assert_ne!(source, valid, "{case}: the fixture edit applied");
+        take_face_refused();
+        let mut decoder = EntityDecoder::new(&source);
+        let face = decoder.decode_by_id(1).unwrap();
+        let plan = lower_face(&face, &mut decoder, TessellationQuality::Medium, None)
+            .unwrap_or_else(|e| panic!("{case}: admission does not refuse it: {e}"));
+        let (positions, indices) = plan.evaluate().unwrap();
+        assert!(
+            positions.is_empty() && indices.is_empty(),
+            "{case}: nothing is drawn, not the bounded triangle ({} indices)",
+            indices.len()
+        );
+        assert!(take_face_refused().is_empty(), "{case}: no refusal");
+    }
+}

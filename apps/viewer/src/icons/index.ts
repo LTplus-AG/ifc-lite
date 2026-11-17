@@ -85,3 +85,5 @@ export { default as Move } from '~icons/viewer/move';
 export { default as FollowWork } from '~icons/viewer/follow-work';
 export { default as Cost } from '~icons/viewer/cost';
 export { default as Settings } from '~icons/viewer/settings';
+
+export { default as FileCityjson } from '~icons/viewer/file-cityjson';

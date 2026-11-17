@@ -11,6 +11,7 @@
  */
 
 import { refreshTopAttachmentsInStore } from '../top-attachment-refresh.js';
+import { storeyPlanAttachments } from './storey-plan-attachments.js';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { refitStairRailing } from '../railing-stair-refit.js';
@@ -70,6 +71,6 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
     }
     reshaped.push(stair.stairId, stair.flightId);
   }
-  reshaped.push(...refreshTopAttachmentsInStore(target, plan.moved, plan.walls.map(wall => wall.wallId)));
+  reshaped.push(...refreshTopAttachmentsInStore(target, plan.moved, plan.walls.map(wall => wall.wallId), storeyPlanAttachments(plan)));
   return [...new Set(reshaped)];
 }

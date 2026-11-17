@@ -37,6 +37,21 @@ const levels = () => modelStoreys(useViewerStore.getState(), MODEL_ID);
 const spatial = () => { const t = target(); return effectiveSpatialProject(t.dataStore, t.view); };
 const attachment = () => storeyAttachmentDisplay(useViewerStore.getState(), MODEL_ID, column, '2hQBAVPOr5VxhS3Jl0O47i');
 
+it('#8452 read-only spatial derivations keep dependency tracking without subscribing an ephemeral view', () => {
+  const t = target(), spy = mock.method(t.view, 'trackEntityChanges');
+  spatial();
+  assert.equal(spy.mock.callCount(), 0, 'read-only inventories must not retain mutation subscriptions');
+  const made = useViewerStore.getState().addColumn(MODEL_ID, STOREY, { Position: [3, 3, 0], Width: 0.3, Depth: 0.3, Height: 2.5 });
+  assert.ok('expressId' in made);
+  spy.mock.resetCalls();
+  const project = spatial();
+  const ids = new Set<number>();
+  const queue = project ? [project] : [];
+  while (queue.length) { const node = queue.pop()!; for (const id of node.elements ?? []) ids.add(id); queue.push(...node.children); }
+  assert.ok(ids.has(made.expressId), 'the real newly contained product invalidates and reaches the tree');
+  assert.equal(spy.mock.callCount(), 0);
+});
+
 for (const [name, derive] of [['grids', grids], ['wall axes', walls], ['storeys', levels], ['spatial tree', spatial], ['storey attachment inventory', attachment]] as const) {
   it(`#9296 column Move and Undo do not reparse ${name}`, () => {
     const spy = mock.method(EntityExtractor.prototype, 'extractEntity');

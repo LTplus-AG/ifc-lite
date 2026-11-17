@@ -86,6 +86,8 @@ export function addOpeningToStore(
   host: HostAnchor,
   params: OpeningInStoreParams,
 ): OpeningBuildResult {
+  // Register before the first cut: subsequent additions update this projection.
+  editor.getMutationView().getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, null);
   const geometry = host.hostKind === 'wall'
     ? wallOpeningGeometry(editor, host, params)
     : slabOpeningGeometry(editor, host, params);

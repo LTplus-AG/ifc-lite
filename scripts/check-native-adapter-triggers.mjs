@@ -213,8 +213,8 @@ export function corpusJobProblems(text) {
 /** A path inside `glob`, to test coverage with a matcher. */
 const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
 
-/** Engine crates a merge-queue batch must always run on, beyond ROOT_CRATES. */
-const ENGINE_CRATES = ['rust/geometry', 'rust/geometry-runtime'];
+/** Crates a merge-queue batch must always run on. */
+const ENGINE_CRATES = [...ROOT_CRATES, 'rust/geometry', 'rust/geometry-runtime'];
 
 /** `exclude` and `keep` stand in for BATCH_EXCLUDE and BATCH_KEEP (see the test). */
 export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
@@ -279,7 +279,7 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
     }
     // The engine core a batch must never skip: the engine crates, the native adapter, the Rust build inputs and the local actions.
     const batch = batchGlobs(pr, exclude, keep);
-    for (const glob of [...[...ROOT_CRATES, ...ENGINE_CRATES].map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
+    for (const glob of [...ENGINE_CRATES.map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
       if (!matchesAny(probe(glob), batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
     }
     // Every .mjs the lane runs with `node [--flags]`, and its scripts/ imports, must be able to trigger it, on a batch too.

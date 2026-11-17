@@ -58,7 +58,6 @@ export const BATCH_EXCLUDE = [
 
 /** Retained code under an excluded glob, which a batch still runs on. Each must sit under a paths-list glob. */
 export const BATCH_KEEP = [
-  'packages/cli/src/retained/**',
   'packages/cli/src/**/*retained*',
   'packages/cli/src/**/*Retained*',
   'packages/cli/src/**/*retained*/**',

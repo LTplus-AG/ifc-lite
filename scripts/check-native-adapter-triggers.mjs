@@ -221,7 +221,12 @@ const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
 function coversAll(glob, globs) {
   if (!glob.endsWith('/**')) return matchesAny(glob, globs);
   const dir = glob.slice(0, -3);
-  return globs.some((g) => g === '**' || (g.endsWith('/**') && !/[*?]/.test(g.slice(0, -3)) && (dir === g.slice(0, -3) || dir.startsWith(`${g.slice(0, -3)}/`))));
+  return globs.some((g) => {
+    if (g === '**') return true;
+    if (!g.endsWith('/**')) return false;
+    const base = g.slice(0, -3);
+    return !/[*?]/.test(base) && (dir === base || dir.startsWith(`${base}/`));
+  });
 }
 
 /** Crates a merge-queue batch must always run on. */

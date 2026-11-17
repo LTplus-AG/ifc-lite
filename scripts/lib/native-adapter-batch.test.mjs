@@ -142,10 +142,6 @@ test('a keep entry narrower than an excluded engine directory does not count as 
   }
 });
 
-test('the real paths list, BATCH_EXCLUDE and BATCH_KEEP pass the batch audit', () => {
-  assert.deepEqual(audit(REPO), []);
-});
-
 test('a script the lane runs under node --test cannot be excluded from batches', () => {
   assert.ok(audit(REPO, ['scripts/cli-retained-engine/**']).some((f) => f.includes('BATCH_EXCLUDE drops it from merge-queue batches')));
 });

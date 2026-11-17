@@ -11,16 +11,15 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { vecLen as length } from '../ifc-creator-math.js';
 import { plateOpenings } from './structural-opening-section.js';
 import { prepareStructuralFace } from './_structural-face.js';
-import { pointInPolygon } from './room-footprint-offset.js';
 import { curveElementLine, idealisePlate, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
 import { clusterEnds, joinEnds, SegmentGrid } from './structural-derive-joints.js';
+import { lowestLevelBearings, surfaceAt, type PlannedSurface } from './structural-derive-supports.js';
 import {
   DEFAULT_DERIVATION_OPTIONS,
   type MemberLoadBearing,
   type PhysicalElementFact,
   type PlannedCurveMember,
   type PlannedNode,
-  type PlannedSurfaceMember,
   type SkippedElement,
   type SkippedOpening,
   type StructuralDerivationFacts,
@@ -78,18 +77,6 @@ function resolveDerivationOptions(options: StructuralDerivationOptions = {}): Re
 
 interface Line { element: PhysicalElementFact; start: Vec3; end: Vec3; axis: [Vec3, Vec3]; section: number | null; source: PlannedCurveMember['axisSource']; loadBearing: MemberLoadBearing }
 
-/** Point inside a planar polygon, in the plane's dominant projection. */
-function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3, clearance = 0): boolean {
-  const drop = [0, 1, 2].reduce((m, k) => (Math.abs(normal[k]) > Math.abs(normal[m]) ? k : m), 0);
-  const [i, j] = [0, 1, 2].filter((k) => k !== drop);
-  const projected = sub(p, scale(normal, dot(sub(p, polygon[0]), normal)));
-  return pointInPolygon(projected[i], projected[j], polygon.map((q) => [q[i], q[j]])) && (clearance <= 0 || polygon.every((a, index) => {
-    const edge = sub(polygon[(index + 1) % polygon.length], a);
-    const t = Math.max(0, Math.min(1, dot(sub(projected, a), edge) / dot(edge, edge)));
-    return length(sub(projected, add(a, scale(edge, t)))) > clearance;
-  }));
-}
-
 /** The surface builder's own boundary checks, run here so apply never meets them. */
 function checkFace(boundary: Vec3[]): { face: ReturnType<typeof prepareStructuralFace> } | { issue: string } {
   try {
@@ -116,10 +103,20 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   };
 
   const lines: Line[] = [];
-  const surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }> = [];
+  const surfaces: PlannedSurface[] = [];
   const footings: Array<{ element: PhysicalElementFact; min: Vec3; max: Vec3 }> = [];
-  // The lowest drawn end of the load-bearing curve members idealised before: part of the structure, not of this plan.
-  let idealisedLowest = Infinity;
+  // The load-bearing curve members idealised before: part of the structure, not of this plan. They set the
+  // lowest level when drawn lower, and a column among them still bears the run it rises from.
+  const idealisedLines: Array<{ start: Vec3; end: Vec3; section: number | null }> = [];
+  const idealisedSurfaceElements: PhysicalElementFact[] = [];
+  /** A surface member on the plate's mid-plane, or why it has none. Openings it cannot carry go to `skippedTo`. */
+  const surfaceOf = (element: PhysicalElementFact, loadBearing: MemberLoadBearing, skippedTo: SkippedOpening[]): PlannedSurface | { issue: string } => {
+    const plate = element.prism ? idealisePlate(element.prism) : { issue: element.shapeIssue ?? 'no extruded shape' };
+    if ('issue' in plate) return plate;
+    const face = checkFace(plate.boundary);
+    if ('issue' in face) return face;
+    return { member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, openings: plateOpenings(element, plate, face.face, tolerance, skippedTo), loadBearing }, normal: face.face.axis };
+  };
   for (const element of facts.elements) {
     const role = roleOf(element.type);
     if (role === null) continue;
@@ -130,8 +127,10 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     }
     const line = role === 'curve' ? lineOf(element) : null;
     if (element.idealised && element.loadBearing !== false && line && !('issue' in line) && isLong(line)) {
-      idealisedLowest = Math.min(idealisedLowest, line.start[2], line.end[2]);
+      idealisedLines.push(line);
     }
+    // A wall or slab derived before still holds a run that rests on it.
+    if (element.idealised && element.loadBearing !== false && role === 'surface') idealisedSurfaceElements.push(element);
     if (element.idealised) { skip(element, 'already-idealised', 'a structural item is already linked to this element'); continue; }
     if (element.loadBearing === false) { skip(element, 'not-load-bearing', 'LoadBearing is false'); continue; }
     if (element.loadBearing === null && resolved.whenLoadBearingUnknown === 'skip') {
@@ -144,11 +143,9 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       else lines.push({ element, ...line, loadBearing });
       continue;
     }
-    const plate = element.prism ? idealisePlate(element.prism) : { issue: element.shapeIssue ?? 'no extruded shape' };
-    if ('issue' in plate) { skip(element, 'no-idealisable-shape', plate.issue); continue; }
-    const face = checkFace(plate.boundary);
-    if ('issue' in face) skip(element, 'no-idealisable-shape', face.issue);
-    else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, openings: plateOpenings(element, plate, face.face, tolerance, skippedOpenings), loadBearing }, normal: face.face.axis });
+    const surface = surfaceOf(element, loadBearing, skippedOpenings);
+    if ('issue' in surface) skip(element, 'no-idealisable-shape', surface.issue);
+    else surfaces.push(surface);
   }
 
   const footingGrid = new SegmentGrid(2);
@@ -219,11 +216,18 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   for (const { element } of footings) {
     if (!usedFootings.has(element.expressId)) skip(element, 'footing-without-member-end', 'no member end lies within its bounds');
   }
-  if (usedFootings.size === 0) {
+  if (usedFootings.size === 0 && nodes.length > 0) {
     // The lowest node after the joints, or a lower member idealised before.
+    const idealisedLowest = idealisedLines.reduce((low, line) => Math.min(low, line.start[2], line.end[2]), Infinity);
     const structureLowest = nodes.reduce((low, node) => Math.min(low, node.position[2]), idealisedLowest);
-    for (const node of nodes) {
-      if (node.position[2] <= structureLowest + tolerance) node.support = { type: supportType, basis: 'lowest-level', guessed: true };
+    // Only their openings, not the skips, matter for bearing.
+    const idealisedSurfaces = idealisedSurfaceElements.map((element) => surfaceOf(element, 'assumed', []))
+      .filter((surface): surface is PlannedSurface => !('issue' in surface));
+    const bearings = lowestLevelBearings(nodes, curveMembers.map((member, i) => ({ member, drawn: pieces[i].axis, prism: pieces[i].element.prism })), {
+      idealised: idealisedLines, surfaces: [...surfaces, ...idealisedSurfaces], footings, level: structureLowest, tolerance, jointReach: resolved.jointReach,
+    });
+    for (const index of bearings) {
+      nodes[index].support = { type: supportType, basis: 'lowest-level', guessed: true };
     }
   }
 
@@ -271,7 +275,7 @@ function findUnconnectedEnds(
   nodes: PlannedNode[],
   degree: readonly number[],
   curveMembers: PlannedCurveMember[],
-  surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }>,
+  surfaces: readonly PlannedSurface[],
   tolerance: number,
 ): UnconnectedEnd[] {
   const grid = new SegmentGrid(2);
@@ -288,9 +292,7 @@ function findUnconnectedEnds(
     });
     if (onMember) { found.push({ node: node.index, landsOnElementId: onMember.elementId, landsOn: 'member-interior' }); continue; }
     if (degree[node.index] !== 1) continue;
-    const onSurface = surfaces.find(({ member, normal }) =>
-      Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal)
-      && !(member.openings ?? []).some(ring => insidePolygon(p, ring, normal, tolerance)));
+    const onSurface = surfaceAt(p, surfaces, tolerance);
     if (onSurface) found.push({ node: node.index, landsOnElementId: onSurface.member.elementId, landsOn: 'surface-member' });
   }
   return found;

@@ -5,7 +5,7 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r10.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r11.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
@@ -18,7 +18,7 @@ A failed build is a harness error, never a product score. Without wasm-pack, `bu
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
 wasm toolchain. The toggle probe also loads the viewer’s Node test adapter.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r10.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r11.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -143,3 +143,5 @@ R5 adds 74 edit and 74 remove passes to R4, for 469.5/774 cells. R4 render cover
 [R9 mapped topology](baseline/r9-notes.md): the member render oracle follows a topology representation reached through an `IfcMappedItem`; 106/119 rows and 756/774 cells. R0 to R8 remain retained.
 
 [R10 convert carriers](baseline/r10-notes.md): structural conversion carriers (CausedBy, IfcStructuralLoadCase, SharedPlacement, varying thickness), one convert-probe correction and the point-action CausedBy fixture bring the measurement to 109/119 rows and 759.5/774 cells. R0 to R9 remain retained.
+
+[R11 derived supports](baseline/r11-notes.md): derivation guesses supports only where a lowest-level run bears, so the roof truss derives AxisVM's two heel supports; 109.5/119 rows and 760/774 cells. R0 to R10 remain retained.

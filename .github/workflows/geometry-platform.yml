@@ -6,10 +6,11 @@
 # for main, with the corpus), on demand, and on a PR only with the `ci:native-adapter`
 # label and a change it can observe. Add the label to a PR whose retained or native
 # change needs this evidence. It does not run on every push to main.
-# A merge-queue batch whose diff touches the paths below also runs it, through
-# `workflow_call` from test.yml's `native-adapter` job, so a failure blocks the merge
-# via the required `Build + WASM + Rust + Node` aggregate. The batch decision reads
-# this paths list (scripts/check-native-adapter-triggers.mjs --batch-decide).
+# A merge-queue batch whose diff touches the native/retained engine also runs it,
+# through `workflow_call` from test.yml's `native-adapter` job, so a failure blocks the
+# merge via the required `Build + WASM + Rust + Node` aggregate. The batch decision
+# reads the paths below less BATCH_EXCLUDE in scripts/check-native-adapter-triggers.mjs
+# (--batch-decide), which drops CLI, packaging, viewer-host and corpus inputs.
 name: Geometry platform (native adapter)
 
 on:

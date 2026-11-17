@@ -327,9 +327,9 @@ jobs:
         id: all
         run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       # THE NATIVE ADAPTER ON A BATCH. The SMLib lane (geometry-platform.yml)
-      # takes about 49 minutes, so a batch runs it only when its diff touches
-      # that workflow's own `on.pull_request.paths`, read from the file rather
-      # than copied here. continue-on-error, and the `native-adapter` job below
+      # takes over an hour, so a batch runs it only when its diff touches the
+      # native/retained engine: that workflow's `on.pull_request.paths` less
+      # the script's BATCH_EXCLUDE. continue-on-error, and the `native-adapter` job below
       # skips only on an explicit `false`, so a crash here runs the lane.
       - name: Decide whether this batch runs the native adapter
         id: nativeadapter

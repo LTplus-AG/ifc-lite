@@ -32,15 +32,17 @@
  *
  * MERGE-QUEUE BATCHES. Nothing above ran the lane on a batch, so #8408 and
  * #8415 merged untested retained failures. A batch now runs it when its diff
- * touches `on.pull_request.paths` above, the one list both routes read:
+ * touches `on.pull_request.paths` above, less BATCH_EXCLUDE below:
  * test.yml's `changes` job runs `--batch-decide`, which writes
  * `native_adapter=true|false` to $GITHUB_OUTPUT, and test.yml's
  * `native-adapter` job calls this workflow with `batch: true` unless the
- * answer is exactly `false`. It FAILS CLOSED: an unreadable paths list, a
- * checkout that is not the two-parent merge commit, an empty or unreadable
- * diff, and any change to the workflow itself (whose paths list is read from
- * the batch's HEAD) all answer `true`. The audit also holds that wiring in
- * test.yml.
+ * answer is exactly `false`. BATCH_EXCLUDE drops the CLI, packaging,
+ * viewer-host, corpus and non-engine crate inputs, which sent unrelated
+ * batches (#10595: a CLI test and tests/models/manifest.json) through the
+ * hour-long lane. It FAILS CLOSED: an unreadable paths list, a checkout that
+ * is not the two-parent merge commit, an empty or unreadable diff, and any
+ * change to the workflow or this script (the two lists, read from the batch's
+ * HEAD) all answer `true`. The audit also holds that wiring in test.yml.
  *
  * `--root <dir>` points it at a mutated copy of the tree (see the test).
  */
@@ -59,6 +61,45 @@ const TEST_WORKFLOW = '.github/workflows/test.yml';
 export const ROOT_CRATES = ['rust/retained-native', 'rust/wasm-bindings'];
 /** Non-crate inputs every Rust build of the lane reads. */
 export const EXTRA_GLOBS = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/**'];
+
+const SELF = 'scripts/check-native-adapter-triggers.mjs';
+/**
+ * Globs of `on.pull_request.paths` that do NOT run the lane on a merge-queue
+ * batch: inputs the labelled-PR route wants, outside the native/retained
+ * engine (crates in the closure that are not the engine, the CLI and wasm
+ * packaging, the viewer host, corpus and repo-wide config). Each entry is
+ * removed verbatim, so a narrower glob under it (rust/processing/src/processor/**)
+ * still runs, and a path added to the workflow runs until it is listed here.
+ */
+export const BATCH_EXCLUDE = [
+  'rust/clash/**',
+  'rust/core/**',
+  'rust/export/**',
+  'rust/landxml/**',
+  'rust/processing/**',
+  'rust/testkit/**',
+  'packages/cli/**',
+  'packages/geometry/**',
+  'packages/wasm/**',
+  'apps/viewer/src/components/viewer/Viewport.tsx',
+  'apps/viewer/src/components/viewer/ViewportContainer.tsx',
+  'apps/viewer/vite.config.ts',
+  'apps/viewer/vite-plugins/**',
+  'apps/viewer/package.json',
+  'apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc',
+  'apps/viewer/public/samples/building-architecture.ifc',
+  'apps/viewer/public/samples/hello-wall.ifc',
+  'playwright.config.ts',
+  'tests/benchmark/frames/**',
+  'tests/models/manifest.json',
+  'scripts/fixtures/*.mjs',
+  'scripts/perf-ratchet/measure-bundle.mjs',
+  'scripts/wasm-test-mime-driver.mjs',
+  'pnpm-workspace.yaml',
+  'package.json',
+  'turbo.json',
+  'LICENSE',
+];
 
 const DEP_SECTION = /^\[(?:target\.[^\]]+\.)?(?:dev-|build-)?dependencies\]$/;
 
@@ -263,6 +304,9 @@ export function audit(root) {
       const probe = extra.replace('/**', '/probe');
       if (!matchesAny(probe, pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
     }
+    for (const glob of BATCH_EXCLUDE) {
+      if (!pr.includes(glob)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE entry '${glob}' is not in on.pull_request.paths; drop it from the script`);
+    }
     for (const action of new Set([...text.matchAll(/^\s*(?:-\s*)?uses:\s*\.\/(\.github\/actions\/[^/\s]+)/gm)].map((m) => m[1]))) {
       if (!pr.includes(`${action}/**`)) failures.push(`${WORKFLOW}: local action ${action} is called by the job but not covered by on.pull_request.paths -- add '${action}/**'`);
     }
@@ -293,7 +337,7 @@ export function audit(root) {
 
 // The test.yml lines that carry a batch's verdict into the required aggregate.
 const BATCH_CALL_IF = "needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop != 'true' && needs.changes.outputs.native_adapter != 'false'";
-const BATCH_DECIDE_RUN = 'node scripts/check-native-adapter-triggers.mjs --batch-decide';
+const BATCH_DECIDE_RUN = `node ${SELF} --batch-decide`;
 
 /**
  * The merge-queue route: geometry-platform.yml is callable with a `batch`
@@ -357,16 +401,18 @@ function batchDecision(root) {
   let changed;
   let hits;
   try {
-    const globs = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
-    if (!globs || globs.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
+    const pr = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
+    if (!pr || pr.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
+    const globs = pr.filter((g) => !BATCH_EXCLUDE.includes(g));
     const parents = execFileSync('git', ['-C', root, 'rev-list', '--parents', '-n', '1', 'HEAD'], { encoding: 'utf8' }).trim().split(' ').filter(Boolean);
     if (parents.length !== 3) return { run: true, reason: `HEAD has ${Math.max(parents.length - 1, 0)} parent(s), not the two of a PR merge commit; running` };
     // --no-renames: a file moved out of a watched directory must count by its old path too.
     changed = gitPaths(root, ['diff', '--name-only', '--no-renames', parents[1], 'HEAD']);
     if (changed.length === 0) return { run: true, reason: 'the batch diff is empty, which a real batch never is; running' };
-    // The paths list is read from HEAD, so a batch that edits it could drop the
-    // very path it touches; any change to the workflow runs the lane.
-    if (changed.includes(WORKFLOW)) return { run: true, reason: `the batch changes ${WORKFLOW} itself; running` };
+    // Both lists are read from HEAD, so a batch that edits one could drop the very
+    // path it touches; any change to the workflow or this script runs the lane.
+    const own = changed.find((f) => f === WORKFLOW || f === SELF);
+    if (own) return { run: true, reason: `the batch changes ${own} itself; running` };
     hits = changed.filter((f) => matchesAny(f, globs));
   } catch (err) {
     return { run: true, reason: `cannot decide (${err.message.split('\n')[0]}); running` };

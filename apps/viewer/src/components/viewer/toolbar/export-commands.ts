@@ -33,6 +33,7 @@ import { ExportDialog } from '../ExportDialog';
 import { ExportChangesButton } from '../ExportChangesButton';
 import { AnonymizedExportDialog } from '../anonymized-export/AnonymizedExportDialog';
 import { GLBExportDialog } from '../GLBExportDialog';
+import { CityJsonExportCommand } from '../CityJsonExportCommand';
 import { KmzExportDialog } from '../KmzExportDialog';
 import { EnergyModelExportDialog } from '../EnergyModelExportDialog';
 import { UsdExportDialog } from '../UsdExportDialog';
@@ -209,6 +210,17 @@ export const EXPORT_COMMANDS = [
     labelKey: 'exportCommands.rhino.label',
     menuLabelKey: 'exportCommands.rhino.menuLabel',
     tooltipKey: 'exportCommands.rhino.tooltip',
+    requires: 'model',
+    group: 2,
+    emphasis: 'small',
+  },
+  {
+    id: 'cityjson',
+    kind: 'dialog',
+    Dialog: CityJsonExportCommand,
+    labelKey: 'exportCommands.cityjson.label',
+    menuLabelKey: 'exportCommands.cityjson.menuLabel',
+    tooltipKey: 'exportCommands.cityjson.tooltip',
     requires: 'model',
     group: 2,
     emphasis: 'small',

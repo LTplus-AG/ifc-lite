@@ -213,14 +213,22 @@ test('C20-Institute: click, hover, marquee, hide, isolate and section match the 
   expect(hide.rows.filter((r) => r.gpu?.expressId === hidden), 'a hidden entity is never picked').toEqual([]);
 
   await meshOnly();
-  const isolated = mostHit(base, 6).slice(1);
-  await page.evaluate((ids) => {
+  // Isolate everything but the three most-hit entities: still over the
+  // budget, so the batch route answers, and those three must never be picked.
+  const left = mostHit(base, 3);
+  const isolated = await page.evaluate(async (excluded) => {
+    // The dev server serves viewer modules by path; this is the app's own instance.
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): { getScene(): { getAllMeshDataExpressIds(): number[] } } | null } = await import(module);
+    const ids = getGlobalRenderer()!.getScene().getAllMeshDataExpressIds().filter((id) => !excluded.includes(id));
     (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().isolateEntities(ids);
-  }, isolated);
+    return ids;
+  }, left);
   await settleFrames(page);
   const iso = await parity(page, info, 'institute-isolated');
-  expectParity(iso, 5);
-  expect(iso.rows.filter((r) => r.gpu && !isolated.includes(r.gpu.expressId)), 'only isolated entities are picked').toEqual([]);
+  expectParity(iso, 40);
+  const allowed = new Set(isolated);
+  expect(iso.rows.filter((r) => r.gpu && !r.annotation && !allowed.has(r.gpu.expressId)), 'only isolated entities are picked').toEqual([]);
 
   await meshOnly();
   await page.evaluate(() => {

@@ -219,6 +219,12 @@ describe('structural derivation plan (#9668)', () => {
     // A footing under the beam's underside holds its end, though the node lies outside it.
     const deepGround = element('IfcBeam', { axis: [[0, 0, 0], [12, 0, 0]], prism: box([0, -0.15, -0.3], 12, 0.3, [0, 0, 0.3]) });
     expect(supportXs(planStructuralDerivation(facts(deepGround, footingAt([11.5, -0.5, -1.3], [1, 1, 1]), column(0, 0, 0, 3), column(6, 0, 0, 3))))).toEqual([0, 6, 12]);
+    // A tapered body under a straight Axis: the soffit rises from -0.6 at x=-1 to -0.1 at x=12. A slab whose top
+    // is the soffit at x=12 holds that end; the probe there must use the local soffit, not the body's lowest z.
+    const tapered = element('IfcBeam', { axis: [[-1, 0, 0], [12, 0, 0]], prism: {
+      outline: [[-1, -0.15, -0.6], [12, -0.15, -0.1], [12, -0.15, 0.3], [-1, -0.15, 0.3]], extrusion: [0, 0.3, 0], outlineExact: true } });
+    const soffitSlab = element('IfcSlab', { prism: box([11, -1, -0.4], 2, 2, [0, 0, 0.3]) });
+    expect(supportXs(planStructuralDerivation(facts(tapered, soffitSlab, column(0, 0, 0, 3), column(6, 0, 0, 3))))).toEqual([0, 6, 12]);
     // A column derived before still bears the run end it rises from.
     const partial = planStructuralDerivation(facts(line('IfcBeam', [-1, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       column(12, 0, 0, 3, { idealised: true })));

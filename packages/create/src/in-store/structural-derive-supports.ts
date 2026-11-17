@@ -6,9 +6,9 @@
 
 import { vecLen as length } from '../ifc-creator-math.js';
 import { pointInPolygon } from './room-footprint-offset.js';
-import { add, sub, scale, dot } from './structural-derive-idealise.js';
+import { add, areaVector, sub, scale, dot } from './structural-derive-idealise.js';
 import { jointReachOf } from './structural-derive-joints.js';
-import type { PhysicalElementFact, PlannedCurveMember, PlannedNode, PlannedSurfaceMember, Vec3 } from './structural-derive-types.js';
+import type { PlannedCurveMember, PlannedNode, PlannedSurfaceMember, PrismFact, Vec3 } from './structural-derive-types.js';
 
 /** Point inside a planar polygon, in the plane's dominant projection: `clearance` inside its edges, or within -`clearance` of them. */
 function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3, clearance = 0): boolean {
@@ -38,9 +38,27 @@ function bottomOf(member: PlannedSurfaceMember, normal: Vec3): number {
   return Math.min(...member.boundary.map((q) => q[2])) - Math.abs(normal[2]) * member.thickness / 2;
 }
 
-/** The lowest z of an element's body, or null when it has none (an Axis-only element). */
-export function bodyBottom({ prism }: PhysicalElementFact): number | null {
-  return prism ? Math.min(...prism.outline.map((p) => p[2] + Math.min(0, prism.extrusion[2]))) : null;
+/**
+ * The underside of a prism under a point: the lowest z where the vertical line through it meets the body's
+ * faces (their edges grown by the tolerance). A line past the body falls back to the lowest of the body's
+ * corners nearest it in plan, so a tapered body still gives the soffit at that end, not its lowest point.
+ */
+export function bodyUnderside(prism: PrismFact, p: Vec3, tolerance: number): number {
+  const { outline, extrusion } = prism;
+  const faces = [outline, outline.map((q) => add(q, extrusion)),
+    ...outline.map((a, i) => { const b = outline[(i + 1) % outline.length]; return [a, b, add(b, extrusion), add(a, extrusion)]; })];
+  let lowest = Infinity;
+  for (const face of faces) {
+    const normal = areaVector(face);
+    if (Math.abs(normal[2]) <= 1e-9 * length(normal)) continue; // vertical: the line runs along it
+    const z = p[2] - dot(sub([p[0], p[1], p[2]], face[0]), normal) / normal[2];
+    if (z < lowest && insidePolygon([p[0], p[1], z], face, normal, -tolerance)) lowest = z;
+  }
+  if (lowest < Infinity) return lowest;
+  const corners = faces.slice(0, 2).flat();
+  const plan = (q: Vec3) => Math.hypot(q[0] - p[0], q[1] - p[1]);
+  const nearest = Math.min(...corners.map(plan));
+  return Math.min(...corners.filter((q) => plan(q) <= nearest + tolerance).map((q) => q[2]));
 }
 
 /** The first surface member whose body, grown by the tolerance across (and by `grow` along), holds the point outside its openings. */
@@ -72,7 +90,7 @@ export interface BearingContext {
  */
 export function lowestLevelBearings(
   nodes: PlannedNode[],
-  members: ReadonlyArray<{ member: PlannedCurveMember; drawn: readonly [Vec3, Vec3]; bottom: number | null }>,
+  members: ReadonlyArray<{ member: PlannedCurveMember; drawn: readonly [Vec3, Vec3]; prism: PrismFact | undefined }>,
   { idealised, surfaces, footings, level, tolerance, jointReach }: BearingContext,
 ): number[] {
   const atLevel = (index: number) => nodes[index].position[2] <= level + tolerance;
@@ -84,7 +102,7 @@ export function lowestLevelBearings(
   const bearing = new Set<number>();
   /** The flat members ending at each node: their line, and their underside, where a wall or slab may stop. */
   const flatAt = new Map<number, Array<{ a: Vec3; b: Vec3; underside: number }>>();
-  for (const { member: { startNode, endNode, start, end }, drawn, bottom } of members) {
+  for (const { member: { startNode, endNode, start, end }, drawn, prism } of members) {
     const startLow = atLevel(startNode);
     const endLow = atLevel(endNode);
     if (startLow && endLow) {
@@ -92,7 +110,7 @@ export function lowestLevelBearings(
       for (const n of [startNode, endNode]) {
         const z = nodes[n].position[2];
         const flats = flatAt.get(n) ?? [];
-        flats.push({ a: start, b: end, underside: Math.min(bottom ?? z, z) });
+        flats.push({ a: start, b: end, underside: prism ? Math.min(bodyUnderside(prism, nodes[n].position, tolerance), z) : z });
         flatAt.set(n, flats);
       }
     } else if ((startLow || endLow) && Math.min(drawn[0][2], drawn[1][2]) <= level + tolerance) {

@@ -13,7 +13,7 @@ import { plateOpenings } from './structural-opening-section.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import { curveElementLine, idealisePlate, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
 import { clusterEnds, joinEnds, SegmentGrid } from './structural-derive-joints.js';
-import { bodyBottom, lowestLevelBearings, surfaceAt, type PlannedSurface } from './structural-derive-supports.js';
+import { lowestLevelBearings, surfaceAt, type PlannedSurface } from './structural-derive-supports.js';
 import {
   DEFAULT_DERIVATION_OPTIONS,
   type MemberLoadBearing,
@@ -223,7 +223,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     // Only their openings, not the skips, matter for bearing.
     const idealisedSurfaces = idealisedSurfaceElements.map((element) => surfaceOf(element, 'assumed', []))
       .filter((surface): surface is PlannedSurface => !('issue' in surface));
-    const bearings = lowestLevelBearings(nodes, curveMembers.map((member, i) => ({ member, drawn: pieces[i].axis, bottom: bodyBottom(pieces[i].element) })), {
+    const bearings = lowestLevelBearings(nodes, curveMembers.map((member, i) => ({ member, drawn: pieces[i].axis, prism: pieces[i].element.prism })), {
       idealised: idealisedLines, surfaces: [...surfaces, ...idealisedSurfaces], footings, level: structureLowest, tolerance, jointReach: resolved.jointReach,
     });
     for (const index of bearings) {

@@ -86,8 +86,9 @@
  *
  * Supports. A node inside a footing or pile's body bounds (grown by `tolerance`)
  * is a support linked to that footing. When no footing supports any node, the
- * nodes at the lowest level become supports and are flagged `guessed`. The
- * lowest level is the lowest node of this plan, after the joints, within
+ * lowest-level nodes `lowestLevelBearings` picks become supports and are
+ * flagged `guessed`.
+ * The lowest level is the lowest node of this plan, after the joints, within
  * `tolerance`, unless a curve member already idealised (longer than
  * `tolerance`, not LoadBearing false) is drawn lower: then the level is that
  * member's lowest end, so a partial run (lower floors derived before) never

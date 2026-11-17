@@ -28,15 +28,16 @@
 
 import { effectiveReferencers } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
-import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { walkPlacementChain } from '@ifc-lite/data';
 import { refId, type Vec3 } from '../host-geometry-frame.js';
 import {
-  countedElements, crossStoreyRefusal, siblingStoreys, walkStoreyContents, storeyNeighbour, storeyRecord, storeyTooLarge,
-  type StoreyInventory, type StoreyRecord,
+  crossStoreyRefusal, siblingStoreys, walkStoreyContents, storeyNeighbour, storeyRecord, storeyTooLarge,
+  STOREY_CONTENT_LIMIT, type StoreyInventory, type StoreyRecord,
 } from './storey-model.js';
+import { recordStoreyPlanningWork } from './storey-planning-diagnostics.js';
+import { recordStoreyPlanAttachments } from './storey-plan-attachments.js';
 import { storeyStateFingerprint } from './storey-fingerprint.js';
-import { gridPlacementParent, gridPlacementsOn } from './storey-grid.js';
+import { storeyPlanningInventory } from './storey-planning-inventory.js';
 import { readPlacementLeaf, worldLiftInParent, type PlacementLeaf } from './storey-placement.js';
 import { planStoreyDependents, type AttachedHeightChange, type StairRefit, type WallHeightChange } from './storey-dependents.js';
 import type { RailingRefit } from '../railing-stair-refit.js';
@@ -167,11 +168,6 @@ function storeyDeltas(inventory: StoreyInventory, edit: StoreyLevelEdit): Map<nu
   return new Map(siblings.slice(siblings.indexOf(storey) + 1).map((moved) => [moved.expressId, delta]));
 }
 
-function isProduct(inventory: StoreyInventory, id: number): boolean {
-  const type = inventory.reader.entity(id)?.type;
-  return !!type && getInheritanceChainAcrossSchemas(type).includes('IfcProduct');
-}
-
 export interface StoreyLevelPlanOptions {
   /**
    * Run the complete write in a discarded draft so a late refusal (an opening
@@ -187,7 +183,15 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   if (Array.isArray(deltas)) return emptyPlan(edit, deltas);
   if ([...deltas.values()].every((delta) => Math.abs(delta) < EPS)) return emptyPlan(edit, []);
 
+  // Enforce the public walk budget before constructing any detailed index.
+  for (const storeyId of deltas.keys()) if (!walkStoreyContents(inventory, storeyId)) {
+    return emptyPlan(edit, [storeyTooLarge(storeyRecord(inventory, storeyId))]);
+  }
   const { reader, scale } = inventory;
+  const planning = storeyPlanningInventory(inventory);
+  const inventoryProducts = planning.inventoryProducts;
+  const detailed = new Set<number>();
+  const storeyIds = new Set(inventory.storeys.map(storey => storey.expressId));
   const refusals: StoreyRefusal[] = [];
   /** World-Z delta each product must end with, file units. */
   const intent = new Map<number, number>();
@@ -195,8 +199,8 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   for (const [storeyId, delta] of deltas) {
     const native = delta / scale;
     intent.set(storeyId, native);
-    const walked = walkStoreyContents(inventory, storeyId);
-    if (!walked) return emptyPlan(edit, [storeyTooLarge(storeyRecord(inventory, storeyId))]);
+    const walked = planning.walks.get(storeyId);
+    if (!walked || walked.contents.size > STOREY_CONTENT_LIMIT) return emptyPlan(edit, [storeyTooLarge(storeyRecord(inventory, storeyId))]);
     const held = walked.contents;
     // A product another storey contains, hosted here, comes apart unless its storey moves by as much.
     const apart = new Map([...walked.foreign].filter(([, own]) => Math.abs((deltas.get(own) ?? 0) - delta) > EPS));
@@ -207,13 +211,9 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   }
 
   const referencers = effectiveReferencers(inventory.store, inventory.view);
-  const placementOf = (product: number): number | null => refId(reader.entity(product)?.attributes[5]);
-  // A grid placement follows its grid's placement, so grid-bound products inherit the grid's move.
-  const parentOf = (placement: number): number | null => {
-    const type = reader.entity(placement)?.type.toUpperCase();
-    if (type === 'IFCLOCALPLACEMENT') return refId(reader.entity(placement)?.attributes[0]);
-    return type === 'IFCGRIDPLACEMENT' ? gridPlacementParent(reader, referencers, placement) : null;
-  };
+  const placementOf = (product: number): number | null => planning.index.get(product)?.placement ?? refId(reader.entity(product)?.attributes[5]);
+  // The inventory retains the effective local/grid parent topology.
+  const parentOf = (placement: number): number | null => planning.parents.get(placement) ?? null;
   const chainOf = (placement: number): readonly number[] => walkPlacementChain(placement, parentOf).ids;
 
   const nodeIntent = new Map<number, number>();
@@ -221,6 +221,7 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   const conflicts = new Set<number>();
   const unplaced: number[] = [];
   const claim = (product: number) => {
+    if (!storeyIds.has(product)) detailed.add(product);
     const target = intent.get(product)!;
     const placement = placementOf(product);
     if (placement === null) {
@@ -233,7 +234,7 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
     if (previous !== undefined && Math.abs(previous - target) > EPS) conflicts.add(placement);
     nodeIntent.set(placement, previous ?? target);
   };
-  for (const product of intent.keys()) claim(product);
+  for (const product of intent.keys()) if (storeyIds.has(product) || planning.index.get(product)?.exceptional !== false) claim(product);
 
   const written = new Map<number, number>();
   const solve = () => {
@@ -250,7 +251,7 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   // few rounds settle any real file; the bound keeps a pathological one finite.
   for (let round = 0; round < 8; round++) {
     solve();
-    const reached = reachedProducts(inventory, [...written.keys()], referencers);
+    const reached = planning.reached([...written.keys()]);
     const fresh = reached.filter((product) => !intent.has(product));
     if (fresh.length === 0) break;
     for (const product of fresh) { intent.set(product, 0); claim(product); }
@@ -281,12 +282,12 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
     const base = record.elevationAttribute ?? record.elevation / scale;
     return { expressId: storeyId, Name: record.Name, from: record.elevation, to: record.elevation + delta, elevationAttribute: base + delta / scale };
   });
-  const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
   const moved = [...intent].filter(([id, delta]) => Math.abs(delta) > EPS && !storeyIds.has(id)).map(([id]) => id);
   const held = [...intent].filter(([id, delta]) => Math.abs(delta) <= EPS && !storeyIds.has(id)).map(([id]) => id);
   let movedElementCount = 0;
-  for (const set of contents.values()) movedElementCount += countedElements(inventory, set);
+  for (const storeyId of contents.keys()) movedElementCount += planning.counts.get(storeyId) ?? 0;
 
+  for (const products of planning.dependentCandidates(inventory, deltas).values()) for (const id of products) detailed.add(id);
   const dependents = planStoreyDependents(inventory, deltas);
   refusals.push(...dependents.refusals);
   const plan: StoreyLevelPlan = {
@@ -303,10 +304,14 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
       placements.map(({ leaf }) => leaf.placementId),
     ),
   };
+  const refresh = planning.refreshCandidates(moved, dependents.walls.map(wall => wall.wallId));
+  for (const id of refresh.keys()) detailed.add(id);
+  recordStoreyPlanAttachments(plan, refresh);
   if (refusals.length === 0 && options.dryRun !== false) {
     const late = dryRunRefusal(inventory, plan);
     if (late) refusals.push(late);
   }
+  recordStoreyPlanningWork(plan, { inventoryProducts, detailedProducts: detailed.size });
   return plan;
 }
 
@@ -319,35 +324,6 @@ function dryRunRefusal(inventory: StoreyInventory, plan: StoreyLevelPlan): Store
     if (error instanceof StoreyEditRefusedError && error.refusals[0]) return error.refusals[0];
     return { code: 'dependent', message: error instanceof Error ? error.message : String(error) };
   }
-}
-
-/** Products whose placement chain passes through one of `placements`. */
-function reachedProducts(
-  inventory: StoreyInventory, placements: readonly number[], referencers: (id: number) => readonly number[],
-): number[] {
-  const products = new Set<number>();
-  const visited = new Set<number>();
-  const queue = [...placements];
-  while (queue.length) {
-    const id = queue.pop()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
-    for (const parent of referencers(id)) {
-      const type = inventory.reader.entity(parent)?.type.toUpperCase();
-      if (type === 'IFCLOCALPLACEMENT' || type === 'IFCGRIDPLACEMENT') {
-        // Only the placement a child follows makes it a child; RelativePlacement is an axis, never a placement.
-        const follows = type === 'IFCLOCALPLACEMENT'
-          ? refId(inventory.reader.entity(parent)?.attributes[0])
-          : gridPlacementParent(inventory.reader, referencers, parent);
-        if (follows === id) queue.push(parent);
-      } else if (isProduct(inventory, parent) && refId(inventory.reader.entity(parent)?.attributes[5]) === id) {
-        products.add(parent);
-        // What is bound to a grid's axes follows the grid's placement.
-        if (type === 'IFCGRID') queue.push(...gridPlacementsOn(inventory.reader, referencers, parent));
-      }
-    }
-  }
-  return [...products];
 }
 
 function spacingChanges(inventory: StoreyInventory, deltas: ReadonlyMap<number, number>): SpacingChange[] {

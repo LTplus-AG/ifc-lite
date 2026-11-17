@@ -14,6 +14,7 @@ import {
   type HostedDoorInStoreParams, type HostedWindowInStoreParams,
 } from './hosted-fill.js';
 import { readHostedFill, type HostedFillRead } from './hosted-fill-read.js';
+import { hostOpeningCandidates } from './host-opening-candidates.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { placedBodyExtent, resolveHostAnchor } from './resolve-host.js';
 import { assertHostedGlobalIdAvailable } from './hosted-global-id.js';
@@ -45,7 +46,7 @@ export function readHostOpeningExtents(
   const reader = new AnchorEntityReader(store, view);
   const cuts: HostedOpeningExtent[] = [];
   const unreadable: number[] = [];
-  for (const id of reader.ids('IFCRELVOIDSELEMENT')) {
+  for (const id of hostOpeningCandidates(store, hostId, view)) {
     const rel = reader.entity(id);
     if (!rel) { unreadable.push(id); continue; }
     const relatingHost = refId(rel.attributes[4]);

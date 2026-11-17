@@ -2,26 +2,19 @@
 # `mergify/merge-queue/*` PR per queued PR. Ordinary PR pushes keep the fast lane
 # (scripts/ci-pr-lane.mjs).
 #
-# NO BATCHES. The Mergify plan stopped allowing `batch_size` above 1 on
-# 2026-11-16; every queue then refused to start ("The 'Merge Queue Batch'
-# feature requires a higher subscription tier", #10506). Parallel checks take
-# their place: up to `max_parallel_checks` PRs are tested at once, each stacked
-# on the ones ahead of it, so the commit that lands is always the tree that was
-# tested. A full run is about 50 jobs and the org has 60 hosted runners, so 2 is
-# the most that fits without starving PR lanes; 2 runs of ~40 min clear about 3
-# merges an hour, above the 2.2 an hour the batches managed (Nov 10-16).
+# NO BATCHES: the Mergify plan refuses `batch_size` above 1, and one queue
+# asking for it stops every queue (#10506). Parallel checks test up to
+# `max_parallel_checks` PRs at once, each stacked on the ones ahead, so the
+# commit that lands is the tree that was tested. A full run is ~50 jobs against
+# 60 hosted runners, so two overlapping runs already queue for runners; raise it
+# only with more runners.
 #
-# A PR enters the queue only once it is ready: `PR review signal` green and no
-# unresolved review threads. Before that, agents labelled a PR right after a
-# push, the review posted findings two minutes later, and the agent pulled the
-# label, fixed, and relabelled: 16 of 44 dequeues after Nov 14, each one
-# aborting the run it was in. Now the label can go on early and Mergify waits.
+# A labelled PR enters the queue only once it is ready: `PR review signal`
+# green and no unresolved review thread. The label can go on early; pulling it
+# to fix a finding aborts the run the PR is in.
 #
-# Ceiling PRs (tests/perf-ratchets/*.json) keep their own queue. They were split
-# out when batches landed untested commits (#8459, c306ff57d4); with one PR per
-# check that gap is closed for every queue, and the split stays so a ceiling
-# change can never be batched again by a future plan or config
-# (scripts/perf-ratchet/merge-queue.test.mjs).
+# Ceiling PRs (tests/perf-ratchets/*.json) keep their own queue, from when
+# batches landed untested commits (#8459, c306ff57d4).
 #
 # The Version Packages PR (`changeset-release/main`) consumes every pending
 # changeset, so it is only correct against `main` exactly as it was generated.

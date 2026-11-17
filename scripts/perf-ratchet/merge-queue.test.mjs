@@ -3,15 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * A ceiling PR is merged only as the tip of a batch of one (#8459).
- *
- * Mergify tests a batch at its tip and then squashes each PR onto `main` as
- * its own commit. #8459 lowered `bundle/viewer-eager-js-bytes` to what main
- * measured at 6e42aaf3fde1; by the time it was queued, main had grown past
- * that ceiling plus its band. Batch #8497 caught it, but the retry batch #8501
- * also held #8411, which shrank eager JS by 1.8%, so the tip passed and
- * c306ff57d4 (#8459 alone on main) landed red. With batch_size 1 the commit
- * that lands is the commit that was tested.
+ * How `.mergify.yml` routes PRs into its queues: one PR per check everywhere,
+ * ceiling PRs (#8459) and the Version Packages PR in queues of their own, and
+ * nothing queued before it is ready. The `.mergify.yml` header says why.
  *
  * The config is evaluated rather than grepped: a minimal evaluator for the
  * condition forms `.mergify.yml` uses, which throws on any other form, so a
@@ -72,13 +66,13 @@ const RELEASE = 'changeset-release/main';
 test('a lowering PR like #8459 is queued alone, for every committed ceiling family', () => {
   assert.ok(CEILING_FILES.length > 0, 'tests/perf-ratchets holds ceiling files');
   for (const file of CEILING_FILES) {
-    assert.equal(queueFor(pr([file])).batch_size, 1, file);
+    assert.equal(queueFor(pr([file])).name, 'ceilings', file);
   }
-  assert.equal(queueFor(pr(CEILING_FILES)).batch_size, 1, 'all families at once, as the daily job can propose');
+  assert.equal(queueFor(pr(CEILING_FILES)).name, 'ceilings', 'all families at once, as the daily job can propose');
 });
 
 test('a code PR that also edits a ceiling is queued alone too', () => {
-  assert.equal(queueFor(pr(['apps/viewer/src/main.tsx', 'tests/perf-ratchets/bundle.json'])).batch_size, 1);
+  assert.equal(queueFor(pr(['apps/viewer/src/main.tsx', 'tests/perf-ratchets/bundle.json'])).name, 'ceilings');
 });
 
 test('ordinary PRs are queued one at a time too; drafts and unlabelled PRs are not queued', () => {
@@ -92,7 +86,6 @@ test('ordinary PRs are queued one at a time too; drafts and unlabelled PRs are n
 
 test('the Version Packages PR is queued alone, never batched with PRs carrying changesets (#8630)', () => {
   const release = queueFor(pr(['.changeset/x.md', 'packages/parser/package.json', 'Cargo.toml'], { head: RELEASE }));
-  assert.equal(release.batch_size, 1);
   assert.equal(release.name, 'release');
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { head: RELEASE })).name, 'release', 'even if it ever touches a ceiling');
   assert.notEqual(queueFor(pr(['.changeset/x.md'])).name, 'release', 'a PR adding a changeset is ordinary work');
@@ -114,7 +107,7 @@ test('the ceilings queue is not a weaker gate: every queue requires the same ful
   for (const q of rest) assert.deepEqual(q.merge_conditions, first.merge_conditions, q.name);
 });
 
-test('no queue admits a PR whose CLA status is not green, so batch PRs only carry signed work', () => {
+test('no queue admits a PR whose CLA status is not green, so queue PRs only carry signed work', () => {
   for (const files of [['apps/viewer/src/main.tsx'], ['tests/perf-ratchets/bundle.json']]) {
     assert.equal(queueFor(pr(files, { statuses: [] })), null, JSON.stringify(files));
   }

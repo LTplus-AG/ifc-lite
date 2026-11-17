@@ -456,6 +456,7 @@ test('gatingFilters reads a multi-line `if:` in full, not just its first line', 
     ['docs'],
     'a quoted scalar starting on the next line is unquoted, not read as a block',
   );
+  assert.equal(jobCondition('    if:\n      >-\n      a\n    runs-on: x'), 'a', 'block indicator on the next line');
   assert.equal(jobCondition("    if: 'a' # c"), 'a', 'comment after a single-quoted scalar');
   assert.equal(jobCondition('    if: "a" # c'), 'a', 'comment after a double-quoted scalar');
 });
@@ -466,7 +467,11 @@ test('an `if:` that cannot be read throws instead of reading as "every path" (#1
   assert.throws(() => gatingFilters("    if: 'needs.changes.outputs.docs\n    runs-on: x"), /unterminated/);
   assert.throws(() => gatingFilters('    if: "a \\n b"'), /unsupported quoted/);
   assert.throws(() => gatingFilters('    if: a # c\n      && b'), /comment inside a plain scalar/);
-  assert.throws(() => gatingFilters('    if: *anchor'), /alias/);
+  for (const bad of ['[a]', '{a: b}', '~', 'null', 'a: b', '"a" #c\n      d', ">-\n        a\n      b"]) {
+    assert.throws(() => jobCondition(`    if: ${bad}`), /cannot read/, bad);
+  }
+  assert.throws(() => jobCondition("    if: # gate\n      'open"), /if: # gate/, 'the message quotes the raw line');
+  assert.throws(() => gatingFilters('    if: *anchor'), /not a plain string/);
 });
 
 test('every real workflow job `if:` reads exactly as a YAML parser reads it', () => {

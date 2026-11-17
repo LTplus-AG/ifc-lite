@@ -17,36 +17,46 @@
  * FAILS CLOSED. An `if:` it cannot read throws: returning `null` or a partial
  * expression would claim the job runs on more paths than it does.
  */
+const BLOCK = /^[>|](?:[1-9]?[-+]?|[-+][1-9])(?:\s+#.*)?$/;
+const indent = (l) => l.length - l.trimStart().length;
+
 export function jobCondition(jobText, jobId = '(unnamed)') {
   const lines = jobText.split('\n');
   const at = lines.findIndex((l) => /^ {4}if:/.test(l));
   if (at === -1) return null;
-  const rest = [];
+  const body = [];
   for (const raw of lines.slice(at + 1)) {
     if (raw.trim() === '') continue;
     if (!/^ {5,}\S/.test(raw)) break; // a sibling key ends the scalar
-    rest.push(raw.trim());
+    body.push(raw);
   }
-  const first = lines[at].replace(/^ {4}if:/, '').trim().replace(/^#.*$/, '');
-  const unreadable = (why) => new Error(`job ${jobId}: cannot read \`if: ${first}\` (${why})`);
-  // A block scalar's body is content, `#` included.
-  if (/^[>|](?:[1-9]?[-+]?|[-+][1-9])(?:\s+#.*)?$/.test(first)) {
-    if (rest.length === 0) throw unreadable('empty block scalar');
-    return rest.join(' ');
+  const unreadable = (why) => new Error(`job ${jobId}: cannot read \`${lines[at].trim()}\` (${why})`);
+  let first = lines[at].replace(/^ {4}if:/, '').trim().replace(/^#.*$/, '');
+  if (first === '' && BLOCK.test(body[0]?.trim() ?? '')) first = body.shift().trim();
+  // A block scalar's body is content, `#` included; a line less indented than
+  // its first is a YAML error, not something to fold in.
+  if (BLOCK.test(first)) {
+    if (body.length === 0) throw unreadable('empty block scalar');
+    if (body.some((l) => indent(l) < indent(body[0]))) throw unreadable('block scalar line under-indented');
+    return body.map((l) => l.trim()).join(' ');
   }
   // Flow scalars may start on the next line; ` #` after the value is a comment.
-  const parts = [first, ...rest].filter(Boolean);
+  const parts = [first, ...body.map((l) => l.trim())].filter(Boolean);
   if (parts.length === 0) throw unreadable('empty scalar');
   const text = parts.join(' ');
-  const single = text.match(/^'((?:[^']|'')*)'(?:\s+#.*)?$/);
-  if (single) return single[1].replaceAll("''", "'");
+  const lastHas = (comment) => !comment || parts.at(-1).endsWith(comment.trim());
+  const single = text.match(/^'((?:[^']|'')*)'(\s+#.*)?$/);
+  if (single && lastHas(single[2])) return single[1].replaceAll("''", "'");
   // Escapes other than \" and \\ cannot appear in a sane condition; refuse them.
-  const double = text.match(/^"((?:[^"\\]|\\["\\])*)"(?:\s+#.*)?$/);
-  if (double) return double[1].replace(/\\(["\\])/g, '$1');
+  const double = text.match(/^"((?:[^"\\]|\\["\\])*)"(\s+#.*)?$/);
+  if (double && lastHas(double[2])) return double[1].replace(/\\(["\\])/g, '$1');
   if (/^['"]/.test(text)) throw unreadable('unterminated or unsupported quoted scalar');
-  if (/^[&*!%@`]/.test(text)) throw unreadable('anchor, alias, tag or reserved indicator');
+  // Not a string expression: a flow collection, null, an anchor, alias, tag or reserved indicator.
+  if (/^[[{&*!%@`]/.test(text) || /^(?:~|null|Null|NULL)$/.test(text)) throw unreadable('not a plain string');
   // A comment ends a plain scalar; one before its last line is not something to guess past.
-  const cut = parts.findIndex((l) => /\s#/.test(l));
+  const cut = parts.findIndex((l) => /(?:^|\s)#/.test(l));
   if (cut !== -1 && cut < parts.length - 1) throw unreadable('comment inside a plain scalar');
-  return parts.join(' ').replace(/\s+#.*$/, '');
+  const plain = text.replace(/\s+#.*$/, '');
+  if (/:\s|:$/.test(plain)) throw unreadable('`: ` in a plain scalar is a mapping');
+  return plain;
 }

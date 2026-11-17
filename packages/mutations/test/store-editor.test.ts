@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { cooperativeOverlay } from '../src/cooperative-overlay-access.js';
 import { describe, expect, it } from 'vitest';
 import {
   MutablePropertyView,
@@ -27,6 +28,18 @@ function makeStore(maxId: number, deferredIds?: number[]): MutationStoreShape {
 }
 
 describe('StoreEditor', () => {
+  it('#8452 class-only reads inside an atomic draft borrow the original row without staging its payload', () => {
+    const store = makeStore(10), view = new MutablePropertyView(null, 'm');
+    const editor = new StoreEditor(store, view);
+    const id = editor.addEntity('IfcColumn', ['column', null, null, null, null, '#1', '#2']).expressId;
+    view.runAtomic(draft => {
+      const rows = cooperativeOverlay(draft).capture().newEntities;
+      const before = rows.peek(id);
+      expect(new StoreEditor(store, draft).getEntityType(id)).toBe('IfcColumn');
+      expect(rows.peek(id)).toBe(before);
+    });
+  });
+
   it('exposes the loaded model schema without guessing one', () => {
     const store = { ...makeStore(1), schemaVersion: 'IFC4X3' };
     const editor = new StoreEditor(store, new MutablePropertyView(null, 'm1'));

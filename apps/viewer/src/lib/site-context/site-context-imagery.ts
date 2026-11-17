@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * SWISSIMAGE draped on a site-context terrain model.
+ * SWISSIMAGE, and the federal surface-runoff hazard map, draped on a
+ * site-context terrain model.
  *
  * The sibling of `terrainImageryDrape.ts` for site context, not a bend of it:
  * that planner projects LandXML vertices through the document's CRS. Here the
@@ -21,15 +22,24 @@
  * WMS returns an image covering the requested box exactly at the requested
  * pixel size, so the core's UVs map onto it unchanged. Each request goes
  * through the swisstopo host allowlist and the response cache.
+ *
+ * The hazard layer (BAFU's overland flow map) is a second WMS image per level,
+ * requested for the same box at the same pixel size and drawn over the aerial
+ * image (or over the flat terrain colour when no imagery is asked for) in the
+ * publisher's own legend colours, unaltered. Either layer can be switched on
+ * or off by draping again: each draped mesh remembers the core mesh it was
+ * made from, so a second drape starts from the core's UVs, and with neither
+ * layer the core meshes come back untextured.
  */
 
-import type { MeshData } from '@ifc-lite/geometry';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createSwissGeodata, type MapLayerDescriptor } from '@ifc-lite/geodata-ch';
 import { useViewerStore } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices';
-import { borderedGpuUvs, borderedTexture, type DrapeTexture } from '@/lib/terrain-imagery/raster-texture';
+import { borderedGpuUvs, type DrapeTexture } from '@/lib/terrain-imagery/raster-texture';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { createSiteContextResponseCache } from './response-cache';
+import { assertHazardShowsSomething, composeLayers } from './site-context-layer-compose';
 import { swisstopoFetch } from './swisstopo-fetch';
 
 /** Ground sample distance of the drape over the whole site; 25 cm reads well from the air. */
@@ -72,17 +82,34 @@ export interface SiteContextImageryRequest {
   width: number;
   height: number;
   groundSampleDistance: number;
+  /** The image format asked for. */
+  mime: string;
 }
 
-/** The SWISSIMAGE descriptor from the geodata client's layer table (no network). */
-export function swissimageLayer(): MapLayerDescriptor {
-  const layer = createSwissGeodata().mapLayers().find((entry) => entry.id === 'ch.swisstopo.swissimage');
-  if (!layer) throw new Error('The SWISSIMAGE layer descriptor is missing from @ifc-lite/geodata-ch.');
+/** A layer descriptor from the geodata client's layer table (no network). */
+function geodataLayer(id: string): MapLayerDescriptor {
+  const layer = createSwissGeodata().mapLayers().find((entry) => entry.id === id);
+  if (!layer) throw new Error(`The ${id} layer descriptor is missing from @ifc-lite/geodata-ch.`);
   return layer;
 }
 
-/** A WMS 1.3.0 GetMap for `box` (EPSG:2056, easting first: LV95's axis order is E, N). */
-export function swissimageRequest(
+/** The SWISSIMAGE descriptor. */
+export function swissimageLayer(): MapLayerDescriptor {
+  return geodataLayer('ch.swisstopo.swissimage');
+}
+
+/** BAFU's overland flow map (Gefährdungskarte Oberflächenabfluss), attributed © FOEN. */
+export const RUNOFF_HAZARD_LAYER_ID = 'ch.bafu.gefaehrdungskarte-oberflaechenabfluss';
+export function runoffHazardLayer(): MapLayerDescriptor {
+  return geodataLayer(RUNOFF_HAZARD_LAYER_ID);
+}
+
+/**
+ * A WMS 1.3.0 GetMap for `box` (EPSG:2056, easting first: LV95's axis order is
+ * E, N), in the layer's own format; a PNG layer is asked for with transparency,
+ * so where nothing is mapped the layer below shows through.
+ */
+export function wmsMapRequest(
   layer: MapLayerDescriptor, box: readonly [number, number, number, number], minGsd = COARSE_GSD,
 ): SiteContextImageryRequest | null {
   const wms = layer.services.find((service) => service.type === 'WMS');
@@ -96,10 +123,11 @@ export function swissimageRequest(
   const url = new URL(wms.url);
   const params: Record<string, string> = {
     SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetMap', LAYERS: wms.layers, STYLES: '', CRS: 'EPSG:2056',
-    BBOX: [minE, minN, maxE, maxN].join(','), WIDTH: String(width), HEIGHT: String(height), FORMAT: 'image/jpeg',
+    BBOX: [minE, minN, maxE, maxN].join(','), WIDTH: String(width), HEIGHT: String(height), FORMAT: wms.format,
+    ...(wms.format === 'image/png' ? { TRANSPARENT: 'TRUE' } : {}),
   };
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-  return { url: url.toString(), width, height, groundSampleDistance: gsd };
+  return { url: url.toString(), width, height, groundSampleDistance: gsd, mime: wms.format };
 }
 
 /** Core UVs (top-left origin) → the bordered GPU texture's UVs. */
@@ -112,20 +140,25 @@ export function siteContextGpuUvs(uvs: Float32Array, width: number, height: numb
   return borderedGpuUvs(flipped, width, height);
 }
 
-async function fetchImage(request: SiteContextImageryRequest, signal?: AbortSignal): Promise<ImageBitmap> {
-  const cache = createSiteContextResponseCache();
-  const cached = await cache.get(request.url);
+/**
+ * One WMS image through the allowlist. `cacheable: false` fetches it fresh every time: the hazard map answers
+ * transparent PNGs during an outage exactly as where nothing is mapped, so a cached answer could keep showing an
+ * outage as "no runoff" (the flood check never caches a transparent answer either).
+ */
+async function fetchImage(request: SiteContextImageryRequest, source: string, signal?: AbortSignal, cacheable = true): Promise<ImageBitmap> {
+  const cache = cacheable ? createSiteContextResponseCache() : null;
+  const cached = await cache?.get(request.url);
   let body: ArrayBuffer;
   if (cached) body = cached.body;
   else {
     const response = await swisstopoFetch().fetch(request.url, { signal: withRequestTimeout(signal) });
-    if (!response.ok) throw new Error(`SWISSIMAGE answered ${response.status}`);
+    if (!response.ok) throw new Error(`${source} answered ${response.status}`);
     const type = response.headers.get('content-type') ?? '';
     body = await response.arrayBuffer();
-    if (!type.startsWith('image/')) throw new Error(`SWISSIMAGE answered ${type || 'no content type'}, not an image`);
-    await cache.set(request.url, { status: response.status, headers: { 'content-type': type }, body });
+    if (!type.startsWith('image/')) throw new Error(`${source} answered ${type || 'no content type'}, not an image`);
+    await cache?.set(request.url, { status: response.status, headers: { 'content-type': type }, body });
   }
-  return createImageBitmap(new Blob([body], { type: 'image/jpeg' }));
+  return createImageBitmap(new Blob([body], { type: request.mime }));
 }
 
 type PlanBox = readonly [number, number, number, number];
@@ -174,56 +207,146 @@ export function remapUvs(uvs: Float32Array, site: PlanBox, target: PlanBox): Flo
   return out;
 }
 
-interface DrapeLevel { request: SiteContextImageryRequest; box: PlanBox; texture?: DrapeTexture; textureId: number }
+/** What to drape on the terrain. With neither, the terrain is shown untextured again. */
+export interface TerrainDrapeLayers {
+  imagery: boolean;
+  hazard: boolean;
+}
+
+/** One texture: a plan box, its WMS request per layer (imagery, hazard), and the composed result. */
+interface DrapeLevel {
+  box: PlanBox;
+  requests: Array<SiteContextImageryRequest | null>;
+  width: number;
+  height: number;
+  groundSampleDistance: number;
+  textureId: number;
+  texture?: DrapeTexture;
+}
+
+const SOURCE_NAMES = ['SWISSIMAGE', 'The overland flow map'] as const;
+
+/** The core mesh each draped copy was made from, so a later drape starts from the core's UVs. */
+const coreMeshOf = new WeakMap<MeshData, MeshData>();
 
 /**
- * Drape SWISSIMAGE on the site-context terrain model `modelId`, in two levels:
- * 10 cm on the chunks around the model, 25 cm (or coarser, within the texture
- * limit) on the rest. Each level is its own texture through the existing
- * textured-mesh path; a chunk takes exactly one. Both come from the same
- * source, so only the sharpness changes at the chunk edge between them.
- * Throws with a user-facing reason.
+ * The core meshes behind `meshes`. A textured mesh without a recorded core is
+ * refused: its UVs are already the texture's, and draping from them again
+ * would misplace the image.
  */
-export async function drapeSiteContextImagery(modelId: string, signal?: AbortSignal): Promise<void> {
+function coreMeshes(meshes: readonly MeshData[]): MeshData[] {
+  return meshes.map((mesh) => {
+    const core = coreMeshOf.get(mesh);
+    if (core) return core;
+    if (mesh.textureRef) throw new Error('This terrain was changed after it was draped; load the site context again to change its layers.');
+    return mesh;
+  });
+}
+
+function uploadTerrain(modelId: string, geometry: GeometryResult, meshes: MeshData[], changed: MeshData[]): void {
+  const renderer = getGlobalRenderer();
+  if (!renderer || !renderer.isReady()) throw new Error('The viewport is not ready to show the terrain layers yet.');
+  const modelIndex = modelIndices(useViewerStore.getState().models).get(modelId) ?? 0;
+  const gpu = changed.map((mesh) => ({ ...mesh, modelIndex }));
+  renderer.getScene().removeMeshesForEntities(gpu.map((mesh) => mesh.expressId));
+  const uploaded = renderer.addMeshes(gpu, false);
+  if (!uploaded.ok) throw new Error(`The terrain layers could not be uploaded to the GPU (${uploaded.reason}).`);
+  const next = { ...geometry, meshes };
+  const latest = useViewerStore.getState();
+  if (latest.geometryResult === geometry) latest.setGeometryResult(next);
+  latest.updateModel(modelId, { geometryResult: next });
+  renderer.requestRender();
+}
+
+let drapeQueue: Promise<void> = Promise.resolve();
+
+/**
+ * Change the layers draped on the site-context terrain `modelId`. Drapes run
+ * one at a time, and a layer `change` leaves out keeps the state it has when
+ * this drape starts, so concurrent requests (the automatic imagery drape, the
+ * hazard toggle, the imagery button) compose instead of the last one undoing
+ * the others. Rejects with a user-facing reason.
+ */
+export function drapeSiteContextTerrain(modelId: string, change: Partial<TerrainDrapeLayers>, signal?: AbortSignal): Promise<void> {
+  const run = drapeQueue.then(() => {
+    const info = useViewerStore.getState().siteContextModels.get(modelId);
+    return drapeLayers(modelId, {
+      imagery: change.imagery ?? info?.imagery !== undefined,
+      hazard: change.hazard ?? info?.hazard !== undefined,
+    }, signal);
+  });
+  drapeQueue = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * Drape exactly `layers` on the site-context terrain model `modelId`, in two
+ * levels: 10 cm on the chunks around the model, 25 cm (or coarser, within the
+ * texture limit) on the rest. Each level is its own texture through the
+ * existing textured-mesh path; a chunk takes exactly one. Imagery and hazard
+ * map of a level are requested for the same box at the same pixel size, so
+ * they line up. Throws with a user-facing reason.
+ */
+async function drapeLayers(modelId: string, layers: TerrainDrapeLayers, signal?: AbortSignal): Promise<void> {
   const state = useViewerStore.getState();
   const info = state.siteContextModels.get(modelId);
   const model = state.models.get(modelId);
   if (!info || info.kind !== 'terrain' || !info.planBox || !model?.geometryResult) {
-    throw new Error('Aerial imagery drapes on a loaded site-context terrain only.');
+    throw new Error('Map layers drape on a loaded site-context terrain only.');
   }
+  signal?.throwIfAborted();
+  if (!getGlobalRenderer()?.isReady()) throw new Error('The viewport is not ready to show the terrain layers yet.');
   const site = info.planBox;
-  const layer = swissimageLayer();
-  const boxes = model.geometryResult.meshes.map((mesh) => (mesh.uvs ? meshPlanBox(mesh.uvs, site) : null));
-  const fine = planFineDrape(boxes, site);
-  const levels: DrapeLevel[] = [];
-  const fineRequest = fine ? swissimageRequest(layer, fine.box, FINE_GSD) : null;
-  if (fine && fineRequest) levels.push({ request: fineRequest, box: fine.box, textureId: nextTextureId-- });
-  const needsCoarse = boxes.some((b, index) => b && !(fine?.indices.has(index) && fineRequest));
-  const coarseRequest = needsCoarse ? swissimageRequest(layer, site) : null;
-  if (needsCoarse && !coarseRequest) throw new Error('The terrain has no plan extent to request imagery for.');
-  if (coarseRequest) levels.push({ request: coarseRequest, box: site, textureId: nextTextureId-- });
-  if (levels.length === 0) throw new Error('The terrain has no plan extent to request imagery for.');
+  const core = coreMeshes(model.geometryResult.meshes);
+  const coreCount = core.length;
 
-  const images = await settleImages(levels.map((level) => fetchImage(level.request, signal)));
+  if (!layers.imagery && !layers.hazard) {
+    const geometry = model.geometryResult;
+    uploadTerrain(modelId, geometry, core, core.filter((mesh) => mesh.uvs));
+    useViewerStore.getState().updateSiteContextModel(modelId, { imagery: undefined, hazard: undefined });
+    return;
+  }
+
+  const sources = [layers.imagery ? swissimageLayer() : null, layers.hazard ? runoffHazardLayer() : null];
+  const planLevel = (box: PlanBox, minGsd: number): DrapeLevel | null => {
+    const requests = sources.map((layer) => (layer ? wmsMapRequest(layer, box, minGsd) : null));
+    const first = requests.find((request) => request !== null);
+    if (!first || requests.some((request, i) => sources[i] && !request)) return null;
+    return { box, requests, width: first.width, height: first.height, groundSampleDistance: first.groundSampleDistance, textureId: nextTextureId-- };
+  };
+  const boxes = core.map((mesh) => (mesh.uvs ? meshPlanBox(mesh.uvs, site) : null));
+  const fine = planFineDrape(boxes, site);
+  const fineLevel = fine ? planLevel(fine.box, FINE_GSD) : null;
+  const needsCoarse = boxes.some((b, index) => b && !(fineLevel && fine?.indices.has(index)));
+  const coarseLevel = needsCoarse ? planLevel(site, COARSE_GSD) : null;
+  if (needsCoarse && !coarseLevel) throw new Error('The terrain has no plan extent to request map layers for.');
+  const levels = [fineLevel, coarseLevel].filter((level): level is DrapeLevel => level !== null);
+  if (levels.length === 0) throw new Error('The terrain has no plan extent to request map layers for.');
+
+  const wanted = levels.flatMap((level) => level.requests.flatMap((request, slot) => (request ? [{ level, slot, request }] : [])));
+  const images = await settleImages(wanted.map((w) => fetchImage(w.request, SOURCE_NAMES[w.slot], signal, w.slot === 0)));
   const closeAll = () => { for (const image of images) image.close(); };
-  const renderer = getGlobalRenderer();
-  if (!renderer || !renderer.isReady()) { closeAll(); throw new Error('The viewport is not ready to show imagery yet.'); }
   const geometry = useViewerStore.getState().models.get(modelId)?.geometryResult;
-  if (!geometry) { closeAll(); throw new Error('The terrain was removed before its imagery arrived.'); }
-  const flat = geometry.meshes.find((mesh) => mesh.uvs)?.color ?? [0.8, 0.78, 0.72, 1];
+  let latestCore: MeshData[];
   try {
-    levels.forEach((level, i) => {
-      level.texture = borderedTexture(images[i], level.request.width, level.request.height, [flat[0], flat[1], flat[2]]);
-    });
+    signal?.throwIfAborted();
+    if (layers.hazard) assertHazardShowsSomething(wanted.flatMap((w, i) => (w.slot === 1 ? [images[i]] : [])));
+    if (!geometry) throw new Error('The terrain was removed before its map layers arrived.');
+    latestCore = coreMeshes(geometry.meshes);
+    if (latestCore.length !== coreCount) throw new Error('The terrain changed while its map layers were loading.');
+    const flat = latestCore.find((mesh) => mesh.uvs)?.color ?? [0.8, 0.78, 0.72, 1];
+    for (const level of levels) {
+      const imageOf = (slot: number) => images[wanted.findIndex((w) => w.level === level && w.slot === slot)] ?? null;
+      level.texture = composeLayers(level.width, level.height, [flat[0], flat[1], flat[2]], imageOf(0), imageOf(1));
+    }
   } finally {
     closeAll();
   }
-  const fineLevel = fine && fineRequest ? levels[0] : null;
-  const coarseLevel = coarseRequest ? levels[levels.length - 1] : null;
-  const modelIndex = modelIndices(useViewerStore.getState().models).get(modelId) ?? 0;
+
+  const label = sources.flatMap((layer) => (layer ? [layer.id] : [])).join('+');
   const meshes = [...geometry.meshes];
-  const gpu: MeshData[] = [];
-  meshes.forEach((mesh, index) => {
+  const changed: MeshData[] = [];
+  latestCore.forEach((mesh, index) => {
     if (!mesh.uvs) return;
     const level = fineLevel && fine?.indices.has(index) ? fineLevel : coarseLevel;
     if (!level?.texture) return;
@@ -231,28 +354,27 @@ export async function drapeSiteContextImagery(modelId: string, signal?: AbortSig
     const draped: MeshData = {
       ...mesh,
       uvs: siteContextGpuUvs(uvs, level.texture.imageWidth, level.texture.imageHeight),
-      textureRef: { textureId: level.textureId, url: layer.id, repeatS: false, repeatT: false },
+      textureRef: { textureId: level.textureId, url: label, repeatS: false, repeatT: false },
       textureBitmap: level.texture.bitmap,
       // `texture(uv) × baseColor`: white passes the image through untinted.
       color: [1, 1, 1, mesh.color[3]],
     };
+    coreMeshOf.set(draped, mesh);
     meshes[index] = draped;
-    gpu.push({ ...draped, modelIndex });
+    changed.push(draped);
   });
-  if (gpu.length === 0) throw new Error('The terrain carries no texture coordinates to drape on.');
-  renderer.getScene().removeMeshesForEntities(gpu.map((mesh) => mesh.expressId));
-  const uploaded = renderer.addMeshes(gpu, false);
-  if (!uploaded.ok) throw new Error(`The imagery could not be uploaded to the GPU (${uploaded.reason}).`);
-  const next = { ...geometry, meshes };
-  const latest = useViewerStore.getState();
-  if (latest.geometryResult === geometry) latest.setGeometryResult(next);
-  latest.updateModel(modelId, { geometryResult: next });
-  latest.updateSiteContextModel(modelId, {
-    imagery: {
-      attribution: layer.attribution,
-      groundSampleDistance: (coarseLevel ?? levels[0]).request.groundSampleDistance,
-      ...(fineLevel ? { nearGroundSampleDistance: fineLevel.request.groundSampleDistance } : {}),
-    },
+  try {
+    if (changed.length === 0) throw new Error('The terrain carries no texture coordinates to drape on.');
+    uploadTerrain(modelId, geometry, meshes, changed);
+  } catch (error) {
+    // Nothing took the composed textures: free them now rather than at collection.
+    for (const level of levels) level.texture?.bitmap.close();
+    throw error;
+  }
+  const gsd = (coarseLevel ?? levels[0]).groundSampleDistance;
+  const near = fineLevel ? { nearGroundSampleDistance: fineLevel.groundSampleDistance } : {};
+  useViewerStore.getState().updateSiteContextModel(modelId, {
+    imagery: sources[0] ? { attribution: sources[0].attribution, groundSampleDistance: gsd, ...near } : undefined,
+    hazard: sources[1] ? { attribution: sources[1].attribution, groundSampleDistance: gsd, ...near } : undefined,
   });
-  renderer.requestRender();
 }

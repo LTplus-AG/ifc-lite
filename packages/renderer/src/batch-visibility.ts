@@ -42,11 +42,12 @@ export function classifyBatch(
 ): BatchVisibility {
   if ((hiddenIds == null || hiddenIds.size === 0) && isolatedIds == null) return 'all';
   const visibleIds = new Set<number>();
+  let visibleEntries = 0;
   for (const id of batch.expressIds) {
-    if (isEntityVisible(id, hiddenIds, isolatedIds)) visibleIds.add(id);
+    if (isEntityVisible(id, hiddenIds, isolatedIds)) { visibleIds.add(id); visibleEntries++; }
   }
   if (visibleIds.size === 0) return 'none';
-  if (visibleIds.size === batch.expressIds.length) return 'all';
+  if (visibleEntries === batch.expressIds.length) return 'all';
   return { expressIds: [...visibleIds], color: batch.color, visibleIds };
 }
 

@@ -203,6 +203,9 @@ async function picksNeverHidden(page: Page, info: TestInfo, name: string, hidden
   const both = mesh.filter((r) => r.gpu && r.cpu);
   expect(mesh.filter((r) => r.gpu).length, `${name}: the grid lands on visible geometry`).toBeGreaterThan(0);
   if (!cpuExact) return both.length; // a released scene's CPU raycast has boxes only
+  expect(both.length, `${name}: the grid compares actual GPU and CPU hits`).toBeGreaterThan(0);
+  expect(mesh.filter((r) => r.gpu && !r.cpu), `${name}: no GPU-only hits`).toEqual([]);
+  expect(mesh.filter((r) => r.cpu && !r.gpu), `${name}: no CPU-only hits`).toEqual([]);
   // Ties between coincident surfaces are S1's documented tolerance; anything more is a visibility bug.
   expect(both.filter((r) => r.gpu!.expressId !== r.cpu!.expressId).length, `${name}: GPU and CPU pick the same visible entity`).toBeLessThanOrEqual(Math.ceil(both.length * 0.02));
   return both.length;
@@ -309,8 +312,10 @@ test('federation (two models): hide in the second model draws what the visible p
   await compareScenario(page, info, { name: 'federation-hide', steps: [['hideEntities', 'ids']], ids: async (p) => {
     const offsets = second.slice().sort((x, y) => x - y);
     const ids = await spreadIds(p);
-    // Prefer ids of the second model (the larger offset) so the anchor resolves federated ids.
-    return ids.filter((id) => id >= offsets[1]!).concat(ids).slice(0, 2);
+    expect(offsets).toHaveLength(2);
+    const targets = [...new Set(ids.filter((id) => id >= offsets[1]!))].slice(0, 2);
+    expect(targets, 'the federation scenario must hide two distinct second-model entities').toHaveLength(2);
+    return targets;
   } }, c);
 });
 

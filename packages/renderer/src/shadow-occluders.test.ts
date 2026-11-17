@@ -548,6 +548,7 @@ describe('partly hidden batches cast whole under the GPU visibility test (#10264
     const [partly] = collectShadowOccluders({ batches: [twoEntities()], instanced: [], textured: [] }, { hiddenIds: new Set([102]) });
     assert.equal(partly?.visibilityFiltered, true);
     const [whole] = collectShadowOccluders({ batches: [twoEntities()], instanced: [], textured: [] }, { hiddenIds: new Set([7]) });
+    assert.ok(whole, 'the fully visible batch must still cast a shadow');
     assert.equal(whole?.visibilityFiltered, undefined, 'a fully visible batch keeps the depth-only path');
     assert.deepEqual(collectShadowOccluders({ batches: [twoEntities()], instanced: [], textured: [] }, { isolatedIds: new Set() }), []);
   });

@@ -29,6 +29,11 @@ describe('classifyBatch', () => {
     assert.equal(classifyBatch(b([1, 2]), undefined, new Set([1, 2])), 'all');
   });
 
+  it('counts repeated visible piece entries without treating them as partly hidden (#10636)', () => {
+    assert.equal(classifyBatch(b([7, 7]), new Set([99]), null), 'all');
+    assert.deepEqual(visible(classifyBatch(b([7, 7, 8]), new Set([8]), null)), [7]);
+  });
+
   it('keeps the visible part of a partly hidden or partly isolated batch', () => {
     assert.deepEqual(visible(classifyBatch(b([1, 2, 3]), new Set([2]), undefined)), [1, 3]);
     assert.deepEqual(visible(classifyBatch(b([1, 2, 3]), undefined, new Set([2, 3]))), [2, 3]);

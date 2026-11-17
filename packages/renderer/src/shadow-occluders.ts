@@ -113,7 +113,7 @@ function anyVisible(ids: readonly number[], vis: ShadowVisibility | undefined): 
 
 /** Entries of `ids` visible under `vis` (all of them without a filter). */
 function visibleCount(ids: readonly number[], vis: ShadowVisibility | undefined): number {
-  if (!vis) return ids.length;
+  if (!vis || (!vis.hiddenIds?.size && vis.isolatedIds == null)) return ids.length;
   let n = 0;
   for (const id of ids) if (isEntityVisible(id, vis.hiddenIds, vis.isolatedIds)) n++;
   return n;

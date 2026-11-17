@@ -28,7 +28,7 @@ import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
 import { posthog } from '@/lib/analytics';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { diagnoseModelGeoreference, type DiagnosisItem, type GeorefDiagnosis } from '@/lib/geo/georef-diagnosis';
-import { formatAreaOfUse } from './epsg-area-of-use';
+import { areaOfUseText } from './epsg-area-of-use';
 import { INSPECTOR_COUNT, InspectorSectionTrigger } from './inspector-ui';
 
 export interface GeorefDiagnosisSectionProps {
@@ -73,7 +73,8 @@ const SEVERITY_STYLE: Record<Severity, { icon: typeof Info; className: string; l
   info: { icon: Info, className: 'text-muted-foreground', label: 'properties.georef.check.severity.info' },
 };
 
-type CheckState = { status: 'running' } | { status: 'failed' } | { status: 'done'; diagnosis: GeorefDiagnosis | null };
+/** `previous` keeps the last result on screen while an edit is re-checked, so the warning and the open list do not blink. */
+type CheckState = { status: 'running'; previous?: GeorefDiagnosis | null } | { status: 'failed' } | { status: 'done'; diagnosis: GeorefDiagnosis | null };
 
 /** Which panel notice already explains a finding, if any. */
 function panelNotice(code: GeorefFindingCode, shown: GeorefDiagnosisSectionProps['shownInPanel']): TranslationKey | undefined {
@@ -116,7 +117,7 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
   useEffect(() => {
     if (!store) return;
     let live = true;
-    setState({ status: 'running' });
+    setState((prev) => ({ status: 'running', previous: prev.status === 'done' ? prev.diagnosis : prev.status === 'running' ? prev.previous : undefined }));
     diagnoseModelGeoreference(store, edits, mapUnitScale).then(
       (diagnosis) => { if (live) setState({ status: 'done', diagnosis }); },
       (error) => {
@@ -138,17 +139,18 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
   }, [modelId, setGeorefFields, t]);
 
   if (!store || (state.status === 'done' && !state.diagnosis)) return null;
-  const diagnosis = state.status === 'done' ? state.diagnosis : null;
+  const diagnosis = state.status === 'done' ? state.diagnosis : state.status === 'running' ? state.previous ?? null : null;
   const outside = diagnosis?.items.find((item) => item.finding.code === 'OUTSIDE_CRS_AREA');
   const listed = diagnosis?.items.filter((item) => item !== outside) ?? [];
-  const count = (severity: Severity) => diagnosis?.items.filter((item) => item.finding.severity === severity).length ?? 0;
+  const counts: Record<Severity, number> = { error: 0, warning: 0, info: 0 };
+  for (const item of diagnosis?.items ?? []) counts[item.finding.severity]++;
   const summary = state.status === 'running' ? t('properties.georef.check.running')
     : state.status === 'failed' ? t('properties.georef.check.failed')
     : diagnosis?.items.length === 0 ? t('properties.georef.check.clean')
     : [
-        count('error') && t('properties.georef.check.errors', { count: count('error') }),
-        count('warning') && t('properties.georef.check.warnings', { count: count('warning') }),
-        count('info') && t('properties.georef.check.notes', { count: count('info') }),
+        counts.error && t('properties.georef.check.errors', { count: counts.error }),
+        counts.warning && t('properties.georef.check.warnings', { count: counts.warning }),
+        counts.info && t('properties.georef.check.notes', { count: counts.info }),
       ].filter(Boolean).join(', ');
   const applyFor = (item: DiagnosisItem, notice?: TranslationKey) =>
     editable && item.fix && notice !== 'properties.georef.check.shownInPanelDouble' ? () => apply(item) : undefined;
@@ -162,9 +164,7 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
             <span className="leading-snug">
               <strong>{t('properties.georef.check.outsideAreaHeading', { code: String(outside.finding.evidence.epsg) })}</strong>{' '}
               {t('properties.georef.check.outsideAreaBody')}
-              {diagnosis?.outsideAreaOfUse && <> {diagnosis.outsideAreaOfUse === 'unavailable'
-                ? t('properties.georef.areaOfUseUnavailable')
-                : formatAreaOfUse(t, locale, diagnosis.outsideAreaOfUse)}</>}
+              {diagnosis?.outsideAreaOfUse && <> {areaOfUseText(t, locale, diagnosis.outsideAreaOfUse)}</>}
             </span>
           </div>
           {editable && outside.fix && <ul><FindingRow item={outside} onApply={() => apply(outside)} /></ul>}

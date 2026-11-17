@@ -67,6 +67,11 @@ export class FragmentPieces implements BatchPieces {
     for (const mesh of this.split.keys()) into.add(mesh);
   }
 
+  visitMeshes(visit: (mesh: MeshData) => void): void {
+    for (const mesh of this.whole) visit(mesh);
+    for (const [source, pieces] of this.split) { visit(source); for (const piece of pieces) visit(piece); }
+  }
+
   collect(mesh: MeshData, into: Set<MeshData>): void {
     if (this.whole.has(mesh)) {
       into.add(mesh);
@@ -98,6 +103,10 @@ export class BuiltBatchPieces implements BatchPieces {
   /** @param meshes A copy of the bucket's meshes, taken before the first mesh the batch does not hold joins it. */
   constructor(readonly batch: BatchedMesh, private readonly meshes: readonly MeshData[]) {}
 
+  visitMeshes(visit: (mesh: MeshData) => void): void {
+    for (const mesh of this.meshes) visit(mesh);
+  }
+
   get colorMerged(): boolean {
     return (this.merged ??= this.meshes.some((mesh) => (mesh.entityIds?.length ?? 0) > 0));
   }
@@ -119,6 +128,15 @@ export class BuiltBatchPieces implements BatchPieces {
  */
 export class StreamingFragmentPieces {
   private readonly byBatchId = new Map<number, BatchPieces>();
+
+  visitMeshes(visit: (mesh: MeshData) => void): void {
+    const seen = new Set<MeshData>();
+    const once = (mesh: MeshData) => { if (!seen.has(mesh)) { seen.add(mesh); visit(mesh); } };
+    for (const record of this.byBatchId.values()) {
+      if (record instanceof FragmentPieces || record instanceof BuiltBatchPieces) record.visitMeshes(once);
+    }
+    for (const mesh of this.drawnMemo?.drawn ?? []) once(mesh);
+  }
 
   /**
    * @param pieces What the fragment was uploaded from.

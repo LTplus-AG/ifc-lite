@@ -281,3 +281,32 @@ export function oomAccounting(events, totalKills = 0) {
   return { kills: Math.max(totalKills, seen), types, unidentified, ambiguous };
 }
 
+
+/**
+ * The viewer's "CPU geometry held" sample (#10264 S0, `__ifc_lite_cpu_geometry_held__`) in MiB, with
+ * bytes per triangle when the triangle count is known. `null` when the viewer has no such hook.
+ */
+export function cpuGeometrySummary(held, triangles) {
+  if (!held || typeof held.totalBytes !== 'number') return null;
+  const mib = (b) => Math.round((b / 2 ** 20) * 10) / 10;
+  const owners = {};
+  for (const [name, o] of Object.entries(held.owners ?? {})) owners[name] = { reachableMiB: mib(o.reachableBytes), exclusiveMiB: mib(o.exclusiveBytes) };
+  const byKindMiB = {};
+  for (const [kind, b] of Object.entries(held.byKind ?? {})) byKindMiB[kind] = mib(b);
+  return { totalMiB: mib(held.totalBytes), totalBytes: held.totalBytes, buffers: held.buffers, sharedMiB: mib(held.sharedBytes ?? 0), byKindMiB, owners,
+    bytesPerTriangle: triangles > 0 ? Math.round((held.totalBytes / triangles) * 10) / 10 : null, walkMs: Math.round(held.walkMs ?? 0) };
+}
+
+
+// Keep diagnostic failure distinct from a viewer version without the hook (#10506).
+export async function sampleCpuGeometry(evaluate, triangles, timeoutMs) {
+  try {
+    return await withTimeout(Promise.resolve().then(evaluate).then(raw => {
+      if (raw === null || raw === undefined) return { status: 'unavailable' };
+      const held = cpuGeometrySummary(raw, raw.triangles ?? triangles);
+      return held ? { status: 'available', held } : { status: 'error', error: 'Invalid CPU geometry diagnostic result' };
+    }), timeoutMs, () => ({ status: 'timeout' }));
+  } catch (error) {
+    return { status: 'error', error: error instanceof Error ? error.message : String(error) };
+  }
+}

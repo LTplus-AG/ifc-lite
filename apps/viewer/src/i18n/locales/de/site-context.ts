@@ -32,7 +32,6 @@ export const siteContextDe = {
   "siteContext.refusal.outsideSwitzerland": "Die Umgebung ist für Standorte in der Schweiz verfügbar; dieses Modell liegt anderswo.",
   "siteContext.refusal.heightDatum": "Die Höhen der Umgebung sind LN02; dieses Modell gibt {datum} an. Die Höhensysteme werden nicht vermischt.",
   "siteContext.refusal.heightUnknown": "Die Höhen der Umgebung sind LN02; dieses Modell gibt kein Höhensystem an, und für dieses Format wird keines angenommen. Legen Sie sein Höhensystem fest, um die Umgebung darum zu laden.",
-  "siteContext.refusal.openEditor": "Georeferenzierung hinzufügen",
   "siteContext.card.title": "Umgebung",
   "siteContext.card.category": "Kategorie",
   "siteContext.card.complete": "Vollständig",
@@ -52,4 +51,9 @@ export const siteContextDe = {
   "siteContext.card.subjectMatchFootprint": "sein Grundriss überdeckt das Modell zu {overlap} %",
   "siteContext.card.showSubject": "Einblenden",
   "siteContext.card.hideSubject": "Wieder ausblenden",
+  "siteContext.refusal.addHint": "Oben Georeferenzierung hinzufügen: das Koordinatensystem wählen (für Schweizer Standorte EPSG:2056 · CH1903+ / LV95) und das Modell dann auf der Karte platzieren.",
+  "siteContext.refusal.outsideHint": "Gehört dieses Modell in die Schweiz, sein Koordinatensystem prüfen und seine Position oben auf der Karte setzen.",
+  "siteContext.command.noModel": "Zuerst ein Modell öffnen: Die Umgebung wird um ein Modell herum geladen.",
+  "siteContext.ribbon.label": "Umgebung",
+  "siteContext.ribbon.tooltip": "Gelände, Parzelle und Nachbargebäude von swisstopo um ein georeferenziertes Schweizer Modell",
 } satisfies Catalogue;

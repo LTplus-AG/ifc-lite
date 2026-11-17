@@ -42,4 +42,8 @@ export const floodCheckDe = {
   "floodCheck.legend.verdictCaveat": "Exposition aus der publizierten Gefährdungskarte gelesen. Keine Überflutungssimulation.",
   "floodCheck.card.heading": "Grobprüfung Oberflächenabfluss",
   "floodCheck.card.notInModel": "Aus der in dieser Sitzung ausgeführten Hochwasserprüfung; nicht in das Modell geschrieben.",
+  "floodCheck.section.needsSwissGeoref": "Die Prüfung des Oberflächenabflusses braucht ein in der Schweiz georeferenziertes IFC-Modell. Was fehlt, steht oben unter Umgebung.",
+  "floodCheck.palette.label": "Oberflächenabfluss prüfen",
+  "floodCheck.ribbon.label": "Abfluss",
+  "floodCheck.ribbon.tooltip": "Türen, Fenster und Öffnungen nahe am Boden gegen die Gefährdungskarte Oberflächenabfluss prüfen",
 } satisfies Catalogue;

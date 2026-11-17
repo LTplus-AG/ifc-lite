@@ -32,7 +32,6 @@ export const siteContextIt = {
   "siteContext.refusal.outsideSwitzerland": "Il contesto del sito è disponibile per siti in Svizzera; questo modello si trova altrove.",
   "siteContext.refusal.heightDatum": "Le quote del contesto sono in LN02; questo modello dichiara {datum}. I sistemi altimetrici non vengono mescolati.",
   "siteContext.refusal.heightUnknown": "Le quote del contesto sono in LN02; questo modello non indica alcun sistema altimetrico e per questo formato non ne viene assunto nessuno. Imposta il suo sistema altimetrico per caricare il contesto attorno.",
-  "siteContext.refusal.openEditor": "Aggiungi georeferenziazione",
   "siteContext.card.title": "Contesto del sito",
   "siteContext.card.category": "Categoria",
   "siteContext.card.complete": "Completo",
@@ -52,4 +51,9 @@ export const siteContextIt = {
   "siteContext.card.subjectMatchFootprint": "la sua impronta si sovrappone al modello per il {overlap} %",
   "siteContext.card.showSubject": "Mostra",
   "siteContext.card.hideSubject": "Nascondi di nuovo",
+  "siteContext.refusal.addHint": "Aggiungi la georeferenziazione qui sopra: scegli il sistema di coordinate (per i siti svizzeri EPSG:2056 · CH1903+ / MN95), poi posiziona il modello sulla mappa.",
+  "siteContext.refusal.outsideHint": "Se questo modello si trova in Svizzera, controlla il suo sistema di coordinate e imposta la sua posizione sulla mappa qui sopra.",
+  "siteContext.command.noModel": "Apri prima un modello: il contesto del sito viene caricato attorno a un modello.",
+  "siteContext.ribbon.label": "Contesto del sito",
+  "siteContext.ribbon.tooltip": "Terreno, particella ed edifici vicini da swisstopo attorno a un modello svizzero georeferenziato",
 } satisfies Catalogue;

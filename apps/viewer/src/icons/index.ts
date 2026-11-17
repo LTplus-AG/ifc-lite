@@ -81,6 +81,8 @@ export { default as Zones } from '~icons/viewer/zones';
 export { default as LoadReport } from '~icons/viewer/load-report';
 export { default as Appearance } from '~icons/viewer/appearance';
 export { default as World } from '~icons/viewer/world';
+export { default as SiteContext } from '~icons/viewer/site-context';
+export { default as FloodCheck } from '~icons/viewer/flood-check';
 export { default as Move } from '~icons/viewer/move';
 export { default as FollowWork } from '~icons/viewer/follow-work';
 export { default as Cost } from '~icons/viewer/cost';

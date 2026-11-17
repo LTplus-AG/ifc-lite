@@ -7,7 +7,7 @@
  * (Cesium / sun / SpaceMouse), and interface options.
  */
 
-import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Spatial } from '@/icons';
+import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Spatial, SiteContext, FloodCheck } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -135,6 +135,11 @@ export function ViewTab() {
             active={cesiumEnabled}
           />
         )}
+        {/* Swiss site context and the surface runoff check open their sections
+            of the model's Georeference panel, which say what a model still
+            needs when it cannot host them yet (#10603). */}
+        <RibbonCommandLargeButton commandId="view:site-context" icon={SiteContext} disabled={!hasModels} />
+        <RibbonCommandLargeButton commandId="view:flood-check" icon={FloodCheck} disabled={!hasModels} />
         <RibbonCommandLargeButton
           commandId="view:lighting"
           icon={Lighting}

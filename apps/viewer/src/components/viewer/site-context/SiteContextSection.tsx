@@ -10,10 +10,11 @@
  * as its own federated model, toggled from the hierarchy like any model.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Mountain, X } from 'lucide-react';
 import type { SiteContextLayerKind } from '@ifc-lite/site-context';
 import { useTranslation } from '@/i18n';
+import { isFeatureEnabled } from '@/lib/features';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
@@ -22,6 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { formatFileSize } from '@/lib/recent-files';
 import { SITE_CONTEXT_CATEGORIES, SITE_CONTEXT_RADII, type SiteContextCategoryStatus, type SiteContextRadius } from '@/store/slices/siteContextSlice';
+import { GEOREF_FOCUS_CLASS, useGeorefSectionFocus } from '@/lib/site-context/georef-section-focus';
 import { runForCurrentSiteContextAnchor, resolveSiteContextAnchor, captureSiteContextAnchorInputs, siteContextAnchorInputsCurrent, type SiteContextAnchor } from '@/lib/site-context/site-context-anchor';
 
 const CATEGORY_KEY = {
@@ -65,9 +67,15 @@ export function useSiteContextAnchor(modelId: string): SiteContextAnchor | null 
 
 const importContextLoader = () => import('@/lib/site-context/site-context-fetch');
 
-export function SiteContextSection({ modelId, loadContext = importContextLoader }: { modelId: string; loadContext?: () => Promise<Pick<Awaited<ReturnType<typeof importContextLoader>>, 'loadSiteContext'>> }) {
+export function SiteContextSection({ modelId, editable = false, loadContext = importContextLoader }: {
+  modelId: string;
+  /** The Georeference panel above can add or change this model's georeferencing: refusals then point at it. */
+  editable?: boolean;
+  loadContext?: () => Promise<Pick<Awaited<ReturnType<typeof importContextLoader>>, 'loadSiteContext'>>;
+}) {
   const { t, locale } = useTranslation();
   const anchor = useSiteContextAnchor(modelId);
+  const sectionRef = useRef<HTMLElement>(null);
   const isContextModel = useViewerStore((s) => s.siteContextModels.has(modelId));
   const categories = useViewerStore((s) => s.siteContextCategories);
   const progress = useViewerStore((s) => s.siteContextProgress);
@@ -87,9 +95,15 @@ export function SiteContextSection({ modelId, loadContext = importContextLoader 
   const [loadError, setLoadError] = useState<{ modelId: string; message: string } | null>(null);
   const [imagery, setImagery] = useState(last?.imagery ?? true);
 
-  // A site-context model is the context, not a site to fetch around; outside
-  // Switzerland the section has nothing to offer and stays out of the way.
-  if (isContextModel || !anchor || (!anchor.ok && anchor.reason === 'outside-switzerland')) return null;
+  useGeorefSectionFocus(modelId, 'siteContext', sectionRef, anchor !== null && !isContextModel);
+
+  // A site-context model is the context, not a site to fetch around. Every
+  // other refusal, outside Switzerland included, says why and what fixes it:
+  // a section that silently vanished read as "adding georeferencing did
+  // nothing" (#10603).
+  if (isContextModel || !anchor) return null;
+  // Both fetch from geo.admin.ch: a host that switched third-party services off gets neither (as for the 3D world).
+  if (!isFeatureEnabled('privacy.third-party')) return null;
 
   const start = () => {
     if (!anchor.ok) return;
@@ -110,20 +124,25 @@ export function SiteContextSection({ modelId, loadContext = importContextLoader 
   };
 
   return (
-    <section aria-labelledby={`site-context-${modelId}`} className="border-t border-border px-3 py-2 space-y-2">
+    <section ref={sectionRef} aria-labelledby={`site-context-${modelId}`} data-testid="site-context-section" className={`border-t border-border px-3 py-2 space-y-2 ${GEOREF_FOCUS_CLASS}`}>
       <div className="flex items-center gap-2">
         <Mountain className="h-3 w-3 text-muted-foreground shrink-0" />
         <h4 id={`site-context-${modelId}`} className="text-xs font-semibold text-foreground">{t('siteContext.section.title')}</h4>
       </div>
       {!anchor.ok ? (
-        <p className="text-xs text-warn">
-          {anchor.reason === 'height-datum'
-            ? t('siteContext.refusal.heightDatum', { datum: anchor.detail ?? '' })
-            : anchor.reason === 'height-unknown' ? t('siteContext.refusal.heightUnknown')
-            : anchor.reason === 'unknown-crs'
-              ? t('siteContext.refusal.unknownCrs', { crs: anchor.detail ?? '' })
-              : t('siteContext.refusal.notGeoreferenced')}
-        </p>
+        <div className="space-y-1" data-testid="site-context-refusal" data-reason={anchor.reason}>
+          <p className={`text-xs ${anchor.reason === 'outside-switzerland' ? 'text-muted-foreground' : 'text-warn'}`}>
+            {anchor.reason === 'height-datum'
+              ? t('siteContext.refusal.heightDatum', { datum: anchor.detail ?? '' })
+              : anchor.reason === 'height-unknown' ? t('siteContext.refusal.heightUnknown')
+              : anchor.reason === 'unknown-crs'
+                ? t('siteContext.refusal.unknownCrs', { crs: anchor.detail ?? '' })
+                : anchor.reason === 'outside-switzerland' ? t('siteContext.refusal.outsideSwitzerland')
+                : t('siteContext.refusal.notGeoreferenced')}
+          </p>
+          {editable && anchor.reason === 'not-georeferenced' && <p className="text-xs text-muted-foreground">{t('siteContext.refusal.addHint')}</p>}
+          {editable && anchor.reason === 'outside-switzerland' && <p className="text-xs text-muted-foreground">{t('siteContext.refusal.outsideHint')}</p>}
+        </div>
       ) : (
         <>
           <p className="text-xs text-muted-foreground">{t('siteContext.section.intro')}</p>

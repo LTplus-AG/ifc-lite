@@ -18,6 +18,7 @@ import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { querySourceCurves } from './raycast-source-curve-query.js';
+import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
 import {
     queryPointClouds,
     releasedEdgeLock,
@@ -316,6 +317,11 @@ export class RaycastEngine {
      */
     invalidateBVHCache(): void {
         this.flatIndex.invalidate();
+    }
+
+    /** Diagnostic (#10264): CPU geometry the raycast index and its BVH still reference. */
+    visitCpuGeometry(visit: CpuGeometryVisitor): void {
+        this.flatIndex.visitCpuGeometry(visit);
     }
 
     /** True when the flat index is warm; instances can still materialize per ray. */

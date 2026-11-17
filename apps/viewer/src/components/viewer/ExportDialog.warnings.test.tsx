@@ -56,6 +56,7 @@ for (const convert of [true, false]) {
     if (convert) {
       const schema = [...document.querySelectorAll('[role="combobox"]')].find(b => b.textContent?.includes('IFC4'));
       assert.ok(schema);
+      act(() => schema.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })));
       click(schema);
       const option = [...document.querySelectorAll('[role="option"]')].find(b => b.textContent?.trim() === 'IFC2X3');
       assert.ok(option);

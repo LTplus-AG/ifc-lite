@@ -5,7 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const exportDialogIt = {
-  'exportDialog.warningsCount': {"one": "{count} avviso", "other": "{count} avvisi"},
+  'exportDialog.warningsCount': {"one": "{count} avviso", "many": "{count} avvisi", "other": "{count} avvisi"},
   'exportDialog.warningsMore': "e altri {count}",
   'exportDialog.trigger': 'Esporta IFC',
   'exportDialog.title': 'Esporta file IFC',

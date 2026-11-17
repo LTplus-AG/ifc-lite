@@ -92,3 +92,5 @@ export { default as StructuralAnalytical } from '~icons/viewer/structural-analyt
 export { default as StructuralPhysical } from '~icons/viewer/structural-physical';
 export { default as StructuralSupports } from '~icons/viewer/structural-supports';
 export { default as StructuralDerive } from '~icons/viewer/structural-derive';
+
+export { default as FileCityjson } from '~icons/viewer/file-cityjson';

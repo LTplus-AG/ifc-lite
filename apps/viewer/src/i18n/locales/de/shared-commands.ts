@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const sharedCommandsDe = {
+  "exportCommands.cityjson.label": "CityJSON",
+  "exportCommands.cityjson.menuLabel": "CityJSON exportieren",
+  "exportCommands.cityjson.tooltip": "CityJSON / CityJSONSeq exportieren",
+
   "exportCommands.ion.label": "Cesium ion",
   "exportCommands.ion.menuLabel": "Auf Cesium ion hochladen",
   "exportCommands.ion.tooltip": "Bearbeitete IFC in Ihr Cesium ion-Konto hochladen",

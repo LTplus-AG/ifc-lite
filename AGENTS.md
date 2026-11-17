@@ -48,13 +48,10 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 Run `node scripts/pre-handoff.mjs` after committing. A delegated task is not done
 until it passes or each failure is explained. Report SKIPPED coverage too.
 
-It also runs these two CI gates:
-- the revert oracle (`check-test-revert-oracle.mjs`): changed tests may import
-  only what main has, or the revert stops them loading. Reach a new module
-  through entry points main has (a CLI, an export); for a pure new module,
-  pass a surgical `--mutation <patch>`.
-- `check-ui-drift.mjs`: viewer UI uses `apps/viewer/src/index.css`
-  `@theme` tokens and `components/ui/*` primitives, never raw styling.
+It also runs CI's revert oracle and UI drift ratchet. For the oracle, changed
+tests may import only what main has, or the revert stops them loading. Reach a
+new module through entry points main has (a CLI, an export); for a pure new
+module, run `check-test-revert-oracle.mjs` with a surgical `--mutation <patch>`.
 
 **Push when ready.** Every push runs CI: verify locally or on the fleet first. Merge: label `mergify-trial` on `main`;
 open threads hold it. Never unlabel; no admin merge.

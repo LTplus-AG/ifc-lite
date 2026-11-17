@@ -46,18 +46,13 @@ export class Picker {
   private pipeline: GPURenderPipeline;
   private instancedPickPipeline: GPURenderPipeline | null = null;  // GPU-instancing: pick pass for instanced occurrences; null if the backend rejected it
   private instancedPickBindGroup: GPUBindGroup | null = null;
+  private instancedPickReady = false;
   private instancedUniformBuffer: GPUBuffer;
   /** Extra cutting planes (#7545), one block shared by every pick draw; rewritten per pass. */
   private extraClipBuffer: GPUBuffer;
   private readonly extraClipScratch = new Float32Array(EXTRA_CLIP_FLOATS);
   private depthSample: PickDepthSample;
-  /**
-   * The id/depth targets and the per-mesh slots are allocated on the first GPU
-   * pick and sized to it, not at init: a session that never GPU-picks (large
-   * models pick on the CPU) holds none of the canvas-sized pair, and the slot
-   * buffers grow with the meshes actually drawn instead of reserving 100K
-   * 256-byte slots (25.6 MB) up front.
-   */
+  /** Targets and mesh slots are allocated lazily on the first GPU pick. */
   private targets: { color: GPUTexture; depth: GPUTexture } | null = null;
   private meshSlots: { uniform: GPUBuffer; expressIds: GPUBuffer; bindGroup: GPUBindGroup; capacity: number } | null = null;
   /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
@@ -137,20 +132,12 @@ export class Picker {
     });
 
     // ── Instanced pick pipeline ──
-    // Draws scene.getInstancedTemplates() into the SAME r32uint + depth32float
-    // pick target, applying the per-instance mat4 (slot 1, 88B stride) and
-    // writing the express id WITH bit 30 set so the decoder distinguishes it
-    // from a flat mesh-index (bit 30 clear) or a point (bit 31). No expressId
-    // storage buffer — the id rides the instance buffer per occurrence.
-    const instancedPickModule = this.device.createShaderModule({
-      code: instancedPickShaderWgsl,
-    });
-    // NON-FATAL: the instanced pick pipeline is an add-on (instanced occurrences are
-    // also resolvable via the GPU/CPU flat paths). A degraded WebGPU backend (e.g.
-    // CI's SwiftShader) rejecting it must NOT abort the Picker — and therefore the
-    // whole renderer init — and blank the canvas. On failure we leave it null and
-    // renderPickPass skips the instanced pick draw.
+    // Instanced validation must settle before lane picks may rely on it.
+    this.device.pushErrorScope('internal');
+    this.device.pushErrorScope('validation');
+
     try {
+      const instancedPickModule = this.device.createShaderModule({ code: instancedPickShaderWgsl });
       this.instancedPickPipeline = this.device.createRenderPipeline({
         layout: this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.device.createBindGroupLayout({ entries: [
           { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
@@ -179,6 +166,18 @@ export class Picker {
       this.instancedPickPipeline = null;
       this.instancedPickBindGroup = null;
     }
+    void Promise.all([this.device.popErrorScope(), this.device.popErrorScope()]).then(errors => {
+      const error = errors.find(value => value !== null);
+      if (error) {
+        console.warn('[Picker] instanced pick pipeline rejected:', error.message);
+        this.instancedPickPipeline = null;
+        this.instancedPickBindGroup = null;
+      } else this.instancedPickReady = !this.destroyed && this.instancedPickPipeline !== null;
+    }, (error: unknown) => {
+      console.warn('[Picker] instanced pick pipeline validation failed:', error);
+      this.instancedPickPipeline = null;
+      this.instancedPickBindGroup = null;
+    });
     // Also an add-on: without it, models over the pick-mesh budget keep the CPU raycast.
     try {
       this.lanePass = new LanePickPass(this.device, this.extraClipBuffer);
@@ -194,7 +193,7 @@ export class Picker {
    * or the pass would be missing them rather than answering for them.
    */
   canPickLanes(withInstanced: boolean): boolean {
-    return !this.destroyed && this.lanePass?.ready === true && (!withInstanced || this.instancedPickPipeline !== null);
+    return !this.destroyed && this.lanePass?.ready === true && (!withInstanced || this.instancedPickReady);
   }
 
   /**

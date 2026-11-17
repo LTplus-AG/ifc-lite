@@ -39,6 +39,8 @@ describe('hydratePickMeshes', () => {
     const created: MeshData[] = [];
     const ok = hydratePickMeshes(scene, planPickMeshHydration(scene), (piece) => { created.push(piece); return { ok: true as const, value: undefined }; });
     assert.equal(ok, true);
-    assert.deepEqual(created, pieces.slice(1));
+    assert.equal(created.length, 2);
+    assert.equal(created[0], pieces[1]);
+    assert.equal(created[1], pieces[2]);
   });
 });

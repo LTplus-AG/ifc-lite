@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { discoverFilterSchema, discoverPropertyAndQuantitySchema, discoverFilterValues } from '@/lib/search/filter-schema';
 import { operation, emptySchema } from './contract';
-import { MAX_RESULT_BYTES } from './executor';
+import { MAX_RESULT_BYTES } from './result-limit';
 const string = { type: 'string' };
 /** Room left under the executor's result limit for the rest of the response. */
 const PROPERTY_VALUES_BUDGET = MAX_RESULT_BYTES - 64 * 1024;
@@ -18,7 +18,7 @@ export function boundedPropertyValues(values: Iterable<[string, string[]]>, budg
   const out: Record<string, string[]> = {};
   for (const [key, list] of values) {
     const size = utf8.encode(JSON.stringify([key, list])).length;
-    if (size > budget) break;
+    if (size > budget) continue; // a later, smaller key may still fit
     out[key] = list; budget -= size;
   }
   return out;

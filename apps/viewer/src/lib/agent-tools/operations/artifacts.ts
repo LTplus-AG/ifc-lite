@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
-import { sanitizeFilename, downloadBlob } from '@/lib/export/download';
+import { buildExportFilename, sanitizeFilename, downloadBlob } from '@/lib/export/download';
 import type { ToolHost } from '../types';
 
 export interface ArtifactMetadata { artifact_id: string; filename: string; mime_type: string; bytes: number }
@@ -22,10 +22,10 @@ function artifacts(host: ToolHost) {
   return entries;
 }
 function live(host: ToolHost) { host.lifetimeSignal?.throwIfAborted(); }
-/** Sanitize the stem only, so truncation never drops the extension. */
+/** Sanitize stem and extension separately, so truncation never drops the extension. */
 function artifactFilename(name: string): string {
-  const ext = /\.[A-Za-z0-9]{1,10}$/.exec(name)?.[0] ?? '';
-  return sanitizeFilename(name.slice(0, name.length - ext.length)) + ext.toLowerCase();
+  const ext = /\.([A-Za-z0-9]{1,10})$/.exec(name)?.[1];
+  return ext ? buildExportFilename(name.slice(0, -(ext.length + 1)), ext) : sanitizeFilename(name);
 }
 export function operationArtifacts(host: ToolHost, commit: <T>(write: () => T) => T): OperationArtifacts {
   return { async create(input) {

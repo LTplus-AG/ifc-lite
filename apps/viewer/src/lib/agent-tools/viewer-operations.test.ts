@@ -144,7 +144,7 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const matrix = new Float32Array(16);
     let clipRevision = 0;
     const renderer = {
-      getGPUDevice: () => ({}), getCamera: () => ({ getViewProjMatrix: () => ({ m: matrix }) }), getPickClipRevision: () => clipRevision,
+      getGPUDevice: () => ({}), getCamera: () => ({ getViewProjMatrix: () => ({ m: matrix }) }), getPickClipRevision: () => clipRevision, getPickGeometryRevision: () => 0,
       async pick(x: number, y: number, nativeOptions: unknown) {
         assert.equal(x, 100); assert.equal(y, 100); assert.equal(nativeOptions, options);
         if (defer) { started(); await gate; }

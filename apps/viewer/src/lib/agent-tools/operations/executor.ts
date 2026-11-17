@@ -8,6 +8,7 @@ import { assertToolActive } from '../cancellation';
 import type { ReadyModel, ToolCallContext, ToolHost } from '../types';
 import { operationArtifacts } from './artifacts';
 import { contractFingerprint } from './metadata';
+import { MAX_RESULT_BYTES } from './result-limit';
 import type { Operation } from './contract';
 import { viewerOperation, operationUnavailable } from './registry';
 
@@ -26,7 +27,6 @@ const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
 const MAX_JOBS = 32;
 interface AppliedRequest { signature: string; store: ReadyModel['store'] | undefined; result: Promise<unknown> }
 const applied = new WeakMap<ToolHost, Map<string, AppliedRequest>>();
-export const MAX_RESULT_BYTES = 1_000_000;
 function jobs(host: ToolHost) {
   let owned = hosts.get(host);
   if (!owned) { owned = new Map(); hosts.set(host, owned); }

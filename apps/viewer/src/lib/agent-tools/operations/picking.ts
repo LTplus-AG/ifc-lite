@@ -16,9 +16,11 @@ function pickingOperation(id: string, method: 'gpu' | 'ray') {
   const host = getAgentViewportHost();
   if (!host?.renderer.getGPUDevice()) throw new Error('A live mounted viewport is required for native picking.');
   // Agent reads are independent: one pick must not invalidate another (exclusive: false).
-  const clip = host.renderer.getPickClipRevision();
+  // Renderer-side changes (clip applied by a frame, streamed geometry) are not in the store stamp.
+  const clip = host.renderer.getPickClipRevision(), geometry = host.renderer.getPickGeometryRevision();
   const request = captureViewportPick({ ...host, channel: 'agent', exclusive: false, getTool: () => useViewerStore.getState().activeTool,
-    isOwnerCurrent: () => getAgentViewportHost() === host && host.renderer.getPickClipRevision() === clip });
+    isOwnerCurrent: () => getAgentViewportHost() === host && host.renderer.getPickClipRevision() === clip
+      && host.renderer.getPickGeometryRevision() === geometry });
   if (request.rect.width <= 0 || request.rect.height <= 0 || request.pickOptions.isStreaming) throw new Error('The native viewport must be visible and finished loading before picking.');
   const x = i.x * request.rect.width, y = i.y * request.rect.height;
   const hit = method === 'gpu' ? await host.renderer.pick(x, y, request.pickOptions)

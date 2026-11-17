@@ -526,10 +526,10 @@ test('the gate workflow does NOT fire on `edited`: no run beats a skipped run, a
   // evaluation takes the LATEST run per name, and `skipped` reads as a pass --
   // a body edit on a red PR would go green. The type has to be absent.
   const own = readFileSync(join(REPO_ROOT, '.github/workflows/pr-review-signal.yml'), 'utf8');
-  // THE `pull_request:` BLOCK, not the first `types:` in the file: #4511 put a
-  // `merge_group: types: [checks_requested]` above it, and the unanchored
-  // version of this pin read THAT list, failed on "must still fire on
-  // opened", and turned the required check red on every PR at once.
+  // THE `pull_request:` BLOCK, not the first `types:` in the file: #4511 once
+  // put a `merge_group: types: [checks_requested]` above it (since moved to
+  // merge-group-required-checks.yml), and the unanchored version of this pin
+  // read THAT list and turned the required check red on every PR at once.
   const prBlock = /^  pull_request:\n((?:    [^\n]*\n)+)/m.exec(own);
   assert.ok(prBlock, 'the workflow must declare a `pull_request` trigger');
   const types = /^\s{4}types:\s*\[([^\]]*)\]/m.exec(prBlock[1]);
@@ -1312,4 +1312,23 @@ test('FAIL CLOSED: a bad `staleReviewPolicy` is caught EAGERLY, not masked by th
   assert.equal(a.code, 1, a.output);
   assert.match(a.output, /EMPTY_REVIEW_AUTHORS/);
   assert.doesNotMatch(a.output, /NO_ROLLUP/);
+});
+
+test('required checks have no skipped merge_group twin on pull requests', () => {
+  // A merge_group-only job in a workflow that also runs on pull_request
+  // publishes a SKIPPED run of the same name on every PR. Mergify reads the
+  // later run, so `check-success=PR review signal` in .mergify.yml never held
+  // and no PR could enter the queue (2026-11-17); a skipped twin can also mask
+  // a red required check. The merge_group reporters live in a workflow that
+  // triggers on nothing else.
+  for (const file of ['pr-review-signal.yml', 'issue-queue.yml']) {
+    const text = readFileSync(join(REPO_ROOT, '.github/workflows', file), 'utf8');
+    assert.doesNotMatch(text, /^\s*merge_group:/m, `${file} must not trigger on merge_group`);
+  }
+  const group = readFileSync(join(REPO_ROOT, '.github/workflows/merge-group-required-checks.yml'), 'utf8');
+  const on = /\non:\n([\s\S]*?)\n\S/.exec(group)?.[1] ?? '';
+  assert.deepEqual(on.split('\n').filter((l) => /^ {2}\S/.test(l)).map((l) => l.trim()), ['merge_group:'], 'triggers only on merge_group');
+  for (const name of ['PR review signal', 'Issue queue']) {
+    assert.match(group, new RegExp(`^ {4}name: ${name}$`, 'm'), `reports '${name}' for a merge-queue group`);
+  }
 });

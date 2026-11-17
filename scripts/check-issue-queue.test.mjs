@@ -882,9 +882,8 @@ test('the workflow re-evaluates on edit and on (un)labelling', () => {
   // changing a single line of code. GitHub's DEFAULT type list is
   // opened/synchronize/reopened and carries none of the three.
   const text = readFileSync(WORKFLOW, 'utf8');
-  // Anchored on the `pull_request:` key: `merge_group:` declares its own
-  // `types: [checks_requested]` in the same `on:` block, and the first
-  // `types:` in the file is not necessarily the pull_request one.
+  // Anchored on the `pull_request:` key: the first `types:` in the file is not
+  // necessarily the pull_request one (a `merge_group:` block once sat above it).
   const types = /pull_request:\s*\n\s*types:\s*\[([^\]]*)\]/.exec(text);
   assert.ok(types, 'issue-queue.yml must name its pull_request types explicitly');
   const named = types[1].split(',').map((s) => s.trim());

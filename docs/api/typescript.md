@@ -70,6 +70,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/rhino3dm`](https://www.npmjs.com/package/@ifc-lite/rhino3dm) | Lazy Rhino 3dm reader and writer: .3dm bytes to plain RhinoImport data, encoded ifc-lite RhinoScene data to .3dm |
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/semantic`](https://www.npmjs.com/package/@ifc-lite/semantic) | Portable semantic datasets, profiles, validation and IFC identity resolution |
+| [`@ifc-lite/site-context`](https://www.npmjs.com/package/@ifc-lite/site-context) | Site context as data for Swiss projects: swissALTI3D terrain, the cadastral parcel and neighbouring swissBUILDINGS3D buildings around a georeferenced model, in one EPSG:2056 frame, as a self-describing GLB |
 | [`@ifc-lite/source-autodesk`](https://www.npmjs.com/package/@ifc-lite/source-autodesk) | Autodesk Forma and Data Exchange cloud-source provider for ifc-lite |
 | [`@ifc-lite/source-bimcollab`](https://www.npmjs.com/package/@ifc-lite/source-bimcollab) | BIMcollab Documents file-source provider for ifc-lite |
 | [`@ifc-lite/source-buildagil`](https://www.npmjs.com/package/@ifc-lite/source-buildagil) | buildagil openCDE documents file-source provider for ifc-lite |

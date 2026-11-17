@@ -29,6 +29,7 @@ import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAM
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
 import { FederationAssumptionsNotice } from './FederationAssumptionsNotice';
 import { TerrainImageryCard } from './TerrainImageryCard';
+import { SiteContextCard } from './SiteContextCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
@@ -284,6 +285,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
         </section>
 
         {model.sourceSchema && model.landXmlDocument && <TerrainImageryCard model={model} />}
+        <SiteContextCard model={model} />
 
         {model.sourceSchema && model.landXmlDocument && <LandXmlModelSourceNavigation
           modelId={model.id}

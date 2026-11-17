@@ -8,20 +8,24 @@
  * fix without saying whether the georeferencing write API (`bim.georef.set` /
  * `update`) can carry it. The rules mirror that API's refusals: it edits the
  * model's one effective IfcMapConversion / IfcProjectedCRS (or the IFC2X3
- * ePSets) without entity ids, never IfcSite, IfcRigidOperation, placements or
+ * ePSets) without entity ids, and an IfcSite's RefLatitude/RefLongitude/
+ * RefElevation (`setSite`); never IfcRigidOperation, placements or
  * an IfcGeographicCRS, refuses an update when the file has several map
  * conversions, a CRS defined by WKT, and a CRS rename that does not restate
  * the old CRS's other fields.
  */
 
 import { crsChange, isIfc2x3, round, type DiagnosisContext } from './context.js';
-import type { CrsFact, FieldChange, FixApplication, GeorefWriteInput, SuggestedFix, Vec3 } from './types.js';
+import type { CrsFact, FieldChange, FixApplication, GeorefSiteWriteInput, GeorefWriteInput, SuggestedFix, Vec3 } from './types.js';
 
 const OPERATION_ENTITIES: ReadonlySet<FieldChange['entity']> = new Set(['IfcMapConversion', 'IfcMapConversionScaled', 'ePSet_MapConversion']);
 const CRS_ENTITIES: ReadonlySet<FieldChange['entity']> = new Set(['IfcProjectedCRS', 'ePSet_ProjectedCRS']);
 
+/** The IfcSite attributes `bim.georef.setSite` writes. */
+const SITE_ATTRIBUTES: ReadonlySet<string> = new Set(['RefLatitude', 'RefLongitude', 'RefElevation']);
+
 const MANUAL_REASONS: Partial<Record<FieldChange['entity'], string>> = {
-  IfcSite: 'IfcSite RefLatitude/RefLongitude is not written by the georeferencing write API; edit it in the authoring tool or with a generic attribute edit.',
+  IfcSite: 'An IfcSite change that is not only RefLatitude/RefLongitude/RefElevation, or that comes with other changes, is not one georeferencing write; apply it in parts or in the authoring tool.',
   IfcCartesianPoint: 'Placements are not part of the georeferencing write API; edit the point in the authoring tool or with a generic attribute edit.',
   IfcRigidOperation: 'The georeferencing write API does not edit an IfcRigidOperation (set with replace would swap it for an IfcMapConversion).',
   IfcGeographicCRS: 'The georeferencing write API edits an IfcProjectedCRS, not an IfcGeographicCRS.',
@@ -39,6 +43,8 @@ function manual(reason: string): FixApplication {
 
 /** How `changes` can be applied; see the module comment for the rules. */
 export function applicationOf(ctx: DiagnosisContext, changes: readonly FieldChange[]): FixApplication {
+  const site = siteApplication(changes);
+  if (site) return site;
   for (const c of changes) {
     const reason = MANUAL_REASONS[c.entity];
     if (reason) return manual(reason);
@@ -88,6 +94,29 @@ export function applicationOf(ctx: DiagnosisContext, changes: readonly FieldChan
   return !op && !crs
     ? { via: 'georef.set', input, userSupplied }
     : { via: 'georef.update', input, userSupplied };
+}
+
+/**
+ * A fix made only of IfcSite RefLatitude/RefLongitude/RefElevation changes on
+ * one site is one `bim.georef.setSite` call (decimal degrees; the write layer
+ * encodes the compound angle).
+ */
+function siteApplication(changes: readonly FieldChange[]): FixApplication | undefined {
+  if (changes.length === 0 || !changes.every((c) => c.entity === 'IfcSite' && SITE_ATTRIBUTES.has(c.attribute))) return undefined;
+  const siteIds = new Set(changes.map((c) => c.entityId));
+  if (siteIds.size !== 1) return undefined;
+  const siteId = changes[0].entityId;
+  const input: GeorefSiteWriteInput = siteId === undefined ? {} : { siteId };
+  const userSupplied: string[] = [];
+  for (const c of changes) {
+    const attribute = c.attribute as 'RefLatitude' | 'RefLongitude' | 'RefElevation';
+    if (typeof c.value === 'number') input[attribute] = c.value;
+    else {
+      input[attribute] = null;
+      userSupplied.push(`IfcSite.${attribute}`);
+    }
+  }
+  return { via: 'georef.site', input, userSupplied };
 }
 
 export function makeFix(ctx: DiagnosisContext, summary: string, changes: FieldChange[], caveat?: string): SuggestedFix {

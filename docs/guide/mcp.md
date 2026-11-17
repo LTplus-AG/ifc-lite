@@ -102,12 +102,12 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Category | Tools |
 |----------|-------|
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
-| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `units`, `cost_data`, `cost_evaluate` |
+| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get` *(planned)*, `raycast` *(planned)* |
 | Clash | `clash_check`, `clash_matrix` |
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` *(planned)* |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
-| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
+| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
@@ -300,9 +300,41 @@ For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centr
     `relationships` (voids, fills, groups and connections come from a
     parser-side extractor with no overlay seam — unlike containment, which
     routes through the backend the mutation tools share), `units` and
-    `georeferencing` (header data no mutation tool writes), and the geometry,
+    `georeferencing` (it reports a queued `georeferencing_write` in its own
+    `georef.pending` field instead), and the geometry,
     clash and viewer tools (the parsed geometry, which queued edits do not
     regenerate). Save and reload to bring those up to date.
+
+!!! tip "Georeferencing: read and write"
+    `georeferencing` returns `georef`, the `bim.georef` shape (EXPRESS attribute
+    names: `ProjectedCRS.Name`, `MapConversion.Eastings`, …, plus
+    `rotationDegrees`, `source`, `storage` and `pending`), and keeps the
+    parser's source-only reading as `georeferencing`. `georeferencing_write`
+    takes the same shape with `action` `set`, `update` or `remove` (`epsg` is
+    a shortcut for `ProjectedCRS.Name`, `rotationDegrees` an alternative to
+    `XAxisAbscissa`/`XAxisOrdinate`). IFC4/IFC4X3 get `IfcProjectedCRS` +
+    `IfcMapConversion` (IFC4X3 with `FactorX/Y/Z`: `IfcMapConversionScaled`);
+    IFC2X3 gets the `ePSet_MapConversion`/`ePSet_ProjectedCRS` property sets
+    on IfcSite (updates preserve an existing host). Action
+    `site` writes `Site.RefLatitude`/`RefLongitude` (decimal degrees) and
+    `RefElevation` on the IfcSite. It fails closed with the missing input in
+    `details.missing`: no CRS, map unit, scale or factor is guessed; a model
+    without an `IfcGeometricRepresentationContext` (IFC2X3: IfcSite) is
+    refused; an existing georeferencing is replaced only with `replace: true`;
+    contradicting values are refused. The write is saved by `export_ifc` /
+    `model_save`. Each write is one operation: `mutation_undo` takes the whole
+    write back, never part of it.
+
+!!! tip "Georeferencing: check and fix"
+    `georeferencing_check` returns the `bim.georef.check()` report (LoGeoRef,
+    findings with stable codes, checks skipped for lack of a capability) and a
+    fix plan in which every fix has a status: `ready`, `needs-value` (pass the
+    listed paths in `values`, from the user), `review` (the checker marks it
+    uncertain; never applied), `manual`, `alternative` (pass its id in
+    `apply`) or `conflict`. `georeferencing_fix` takes the same `apply`,
+    `values` and `accept_approximate_datum` inputs, applies the `ready` fixes
+    in the session and returns the check after them. Both run offline unless
+    `allow_network` is set. See [Georeferencing](georeferencing.md).
 
 !!! tip "Schema reach beyond IFC4"
     The parser's entity registry is generated from IFC4_ADD2_TC1, and both
@@ -420,9 +452,28 @@ ifc-lite-mcp --bridge --read-only  # tools the tab labels as mutating stay off w
 - **Hostile frames.** Frames are bounded as a whole before any field is read; an unpaired connection may send at most 1.25 MiB; diagnostic strings derived from tab input (errors, log lines, client name) are clipped and stripped of control characters; tool names, descriptions and schemas are bounded by `BRIDGE_LIMITS`; tool results pass through as text, unaltered, within the result limits, and the agent is told to treat them as data; frame handlers run under a guard, so a frame cannot crash the process. A local process, or a page on an allowed origin (pages on other origins are refused before a slot is allocated), CAN block pairing for as long as it keeps attacking, by keeping the 4 unpaired slots busy so the real tab gets HTTP 429. It still cannot pair without the code. Allow only origins whose content you trust. The bridge logs "pairing is being blocked: every unpaired slot is busy …", and `bridge_status` reports `pairingPressure` and what to do.
 - **No tab.** Only `bridge_status` is listed, and any other call fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.
 
-The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for tools labelled mutating). In the viewer, open the pairing link in the tab that holds the model (or use **Sources → Local agent → Connect local agent**, or **Connect local agent…** in the command palette, and type the code). The viewer strips the code from the address bar at once and asks for confirmation before it connects; it serves its read tools, and property and attribute edits only when the user allows them (below); never exports, saves or viewer control. While paired, the status bar shows *Local agent connected · read-only* with Disconnect and an activity log (tool, model, duration, outcome; no arguments or results). A code works once, so after any drop the tab asks for a fresh link instead of reconnecting. Verified from a public `https` origin in Chromium 156 and Firefox 157: both block `ws://127.0.0.1` until the site may reach apps on this device (permission `loopback-network`). Chrome asks "Access other apps and services on this device" (site setting *Apps on device*); Firefox asks "<site> wants to access other apps and services on this device" (setting *Device apps and services*). Granting the older `local-network` / `local-network-access` permissions does not help. Safari is not verified. The full security model is in the [package README](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/mcp/README.md#bridge-to-a-browser-tab---bridge).
+The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for tools labelled mutating). In the viewer, open the pairing link in the tab that holds the model (or use **Sources → Local agent → Connect local agent**, or **Connect local agent…** in the command palette, and type the code). The viewer strips the code from the address bar at once and asks for confirmation before it connects; it serves its read tools, and property and attribute edits only when the user allows them (below); palette discovery is also available. Command execution and selection changes require the explicit commands-and-edits grant described below. While paired, the status bar shows *Local agent connected · read-only* with Disconnect and an activity log (tool, model, duration, outcome; no arguments or results). A code works once, so after any drop the tab asks for a fresh link instead of reconnecting. Verified from a public `https` origin in Chromium 156 and Firefox 157: both block `ws://127.0.0.1` until the site may reach apps on this device (permission `loopback-network`). Chrome asks "Access other apps and services on this device" (site setting *Apps on device*); Firefox asks "<site> wants to access other apps and services on this device" (setting *Device apps and services*). Granting the older `local-network` / `local-network-access` permissions does not help. Safari is not verified. The full security model is in the [package README](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/mcp/README.md#bridge-to-a-browser-tab---bridge).
 
-**Agent edits (opt-in).** The connection panel has a switch, *Allow the agent to edit models in this tab*, off at every pairing. The permission covers every editable model loaded in the paired tab, including models added later; each call still checks the target model’s edit gate. Turned on, the tab sends `update { permission: 'read-write', tools }` and serves three edit tools: `entity_set_property`, `entity_delete_property` and `entity_set_attribute` (Name, Description, ObjectType, Tag), each on one entity per call. Each call goes through the viewer's own edit gate (edit mode, collaboration role) and is one step in the undo history, shown in the Changes panel as *Local agent · Pset.Property*; Ctrl+Z restores the previous value. An optional `expected` argument makes the edit fail with `STATE_CHANGED` if the user changed the value since the agent read it. Edits stay unsaved in the tab: nothing is exported, saved or written back to a cloud source unless the user does it. In the activity log, edit calls are marked and an applied edit shows the value before and after. Turning the switch off sends `update { permission: 'read-only' }` and takes effect at once in the tab: an edit is checked against the switch synchronously with its write, so a call that has not written yet is refused with `READ_ONLY`, and one that already wrote stays in the undo history and reports success. The tab refuses edits itself while read-only; the bridge's refusal is a second line. A bridge started `--read-only` keeps the switch disabled.
+**Commands and edits (opt-in).** The connection panel has a switch, *Allow the agent to run palette commands and edit models in this tab*, off at every pairing. The permission covers every editable model loaded in the paired tab, including models added later; each call still checks the target model’s edit gate. Turned on, the tab sends `update { permission: 'read-write', tools }` and serves three edit tools: `entity_set_property`, `entity_delete_property` and `entity_set_attribute` (Name, Description, ObjectType, Tag), each on one entity per call. Each call goes through the viewer's own edit gate (edit mode, collaboration role) and is one step in the undo history, shown in the Changes panel as *Local agent · Pset.Property*; Ctrl+Z restores the previous value. An optional `expected` argument makes the edit fail with `STATE_CHANGED` if the user changed the value since the agent read it. The three property/attribute tools leave their edits unsaved in the tab. The broader palette grant also allows available export, script and network actions; their native gates and dialogs still apply. In the activity log, edit calls are marked and an applied edit shows the value before and after. Turning the switch off sends `update { permission: 'read-only' }` and takes effect at once in the tab: an edit is checked against the switch synchronously with its write, so a call that has not written yet is refused with `READ_ONLY`, and one that already wrote stays in the undo history and reports success. The tab refuses edits itself while read-only; the bridge's refusal is a second line. A bridge started `--read-only` keeps the switch disabled.
+
+### Driving the main viewer through its command palette
+
+The bridge advertises four viewer-native tools in addition to the model tools:
+
+- `viewer_commands`: search with `query`, page with `offset` and `limit` (maximum 50), or inspect an exact `command_id`. Results include current availability, a reason when unavailable, toggle state when known, and the no-argument command input schema.
+- `viewer_get_selection`: read model-qualified entity references from the renderer selection.
+- `viewer_select`: replace selection with `express_ids` from a `model_id` (required when several models are loaded). Every id is validated before either selection channel changes. An empty array clears selection.
+- `viewer_command_run`: dispatch the exact `command_id` returned by discovery. It accepts no code, DOM selectors or arbitrary command arguments.
+
+For example, query walls with `query_entities`, select their ids with `viewer_select`, discover a command with `viewer_commands { "query": "frame" }`, then invoke `viewer_command_run { "command_id": "view:frame" }`. Discover again when the model, selection or enabled features change.
+
+Discovery and selection reads work while read-only. Selection changes and command dispatch require the explicit commands-and-edits grant at every pairing; `--read-only` keeps them hidden. The tab checks the grant itself immediately before dispatch, even if a bridge forwards a forbidden call. Revoking it stops new actions; already dispatched asynchronous actions may continue.
+
+The viewer lazily mounts the palette owner on connection without opening its dialog. The agent uses the same command rows, native callbacks and live prerequisite checks as the palette, including runtime exports, templates, tours and extension commands that supply a live availability check. Commands without such a check are discoverable but refused. File-picker commands require a real browser user gesture and are refused over MCP.
+
+A successful result says **dispatched**, not completed. Opening a clash, Flow, IDS or authoring panel exposes the native workflow; it does not run the workflow or fill its forms. This interface exposes palette entry points, not every control inside every panel. New palette features automatically appear through the existing registry/providers; no parallel agent command list is maintained.
+
+For the proposed path from palette entry points to complete panel and tool workflows, see the [viewer automation plan](../architecture/viewer-automation-plan.md).
 
 ## Wiring it into a client
 

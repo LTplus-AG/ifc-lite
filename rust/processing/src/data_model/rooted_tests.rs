@@ -321,22 +321,25 @@ fn tables_json(dm: &DataModel) -> serde_json::Value {
 ///   points at, so they are kept only because that pass ran first.
 /// - `refused` is set by that same pass when a table goes over budget.
 fn assert_paths_agree(source: &[u8], what: &str) {
-    let mut post = extract_data_model(source);
-    let total_before = post.total_entities;
+    let unnarrowed = extract_data_model_with(source, DataModelOptions::default());
+    let total_before = unnarrowed.total_entities;
+    let mut post = unnarrowed.model;
     DataModelEntities::Rooted.apply(&mut post);
-    let pre = extract_data_model_with(source, DataModelOptions::for_entities(DataModelEntities::Rooted));
-    assert_eq!(tables_json(&pre), tables_json(&post), "{what}: the two paths disagree");
+    let extraction =
+        extract_data_model_with(source, DataModelOptions::for_entities(DataModelEntities::Rooted));
+    let pre = &extraction.model;
+    assert_eq!(tables_json(pre), tables_json(&post), "{what}: the two paths disagree");
     assert_eq!(
-        pre.total_entities, total_before,
+        extraction.total_entities, total_before,
         "{what}: total_entities must stay the instance count, not the kept-row count"
     );
     assert!(
-        pre.total_entities >= pre.entities.len(),
+        extraction.total_entities >= pre.entities.len(),
         "{what}: more rows kept than instances scanned"
     );
     // Nothing the model names is missing from the table it built.
     let kept = ids(&pre.entities);
-    let dangling: Vec<u32> = ids_other_tables_name(&pre).difference(&kept).copied().collect();
+    let dangling: Vec<u32> = ids_other_tables_name(pre).difference(&kept).copied().collect();
     assert!(dangling.is_empty(), "{what}: relations name dropped ids: {dangling:?}");
 }
 
@@ -376,7 +379,8 @@ fn issue_9582_prefilter_keeps_the_rows_the_exact_rule_keeps() {
     let pre = extract_data_model_with(
         SPATIAL_EDGE_IFC.as_bytes(),
         DataModelOptions::for_entities(DataModelEntities::Rooted),
-    );
+    )
+    .model;
     let kept = ids(&pre.entities);
 
     // A vendor type the IFC4 registry does not list: the pre-filter cannot
@@ -415,7 +419,8 @@ fn issue_9582_prefiltered_rows_are_a_subsequence_in_file_order() {
     let pre = extract_data_model_with(
         SPATIAL_EDGE_IFC.as_bytes(),
         DataModelOptions::for_entities(DataModelEntities::Rooted),
-    );
+    )
+    .model;
     assert!(pre.entities.len() < full.entities.len());
 
     let mut full_rows = full.entities.iter();
@@ -441,8 +446,8 @@ fn issue_9582_all_is_unchanged() {
         let plain = extract_data_model(source);
         let explicit =
             extract_data_model_with(source, DataModelOptions::for_entities(DataModelEntities::All));
-        assert_eq!(tables_json(&plain), tables_json(&explicit));
-        assert_eq!(plain.total_entities, plain.entities.len());
+        assert_eq!(tables_json(&plain), tables_json(&explicit.model));
+        assert_eq!(explicit.total_entities, plain.entities.len());
     }
 }
 
@@ -456,7 +461,8 @@ fn issue_9582_optional_tables_drop_only_themselves() {
     let without = extract_data_model_with(
         MIXED_IFC,
         DataModelOptions { entities: DataModelEntities::All, properties: false, quantities: false },
-    );
+    )
+    .model;
     assert!(without.property_sets.is_empty());
     assert!(without.quantity_sets.is_empty());
     assert_eq!(

@@ -27,14 +27,17 @@ describe('a slab body with two disjoint extrusions (model half; the check half i
     expect(insideFootprint(prepareFootprint(facts.footprint), mapOf(35, 5))).toBe(true);
   });
 
-  it('a slab cut by a Boolean DIFFERENCE (a courtyard) reads as voids-filled, not as a plain outline', async () => {
+  it('a slab cut by a Boolean DIFFERENCE (a courtyard) is never a complete outline: the cut is read as a hole, open above, a courtyard', async () => {
     const cut = (b: Extra) => {
       const outer = b.rectExtrusion(15, 15, 30, 30, 0.3, b.axis(0, 0, 0), b.dir(0, 0, -1));
       const court = b.rectExtrusion(15, 15, 28, 28, 1, b.axis(0, 0, 0.5), b.dir(0, 0, -1));
       b.contain(b.storeys.eg.id, b.add(`IFCSLAB(${b.guid()},$,'Platte Hof',$,$,#${b.place(b.storeys.eg.pl, 0, 0, 0)},#${b.shape([b.add(`IFCBOOLEANRESULT(.DIFFERENCE.,#${outer},#${court})`)])},$,.FLOOR.)`));
     };
     const facts = extractModelFacts(await parseStep(syntheticHouse({ verticalDatum: 'LN02', slab: false, extra: cut })), { expectedCrs: 'EPSG:2056', groundStorey: 'EG' });
-    expect(facts.footprint.source).toBe('slab-outline-voids-filled');
+    // Since the follow-up the DIFFERENCE's through cut is read as a hole; with no slab above it is a courtyard (guarded locally).
+    expect(facts.footprint.source).toBe('slab-outline');
+    expect(facts.footprint.courtyardRings).toHaveLength(1);
+    expect(facts.footprint.quality?.worst).toBe('courtyard-ring');
   });
 });
 

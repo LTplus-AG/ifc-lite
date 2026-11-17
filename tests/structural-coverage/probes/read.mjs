@@ -16,6 +16,7 @@
  */
 
 import { cached, structuralDataOf } from '../lib/packages.mjs';
+import { isStructuralItem } from '../lib/step.mjs';
 import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
 const NO_FIELD = Symbol('no field');
@@ -57,10 +58,18 @@ function referenceValues(got, raw, step, types) {
 
 /** Relationship end attributes and how the read model is expected to carry the link, by catalogue root. */
 const LINKS = {
-  IfcRelConnectsStructuralMember: ['RelatingStructuralMember', 'RelatedStructuralConnection', (ix, a, b) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
-  IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity', (ix, a, b) => ix.byGuid.get(b)?.appliesToGlobalId === a],
+  IfcRelConnectsStructuralMember: ['RelatingStructuralMember', 'RelatedStructuralConnection', ({ ix, a, b }) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
+  IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity',
+    // Some writers swap the two ends (portal-demo.ifc); the read model carries the link either way.
+    // A physical IfcElement end is not in the structural read model and is exempt from the item-side check;
+    // a structural item or an unresolved reference is not.
+    ({ ix, a, b, rawA, rawB, step }) => [[a, b, rawA], [b, a, rawB]].some(([item, activity, rawItem]) => {
+      if (!item || ix.byGuid.get(activity)?.appliesToGlobalId !== item) return false;
+      const end = step.get(rawItem);
+      return (end && !isStructuralItem(end)) || Boolean(ix.byGuid.get(item)?.activityGlobalIds?.includes(activity));
+    })],
   // IFC2X3 only: the member carries the physical element's model-local id.
-  IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', (ix, _a, b, rawFrom) => ix.byGuid.get(b)?.physicalElementIds?.includes(rawFrom?.ref)],
+  IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', ({ ix, b, rawA }) => ix.byGuid.get(b)?.physicalElementIds?.includes(rawA?.ref)],
 };
 
 /** Every read-model object of the extraction, by expressId and GlobalId, plus the fields each type has. */
@@ -75,6 +84,7 @@ function indexExtraction(x) {
     if (!fields.has(type)) fields.set(type, new Set());
     for (const k of Object.keys(info)) fields.get(type).add(k);
   };
+  for (const area of x.reinforcementAreas ?? []) put('resource', area);
   for (const m of x.members) put('item', m);
   for (const c of x.connections) put('item', c);
   for (const a of x.activities) put('activity', a);
@@ -82,7 +92,7 @@ function indexExtraction(x) {
   for (const g of x.resultGroups) put('group', g, 'IfcStructuralResultGroup');
   for (const g of x.analysisModels) put('group', g, 'IfcStructuralAnalysisModel');
   const loads = (l) => { if (!l || byId.has(l.expressId)) return; put('resource', l); for (const e of l.configuration?.entries ?? []) loads(e.value); };
-  for (const a of x.activities) loads(a.appliedLoad);
+  for (const a of x.activities) for (const l of [a.appliedLoad, ...(a.subsequentLoads ?? [])]) loads(l);
   for (const c of x.connections) if (c.appliedCondition) put('resource', c.appliedCondition);
   for (const m of x.members) for (const rel of m.IfcRelConnectsStructuralMember ?? []) {
     put('relationship', rel, 'IfcRelConnectsStructuralMember');
@@ -135,11 +145,12 @@ export function readRow(row, entries, types) {
   const all = ordered.flatMap(({ file, ix }) => file.step.of(row.entity).map((rec) => ({ file, ix, rec, where: `${file.path}#${rec.id}` })));
   const records = all.filter((r) => r.ix);
   if (!records.length) return { status: 'fail', reason: problems.join('; ') || 'no record was checked' };
-  const value = (r, attr) => normalize(r.rec.args[row.attributes.indexOf(attr)], r.file.step, types);
+  const raw = (r, attr) => r.rec.args[row.attributes.indexOf(attr)];
+  const value = (r, attr) => normalize(raw(r, attr), r.file.step, types);
   const out = [...problems];
   const link = LINKS[row.root];
   const [from, to, held] = link ?? [];
-  const found = new Set(records.filter((r) => (link ? held(r.ix, value(r, from), value(r, to), r.rec.args[row.attributes.indexOf(from)]) : r.ix.byId.get(r.rec.id)?.type === row.entity)));
+  const found = new Set(records.filter((r) => (link ? held({ ix: r.ix, a: value(r, from), b: value(r, to), rawA: raw(r, from), rawB: raw(r, to), step: r.file.step }) : r.ix.byId.get(r.rec.id)?.type === row.entity)));
   const lost = records.filter((r) => !found.has(r));
   if (lost.length) {
     const hit = lost[0].ix.byId.get(lost[0].rec.id);
@@ -154,7 +165,6 @@ export function readRow(row, entries, types) {
     if (!setters.length) { out.push(`${attr}: no fixture sets it, so reading it is unproven`); continue; }
     const read = setters.filter((r) => found.has(r));
     if (!read.length) continue; // its records are already reported as not in the read model
-    const slot = row.attributes.indexOf(attr);
     const field = (r) => {
       const hit = r.ix.byId.get(r.rec.id);
       if (!hit) return NO_FIELD;
@@ -162,8 +172,7 @@ export function readRow(row, entries, types) {
       // Exact EXPRESS reference fields hold model-local express ids. Only
       // reinterpret numbers when the fixture slot is a reference, never a
       // numeric measure that happens to equal an entity id.
-      const raw = r.rec.args[slot];
-      return referenceValues(got, raw, r.file.step, types);
+      return referenceValues(got, raw(r, attr), r.file.step, types);
     };
     if (read.every((r) => field(r) === NO_FIELD)) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
     const wrong = read.filter((r) => { const got = field(r); return got === NO_FIELD || !equal(value(r, attr), got ?? null); });

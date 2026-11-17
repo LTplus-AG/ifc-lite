@@ -352,6 +352,28 @@ impl GeometryRouter {
         entry.host_bounds = Some(host_bounds);
     }
 
+    /// The bounds recorded for `host_id`'s cut so far, if any.
+    pub(crate) fn recorded_host_bounds(&self, host_id: u32) -> Option<((f32, f32, f32), (f32, f32, f32))> {
+        self.host_opening_diagnostics.borrow().get(&host_id).and_then(|entry| entry.host_bounds)
+    }
+
+    /// Restate a host cut's bounds when the part just published recorded new
+    /// ones (`before` is what was recorded ahead of it). A host cut in its
+    /// root frame records them there; this puts the diagnostic back in world
+    /// coordinates, and leaves another part's bounds alone.
+    pub(crate) fn restate_host_bounds(
+        &self,
+        host_id: u32,
+        before: Option<((f32, f32, f32), (f32, f32, f32))>,
+        host_bounds: ((f32, f32, f32), (f32, f32, f32)),
+    ) {
+        if let Some(entry) = self.host_opening_diagnostics.borrow_mut().get_mut(&host_id) {
+            if entry.host_bounds.is_some() && entry.host_bounds != before {
+                entry.host_bounds = Some(host_bounds);
+            }
+        }
+    }
+
 }
 
 /// Internal classification-branch tag for `bump_classification`. Mirrors

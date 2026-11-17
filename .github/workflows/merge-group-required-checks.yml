@@ -1,0 +1,39 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Merge-group required checks
+
+# For GitHub's native merge queue, if it is ever turned on (today merges go
+# through Mergify, which runs on pull_request). A merge-queue group has no PR
+# to inspect; the PR-level runs already gated entry. These report the required
+# 'PR review signal' and 'Issue queue' checks so a group can complete.
+#
+# ITS OWN FILE, NOT merge_group-only JOBS INSIDE pr-review-signal.yml AND
+# issue-queue.yml. There, skipped by `if: merge_group`, each published a
+# SKIPPED run on every PR next to the real one. Mergify reads the later run, so
+# `check-success=PR review signal` in .mergify.yml never held and no PR could
+# enter the queue (2026-11-17), and a skipped twin can mask a red required
+# check. A workflow that only triggers on merge_group creates no run on a PR.
+# Pinned by scripts/check-pr-review-signal.test.mjs.
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  review-signal:
+    name: PR review signal
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo 'PR review signal - satisfied at PR level; nothing to check on a merge-queue group'
+
+  issue-queue:
+    name: Issue queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo 'Issue queue - satisfied at PR level; nothing to check on a merge-queue group'

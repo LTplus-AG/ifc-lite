@@ -41,7 +41,7 @@ mod leaf_policy_tests;
 #[cfg(test)]
 mod mod_tests;
 
-pub use chain::{chain, resolve_chain, resolve_object_placement, Link, LinkKind};
+pub use chain::{chain, resolve_chain, resolve_chain_relative, resolve_object_placement, Link, LinkKind};
 pub use heading::rotation_angle_about_z;
 pub use validate::{validate_chain, validate_spatial_frame, ChainPolicy};
 pub use validated_chain::ChainValidator;

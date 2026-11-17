@@ -75,6 +75,7 @@ export function ListPanel() {
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
   const listRunRef = React.useRef<AbortController | null>(null);
+  const refreshedFor = React.useRef('');
 
   // Providers + declared units per model, shared with document table blocks (#5142).
   const { pairs: modelProviderPairs, providers: allProviders, stores: allStores, modelUnits, hasData } = useListProviders();
@@ -124,6 +125,9 @@ export function ListPanel() {
       } finally {
         if (job !== null) finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
         if (listRunRef.current === controller) {
+          // A provider swap (for example remeshing) cancels an unfinished run.
+          // It has not refreshed this state yet; allow the stale result to retry.
+          if (refresh && controller.signal.aborted) refreshedFor.current = '';
           listRunRef.current = null;
           setListExecuting(false);
         }
@@ -137,7 +141,6 @@ export function ListPanel() {
   const stale = useAnalysisStaleness(analysisStampOf(listResult));
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
-  const refreshedFor = React.useRef('');
   React.useEffect(() => {
     const definition = listResult ? listRunDefinition(listResult) : null;
     const state = `${mutationVersion}:${geometryContentVersion}`;

@@ -7,6 +7,7 @@ import { computeTransformMatrix, extractGeoreferencingOnDemand, type Georeferenc
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { ModelSlot } from '@ifc-lite/collab';
 import type { ViewerModelPayload } from '@/hooks/ingest/viewerModelIngest';
+import { positionCompletion } from '@/lib/geo/complete-position';
 import { getEffectiveGeoreference, getIfcLengthUnitScale, type GeorefMutationDataLike } from '@/lib/geo/effective-georef';
 
 interface RoomSpatialContext {
@@ -94,6 +95,25 @@ export function createRoomSpatialContext(
   // Validate before stringify, which otherwise converts non-finite numbers into null.
   decodeRoomSpatialContext(value);
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+/**
+ * Authoritative room facts do not inherit local coordinate defaults. A surviving native CRS can be updated without
+ * inventing a conversion; a recipient with no such source record needs an explicit complete position for export.
+ */
+export function receivedGeorefMutations(
+  georeferencing: Pick<GeoreferenceInfo, 'mapConversion' | 'projectedCRS'>,
+  store?: IfcDataStore | null,
+  view?: { isDeleted(id: number): boolean },
+) {
+  const pending = { mapConversion: georeferencing.mapConversion, projectedCRS: georeferencing.projectedCRS };
+  const completion = positionCompletion(store, pending, view, { inheritSourcePosition: false });
+  return {
+    ...pending,
+    mapConversion: completion.length
+      ? { ...pending.mapConversion, ...Object.fromEntries(completion.map(({ field, value }) => [field, value])) }
+      : pending.mapConversion,
+  };
 }
 
 /** STEP resource ids have no counterpart in a root-only room snapshot. */

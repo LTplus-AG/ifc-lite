@@ -95,6 +95,12 @@ describe('the earlier instances, as rows of the same table', () => {
     expect(loc).toMatchObject({ level: 499, basis: 'opening-body-bottom', quality: 'exact' });
   });
 
+  it('an exact filled-opening level cannot upgrade an equal clipped-body lower bound', () => {
+    const clipped = { ...body('readable', 500), clipped: 1 };
+    const loc = locate('door', { placement: placement(502), own: clipped, filled: body('readable', 500) });
+    expect(loc).toMatchObject({ level: 500, quality: 'lower-bound', lowest: 500 });
+  });
+
   it('a partly readable opening, alone or filled: an upper estimate', () => {
     expect(locate('opening', { placement: placement(500), own: body('partly readable', 502) })).toMatchObject({ level: 502, quality: 'upper-estimate' });
     expect(locate('window', { placement: placement(502), own: body('none'), filled: body('partly readable', 502) })).toMatchObject({ quality: 'upper-estimate' });

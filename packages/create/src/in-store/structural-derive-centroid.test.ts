@@ -5,7 +5,11 @@
 // #9934: an asymmetric section is idealised through its centroid, not the centre of its bounds.
 // Expected offsets (mm, from the centre of the bounds) come from an IfcOpenShell pass over the
 // same profiles (ifcopenshell 0.8.2, volume-weighted centroid of the extruded body), not from
-// this module's formulas.
+// this module's formulas. IfcOpenShell builds no mesh for IfcAsymmetricIShapeProfileDef, so those
+// beams (#244 to #284) are measured on the same twelve-point outline written as an
+// IfcArbitraryClosedProfileDef (origin at the centre of the bounds, bottom flange at -y: the frame
+// rust/geometry/src/profiles/shapes.rs draws it in). That fixes the numbers, not the frame: no tool
+// states which way an asymmetric I is authored, so the orientation is the viewer's own drawing.
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { structuralPhysicalAxes } from './structural-check-axes.js';
@@ -63,6 +67,19 @@ ${beam(20, 'IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#74,(#82))')}
 ${beam(21, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.075,0.075,0.006,0.01,0.005,0.,0.01707184,0.01707184)')}
 ${beam(22, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.075,0.075,0.006,$,$,$,0.0204,0.0204)')}
 ${beam(23, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.1,0.002,$,$,$,0.02574747,0.02574747)')}
+${beam(24, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(25, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.3,0.008,0.012,$,0.16,0.018,$,$,$,$,$)')}
+${beam(26, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.15,0.5,0.012,0.025,$,0.15,0.025,$,$,$,$,$)')}
+${beam(27, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.12,0.24,0.008,0.014,$,0.12,0.02,$,$,$,$,$)')}
+${beam(28, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,0.1,$,$,$,$,$,$)')}
+${beam(29, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#48,0.2,0.4,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(30, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.03,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(31, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,$,0.015,$,$,$,$,$)')}
+${beam(32, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,$,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(33, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(34, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,$,$,0.1,0.015,$,$,$,$,$)')}
+${beam(35, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.035,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
+${beam(36, "IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,0.1,'x',$,$,$,$,$)")}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -80,6 +97,12 @@ const ORACLE: Record<number, [number, number]> = {
   214: [-17.085, -17.085], // the AxisVM L (75 x 75 x 6, 10 mm fillet, 5 mm edge radius) states 17.07184: IfcOpenShell measures 17.085
   224: [-16.531, -16.531], // the same angle without fillets; a stated 20.4 mm (measured from the outer edge) disagrees by 23% and is ignored
   234: [-24.253, -24.253], // thin 100 x 100 x 2 angle stating 25.747 (the outer-edge distance), which is also within 10% of the 24.253 offset: ambiguous, so the computed one stays
+  294: [50.5055, 0], // #244 with the profile Position rotated 90 degrees: the offset turns with it
+  244: [0, -50.5055], // IfcAsymmetricIShapeProfileDef: bottom flange 200 x 20, top 100 x 15, depth 400, web 10 (measured on the outline, see the header)
+  254: [0, 36.3462], // wider top flange: bottom 100 x 12, top 160 x 18, depth 300, web 8
+  264: [0, 0], // equal flanges are symmetric
+  274: [0, 12.0838], // equal widths, a thicker top flange (120 x 14 below, 120 x 20 above), depth 240
+  284: [0, -39.5833], // TopFlangeThickness omitted is the bottom flange's (schema rule WR3): 20 mm on both
   204: [-3.553, 0], // the same square with a 20 mm radius circular void 25 mm right of the centre (IfcOpenShell tessellates the circle; the exact disc gives -3.593)
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.
@@ -102,5 +125,17 @@ describe('structural derive idealises an asymmetric section through its centroid
       expect(end[0]).toBeCloseTo(start[0], 9);
       expect([start[2], end[2]]).toEqual([0, 3]);
     }
+  });
+
+  it('refuses an asymmetric I it cannot idealise (#10377)', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(STEP).buffer as ArrayBuffer);
+    const axes = structuralPhysicalAxes(store);
+    expect(axes.has(304), 'depth 30 mm under flanges of 20 + 15 mm').toBe(false);
+    expect(axes.has(314), 'TopFlangeWidth missing').toBe(false);
+    expect(axes.has(324), 'WebThickness missing').toBe(false);
+    expect(axes.has(334), 'WebThickness zero').toBe(false);
+    expect(axes.has(344), 'BottomFlangeThickness missing').toBe(false);
+    expect(axes.has(354), 'depth equal to the two flange thicknesses leaves no web').toBe(false);
+    expect(axes.has(364), 'TopFlangeThickness present but unreadable').toBe(false);
   });
 });

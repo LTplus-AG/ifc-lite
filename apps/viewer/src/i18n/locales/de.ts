@@ -157,6 +157,7 @@ import { structuralDeriveDe } from './de/structural-derive';
 import { sweptDiskInspectionDe } from './de/swept-disk-inspection';
 import { tableCorrectionsDe } from './de/table-corrections';
 import { terrainImageryDe } from './de/terrain-imagery';
+import { siteContextDe } from './de/site-context';
 import { toursDe } from './de/tours';
 import { trimExtendDe } from './de/trim-extend';
 import { validationEditorDe } from './de/validation-editor';
@@ -324,6 +325,7 @@ export default {
   ...sweptDiskInspectionDe,
   ...tableCorrectionsDe,
   ...terrainImageryDe,
+  ...siteContextDe,
   ...toursDe,
   ...trimExtendDe,
   ...validationEditorDe,

@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! A recess that stops short of the far face of its host keeps the skin
-//! behind it (#10318).
+//! Thin host material next to a void cut: the skin behind a recess that
+//! stops short of the far face, and the triangles of a thin sheet.
 //!
 //! A recess ending under 1 mm from the far face used to be pushed through:
 //! a 12 mm sheet with an 11.2 mm recess lost its 0.8 mm skin. Three rules
@@ -30,7 +30,7 @@
 //! pushed through the 1 mm the notch leaves.
 
 use ifc_lite_processing::{process, MeshData, ProcessingRequest};
-use ifc_lite_testkit::mesh::signed_volume;
+use ifc_lite_testkit::mesh::{signed_volume, triangle_shape};
 
 const HOST: u32 = 50;
 
@@ -198,6 +198,30 @@ fn a_recess_keeps_a_skin_of_two_millimetres_or_more() {
 fn a_recess_keeps_a_skin_thinner_than_a_millimetre() {
     let wrong = volume_mismatches(&[0.011, 0.0112, 0.0118]);
     assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// Triangles, slivers and worst aspect of the cut host, by the mesh census's
+/// measure.
+fn shape_census(ifc: &str) -> (usize, usize, f64) {
+    let result = process(ifc.as_bytes(), &ProcessingRequest::full_pass(), &mut ());
+    let mesh = result.meshes.iter().find(|mesh| mesh.express_id == HOST).expect("the wall meshes");
+    let shape = triangle_shape(&mesh.positions, &mesh.indices);
+    (mesh.indices.len() / 3, shape.slivers, shape.max_aspect)
+}
+
+/// A 0.4 m by 1 m opening through the 12 mm sheet. The sheet's four narrow
+/// faces are 250:1 whatever triangulates them, and the reveal adds four more
+/// slivers: 12 in 32 triangles, which is also what the parametric rectangle
+/// cut gives. The sliver refinement used to bisect those needles and return
+/// 80 triangles with 40 slivers, the worst at 375:1, in both frames.
+#[test]
+fn a_thin_sheet_cut_through_keeps_its_own_triangles() {
+    for yaw in YAWS_DEG {
+        let (triangles, slivers, worst) =
+            shape_census(&fixture(yaw, SHEET, &[[1.3, 1.7, 1.0, 2.0, SHEET[1]]]));
+        assert_eq!((triangles, slivers), (32, 12), "site yaw {yaw} deg, worst aspect {worst:.1}");
+        assert!(worst < 251.0, "site yaw {yaw} deg: worst aspect {worst:.1}, the sheet's own is 250");
+    }
 }
 
 /// The Revit wall: two 12 mm finish layers and a 250 mm core. IfcOpenShell

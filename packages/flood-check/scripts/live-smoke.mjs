@@ -20,6 +20,8 @@
  */
 
 import { BAFU_CLASSES, checkFloodExposure, createBafuRunoffProvider } from '../dist/index.js';
+// The shipped rule for when to ask for a rendering check (runFloodCheck uses it), so this script cannot drift from it.
+import { rasterShowsNoClass } from '../dist/check/layer.js';
 
 const [e = 2_599_587, n = 1_199_753] = process.argv.slice(2).map(Number);
 
@@ -82,8 +84,9 @@ const raster = await provider.fetchRaster({
 });
 // The height service's vertical frame is taken to be LN02 (swisstopo heights); this script does not verify it.
 const terrain = { crs: 'EPSG:2056', verticalCrs: 'EPSG:5728', verticalReference: 'LN02', heightAt: () => terrainHeight };
-const renderingConfirmation = raster.cells.every((c) => c === 0) ? await provider.confirmRendering() : undefined;
-const result = checkFloodExposure(facts, raster, terrain, { coverage: provider.covers, renderingConfirmation });
+const renderingConfirmation = rasterShowsNoClass(raster) ? await provider.confirmRendering() : undefined;
+// The raster carries its own coverage (`covers`); there is no coverage option any more.
+const result = checkFloodExposure(facts, raster, terrain, { renderingConfirmation });
 
 console.log(JSON.stringify({
   request: raster.provenance.requestUrl,

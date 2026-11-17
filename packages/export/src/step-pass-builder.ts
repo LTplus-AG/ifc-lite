@@ -322,6 +322,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     // assembly, which is why they are pass state and not phase locals.
     newGeorefLines: [],
     warnings: [],
+    georeferencingWarnings: [],
     slotFill: new Ifc2x3SlotFill(),
     ifc4Slots: new Ifc4SlotCheck(),
     enums: new EnumReconciliation(),

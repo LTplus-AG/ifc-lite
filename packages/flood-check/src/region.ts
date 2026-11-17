@@ -213,9 +213,12 @@ export function signedDistance(fp: PreparedFootprint, p: MapPoint): number | nul
 /**
  * At least `min` metres outside the building (`min` ≥ 1 m, so no gap rule is
  * involved): `signedDistance(fp, p) >= min` without the inside magnitude.
+ * `null` with no rings: inside and outside are unknown, as for
+ * `signedDistance`; the caller decides what that means for it.
  */
-export function outsideBy(fp: PreparedFootprint, p: MapPoint, min: number): boolean {
+export function outsideBy(fp: PreparedFootprint, p: MapPoint, min: number): boolean | null {
   if (!(min >= OUTLINE_CLEARANCE)) throw new RangeError(`outsideBy needs min >= ${OUTLINE_CLEARANCE} m, got ${min}`);
+  if (!hasRings(fp)) return null;
   if (solid(fp, p)) return false;
   return (closestBoundaryPoint(p, fp.rings)?.distance ?? Infinity) >= min;
 }

@@ -119,6 +119,11 @@ const activeRunners = new Set<NativeScriptRunner>();
 /** Per-invocation native lifecycle, shared by the editor/assistant UI and viewer operations. */
 export class NativeScriptRunner {
   private active: Sandbox | null = null;
+  /**
+   * This instance's own run counter. The store's `scriptRunEpoch` decides whether a run may
+   * still publish to the shared script state; this one decides whether `execute()` returns the
+   * result to its caller (a newer run or a reset of the same instance supersedes it).
+   */
   private epoch = 0;
   private cancellationEpoch = 0;
   private running = 0;
@@ -129,18 +134,17 @@ export class NativeScriptRunner {
     const { setScriptExecutionState: setExecutionState, setScriptError: setError, setScriptDiagnostics: setDiagnostics } = useViewerStore.getState();
     const setResult = (result: ScriptResult | null) => useViewerStore.getState().setScriptResult(result ? stampAnalysisReport(result, captureAnalysisStamp()) : null);
     // Captured BEFORE any await, and re-checked before every terminal store
-    // write below: `useSandbox()` is instantiated independently per caller
-    // (ScriptPanel, ChatPanel, CommandPalette, ExecutableCodeBlock each get
-    // their own closure/`activeSandboxRef`), so two overlapping `execute()`
-    // calls from DIFFERENT instances are not ordered by anything local to
-    // this hook. `scriptRunEpoch` lives in the store precisely so every
+    // write below: each caller (ScriptPanel, ChatPanel, CommandPalette,
+    // ExecutableCodeBlock, the agent operations) has its own runner instance,
+    // so two overlapping `execute()` calls from DIFFERENT instances are not
+    // ordered by anything local to this class. `scriptRunEpoch` lives in the store precisely so every
     // instance shares one counter (see its doc in scriptSlice.ts).
     const myEpoch = useViewerStore.getState().bumpScriptRunEpoch(); this.sharedEpoch = myEpoch;
     const stillCurrent = () => useViewerStore.getState().scriptRunEpoch === myEpoch;
 
     // This instance's own epoch: whether THIS instance has since started a
     // newer run (a second `execute()` call) or reset itself. Gates the
-    // RETURN VALUE only — see the doc above `runEpochRef`.
+    // RETURN VALUE only — see the `epoch` field doc.
     const myLocalEpoch = ++this.epoch, cancellationEpoch = this.cancellationEpoch;
     const stillCurrentLocally = () => this.epoch === myLocalEpoch;
 
@@ -226,7 +230,7 @@ export class NativeScriptRunner {
       }
 
       // The shared-store publish and this call's RETURN VALUE are gated
-      // separately on purpose (see `runEpochRef`'s doc above): `stillCurrent()`
+      // separately on purpose (see the `epoch` field doc): `stillCurrent()`
       // (the store epoch) decides whether this run's data is still the
       // document's current story — a DIFFERENT instance's newer run may have
       // already made it stale, and publishing anyway would clobber that
@@ -265,7 +269,7 @@ export class NativeScriptRunner {
       // is in what can be *reached*, not in what is asserted.
       // `SandboxAbortError` is constructed in exactly one place — the `catch`
       // around `runtime.dispose()` in `Sandbox.dispose()` — and every
-      // `dispose()` this hook performs goes through
+      // `dispose()` this runner performs goes through
       // `disposeSandboxReportingAbort`, which returns the message rather than
       // throwing. So reaching here needs `createSandbox`/`eval` itself to
       // throw one: `init()` failing AND the cleanup `dispose()` it runs
@@ -328,13 +332,13 @@ export class NativeScriptRunner {
     }
     // Same reasoning as `useClash.clearAll()`/`useIDS.clearIDS()`: bump the
     // shared epoch so an in-flight run (this instance's or any other
-    // `useSandbox()` instance's) that lands after this reset cannot
+    // runner instance's) that lands after this reset cannot
     // resurrect the state this call just cleared.
     useViewerStore.getState().bumpScriptRunEpoch();
     // Also bump THIS instance's own local epoch: `reset()` is this
     // instance's own action, so an in-flight run of its own that lands after
     // this must resolve `null` to its caller too — not just skip the store
-    // write. See `runEpochRef`'s doc above `execute()`.
+    // write. See the `epoch` field doc.
     this.epoch += 1;
     setExecutionState('idle');
     // `setResult(null)` lands on `'idle'` too (scriptSlice.ts) — a null result

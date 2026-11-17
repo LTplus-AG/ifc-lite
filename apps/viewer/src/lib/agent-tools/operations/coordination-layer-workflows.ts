@@ -7,6 +7,8 @@ import { coordinationComposition } from '@/services/coordination-loader';
 import { coordination, idSchema } from './coordination-common';
 import { emptySchema } from './contract';
 import type { ResolutionInput } from '@ifc-lite/merge';
+/** Existence check without loadLayer's structuredClone of the whole layer. */
+const requireLayer = (store: { hasLayer(id: string): boolean }, id: string) => { if (!store.hasLayer(id)) throw new Error(`No layer ${id} in the local store`); };
 const short = { type: 'string' as const, minLength: 1, maxLength: 1000 };
 const refSchema = { type: 'object' as const, properties: { candidate_id: short, ref_name: short, expected_ref_json: { type: 'string' as const, maxLength: 1000000 } }, required: ['candidate_id', 'ref_name', 'expected_ref_json'] as const, additionalProperties: false as const };
 function checkComposition(expected: number, stackIds: string[]) {
@@ -28,7 +30,7 @@ export const coordinationLayerWorkflowOperations = [
   }),
   coordination<{ candidate_id: string; ref_name: string; expected_ref_json: string }>('layers.previewLocalMerge', 'Preview the native three-way local-ref merge with an exact ref guard. The candidate remains immutable and no registry request occurs.', ['read'], refSchema, async (i, c) => {
     const [{ previewMergeInto, requiredCheckStatus }, store] = await Promise.all([import('@/lib/layers/merge'), getBrowserLayerStore()]);
-    if (JSON.stringify(store.getRef(i.ref_name) ?? null) !== i.expected_ref_json) throw new Error('Native local ref changed.'); store.loadLayer(i.candidate_id);
+    if (JSON.stringify(store.getRef(i.ref_name) ?? null) !== i.expected_ref_json) throw new Error('Native local ref changed.'); requireLayer(store, i.candidate_id);
     const outcome = await previewMergeInto({ kind: 'local', refName: i.ref_name }, store, i.candidate_id); c.checkpoint?.();
     if (JSON.stringify(store.getRef(i.ref_name) ?? null) !== i.expected_ref_json) throw new Error('Native local ref changed during preview.');
     return { outcome, checks: await requiredCheckStatus({ kind: 'local', refName: i.ref_name }, store, i.candidate_id), candidate_id: i.candidate_id, ref_json: i.expected_ref_json };
@@ -41,8 +43,9 @@ export const coordinationLayerWorkflowOperations = [
     const [{ previewMergeInto, executeMergeInto, editedWithRemovals }, store] = await Promise.all([import('@/lib/layers/merge'), getBrowserLayerStore()]);
     const guard = () => { if (JSON.stringify(store.getRef(i.ref_name) ?? null) !== i.expected_ref_json) throw new Error('Native local ref changed; preview again.'); }; guard();
     const target = { kind: 'local' as const, refName: i.ref_name }, preview = await previewMergeInto(target, store, i.candidate_id); c.checkpoint?.(); guard();
+    const conflictByKey = new Map(preview.conflicts.map(conflict => [`${conflict.path}\0${conflict.componentKey ?? ''}`, conflict]));
     const resolutions: ResolutionInput[] = i.resolutions.map(item => {
-      const componentKey = item.component_key || undefined, conflict = preview.conflicts.find(conflict => conflict.path === item.path && conflict.componentKey === componentKey);
+      const componentKey = item.component_key || undefined, conflict = conflictByKey.get(`${item.path}\0${componentKey ?? ''}`);
       if (!conflict) throw new Error('Resolution does not belong to the current native conflict queue.');
       if (item.choice !== 'edited') return { path: item.path, ...(componentKey ? { componentKey } : {}), choice: item.choice };
       const attrs: unknown = JSON.parse(item.attributes_json); if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs) || !componentKey || componentKey.startsWith('child:') || componentKey.startsWith('inherit:')) throw new Error('Only native editable component conflicts accept plain-object attributes.');
@@ -64,7 +67,7 @@ export const coordinationLayerWorkflowOperations = [
   coordination<{ candidate_id: string; ref_name: string; action: 'merge' | 'review' | 'comment'; entity: string; title: string; description: string; with_viewpoint: boolean }>('layers.prepareRegistryAction', 'Stage an exact immutable layer/ref and optional entity-bound review comment in the real native Layers approval controls. Preview/open-review may upload the candidate, so no remote mutation is dispatched here.', ['configuration', 'view'], {
     type: 'object', properties: { candidate_id: short, ref_name: short, action: { type: 'string', enum: ['merge', 'review', 'comment'] }, entity: { type: 'string', maxLength: 1000 }, title: { type: 'string', maxLength: 1000 }, description: { type: 'string', maxLength: 100000 }, with_viewpoint: { type: 'boolean' } }, required: ['candidate_id', 'ref_name', 'action', 'entity', 'title', 'description', 'with_viewpoint'], additionalProperties: false,
   }, async (i, c) => {
-    const [{ useLayerAutomationReview }, { LayerRegistryClient }, store] = await Promise.all([import('@/lib/layers/automation-review'), import('@/lib/layers/registry-client'), getBrowserLayerStore()]); store.loadLayer(i.candidate_id);
+    const [{ useLayerAutomationReview }, { LayerRegistryClient }, store] = await Promise.all([import('@/lib/layers/automation-review'), import('@/lib/layers/registry-client'), getBrowserLayerStore()]); requireLayer(store, i.candidate_id);
     if (!LayerRegistryClient.fromCollabConfig(useViewerStore.getState().collabSelfToken ?? undefined)) throw new Error('Native layer registry is not configured.');
     return c.commit(() => {
       if (i.action === 'comment') { const entity = useViewerStore.getState().layerStackPathToId?.get(i.entity); if (entity === undefined || !i.title.trim()) throw new Error('A loaded native composition path and nonempty comment title are required.'); useViewerStore.getState().setSelectedEntityId(entity); }

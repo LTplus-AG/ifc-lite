@@ -332,7 +332,7 @@ function batchWiringProblems(text, root) {
 }
 
 // -z: without it git quotes a non-ASCII path, which then matches no glob.
-const gitPaths = (root, args) => execFileSync('git', ['-C', root, ...args, '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
+const gitPaths = (root, args) => execFileSync('git', ['-C', root, ...args, '-z'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
 
 /**
  * Whether a merge-queue batch must run the lane. The `pull_request` checkout is

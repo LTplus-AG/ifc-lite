@@ -119,6 +119,8 @@ test('a pattern is matched against the real files, a directory counting for all 
   // Reading a cache's result is not setting its key: a `cache-hit` flag from a `uses:` step is fine.
   assert.deepEqual(check({ [ROOT]: 'jobs: { a: { outputs: { wasm_cache_hit: "${{ steps.r.outputs.cache-hit }}" }, steps: [ { id: r, uses: actions/cache/restore@v4, with: { key: k, path: p } } ] } }' }).errors, []);
   assert.deepEqual(hashing('.GitHub/Workflows/A.yml'), ['.github/workflows/a.yml'], 'case-insensitive, like macOS and Windows runners');
+  // A literal other repository checked out with `path:` lands beside this one, which stays put.
+  assert.deepEqual(check({ [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: emscripten-core/emsdk, path: emsdk } } ] } }' }).errors, []);
   // setup-node/setup-python `cache:` hashes a default lockfile glob.
   const withCache = (c) => check({ [ROOT]: `jobs: { a: { steps: [ { uses: actions/setup-python@v5, with: { cache: ${c} } } ] } }` }, { extra: [...files, '.github/actions/x/requirements.txt'] }).required.filter((p) => p !== ROOT);
   assert.deepEqual(withCache('pip'), ['.github/actions/x/requirements.txt']);
@@ -133,6 +135,7 @@ test('what cannot be judged is an error, not a pass', () => {
     ['absolute pattern', { [ROOT]: "env: { K: \"${{ hashFiles('/home/runner/work') }}\" }" }],
     ['glob class', { [ROOT]: "env: { K: \"${{ hashFiles('.github/[wa]*/**') }}\" }" }],
     ['checkout path', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { path: repo } } ] } }' }],
+    ['checkout path, repository from an expression', { [ROOT]: 'jobs: { a: { steps: [ { uses: actions/checkout@v4, with: { repository: "${{ github.repository }}", path: repo } } ] } }' }],
     ['remote reusable workflow', { [ROOT]: 'jobs: { a: { uses: o/r/.github/workflows/w.yml@main } }' }],
     ['remote at .github/workflows', { [ROOT]: 'jobs: { a: { steps: [ { uses: o/r/.github/workflows@main } ] } }' }],
     ['climbing local uses', { [ROOT]: 'jobs: { a: { steps: [ { uses: ./.github/actions/../../ci } ] } }' }],

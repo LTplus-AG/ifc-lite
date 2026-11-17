@@ -9,6 +9,8 @@
 # not listed here. If this file is missing or lists nothing, every workflow and
 # action file blocks a replay.
 .github/workflows/test.yml
+.github/workflows/geometry-platform.yml
+.github/workflows/report-scheduled-failure.yml
 .github/actions/mergify-upload/
 .github/actions/setup-docs-api/
 .github/actions/setup-report-integration/

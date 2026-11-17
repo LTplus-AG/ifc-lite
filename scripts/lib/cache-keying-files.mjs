@@ -23,7 +23,8 @@
  * and the tested tree is the one a replay needs a green run of: adding a file a
  * pattern matches fails this test in that very run. What cannot be matched is
  * an error: a non-literal hashFiles argument, an absolute or climbing path, a
- * checkout into a subdirectory (`actions/checkout` with `path:`), a reusable
+ * checkout of this repository into a subdirectory (`actions/checkout` with
+ * `path:` and no literal other `repository:`), a reusable
  * workflow called by owner/repo, a non-composite local action.
  */
 
@@ -191,7 +192,11 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
       if (key === null) continue;
       if (key === 'uses') {
         const v = value.trim();
-        if (/^actions\/checkout@/i.test(v) && parent?.with && typeof parent.with === 'object' && 'path' in parent.with) {
+        // Only a checkout of THIS repository moves the files hashFiles reads. A
+        // literal other repository (geometry-platform.yml's SMLib and emsdk)
+        // lands beside it; an expression could name this one, so it counts.
+        const other = typeof parent?.with?.repository === 'string' && !parent.with.repository.includes('${{');
+        if (/^actions\/checkout@/i.test(v) && parent?.with && typeof parent.with === 'object' && 'path' in parent.with && !other) {
           errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }
         if (v.startsWith('./')) {

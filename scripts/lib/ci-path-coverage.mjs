@@ -9,6 +9,8 @@
  * against hand-written fixtures without a checkout of the real workflows.
  */
 
+import { jobCondition } from './workflow-job-condition.mjs';
+
 /**
  * Translate one `dorny/paths-filter` glob into a RegExp over repo-relative
  * POSIX paths.
@@ -160,10 +162,9 @@ const NON_FILTER_OUTPUTS = new Set(['noop', 'replay', 'replay_run', 'replay_queu
  * job run LESS often and so cannot add coverage. Returns `null` for a job with
  * no filter reference at all -- that job always runs, which is full coverage.
  */
-export function gatingFilters(jobText) {
-  const ifLine = jobText.match(/^\s{4}if:\s*(.*)$/m);
-  if (!ifLine) return null;
-  const expr = ifLine[1];
+export function gatingFilters(jobText, jobId) {
+  const expr = jobCondition(jobText, jobId);
+  if (expr === null) return null;
   const isFilter = (n) => !NON_FILTER_OUTPUTS.has(n);
   const positives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*==\s*'true'/g)].map((m) => m[1]).filter(isFilter);
   const negatives = [...expr.matchAll(/needs\.changes\.outputs\.([A-Za-z0-9_]+)\s*!=\s*'true'/g)].map((m) => m[1]).filter(isFilter);

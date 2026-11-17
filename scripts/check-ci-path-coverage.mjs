@@ -207,7 +207,7 @@ for (const file of workflowFiles) {
   try {
     ({ triggersOnPr, paths: prPaths } = parseWorkflowPrPaths(text));
     if (!triggersOnPr) continue; // release/cron-only workflows gate nothing on a PR
-    jobs = splitJobs(text);
+    jobs = splitJobs(text).map((job) => ({ ...job, named: gatingFilters(job.text, job.id) }));
   } catch (err) {
     console.error(`❌ check-ci-path-coverage: cannot read the triggers of ${rel} -- ${err.message}`);
     process.exit(1);
@@ -220,7 +220,7 @@ for (const file of workflowFiles) {
   jobCount += jobs.length;
 
   for (const job of jobs) {
-    const named = gatingFilters(job.text);
+    const { named } = job;
     let globs;
     if (rel === FILTER_WORKFLOW) {
       if (named === null) {

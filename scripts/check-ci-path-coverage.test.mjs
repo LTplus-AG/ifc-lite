@@ -33,6 +33,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 import {
   globToRegExp,
@@ -45,6 +46,7 @@ import {
   dropSubsumed,
   gitignoreToGlobs,
 } from './lib/ci-path-coverage.mjs';
+import { jobCondition } from './lib/workflow-job-condition.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CHECK = join(HERE, 'check-ci-path-coverage.mjs');
@@ -124,10 +126,9 @@ function makeTree(overrides = {}) {
   // The check reads its own source and its own lib out of the tree it is
   // pointed at, so the fixture must carry both for self-coverage to resolve.
   writeFileSync(join(root, 'scripts/check-ci-path-coverage.mjs'), readFileSync(CHECK, 'utf8'));
-  writeFileSync(
-    join(root, 'scripts/lib/ci-path-coverage.mjs'),
-    readFileSync(join(HERE, 'lib/ci-path-coverage.mjs'), 'utf8'),
-  );
+  for (const lib of ['ci-path-coverage.mjs', 'workflow-job-condition.mjs']) {
+    writeFileSync(join(root, 'scripts/lib', lib), readFileSync(join(HERE, 'lib', lib), 'utf8'));
+  }
   writeFileSync(
     join(root, 'scripts/ci-path-coverage-allowlist.txt'),
     overrides.allowlist ?? '# none\n',
@@ -412,6 +413,81 @@ test('gatingFilters: the no-op `edited` probe output is not a path filter', () =
     null,
     'the probe term never counts as a positive filter either',
   );
+});
+
+test('gatingFilters reads a multi-line `if:` in full, not just its first line', () => {
+  // test.yml writes long conditions as block scalars; the filter terms sit on
+  // the second line or later. Reading only `if: >-` made the job look ungated.
+  const folded = [
+    '    if: >-',
+    "      github.event_name == 'pull_request' &&",
+    "      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&",
+    "      needs.changes.outputs.batch != 'true'",
+    '    runs-on: x',
+  ].join('\n');
+  assert.deepEqual(gatingFilters(folded), ['frontend', 'rust']);
+  assert.deepEqual(gatingFilters(folded.replace('>-', '|')), ['frontend', 'rust'], 'literal block');
+  assert.deepEqual(gatingFilters(folded.replace('>-', '>2-')), ['frontend', 'rust'], 'indentation indicator');
+  assert.deepEqual(gatingFilters(folded.replace('>-', '>- # why')), ['frontend', 'rust'], 'trailing comment');
+  assert.deepEqual(
+    gatingFilters("    if: github.event_name == 'pull_request' &&\n      needs.changes.outputs.docs == 'true'\n    runs-on: x"),
+    ['docs'],
+    'a plain scalar continued on a deeper line',
+  );
+  assert.deepEqual(gatingFilters(`    if: "needs.changes.outputs.docs == 'true'"`), ['docs'], 'double-quoted');
+  assert.deepEqual(
+    gatingFilters(`    if: 'needs.changes.outputs.docs == ''true'''`),
+    ['docs'],
+    "single-quoted, with '' unescaped",
+  );
+  assert.equal(
+    jobCondition('    if: always() # keep\n    runs-on: x'),
+    'always()',
+    'a trailing comment is not part of a plain scalar',
+  );
+});
+
+test('an `if:` that cannot be read throws instead of reading as "every path"', () => {
+  assert.throws(() => gatingFilters('    if: >-\n    runs-on: x'), /empty block scalar/);
+  assert.throws(() => gatingFilters('    if:\n    runs-on: x'), /empty block scalar/);
+  assert.throws(() => gatingFilters("    if: 'needs.changes.outputs.docs\n    runs-on: x"), /unterminated/);
+  assert.throws(() => gatingFilters('    if: "a \\n b"'), /double-quoted/);
+  assert.throws(() => gatingFilters('    if: *anchor'), /alias/);
+});
+
+test('every real workflow job `if:` reads exactly as a YAML parser reads it', () => {
+  // The `yaml` package is the oracle here; the checker itself stays
+  // dependency-free. Whitespace is normalised because a literal `|` block
+  // keeps its newlines and this module joins lines with a space.
+  const norm = (v) => String(v).replace(/\s+/g, ' ').trim();
+  const dir = join(REPO, '.github/workflows');
+  let compared = 0;
+  for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+    const text = readFileSync(join(dir, file), 'utf8');
+    const parsed = parseYaml(text).jobs ?? {};
+    for (const job of splitJobs(text)) {
+      const want = parsed[job.id]?.if;
+      const got = jobCondition(job.text, job.id);
+      assert.equal(got === null ? undefined : norm(got), want === undefined ? undefined : norm(want), `${file}:${job.id}`);
+      if (want !== undefined) compared += 1;
+    }
+  }
+  assert.ok(compared > 50, `compared only ${compared} conditions`);
+  // #10628's finding: past the first line, revert-oracle names its filters.
+  const oracle = splitJobs(readFileSync(join(dir, 'test.yml'), 'utf8')).find((j) => j.id === 'revert-oracle');
+  assert.deepEqual(gatingFilters(oracle.text), ['frontend', 'rust', 'revert_oracle']);
+});
+
+test('an unreadable job `if:` is a NAMED failure of the check', () => {
+  const workflow = WORKFLOW(DEFAULT_FILTERS, DEFAULT_STEPS).replace(
+    "    if: needs.changes.outputs.frontend == 'true'",
+    '    if: >-\n',
+  );
+  withTree({ workflow }, (root) => {
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /cannot read the triggers of \.github\/workflows\/test\.yml -- job gated: cannot read `if: >-`/);
+  });
 });
 
 test('parseWorkflowPrPaths distinguishes no-paths from a paths list', () => {

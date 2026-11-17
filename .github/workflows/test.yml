@@ -142,7 +142,6 @@ jobs:
       agents_md: ${{ steps.all.outputs.agents_md || steps.filter.outputs.agents_md }}
       license_headers: ${{ steps.all.outputs.license_headers || steps.filter.outputs.license_headers }}
       perf_ratchet: ${{ steps.all.outputs.perf_ratchet || steps.filter.outputs.perf_ratchet }}
-      revert_oracle: ${{ steps.all.outputs.revert_oracle || steps.filter.outputs.revert_oracle }}
       # `true` only for a title/body `edited` of a head that already has a
       # completed aggregate verdict. Every lane then skips (no filter output
       # above is `true`) and the aggregate replays the verdict. See the
@@ -326,7 +325,7 @@ jobs:
       # the whole suite on the same head (draft #9664: 3 full runs, 2 h to merge).
       - if: (github.event_name == 'merge_group' || (steps.lane.outputs.batch == 'true' || startsWith(github.head_ref, 'mergify/merge-queue/'))) && steps.noop.outputs.noop != 'true'
         id: all
-        run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet revert_oracle; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+        run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       # THE NATIVE ADAPTER ON A BATCH. The SMLib lane (geometry-platform.yml)
       # takes about 49 minutes, so a batch runs it only when its diff touches
       # that workflow's own `on.pull_request.paths`, read from the file rather
@@ -653,9 +652,9 @@ jobs:
               - '.github/workflows/test.yml'
             # The perf-ratchet ceilings (#6959). Its own output so that the
             # daily lowering bot's PR, which touches ONLY
-            # tests/perf-ratchets/*.json, runs `build` (which measures), the
-            # `perf-ratchet` gate and `revert-oracle` (which reads these files)
-            # without dragging the nine-job frontend lane along. Its scripts are under `scripts/**`, which `frontend`
+            # tests/perf-ratchets/*.json, runs `build` (which measures) and the
+            # `perf-ratchet` gate without dragging the nine-job frontend lane
+            # along. Its scripts are under `scripts/**`, which `frontend`
             # already carries.
             perf_ratchet:
               - 'tests/perf-ratchets/**'
@@ -665,12 +664,6 @@ jobs:
               - 'scripts/perf/instructions-report.mjs'
               - 'scripts/perf/elf-rw-loads.mjs'
               - '.github/workflows/test.yml'
-            # Revert-oracle inputs no other filter carries (perf_ratchet holds
-            # tests/perf-ratchets/**). Its own output so a canary-only PR runs
-            # `build` (the oracle needs its artifacts) and `revert-oracle`, not
-            # the nine-job frontend lane.
-            revert_oracle:
-              - 'tests/extensions/**'
             docs:
               - 'tests/fixtures/cli-retained/**'
               - 'tests/manifests/**'
@@ -717,7 +710,7 @@ jobs:
   build:
     name: Build packages + WASM
     needs: changes
-    if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true' || needs.changes.outputs.revert_oracle == 'true') && needs.changes.outputs.replay != 'true'
+    if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true') && needs.changes.outputs.replay != 'true'
     # Keep all routine CI on GitHub's free standard runner. This public repo's
     # previous 4-vCPU Depot path consumed the Developer plan's included minutes
     # in a few days; the prebuilt bundle remains a speed optimization only.
@@ -1054,8 +1047,7 @@ jobs:
     needs: [changes, build]
     if: >-
       github.event_name == 'pull_request' &&
-      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true' ||
-       needs.changes.outputs.perf_ratchet == 'true' || needs.changes.outputs.revert_oracle == 'true') &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt') &&
       needs.changes.outputs.batch != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}

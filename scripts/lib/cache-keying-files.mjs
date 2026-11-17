@@ -42,6 +42,8 @@ const CACHE_DEFAULTS = {
   pnpm: ['**/pnpm-lock.yaml'], npm: ['**/package-lock.json', '**/npm-shrinkwrap.json'], yarn: ['**/yarn.lock'],
   pip: ['**/requirements.txt'], pipenv: ['**/Pipfile.lock'], poetry: ['**/poetry.lock'],
 };
+// Repositories checked out with `path:` beside this one (geometry-platform.yml).
+const OUTSIDE_CHECKOUTS = new Set(['nvidia-omniverse/usd-brep', 'emscripten-core/emsdk']);
 // A key-producing run that may hash .github without naming a file.
 const BROAD_RUN = /\.github(?!\/)|\bgit\s+ls-(?:files|tree)\b|\bfind\s/;
 const HASHFILES = /hashFiles\s*\(/gi;
@@ -192,11 +194,10 @@ export function cacheKeyingFiles({ root, readText, githubFiles, symlinks }) {
       if (key === null) continue;
       if (key === 'uses') {
         const v = value.trim();
-        // Only a checkout of THIS repository moves the files hashFiles reads. A
-        // literal other repository (geometry-platform.yml's SMLib and emsdk)
-        // lands beside it; an expression could name this one, so it counts.
+        // Only a checkout of THIS repository moves the files hashFiles reads.
+        // A known outside repository lands beside it; anything else counts.
         const w = parent?.with;
-        const otherRepo = typeof w?.repository === 'string' && !w.repository.includes('${{') && w.repository.trim().toLowerCase() !== 'ltplus-ag/ifc-lite';
+        const otherRepo = typeof w?.repository === 'string' && OUTSIDE_CHECKOUTS.has(w.repository.trim().toLowerCase());
         if (/^actions\/checkout@/i.test(v) && w && typeof w === 'object' && 'path' in w && !otherRepo) {
           errors.push(`${file}: actions/checkout with path: moves the repository under a subdirectory`);
         }

@@ -469,8 +469,9 @@ describe('ShadowPass clipping', () => {
     assert.notEqual(new Uint32Array(dev.clipWrite!.buffer)[16], 0);
     dev.clipWrite = null;
     pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, filtered, null);
-    assert.ok(dev.clipWrite, 'removing extra-only planes must rewrite the uniform');
-    const words = new Uint32Array(dev.clipWrite!.buffer);
+    const clearedWrite = (dev as DeviceRecord).clipWrite;
+    assert.ok(clearedWrite, 'removing extra-only planes must rewrite the uniform');
+    const words = new Uint32Array(clearedWrite.buffer);
     assert.equal(words[12], 0);
     assert.equal(words[16], 0);
   });

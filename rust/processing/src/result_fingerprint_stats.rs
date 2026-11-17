@@ -140,6 +140,8 @@ fn diagnostics_fp(h: &mut Fp, d: &GeometryDiagnostics) {
         oversized_ref_drops,
         total_unsupported_items,
         unsupported_items_by_type,
+        budget_refusals,
+        total_budget_refusals,
     } = d;
     h.u32(*schema_version);
     [total_csg_failures, products_with_failures, hosts_with_openings].into_iter().for_each(|v| h.u64(*v));
@@ -186,6 +188,9 @@ fn diagnostics_fp(h: &mut Fp, d: &GeometryDiagnostics) {
     h.u64(*oversized_ref_drops);
     h.u64(*total_unsupported_items);
     reasons_fp(h, unsupported_items_by_type);
+    h.len(budget_refusals.len());
+    budget_refusals.iter().for_each(|b| h.str(&serde_json::to_string(b).expect("strings and integers only")));
+    h.u64(*total_budget_refusals);
 }
 
 fn reasons_fp(h: &mut Fp, reasons: &[ReasonCount]) {

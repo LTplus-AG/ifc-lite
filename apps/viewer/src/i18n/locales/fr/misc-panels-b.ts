@@ -157,6 +157,7 @@ export const miscPanelsBFr = {
   'loadReportPanel.selectAndFrameTitle': 'Sélectionner et cadrer cette entité',
   'loadReportPanel.entitySummary':
     '#{productId} {ifcType} — {csgFailures} échec(s), {openings} ouverture(s)',
+  'loadReportPanel.budgetRefusal': '{budget} : limite {limit}, atteint {reached} ; source #{sourceId}',
   'loadReportPanel.tierSuffix': ' · niveau {tier}',
   'loadReportPanel.fastModeSuffix': ' · mode rapide',
   'loadReportPanel.affectedEntitiesLabel': 'Entités concernées',

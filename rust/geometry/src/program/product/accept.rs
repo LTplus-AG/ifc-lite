@@ -125,7 +125,7 @@ impl<'a> ProductControl<'a> {
 
     /// The resolved shape: its first item, or an empty product.
     pub(super) fn shape_done(&mut self, plan: ProductItems, router: &GeometryRouter) -> Action {
-        if let Err(error) = router.report_product_admission(&plan) {
+        if let Err(error) = router.report_product_admission(&plan, self.element) {
             return Action::Complete(Err(error));
         }
         if plan

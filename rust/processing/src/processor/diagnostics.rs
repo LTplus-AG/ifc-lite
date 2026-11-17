@@ -302,7 +302,7 @@ pub(super) fn collate(
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     warn_if_dropped(&unsupported_items);
-    let mut diag = ifc_lite_geometry::aggregate_diagnostics(
+    let diag = ifc_lite_geometry::aggregate_diagnostics(
         classification,
         csg_failures,
         &host_diags,
@@ -310,8 +310,8 @@ pub(super) fn collate(
         WORST_HOSTS_LIMIT,
         oversized_ref_drops,
         &unsupported_items,
+        budget_refusals.into_inner().unwrap_or_else(|p| p.into_inner()),
     );
-    (diag.total_budget_refusals, diag.budget_refusals) = budget_refusals.into_inner().unwrap_or_else(|p| p.into_inner());
     (!diag.is_empty()).then_some(diag)
 }
 

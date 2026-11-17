@@ -255,6 +255,13 @@ impl GeometryDiagnostics {
 /// the wasm/viewer path and a future native path can produce the same contract.
 /// The caller owns draining: the router accessors are destructive (`mem::take`),
 /// so drain once and pass the results here — do not double-`take`.
+/// `budget_refusals` is [`GeometryRouter::take_budget_refusal_report`]'s
+/// (total, details). It is required, so a caller cannot build diagnostics
+/// without deciding what refusals to pass; like the other inputs, take it
+/// once (a second take, or an earlier `take_budget_refusals`, finds it empty).
+///
+/// [`GeometryRouter::take_budget_refusal_report`]: crate::GeometryRouter::take_budget_refusal_report
+#[allow(clippy::too_many_arguments)] // one argument per drained router collector
 pub fn aggregate_diagnostics(
     classification: ClassificationStats,
     csg_failures: &FxHashMap<u32, Vec<BoolFailure>>,
@@ -263,7 +270,9 @@ pub fn aggregate_diagnostics(
     worst_hosts_limit: usize,
     oversized_ref_drops: u64,
     unsupported_items: &FxHashMap<String, u64>,
+    budget_refusals: (u64, Vec<BudgetRefusal>),
 ) -> GeometryDiagnostics {
+    let (total_budget_refusals, budget_refusals) = budget_refusals;
     let total_csg_failures = csg_failures.values().map(Vec::len).sum::<usize>() as u64;
     let products_with_failures = count_attributed_products(csg_failures);
     let hosts_with_openings = host_diags.len() as u64;
@@ -353,8 +362,8 @@ pub fn aggregate_diagnostics(
         oversized_ref_drops,
         total_unsupported_items,
         unsupported_items_by_type,
-        budget_refusals: Vec::new(),
-            total_budget_refusals: 0,
+        budget_refusals,
+        total_budget_refusals,
     }
 }
 

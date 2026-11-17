@@ -136,6 +136,7 @@ fn worst_hosts_are_the_top_sixteen_with_an_id_tie_break() {
         WORST_HOSTS_LIMIT,
         0,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
     let lines = console_summary(&d);
     let (level, detail) = lines.iter().find(|(_, line)| line.contains("CSG fallbacks")).unwrap();
@@ -173,6 +174,7 @@ fn a_failed_host_is_not_also_a_silent_no_op() {
         WORST_HOSTS_LIMIT,
         0,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
     let lines = console_summary(&d);
     assert!(lines.iter().any(|(_, line)| line.starts_with("[IFC-LITE] Rectangular cut SILENT NO-OP on 1 hosts ")));

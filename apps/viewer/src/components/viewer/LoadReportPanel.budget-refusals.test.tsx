@@ -36,5 +36,32 @@ for (const [locale, catalogue] of [['en', {}], ['de', miscPanelsBDe],
     assert.ok(!ui.textContent?.includes(resolve('loadReportPanel.status.clean')));
     assert.match(ui.textContent ?? '', /1 work budget refusal.*missing or incomplete/);
     assert.match(ui.textContent ?? '', /#100 IfcWall/);
+    // The row says which allowance refused the product, its limit and demand, translated.
+    const line = resolve('loadReportPanel.budgetRefusal', { budget: 'walk Items members', limit: 4, reached: 5, sourceId: 170 });
+    assert.notEqual(line, 'loadReportPanel.budgetRefusal');
+    assert.ok(ui.textContent?.includes(line), `${locale}: ${line}`);
   });
 }
+
+// #9268 review: a frameable CSG host that was also refused keeps its select
+// button, and the refusal under it describes that button for assistive tech.
+it('issue 9268 selectable row carries its budget refusal and describes the button with it', () => {
+  setLocale('en');
+  const diagnostics = {
+    schemaVersion: 5, totalCsgFailures: 1, productsWithFailures: 1, hostsWithOpenings: 1,
+    classification: { rectangular: 0, diagonal: 0, nonRectangular: 0, total: 0 },
+    failuresByReason: [], silentNoOps: 0,
+    worstHosts: [{ productId: 42, ifcType: 'IfcWall', openings: 2, csgFailures: 1,
+      firstFailureLabel: 'KernelError', bbox: { min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] } }],
+    rectFast: { fired: 0, openingsCut: 0, deferHostNotBox: 0, deferNotThrough: 0,
+      deferOffFace: 0, deferNearEdge: 0, deferNoOpenings: 0 },
+    totalBudgetRefusals: 1, budgetRefusals: [{ budget: 'logical mapped attempts', limit: 3,
+      reached: 4, sourceId: 8, productId: 42, productType: 'IfcWall', GlobalId: null }],
+  };
+  useViewerStore.setState(fixtureModels({ ...fixtureModel('m'), diagnostics }));
+  const ui = render(<LoadReportPanel />);
+  const button = [...ui.querySelectorAll('button')].find((b) => b.textContent?.includes('#42 IfcWall'));
+  assert.ok(button, 'the CSG host stays selectable');
+  const described = ui.querySelector(`[id="${button.getAttribute('aria-describedby')}"]`);
+  assert.equal(described?.textContent, 'logical mapped attempts: limit 3, reached 4; source #8');
+});

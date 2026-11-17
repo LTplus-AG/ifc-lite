@@ -89,6 +89,10 @@ export interface LoadReportAffectedEntity {
   csgFailures: number;
   openings: number;
   firstFailureLabel?: string;
+  /** Work-budget refusals for this product, each distinct one once (#9268):
+   *  the engine's meter name, its limit, the demand reached, the source id.
+   *  Absent when the product was not refused. */
+  budgetRefusals?: Array<{ budget: string; limit: number; reached: number; sourceId: number }>;
   /**
    * True only when the diagnostic host carried a captured `bbox` — the
    * signal that its mesh is present and can be framed in 3D. `false` means
@@ -183,7 +187,7 @@ function buildActions(model: FederatedModel, d: GeometryDiagnostics | null): str
 
 function buildAffectedEntities(model: FederatedModel, d: GeometryDiagnostics | null): LoadReportAffectedEntity[] {
   if (!d) return [];
-  const entities = d.worstHosts.map((h) => ({
+  const entities: LoadReportAffectedEntity[] = d.worstHosts.map((h) => ({
     productId: h.productId,
     globalId: h.productId + model.idOffset,
     ifcType: h.ifcType,
@@ -192,19 +196,28 @@ function buildAffectedEntities(model: FederatedModel, d: GeometryDiagnostics | n
     firstFailureLabel: h.firstFailureLabel,
     renderable: h.bbox !== undefined,
   }));
-  const seen = new Set(entities.map((entity) => entity.productId));
+  const byProduct = new Map<number, LoadReportAffectedEntity>(entities.map((entity) => [entity.productId, entity]));
   for (const refusal of d.budgetRefusals ?? []) {
-    if (refusal.productId == null || seen.has(refusal.productId)) continue;
-    seen.add(refusal.productId);
-    entities.push({
-      productId: refusal.productId,
-      globalId: refusal.productId + model.idOffset,
-      ifcType: refusal.productType ?? 'unknown',
-      csgFailures: 0,
-      openings: 0,
-      firstFailureLabel: `${refusal.budget}: limit ${refusal.limit}, reached ${refusal.reached}; source #${refusal.sourceId}`,
-      renderable: false,
-    });
+    if (refusal.productId == null) continue;
+    // One row per product: a host that also failed CSG keeps both facts.
+    let entity = byProduct.get(refusal.productId);
+    if (!entity) {
+      entity = {
+        productId: refusal.productId,
+        globalId: refusal.productId + model.idOffset,
+        ifcType: refusal.productType ?? 'unknown',
+        csgFailures: 0,
+        openings: 0,
+        renderable: false,
+      };
+      byProduct.set(refusal.productId, entity);
+      entities.push(entity);
+    }
+    const { budget, limit, reached, sourceId } = refusal;
+    const refusals = (entity.budgetRefusals ??= []);
+    if (!refusals.some((r) => r.budget === budget && r.limit === limit && r.reached === reached && r.sourceId === sourceId)) {
+      refusals.push({ budget, limit, reached, sourceId });
+    }
   }
   return entities;
 }

@@ -33,6 +33,7 @@ fn aggregate_empty_is_all_zero() {
         16,
         0,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
     assert_eq!(d.total_csg_failures, 0);
     assert_eq!(d.total_unsupported_items, 0);
@@ -90,7 +91,7 @@ fn aggregate_summarizes_failures_hosts_classification_and_silent_noops() {
     let cls = ClassificationStats { rectangular: 3, diagonal: 1, non_rectangular: 0 };
     let rf = RectFastStats { fired: 2, openings_cut: 4, ..Default::default() };
 
-    let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16, 0, &FxHashMap::default());
+    let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16, 0, &FxHashMap::default(), (0, Vec::new()));
     assert_eq!(d.total_csg_failures, 3);
     assert_eq!(d.products_with_failures, 2);
     assert_eq!(d.hosts_with_openings, 2);
@@ -142,6 +143,7 @@ fn worst_host_triangle_count_falls_back_to_tris_before_when_no_cut_ran() {
         16,
         0,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
     assert_eq!(d.worst_hosts[0].triangle_count, Some(80));
     assert!(d.worst_hosts[0].bbox.is_none());
@@ -177,6 +179,7 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
         16,
         0,
         &unsupported,
+        (0, Vec::new()),
     );
     assert_eq!(d.total_unsupported_items, 3);
     assert_eq!(d.unsupported_items_by_type[0].reason, "IfcSectionedSpine");
@@ -230,6 +233,7 @@ fn oversized_ref_drops_passes_through_and_defeats_is_empty() {
         16,
         3,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
     assert_eq!(d.oversized_ref_drops, 3);
     assert!(
@@ -249,6 +253,7 @@ fn zero_oversized_ref_drops_stays_empty() {
         16,
         0,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
     assert!(d.is_empty());
 }
@@ -350,6 +355,7 @@ fn the_unattributed_bucket_counts_in_the_totals_but_is_not_a_product() {
         16,
         0,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
 
     assert_eq!(d.products_with_failures, 1, "the synthetic bucket is not a product");
@@ -379,6 +385,7 @@ fn an_unattributed_only_pass_reports_zero_products_and_still_has_issues() {
         16,
         0,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
     assert_eq!(d.products_with_failures, 0);
     assert_eq!(d.total_csg_failures, 1);
@@ -405,6 +412,7 @@ fn unsupported_items_pass_through_and_defeat_is_empty() {
         16,
         0,
         &unsupported,
+        (0, Vec::new()),
     );
     assert_eq!(d.total_unsupported_items, 2);
     assert_eq!(d.unsupported_items_by_type[0].reason, "IfcGeometricSet");
@@ -427,6 +435,7 @@ fn zero_unsupported_items_stays_empty() {
         16,
         0,
         &FxHashMap::default(),
+        (0, Vec::new()),
     );
     assert!(d.is_empty());
 }
@@ -458,6 +467,7 @@ fn unmeshable_openings_reach_geometry_diagnostics_as_dropped_items() {
         16,
         0,
         &router.take_unsupported_items(),
+        (0, Vec::new()),
     );
     assert_eq!(d.total_unsupported_items, 2, "once per opening: {:?}", d.unsupported_items_by_type);
     let by_type: Vec<_> = d.unsupported_items_by_type.iter().map(|r| (r.reason.as_str(), r.count)).collect();
@@ -504,4 +514,20 @@ fn opening_diagnostic_field_list_is_pinned() {
          any visibility is a MAJOR semver break on a crate-root re-exported struct \
          that is not #[non_exhaustive] (#4192)."
     );
+}
+
+/// #9268 review: the aggregate takes the router's refusal report as a required
+/// argument, so no caller of this public function can drop refusals.
+#[test]
+fn issue_9268_aggregate_carries_the_refusal_report_it_is_given() {
+    let refusal = super::BudgetRefusal {
+        budget: "logical mapped attempts".into(), limit: 3, reached: 4, source_id: 8,
+        product_id: Some(25), product_type: Some("IfcWall".into()), global_id: None,
+    };
+    let d = aggregate_diagnostics(ClassificationStats::default(), &FxHashMap::default(), &FxHashMap::default(),
+        crate::rect_fast::RectFastStats::default(), 16, 0, &FxHashMap::default(), (40, vec![refusal.clone()]));
+    assert_eq!((d.total_budget_refusals, d.budget_refusals), (40, vec![refusal]));
+    let only_refusals = aggregate_diagnostics(ClassificationStats::default(), &FxHashMap::default(), &FxHashMap::default(),
+        crate::rect_fast::RectFastStats::default(), 16, 0, &FxHashMap::default(), (1, Vec::new()));
+    assert!(!only_refusals.is_empty(), "a load with only budget refusals still reports");
 }

@@ -55,9 +55,9 @@ export interface ChartSlice {
   /** Visibility revision last authored or deliberately released by Charts. */
   chartVisibilityRevision: number | null;
 
-  setDashboards: (dashboards: DashboardSpec[]) => void;
-  upsertDashboard: (dashboard: DashboardSpec) => void;
-  deleteDashboard: (id: string) => void;
+  setDashboards: (dashboards: DashboardSpec[]) => boolean;
+  upsertDashboard: (dashboard: DashboardSpec) => boolean;
+  deleteDashboard: (id: string) => boolean;
   setActiveDashboardId: (id: string | null) => void;
   setChartPanelVisible: (visible: boolean) => void;
   setChartFocusMode: (mode: ChartFocusMode) => void;
@@ -80,20 +80,23 @@ export const createChartSlice: StateCreator<ChartSlice, [], [], ChartSlice> = (s
   chartVisibilityRevision: null,
 
   setDashboards: (dashboards) => {
+    if (!saveDashboards(dashboards)) return false;
     set({ dashboards });
-    saveDashboards(dashboards);
+    return true;
   },
   upsertDashboard: (dashboard) => {
     const current = get().dashboards;
     const index = current.findIndex((d) => d.id === dashboard.id);
     const dashboards = index === -1 ? [...current, dashboard] : current.map((d, i) => (i === index ? dashboard : d));
+    if (!saveDashboards(dashboards)) return false;
     set({ dashboards });
-    saveDashboards(dashboards);
+    return true;
   },
   deleteDashboard: (id) => {
     const dashboards = get().dashboards.filter((d) => d.id !== id);
+    if (!saveDashboards(dashboards)) return false;
     set({ dashboards, activeDashboardId: get().activeDashboardId === id ? null : get().activeDashboardId });
-    saveDashboards(dashboards);
+    return true;
   },
   setActiveDashboardId: (activeDashboardId) => set({ activeDashboardId }),
   setChartPanelVisible: (chartPanelVisible) => set({ chartPanelVisible }),

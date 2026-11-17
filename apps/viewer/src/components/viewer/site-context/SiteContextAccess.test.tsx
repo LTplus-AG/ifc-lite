@@ -68,7 +68,7 @@ test('a model with no georeferencing shows the add row and a Site context sectio
   useViewerStore.setState({ models: new Map([['m', model('m', null)]]) });
   const host = render(<GeoreferencingPanel georef={null} modelId="m" enableEditing schemaVersion="IFC4" />);
   await waitFor(() => host.querySelector('[data-testid="site-context-refusal"]') !== null, 'the site-context refusal');
-  assert.ok([...host.querySelectorAll('button')].some((b) => b.textContent?.includes('Add georeferencing')));
+  assert.ok([...host.querySelectorAll('button')].some((b) => /add georeferencing/i.test(b.textContent ?? '')));
   assert.equal(host.querySelector('[data-testid="site-context-refusal"]')?.getAttribute('data-reason'), 'not-georeferenced');
   assert.match(host.textContent ?? '', /EPSG:2056/);
 });
@@ -77,7 +77,7 @@ test('a read-only model with no georeferencing still says why site context canno
   useViewerStore.setState({ models: new Map([['m', model('m', null)]]) });
   const host = render(<GeoreferencingPanel georef={null} modelId="m" enableEditing={false} schemaVersion="IFC4" />);
   await waitFor(() => host.querySelector('[data-testid="site-context-refusal"]') !== null, 'the site-context refusal');
-  assert.equal([...host.querySelectorAll('button')].some((b) => b.textContent?.includes('Add georeferencing')), false);
+  assert.equal([...host.querySelectorAll('button')].some((b) => /add georeferencing/i.test(b.textContent ?? '')), false);
   assert.doesNotMatch(host.textContent ?? '', /EPSG:2056/);
 });
 
@@ -90,7 +90,8 @@ test('a model georeferenced at 0/0 (just added) explains the Swiss-only scope in
 });
 
 test('a requested section scrolls into view, highlights and consumes the request', async () => {
-  useViewerStore.setState({ models: new Map([['m', model('m', { eastings: 2_600_000, northings: 1_200_000 })]]) });
+  // No data store, as in SiteContextSection.anchor.test.tsx: the anchor then reads only the spatial reference.
+  useViewerStore.setState({ models: new Map([['m', { ...model('m', { eastings: 2_600_000, northings: 1_200_000 }), ifcDataStore: undefined } as unknown as FederatedModel]]) });
   requestGeorefSectionFocus('m', 'siteContext');
   const host = render(<SiteContextSection modelId="m" editable />);
   await waitFor(() => host.querySelector('[data-testid="site-context-section"]') !== null, 'the section');

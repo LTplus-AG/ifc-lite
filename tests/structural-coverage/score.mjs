@@ -307,7 +307,8 @@ async function main(argv) {
     }
     console.log(`Ratchet OK against ${rel(check)}: total ${summary.total.score} >= ${baseline.total.score}, cells ${summary.cells.score} >= ${baseline.cells.score}, no row or cell dropped.`);
   }
-  // Out-of-date limits fail every complete run: a change that fixes a limited cell removes its limit too.
+  // Out-of-date limits fail every complete run (a fixed cell, a changed problem text or a citation that
+  // no longer holds), so no baseline is frozen and no change lands with a wrong label.
   return limitIssues.length ? 1 : 0;
 }
 

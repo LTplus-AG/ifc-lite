@@ -417,8 +417,11 @@ const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');
 // A hook's GIT_DIR or GIT_INDEX_FILE would point git -C at the real repository.
 const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
 
-/** A repository whose HEAD is the PR merge commit of a branch that adds `add` and git-mv's `move` ([old, new] pairs); `merge: false` makes it a squash. */
-function batchRepo(context, { add = [], move = [], merge = true, workflow = readFileSync(join(REPO, WORKFLOW), 'utf8') } = {}) {
+/**
+ * A repository whose HEAD is the PR merge commit of a branch that adds `add`, writes `edit` ({path: body}) and
+ * git-mv's `move` ([old, new] pairs) over a base holding `workflow` and `seed` ({path: body}); `merge: false` makes it a squash.
+ */
+function batchRepo(context, { add = [], edit = {}, move = [], merge = true, workflow = readFileSync(join(REPO, WORKFLOW), 'utf8'), seed = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-batch-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args) => {
@@ -431,12 +434,14 @@ function batchRepo(context, { add = [], move = [], merge = true, workflow = read
   };
   git('init', '-q', '-b', 'main');
   write(WORKFLOW, workflow);
+  for (const [rel, body] of Object.entries(seed)) write(rel, body);
   write('README.md', 'base\n');
   for (const [from] of move) write(from, 'moved\n');
   git('add', '-A');
   git('commit', '-q', '-m', 'base');
   git('checkout', '-q', '-b', 'mergify/merge-queue/batch');
   for (const f of add) write(f, 'changed\n');
+  for (const [rel, body] of Object.entries(edit)) write(rel, body);
   for (const [from, to] of move) {
     mkdirSync(join(root, dirname(to)), { recursive: true });
     git('mv', from, to);
@@ -511,6 +516,30 @@ test('an exclusion the paths list no longer holds is reported', (context) => {
   const root = copyTree(context);
   mutate(root, (t) => t.replace("      - 'packages/cli/**'\n", ''));
   assert.ok(audit(root).some((f) => f.includes("BATCH_EXCLUDE entry 'packages/cli/**'")));
+});
+
+test('a lane-run script added to BATCH_EXCLUDE is reported', () => {
+  assert.equal(BATCH_EXCLUDE.includes('scripts/fixtures/*.mjs'), false);
+  BATCH_EXCLUDE.push('scripts/fixtures/*.mjs');
+  try {
+    assert.ok(audit(REPO).some((f) => f.includes('BATCH_EXCLUDE drops it from merge-queue batches')));
+  } finally {
+    BATCH_EXCLUDE.pop();
+  }
+});
+
+test('a batch that edits what the decision reads runs the lane, whatever the edit says', (context) => {
+  // Every list here watches only zzz/**, so nothing but the guard can answer true.
+  const narrow = "on:\n  pull_request:\n    paths:\n      - 'zzz/**'\n";
+  const SCRIPT = 'scripts/check-native-adapter-triggers.mjs';
+  const MATCHER = 'scripts/lib/ci-path-coverage.mjs';
+  const seed = { [SCRIPT]: readFileSync(join(REPO, SCRIPT), 'utf8'), [MATCHER]: readFileSync(join(REPO, MATCHER), 'utf8') };
+  for (const edit of [{ [WORKFLOW]: narrow.replace('zzz', 'yyy') }, { [SCRIPT]: `${seed[SCRIPT]}// edited\n` }, { [MATCHER]: `${seed[MATCHER]}// edited\n` }]) {
+    const d = decide(batchRepo(context, { workflow: narrow, seed, edit }));
+    assert.equal(d.written, 'native_adapter=true\n', `${Object.keys(edit)[0]}: ${d.log}`);
+  }
+  const control = decide(batchRepo(context, { workflow: narrow, seed, add: ['docs/x.md'] }));
+  assert.equal(control.written, 'native_adapter=false\n', control.log);
 });
 
 test('a path new to the workflow runs the lane until it is excluded', (context) => {

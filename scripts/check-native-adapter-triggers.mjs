@@ -41,8 +41,8 @@
  * batches (#10595: a CLI test and tests/models/manifest.json) through the
  * hour-long lane. It FAILS CLOSED: an unreadable paths list, a checkout that
  * is not the two-parent merge commit, an empty or unreadable diff, and any
- * change to the workflow or this script (the two lists, read from the batch's
- * HEAD) all answer `true`. The audit also holds that wiring in test.yml.
+ * change to the workflow, this script or its imports (the lists and the
+ * matcher, read from the batch's HEAD) all answer `true`. The audit also holds that wiring in test.yml.
  *
  * `--root <dir>` points it at a mutated copy of the tree (see the test).
  */
@@ -70,6 +70,7 @@ const SELF = 'scripts/check-native-adapter-triggers.mjs';
  * packaging, the viewer host, corpus and repo-wide config). Each entry is
  * removed verbatim, so a narrower glob under it (rust/processing/src/processor/**)
  * still runs, and a path added to the workflow runs until it is listed here.
+ * A script the lane runs cannot be excluded (the audit holds that).
  */
 export const BATCH_EXCLUDE = [
   'rust/clash/**',
@@ -92,9 +93,6 @@ export const BATCH_EXCLUDE = [
   'playwright.config.ts',
   'tests/benchmark/frames/**',
   'tests/models/manifest.json',
-  'scripts/fixtures/*.mjs',
-  'scripts/perf-ratchet/measure-bundle.mjs',
-  'scripts/wasm-test-mime-driver.mjs',
   'pnpm-workspace.yaml',
   'package.json',
   'turbo.json',
@@ -254,6 +252,26 @@ export function corpusJobProblems(text) {
   return out;
 }
 
+/** On a batch, the paths list less BATCH_EXCLUDE. */
+const batchGlobs = (pr) => pr.filter((g) => !BATCH_EXCLUDE.includes(g));
+
+/** `entries` and every `scripts/` module they import, transitively; a missing file ends its branch. */
+export function scriptImports(root, entries) {
+  const queue = [...entries];
+  const seen = new Set();
+  while (queue.length > 0) {
+    const script = queue.pop();
+    if (seen.has(script)) continue;
+    seen.add(script);
+    if (!existsSync(join(root, script))) continue;
+    for (const m of readFileSync(join(root, script), 'utf8').matchAll(/from '(\.{1,2}\/[^']+\.mjs)'/g)) {
+      const next = posix.normalize(posix.join(posix.dirname(script), m[1]));
+      if (next.startsWith('scripts/')) queue.push(next);
+    }
+  }
+  return seen;
+}
+
 export function audit(root) {
   const failures = [];
   const wfPath = join(root, WORKFLOW);
@@ -313,19 +331,11 @@ export function audit(root) {
   }
 
   if (pr) {
-    // Every script the lane runs, and what those scripts import, must be able to trigger it.
-    const queue = [...new Set([...text.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]))];
-    const seen = new Set();
-    while (queue.length > 0) {
-      const script = queue.pop();
-      if (seen.has(script)) continue;
-      seen.add(script);
+    // Every script the lane runs, and what those scripts import, must be able to trigger it, on a batch too.
+    const batch = batchGlobs(pr);
+    for (const script of scriptImports(root, [...text.matchAll(/\bnode (scripts\/[\w./-]+\.mjs)/g)].map((m) => m[1]))) {
       if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
-      if (!existsSync(join(root, script))) continue;
-      for (const m of readFileSync(join(root, script), 'utf8').matchAll(/from '(\.{1,2}\/[^']+\.mjs)'/g)) {
-        const next = posix.normalize(posix.join(posix.dirname(script), m[1]));
-        if (next.startsWith('scripts/')) queue.push(next);
-      }
+      else if (!matchesAny(script, batch)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but BATCH_EXCLUDE drops it from merge-queue batches`);
     }
   }
   const browser = jobBlock(text, 'browser-corpus');
@@ -403,17 +413,18 @@ function batchDecision(root) {
   try {
     const pr = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
     if (!pr || pr.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
-    const globs = pr.filter((g) => !BATCH_EXCLUDE.includes(g));
     const parents = execFileSync('git', ['-C', root, 'rev-list', '--parents', '-n', '1', 'HEAD'], { encoding: 'utf8' }).trim().split(' ').filter(Boolean);
     if (parents.length !== 3) return { run: true, reason: `HEAD has ${Math.max(parents.length - 1, 0)} parent(s), not the two of a PR merge commit; running` };
     // --no-renames: a file moved out of a watched directory must count by its old path too.
     changed = gitPaths(root, ['diff', '--name-only', '--no-renames', parents[1], 'HEAD']);
     if (changed.length === 0) return { run: true, reason: 'the batch diff is empty, which a real batch never is; running' };
-    // Both lists are read from HEAD, so a batch that edits one could drop the very
-    // path it touches; any change to the workflow or this script runs the lane.
-    const own = changed.find((f) => f === WORKFLOW || f === SELF);
-    if (own) return { run: true, reason: `the batch changes ${own} itself; running` };
-    hits = changed.filter((f) => matchesAny(f, globs));
+    // The lists and the matcher are read from HEAD, so a batch that edits them could
+    // drop the very path it touches; any change to the workflow, this script or what
+    // it imports runs the lane.
+    const decider = scriptImports(root, [SELF]).add(WORKFLOW);
+    const own = changed.find((f) => decider.has(f));
+    if (own) return { run: true, reason: `the batch changes ${own}, which this decision reads; running` };
+    hits = changed.filter((f) => matchesAny(f, batchGlobs(pr)));
   } catch (err) {
     return { run: true, reason: `cannot decide (${err.message.split('\n')[0]}); running` };
   }

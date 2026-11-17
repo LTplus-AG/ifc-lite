@@ -37,9 +37,11 @@ impl MappingControl<'_> {
             self.action = Action::Complete(Err(error));
             return;
         }
-        // Keep the source's reporting policy, including CATIA's blank-type
-        // FootPrint suppression. Product admission reports independently.
-        if self.levels.last().is_none_or(|parent| parent.policy) {
+        // Keep CATIA's blank-type FootPrint suppression (a non-Body parent),
+        // but not the once-per-source unsupported dedup: another product
+        // walking an already-claimed Body source still reports its refusal.
+        // Product admission reports independently.
+        if self.levels.last().is_none_or(|parent| router.unsupported_source_claimed(parent.source_id)) {
             let root = self.rep_map.as_ref().and_then(super::TypeMapRoot::product)
                 .map(crate::router::diagnostics::BudgetProductIdentity::from_product);
             let product = refusal.product();

@@ -62,3 +62,44 @@ fn issue_9268_nested_logical_refusal_keeps_wall_identity() {
         }
     }
 }
+
+/// A batch router walks every product through one router, so a second wall
+/// reaching the same Body source finds it already claimed for unsupported-item
+/// counting. Its own logical refusal must still be reported, under its own id;
+/// a non-Body (FootPrint) source stays suppressed for both walls.
+#[test]
+fn issue_9268_second_product_on_a_claimed_source_reports_its_refusal() {
+    for body in [true, false] {
+        for styled in [false, true] {
+            let mut source = format!("{WALL}#26=IFCWALL('0000000000000000000002',$,$,$,$,$,#24,$);");
+            if !body {
+                source = source.replace("#15=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation'",
+                    "#15=IFCSHAPEREPRESENTATION($,'FootPrint',''");
+            }
+            let mut decoder = EntityDecoder::new(&source);
+            let router = GeometryRouter::new();
+            for id in [25, 26] {
+                let wall = decoder.decode_by_id(id).unwrap();
+                let mut control = if styled {
+                    ProductControl::styled(&wall, false, None, SourceHygiene::Watertight)
+                } else {
+                    ProductControl::merged(&wall, SourceHygiene::Watertight)
+                };
+                while !matches!(control.child, Child::Mapping(_)) {
+                    assert!(control.stage().unwrap().is_some());
+                    let reply = control.execute(&router, &mut decoder).unwrap();
+                    control.accept(reply, &router);
+                }
+                let Child::Mapping(mapping) = &mut control.child else { unreachable!() };
+                mapping.set_logical_limit(3);
+                control.run(&router, &mut decoder).unwrap();
+                assert!(control.take_result().unwrap().is_ok());
+            }
+            let (total, refusals) = router.take_budget_refusal_report();
+            let expected: &[Option<u32>] = if body { &[Some(25), Some(26)] } else { &[] };
+            assert_eq!(total, expected.len() as u64, "body={body}, styled={styled}");
+            assert_eq!(refusals.iter().map(|r| r.product_id).collect::<Vec<_>>(), expected, "body={body}, styled={styled}");
+            assert!(router.take_unsupported_items().is_empty());
+        }
+    }
+}

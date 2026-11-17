@@ -103,6 +103,13 @@ impl GeometryRouter {
         is_body && self.unsupported.borrow_mut().sources_recorded.insert(source_id)
     }
 
+    /// Whether any walk on this router has claimed `source_id` as a Body
+    /// source. Drains keep the claims; only `forget_sources` clears them. A
+    /// non-Body source is never claimed, so this tells the two apart.
+    pub(crate) fn unsupported_source_claimed(&self, source_id: u32) -> bool {
+        self.unsupported.borrow().sources_recorded.contains(&source_id)
+    }
+
     /// Open a scope with an already-claimed source's recording decision.
     pub(crate) fn enter_unsupported_policy(&self, record: bool) -> UnsupportedSourceScope<'_> {
         self.unsupported.borrow_mut().scope.push(record);

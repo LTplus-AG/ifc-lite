@@ -8,7 +8,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { collectGeorefFacts, crsRequirements, diagnoseGeoreference, type SkippedCheck } from '@ifc-lite/georef-check';
+import { collectGeorefFacts, crsRequirements, diagnoseGeoreference, type GeorefFacts, type SkippedCheck } from '@ifc-lite/georef-check';
 import { GeoreferencingError } from '../types.js';
 import { composeCatalog, crsEngine, crsNames, geoNameIndex, loadEpsgCatalog, resolveRequirements, type LoadedCatalog } from './capabilities.js';
 import { deriveSitePosition } from './site-derivation.js';
@@ -33,6 +33,19 @@ export async function checkGeoreferencing(
   if (!facts) {
     throw new GeoreferencingError('UNSUPPORTED_SCHEMA', 'georef check reads IFC STEP models; this model has no STEP source (IFCX or tabular).');
   }
+  return checkGeorefFacts(facts, options, includesSessionEdits);
+}
+
+/**
+ * The check over facts the caller already holds: a host that keeps its own
+ * unsaved georeference edits (the viewer, #10608) collects the facts once,
+ * patches its edits in, and checks those.
+ */
+export async function checkGeorefFacts(
+  facts: GeorefFacts,
+  options: GeorefCheckOptions = {},
+  includesSessionEdits = false,
+): Promise<GeorefCheckReport> {
   const network = options.allowNetwork === true;
   const engine = crsEngine(network);
   let catalog: LoadedCatalog | null = null;

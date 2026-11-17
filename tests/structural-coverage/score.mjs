@@ -176,7 +176,9 @@ export function score(rows, cells, meta = {}) {
     for (const level of LEVELS) {
       const rule = notApplicable(row, level);
       if (rule) { levels[level] = { applicable: false, rule }; continue; }
-      const { problems: _full, ...cell } = cells.get(row.id)[level];
+      const probed = cells.get(row.id)[level];
+      if (!probed) { levels[level] = probed; continue; }
+      const { problems: _full, ...cell } = probed;
       levels[level] = cell;
     }
     const head = row.kind === 'entity'

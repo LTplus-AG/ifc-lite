@@ -16,9 +16,9 @@
  * Each limit names its row and level, matches whole problem strings with
  * `problem`, cites the schema slot, policy or record, and `holds(facts, match)`
  * re-checks that fact against the parser's typed schema registries and the
- * corpus file the problem names. A limit whose fact no longer holds, or that
- * matches no problem of its cell, labels nothing and is reported; `--check`
- * then fails until it is corrected or removed.
+ * corpus file the problem names. A limit whose fact does not hold, or that
+ * matches no problem of its cell, is reported, and the run exits 1 until it
+ * is corrected or removed.
  *
  * EXPRESS line numbers: packages/codegen/schemas/IFC2X3_TC1.exp and IFC4_ADD2_TC1.exp.
  */
@@ -26,7 +26,11 @@
 import { SCHEMAS } from './catalogue.mjs';
 import { CONSTANT_SUBTYPE, entityName, slotOf } from './probes/convert.mjs';
 
-export const KINDS = ['schema', 'policy', 'upstream'];
+/** Limit kinds and how the ledger names a cell every problem of which carries that kind. */
+export const KINDS = { schema: 'out of reach (schema)', policy: 'policy-limited', upstream: 'upstream' };
+
+/** An activity's PredefinedType, its last attribute. */
+const predefinedOf = (act) => act.args.at(-1);
 
 /**
  * Whether IFC2X3 holds this IFC4 activity of `step` only as IfcProxy: IFC2X3 lacks the entity, and it is
@@ -38,13 +42,16 @@ function proxied(f, step, act) {
   if (!name || f.has('IFC2X3', name)) return false;
   if (!CONSTANT_SUBTYPE.has(act.type)) return true;
   // An empty PredefinedType may come back CONST, as the convert probe allows.
-  const predefined = act.args.at(-1);
+  const predefined = predefinedOf(act);
   if (predefined === null || predefined?.enum === 'CONST') return false;
   const shape = act.args[6]?.ref;
   const aspects = shape === undefined ? [] : step.of('IFCSHAPEASPECT').filter((a) => a.args[4]?.ref === shape);
   const values = step.get(act.args[7])?.args[1];
   return !(aspects.length === 1 && Array.isArray(values) && aspects[0].args[0]?.length === values.length);
 }
+
+/** IFC4 activities that can apply a load configuration. */
+const ACTIVITIES = ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALCURVEREACTION', 'IFCSTRUCTURALSURFACEREACTION'];
 
 /** The source record a `<path>#<id>` problem names. */
 const recordOf = (f, m) => f.file(m[1]).get(Number(m[2]));
@@ -103,7 +110,7 @@ export const LIMITS = [
     cite: 'the activity it names came back as another record because IFC2X3 held it only as IfcProxy (same cause as above)',
     holds: (f, m) => {
       const step = f.file(m[1]);
-      const rel = step.get(Number(m[2]));
+      const rel = recordOf(f, m);
       return rel?.type === 'IFCRELCONNECTSSTRUCTURALACTIVITY' && proxied(f, step, step.get(rel.args[5]));
     },
   },
@@ -119,7 +126,7 @@ export const LIMITS = [
     cite: 'IFC2X3 has no IfcStructuralCurveAction (IfcStructuralAction ONEOF, IFC2X3_TC1.exp:7230); its varying action has no PredefinedType (IFC2X3_TC1.exp:7312), so a LINEAR or POLYGONAL action cannot come back as such',
     holds: (f, m) => {
       const rec = recordOf(f, m);
-      return rec?.type === 'IFCSTRUCTURALCURVEACTION' && !['NOTDEFINED', 'CONST'].includes(rec.args[11]?.enum)
+      return rec?.type === 'IFCSTRUCTURALCURVEACTION' && !['NOTDEFINED', 'CONST'].includes(predefinedOf(rec)?.enum)
         && !f.has('IFC2X3', 'IfcStructuralCurveAction') && f.required('IFC4', 'IfcStructuralCurveAction', 'PredefinedType')
         && !f.attributes('IFC2X3', 'IfcStructuralLinearActionVarying').includes('PredefinedType');
     },
@@ -138,16 +145,19 @@ export const LIMITS = [
     cite: 'IFC2X3 has no IfcStructuralLoadConfiguration (IFC4_ADD2_TC1.exp:9470); it holds the loads only on a varying action, located by point representations of that action\'s own shape (IFC2X3_TC1.exp:7314). Each of these configurations has a Name, which nothing in IFC2X3 holds, or is applied by an action with no shape or by a curve reaction, which IFC2X3 lacks',
     holds: (f, m) => {
       const step = f.file(m[1]);
-      const rec = step.get(Number(m[2]));
+      const rec = recordOf(f, m);
       if (rec?.type !== 'IFCSTRUCTURALLOADCONFIGURATION' || f.has('IFC2X3', 'IfcStructuralLoadConfiguration')) return false;
-      const users = [...step.entities.values()].filter((e) => e.args[7]?.ref === rec.id && /^IFCSTRUCTURAL\w+(ACTION|REACTION)$/.test(e.type));
-      return rec.args[0] !== null || (users.length > 0 && users.every((u) => u.args[6] === null || (/REACTION$/.test(u.type) && !f.has('IFC2X3', f.name('IFC4', u.type)))));
+      const named = rec.args[0] !== null;
+      // An activity that applies it (AppliedLoad) and that IFC2X3 cannot hold with a location: no shape, or a reaction it lacks.
+      const users = ACTIVITIES.flatMap((t) => step.of(t)).filter((a) => a.args[7]?.ref === rec.id);
+      const unlocatable = (a) => a.args[6] === null || (/REACTION$/.test(a.type) && !f.has('IFC2X3', f.name('IFC4', a.type)));
+      return named || (users.length > 0 && users.every(unlocatable));
     },
   },
   ownerHistoryPolicy('IFC4/IfcStructuralSurfaceMember'),
   {
     row: 'IFC4/IfcStructuralSurfaceMemberVarying', level: 'convert', kind: 'schema',
-    problem: /^(.+): \d+ of \d+ IfcStructuralSurfaceMemberVarying record\(s\) in the IFC2X3 file do not conform to IFC2X3 \(SubsequentThickness: required value empty, VaryingThicknessLocation: required value empty at #\d+(?:, #\d+)*\)$/,
+    problem: nonConformingOnly('IfcStructuralSurfaceMemberVarying', 'IFC2X3', 'SubsequentThickness: required value empty, VaryingThicknessLocation: required value empty'),
     cite: 'IFC2X3 requires SubsequentThickness LIST [2:?] and VaryingThicknessLocation (IFC2X3_TC1.exp:7522, :7523), which IFC4 does not have (IFC4_ADD2_TC1.exp:9652); the source gives no Pset_StructuralSurfaceMemberVaryingThickness, so filling them would invent thicknesses',
     holds: (f, m) => f.required('IFC2X3', 'IfcStructuralSurfaceMemberVarying', 'SubsequentThickness')
       && f.slot('IFC4', 'IfcStructuralSurfaceMemberVarying', 'SubsequentThickness') === null
@@ -222,9 +232,10 @@ function holds(limit, facts, match) {
  * from `runProbes`, whose `problems` is the full list the probe reported):
  * `cell.limits = { open, by: [{ kind, cite }] }`, where `open` counts the
  * problems no limit matched. Returns what is wrong with the limits themselves:
- * one that names no probed cell, whose fact does not hold, or that matches no
- * problem (its cell passes, or the probe errored or changed its wording). Such
- * a limit labels nothing; the cell's status and points are untouched either way.
+ * one that names no probed cell, whose fact does not hold for a problem it
+ * matches (that problem stays open), or that matches no problem (its cell
+ * passes, or the probe errored or changed its wording). The cell's status and
+ * points are untouched either way.
  */
 export function markLimits(cells, facts, limits = LIMITS) {
   const issues = [];

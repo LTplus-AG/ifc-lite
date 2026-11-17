@@ -149,7 +149,7 @@ test('limits (#9668): each names a catalogue row, an applicable level, a kind an
   for (const l of LIMITS) {
     assert.ok(byId.has(l.row), l.row);
     assert.equal(notApplicable(byId.get(l.row), l.level), null, `${l.row} ${l.level}`);
-    assert.ok(KINDS.includes(l.kind), l.kind);
+    assert.ok(Object.hasOwn(KINDS, l.kind), l.kind);
     assert.ok(l.problem instanceof RegExp && typeof l.holds === 'function' && l.cite.length > 20, l.row);
   }
 });

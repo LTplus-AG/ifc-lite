@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENTITY_LEVELS, LEVELS, SCHEMAS, deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
-import { KINDS } from '../tests/structural-coverage/limits.mjs';
+import { KINDS as KIND } from '../tests/structural-coverage/limits.mjs';
 import { SUMMARY_SCHEMA as SCHEMA, verifySummary } from '../tests/structural-coverage/score.mjs';
 
 const flag = (name) => { const i = process.argv.indexOf(name); return i !== -1 ? process.argv[i + 1] : null; };
@@ -72,8 +72,6 @@ const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1)}…` : text
 const icon = (c) => (c.applicable === false ? '–' : ICON[c.status] ?? '❌');
 const ROW = { met: '✅ met', partial: '◐ partial', missing: '❌ missing' };
 
-const KIND = { schema: 'out of reach (schema)', policy: 'policy-limited', upstream: 'upstream' };
-if (Object.keys(KIND).join() !== KINDS.join()) fail(`the ledger names limit kinds ${Object.keys(KIND)}, limits.mjs ${KINDS}`);
 
 /**
  * What keeps a cell from passing: its limit kinds when every problem is labelled

@@ -21,7 +21,7 @@ function message(locale: 'en' | keyof typeof catalogues, count: number) {
   if (locale !== 'en') registerLocale(locale, catalogues[locale]);
   setLocale(locale);
   const info = mock.method(toast, 'info', () => {});
-  const result = stepExportResult('Exported', Array.from({ length: count }, (_, i) => `w${i}`), resolve, locale);
+  const result = stepExportResult('Exported', Array.from({ length: count }, (_, i) => `w${i}`), resolve);
   assert.equal(info.mock.calls[0].arguments[0], result.message);
   info.mock.restore();
   return result.message;
@@ -44,7 +44,7 @@ test('#10606 STEP warning toasts join with a period and format the count for the
 
 test('#10606 duplicate warnings are counted once and a summary ending in a period gets no second one', () => {
   const info = mock.method(toast, 'info', () => {});
-  const result = stepExportResult('Left out: annex.ifc.', ['same', 'same', 'other'], resolve, 'en');
+  const result = stepExportResult('Left out: annex.ifc.', ['same', 'same', 'other'], resolve);
   assert.equal(result.message, 'Left out: annex.ifc. 2 warnings');
   assert.deepEqual(result.warnings, ['same', 'other']);
   assert.equal(info.mock.callCount(), 1);

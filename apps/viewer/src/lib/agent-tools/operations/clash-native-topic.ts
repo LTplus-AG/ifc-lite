@@ -4,7 +4,7 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
-import { clashRuntime, currentClash } from './clash-native';
+import { clashRuntime, currentClashes } from './clash-native';
 export const clashTopicOperations = [
   viewerOperation<{
     kind: 'pair' | 'report' | 'group';
@@ -59,7 +59,7 @@ export const clashTopicOperations = [
       )
         throw new Error('Use one pair, an empty report population, or an explicit named nonempty group.');
       const result = s.clashResult,
-        pairs = i.clash_ids.map((id) => currentClash(i.run_seq, id));
+        pairs = currentClashes(i.run_seq, i.clash_ids);
       const isCurrent = () =>
         !c.signal?.aborted &&
         useViewerStore.getState().clashResult === result &&

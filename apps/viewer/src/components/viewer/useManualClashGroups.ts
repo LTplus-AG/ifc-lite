@@ -209,7 +209,8 @@ export function useManualClashGroups({
     await runTopic(async({isCurrent})=>{try{
       const created=await createNativeClashTopic({clashes:group.members,total:group.members.length,groupName:group.definition.name,mode:focusMode,focusClashes,isCurrent});
       if(created)toast.success(t('clashTools.bcfTopic.created'),{label:t('clashTools.bcfTopic.open'),onClick:()=>setBcfPanelVisible(true)});
-    }catch(error){console.error('[clash] Manual-group BCF topic creation failed:',error);if(isCurrent())toast.error('Could not create a BCF topic for this clash group.');}});
+      else if(isCurrent())toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
+    }catch(error){console.error('[clash] Manual-group BCF topic creation failed:',error);if(isCurrent())toast.error(error instanceof Error?error.message:'Could not create a BCF topic for this clash group.');}});
   },[resolved,runTopic,focusMode,focusClashes,t,setBcfPanelVisible]);
 
   const dialogProps = useMemo(

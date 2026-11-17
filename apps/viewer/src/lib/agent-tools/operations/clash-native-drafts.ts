@@ -4,7 +4,7 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
-import { currentClash } from './clash-native';
+import { currentClashes } from './clash-native';
 export const clashDraftOperations = [
   viewerOperation<{
     source: 'groups' | 'selection';
@@ -82,7 +82,7 @@ export const clashDraftOperations = [
           : await draftBatchFromSelection(
               i.name,
               i.title,
-              i.clash_ids.map((id) => currentClash(i.run_seq, id)),
+              currentClashes(i.run_seq, i.clash_ids),
               run,
             );
       assertToolActive(c);

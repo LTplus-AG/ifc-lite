@@ -219,7 +219,8 @@ const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
  * `rust/geometry/**` and leaves the rest of the directory untriggered.
  */
 function coversAll(glob, globs) {
-  if (!glob.endsWith('/**')) return matchesAny(glob, globs);
+  // Any other wildcard has no subset test here: only the identical entry covers it.
+  if (!glob.endsWith('/**')) return /[*?]/.test(glob) ? globs.includes(glob) : matchesAny(glob, globs);
   const dir = glob.slice(0, -3);
   return globs.some((g) => {
     if (g === '**') return true;

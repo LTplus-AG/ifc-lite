@@ -49,7 +49,7 @@ export const structuralDeriveEn = {
   "structuralDerive.consistency.title": "Analysis model check",
   "structuralDerive.consistency.checking": "Checking the analysis model against the physical model…",
   "structuralDerive.consistency.consistent": "The analysis model is consistent with the physical model: no structural item has moved, drifted or lost its link.",
-  "structuralDerive.consistency.consistentWithoutAxes": "No structural item has lost its link to the physical model. Movement and axis drift were not checked: this model's element axes cannot be read.",
+  "structuralDerive.consistency.consistentWithoutAxes": "The checks that could run found nothing. Movement and axis drift were not checked: this model's element axes cannot be read.",
   "structuralDerive.consistency.failed": "The analysis model could not be checked: {error}",
   "structuralDerive.consistency.findings": "Where the analysis model and the physical model disagree ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} is out of date: {element} moved {distance} m since it was derived",

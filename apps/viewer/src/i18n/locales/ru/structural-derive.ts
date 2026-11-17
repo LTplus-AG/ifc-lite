@@ -45,7 +45,7 @@ export const structuralDeriveRu = {
   "structuralDerive.consistency.title": "Проверка расчётной модели",
   "structuralDerive.consistency.checking": "Сравнение расчётной модели с физической…",
   "structuralDerive.consistency.consistent": "Расчётная модель согласована с физической: ни один конструктивный элемент не сдвинут, не отклонился и не потерял связь.",
-  "structuralDerive.consistency.consistentWithoutAxes": "Ни один конструктивный элемент не потерял связь с физической моделью. Смещение и отклонение от оси не проверялись: оси элементов этой модели прочитать нельзя.",
+  "structuralDerive.consistency.consistentWithoutAxes": "Проверки, которые удалось выполнить, ничего не нашли. Смещение и отклонение от оси не проверялись: оси элементов этой модели прочитать нельзя.",
   "structuralDerive.consistency.failed": "Не удалось проверить расчётную модель: {error}",
   "structuralDerive.consistency.findings": "Расхождения между расчётной и физической моделью ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} устарел: {element} сдвинут на {distance} м после вывода",

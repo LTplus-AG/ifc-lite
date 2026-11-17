@@ -107,9 +107,9 @@ END-ISO-10303-21;`);
     expect(got.resultGroups).toEqual(data.resultGroups);
     expect(got.loads).toEqual(data.activities.filter((a) => a.kind === 'Action'));
     expect(got.reactions).toEqual(data.activities.filter((a) => a.kind === 'Reaction'));
-    // Fixture #89 links physical IfcBeam #88 to analytical member #30 (#9922).
+    // Fixture #104 links physical IfcBeam #103 to analytical member #30 (#9922).
     // Pin the declared endpoints independently of the command's projection.
-    expect(got.links).toEqual([{ structuralItemId: 30, physicalElementId: 88 }]);
+    expect(got.links).toEqual([{ structuralItemId: 30, physicalElementId: 103 }]);
     const table = run(fixture);
     expect(table.status, table.stderr).toBe(0);
     expect(table.stdout).toContain('Load groups / cases');

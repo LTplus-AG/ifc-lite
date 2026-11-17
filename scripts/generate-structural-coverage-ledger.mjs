@@ -22,6 +22,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENTITY_LEVELS, LEVELS, SCHEMAS, deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
+import { KINDS } from '../tests/structural-coverage/limits.mjs';
 import { SUMMARY_SCHEMA as SCHEMA, verifySummary } from '../tests/structural-coverage/score.mjs';
 
 const flag = (name) => { const i = process.argv.indexOf(name); return i !== -1 ? process.argv[i + 1] : null; };
@@ -71,14 +72,46 @@ const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1)}…` : text
 const icon = (c) => (c.applicable === false ? '–' : ICON[c.status] ?? '❌');
 const ROW = { met: '✅ met', partial: '◐ partial', missing: '❌ missing' };
 
+/**
+ * What keeps a cell from passing: its limit kinds when every problem is labelled
+ * (`tests/structural-coverage/limits.mjs`), 'not written', 'skip' or 'probe error' for those statuses, else 'reachable'.
+ */
+function reach(c) {
+  if (c.status === 'unwritten') return 'not written';
+  if (c.status === 'skip') return 'skip';
+  if (c.status === 'error') return 'probe error';
+  return c.limits?.open === 0 ? [...new Set(c.limits.by.map((l) => KINDS[l.kind]))].join(', ') : 'reachable';
+}
+
+/** The cell's limits with their citations, or ''. */
+function limitsNote(c) {
+  if (!c.limits) return '';
+  const kinds = new Set(c.limits.by.map((l) => l.kind));
+  const cites = c.limits.by.map((l) => (c.limits.open || kinds.size > 1 ? `${KINDS[l.kind]}: ${l.cite}` : l.cite)).join('; ');
+  return `<br>${reach(c)}${c.limits.open ? ` (${c.limits.open} problem(s) not labelled)` : ''}: ${cites}`;
+}
+
 function why(row) {
   const parts = [];
   for (const level of LEVELS) {
     const c = row.levels[level];
     if (!c || c.applicable === false || c.status === 'pass' || c.status === 'unwritten') continue;
-    parts.push(`**${level}** ${c.status}: ${clip(c.reason ?? 'no reason given', 200)}`);
+    parts.push(`**${level}** ${c.status}: ${clip(c.reason ?? 'no reason given', 200)}${limitsNote(c)}`);
   }
   return cell(parts.join('<br>'));
+}
+
+/** Cells not met, counted by `reach`. */
+function unmet() {
+  const counts = new Map();
+  for (const r of summary.rows) {
+    for (const c of Object.values(r.levels)) {
+      if (c.applicable === false || c.status === 'pass') continue;
+      const k = reach(c);
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+  }
+  return [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([k, n]) => `${k} ${n}`).join(', ');
 }
 
 function render() {
@@ -95,6 +128,8 @@ function render() {
     lines.push('');
   }
   lines.push(`**Total: ${t.score} / ${t.max} rows** (met ${t.met}, partial ${t.partial}, missing ${t.missing}). **Cells: ${summary.cells.score} / ${summary.cells.max}.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: \`node tests/structural-coverage/score.mjs --check ${summaryPath}\` fails when the total, the cell score, any row or any cell drops.`);
+  lines.push('');
+  lines.push(`**Cells not met:** ${unmet() || 'none'}. A limit labels a problem no product change can fix: the schemas have no slot or entity for it, a policy forbids the fix, or the fixture's exporter wrote it (\`tests/structural-coverage/limits.mjs\`, each with its citation, checked on every run). It never changes a score.`);
   lines.push('');
   lines.push('| Level | Score | Pass | Partial | Fail | Skip | Not written |');
   lines.push('|---|---|---|---|---|---|---|');

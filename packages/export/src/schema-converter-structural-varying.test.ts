@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter, exportToStep } from './step-exporter.js';
@@ -132,6 +134,20 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     const out = exportToStep(await parse(IFC2X3.replace(',#11,(#21));', ',#13,(#21));')), { schema: 'IFC4' });
     expect(line(out, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
     expect(records(out, 'IFCSTRUCTURALLOADCONFIGURATION')).toEqual(['#32=IFCSTRUCTURALLOADCONFIGURATION($,(#22,#23,#24),$);']);
+  });
+
+  // The R12 fixture gives one location per load (IFC2X3 VaryingAppliedLoadLocation corresponds by index);
+  // before, one location for three loads left both actions unconverted (case B above).
+  const coverage = fileURLToPath(new URL('../../../tests/models/ifcopenshell/generated_structural_coverage_ifc2x3.ifc', import.meta.url));
+  it.skipIf(!existsSync(coverage))('converts the IFC2X3 coverage fixture varying actions both ways (pnpm fixtures if absent)', async () => {
+    const source = new TextDecoder().decode(readFileSync(coverage));
+    const ifc4 = exportToStep(await parse(source), { schema: 'IFC4' });
+    expect(records(ifc4, 'IFCSTRUCTURAL(LINEAR|PLANAR)ACTIONVARYING')).toEqual([]);
+    expect(records(ifc4, 'IFCSTRUCTURALLOADCONFIGURATION')).toHaveLength(2);
+    const back = exportToStep(await parse(ifc4), { schema: 'IFC2X3' });
+    for (const type of ['IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']) {
+      expect(records(back, type)).toEqual(records(source, type));
+    }
   });
 
   it('needs the source store, so a subset export keeps the varying action unconverted', async () => {

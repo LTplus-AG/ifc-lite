@@ -4,7 +4,7 @@ The viewer's local agent connection offers a bounded operation gateway alongside
 its existing model tools and command palette gateway. It uses native SDK adapters
 and store actions. Most services work with their panels closed; renderer and editor prerequisites remain explicit.
 
-`viewer_operation_coverage` reports the finite audit of all 35 built-in panels,
+`viewer_operation_coverage` reports the finite audit of every built-in panel,
 viewport tools and toolbar exports: concrete control bindings, missing bindings,
 presentation equivalents and native browser/credential/review boundaries. A complete
 audit means every listed control is classified; it does not mean every control can

@@ -252,7 +252,7 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
   });
   it('audits every built-in panel, tool and export while retaining native boundaries', () => {
     const report = viewerOperationCoverage();
-    assert.equal(report.panel_count, 35); assert.equal(report.all_controls_automatable, false);
+    assert.equal(report.panel_count, WORKSPACE_PANELS.length); assert.equal(report.all_controls_automatable, false);
     assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
     assert.deepEqual(report.panels.flatMap(panel => panel.gaps.map(gap => `${panel.id}: ${gap}`)), []);
     assert.deepEqual(report.tools.flatMap(tool => tool.gaps.map(gap => `${tool.id}: ${gap}`)), []);

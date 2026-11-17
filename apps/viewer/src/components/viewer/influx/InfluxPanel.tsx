@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchInfluxReadings, InfluxRequestError, matchInfluxSeries } from '@ifc-lite/flow-nodes/influx';
+import { type fetchInfluxReadings, InfluxRequestError, matchInfluxSeries } from '@ifc-lite/flow-nodes/influx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { configFields, readInfluxConfig, saveInfluxConfig, influxSelection, type InfluxConfig } from '@/lib/influx/config';
+import { configFields, readInfluxConfig, saveInfluxConfig, type InfluxConfig } from '@/lib/influx/config';
+import { loadInfluxReadings } from '@/lib/influx/load-readings';
 import { influxTargets } from '@/lib/influx/targets';
 import { InfluxHistory } from './InfluxHistory';
 
@@ -59,7 +60,7 @@ export function InfluxPanel() {
     try {
       try { saveInfluxConfig(config, token); }
       catch { setError('influx.error.storage'); return; }
-      const readings = await fetchInfluxReadings(influxSelection(config), token, fetch, controller.signal);
+      const readings = await loadInfluxReadings(config, token, controller.signal);
       if (current === generation.current) setData(readings);
     } catch (cause) {
       if (current === generation.current) setError(errorKeys[cause instanceof InfluxRequestError ? cause.kind : 'data']);

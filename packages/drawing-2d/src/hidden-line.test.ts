@@ -165,8 +165,8 @@ describe('applyVisibility split-segment depths (PR #2644 review)', () => {
   // over x,y in [0, 10]; L1 runs (0,5)->(6,5) with depth 7 -> 2 and L2
   // continues (6,5)->(10,5) at constant depth 2. L1's depth crosses the
   // occluder at t = 0.4 (x = 2.4); the transition is bisected onto that
-  // crossing (to within a raster pixel, about x = 2.4), where the lerped view
-  // depth is about 5.0. Before the
+  // crossing (within the bisection interval), where the lerped view
+  // depth is about 5.0. This flat occluder has no depth raster uncertainty. Before the
   // fix, applyVisibility spread L1's ORIGINAL depth pair (7, 2) onto both
   // split halves, and mergeDrawingLines then faithfully propagated the stale
   // 7 onto a merged VISIBLE line spanning [2.4, 10] - self-contradictory
@@ -196,13 +196,13 @@ describe('applyVisibility split-segment depths (PR #2644 review)', () => {
     const [hiddenHalf, visibleHalf] = applied;
     expect(hiddenHalf.visibility).toBe('hidden');
     expect(visibleHalf.visibility).toBe('visible');
-    expect(visibleHalf.line.start.x).toBeCloseTo(2.4, 1);
+    expect(visibleHalf.line.start.x).toBeCloseTo(2.4, 2);
 
     // Each split segment's endpoint depths must describe ITS OWN endpoints:
     // the shared split point carries the same lerped depth on both sides.
     expect(hiddenHalf.depth).toBe(7);
-    expect(hiddenHalf.depthEnd).toBeCloseTo(5, 1);
-    expect(visibleHalf.depth).toBeCloseTo(5, 1);
+    expect(hiddenHalf.depthEnd).toBeCloseTo(5, 2);
+    expect(visibleHalf.depth).toBeCloseTo(5, 2);
     expect(visibleHalf.depthEnd).toBeCloseTo(2, 9);
   });
 
@@ -215,11 +215,11 @@ describe('applyVisibility split-segment depths (PR #2644 review)', () => {
 
     const visible = merged.filter((l) => l.visibility === 'visible');
     expect(visible).toHaveLength(1);
-    expect(visible[0].line.start.x).toBeCloseTo(2.4, 1);
+    expect(visible[0].line.start.x).toBeCloseTo(2.4, 2);
     expect(visible[0].line.end.x).toBeCloseTo(10, 9);
     // The depth at the merged start must describe that point (about 5, the
     // occluder's own depth there), never L1's original start depth 7.
-    expect(visible[0].depth).toBeCloseTo(5, 1);
+    expect(visible[0].depth).toBeCloseTo(5, 2);
     expect(visible[0].depthEnd).toBeCloseTo(2, 9);
   });
 });
@@ -483,6 +483,30 @@ describe('HiddenLineClassifier with a non-zero MeshData.origin (PR #2621)', () =
 });
 
 describe('HiddenLineClassifier transition point (bisected, not half a sample)', () => {
+  it('bisects off-sample depth crossings in both directions (#9705)', () => {
+    // The crossing lies strictly between coarse samples. Reusing either
+    // endpoint's depth during bisection moves the split to a sample boundary.
+    for (const [depth, depthEnd] of [[2, 9], [9, 2]]) {
+      const classifier = new HiddenLineClassifier({
+        resolution: 256, samplesPerLine: 10, depthBias: 0,
+      });
+      classifier.buildDepthBuffer([occluderMesh()], { axis: 'z', position: 0, flipped: false }, 10);
+      const line: DrawingLine = {
+        line: { start: { x: 1, y: 5 }, end: { x: 9, y: 5 } },
+        category: 'projection', visibility: 'visible', entityId: 1,
+        ifcType: 'IfcWall', modelIndex: 0, depth, depthEnd,
+      };
+      const [result] = classifier.classifyLines([line]);
+      expect(result.overallVisibility).toBe('partial');
+      expect(result.segments).toHaveLength(2);
+      expect(result.segments[0].visible).toBe(depth < 5);
+      expect(result.segments[1].visible).toBe(depthEnd < 5);
+      const crossingX = 1 + 8 * (5 - depth) / (depthEnd - depth);
+      expect(result.segments[0].end.x).toBeCloseTo(crossingX, 2);
+      expect(result.segments[1].start.x).toBe(result.segments[0].end.x);
+    }
+  });
+
   it('ends the hidden stretch at the occluder edge, not half a sample past it', () => {
     // A slab at view depth 5 covers y in [-1, 1.2] of a 10-high vertical edge
     // at view depth 7 behind it. With 10 samples (spacing 1) the flip is

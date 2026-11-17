@@ -14,6 +14,9 @@ export interface StructuralLoadData {
   components: Record<string, number>;
   /** Present only for `IfcStructuralLoadConfiguration`: its nested loads. */
   configuration?: StructuralLoadConfigurationData;
+  /** Ordered measures from an IFC4/IFC4X3 surface reinforcement result. */
+  SurfaceReinforcement1?: number[];
+  SurfaceReinforcement2?: number[];
 }
 
 /** One `Values` slot of an `IfcStructuralLoadConfiguration`, paired with its location. */
@@ -122,6 +125,8 @@ export interface StructuralAnalysisModelData {
 }
 
 export interface StructuralExtractionData {
+  /** Standalone or referenced surface reinforcement results, indexed by local express id. */
+  reinforcementAreas?: StructuralLoadData[];
   analysisModels: StructuralAnalysisModelData[];
   members: StructuralMemberData[];
   connections: StructuralConnectionData[];

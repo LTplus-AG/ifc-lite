@@ -117,11 +117,11 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Category | Examples |
 | --- | --- |
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
-| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `units`, `cost_data`, `cost_evaluate` |
+| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops` (grounding-gated), `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview`, `ids_infer`, `ids_coverage`, `ids_test` |
-| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
+| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
 | Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`: add, re-level (elevation or floor-to-floor) and delete storeys with geometry following them. `storey_plan_edit` dry-runs the edit and reports refusals before anything is written |
@@ -178,7 +178,16 @@ written until `export_ifc` or `model_save`.
 
 `relationships` (voids/fills/groups/connections), `units`, `georeferencing` and
 the geometry, clash and viewer tools answer from the parsed model and say so by
-never carrying `pendingMutations`.
+never carrying `pendingMutations` (`georeferencing` reports a queued
+`georeferencing_write` in its own `georef.pending` instead).
+
+`georeferencing_write` sets, updates or removes a model's georeferencing
+(IfcProjectedCRS + IfcMapConversion; IFC4X3 IfcMapConversionScaled; IFC2X3
+ePSet_MapConversion/ePSet_ProjectedCRS), or writes the IfcSite
+position (action `site`), and refuses, naming the missing input, rather than
+guess a CRS, unit or scale. `georeferencing_check` diagnoses the georeferencing
+and plans fixes; `georeferencing_fix` applies only the ones that go through the
+write API with every value known and no checker caveat. See the Georeferencing guide.
 
 One GlobalId resolves to one entity everywhere: an entity the session created
 wins over a same-GlobalId entity in the file, and a deleted one never resolves.

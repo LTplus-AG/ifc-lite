@@ -5,7 +5,7 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r7.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r9.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
@@ -18,7 +18,7 @@ A failed build is a harness error, never a product score. Without wasm-pack, `bu
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
 wasm toolchain. The toggle probe also loads the viewer’s Node test adapter.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r7.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r9.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -137,3 +137,7 @@ R5 adds 74 edit and 74 remove passes to R4, for 469.5/774 cells. R4 render cover
 [R6 round-3 close](baseline/r6-notes.md): main after #9923 is 92.5/119 rows and 721/774 cells (from 56/119 and 469.5/774 at R5), with every changed cell listed.
 
 [R7 round-4 close](baseline/r7-notes.md): main at `2d09a32fce` is 104.5/119 rows and 750.5/774 cells (from 92.5/119 and 721/774 at R6), with every changed cell listed.
+
+[R8 harness correction measurement](baseline/r8-notes.md): no product changes; two read-probe corrections and the reinforcement results already on main (#10530) bring the measurement to 106/119 rows and 755.5/774 cells. R0 to R7 remain retained.
+
+[R9 mapped topology](baseline/r9-notes.md): the member render oracle follows a topology representation reached through an `IfcMappedItem`; 106/119 rows and 756/774 cells. R0 to R8 remain retained.

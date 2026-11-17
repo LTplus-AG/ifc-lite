@@ -1738,5 +1738,13 @@
   "agentBridge.panel.editChange": {
     "value": "{entity} · {field}: {before} → {after}",
     "reason": "Placeholders and symbols only (middle dot, colon, arrow); no English prose."
+  },
+  "siteContext.card.imageryGsd": {
+    "value": "{gsd} m per pixel",
+    "reason": "Italian uses the same wording « per pixel » for a ground sample distance; placeholder and unit symbol only otherwise."
+  },
+  "siteContext.section.radiusValue": {
+    "value": "{radius} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
   }
 }

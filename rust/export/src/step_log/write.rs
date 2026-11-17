@@ -161,6 +161,13 @@ fn write_header<W: Write>(out: &mut W, opts: &StepOptions, content: &[u8], conve
     crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, modifications)
 }
 
+/// The FILE_SCHEMA this export declares: the source's token unless it converts. It decides whether
+/// IfcMapConversionScaled may be written (TS: `pass.schemaToken`).
+fn declared_schema(content: &[u8], converting: bool, target: &str) -> String {
+    let source_header = crate::source_header::parse_source_header(content);
+    crate::file_schema::declared_token(source_header.as_ref(), converting, target).to_string()
+}
+
 fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
@@ -203,7 +210,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let unwritable = |e: super::values::Unwritable| invalid(format!("export_step_with_log: {}", e.0));
     let collected = collect(&mut pass, &mut base);
     if let Some(georef) = &log.georef_mutations {
-        super::georef::apply(&mut pass, georef).map_err(unwritable)?;
+        super::georef::apply(&mut pass, georef, &declared_schema(content, converting, &target)).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
 

@@ -296,6 +296,9 @@ importers:
       '@ifc-lite/geo':
         specifier: workspace:^
         version: link:../../packages/geo
+      '@ifc-lite/geodata-ch':
+        specifier: workspace:^
+        version: link:../../packages/geodata-ch
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -368,6 +371,9 @@ importers:
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client
+      '@ifc-lite/site-context':
+        specifier: workspace:^
+        version: link:../../packages/site-context
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar
@@ -392,6 +398,9 @@ importers:
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../../packages/tiles3d
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../../packages/wasm
@@ -675,6 +684,9 @@ importers:
       '@ifc-lite/geo':
         specifier: workspace:^
         version: link:../../packages/geo
+      '@ifc-lite/geodata-ch':
+        specifier: workspace:^
+        version: link:../../packages/geodata-ch
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -747,6 +759,9 @@ importers:
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client
+      '@ifc-lite/site-context':
+        specifier: workspace:^
+        version: link:../../packages/site-context
       '@ifc-lite/solar':
         specifier: workspace:^
         version: link:../../packages/solar
@@ -771,6 +786,9 @@ importers:
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial
+      '@ifc-lite/tiles3d':
+        specifier: workspace:^
+        version: link:../../packages/tiles3d
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../../packages/wasm
@@ -830,7 +848,7 @@ importers:
         specifier: ^8.1.0
         version: 8.1.0
       '@ifc-lite/parser':
-        specifier: ^9.9.0
+        specifier: ^10.0.0 || ^9.9.0
         version: 9.9.0
     devDependencies:
       typescript:
@@ -958,7 +976,7 @@ importers:
         specifier: ^8.1.0
         version: 8.1.0
       '@ifc-lite/parser':
-        specifier: ^9.9.0
+        specifier: ^10.0.0 || ^9.9.0
         version: 9.9.0
       three:
         specifier: ^0.186.1
@@ -1186,6 +1204,9 @@ importers:
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
+      '@ifc-lite/georef-check':
+        specifier: workspace:^
+        version: link:../georef-check
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
@@ -2513,6 +2534,12 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export
+      '@ifc-lite/geo':
+        specifier: workspace:^
+        version: link:../geo
+      '@ifc-lite/georef-check':
+        specifier: workspace:^
+        version: link:../georef-check
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids

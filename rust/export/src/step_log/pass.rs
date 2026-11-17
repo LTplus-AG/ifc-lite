@@ -25,6 +25,8 @@ pub(crate) struct Pass<'s, 'a> {
     /// Named attribute edits per entity, in the overlay's order.
     pub(crate) modified_attributes: Vec<(u32, Vec<(String, String)>)>,
     attribute_slot: HashMap<u32, usize>,
+    /// (entity, attribute) pairs whose edit is TEXT by the writer's own decision, out of band of the value.
+    pub(crate) text_edits: HashSet<(u32, String)>,
     pub(crate) skip: HashSet<u32>,
     /// Shared relation -> elements copied on write off its `RelatedObjects`
     /// (`pass.detachedRelatedObjects`, #5794).
@@ -64,6 +66,7 @@ impl<'s, 'a> Pass<'s, 'a> {
             nominees: Nominees::default(),
             modified_attributes: Vec::new(),
             attribute_slot: HashMap::new(),
+            text_edits: HashSet::new(),
             skip: HashSet::new(),
             detached: HashMap::new(),
             rewritten: HashSet::new(),
@@ -267,7 +270,7 @@ impl<'s, 'a> Pass<'s, 'a> {
             working = new_type.to_uppercase();
         }
         if let Some(edits) = edits.as_ref().filter(|e| !e.is_empty()) {
-            let (named, rejected) = super::attrs::apply_named(&out, &working, edits, self.schema);
+            let (named, rejected) = super::attrs::apply_named(&out, &working, edits, self.schema, &|name| self.text_edits.contains(&(id, name.to_string())));
             for (attr, value) in rejected {
                 self.warnings.push(format!(
                     "entity #{id}: attribute {attr} not written - {} is not a number and the slot is REAL-typed",

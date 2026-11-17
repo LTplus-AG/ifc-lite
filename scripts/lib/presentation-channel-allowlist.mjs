@@ -57,6 +57,8 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // LensPanel's rule isolate moved into the shared native lens controls (#10525 follow-up); it still
   // routes its rule matches through resolvePresentationIds.
   'apps/viewer/src/lib/lens/native-controls.ts',
+  // Site context card (#10481): shows/hides the model's own building among the neighbours.
+  'apps/viewer/src/components/viewer/properties/SiteContextCard.tsx',
   'apps/viewer/src/components/viewer/PropertiesPanel.tsx',
   'apps/viewer/src/components/viewer/SearchModal.filter.tsx',
   'apps/viewer-embed/src/bridge/handler.ts',

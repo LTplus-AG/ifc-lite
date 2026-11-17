@@ -37,3 +37,4 @@ export {
 } from './loaders.js';
 export { configureCrsDiagnostics, type CrsDiagnosticHandler } from './diagnostics.js';
 export { egm96Undulation } from './egm96-undulation.js';
+export { wellKnownCrsCode } from './well-known-crs.js';

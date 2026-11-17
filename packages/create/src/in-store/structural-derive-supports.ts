@@ -43,7 +43,7 @@ function bottomOf(member: PlannedSurfaceMember, normal: Vec3): number {
  * faces (their edges grown by the tolerance). A line past the body falls back to the lowest of the body's
  * corners nearest it in plan, so a tapered body still gives the soffit at that end, not its lowest point.
  */
-export function bodyUnderside(prism: PrismFact, p: Vec3, tolerance: number): number {
+function bodyUnderside(prism: PrismFact, p: Vec3, tolerance: number): number {
   const { outline, extrusion } = prism;
   const faces = [outline, outline.map((q) => add(q, extrusion)),
     ...outline.map((a, i) => { const b = outline[(i + 1) % outline.length]; return [a, b, add(b, extrusion), add(a, extrusion)]; })];
@@ -51,7 +51,7 @@ export function bodyUnderside(prism: PrismFact, p: Vec3, tolerance: number): num
   for (const face of faces) {
     const normal = areaVector(face);
     if (Math.abs(normal[2]) <= 1e-9 * length(normal)) continue; // vertical: the line runs along it
-    const z = p[2] - dot(sub([p[0], p[1], p[2]], face[0]), normal) / normal[2];
+    const z = p[2] - dot(sub(p, face[0]), normal) / normal[2];
     if (z < lowest && insidePolygon([p[0], p[1], z], face, normal, -tolerance)) lowest = z;
   }
   if (lowest < Infinity) return lowest;
@@ -100,17 +100,16 @@ export function lowestLevelBearings(
     return i;
   };
   const bearing = new Set<number>();
-  /** The flat members ending at each node: their line, and their underside, where a wall or slab may stop. */
-  const flatAt = new Map<number, Array<{ a: Vec3; b: Vec3; underside: number }>>();
+  /** The flat members ending at each node: their line, and their body, under which a wall or slab may stop. */
+  const flatAt = new Map<number, Array<{ a: Vec3; b: Vec3; prism: PrismFact | undefined }>>();
   for (const { member: { startNode, endNode, start, end }, drawn, prism } of members) {
     const startLow = atLevel(startNode);
     const endLow = atLevel(endNode);
     if (startLow && endLow) {
       parent[find(startNode)] = find(endNode);
       for (const n of [startNode, endNode]) {
-        const z = nodes[n].position[2];
         const flats = flatAt.get(n) ?? [];
-        flats.push({ a: start, b: end, underside: prism ? Math.min(bodyUnderside(prism, nodes[n].position, tolerance), z) : z });
+        flats.push({ a: start, b: end, prism });
         flatAt.set(n, flats);
       }
     } else if ((startLow || endLow) && Math.min(drawn[0][2], drawn[1][2]) <= level + tolerance) {
@@ -137,13 +136,15 @@ export function lowestLevelBearings(
         const away = sub(length(sub(a, p)) <= tolerance ? b : a, p);
         return dot(sub(foot, p), away) / length(away) <= tolerance;
       }));
-    // At a flat member's underside, a wall or slab within the tolerance holds the node when its body reaches
+    // At a flat member's underside under this node, a wall or slab within the tolerance holds the node when its body reaches
     // below it (under the beam, a pocket, or a wall the beam frames into); one starting above stands on the run.
     // So does a footing whose top meets the underside, though the node itself is outside it.
-    const held = () => flats.some(({ underside: z }) =>
-      low.some(({ surface, bottom }) => bottom < z && surfaceAt([p[0], p[1], z], [surface], tolerance, tolerance) !== undefined)
-      || footings.some(({ min, max }) => min[2] < z && max[2] >= z - tolerance
-        && p[0] >= min[0] - tolerance && p[0] <= max[0] + tolerance && p[1] >= min[1] - tolerance && p[1] <= max[1] + tolerance));
+    const held = () => flats.some(({ prism }) => {
+      const z = prism ? Math.min(bodyUnderside(prism, p, tolerance), p[2]) : p[2];
+      return low.some(({ surface, bottom }) => bottom < z && surfaceAt([p[0], p[1], z], [surface], tolerance, tolerance) !== undefined)
+        || footings.some(({ min, max }) => min[2] < z && max[2] >= z - tolerance
+          && p[0] >= min[0] - tolerance && p[0] <= max[0] + tolerance && p[1] >= min[1] - tolerance && p[1] <= max[1] + tolerance);
+    });
     if (onRising || held()) bearing.add(node.index);
   }
   const runs = new Map<number, number[]>();

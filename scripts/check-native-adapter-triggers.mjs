@@ -213,6 +213,20 @@ export function corpusJobProblems(text) {
 /** A path inside `glob`, to test coverage with a matcher. */
 const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
 
+/**
+ * Whether `globs` cover `glob`. A literal path: any matching entry. `<dir>/**`: only `**` or a literal `<base>/**` with `<dir>` at or under `<base>`,
+ * so `rust/geometry/x/x` does not cover `rust/geometry/**`. Any other wildcard: the identical entry. Conservative: an entry with a wildcard before `/**` covers no `<dir>/**`.
+ */
+function coversAll(glob, globs) {
+  if (!glob.endsWith('/**')) return /[*?]/.test(glob) ? globs.includes(glob) : matchesAny(glob, globs);
+  const dir = glob.slice(0, -3);
+  return globs.some((g) => {
+    if (!g.endsWith('/**')) return g === '**';
+    const base = g.slice(0, -3);
+    return !/[*?]/.test(base) && (dir === base || dir.startsWith(`${base}/`));
+  });
+}
+
 /** Crates a merge-queue batch must always run on. */
 const ENGINE_CRATES = [...ROOT_CRATES, 'rust/geometry', 'rust/geometry-runtime'];
 
@@ -264,7 +278,7 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
       }
     }
     for (const extra of EXTRA_GLOBS) {
-      if (!matchesAny(probe(extra), pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
+      if (!coversAll(extra, pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
     }
     for (const glob of exclude) {
       if (!pr.includes(glob)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE entry '${glob}' is not in on.pull_request.paths; drop it from scripts/lib/native-adapter-batch.mjs`);
@@ -280,7 +294,7 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
     // The engine core a batch must never skip: the engine crates, the native adapter, the Rust build inputs and the local actions.
     const batch = batchGlobs(pr, exclude, keep);
     for (const glob of [...ENGINE_CRATES.map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
-      if (!matchesAny(probe(glob), batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
+      if (!coversAll(glob, batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
     }
     // Every .mjs the lane runs with `node [--flags]`, and its scripts/ imports, must be able to trigger it, on a batch too.
     for (const script of scriptImports(root, [...text.matchAll(/\bnode (?:--[\w-]+(?:=\S+)? )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {

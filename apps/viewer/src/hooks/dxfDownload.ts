@@ -21,11 +21,16 @@ import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
 
+export function createDxfDownload(dxf: string, filename: string) {
+  const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+  return { filename, blob: new Blob([new Uint8Array(bytes)], { type: 'application/dxf' }), hadUnmappable };
+}
+
 /** Encode `dxf` to windows-1252 bytes and download it as `filename`. Toasts once if a character had no windows-1252 representation. */
 export function downloadDxf(dxf: string, filename: string): void {
-  const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+  const { blob, hadUnmappable } = createDxfDownload(dxf, filename);
   if (hadUnmappable) {
     toast.info('Some characters have no DXF R12 text encoding and were exported as "?".');
   }
-  downloadFile(bytes, filename, 'application/dxf');
+  downloadFile(blob, filename, 'application/dxf');
 }

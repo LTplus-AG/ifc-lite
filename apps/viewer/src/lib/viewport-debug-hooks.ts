@@ -164,6 +164,13 @@ export function installViewportDebugHooks(
       raw: base64(frame.rgba), duplicate: base64(frame.duplicate), png: await encodeColorFrame(Promise.resolve(frame)) };
   };
   host.__ifc_lite_capture_color_frame__ = () => encodeColorFrame(renderer.captureColorFrame());
+  // CPU geometry still referenced on the main thread, by holder (#10264). One walk per call, loaded on first use.
+  host.__ifc_lite_cpu_geometry_held__ = async () => {
+    const { measureCpuGeometryHeld } = await import('./perf/cpuGeometryHeld.js');
+    const state = useViewerStore.getState();
+    return measureCpuGeometryHeld({ models: state.models.values(), geometryResult: state.geometryResult,
+      removedMeshes: state.removedMeshes.values(), renderer });
+  };
   // The camera's world view-projection, the matrix every mesh draw packs as
   // `uniforms.viewProj` (the depth nudge reads its projection from it, #6729).
   host.__ifc_lite_view_projection__ = () => Array.from(renderer.getCamera().getViewProjMatrix().m);
@@ -244,6 +251,7 @@ export function clearViewportDebugHooks(): void {
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_scene_identity__;
   delete host.__ifc_lite_capture_color_frame__;
+  delete host.__ifc_lite_cpu_geometry_held__;
   delete host.__ifc_lite_capture_color_diagnostic__;
   delete host.__ifc_lite_view_projection__;
   delete host.__ifc_lite_render_visibility__;

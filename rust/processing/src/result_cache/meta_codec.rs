@@ -294,6 +294,8 @@ fn encode_diagnostics(w: &mut Writer, d: &GeometryDiagnostics) {
         oversized_ref_drops,
         total_unsupported_items,
         unsupported_items_by_type,
+        budget_refusals,
+        total_budget_refusals,
     } = d;
     w.u32(*schema_version);
     [total_csg_failures, products_with_failures, hosts_with_openings].into_iter().for_each(|v| w.u64(*v));
@@ -340,6 +342,10 @@ fn encode_diagnostics(w: &mut Writer, d: &GeometryDiagnostics) {
     w.u64(*oversized_ref_drops);
     w.u64(*total_unsupported_items);
     encode_reasons(w, unsupported_items_by_type);
+    // BudgetRefusal is #[non_exhaustive], unbuildable here: its serde form is exact (no floats).
+    w.len(budget_refusals.len());
+    budget_refusals.iter().for_each(|b| w.str(&serde_json::to_string(b).expect("strings and integers only")));
+    w.u64(*total_budget_refusals);
 }
 
 fn decode_diagnostics(r: &mut Reader<'_>) -> Result<GeometryDiagnostics, CodecError> {
@@ -386,5 +392,9 @@ fn decode_diagnostics(r: &mut Reader<'_>) -> Result<GeometryDiagnostics, CodecEr
         oversized_ref_drops: r.u64()?,
         total_unsupported_items: r.u64()?,
         unsupported_items_by_type: decode_reasons(r)?,
+        budget_refusals: (0..r.count(8)?)
+            .map(|_| serde_json::from_str(&r.str()?).map_err(|_| CodecError::Malformed("meta", "budget refusal")))
+            .collect::<Result<_, _>>()?,
+        total_budget_refusals: r.u64()?,
     })
 }

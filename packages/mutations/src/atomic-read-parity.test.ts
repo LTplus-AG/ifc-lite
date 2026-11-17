@@ -2,8 +2,9 @@
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { MutablePropertyView } from './mutable-property-view.js';
+import { NewEntityMap } from './new-entity-map.js';
 import { StoreEditor } from './store-editor.js';
 
 function fingerprint(view: MutablePropertyView) {
@@ -75,4 +76,20 @@ it('#9411 reference candidates include numeric references before and inside a sp
     }
   });
   for (const id of [300, 400]) expect(view.getAttributeOverrideReferenceCandidates(id)).toEqual([rel.expressId]);
+});
+
+
+it('#8452 typed queries skip empty override indexes and retain unknown source candidates', () => {
+  const view = new MutablePropertyView(null, 'empty-typed-overrides');
+  view.createEntity('IfcCartesianPoint', [[1, 2, 3]]);
+  const reads = vi.spyOn(NewEntityMap.prototype, 'ofType');
+  try {
+    expect(view.getAttributeOverrideEntityIds(['IfcRelVoidsElement'])).toEqual([]);
+    expect(reads).not.toHaveBeenCalled();
+  } finally { reads.mockRestore(); }
+  view.setAttribute(10000, 'Name', 'unresolved source');
+  expect(view.getAttributeOverrideEntityIds(['IfcRelVoidsElement'])).toEqual([10000]);
+  view.runAtomic(draft => {
+    expect(draft.getAttributeOverrideEntityIds(['IfcRelVoidsElement'])).toEqual([10000]);
+  });
 });

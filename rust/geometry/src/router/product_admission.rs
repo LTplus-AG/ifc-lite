@@ -12,26 +12,10 @@ use crate::Result;
 use ifc_lite_core::EntityDecoder;
 
 impl GeometryRouter {
-    pub(crate) fn report_product_admission(&self, plan: &ProductItems) -> Result<()> {
-        if let Some((item, WalkRefusal::Budget { max_levels })) = plan.refusal.as_deref() {
-            // A product refusal belongs to this request, even beneath a caller's
-            // source suppression scope. No source/template claim is made here.
+    pub(crate) fn report_product_admission(&self, plan: &ProductItems, product: &ifc_lite_core::DecodedEntity) -> Result<()> {
+        if let Some((item, WalkRefusal::Budget { max_levels, details, .. })) = plan.refusal.as_deref() {
             crate::resource::check_current()?;
-            let _policy = self.enter_unsupported_policy(true);
-            self.record_unsupported_item(item.ifc_type.clone());
-            let _error = WalkRefusal::Budget {
-                max_levels: *max_levels,
-            }
-            .into_error(item.id);
-            crate::diag::diag_debug!(
-                { item_id = item.id, ifc_type = ?item.ifc_type, error = %_error,
-                  "product logical admission withheld a root" }
-                else {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[ifc-lite] Product admission refused #{} ({}): {}",
-                        item.id, item.ifc_type, _error);
-                }
-            );
+            self.record_budget_refusal(item.id, details.budget(), *max_levels, details.reached(), Some(product));
         }
         Ok(())
     }

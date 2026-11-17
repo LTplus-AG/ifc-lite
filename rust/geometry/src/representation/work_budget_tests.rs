@@ -32,7 +32,7 @@ impl WalkVisitor for Work {
     fn refused(&mut self, item: &DecodedEntity, why: WalkRefusal, ctx: &WalkCtx<'_>) {
         self.refusals.push((
             item.id,
-            format!("{why:?}"),
+            match why { WalkRefusal::Budget { max_levels, .. } => format!("Budget {{ max_levels: {max_levels} }}"), other => format!("{other:?}") },
             ctx.path.len(),
             ctx.shape_rep.map(|r| r.id),
         ));

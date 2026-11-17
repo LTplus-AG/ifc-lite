@@ -53,6 +53,11 @@ export class BVH {
   private nodeCount = 0;
   private stack = new Int32Array(64);
 
+  /** Diagnostic (#10264): the geometry-sized arrays this BVH holds. */
+  visitArrays(visit: (array: ArrayBufferView) => void): void {
+    for (const array of [this.meshAABBs, this.order, this.nodeBounds, this.nodeLinks]) if (array) visit(array);
+  }
+
   /** Release every geometry-sized allocation (#9512). */
   clear(): void {
     this.nodeCount = 0;

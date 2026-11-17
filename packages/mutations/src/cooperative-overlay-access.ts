@@ -14,7 +14,7 @@ interface OverlayAccess {
   rebuild(snapshot: OverlaySnapshot): OverlaySnapshot;
   matches(snapshot: OverlaySnapshot): boolean;
   draft(snapshot: OverlaySnapshot): MutablePropertyView;
-  publish(snapshot: OverlaySnapshot): void;
+  publish(snapshot: OverlaySnapshot, changedIds?: ReadonlySet<number> | null): void;
 }
 const access = new WeakMap<MutablePropertyView, OverlayAccess>();
 /** Package-private capability; no mutable graph is exposed by the public handle. */

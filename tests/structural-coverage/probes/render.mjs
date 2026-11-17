@@ -90,7 +90,8 @@ export default {
         }
       }
       const what = isConnection(row) ? 'restraining support condition' : /Reaction/.test(row.entity) ? 'non-zero reaction' : 'non-zero load';
-      if (missed.length) problems.unshift(`${missed.length} of ${checked} record(s) with a ${what} draw no glyph, e.g. ${missed[0]}`);
+      // Every missed record is named, so a limit on some of them cannot cover another.
+      if (missed.length) problems.unshift(`${missed.length} of ${checked} record(s) with a ${what} draw no glyph: ${missed.join(', ')}`);
       const result = checked
         ? verdict(checked, problems, { anyHeld: missed.length < checked })
         : { status: 'fail', reason: `no corpus record of ${row.entity} carries a ${what}, so a glyph is unproven` };

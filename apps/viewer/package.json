@@ -44,6 +44,7 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
+    "@ifc-lite/flood-check": "workspace:^",
     "@ifc-lite/flow": "workspace:^",
     "@ifc-lite/flow-nodes": "workspace:^",
     "@ifc-lite/geo": "workspace:^",

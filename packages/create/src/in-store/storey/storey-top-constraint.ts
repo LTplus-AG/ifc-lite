@@ -62,7 +62,7 @@ function topWorld(inventory: StoreyInventory, editor: StoreEditor, elementId: nu
 export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor, elementId: number, constraint: TopConstraint): { remesh: number[] } {
   return editor.runAtomic((draft) => {
     const view = draft.getMutationView();
-    const inventory = readStoreyInventory(store, view);
+    const inventory = readStoreyInventory(store, view, { lazyRelationships: true });
     const kind = attachedKind(inventory.reader.entity(elementId)?.type);
     if (!kind) throw new Error(`#${elementId} is not a wall, column, beam, member or curtain wall, so its top cannot be attached`);
     if (constraint.kind === 'fixed') {

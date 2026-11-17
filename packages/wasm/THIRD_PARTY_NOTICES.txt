@@ -8299,12 +8299,12 @@ Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, include
    limitations under the License.
 
 
-=== flate2 1.1.10 ===
+=== flate2 1.1.11 ===
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
 Licence election: MIT
-Attribution: flate2 1.1.10, licensed under MIT by maintainer default from MIT OR Apache-2.0
+Attribution: flate2 1.1.11, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -11620,7 +11620,7 @@ Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, include
    limitations under the License.
 
 
-=== nix 0.31.3 ===
+=== nix 0.32.0 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
@@ -13169,12 +13169,12 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-=== smallvec 1.16.4 ===
+=== smallvec 1.16.5 ===
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
 Licence election: MIT
-Attribution: smallvec 1.16.4, licensed under MIT by maintainer default from MIT OR Apache-2.0
+Attribution: smallvec 1.16.5, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -15275,7 +15275,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-=== zip 9.5.0 ===
+=== zip 9.6.1 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
@@ -15283,7 +15283,7 @@ Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, include
 --- LICENSE (sha256 58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79) ---
 Full text reproduced above under this SHA-256.
 
-=== zlib-rs 0.6.4 ===
+=== zlib-rs 0.6.8 ===
 Licence declaration: Zlib
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)

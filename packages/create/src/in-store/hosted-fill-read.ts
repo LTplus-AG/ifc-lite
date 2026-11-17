@@ -29,6 +29,7 @@ import {
   storeyPlacementChain,
   type OverlayWallReader,
 } from './placement-frame.js';
+import { orderedWallJoinCandidates } from './wall-join-order.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 
 export interface HostPlanFrame {
@@ -155,7 +156,7 @@ export function readHostedFill(
   // IfcRelFillsElement: RelatingOpeningElement(4), RelatedBuildingElement(5).
   let openingId: number | null = OPENING_TYPES.has(self.type.toUpperCase()) ? expressId : null;
   let fillingId: number | null = null;
-  for (const relId of reader.ids('IFCRELFILLSELEMENT')) {
+  for (const relId of orderedWallJoinCandidates(store, view, new Set([expressId]), reader, 'IFCRELFILLSELEMENT')) {
     const rel = reader.entity(relId);
     if (!rel) continue;
     const opening = refId(rel.attributes[4]);
@@ -167,7 +168,7 @@ export function readHostedFill(
 
   // IfcRelVoidsElement: RelatingBuildingElement(4), RelatedOpeningElement(5).
   let hostId: number | null = null;
-  for (const relId of reader.ids('IFCRELVOIDSELEMENT')) {
+  for (const relId of orderedWallJoinCandidates(store, view, new Set([openingId]), reader, 'IFCRELVOIDSELEMENT')) {
     const rel = reader.entity(relId);
     if (rel && refId(rel.attributes[5]) === openingId) { hostId = refId(rel.attributes[4]); break; }
   }

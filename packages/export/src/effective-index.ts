@@ -47,7 +47,7 @@ import {
   type IfcAttributeValue,
   type MutablePropertyView,
 } from '@ifc-lite/mutations';
-import { borrowedCreatedRows, EMPTY_CREATED, type CreatedRows } from './effective-index-created-rows.js';
+import { borrowedCreatedRows, registerCreatedRows, EMPTY_CREATED, type CreatedRows } from './effective-index-created-rows.js';
 import {
   getCompleteEntityIndex,
   type CompleteEntityIndex,
@@ -271,6 +271,7 @@ class OverlayIndex implements EffectiveEntityIndex {
     this.sourceByType = sourceByType;
     this.view = view;
     this.created = created;
+    registerCreatedRows(this, created);
     this.tombstones = tombstones;
     this.retypes = retypes;
   }

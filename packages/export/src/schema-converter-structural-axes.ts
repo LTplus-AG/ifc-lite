@@ -4,9 +4,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { readStepSlots } from './step-argument-parser.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { decodeRange } from './source-ref-bounds.js';
-const ref = (s: string): number | null => /^#\s*\d+$/.test(s.trim()) ? Number(s.trim().slice(1)) : null;
+// A cycle with the source module, which reads lists here; only functions cross it, called after load.
+import { slotRef, slotUnset } from './schema-converter-structural-source.js';
 
-export function listItems(token: string): readonly string[] | null {
+export function listItems(token: string | undefined): readonly string[] | null {
+  if (token === undefined) return null;
   const start = skipStepTrivia(token, 0);
   if (start < 0 || token[start] !== '(') return null;
   // Reuse the shared record frame for a standalone tuple, including trailing
@@ -25,9 +27,9 @@ export class StructuralAxes {
       const values = listItems(rec.slots[0] ?? '')?.map(parseStepNumber);
       if (values?.length === 3 && values.every(Number.isFinite) && values.some(x => x !== 0)) this.directions.add(Number(id));
     } else if (rec.type === 'IFCRELASSOCIATESPROFILEPROPERTIES' && rec.slots.length === 8) {
-      const axis = ref(rec.slots[7]);
+      const axis = slotRef(rec.slots[7]);
       for (const token of listItems(rec.slots[4]) ?? []) {
-        const member = ref(token);
+        const member = slotRef(token);
         if (member === null) continue;
         this.axes.set(member, this.axes.has(member) && this.axes.get(member) !== axis ? null : axis);
       }
@@ -51,7 +53,7 @@ export class StructuralAxes {
     // Profile directions are in the analysis frame. A placed member needs a
     // coordinate transform; angles/defaults/conflicting orientations stay unknown.
     if (!rec || !id || !['IFCSTRUCTURALCURVEMEMBER', 'IFCSTRUCTURALCURVEMEMBERVARYING'].includes(rec.type)
-      || rec.slots.length !== 8 || rec.slots[5].trim() !== '$') return undefined;
+      || rec.slots.length !== 8 || !slotUnset(rec.slots[5])) return undefined;
     const axis = this.axes.get(Number(id));
     return axis != null && this.directions.has(axis) ? `#${axis}` : undefined;
   }

@@ -48,12 +48,11 @@ function compileGlob(glob) {
     const c = glob[i];
     if (c === '*') {
       if (glob[i + 1] === '*') {
-        // `**` — crosses separators. `/**` at the end also matches the bare dir.
-        if (out.endsWith('/') && i + 2 === glob.length) {
-          out = `${out.slice(0, -1)}(?:/.*)?`;
-        } else {
-          out += '.*';
-        }
+        // `**` crosses separators; `/**` at the end also matches the bare dir and
+        // `**/` is zero or more directories, as GitHub's `paths:` reads them.
+        if ((out === '' || out.endsWith('/')) && glob[i + 2] === '/') { out += '(?:.*/)?'; i += 1; }
+        else if (out.endsWith('/') && i + 2 === glob.length) out = `${out.slice(0, -1)}(?:/.*)?`;
+        else out += '.*';
         i += 1;
       } else {
         out += '[^/]*';

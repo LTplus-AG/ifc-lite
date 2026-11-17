@@ -26,7 +26,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { gh } from './lib/gh.mjs';
-import { assertSha, BISECT_FILE, bisectNext, changedBetween, failedTarget, firstParentRange, isAncestor, jobsOf, NIGHTLY_LABEL, PROBE_HARNESS, probeFor, SHARD_INPUTS, short, WORKFLOW_NAME, writeOutputs } from './lib/native-adapter-nightly.mjs';
+import { assertSha, BISECT_FILE, bisectNext, changedBetween, failedTarget, firstParentRange, isAncestor, jobsOf, NIGHTLY_LABEL, PROBE_HARNESS, probeFor, SHARD_INPUTS, shardCount, short, touchedInRange, WORKFLOW_NAME, writeOutputs } from './lib/native-adapter-nightly.mjs';
 import { fileOnIssue, realGh, scheduledIssueTitle } from './report-scheduled-failure.mjs';
 
 /** A bisect of 2^30 commits needs 31 rounds; more than this is a loop, not a bisect. */
@@ -85,11 +85,12 @@ export function plan(env, { api, cwd, download }) {
     if (count === 0) return skip(`No bisect for ${red}: it ran the same commit as the last green run (${short(bad)}), so the cause is outside the repo (runner image, fetched SDK or corpus, a service) or a flake. Re-run the failed jobs to tell which.${aggregateNote}`);
     const notes = [aggregateNote];
     // Shards are cut by model bytes from these inputs, so the same index can hold other models at another commit.
-    if (shards.length > 0 && changedBetween(cwd, good, bad, SHARD_INPUTS)) {
+    if (shards.length > 0 && touchedInRange(cwd, good, bad, SHARD_INPUTS)) {
       target.shards = Array.from({ length: total }, (_, i) => i);
       notes.push(' The range changes how models are sharded, so every probe re-runs all shards.');
     }
-    if (changedBetween(cwd, good, bad, PROBE_HARNESS)) notes.push(` The range changes ${PROBE_HARNESS.join(' or ')}; every probe runs main's copy, so check the verdict against that change.`);
+    // Probes run main's workflow on every commit in the range, so it matters whether any of them differs from main's.
+    if (touchedInRange(cwd, good, 'HEAD', PROBE_HARNESS)) notes.push(` ${PROBE_HARNESS.join(' or ')} changed between ${short(good)} and main; every probe runs main's copy, so check the verdict against that change.`);
     const state = { good, bad, phase: 'confirm', target, round: 1, origin: good };
     return { ...planOutputs({ ...state, probe: bad }), start: `Bisect started for ${red}: ${count} commit(s) after ${short(good)} up to ${short(bad)}, re-running ${what(target)} only. It first re-runs ${short(bad)} to rule out a flake.${notes.join('')} Run: ${env.BISECT_RUN_URL}` };
   }
@@ -104,6 +105,14 @@ export function plan(env, { api, cwd, download }) {
   };
   if (!state.target.adapter && state.target.shards.length === 0) throw new Error('nothing to probe: adapter is false and shards is empty');
   if (!isAncestor(cwd, state.good, state.bad)) throw new Error(`good ${state.good} is not an ancestor of bad ${state.bad}`);
+  // Rounds the bisect dispatches itself already carry every shard when the range reshards. A hand-started or
+  // resumed one naming fewer would probe moved models; widening it is no fix either, since `good` is only known
+  // to pass the shards named. Refuse, saying what would work.
+  const { shards } = state.target;
+  if (shards.length > 0 && touchedInRange(cwd, state.good, state.bad, SHARD_INPUTS)) {
+    const total = shardCount(cwd);
+    if (shards.length < total) throw new Error(`the range ${short(state.good)}..${short(state.bad)} changes ${SHARD_INPUTS.join(', ')}, so a shard index can hold other models at other commits; pass every shard (shards=${JSON.stringify(Array.from({ length: total }, (_, i) => i))}) from a good commit green on all of them`);
+  }
   const range = firstParentRange(cwd, state.good, state.bad);
   return planOutputs({ ...state, probe: probeFor(state.phase, state.bad, range) });
 }

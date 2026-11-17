@@ -146,6 +146,13 @@ test('the record is the newest green FULL run on main, never a PR, branch, parti
   // The current run is never its own record.
   const self = range(context, root, shas[3], runWorld([{ id: 99, head_branch: 'main', event: 'schedule', head_sha: shas[3] }, ...runs.slice(4)], { 99: FULL_GREEN, 4: FULL_GREEN }));
   assert.equal(self.outputs.last_green, shas[1]);
+  // A re-run of an older red run keeps its old commit: a green run created after it is no record for it.
+  const rerun = range(context, root, shas[2], runWorld([{ id: 120, head_branch: 'main', event: 'schedule', head_sha: shas[3] }, ...runs.slice(4)], { 120: FULL_GREEN, 4: FULL_GREEN }), '110');
+  assert.equal(rerun.status, 0, rerun.stdout);
+  assert.equal(rerun.outputs.last_green, shas[1]);
+  // An unset run id hides nothing rather than every run.
+  const unset = range(context, root, shas[3], runWorld(runs.slice(4), { 4: FULL_GREEN }), '');
+  assert.equal(unset.outputs.last_green, shas[1]);
 });
 
 test('a run covers every commit since the last green full run, red and missing nights included', (context) => {
@@ -349,10 +356,25 @@ test('a red night a probe cannot reproduce, or another bisect already covers, is
   assert.match(busy, /one is already running \(https:\/\/x\/bisect\/7\)/); // @source-text-assertion-ok subject is the CLI's own output
 });
 
-test('a range that reshards the corpus probes every shard, since an index can hold other models', (context) => {
-  const { root, shas } = linearRepo(context, ['tests/models/manifest.json']);
-  const p = plan(context, root, { EVENT: 'workflow_run' }, { api: { [JOBS(1)]: { jobs: RED_JOBS } }, record: { last_green: shas[0], head: shas[1] }, labels: [{ name: 'nightly-red' }] });
+test('a range that reshards the corpus anywhere inside it probes every shard, however the bisect started', (context) => {
+  // The manifest changes and is then removed again, so the range's endpoints are identical.
+  const { root, shas, git } = linearRepo(context, ['tests/models/manifest.json']);
+  git('rm', '-q', 'tests/models/manifest.json');
+  git('commit', '-q', '-m', 'drop the manifest again');
+  const head = git('rev-parse', 'HEAD');
+  const p = plan(context, root, { EVENT: 'workflow_run' }, { api: { [JOBS(1)]: { jobs: RED_JOBS } }, record: { last_green: shas[0], head }, labels: [{ name: 'nightly-red' }] });
   assert.equal(p.status, 0, p.stdout);
   assert.equal(p.outputs.shards, '[0,1]');
   assert.match(posted(p.calls)[0], /changes how models are sharded, so every probe re-runs all shards/); // @source-text-assertion-ok subject is the CLI's own output
+  // Started or resumed by hand naming fewer shards: refused, since `good` is only known green on those. The shard
+  // count comes from main's workflow, here the real one (8); naming all of them is accepted.
+  mkdirSync(join(root, '.github/workflows'), { recursive: true });
+  writeFileSync(join(root, '.github/workflows/geometry-platform.yml'), readFileSync(join(REPO, '.github/workflows/geometry-platform.yml'), 'utf8'));
+  const manual = { EVENT: 'workflow_dispatch', GOOD: shas[0], BAD: head, PHASE: 'confirm', ADAPTER: 'false' };
+  const one = plan(context, root, { ...manual, SHARDS: '[1]' }, {});
+  assert.notEqual(one.status, 0);
+  assert.equal(one.outputs.probe, undefined, 'no probe planned');
+  const all = plan(context, root, { ...manual, SHARDS: '[0,1,2,3,4,5,6,7]' }, {});
+  assert.equal(all.status, 0, all.stdout);
+  assert.equal(all.outputs.probe, head);
 });

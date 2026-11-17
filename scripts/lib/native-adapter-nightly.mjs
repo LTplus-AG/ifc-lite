@@ -71,11 +71,15 @@ export function writeOutputs(file, outputs) {
 /**
  * The newest green full run on main, or null. `runs` is newest first (as the
  * API lists them); `jobsOf(run)` returns that run's latest-attempt jobs, and
- * is only asked for runs that could be a record. `exclude` is the current run.
+ * is only asked for runs that could be a record. `current` is this run's id:
+ * it and every run created after it (a higher id) are skipped, since a re-run
+ * keeps its original commit and a later green run is no record for it.
  */
-export function lastGreenRun(runs, jobsOf, exclude = null) {
+export function lastGreenRun(runs, jobsOf, current = null) {
+  const cur = current ? Number(current) : null;
   for (const run of runs) {
-    if (run?.head_branch !== 'main' || !FULL_RUN_EVENTS.has(run.event) || String(run.id) === String(exclude)) continue;
+    if (run?.head_branch !== 'main' || !FULL_RUN_EVENTS.has(run.event)) continue;
+    if (cur !== null && Number(run.id) >= cur) continue;
     if (isGreenRecord(jobsOf(run))) return run;
   }
   return null;
@@ -107,6 +111,18 @@ export function failedTarget(jobs) {
 export const SHARD_INPUTS = ['tests/models/manifest.json', 'scripts/retained-compare/corpus-exclusions.json', 'scripts/retained-compare/corpus-shards.mjs'];
 /** What a probe takes from main rather than the probed commit: the lane's workflow. Local actions resolve from the probed checkout. */
 export const PROBE_HARNESS = [WORKFLOW];
+
+/** Whether any commit after `from` up to `to` touches `paths`, even if a later one reverts it. */
+export function touchedInRange(cwd, from, to, paths) {
+  return execFileSync('git', ['-C', cwd, 'log', '--first-parent', '--format=%H', '-1', `${from}..${to}`, '--', ...paths], { encoding: 'utf8' }).trim() !== '';
+}
+
+/** The corpus shard count, from the native-corpus matrix of the workflow at `cwd`. */
+export function shardCount(cwd) {
+  const m = readFileSync(join(cwd, WORKFLOW), 'utf8').match(/^ {8}shard: \$\{\{ fromJSON\(inputs\.bisect_shards \|\| '\[([0-9, ]+)\]'\) \}\}\s*$/m);
+  if (!m) throw new Error(`cannot read the native-corpus shard matrix from ${WORKFLOW}`);
+  return m[1].split(',').length;
+}
 
 /** Whether `paths` differ between two commits. */
 export function changedBetween(cwd, from, to, paths) {
@@ -204,7 +220,10 @@ export function nightlyProblems(root, text) {
   } else {
     if (!has(range, `if: github.ref == 'refs/heads/main' && (${NIGHTLY_IF})`)) out.push(`${WORKFLOW}: nightly-range must run on every full run of main, gated on exactly: github.ref == 'refs/heads/main' && (${NIGHTLY_IF})`);
     if (/^ {4}needs:/m.test(range)) out.push(`${WORKFLOW}: nightly-range must not need another job; it records the range even when the lane fails`);
-    if (!/run: node scripts\/native-adapter-nightly\.mjs range --out "\$RUNNER_TEMP\/nightly-range\.json"/.test(range) || !has(range, 'name: nightly-range')) {
+    // Some upload-artifact step of the job, however its keys are ordered, uploads the record under its name.
+    const uploads = range.split(/^ {6}- /m).filter((step) => /\buses: actions\/upload-artifact@/.test(step));
+    const recorded = uploads.some((step) => has(step, 'name: nightly-range') && has(step, `path: \${{ runner.temp }}/nightly-range.json`));
+    if (!/run: node scripts\/native-adapter-nightly\.mjs range --out "\$RUNNER_TEMP\/nightly-range\.json"/.test(range) || !recorded) {
       out.push(`${WORKFLOW}: nightly-range must run scripts/native-adapter-nightly.mjs range and upload nightly-range.json as the nightly-range artifact (the bisect reads it)`);
     }
     if (!has(range, 'fetch-depth: 0')) out.push(`${WORKFLOW}: nightly-range needs fetch-depth: 0 to list the commits since the last green run`);

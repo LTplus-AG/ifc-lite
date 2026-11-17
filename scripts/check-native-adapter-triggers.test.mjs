@@ -422,6 +422,8 @@ test('a nightly route that loses its schedule, record, range-carrying report or 
     ['no record', (t) => t.replace(/  nightly-range:\n[\s\S]*?(?=\n {2}# One tracking issue)/, ''), 'no nightly-range job'],
     ['record off main', (t) => t.replace("    if: github.ref == 'refs/heads/main' && (", "    if: (github.ref == 'refs/heads/main' || true) && ("), 'nightly-range must run on every full run'],
     ['record behind the lane', (t) => t.replace('    name: Nightly coverage range\n', '    name: Nightly coverage range\n    needs: [native-adapter]\n'), 'must not need another job'],
+    ['record never uploaded', (t) => t.replace(`          path: \${{ runner.temp }}/nightly-range.json\n`, `          path: \${{ runner.temp }}/other.json\n`), 'upload nightly-range.json as the nightly-range artifact'],
+    ['record under another artifact name', (t) => t.replace('          name: nightly-range\n          path:', '          name: other\n          path:'), 'upload nightly-range.json as the nightly-range artifact'],
     ['shallow record', (t) => t.replace('          fetch-depth: 0\n          filter: blob:none\n      - name: Name the commits', '          filter: blob:none\n      - name: Name the commits'), 'fetch-depth: 0'],
     ['report without the range', (t) => t.replace(`      detail: \${{ needs.nightly-range.outputs.detail }}\n`, ''), 'must pass the nightly-range detail'],
     ['report without the label', (t) => t.replace('      labels: nightly-red\n', ''), 'labels: nightly-red'],

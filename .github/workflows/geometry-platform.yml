@@ -108,6 +108,11 @@ on:
       - 'scripts/cli-retained-engine/**'
       - 'scripts/retained-compare/**'
       - 'packages/cli/**'
+      # Narrower than the globs above so a merge-queue batch, which drops those
+      # (BATCH_EXCLUDE), still runs on retained code under them.
+      - 'packages/cli/src/retained/**'
+      - 'packages/cli/src/**/*retained*'
+      - 'rust/processing/**/*retained*'
       - 'packages/geometry/**'
       - 'packages/wasm/**'
       - 'scripts/*retained*'
@@ -118,6 +123,7 @@ on:
       - 'scripts/check-native-adapter-triggers.mjs'
       - 'scripts/check-retained-corpus-summary.mjs'
       - 'scripts/lib/ci-path-coverage.mjs'
+      - 'scripts/lib/native-adapter-batch.mjs'
       - 'scripts/lib/is-main-entry.mjs'
       - 'scripts/lib/workflow-permissions.mjs'
       # check-viewer-retained-free.mjs --lazy reads the startup graph with its eagerScripts().

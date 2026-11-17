@@ -36,7 +36,7 @@ export function operationControlInventory(): Inventory[] {
     ...analyticsControlBoundaries.map(row => ({ owner: row.panel, family: 'analytics' as const,
       controls: [control(row.control, [], classify(row.classification), row.native)], notes: [], gaps: [] })),
     ...coordinationControlInventory.map(row => ({ owner: row.owner, family: 'coordination' as const,
-      controls: [control(row.implemented.join('; '), row.operations)], notes: 'hostBoundary' in row ? [row.hostBoundary] : [], gaps: row.outstanding })),
+      controls: [control(row.implemented.join('; '), row.operations)], notes: (['hostBoundary', 'presentationOnly', 'equivalentControls', 'sourceWriteBack'] as const).flatMap(key => key in row ? [String((row as Record<string, unknown>)[key])] : []), gaps: row.outstanding })),
     ...authoringControlBindings.map(row => ({ owner: row.owner === 'ids' ? 'idsStudio' : row.owner, family: 'authoring' as const,
       controls: [control(row.controls.join('; '), row.operations, classify(row.status), row.reason)], notes: [], gaps: [] })),
     ...clashControlBindings.map(row => ({ owner: 'clash', family: 'clash' as const,

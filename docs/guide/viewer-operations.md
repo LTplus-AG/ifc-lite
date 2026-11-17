@@ -46,8 +46,10 @@ For example, discover `measurements.distance`, then execute:
 
 Coordinates in the viewport operations are renderer **Y-up metres**. Entity
 operations use local `express_ids` scoped by `model_id`; renderer offsets are
-resolved by the native federation adapters. Camera operations require a mounted
-viewport. Other implemented services remain usable with their panels closed.
+resolved by the native federation adapters. Camera and renderer operations need a
+mounted viewport, and script undo/redo needs the script editor mounted. Most other
+services work with their panels closed; an operation that needs a mounted surface
+says so in its error.
 
 Inspection returns a model revision. Supplying `expected_revision` refuses a
 stale request. Running and completed jobs refuse model replacement, geometry
@@ -95,6 +97,8 @@ block/page edits use compact revision guards and preserve existing images and AI
 provenance. Inspect operation schemas for each page limit and supported native
 JSON codec; use artifact reads for full exports rather than discovery responses.
 
-Coverage tests reject unregistered bindings and unaudited new panels/tools. Native
+Coverage tests reject unregistered bindings and unaudited new panels. Viewport tools
+and toolbar exports are audited from hand-kept lists, so a new tool or export must be
+added to them by hand. Native
 GPU success still requires a real renderer and suitable source fixtures; a tested
 refusal does not establish successful rendering or scan analysis.

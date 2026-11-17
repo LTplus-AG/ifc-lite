@@ -154,7 +154,7 @@ uninstall; unreviewed extension metadata never becomes authority to bypass gates
 ## Implementation status
 
 The native operation gateway now contains feature-family adapters and a generated,
-metadata-only catalogue with lazy execution. The finite control audit maps the 35
+metadata-only catalogue with lazy execution. The finite control audit maps the
 built-in panels, registered viewport tools and toolbar exports to concrete native
 bindings, presentation equivalents or explicit host boundaries. The generator
 rejects stale operation references; viewer tests check panel/tool coverage.

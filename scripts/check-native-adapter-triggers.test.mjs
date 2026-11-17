@@ -4,11 +4,12 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
+import { parse as parseYaml } from 'yaml';
 import { permissionBlocks } from './lib/workflow-permissions.mjs';
 
 const REPO = join(import.meta.dirname, '..');
@@ -319,6 +320,24 @@ test('permissionBlocks reads every spelling of a block and fails closed on the r
     ['jobs:\n  a:\n    permissions:\n      { actions: read }\n', 'cannot judge permissions entry'],
     ['jobs:\n  a: { runs-on: x, permissions: { issues: write } }\n', 'spell permissions out as a block'],
   ]) assert.ok(parse(wf).out.some((f) => f.includes(expected)), `${expected}: ${parse(wf).out}`);
+});
+
+test('permissionBlocks agrees with a YAML parser on every workflow in the repo', () => {
+  // The guard runs before pnpm install, so it reads lines; the tests have yaml.
+  const dir = join(REPO, '.github/workflows');
+  for (const name of readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
+    const ymlText = readFileSync(join(dir, name), 'utf8');
+    const doc = parseYaml(ymlText);
+    const parsed = [doc.permissions, ...Object.values(doc.jobs ?? {}).map((j) => j?.permissions)].filter((p) => p !== undefined);
+    const problems = [];
+    const lines = permissionBlocks(ymlText, problems, name).map((b) => b.scopes);
+    if (parsed.some((p) => typeof p !== 'object' || p === null)) {
+      assert.ok(problems.length > 0, `${name}: a scalar permissions value must be reported, not read`);
+      continue;
+    }
+    assert.deepEqual(problems, [], name);
+    assert.deepEqual(lines, parsed, name);
+  }
 });
 
 test('the call\'s own grant is the block at job level, and it must be readable', (context) => {

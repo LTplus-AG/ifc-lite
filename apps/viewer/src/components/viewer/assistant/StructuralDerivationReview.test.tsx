@@ -75,6 +75,8 @@ test('shows rejected openings separately with their host and reason', async () =
   review.plan.report.counts.skippedOpenings = 1;
   const root = render(<DerivationSummary review={review} />);
   assert.match(root.textContent ?? '', /Skipped openings \(1\)/);
-  assert.match(root.textContent ?? '', /Kitchen window: Opening #701 of host #702: unsupported opening section.*not through/);
+  // Opening and host are links (#10605); each names itself from the model, so the row no longer repeats the name.
+  assert.match(root.textContent ?? '', /Opening #701 of host #702: unsupported opening section \(not through\)/);
+  assert.deepEqual([...root.querySelectorAll('li button')].map((b) => b.textContent).filter((label) => /^#70[12]$/.test(label ?? '')), ['#701', '#702']);
   assert.doesNotMatch(root.textContent ?? '', /Skipped elements \(1\)/);
 });

@@ -4,7 +4,7 @@
 import type { PickOptions, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type ViewerState } from '@/store';
 
-type PickChannel = 'selection' | 'hover';
+type PickChannel = 'selection' | 'hover' | 'agent';
 const requests = new WeakMap<HTMLCanvasElement, Partial<Record<PickChannel, number>>>();
 
 /** Independent callers share validity rules without superseding each other. */

@@ -56,8 +56,9 @@ export function DerivationSummary({ review }: { review: Review }) {
 /** After Apply: show the analysis model the receipt created, its members framed. */
 function ShowDerived({ receipt }: { receipt: ModelChangeReceipt }) {
   const created = receipt.applied.find((row) => row.op === 'structural.analysis.create');
-  if (!created) return null;
-  const members = receipt.applied.filter((row) => row.op === 'structural.member.create').map((row) => row.expressId);
+  // Every structural receipt row carries its written record's id; a row without one has nothing to select.
+  if (created?.expressId === undefined) return null;
+  const members = receipt.applied.flatMap((row) => row.op === 'structural.member.create' && row.expressId !== undefined ? [row.expressId] : []);
   return <ShowAnalyticalModelButton modelId={created.modelId} analysisModelId={created.expressId} memberIds={members} />;
 }
 

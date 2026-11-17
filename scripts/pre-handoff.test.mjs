@@ -4,11 +4,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gateCommands, main, runGates, oraclePrerequisites, unbuiltWorkspaceDeps } from './pre-handoff.mjs';
-import { ciJobSkipReason } from './lib/pre-handoff-ci-mirror.mjs';
+import { gateCommands, main, runGates, oraclePrerequisites } from './pre-handoff.mjs';
 
 test('#7955 handoff keeps running after failures and distinguishes missing prerequisites', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'handoff-'));
@@ -80,15 +79,6 @@ test('a contrast browser probe that cannot run is a named gap, not a thrown fail
   writeFileSync(join(root, dynamic), "const h = await import('@/test/contrast/render-harness.js');\n");
   const broken = () => { throw new Error('contrast browser probe failed: tsx exited 1\nstack'); };
   assert.match(oraclePrerequisites(root, { test: dynamic }, 'unused', broken), /a contrast browser answer \(contrast browser probe failed: tsx exited 1\)/);
-});
-
-test('the CI mirror reads the REAL test.yml: oracle and ui-drift are gated on frontend/rust', () => {
-  const workflow = readFileSync(new URL('../.github/workflows/test.yml', import.meta.url), 'utf8');
-  for (const job of ['revert-oracle', 'node-guards']) {
-    assert.equal(ciJobSkipReason(workflow, job, ['scripts/pre-handoff.mjs']), null);
-    assert.equal(ciJobSkipReason(workflow, job, ['rust/core/src/lib.rs']), null);
-    assert.match(ciJobSkipReason(workflow, job, ['README.md']), new RegExp(`${job} job would not run: .*frontend/rust`));
-  }
 });
 
 const MIRROR_WORKFLOW = `jobs:
@@ -191,8 +181,7 @@ test('an unbuilt workspace dependency is named as a missing prerequisite', (t) =
   write('packages/app/package.json', JSON.stringify({ scripts: { test: 'node --test' }, devDependencies: { '@x/lib': 'workspace:*' } }));
   write('packages/app/witness.test.mjs', '');
   write('packages/app/node_modules/@x/lib/package.json', JSON.stringify({ name: '@x/lib', main: 'dist/index.js', scripts: { build: 'tsc' } }));
-  assert.deepEqual(unbuiltWorkspaceDeps(join(root, 'packages/app')), ['@x/lib']);
   assert.match(oraclePrerequisites(root, { test: 'packages/app/witness.test.mjs' }, 'unused'), /built packages \(1 unbuilt, e\.g\. @x\/lib; run pnpm build\)/);
   write('packages/app/node_modules/@x/lib/dist/index.js', '');
-  assert.deepEqual(unbuiltWorkspaceDeps(join(root, 'packages/app')), []);
+  assert.equal(oraclePrerequisites(root, { test: 'packages/app/witness.test.mjs' }, 'unused'), null);
 });

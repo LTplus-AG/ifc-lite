@@ -59,7 +59,7 @@ export function runGates(root, commands, log = console.log) {
 }
 
 /** Workspace packages a test dir loads (transitively) whose build output is absent. */
-export function unbuiltWorkspaceDeps(dir, seen = new Set()) {
+function unbuiltWorkspaceDeps(dir, seen = new Set()) {
   const manifest = resolve(dir, 'package.json');
   if (!existsSync(manifest)) return [];
   const pkg = JSON.parse(readFileSync(manifest, 'utf8'));

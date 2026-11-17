@@ -59,6 +59,7 @@ import { activeChangesJsonMutations, exportChangesJson } from './export-changes-
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
 import { hasRetainedSectionExport, RETAINED_EXACT_ONLY_REASON, hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
+import { stepExportResult } from './export-step-result';
 import { ExportDialogScopeOptions } from './export-dialog-scope-options';
 import { ExportDialogSchemaOptions } from './export-dialog-schema-options';
 import { ExportDialogToggleOptions } from './export-dialog-toggle-options';
@@ -379,8 +380,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
             : '')
           + (skipNotice ? `. ${skipNotice}` : '');
         exportedFormat = 'ifc';
-        toast.success(msg);
-        return { success: true, message: msg };
+        return stepExportResult(msg, result.stats.warnings, t);
       }
 
       if (!selectedModel) {
@@ -525,10 +525,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
         const stepMsg = stepExportSummary({ entityCount: result.stats.entityCount, pendingChanges: modifiedCount, applyMutations, visibleOnly });
         exportedFormat = artifact.ext;
-        const message = result.stats.warnings.length ? `${stepMsg} — ${t('exportDialog.warningsCount', { count: result.stats.warnings.length })}` : stepMsg;
-        if (result.stats.warnings.length) toast.info(message);
-        else toast.success(message);
-        return { success: true, message, warnings: result.stats.warnings, warningLimit: 5 };
+        return stepExportResult(stepMsg, result.stats.warnings, t);
       }
     } catch (error) {
       console.error('Export failed:', error);

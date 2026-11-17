@@ -116,12 +116,8 @@ function readRules(text, topKey) {
       }
       continue;
     }
-    // A condition starting with `#` must be quoted in YAML (`- "#review-threads-unresolved=0"`),
-    // so a quoted item with no escapes is unquoted; any other quoting stays as written.
-    if ((m = /^ {6}- (\S.*?)\s*$/.exec(line))) {
-      const quoted = /^"([^"\\]*)"$|^'([^']*)'$/.exec(m[1]);
-      (rule.lists[section] ??= []).push(quoted ? (quoted[1] ?? quoted[2]) : m[1]);
-    } else unread(line);
+    if ((m = /^ {6}- (\S.*?)\s*$/.exec(line))) (rule.lists[section] ??= []).push(m[1]);
+    else unread(line);
   }
   return rules;
 }

@@ -48,7 +48,8 @@ export async function playNativePresentation(viewIds: readonly string[], options
     const { activateBasketViewFromStore } = await import('@/store/basket/basketViewActivator');
     for (let repetition = 0; options.repetitions === 0 || repetition < options.repetitions; repetition++) for (const view of views) {
       abort.signal.throwIfAborted(); options.signal?.throwIfAborted();
-      if (JSON.stringify(useViewerStore.getState().basketViews.find(row => row.id === view.id)) !== JSON.stringify(view)) throw new Error('A saved view changed during playback.');
+      // A renamed or re-timed view keeps playing (as the panel always did); a deleted one stops the run.
+      if (!useViewerStore.getState().basketViews.some(row => row.id === view.id)) throw new Error('A saved view was deleted during playback.');
       if (view.section?.plane.enabled && !isToolAvailable('section')) throw new Error('Section tools are disabled by the host.');
       const apply = () => activateBasketViewFromStore(view.id); if (options.beforeActivate) options.beforeActivate(apply); else apply();
       report({ current_view_id: view.id, played: final.played + 1 });

@@ -80,23 +80,24 @@ export const createChartSlice: StateCreator<ChartSlice, [], [], ChartSlice> = (s
   chartVisibilityRevision: null,
 
   setDashboards: (dashboards) => {
-    if (!saveDashboards(dashboards)) return false;
+    // Keep editing in memory when storage is full (as before); the result says whether it persisted.
+    const saved = saveDashboards(dashboards);
     set({ dashboards });
-    return true;
+    return saved;
   },
   upsertDashboard: (dashboard) => {
     const current = get().dashboards;
     const index = current.findIndex((d) => d.id === dashboard.id);
     const dashboards = index === -1 ? [...current, dashboard] : current.map((d, i) => (i === index ? dashboard : d));
-    if (!saveDashboards(dashboards)) return false;
+    const saved = saveDashboards(dashboards);
     set({ dashboards });
-    return true;
+    return saved;
   },
   deleteDashboard: (id) => {
     const dashboards = get().dashboards.filter((d) => d.id !== id);
-    if (!saveDashboards(dashboards)) return false;
+    const saved = saveDashboards(dashboards);
     set({ dashboards, activeDashboardId: get().activeDashboardId === id ? null : get().activeDashboardId });
-    return true;
+    return saved;
   },
   setActiveDashboardId: (activeDashboardId) => set({ activeDashboardId }),
   setChartPanelVisible: (chartPanelVisible) => set({ chartPanelVisible }),

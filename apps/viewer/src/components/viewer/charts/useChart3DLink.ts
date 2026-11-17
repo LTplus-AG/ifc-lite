@@ -222,7 +222,9 @@ export function selectNativeChartItems(aggregation: Aggregation, items: readonly
 }
 export function clearNativeChartSelection(): void {
   const state = useViewerStore.getState(); state.clearEntitySelection(); state.setChartSlice(null);
-  releaseChartVisibility(); state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
+  releaseChartVisibility();
+  // With 'Colour in 3D' on, the bucket colours stay; the panel's overlay effect owns them.
+  if (!state.chartColorIn3D) state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
 }
 
 export function useChart3DLink(): Chart3DLink {

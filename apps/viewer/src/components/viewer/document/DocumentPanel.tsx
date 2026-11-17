@@ -34,7 +34,7 @@ import { AssistantAction } from '../assistant/AssistantAction';
 import { BlockEditor } from './BlockEditor';
 import { DocumentBlockList } from './DocumentBlockList';
 import { useBlockSelection } from './useBlockSelection';
-import { replaceNativeDocumentBlocks, patchNativeDocumentPage, moveNativeDocumentBlocks, copyNativeDocumentBlock } from '@/lib/document/native-edit';
+import { patchNativeDocumentPage, moveNativeDocumentBlocks, copyNativeDocumentBlock } from '@/lib/document/native-edit';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
@@ -95,14 +95,16 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const upsert = useCallback((next: DocumentSpec) => upsertDocument(next).then(warnUnsaved), [upsertDocument, warnUnsaved]);
   const remove = useCallback((id: string) => deleteDocument(id).then(warnUnsaved), [deleteDocument, warnUnsaved]);
   const update = upsert;
-  const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update(replaceNativeDocumentBlocks(document, blocks)); }, [document, update]);
+  // Editors pass intermediate values (a cleared number field); validation belongs to save and the agent path, not each keystroke.
+  const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
   const moveBlocks = (ids: ReadonlySet<string>, beforeId: string | null): boolean => {
     const live = useViewerStore.getState();
     if (!document || live.activeDocumentId !== document.id) return false;
     const current = live.documents.find(entry => entry.id === document.id);
     if (!current) return false;
-    const next = moveNativeDocumentBlocks(current, ids, beforeId);
+    let next: DocumentSpec;
+    try { next = moveNativeDocumentBlocks(current, ids, beforeId); } catch (error) { console.warn('[document] block move refused', error); return false; }
     if (next === current) return false;
     void update(next);
     return true;
@@ -114,7 +116,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     const index = current?.blocks.findIndex((block) => block.id === id) ?? -1;
     if (!current || index < 0) return;
     // The duplicate is the reviewer's own text; refresh only regenerates the original (#6918).
-    const copy = copyNativeDocumentBlock(current, id);
+    let copy: ReturnType<typeof copyNativeDocumentBlock>;
+    try { copy = copyNativeDocumentBlock(current, id); } catch (error) { console.warn('[document] block copy refused', error); return; }
     // Read current content so consecutive copies keep each other's staged durable writes.
     void update(copy.document);
     selection.selectOnly(copy.id);

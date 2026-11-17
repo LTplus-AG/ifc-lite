@@ -30,6 +30,7 @@ import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { unwritten } from '../tests/structural-coverage/probes/index.mjs';
 import { SCENE, stepsFor } from '../tests/structural-coverage/probes/create-scene.mjs';
 import { compareFile, nonConforming, renamedNonConforming } from '../tests/structural-coverage/probes/convert.mjs';
+import { KINDS, LIMITS, markLimits } from '../tests/structural-coverage/limits.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATOR = join(ROOT, 'scripts/generate-structural-coverage-ledger.mjs');
@@ -107,6 +108,33 @@ test('runProbes: an applicable cell with no probe is an error, and a probe that 
   const cells = await runProbes(two, {}, [boom, ...covering]);
   assert.equal(cells.get('cap/docs-page').capability.status, 'error', 'error ranks above unwritten');
   assert.equal(cells.get(two[0].id).read.status, 'unwritten');
+});
+
+test('limits (#9668): label every problem or count it open, never change a score, and refuse a stale or false limit', () => {
+  const id = two[0].id;
+  const problems = ['a.ifc#1: lost', 'a.ifc#2: lost', 'b.ifc#3: Axis null'];
+  const limit = (extra = {}) => ({ row: id, level: 'convert', kind: 'schema', problem: /^a\.ifc#(\d+): lost$/, cite: 'no entity', holds: (f, m) => f.ok(Number(m[1])), ...extra });
+  const facts = { ok: (n) => n < 3 };
+  const fresh = (list = problems) => { const cells = cellsOf({ [id]: { convert: 'partial' } }); cells.get(id).convert.problems = list; return cells; };
+  const label = (limits, list = problems, f = facts) => markLimits(fresh(list), f, limits).get(id).convert;
+  assert.deepEqual(label([limit()]).limits, { open: 1, by: [{ kind: 'schema', cite: 'no entity' }] }, 'the Axis problem stays open');
+  assert.equal(label([limit(), limit({ kind: 'policy', problem: /Axis null$/, holds: () => true })]).limits.open, 0);
+  assert.throws(() => label([limit()], problems, { ok: () => false }), /cited fact does not hold/);
+  assert.throws(() => label([limit({ problem: /^c\.ifc/ })]), /matches no problem/, 'a limit nothing matches is stale');
+  assert.throws(() => label([limit()], []), /matches no problem/, 'so is one on a cell that now passes');
+  assert.throws(() => label([limit({ row: 'IFC4/NoSuchRow' })]), /not a probed cell/);
+  const labelled = score(two, markLimits(fresh(), facts, [limit()]));
+  assert.deepEqual([labelled.total, labelled.cells], [score(two, fresh()).total, score(two, fresh()).cells], 'a limit never changes a score');
+  assert.ok(labelled.rows[0].levels.convert.limits && !('problems' in labelled.rows[0].levels.convert), 'the summary keeps the label, not the problem list');
+});
+
+test('limits (#9668): each names a catalogue row, an applicable level, a kind and a citation', () => {
+  for (const l of LIMITS) {
+    assert.ok(byId.has(l.row), l.row);
+    assert.equal(notApplicable(byId.get(l.row), l.level), null, `${l.row} ${l.level}`);
+    assert.ok(KINDS.includes(l.kind), l.kind);
+    assert.ok(l.problem instanceof RegExp && typeof l.holds === 'function' && l.cite.length > 20, l.row);
+  }
 });
 
 test('ratchet: fails on a drop in the total, a row, a cell, a changed row set, or an offline run', () => {

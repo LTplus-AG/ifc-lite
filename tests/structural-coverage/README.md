@@ -5,7 +5,7 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r11.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r12.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
@@ -18,7 +18,7 @@ A failed build is a harness error, never a product score. Without wasm-pack, `bu
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
 wasm toolchain. The toggle probe also loads the viewer’s Node test adapter.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r11.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r12.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -71,13 +71,13 @@ would be shared by the oracle and the converter.
 Where the IFC schemas force a value or a class on the round trip, the probe
 expects that instead of the source value (cited in `probes/convert.mjs`).
 
-The derive probe compares the AxisVM roof truss against its authored analytical
-model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
-90% of reference/derived members to match axes, endpoints and physical links;
-below that floor it fails. On the reference side, AxisVM support-only points
-merge into member joints; support positions are compared in both directions,
-without comparing which degrees of freedom are restrained. Missing or extra
-connection records prevent a pass.
+## Limits
+
+`limits.mjs` labels the problems no product change can fix (schema, policy or
+upstream), each with a citation its `holds` re-checks on every complete run; a
+stale or false limit stops the scorer. A limit never changes a status, a point
+or the ratchet. The ledger calls a cell out of reach only when every one of its
+problems is labelled.
 
 ## Scoring and the ratchet
 
@@ -145,3 +145,5 @@ R5 adds 74 edit and 74 remove passes to R4, for 469.5/774 cells. R4 render cover
 [R10 convert carriers](baseline/r10-notes.md): structural conversion carriers (CausedBy, IfcStructuralLoadCase, SharedPlacement, varying thickness), one convert-probe correction and the point-action CausedBy fixture bring the measurement to 109/119 rows and 759.5/774 cells. R0 to R9 remain retained.
 
 [R11 derived supports](baseline/r11-notes.md): derivation guesses supports only where a lowest-level run bears, so the roof truss derives AxisVM's two heel supports; 109.5/119 rows and 760/774 cells. R0 to R10 remain retained.
+
+[R12 final round](baseline/r12-notes.md): the IFC2X3 coverage fixture gives one location per varying load, so both varying actions and their relationships convert (111/119 rows, 762/774 cells), and every remaining unmet cell is labelled by a cited limit except two reachable `Axis` cells. R0 to R11 remain retained.

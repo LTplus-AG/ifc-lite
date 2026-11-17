@@ -1639,8 +1639,8 @@
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc2x3.ifc",
-      "sha256": "80bc135dadc88105f191a24fecf081f8452b0646787676b75332762ddc725d18",
-      "size": 10376
+      "sha256": "95f96b3946e0c21e23bd727e39ca42635b7dd79045de309994848502737d7904",
+      "size": 11099
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4.ifc",

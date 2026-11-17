@@ -38,7 +38,7 @@ function roundTrip(ctx, file, schema) {
 
 const names = new WeakMap();
 /** STEP keyword -> registry entity name, built once per registry. */
-function entityName(registry, keyword) {
+export function entityName(registry, keyword) {
   if (!names.has(registry)) names.set(registry, new Map(Object.keys(registry.entities).map((n) => [n.toUpperCase(), n])));
   return names.get(registry).get(keyword);
 }
@@ -133,7 +133,7 @@ function tuple(row, record, step, types) {
  * PredefinedType to CONST (IFC4_ADD2_TC1.exp:9449, :9582). A non-constant action
  * coming back as the subtype is still a class change.
  */
-const CONSTANT_SUBTYPE = new Map([
+export const CONSTANT_SUBTYPE = new Map([
   ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
   ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
 ]);
@@ -149,7 +149,7 @@ const CONSTANT_SUBTYPE = new Map([
 const STIFFNESS_SELECTS = new Set(['IfcTranslationalStiffnessSelect', 'IfcRotationalStiffnessSelect', 'IfcWarpingStiffnessSelect',
   'IfcModulusOfTranslationalSubgradeReactionSelect', 'IfcModulusOfRotationalSubgradeReactionSelect', 'IfcModulusOfSubgradeReactionSelect']);
 
-const slotOf = (registry, keyword, name) => {
+export const slotOf = (registry, keyword, name) => {
   const entity = entityName(registry, keyword);
   const slots = entity ? registry.entities[entity].allAttributes : [];
   const index = slots.findIndex((s) => s.name === name);

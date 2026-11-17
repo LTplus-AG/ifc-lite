@@ -201,13 +201,19 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     def root(name: str, *rest, tag: str = ""):
         return e(name, guid(name + tag), owner, f"Coverage {name}{tag}", None, None, *rest)
 
-    def rep():
-        return e("IfcShapeRepresentation", context, "Reference", "Point", (origin,))
+    def rep(at=origin):
+        return e("IfcShapeRepresentation", context, "Reference", "Point", (at,))
 
-    def aspect():
-        """(shape, aspect): IFC2X3 binds a shape to one product and a representation to one use (WR11)."""
+    def aspect(*locations):
+        """(shape, aspect): IFC2X3 binds a shape to one product and a representation to one use (WR11).
+
+        The aspect holds one point representation per varying value: IFC2X3
+        VaryingAppliedLoadLocation and VaryingThicknessLocation locate the values
+        of VaryingAppliedLoads and VaryingThickness by index (#9668).
+        """
         shape = e("IfcProductDefinitionShape", None, None, (rep(),))
-        return shape, e("IfcShapeAspect", (rep(),), "Coverage aspect", None, True, shape)
+        points = tuple(rep(e("IfcCartesianPoint", xyz)) for xyz in locations)
+        return shape, e("IfcShapeAspect", points, "Coverage aspect", None, True, shape)
 
     def action_tail(predefined=None):
         # Curve and surface actions carry ProjectedOrTrue (and in IFC4 a PredefinedType); point actions carry neither.
@@ -240,12 +246,16 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     failure = e("IfcFailureConnectionCondition", "Coverage failure", 1.0e5, 1.0e5, 1.0e5, 2.0e5, 2.0e5, 2.0e5)
     slippage = e("IfcSlippageConnectionCondition", "Coverage slippage", 0.001, 0.001, 0.0)
 
+    # The curve member's length: its SupportedLength, its edge in the topology below.
+    SPAN = 5.0
+
     # Members and connections.
     curve = root("IfcStructuralCurveMember", place(), None, "RIGID_JOINED_MEMBER", *(() if v2 else (direction,)))
     curve_varying = root("IfcStructuralCurveMemberVarying", place(), None, "RIGID_JOINED_MEMBER", *(() if v2 else (direction,)))
     surface = root("IfcStructuralSurfaceMember", place(), None, "SHELL", 0.2)
     if v2:
-        shape, varying = aspect()
+        # Three thicknesses at three corners of its face (z = 6, below).
+        shape, varying = aspect((0.0, 0.0, 6.0), (SPAN, 0.0, 6.0), (0.0, SPAN, 6.0))
         surface_varying = root("IfcStructuralSurfaceMemberVarying", place(), shape, "SHELL", 0.2, (0.25, 0.3), varying)
     else:
         surface_varying = root("IfcStructuralSurfaceMemberVarying", place(), None, "SHELL", 0.2)
@@ -261,8 +271,12 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
         root("IfcStructuralPlanarAction", place(), None, planar_force, "GLOBAL_COORDS", *action_tail("CONST")),
     ]
     if v2:
-        for name, load in [("IfcStructuralLinearActionVarying", linear_force), ("IfcStructuralPlanarActionVarying", planar_force)]:
-            shape, varying = aspect()
+        # Three loads each: along the curve member's edge, and at three corners of the surface member's face (below).
+        for name, load, locations in [
+            ("IfcStructuralLinearActionVarying", linear_force, ((0.0, 0.0, 0.0), (SPAN / 2, 0.0, 0.0), (SPAN, 0.0, 0.0))),
+            ("IfcStructuralPlanarActionVarying", planar_force, ((0.0, 0.0, 3.0), (SPAN, 0.0, 3.0), (0.0, SPAN, 3.0))),
+        ]:
+            shape, varying = aspect(*locations)
             activities.append(root(name, place(), shape, load, "GLOBAL_COORDS", False, None, "TRUE_LENGTH", varying, (load, load)))
     else:
         activities.append(root("IfcStructuralCurveAction", place(), None, configuration, "GLOBAL_COORDS", *action_tail("LINEAR")))
@@ -286,8 +300,6 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     def rel(name: str, *rest):
         return e(name, guid(f"{name}:{len(model.by_type(name))}"), owner, None, None, *rest)
 
-    # The curve member's length: its SupportedLength here, its edge in the topology below.
-    SPAN = 5.0
     rel("IfcRelConnectsStructuralMember", curve, point_conn, node, failure, SPAN, world)
     rel("IfcRelConnectsStructuralMember", surface, curve_conn, edge, slippage, None, None)
     rel("IfcRelConnectsStructuralMember", surface, surface_conn, face, None, None, None)

@@ -31,6 +31,7 @@ import { parseArgs } from 'node:util';
 import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 import { LEVELS, deriveCatalogue, notApplicable } from './catalogue.mjs';
 import { loadCorpus } from './lib/corpus.mjs';
+import { factsOf, markLimits } from './limits.mjs';
 import { loadPackages } from './lib/packages.mjs';
 import { PROBES } from './probes/index.mjs';
 
@@ -73,7 +74,8 @@ export async function runProbes(rows, ctx, probes = PROBES) {
     for (const row of mine) {
       const r = results.get(row.id) ?? { status: 'error', reason: `${probe.name} returned no result for this row` };
       const status = r.status in RANK ? r.status : 'error';
-      const cell = { status, probe: probe.name, ...(r.reason ? { reason: clip(r.reason) } : {}), ...(r.counts ? { counts: r.counts } : {}), ...(r.evidence?.length ? { evidence: [...r.evidence].sort().slice(0, 5) } : {}) };
+      // `problems` (the full list, for markLimits) is dropped by `score`, so the summary keeps only the clipped reason.
+      const cell = { status, probe: probe.name, ...(r.reason ? { reason: clip(r.reason) } : {}), ...(r.counts ? { counts: r.counts } : {}), ...(r.evidence?.length ? { evidence: [...r.evidence].sort().slice(0, 5) } : {}), ...(r.problems ? { problems: r.problems } : {}) };
       const prev = cells.get(row.id)[probe.level];
       if (!prev || RANK[cell.status] > RANK[prev.status] || (RANK[cell.status] === RANK[prev.status] && cell.probe < prev.probe)) {
         cells.get(row.id)[probe.level] = cell;
@@ -173,7 +175,9 @@ export function score(rows, cells, meta = {}) {
     const levels = {};
     for (const level of LEVELS) {
       const rule = notApplicable(row, level);
-      levels[level] = rule ? { applicable: false, rule } : cells.get(row.id)[level];
+      if (rule) { levels[level] = { applicable: false, rule }; continue; }
+      const { problems: _full, ...cell } = cells.get(row.id)[level];
+      levels[level] = cell;
     }
     const head = row.kind === 'entity'
       ? { id: row.id, kind: row.kind, schema: row.schema, entity: row.entity, family: row.family }
@@ -273,7 +277,10 @@ async function main(argv) {
     const { rows, tables } = catalogue;
     const corpus = loadCorpus(ROOT, { offline: values.offline === true });
     const pkgs = await loadPackages(ROOT);
-    const cells = await runProbes(rows, { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() });
+    const ctx = { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() };
+    const cells = await runProbes(rows, ctx);
+    // An offline run scores absent files as skip, so its problems are not the ones the limits name.
+    if (!corpus.absent.length) markLimits(cells, factsOf(ctx));
     summary = score(rows, cells, {
       offline: corpus.absent.length > 0,
       absent: corpus.absent.map((a) => a.path),

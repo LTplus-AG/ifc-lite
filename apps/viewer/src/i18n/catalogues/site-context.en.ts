@@ -32,6 +32,7 @@ export const siteContextEn = {
   'siteContext.refusal.heightDatum': 'Site context heights are LN02; this model declares {datum}. The height systems are not mixed.',
   'siteContext.refusal.heightUnknown': 'Site context heights are LN02; this model states no vertical datum, and for this format none is assumed. Set its vertical datum to load site context around it.',
   'siteContext.refusal.addHint': 'Add georeferencing above: choose the coordinate system (for Swiss sites, EPSG:2056 · CH1903+ / LV95), then place the model on the map.',
+  'siteContext.refusal.crsHint': "Open Projected CRS above to correct its Name (for Swiss sites, EPSG:2056) and VerticalDatum (LN02).",
   'siteContext.refusal.outsideHint': 'If this model belongs in Switzerland, check its coordinate system and set its position on the map above.',
   'siteContext.command.noModel': 'Open a model first: site context is loaded around a model.',
   'siteContext.ribbon.label': 'Site context',

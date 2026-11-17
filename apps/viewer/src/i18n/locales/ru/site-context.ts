@@ -56,4 +56,5 @@ export const siteContextRu = {
   "siteContext.command.noModel": "Сначала откройте модель: окружение участка загружается вокруг модели.",
   "siteContext.ribbon.label": "Окружение",
   "siteContext.ribbon.tooltip": "Рельеф, участок и соседние здания от swisstopo вокруг геопривязанной швейцарской модели",
+  "siteContext.refusal.crsHint": "Откройте «Проекционная CRS» выше и исправьте Name (для участков в Швейцарии EPSG:2056) и VerticalDatum (LN02).",
 } satisfies Catalogue;

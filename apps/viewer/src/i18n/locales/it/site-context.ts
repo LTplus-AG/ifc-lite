@@ -56,4 +56,5 @@ export const siteContextIt = {
   "siteContext.command.noModel": "Apri prima un modello: il contesto del sito viene caricato attorno a un modello.",
   "siteContext.ribbon.label": "Contesto del sito",
   "siteContext.ribbon.tooltip": "Terreno, particella ed edifici vicini da swisstopo attorno a un modello svizzero georeferenziato",
+  "siteContext.refusal.crsHint": "Apri «CRS proiettato» qui sopra per correggere Name (per i siti svizzeri EPSG:2056) e VerticalDatum (NF02).",
 } satisfies Catalogue;

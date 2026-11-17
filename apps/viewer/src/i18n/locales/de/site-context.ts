@@ -56,4 +56,5 @@ export const siteContextDe = {
   "siteContext.command.noModel": "Zuerst ein Modell öffnen: Die Umgebung wird um ein Modell herum geladen.",
   "siteContext.ribbon.label": "Umgebung",
   "siteContext.ribbon.tooltip": "Gelände, Parzelle und Nachbargebäude von swisstopo um ein georeferenziertes Schweizer Modell",
+  "siteContext.refusal.crsHint": "Oben «Projiziertes KBS» öffnen und Name (für Schweizer Standorte EPSG:2056) und VerticalDatum (LN02) korrigieren.",
 } satisfies Catalogue;

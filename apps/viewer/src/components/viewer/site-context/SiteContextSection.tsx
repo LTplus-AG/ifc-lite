@@ -142,6 +142,7 @@ export function SiteContextSection({ modelId, editable = false, loadContext = im
           </p>
           {editable && anchor.reason === 'not-georeferenced' && <p className="text-xs text-muted-foreground">{t('siteContext.refusal.addHint')}</p>}
           {editable && anchor.reason === 'outside-switzerland' && <p className="text-xs text-muted-foreground">{t('siteContext.refusal.outsideHint')}</p>}
+          {editable && (anchor.reason === 'unknown-crs' || anchor.reason === 'height-unknown' || anchor.reason === 'height-datum') && <p className="text-xs text-muted-foreground">{t('siteContext.refusal.crsHint')}</p>}
         </div>
       ) : (
         <>

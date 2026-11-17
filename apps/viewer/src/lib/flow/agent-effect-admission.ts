@@ -37,7 +37,8 @@ export function admitAgentFlowEffects(doc: FlowDocument, registry: NodeRegistry<
       const method = typeof params.method === 'string' ? params.method.toUpperCase() : '';
       const declared = definition.params.find(param => param.name === 'method');
       if (!declared?.options?.includes(method)) { unknown.push(node.id); continue; }
-      if (method !== 'GET') publication.push(node.id);
+      // Any agent-run request needs approval: a GET's URL can carry model data out as easily as a POST body.
+      publication.push(node.id);
       continue;
     }
     if (node.type.startsWith('script.') && doc.capabilities.some(capability => capability.startsWith('network.fetch'))) { publication.push(node.id); continue; }

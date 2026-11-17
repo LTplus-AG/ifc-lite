@@ -191,7 +191,8 @@ export class NativeScriptRunner {
 
       sandbox = await createViewerSandbox(bim, config);
       this.active = sandbox;
-      if (this.cancellationEpoch !== cancellationEpoch) return null;
+      // Cancelled while the sandbox was being created: settle the store too, or it stays 'running'.
+      if (this.cancellationEpoch !== cancellationEpoch) { if (stillCurrent()) setExecutionState('idle'); return null; }
 
       const result = await sandbox.eval(code);
 

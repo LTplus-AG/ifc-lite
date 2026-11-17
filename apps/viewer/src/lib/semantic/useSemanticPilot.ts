@@ -42,7 +42,7 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
     return true;
   }
   function load(input: SourceInput, onRetrieved?: () => void) {
-    return run(async signal => { const outcome = await loadSemanticSource(input, signal, execute, onRetrieved); setDiagnostic(outcome.diagnostic); });
+    return run(async signal => { const outcome = await loadSemanticSource(input, signal, execute, onRetrieved); if (!signal.aborted) setDiagnostic(outcome.diagnostic); });
   }
   function related(input: SourceInput, onRetrieved?: () => void) {
     try {

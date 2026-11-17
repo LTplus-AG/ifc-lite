@@ -14,7 +14,7 @@ export const coordinationScriptRunOperations = [
     if (!c.host.bim) throw new Error('This host does not expose the native viewer SDK.');
     const state = useViewerStore.getState(), source = state.scriptEditorContent;
     if (state.scriptEditorRevision !== i.expected_revision || state.scriptExecutionState === 'running') throw new Error('Native editor revision changed or a script is already running.');
-    const runner = new NativeScriptRunner(c.host.bim, { permissions: { network: false } }), cancel = () => runner.cancel(); c.signal?.addEventListener('abort', cancel, { once: true });
+    const runner = new NativeScriptRunner(c.host.bim, { permissions: { network: false, export: false, files: false } }), cancel = () => runner.cancel(); c.signal?.addEventListener('abort', cancel, { once: true });
     try {
       return await c.commitAsync(async () => {
         if (useViewerStore.getState().scriptEditorRevision !== i.expected_revision) throw new Error('Native editor changed before script admission.');

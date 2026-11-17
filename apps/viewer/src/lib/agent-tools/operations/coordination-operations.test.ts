@@ -177,6 +177,9 @@ it('Flow effect admission refuses future remote nodes and detects native HTTP Pl
   const unknown = await execute<{ state: string; error: string }>('flow.run', input());
   assert.equal(unknown.state, 'failed'); assert.match(unknown.error, /effect contract/); assert.equal(ran, false);
   useViewerStore.getState().setFlowDoc({ ...doc, nodes: [{ id: 'http', type: 'http.request', params: { url: 'https://example.test/data', method: 'GET' }, pos: [0, 0] }], inputs: [{ nodeId: 'http', param: 'method', label: 'Method', kind: 'scalar' }] });
+  // A GET waits too: its URL can carry model data out.
+  const get = await execute<{ state: string }>('flow.run', input());
+  assert.equal(get.state, 'waiting-for-approval'); assert.equal(ran, false);
   const requested = await execute<{ state: string }>('flow.run', { ...input(), inputs_json: '{"http.method":"POST"}' });
   assert.equal(requested.state, 'waiting-for-approval'); assert.equal(ran, false);
 });

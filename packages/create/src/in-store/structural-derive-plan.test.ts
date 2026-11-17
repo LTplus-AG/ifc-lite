@@ -246,6 +246,12 @@ describe('structural derivation plan (#9668)', () => {
     // A wall standing on an Axis-only ground beam does not hold it, even with its base drawn 2 cm under the axis.
     expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       element('IfcWall', { prism: box([7, -0.1, -0.02], 6, 0.2, [0, 0, 3]) }))))).toEqual([0, 6]);
+    // That stricter test is for walls under an Axis-only beam only: a slab around one still holds it, and a beam
+    // with a body framing into a wall founded 2 cm under its soffit is held by it.
+    expect(supportXs(planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
+      element('IfcSlab', { prism: box([10, -1, -0.04], 4, 2, [0, 0, 0.15]) }))))).toEqual([0, 6, 12]);
+    expect(supportXs(planStructuralDerivation(facts(element('IfcBeam', { prism: box([0, -0.15, -0.3], 12, 0.3, [0, 0, 0.3]) }),
+      element('IfcWall', { prism: box([11.9, -1, -0.32], 0.2, 2, [0, 0, 4]) }), column(0, 0, -0.15, 3), column(6, 0, -0.15, 3))))).toEqual([0, 6, 12]);
     const standing = planStructuralDerivation(facts(line('IfcBeam', [0, 0, 0], [12, 0, 0]), column(0, 0, 0, 3), column(6, 0, 0, 3),
       element('IfcWall', { prism: box([7, -0.1, 0], 6, 0.2, [0, 0, 3]) })));
     expect(supportXs(standing)).toEqual([0, 6]);

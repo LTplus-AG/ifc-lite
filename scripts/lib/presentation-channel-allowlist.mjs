@@ -71,6 +71,9 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // AUTHORING tool recorded, not guaranteed geometry-bearing in this
   // renderer.
   'apps/viewer/src/hooks/useBCF.ts',
+  // The viewpoint apply moved out of useBCF.ts into this shared native service (#10525 follow-up),
+  // with the same routing of visible-component exceptions.
+  'apps/viewer/src/hooks/bcf/apply-viewpoint.ts',
   // The validation row-focus isolate (`installFocusIsolation`) and set-level
   // isolate (`installSetIsolation`, the failed/passed/involved buttons),
   // shared by IDS and rule-set reports since #5138 split them out of

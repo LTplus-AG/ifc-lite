@@ -245,6 +245,15 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     useViewerStore.setState({ mutationVersion: 3 });
     assert.equal((await execute('environment.exposure', { value: 1.1 }, { expected_revision: 2 })).errorCode, 'STATE_CHANGED');
   });
+  it('runs real box-mesh clash analysis with structured job completion', async () => {
+    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+    const queued = data<{ job: { id: string; state: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+    assert.equal(queued.job.state, 'running');
+    const terminal = data<{ state: string; result: { result: { clashes: unknown[] } } }>(await settled(queued.job.id));
+    assert.equal(terminal.state, 'succeeded');
+    assert.ok(terminal.result.result.clashes.length > 0, 'real coincident meshes must clash');
+    assert.equal(useViewerStore.getState().clashResult, null, 'analysis does not replace the panel report');
+  });
   it('refuses completed job results after a model edit and isolates host job ownership', async () => {
     const queued = data<{ job: { id: string } }>(await inspect('schedule.tasks', {}, { background: true }));
     assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'succeeded');
@@ -253,6 +262,14 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     useViewerStore.setState({ mutationVersion: 1 });
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
   });
+  it('cancels a real clash job and waits for native runner settlement', async () => {
+    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+    const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+    const requested = await dispatchMainViewerTool(host, 'viewer_operation_cancel', { job_id: queued.job.id });
+    assert.equal(requested.isError, false, requested.text);
+    const terminal = data<{ state: string }>(await settled(queued.job.id));
+    assert.equal(terminal.state, 'cancelled');
+  });
   it('discards a completed result when the model object changes even if its store survives', async () => {
     const queued = data<{ job: { id: string } }>(await inspect('schedule.tasks', {}, { background: true }));
     assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'succeeded');
@@ -260,6 +277,14 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     models.set('A', { ...models.get('A')!, name: 'replacement' });
     useViewerStore.setState({ models });
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
+  });
+  it('aborts host-owned analysis after its original MCP call has returned', async () => {
+    const lifetime = new AbortController();
+    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), { lifetimeSignal: lifetime.signal });
+    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+    const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+    lifetime.abort();
+    assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'cancelled');
   });
   it('declares an explicit capability and closed runtime schema for every exact ID', () => {
     const ids = new Set<string>();

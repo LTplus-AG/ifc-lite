@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -293,7 +293,7 @@ const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');
 // A hook's GIT_DIR or GIT_INDEX_FILE would point git -C at the real repository.
 const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
 
-/** A repository whose HEAD is the PR merge commit of a branch changing `files` (old -> new rename pairs allowed). */
+/** A repository whose HEAD is the PR merge commit of a branch that adds `add` and git-mv's `move` ([old, new] pairs); `merge: false` makes it a squash. */
 function batchRepo(context, { add = [], move = [], merge = true, workflow = readFileSync(join(REPO, WORKFLOW), 'utf8') } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-batch-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
@@ -334,12 +334,7 @@ function decide(root, { output = true } = {}) {
   if (output) env.GITHUB_OUTPUT = out;
   else delete env.GITHUB_OUTPUT;
   const r = spawnSync(process.execPath, [CLI, '--batch-decide', '--root', root], { encoding: 'utf8', env });
-  let written = '';
-  try {
-    written = readFileSync(out, 'utf8');
-  } catch {
-    written = '';
-  }
+  const written = existsSync(out) ? readFileSync(out, 'utf8') : '';
   return { status: r.status, log: r.stdout + r.stderr, written };
 }
 

@@ -331,7 +331,8 @@ function batchWiringProblems(text, root) {
   return out;
 }
 
-const gitLines = (root, args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).split('\n').filter(Boolean);
+// -z: without it git quotes a non-ASCII path, which then matches no glob.
+const gitPaths = (root, args) => execFileSync('git', ['-C', root, ...args, '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
 
 /**
  * Whether a merge-queue batch must run the lane. The `pull_request` checkout is
@@ -339,28 +340,19 @@ const gitLines = (root, args) => execFileSync('git', ['-C', root, ...args], { en
  * diff against it is the batch. Every doubt answers `run: true`.
  */
 function batchDecision(root) {
-  let globs;
-  try {
-    globs = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
-  } catch (err) {
-    return { run: true, reason: `cannot read ${WORKFLOW} on.pull_request.paths (${err.message}); running` };
-  }
-  if (!globs || globs.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
   let changed;
-  try {
-    const parents = gitLines(root, ['rev-list', '--parents', '-n', '1', 'HEAD'])[0]?.split(' ') ?? [];
-    if (parents.length !== 3) return { run: true, reason: `HEAD has ${Math.max(parents.length - 1, 0)} parent(s), not the two of a PR merge commit; running` };
-    // --no-renames: a file moved out of a watched directory must count by its old path too.
-    changed = gitLines(root, ['diff', '--name-only', '--no-renames', parents[1], 'HEAD']);
-  } catch (err) {
-    return { run: true, reason: `cannot diff the batch against main (${err.message.split('\n')[0]}); running` };
-  }
-  if (changed.length === 0) return { run: true, reason: 'the batch diff is empty, which a real batch never is; running' };
   let hits;
   try {
+    const globs = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
+    if (!globs || globs.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
+    const parents = execFileSync('git', ['-C', root, 'rev-list', '--parents', '-n', '1', 'HEAD'], { encoding: 'utf8' }).trim().split(' ').filter(Boolean);
+    if (parents.length !== 3) return { run: true, reason: `HEAD has ${Math.max(parents.length - 1, 0)} parent(s), not the two of a PR merge commit; running` };
+    // --no-renames: a file moved out of a watched directory must count by its old path too.
+    changed = gitPaths(root, ['diff', '--name-only', '--no-renames', parents[1], 'HEAD']);
+    if (changed.length === 0) return { run: true, reason: 'the batch diff is empty, which a real batch never is; running' };
     hits = changed.filter((f) => matchesAny(f, globs));
   } catch (err) {
-    return { run: true, reason: `cannot match the batch against the paths list (${err.message}); running` };
+    return { run: true, reason: `cannot decide (${err.message.split('\n')[0]}); running` };
   }
   if (hits.length === 0) return { run: false, reason: `none of the batch's ${changed.length} changed file(s) is a path the lane observes` };
   const shown = hits.slice(0, 10).join(', ');

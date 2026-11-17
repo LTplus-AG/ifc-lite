@@ -25,7 +25,8 @@ function harness(overBudget: boolean) {
   }
   let readbacks = 0;
   let readback: () => Promise<PickResult | null> = async () => null;
-  const gpu = {pick: async () => {readbacks++;return readback();}} as unknown as Picker;
+  // No batch pick pass (#10264 S1): over budget, this pins the CPU raycast route.
+  const gpu = {canPickLanes: () => false, pick: async () => {readbacks++;return readback();}} as unknown as Picker;
   const canvas = {width:400,height:400,getBoundingClientRect:()=>({width:200,height:200})} as HTMLCanvasElement;
   const manager = new PickingManager(camera,scene,gpu,canvas,()=>{throw new Error('unexpected hydration');});
   manager.setAnnotationPickProvider((...args)=>annotations.pick(camera,...args));

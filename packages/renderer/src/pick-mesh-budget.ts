@@ -8,21 +8,24 @@
  * verdict and the piece bookkeeping it needs live in one place.
  */
 
+import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions } from './types.js';
 import type { Scene } from './scene.js';
+import type { GpuUploadOutcome } from './gpu-upload-guard.js';
 import { isEntityVisible } from './entity-visibility.js';
 
 /**
  * Most individual pick meshes one pick may hydrate. GPU picking needs a
  * buffer per piece, which is too slow at 60K+ elements, so a pick that would
- * create more takes the CPU raycast (no GPU buffers) instead.
+ * create more draws the colour batches whole instead (#10264 S1), or takes the
+ * CPU raycast when the batches cannot answer.
  */
 export const MAX_PICK_MESH_CREATION = 500;
 
 type PickMeshScene = Pick<Scene, 'getMeshes' | 'visibleMeshDataEntitiesExceed' | 'getAllMeshDataExpressIds' | 'getMeshDataPieces'>;
 
 export interface PickMeshPlan {
-  /** True when hydrating would exceed {@link MAX_PICK_MESH_CREATION}: take the CPU route. */
+  /** True when hydrating would exceed {@link MAX_PICK_MESH_CREATION}: draw the batches instead. */
   overBudget: boolean;
   /** Visible pickable ids, in `expressIds` order. Empty when `overBudget`. */
   visibleExpressIds: number[];
@@ -102,4 +105,34 @@ export function planPickMeshHydration(scene: PickMeshScene, options?: PickOption
 
   const overBudget = toCreate > MAX_PICK_MESH_CREATION || (visibleExpressIds.length > 0 && requiredPieceCounts.size === 0);
   return { overBudget, visibleExpressIds, existingPieceCounts };
+}
+
+/**
+ * Create the pick meshes `plan` found missing, so a following
+ * `scene.getMeshes()` covers every visible entity. Returns false when any
+ * creation failed (#4885 review) — a lost device, or a mapped createBuffer
+ * allocation failure — because `scene.getMeshes()` then lacks that piece's
+ * buffers, and a GPU pick would silently skip it rather than fall back. One
+ * failure fails the whole call: a mix of hydrated and un-hydrated pieces has
+ * no correct partial GPU answer.
+ */
+export function hydratePickMeshes(
+  scene: Pick<Scene, 'getMeshDataPieces'>,
+  plan: PickMeshPlan,
+  createMesh: (meshData: MeshData) => GpuUploadOutcome<void>,
+): boolean {
+  // For multi-model support: create meshes for ALL (expressId, modelIndex) pairs.
+  const seenOrdinalsByKey = new Map<string, number>();
+  let ok = true;
+  for (const expressId of plan.visibleExpressIds) {
+    for (const piece of scene.getMeshDataPieces(expressId) ?? []) {
+      const meshKey = pickPieceKey(piece);
+      const ordinal = seenOrdinalsByKey.get(meshKey) ?? 0;
+      seenOrdinalsByKey.set(meshKey, ordinal + 1);
+      // Assume existing pieces correspond to the first N pieces in stable order.
+      if (ordinal < (plan.existingPieceCounts.get(meshKey) ?? 0)) continue;
+      if (!createMesh(piece).ok) ok = false;
+    }
+  }
+  return ok;
 }

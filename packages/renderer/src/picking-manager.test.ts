@@ -222,18 +222,24 @@ describe('PickingManager', () => {
     function harness(overrides: {
       released?: boolean;
       texturedOnly?: boolean;
-      existingMeshes?: Array<{ expressId: number }>;
+      existingMeshes?: Array<{ expressId: number; hydrated?: boolean }>;
       pieces?: (id: number) => Array<{ expressId: number }> | undefined;
       pointNodes?: PointPickNode[] | null;
       /** When set, the picker rejects with this instead of returning hits. */
       pointPassError?: Error;
+      /** Whether the picker can draw colour batches whole (#10264 S1); off by default. */
+      lanes?: boolean;
+      /** Scene state that keeps the batch route from answering. */
+      pendingBatches?: boolean;
+      evicted?: boolean;
     } = {}) {
-      const createdMeshes: Array<{ expressId: number }> = [
+      const createdMeshes: Array<{ expressId: number; hydrated?: boolean }> = [
         ...(overrides.existingMeshes ?? []),
       ];
       let pickerRectMeshes: Array<{ expressId: number }> | null = null;
       let pickerRectTemplates: unknown = 'not called';
       let pickerRectPointNodes: unknown = 'not called';
+      let pickerRectLanes: { draws: readonly { anchor: number; layout: string }[] } | undefined;
       let selectRectCalls = 0;
 
       const camera = {
@@ -249,7 +255,12 @@ describe('PickingManager', () => {
 
       const scene = {
         getMeshes: () => createdMeshes,
-        getBatchedMeshes: () => overrides.texturedOnly ? [] : [{ expressIds: [WALL] }],
+        getBatchedMeshes: () => overrides.texturedOnly ? [] : [{
+          expressIds: [WALL], vertexBuffer: {}, indexBuffer: {}, indexCount: 3,
+          ...(overrides.evicted ? { gpuResident: false } : {}),
+        }],
+        hasPendingBatches: () => overrides.pendingBatches ?? false,
+        isFinalizeInProgress: () => false,
         getTexturedMeshes: () => overrides.texturedOnly ? [{ expressId: WALL }, { expressId: SLAB }] : [],
         isGeometryDataReleased: () => overrides.released ?? false,
         getAllMeshDataExpressIds: () => [WALL, SLAB],
@@ -264,6 +275,7 @@ describe('PickingManager', () => {
       };
 
       const picker = {
+        canPickLanes: () => overrides.lanes ?? false,
         pickRect: async (
           _x0: number, _y0: number, _x1: number, _y1: number,
           _w: number, _h: number,
@@ -272,14 +284,19 @@ describe('PickingManager', () => {
           pointNodes: Array<{ expressId: number }> | undefined,
           _pointSizing: unknown,
           instancedTemplates: unknown,
+          _clip: unknown,
+          _snapshot: unknown,
+          lanes?: { draws: readonly { anchor: number; layout: string }[] },
         ) => {
           pickerRectMeshes = meshes;
           pickerRectPointNodes = pointNodes;
           pickerRectTemplates = instancedTemplates;
+          pickerRectLanes = lanes;
           if (overrides.pointPassError) throw overrides.pointPassError;
           // Mirrors the real picker: mesh samples resolve through the mesh list,
-          // point samples carry the asset's federated id directly.
+          // lane samples carry their entity, point samples the asset's federated id.
           const ids = new Set(meshes.map((m) => m.expressId));
+          for (const draw of lanes?.draws ?? []) ids.add(draw.anchor);
           for (const node of pointNodes ?? []) ids.add(node.expressId);
           return ids;
         },
@@ -313,6 +330,7 @@ describe('PickingManager', () => {
         get pickerRectMeshes() { return pickerRectMeshes; },
         get pickerRectPointNodes() { return pickerRectPointNodes; },
         get pickerRectTemplates() { return pickerRectTemplates; },
+        get pickerRectLanes() { return pickerRectLanes; },
         get selectRectCalls() { return selectRectCalls; },
       };
     }
@@ -368,7 +386,7 @@ describe('PickingManager', () => {
       );
     });
 
-    it('falls back to Scene.selectRect once geometry data is released', async () => {
+    it('falls back to Scene.selectRect once geometry data is released and the batch pass is unavailable', async () => {
       const h = harness({ released: true });
 
       const result = await h.manager.pickRect(0, 0, 100, 100);
@@ -379,7 +397,7 @@ describe('PickingManager', () => {
       assert.equal(h.pickerRectMeshes, null, 'GPU rect pass must be skipped entirely');
     });
 
-    it('falls back to Scene.selectRect when hydration would exceed the pick-mesh budget', async () => {
+    it('falls back to Scene.selectRect over the pick-mesh budget when the batch pass is unavailable', async () => {
       // 600 pieces for one entity blows MAX_PICK_MESH_CREATION (500), which is
       // the large-model case named in the issue title.
       const many = Array.from({ length: 600 }, () => ({ expressId: WALL }));
@@ -406,7 +424,7 @@ describe('PickingManager', () => {
       assert.equal(h.createdMeshes.length, 500, 'all 500 pieces must be hydrated');
     });
 
-    it('falls back to Scene.selectRect one piece past the pick-mesh budget (501)', async () => {
+    it('leaves the hydration route one piece past the pick-mesh budget (501)', async () => {
       const overBudget = Array.from({ length: 501 }, () => ({ expressId: WALL }));
       const h = harness({ pieces: (id) => (id === WALL ? overBudget : undefined) });
 
@@ -414,6 +432,56 @@ describe('PickingManager', () => {
 
       assert.equal(h.selectRectCalls, 1, '501 pieces must exceed the budget and take the CPU path');
       assert.equal(h.createdMeshes.length, 0, 'must not hydrate when one piece over budget');
+    });
+
+    // #10264 S1: over the budget the colour batches are drawn whole, so the
+    // marquee stays pixel-exact instead of degrading to bounding boxes.
+    it('draws the colour batches whole over the pick-mesh budget (#10264)', async () => {
+      const many = Array.from({ length: 600 }, () => ({ expressId: WALL }));
+      const h = harness({ lanes: true, pieces: (id) => (id === WALL ? many : [{ expressId: id }]) });
+
+      const result = await h.manager.pickRect(0, 0, 100, 100);
+
+      assert.equal(h.selectRectCalls, 0, 'the batch route answers; no bounding-box fallback');
+      assert.equal(h.createdMeshes.length, 0, 'no per-piece pick meshes are built');
+      assert.deepStrictEqual(h.pickerRectLanes?.draws.map((d) => [d.layout, d.anchor]), [['flat', WALL]]);
+      assert.deepStrictEqual(h.pickerRectTemplates, INSTANCED_TEMPLATES, 'instanced occurrences share the pass');
+      assert.deepStrictEqual(result, new Set([WALL]));
+    });
+
+    it('draws the batches when CPU geometry is released (#10264)', async () => {
+      const h = harness({ lanes: true, released: true });
+
+      await h.manager.pickRect(0, 0, 100, 100);
+
+      assert.equal(h.selectRectCalls, 0);
+      assert.equal(h.createdMeshes.length, 0, 'released geometry has nothing to hydrate');
+      assert.equal(h.pickerRectLanes?.draws.length, 1);
+    });
+
+    // Never a partial GPU answer: a batch the pass cannot draw would silently
+    // drop its elements, so the whole pick takes the CPU route instead.
+    for (const [name, state] of [
+      ['a batch is evicted from the GPU', { evicted: true }],
+      ['batches are pending a rebuild', { pendingBatches: true }],
+    ] as const) {
+      it(`takes the CPU route when ${name} (#10264)`, async () => {
+        const h = harness({ lanes: true, released: true, ...state });
+
+        const result = await h.manager.pickRect(0, 0, 100, 100);
+
+        assert.equal(h.selectRectCalls, 1);
+        assert.equal(h.pickerRectLanes, undefined);
+        assert.deepStrictEqual(result, new Set([WALL, SLAB]));
+      });
+    }
+
+    it('keeps hydrated pick copies out of the batch pass (#10264)', async () => {
+      const h = harness({ lanes: true, released: true, existingMeshes: [{ expressId: SLAB, hydrated: true }] });
+
+      await h.manager.pickRect(0, 0, 100, 100);
+
+      assert.deepStrictEqual(h.pickerRectMeshes, [], 'a hydrated copy duplicates batch geometry');
     });
 
     it('honours isolation when falling back to the CPU path', async () => {

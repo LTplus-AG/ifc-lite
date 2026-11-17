@@ -130,6 +130,23 @@ export interface GeometryDiagnostics {
   }>;
 }
 
+type BudgetRefusalDetail = NonNullable<GeometryDiagnostics['budgetRefusals']>[number];
+
+/** null sorts first, as Rust orders `None` before `Some`. */
+const cmpNullable = <T extends number | string>(x: T | null, y: T | null): number =>
+  x === y ? 0 : x === null ? -1 : y === null ? 1 : x < y ? -1 : 1;
+
+/**
+ * The key the native pool keeps refusal details by (processing's
+ * `keep_budget_details`), so a merge keeps the same sixteen whichever worker
+ * finishes first, and the same ones as a native load.
+ */
+function compareBudgetRefusals(x: BudgetRefusalDetail, y: BudgetRefusalDetail): number {
+  return cmpNullable(x.productId, y.productId) || cmpNullable(x.sourceId, y.sourceId)
+    || cmpNullable(x.budget, y.budget) || cmpNullable(x.limit, y.limit) || cmpNullable(x.reached, y.reached)
+    || cmpNullable(x.productType, y.productType) || cmpNullable(x.GlobalId, y.GlobalId);
+}
+
 /** Cap on the merged worst-hosts detail list (matches the Rust WORST_HOSTS_LIMIT). */
 const WORST_HOSTS_LIMIT = 16;
 
@@ -247,7 +264,7 @@ export function mergeGeometryDiagnostics(
       ? {
         totalBudgetRefusals: (a.totalBudgetRefusals ?? a.budgetRefusals?.length ?? 0)
           + (b.totalBudgetRefusals ?? b.budgetRefusals?.length ?? 0),
-        budgetRefusals: [...(a.budgetRefusals ?? []), ...(b.budgetRefusals ?? [])].slice(0, 16),
+        budgetRefusals: [...(a.budgetRefusals ?? []), ...(b.budgetRefusals ?? [])].sort(compareBudgetRefusals).slice(0, 16),
       }
       : {}),
   };

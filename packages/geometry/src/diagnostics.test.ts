@@ -270,6 +270,16 @@ it('issue 9268 merge caps budget detail while preserving the complete count', ()
   expect(merged?.budgetRefusals).toHaveLength(16);
 });
 
+it('issue 9268 merge keeps the same sixteen refusal details whichever worker finishes first', () => {
+  const refusal = (productId: number | null) => ({ budget: 'mapped attempts', limit: 3, reached: 4,
+    sourceId: 1000 + (productId ?? 0), productId, productType: 'IfcWall', GlobalId: null });
+  const low = make({ budgetRefusals: [refusal(null), ...Array.from({ length: 9 }, (_, i) => refusal(i + 1))] });
+  const high = make({ budgetRefusals: Array.from({ length: 10 }, (_, i) => refusal(20 - i)) });
+  const ids = (d: ReturnType<typeof mergeGeometryDiagnostics>) => d?.budgetRefusals?.map((r) => r.productId);
+  expect(ids(mergeGeometryDiagnostics(high, low))).toEqual(ids(mergeGeometryDiagnostics(low, high)));
+  expect(ids(mergeGeometryDiagnostics(high, low))).toEqual([null, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16]);
+});
+
 it('issue 9268 merge preserves counted zero budget refusals and absent fields', () => {
   const counted = mergeGeometryDiagnostics(
     make({ totalBudgetRefusals: 0, budgetRefusals: [] }),

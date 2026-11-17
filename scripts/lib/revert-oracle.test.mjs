@@ -700,6 +700,79 @@ test('classifyDiff reports whether Cargo.lock changed (#4592)', () => {
   assert.equal(classifyDiff(parseNameStatus('M\trust/geometry/Cargo.toml')).cargoLockChanged, false);
 });
 
+test('classifyDiff: #10492 shape (Cargo.lock + generated retained notices) has no production file', () => {
+  const entries = parseNameStatus([
+    'M\tCargo.lock',
+    'M\tlicenses/retained/README.md',
+    'M\tlicenses/retained/THIRD_PARTY_NOTICES.txt',
+    'M\tlicenses/retained/manifest.json',
+    'M\tpackages/cli/THIRD_PARTY_NOTICES.txt',
+    'M\tpackages/wasm/THIRD_PARTY_NOTICES.txt',
+  ].join('\n'));
+  const { production, ignored } = classifyDiff(entries);
+  assert.deepEqual(production, []);
+  assert.equal(ignored.length, entries.length);
+  // .md/.txt were already ignored by suffix; these exercise the new prefix.
+  assert.equal(classifyPath('licenses/retained/manifest.json'), 'ignored');
+  assert.equal(classifyPath('licenses/retained/supplemental.json'), 'ignored');
+});
+
+const pkg = (overrides = {}) => JSON.stringify({
+  name: '@ifc-lite/x',
+  version: '1.0.0',
+  scripts: { test: 'vitest run' },
+  dependencies: { three: '^0.170.0' },
+  devDependencies: { vitest: '^4.0.0' },
+  ...overrides,
+}, null, 2) + '\n';
+const classifyPackageJson = (before, after) => {
+  const { production } = classifyDiff(parseNameStatus('M\tpackages/x/package.json'), () => ({ before, after }));
+  return production.length ? 'production' : 'ignored';
+};
+
+test('classifyDiff: a package.json that changes only dependency version strings is ignored (#10562)', () => {
+  const after = pkg({ dependencies: { three: '^0.171.0' }, devDependencies: { vitest: '^4.1.0' } });
+  assert.equal(classifyPackageJson(pkg(), after), 'ignored');
+  for (const spec of ['~0.171.0', '>=0.170.0 <0.172.0', '0.171.0-beta.1', '1.0.0+build.5', '0.x', '^1 || ^2', '1.0.0 - 2.0.0', '=1.2.3', '1.2.x', '>=1.2.3 <2.0.0-0', '0.0.0']) {
+    assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: { three: spec } })), 'ignored', spec);
+  }
+  const internal = { '@ifc-lite/data': 'workspace:*' };
+  assert.equal(
+    classifyPackageJson(pkg({ dependencies: { ...internal, three: '^0.170.0' } }), pkg({ dependencies: { ...internal, three: '^0.171.0' } })),
+    'ignored',
+    'an unchanged workspace: specifier next to the bump is fine',
+  );
+});
+
+test('classifyDiff: a dependency bump that also touches anything else in package.json stays production', () => {
+  const bumped = { dependencies: { three: '^0.171.0' } };
+  assert.equal(classifyPackageJson(pkg(), pkg({ ...bumped, scripts: { test: 'vitest run --bail' } })), 'production');
+  assert.equal(classifyPackageJson(pkg(), pkg({ ...bumped, main: 'dist/index.js' })), 'production');
+  assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: { three: '^0.170.0', zod: '^3.0.0' } })), 'production');
+  assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: {} })), 'production');
+  assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: { three: { version: '1' } } })), 'production');
+  for (const source of ['npm:evil-three@1.0.0', 'github:someone/three#main', 'file:../three', 'someone/three', '..', '.', 'three.tgz', 'three.tar.gz', '\\\\host\\three', ' ..', 'three.tgz ', 'next', '*', 'next15', 'rc1', 'v8-canary', '1-beta', '', '-', '1.0.0 -', '- -', '1.x.3', '01.2.3', '>=1 - 2']) {
+    assert.equal(classifyPackageJson(pkg(), pkg({ dependencies: { three: source } })), 'production', source);
+  }
+  assert.equal(
+    classifyPackageJson(pkg({ dependencies: { three: 'workspace:*' } }), pkg({ dependencies: { three: '^1.0.0' } })),
+    'production',
+  );
+});
+
+test('classifyDiff: an unreadable or unparseable package.json side fails closed to production', () => {
+  const after = pkg({ dependencies: { three: '^0.171.0' } });
+  assert.equal(classifyPackageJson('{ "name": ', after), 'production');
+  assert.equal(classifyPackageJson(pkg(), after.slice(0, -10)), 'production');
+  assert.equal(classifyPackageJson('', after), 'production', 'gitShow returns "" for a side that does not exist');
+  assert.equal(classifyPackageJson(undefined, after), 'production');
+  assert.equal(classifyPackageJson('[]', '[]'), 'production');
+  const dupScripts = pkg().replace('"scripts"', '"scripts": { "test": "rm -rf /" },\n  "scripts"');
+  assert.equal(classifyPackageJson(pkg(), dupScripts), 'production', 'duplicate keys are rejected');
+  assert.equal(classifyPackageJson(pkg(), JSON.stringify(JSON.parse(after))), 'production', 'non-canonical formatting');
+  assert.equal(classifyDiff(parseNameStatus('M\tpackages/x/package.json')).production.length, 1, 'no reader: production');
+});
+
 test('#6663: parseNameStatus retains both rename locations through production classification', () => {
   const entries = parseNameStatus('R096\tpackages/a/src/old.ts\tpackages/a/src/new.ts');
   const expected = [{ status: 'R', path: 'packages/a/src/new.ts', oldPath: 'packages/a/src/old.ts' }];

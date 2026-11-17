@@ -39,13 +39,14 @@ import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-orac
 import { passVerdict } from './revert-oracle-pass-verdict.mjs';
 import { processResultGap } from './revert-oracle-process-result.mjs';
 import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
+import { isDependencyVersionOnlyPackageJson } from './revert-oracle-version-bump.mjs';
 export { cargoRunner } from './revert-oracle-cargo.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
 
-/** Paths no test can observe: release/CI/docs. `tests/e2e/**` is test scaffolding; its Playwright specs run in a browser (#6267). */
-const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/'];
+/** Paths no test can observe: release/CI/docs, and `licenses/retained/` (notices and their inputs, gated by `retained-notices.mjs --check`). `tests/e2e/**` is test scaffolding; its Playwright specs run in a browser (#6267). */
+const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/', 'licenses/retained/'];
 const IGNORED_EXACT = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'rust/python/Cargo.lock', 'CHANGELOG.md', 'playwright.config.ts']);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 
@@ -87,15 +88,13 @@ export function classifyPath(path) {
 
 /**
  * @param {Array<{status: string, path: string, oldPath?: string}>} entries from `git diff --name-status`
+ * @param {(path: string) => {before?: string, after?: string}} [readSides] merge-base/head text; without it, or when either side does not parse, a dependency-version-only package.json stays production
  */
-export function classifyDiff(entries) {
-  const production = [];
-  const test = [];
-  const ignored = [];
-  const inert = [];
-  const warnings = [];
+export function classifyDiff(entries, readSides) {
+  const [production, test, ignored, inert, warnings] = [[], [], [], [], []];
   for (const entry of entries) {
-    const kind = classifyPath(entry.path);
+    let kind = classifyPath(entry.path);
+    if (kind === 'production' && readSides && isDependencyVersionOnlyPackageJson(entry.path, readSides)) kind = 'ignored';
     const bucket = kind === 'production' ? production : kind === 'test' ? test : kind === 'inert' ? inert : ignored;
     bucket.push(entry);
   }

@@ -7,15 +7,11 @@ import { useViewerStore } from '@/store';
 import { acceptedForPair } from './acceptedIdentity';
 import { comparePreparedPair } from './run-comparison';
 import { stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
-/** Federation global ids to hide for the blacklist (#1470): every meshed copy
- *  (A and B) of any entity whose class is excluded in EITHER revision, mirroring
- *  the engine's union exclusion so a cross-version re-class doesn't leave one
- *  copy stranded on screen. Empty set when nothing is excluded. */
 /**
  * Run the (cheap) diff pass for the cached fingerprints, derive the overlay's
  * hidden set, and publish the whole comparison to the store. The single place a
  * `CompareResult` is ever produced - both the Run button and the reconciliation
- * effect below go through here.
+ * effect in useCompare go through here.
  *
  * INVARIANT this function exists to protect (the #1891 P1 fix). The diff options
  * are read HERE, and nothing may `await` between that read and
@@ -33,7 +29,7 @@ import { stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
  *   event handler can interleave, so the published result cannot be stale by even
  *   one option change. Adding an `await` in here reintroduces the P1.
  *
- * Together those are what let the reconciliation effect below omit `result` from
+ * Together those are what let the reconciliation effect in useCompare omit `result` from
  * its deps: a published result always agrees with the store, so there is nothing
  * for a `result`-triggered re-run to catch, and no `setCompareResult` ->
  * re-render -> re-diff cycle.
@@ -44,7 +40,6 @@ import { stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
  * @returns the published result, plus the matching flag it ran with - telemetry
  *   reports the OPTION, of which `diff.contentMatches` is only a derivation.
  */
-
 export function publishCompareResult(built: BuiltPair): {
   result: CompareResult;
   matchByContent: boolean;

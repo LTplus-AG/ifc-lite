@@ -24,7 +24,7 @@ export const documentNativeReportOperations = [
     type: 'object', properties: { token: tokenInput.properties.token, replace_block_ids: { type: 'array', maxItems: 10000, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 200 } } }, required: ['token', 'replace_block_ids'], additionalProperties: false,
   }, async (i, c) => {
     const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'refresh') throw new Error('This token is not a native report refresh.');
-    const replace = new Set(i.replace_block_ids); if (i.replace_block_ids.some(id => !candidate.plan.conflicts.some(conflict => conflict.blockId === id))) throw new Error('Only the exact prepared human-block conflict IDs may be replaced.');
+    const replace = new Set(i.replace_block_ids); const conflicts = new Set(candidate.plan.conflicts.map(conflict => conflict.blockId)); if (i.replace_block_ids.some(id => !conflicts.has(id))) throw new Error('Only the exact prepared human-block conflict IDs may be replaced.');
     const choices = JSON.stringify([...replace].sort());
     return c.commitAsync(async () => {
       if (!evidenceIsCurrent(candidate.evidence)) throw new Error('Native report evidence changed; prepare the refresh again.');

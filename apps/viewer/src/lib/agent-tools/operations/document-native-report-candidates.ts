@@ -7,6 +7,7 @@ import type { ReportRefreshPlan } from '@/lib/assistant/report-refresh';
 import type { ReportDraft } from '@/lib/assistant/report-draft';
 import type { DocumentSpec } from '@/lib/document/types';
 import type { ViewerOperationContext } from './contract';
+import { evictOldest } from './host-handles';
 interface RefreshCandidate {
   kind: 'refresh'; documentId: string; plan: ReportRefreshPlan; evidence: EvidenceSnapshot;
   submitted?: { json: string; replace: string; document: DocumentSpec };
@@ -18,7 +19,7 @@ function owned(host: ViewerOperationContext['host']) {
   let entries = owners.get(host); if (!entries) { entries = new Map(); owners.set(host, entries); } return entries;
 }
 export function addReportCandidate(host: ViewerOperationContext['host'], candidate: NativeReportCandidate) {
-  const entries = owned(host); if (entries.size >= 30) entries.delete(entries.keys().next().value!);
+  const entries = owned(host); evictOldest(entries, 30);
   const token = crypto.randomUUID(); entries.set(token, candidate); return token;
 }
 export function reportCandidate(host: ViewerOperationContext['host'], token: string): NativeReportCandidate {

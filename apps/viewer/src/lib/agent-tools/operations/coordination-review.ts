@@ -11,7 +11,7 @@ const selectedSchema = { type: 'object' as const, properties: {
   card_keys: { type: 'array' as const, minItems: 1, maxItems: 100, uniqueItems: true as const, items: { type: 'string' as const, minLength: 1, maxLength: 20000 } },
 }, required: ['name', 'card_keys'] as ('name' | 'card_keys')[], additionalProperties: false as const };
 function cards(keys: string[]) {
-  const snapshot = captureReviewSnapshot(); const selected = snapshot.cards.filter(card => keys.includes(card.key));
+  const snapshot = captureReviewSnapshot(); const wanted = new Set(keys); const selected = snapshot.cards.filter(card => wanted.has(card.key));
   if (selected.length !== keys.length) throw new Error('Some review cards no longer exist; refresh the review snapshot.');
   return selected;
 }

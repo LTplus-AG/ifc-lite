@@ -14,7 +14,7 @@ export const coordinationBcfRecoveryOperations = [
   }, async (i, c) => {
     const [{ currentDraftRun }, { useClashGroupLibrary }, { reconcileDraftBatch, applyTopicReconciliation }, { draftTopic }] = await Promise.all([import('@/lib/bcf-drafts/current-run'), import('@/lib/clash/group-workspace'), import('@/lib/bcf-drafts/draft-reconcile'), import('@/lib/bcf-drafts/draft-create')]);
     const before = guardedDraftBatch(i.batch_id, i.expected_modified_at), run = currentDraftRun(), result = useViewerStore.getState().clashResult, groups = useClashGroupLibrary.getState().entries; if (!run) throw new Error('No native clash run is available.');
-    const proposal = reconcileDraftBatch(before, { ...run, groupsOf: id => groups.find(group => group.id === id)?.groups }); if (i.action === 'preview') return { proposal, saved: false };
+    const proposal = reconcileDraftBatch(before, { ...run, groupsOf: (byId => (id: string) => byId.get(id))(new Map(groups.map(group => [group.id, group.groups]))) }); if (i.action === 'preview') return { proposal, saved: false };
     if (proposal.runDigest !== i.expected_run_digest) throw new Error('Native draft run changed; preview reconciliation again.');
     let next;
     if (i.action === 'apply-topic') { const topic = proposal.topics.find(topic => topic.topicGuid === i.topic_guid); if (!topic) throw new Error('Unknown native topic proposal.'); next = await applyTopicReconciliation(before, topic); }

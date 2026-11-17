@@ -429,7 +429,11 @@ function batchRepo(context, { add = [], move = [], dropOwnPath = false, merge = 
   git('commit', '-q', '-m', 'base');
   git('checkout', '-q', '-b', 'mergify/merge-queue/batch');
   for (const f of add) write(f, 'changed\n');
-  if (dropOwnPath) write(WORKFLOW, workflow.replace(`      - '${WORKFLOW}'\n`, ''));
+  if (dropOwnPath) {
+    const dropped = workflow.replace(`      - '${WORKFLOW}'\n`, '');
+    if (dropped === workflow) throw new Error(`dropOwnPath: ${WORKFLOW} no longer lists itself in that spelling; update the fixture`);
+    write(WORKFLOW, dropped);
+  }
   for (const [from, to] of move) {
     mkdirSync(join(root, dirname(to)), { recursive: true });
     git('mv', from, to);

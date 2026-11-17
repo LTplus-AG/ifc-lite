@@ -38,7 +38,9 @@
  * `native-adapter` job calls this workflow with `batch: true` unless the
  * answer is exactly `false`. It FAILS CLOSED: an unreadable paths list, a
  * checkout that is not the two-parent merge commit, an empty or unreadable
- * diff all answer `true`. The audit also holds that wiring in test.yml.
+ * diff, and any change to the workflow itself (whose paths list is read from
+ * the batch's HEAD) all answer `true`. The audit also holds that wiring in
+ * test.yml.
  *
  * `--root <dir>` points it at a mutated copy of the tree (see the test).
  */

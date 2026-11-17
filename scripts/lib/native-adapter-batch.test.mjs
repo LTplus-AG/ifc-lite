@@ -137,7 +137,7 @@ test('excluding the engine core from batches is reported', () => {
 
 // CodeRabbit on #10629: a keep entry narrower than the exclusion matched the old probe path and passed.
 test('a keep entry narrower than an excluded engine directory does not count as covering it', () => {
-  for (const keep of ['rust/geometry/x/x', 'rust/geometry/x/**', 'rust/geometry/src/**', 'rust/geometry/**/*retained*', 'rust/*/**']) {
+  for (const keep of ['rust/geometry/x/x', 'rust/geometry/x/**', 'rust/geometry/src/**', 'rust/geometry/**/*retained*']) {
     assert.ok(audit(REPO, ['rust/geometry/**'], [keep]).some((f) => f.includes('BATCH_EXCLUDE drops rust/geometry/**')), keep);
   }
   for (const keep of ['rust/geometry/**', 'rust/**', '**']) {

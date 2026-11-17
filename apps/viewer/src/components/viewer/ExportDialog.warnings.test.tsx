@@ -9,7 +9,7 @@ import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
-import { render, cleanup, click } from '@/test/render';
+import { render, cleanup, click, press, advance } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ExportDialog } from './ExportDialog';
 import { ExportWarningDetails } from './ExportWarningDetails';
@@ -56,10 +56,10 @@ for (const convert of [true, false]) {
     if (convert) {
       const schema = [...document.querySelectorAll('[role="combobox"]')].find(b => b.textContent?.includes('IFC4'));
       assert.ok(schema);
-      act(() => schema.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })));
-      click(schema);
+      press(schema, 'ArrowDown');
+      await advance(0);
       const option = [...document.querySelectorAll('[role="option"]')].find(b => b.textContent?.trim() === 'IFC2X3');
-      assert.ok(option);
+      assert.ok(option, `schema options: ${[...document.querySelectorAll('[role="option"]')].map(b => b.textContent).join(', ')}`);
       click(option);
     }
     const button = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Export');
@@ -74,7 +74,7 @@ for (const convert of [true, false]) {
     assert.equal(success.mock.callCount(), convert ? 0 : 1);
     assert.equal(info.mock.callCount(), convert ? 1 : 0);
     if (convert) {
-      assert.match(info.mock.calls[0].arguments[0], /Exported .* — \d+ warnings?/);
+      assert.match(info.mock.calls[0].arguments[0] ?? '', /Exported .* — \d+ warnings?/);
       assert.match(document.body.querySelector('details')?.textContent ?? '', /ConditionCoordinateSystem has no slot in IFC2X3/);
       assert.match(document.body.querySelector('details')?.textContent ?? '', /restraint directions in that coordinate system are not preserved/);
       const cancel = [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Cancel');

@@ -25,8 +25,11 @@ function FindingRow({ modelId, issue }: { modelId: string; issue: StructuralCons
   return <>{linkedText(t, `structuralDerive.consistency.rule.${issue.rule}`, { distance: issue.distance?.toFixed(3) ?? '' }, links)}</>;
 }
 
-/** Runs the consistency checks once for `modelId` and lists what they find. */
-export function StructuralConsistencyFindings({ modelId }: { modelId: string }) {
+/**
+ * Runs the consistency checks for `modelId` and lists what they find. They run
+ * again for each new `prepared` review, since the model may have changed in between.
+ */
+export function StructuralConsistencyFindings({ modelId, prepared }: { modelId: string; prepared: object }) {
   const { t } = useTranslation();
   const [result, setResult] = useState<StructuralConsistencyReview | 'checking' | { failed: string }>('checking');
   useEffect(() => {
@@ -40,8 +43,8 @@ export function StructuralConsistencyFindings({ modelId }: { modelId: string }) 
         if (live) setResult({ failed: error instanceof Error ? error.message : String(error) });
       });
     return () => { live = false; };
-  }, [modelId]);
-  if (result === 'checking') return <p role="status">{t('structuralDerive.consistency.checking')}</p>;
+  }, [modelId, prepared]);
+  if (result === 'checking') return <output className="block">{t('structuralDerive.consistency.checking')}</output>;
   if ('failed' in result) return <p role="alert">{t('structuralDerive.consistency.failed', { error: result.failed })}</p>;
   return <section aria-label={t('structuralDerive.consistency.title')} className="space-y-2">
     {result.analysisModels.map((model) => <div key={model.expressId} className="flex items-center gap-2">
@@ -49,7 +52,7 @@ export function StructuralConsistencyFindings({ modelId }: { modelId: string }) 
       <ShowAnalyticalModelButton modelId={modelId} analysisModelId={model.expressId} memberIds={model.memberIds} />
     </div>)}
     {result.issues.length === 0
-      ? <p role="status">{t('structuralDerive.consistency.consistent')}</p>
+      ? <output className="block">{t(result.checkedAxes ? 'structuralDerive.consistency.consistent' : 'structuralDerive.consistency.consistentWithoutAxes')}</output>
       : <Listing open summary={t('structuralDerive.consistency.findings', { count: result.issues.length })} rows={result.issues}
         row={(issue) => <FindingRow modelId={modelId} issue={issue} />} />}
   </section>;

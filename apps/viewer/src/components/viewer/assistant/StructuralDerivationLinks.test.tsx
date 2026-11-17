@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { afterEach, before, test } from 'node:test';
 import { extractStructuralOnDemand } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { render, click, cleanup, waitFor } from '@/test/render.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -141,4 +142,38 @@ test('#10605 a physical element moved since derivation is listed as stale, and i
   click(beam);
   assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: SAMPLE_MODEL, expressId: 65 });
   assert.equal(useViewerStore.getState().selectedEntityId, 1_000_065);
+});
+
+test('#10605 each "Derive and review" checks the model again: a beam moved after the first check is reported', async () => {
+  await seed(false);
+  commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
+  const root = render(<StructuralDerivationReview origin="test" />);
+  await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
+  click(button(root, /Derive and review/)!);
+  await waitFor(() => /consistent with the physical model/.test(text(root)), `the first check finishes: ${text(root)}`);
+  // Raise the beam B1 (#65) 0.5 m in the session, by its axis points, then review the same model again.
+  recordModellingCommit(useViewerStore, SAMPLE_MODEL, (editor) => {
+    editor.setPositionalAttribute(60, 0, [0, 0, 3.5]);
+    editor.setPositionalAttribute(61, 0, [6, 0, 3.5]);
+  });
+  click(button(root, /Derive and review/)!);
+  await waitFor(() => /disagree/.test(text(root)), `the second check reports the move: ${text(root)}`);
+  assert.match(text(root), /is out of date: #65 B1 \(IfcBeam\) moved 0\.500 m since it was derived/);
+  assert.doesNotMatch(text(root), /consistent with the physical model/);
+});
+
+test('#10605 with no readable axes (IFC5), "no findings" does not claim the movement and drift checks ran', async () => {
+  // A derived model whose beam has moved since, so a check that read the axes would report it stale.
+  const first = await seed(false);
+  commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
+  const moved = new TextDecoder().decode(editedModelBytes(first.dataStore, first.view))
+    .replace(/#60=IFCCARTESIANPOINT\(\(0\.,0\.,3\.\)\);/, '#60=IFCCARTESIANPOINT((0.,0.,3.5));')
+    .replace(/#61=IFCCARTESIANPOINT\(\(6\.,0\.,3\.\)\);/, '#61=IFCCARTESIANPOINT((6.,0.,3.5));');
+  const { dataStore } = await seed(false, new TextEncoder().encode(moved));
+  const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
+  // The physical axes are read for every schema but IFC5 (the derivation itself refuses IFC5 up front).
+  dataStore.schemaVersion = 'IFC5';
+  const root = render(<DerivationSummary review={review} />);
+  await waitFor(() => /Movement and axis drift were not checked/.test(text(root)), `the check finishes: ${text(root)}`);
+  assert.doesNotMatch(text(root), /consistent with the physical model|no structural item has moved/);
 });

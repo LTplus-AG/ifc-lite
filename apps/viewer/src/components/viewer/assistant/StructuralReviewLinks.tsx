@@ -31,8 +31,8 @@ function useEntityLabel(modelId: string, expressId: number): string {
 export function ElementLink({ modelId, expressId }: { modelId: string; expressId: number }) {
   const { t } = useTranslation();
   const label = useEntityLabel(modelId, expressId);
-  return <button type="button" className="underline decoration-dotted underline-offset-2 hover:text-primary"
-    title={t('structuralDerive.selectElement')} onClick={() => selectOnlyEntity({ modelId, expressId })}>{label}</button>;
+  return <Button type="button" variant="link" size="sm" className="h-auto p-0 font-normal text-inherit underline decoration-dotted"
+    title={t('structuralDerive.selectElement')} onClick={() => selectOnlyEntity({ modelId, expressId })}>{label}</Button>;
 }
 
 const MARK = '\u0001';

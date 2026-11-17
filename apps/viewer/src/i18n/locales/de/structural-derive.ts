@@ -45,6 +45,7 @@ export const structuralDeriveDe = {
   "structuralDerive.consistency.title": "Prüfung des Analysemodells",
   "structuralDerive.consistency.checking": "Analysemodell wird mit dem physischen Modell verglichen…",
   "structuralDerive.consistency.consistent": "Das Analysemodell stimmt mit dem physischen Modell überein: Kein Tragwerkselement wurde verschoben, ist abgewichen oder hat seine Verknüpfung verloren.",
+  "structuralDerive.consistency.consistentWithoutAxes": "Kein Tragwerkselement hat seine Verknüpfung zum physischen Modell verloren. Verschiebung und Achsabweichung wurden nicht geprüft: Die Elementachsen dieses Modells lassen sich nicht lesen.",
   "structuralDerive.consistency.failed": "Das Analysemodell konnte nicht geprüft werden: {error}",
   "structuralDerive.consistency.findings": "Wo Analysemodell und physisches Modell voneinander abweichen ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} ist veraltet: {element} wurde seit der Ableitung um {distance} m verschoben",

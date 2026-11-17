@@ -26,6 +26,8 @@ export interface StructuralConsistencyReview {
   issues: StructuralConsistencyIssue[];
   /** Each analysis model, with the members assigned to it, by model-local express id. */
   analysisModels: Array<{ expressId: number; name?: string; memberIds: number[] }>;
+  /** Whether the movement and axis-drift checks ran; they need the physical axes, which IFC5 cannot give. */
+  checkedAxes: boolean;
 }
 
 /** Findings about the physical element having moved lead: they are why a derived model goes out of date. */
@@ -54,5 +56,5 @@ export async function reviewStructuralConsistency(state: Pick<ViewerState, 'mode
     expressId, name,
     memberIds: itemGlobalIds.flatMap((globalId) => memberIdByGlobalId.get(globalId) ?? []),
   }));
-  return { modelId, issues, analysisModels };
+  return { modelId, issues, analysisModels, checkedAxes: physicalAxes !== undefined };
 }

@@ -45,6 +45,7 @@ export const structuralDeriveIt = {
   "structuralDerive.consistency.title": "Verifica del modello di analisi",
   "structuralDerive.consistency.checking": "Confronto del modello di analisi con il modello fisico…",
   "structuralDerive.consistency.consistent": "Il modello di analisi è coerente con il modello fisico: nessun elemento strutturale è stato spostato, ha deviato o ha perso il collegamento.",
+  "structuralDerive.consistency.consistentWithoutAxes": "Nessun elemento strutturale ha perso il collegamento con il modello fisico. Spostamenti e deviazioni dall'asse non sono stati verificati: gli assi degli elementi di questo modello non sono leggibili.",
   "structuralDerive.consistency.failed": "Non è stato possibile verificare il modello di analisi: {error}",
   "structuralDerive.consistency.findings": "Dove il modello di analisi e il modello fisico non coincidono ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} non è aggiornato: {element} è stato spostato di {distance} m dalla derivazione",

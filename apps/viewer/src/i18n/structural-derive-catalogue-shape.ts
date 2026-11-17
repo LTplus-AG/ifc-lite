@@ -45,6 +45,7 @@ export const structuralDeriveShape = {
   "consistency.title": [],
   "consistency.checking": [],
   "consistency.consistent": [],
+  "consistency.consistentWithoutAxes": [],
   "consistency.failed": ["error"],
   "consistency.findings": ["count"],
   "consistency.rule.structural-stale-item": ["distance", "element", "item"],

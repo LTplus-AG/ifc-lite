@@ -45,6 +45,7 @@ export const structuralDeriveFr = {
   "structuralDerive.consistency.title": "Vérification du modèle d'analyse",
   "structuralDerive.consistency.checking": "Comparaison du modèle d'analyse avec le modèle physique…",
   "structuralDerive.consistency.consistent": "Le modèle d'analyse est cohérent avec le modèle physique : aucun élément structurel n'a été déplacé, n'a dévié ni perdu son lien.",
+  "structuralDerive.consistency.consistentWithoutAxes": "Aucun élément structurel n'a perdu son lien avec le modèle physique. Les déplacements et les écarts d'axe n'ont pas été vérifiés : les axes des éléments de ce modèle ne peuvent pas être lus.",
   "structuralDerive.consistency.failed": "Le modèle d'analyse n'a pas pu être vérifié : {error}",
   "structuralDerive.consistency.findings": "Écarts entre le modèle d'analyse et le modèle physique ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} est obsolète : {element} a été déplacé de {distance} m depuis sa dérivation",

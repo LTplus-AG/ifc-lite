@@ -83,9 +83,9 @@ export function lastGreenRun(runs, jobsOf, exclude = null) {
 
 /**
  * What a bisect probe re-runs after a red run: the native-adapter job if it
- * did not succeed, and every shard that did not. When only the aggregate
- * failed (a shard's evidence went missing), all shards: re-running too much
- * is slower, re-running too little would bisect nothing.
+ * did not succeed, and every shard that did not. `aggregateOnly` marks a red
+ * corpus aggregate with every shard green, which no probe can re-run; `total`
+ * is the shard count, for re-running every shard when the range reshards.
  */
 export function failedTarget(jobs) {
   const bad = (name) => jobs.some((j) => j?.name === name && UNSUCCESSFUL.has(j.conclusion));
@@ -105,8 +105,8 @@ export function failedTarget(jobs) {
 
 /** Inputs that decide which models a corpus shard holds; a range that changes one moves models between shards. */
 export const SHARD_INPUTS = ['tests/models/manifest.json', 'scripts/retained-compare/corpus-exclusions.json', 'scripts/retained-compare/corpus-shards.mjs'];
-/** What a probe runs that the range may have changed under it: the lane's own workflow and setup action. */
-export const PROBE_HARNESS = [WORKFLOW, '.github/actions/setup-wasm-build'];
+/** What a probe takes from main rather than the probed commit: the lane's workflow. Local actions resolve from the probed checkout. */
+export const PROBE_HARNESS = [WORKFLOW];
 
 /** Whether `paths` differ between two commits. */
 export function changedBetween(cwd, from, to, paths) {

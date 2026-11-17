@@ -44,22 +44,32 @@ function failedSteps(env, repo, gh) {
 /** The one tracking issue a scheduled workflow's failures land on. */
 export const scheduledIssueTitle = (workflow) => `ci: scheduled ${workflow} lane failed`;
 
-/** Labels the issue must carry, created when the repo lacks them so a missing label cannot stop the report. */
+/**
+ * The labels the issue can carry, creating any the repo lacks. Best effort: a
+ * label API failure is logged and that label dropped, so it never stops the report.
+ */
 function ensureLabels(repo, labels, gh) {
-  for (const label of labels) {
-    // A search per label, not one capped listing: a repo with more labels than the cap would read as missing.
-    const found = JSON.parse(gh(['label', 'list', '--repo', repo, '--search', label, '--limit', '100', '--json', 'name']));
-    if (Array.isArray(found) && found.some((l) => l?.name === label)) continue;
-    gh(['label', 'create', label, '--repo', repo, '--color', 'B60205', '--description', 'A scheduled CI lane on main is red']);
-  }
+  return labels.flatMap((label) => {
+    try {
+      // A search per label, not one capped listing; GitHub label names are case-insensitive.
+      const found = JSON.parse(gh(['label', 'list', '--repo', repo, '--search', label, '--limit', '100', '--json', 'name']));
+      const existing = Array.isArray(found) ? found.find((l) => typeof l?.name === 'string' && l.name.toLowerCase() === label.toLowerCase()) : null;
+      if (existing) return [existing.name];
+      gh(['label', 'create', label, '--repo', repo, '--color', 'B60205', '--description', 'A scheduled CI lane on main is red']);
+      return [label];
+    } catch (err) {
+      console.error(`report-scheduled-failure: filing without label ${label}: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
+  });
 }
 
 /**
  * Comments `body` on the open issue titled exactly `title`, or opens it, and
  * applies `labels` either way (a label someone removed comes back).
  */
-export function fileOnIssue({ repo, title, body, labels = [] }, gh) {
-  if (labels.length > 0) ensureLabels(repo, labels, gh);
+export function fileOnIssue({ repo, title, body, labels: wanted = [] }, gh) {
+  const labels = wanted.length > 0 ? ensureLabels(repo, wanted, gh) : [];
   const labelArgs = (flag) => labels.flatMap((l) => [flag, l]);
   const listed = gh(['issue', 'list', '--repo', repo, '--state', 'open', '--search', `${title} in:title`, '--limit', '100', '--json', 'number,title']);
   const issues = JSON.parse(listed);

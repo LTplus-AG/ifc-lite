@@ -137,8 +137,6 @@ on:
       - 'scripts/lib/ci-path-coverage.mjs'
       - 'scripts/lib/native-adapter-batch.mjs'
       - 'scripts/lib/native-adapter-nightly.mjs'
-      - 'scripts/native-adapter-nightly.mjs'
-      - 'scripts/lib/gh.mjs'
       - 'scripts/lib/is-main-entry.mjs'
       - 'scripts/lib/workflow-job-condition.mjs'
       - 'scripts/lib/workflow-permissions.mjs'

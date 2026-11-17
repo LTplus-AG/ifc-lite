@@ -210,7 +210,7 @@ test('#10619: every path BATCH_EXCLUDE takes off merge-queue batches lands in th
 const NIGHTLY = { NIGHTLY_RUN_ID: '1', NIGHTLY_RUN_URL: 'https://x/run/1', BISECT_RUN_URL: 'https://x/bisect', SERVER: 'https://github.com' };
 const RED_JOBS = [job('native-adapter', 'failure'), job('Native corpus (shard 0/2)', 'success'), job('Native corpus (shard 1/2)', 'failure'), job('Native corpus result', 'failure')];
 
-const BISECT_RUNS = 'repos/o/r/actions/workflows/native-adapter-bisect.yml/runs?per_page=20';
+const BISECT_RUNS = 'repos/o/r/actions/workflows/native-adapter-bisect.yml/runs?per_page=100';
 /** No other bisect is running unless the world says so; finished runs and this run itself never count. */
 const IDLE = { [BISECT_RUNS]: { workflow_runs: [{ id: 3, status: 'completed' }, { id: 50, status: 'in_progress' }] } };
 const plan = (context, cwd, env, world) => run(context, BISECT, ['plan'], { cwd, env: { ...NIGHTLY, GITHUB_RUN_ID: '50', ...env }, world: { ...world, api: { ...IDLE, ...world.api } } });
@@ -230,13 +230,13 @@ function bisect(context, root, { good, bad, fails, flaky = false, jobs = RED_JOB
     assert.equal(planned.status, 0, planned.stdout);
     probes.push(p.probe);
     const result = flaky && p.phase === 'confirm' ? 'success' : fails(p.probe) ? 'failure' : 'success';
-    const step = run(context, BISECT, ['next'], { cwd: root, world, env: { ...NIGHTLY, PLAN_RESULT: 'success', PROBE_RESULT: result, PROBE: p.probe, GOOD: p.good, BAD: p.bad, PHASE: p.phase, ADAPTER: p.adapter, SHARDS: p.shards, ROUND: p.round } });
+    const step = run(context, BISECT, ['next'], { cwd: root, world, env: { ...NIGHTLY, PLAN_RESULT: 'success', PROBE_RESULT: result, PROBE: p.probe, GOOD: p.good, BAD: p.bad, PHASE: p.phase, ADAPTER: p.adapter, SHARDS: p.shards, ROUND: p.round, ORIGIN: p.origin } });
     assert.equal(step.status, 0, step.stdout);
     const dispatch = step.calls.find((c) => c[0] === 'workflow' && c[1] === 'run');
     if (!dispatch) return { start, verdict: posted(step.calls), calls: step.calls, probes, first: planned };
     assert.deepEqual(dispatch.slice(0, 7), ['workflow', 'run', 'native-adapter-bisect.yml', '--repo', 'o/r', '--ref', 'main']);
     const inputs = Object.fromEntries(dispatch.flatMap((arg, i) => (dispatch[i - 1] === '-f' ? [arg.split(/=(.*)/s).slice(0, 2)] : [])));
-    planned = plan(context, root, { EVENT: 'workflow_dispatch', GOOD: inputs.good, BAD: inputs.bad, PHASE: inputs.phase, ADAPTER: inputs.adapter, SHARDS: inputs.shards, ROUND: inputs.round }, { ...world, record: null });
+    planned = plan(context, root, { EVENT: 'workflow_dispatch', GOOD: inputs.good, BAD: inputs.bad, PHASE: inputs.phase, ADAPTER: inputs.adapter, SHARDS: inputs.shards, ROUND: inputs.round, ORIGIN: inputs.origin }, { ...world, record: null });
   }
   assert.fail('the bisect did not terminate');
 }
@@ -252,6 +252,8 @@ test('the bisect names the first bad commit wherever it is, in about log2(n) pro
       assert.match(start[0], new RegExp(`^Bisect started for the red nightly run https://x/run/1: ${n} commit\\(s\\) after `)); // @source-text-assertion-ok subject is the CLI's own output
       assert.equal(verdict.length, 1, `n=${n} k=${k}: one verdict`);
       assert.match(verdict[0], new RegExp(`^First bad commit: https://github.com/o/r/commit/${commits[k]} \\(touch f${k}\\.txt\\)`), `n=${n} k=${k}: ${verdict[0]}`); // @source-text-assertion-ok subject is the CLI's own output
+      // The first commit's parent is the last green nightly, which no probe re-ran: say so rather than claim it passes.
+      assert.match(verdict[0], k === 0 ? /is the last green nightly, which this bisect did not re-run/ : /Its parent \w+ passes native-adapter/, `n=${n} k=${k}: ${verdict[0]}`); // @source-text-assertion-ok subject is the CLI's own output
       assert.equal(probes[0], commits.at(-1), 'the first round re-runs the red HEAD');
       assert.ok(probes.length <= 1 + Math.ceil(Math.log2(n)), `n=${n} k=${k}: ${probes.length} probes`);
       assert.equal(new Set(probes).size, probes.length, 'no commit is probed twice');

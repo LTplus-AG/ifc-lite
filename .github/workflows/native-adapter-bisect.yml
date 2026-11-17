@@ -20,6 +20,8 @@ on:
   workflow_run:
     workflows: ['Geometry platform (native adapter)']
     types: [completed]
+    # Not every labelled PR's run: those would each start a skipped bisect run.
+    branches: [main]
   workflow_dispatch:
     inputs:
       good:
@@ -47,6 +49,10 @@ on:
         description: Bisect round (set by the previous round)
         type: number
         default: 1
+      origin:
+        description: The last green nightly the bisect started from (set by the previous round)
+        type: string
+        default: ''
 
 permissions: {}
 
@@ -72,6 +78,7 @@ jobs:
       adapter: ${{ steps.plan.outputs.adapter }}
       shards: ${{ steps.plan.outputs.shards }}
       round: ${{ steps.plan.outputs.round }}
+      origin: ${{ steps.plan.outputs.origin }}
       notice: ${{ steps.plan.outputs.notice }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
@@ -93,6 +100,7 @@ jobs:
           ADAPTER: ${{ inputs.adapter }}
           SHARDS: ${{ inputs.shards }}
           ROUND: ${{ inputs.round }}
+          ORIGIN: ${{ inputs.origin }}
         run: node scripts/native-adapter-bisect.mjs plan
 
   probe:
@@ -139,5 +147,6 @@ jobs:
           ADAPTER: ${{ needs.plan.outputs.adapter }}
           SHARDS: ${{ needs.plan.outputs.shards }}
           ROUND: ${{ needs.plan.outputs.round }}
+          ORIGIN: ${{ needs.plan.outputs.origin }}
           NOTICE: ${{ needs.plan.outputs.notice }}
         run: node scripts/native-adapter-bisect.mjs next

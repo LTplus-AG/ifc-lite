@@ -495,7 +495,7 @@ const PR_10595 = [
 ];
 
 test('a batch touching the native/retained engine runs the lane', (context) => {
-  for (const file of ['rust/geometry/src/lib.rs', 'rust/retained-native/src/lib.rs', 'rust/wasm-bindings/src/lib.rs', 'rust/processing/src/processor/x.rs', 'rust/processing/src/retained_geometry.rs', 'packages/cli/src/retained/run.ts', 'packages/cli/src/commands/export-retained.ts', 'packages/cli/src/RetainedRunner.ts', 'rust/processing/src/retained/mod.rs', 'native/smlib-adapter/x.cpp', 'Cargo.lock', WORKFLOW, 'scripts/check-native-adapter-triggers.mjs']) {
+  for (const file of ['rust/geometry/src/lib.rs', 'rust/retained-native/src/lib.rs', 'rust/wasm-bindings/src/lib.rs', 'rust/processing/src/processor/x.rs', 'rust/processing/src/retained_geometry.rs', 'packages/cli/src/retained/run.ts', 'packages/cli/src/commands/export-retained.ts', 'packages/cli/src/RetainedRunner.ts', 'rust/processing/src/retained/mod.rs', 'packages/cli/src/RetainedEngine/run.ts', 'native/smlib-adapter/x.cpp', 'Cargo.lock', WORKFLOW, 'scripts/check-native-adapter-triggers.mjs']) {
     const d = decide(batchRepo(context, { add: [file, 'docs/guide/x.md'] }));
     assert.equal(d.status, 0, d.log);
     assert.equal(d.written, 'native_adapter=true\n', `${file}: ${d.log}`);
@@ -544,7 +544,7 @@ test('a BATCH_KEEP glob outside the paths list is reported', () => {
 test('a batch that edits what the decision reads runs the lane, whatever the edit says', (context) => {
   // Every list here watches only zzz/**, so nothing but the guard can answer true.
   const narrow = "on:\n  pull_request:\n    paths:\n      - 'zzz/**'\n";
-  const copy = ['scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs'];
+  const copy = ['scripts/check-native-adapter-triggers.mjs', 'scripts/lib/native-adapter-batch.mjs', 'scripts/lib/ci-path-coverage.mjs'];
   for (const file of [WORKFLOW, ...copy]) {
     const d = decide(batchRepo(context, { workflow: narrow, copy, touch: [file] }));
     assert.equal(d.written, 'native_adapter=true\n', `${file}: ${d.log}`);

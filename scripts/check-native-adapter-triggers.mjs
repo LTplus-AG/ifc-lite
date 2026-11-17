@@ -352,14 +352,16 @@ function batchWiringProblems(text, root) {
 /** The batch decision, reading the lists and the matcher from the batch's HEAD. */
 function batchDecision(root) {
   let pr;
+  let decider;
   try {
     pr = eventPaths(readFileSync(join(root, WORKFLOW), 'utf8'), 'pull_request');
+    // A batch that edits the lists or the matcher could drop the very path it touches.
+    decider = scriptImports(root, [SELF]).add(WORKFLOW);
   } catch (err) {
-    return { run: true, reason: `cannot read ${WORKFLOW} (${err.message.split('\n')[0]}); running` };
+    return { run: true, reason: `cannot read what the decision reads (${err.message.split('\n')[0]}); running` };
   }
   if (!pr || pr.length === 0) return { run: true, reason: `${WORKFLOW} has no on.pull_request.paths; running` };
-  // A batch that edits the lists or the matcher could drop the very path it touches.
-  return decideBatch(root, pr, scriptImports(root, [SELF]).add(WORKFLOW));
+  return decideBatch(root, pr, decider);
 }
 
 if (isMainEntry(import.meta.url)) {

@@ -224,6 +224,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         }
         const previous = draft.current; draft.current = null;
         discardDraft(previous);
+        if (!prepared.bitmap) throw new AppearanceValidationError('appearance.controller.noProjectedImage');
         const { groups, session } = stageNativeAppearancePreview(modelId, prepared, settings, renderer);
         draft.current = { modelId, assetIds: prepared.assetIds, plan, groups, session, owner, source };
         adopted = true;

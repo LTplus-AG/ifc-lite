@@ -22,6 +22,7 @@ import {
   formatScaleFactorLabel,
   makeEntityKey, isPolygonCutLine,
   type Drawing2D,
+  type PdfScaleLayout,
   type DrawingSheet,
   type TitleBlockExtras,
 } from '@ifc-lite/drawing-2d';
@@ -122,7 +123,11 @@ export interface UseDrawingExportParams {
   cachedSheetTransformRef?: React.MutableRefObject<CachedSheetTransform | null>;
 }
 
-export interface NativeDrawingArtifact { blob: Blob; filename: string; warnings: string[] }
+export interface NativeDrawingArtifact { blob: Blob; filename: string; warnings: string[]; georeferenced?: boolean }
+/** The panel's toolbar used to do nothing when no drawing was ready; it still does. */
+class NoNativeDrawingError extends Error { constructor() { super('No completed native drawing is available.'); } }
+/** A requested 1:N scale whose page layout is out of range (shown with the scale-specific message). */
+class InvalidPdfScaleError extends Error {}
 export interface UseDrawingExportResult {
   createSvgArtifact(): NativeDrawingArtifact;
   createDxfArtifact(): NativeDrawingArtifact;
@@ -656,7 +661,7 @@ export function createDrawingExport({
   };
   const createSvgArtifact = (): NativeDrawingArtifact => {
     const svg = sheetEnabled && activeSheet ? generateSheetSVG() : generateExportSVG();
-    if (!svg) throw new Error('No completed native drawing is available.');
+    if (!svg) throw new NoNativeDrawingError();
     const stem = sheetEnabled && activeSheet
       ? `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`
       : `section-${sectionPlane.axis}-${sectionPlane.position}`;
@@ -664,7 +669,7 @@ export function createDrawingExport({
   };
   const handleExportSVG = () => {
     try { const artifact = createSvgArtifact(); downloadFile(artifact.blob, artifact.filename, 'image/svg+xml'); }
-    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); return; }
+    catch (error) { if (!(error instanceof NoNativeDrawingError)) toast.error(error instanceof Error ? error.message : String(error)); return; }
     trackExportCompleted({ format: 'svg', surface: 'drawing_panel' });
     posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
     noticeOtherCutDimensionsLeftOut(t);
@@ -680,7 +685,7 @@ export function createDrawingExport({
   // not vector content — SVG export carries it (opt-in) instead.
   const getExportDimensionGraphics = (paperScale: number) => dimensionGraphicsAt(paperScale, sectionPlane.axis);
   const createDxfArtifact = (): NativeDrawingArtifact => {
-    if (!drawing) throw new Error('No completed native drawing is available.');
+    if (!drawing) throw new NoNativeDrawingError();
     const isCustomPlane = sectionPlane.custom !== undefined;
     // Anchor-model effective georef, INCLUDING user placement edits
     // (georefMutations) — see resolveDxfExportGeoreference's docs. The
@@ -722,12 +727,14 @@ export function createDrawingExport({
     const artifact = createDxfDownload(dxf, `${stem}.dxf`);
     const warnings = artifact.hadUnmappable ? ['Some characters have no DXF R12 text encoding and were exported as "?".'] : [];
     for (const message of warnings) services.warn?.(message);
-    return { blob: artifact.blob, filename: artifact.filename, warnings: [...warnings] };
+    return { blob: artifact.blob, filename: artifact.filename, warnings, georeferenced: isGeoreferenced };
   };
   const handleExportDXF = () => {
-    try { const artifact = createDxfArtifact(); downloadFile(artifact.blob, artifact.filename, 'application/dxf'); }
-    catch (error) { toast.error(error instanceof Error ? error.message : String(error)); return; }
+    let artifact: NativeDrawingArtifact;
+    try { artifact = createDxfArtifact(); downloadFile(artifact.blob, artifact.filename, 'application/dxf'); }
+    catch (error) { if (!(error instanceof NoNativeDrawingError)) toast.error(error instanceof Error ? error.message : String(error)); return; }
     trackExportCompleted({ format: 'dxf', surface: 'drawing_panel' });
+    posthog.capture('drawing_exported', { format: 'dxf', axis: sectionPlane.axis, georeferenced: artifact.georeferenced ?? false });
   };
   // Export scaled PDF (issue #2042): a true-vector PDF sized so the
   // requested scale ("1:N") is EXACT — the page itself is sized to the
@@ -756,7 +763,7 @@ export function createDrawingExport({
   const createPdfArtifact = async (scaleFactor?: number, deliver?: (artifact: NativeDrawingArtifact) => void): Promise<NativeDrawingArtifact> => {
     const warnings: string[] = [];
     const warn = (message: string) => { warnings.push(message); services.warn?.(message); };
-    if (!drawing) throw new Error('No completed native drawing is available.');
+    if (!drawing) throw new NoNativeDrawingError();
 
     // Drawing Sheet mode (#2941: frame/title block/scale bar missing from
     // the PDF; #2942: nothing in the PDF is to scale). Root cause for both:
@@ -861,7 +868,9 @@ export function createDrawingExport({
     // coordinates (showstopper found on PR #2119).
     const currentAxis = sectionPlane.axis;
     const dimensionSnapshot = dimensionGraphicsAt(effectiveScale, currentAxis);
-    const layout = computePdfSectionLayout(boundsWithDimensions(drawing.bounds, dimensionSnapshot), currentAxis, effectiveScale, 10);
+    let layout: PdfScaleLayout;
+    try { layout = computePdfSectionLayout(boundsWithDimensions(drawing.bounds, dimensionSnapshot), currentAxis, effectiveScale, 10); }
+    catch (err) { throw new InvalidPdfScaleError(err instanceof Error ? err.message : String(err)); }
     const mapPoint = makeSectionMapPoint(currentAxis, layout);
 
     // Prepared before the reference snapshot is taken, so a throw here cannot
@@ -955,7 +964,11 @@ export function createDrawingExport({
 
   const handleExportPDF = (scaleFactor?: number) => {
     void createPdfArtifact(scaleFactor, artifact => downloadFile(artifact.blob, artifact.filename, 'application/pdf'))
-      .catch((error: unknown) => toast.error(error instanceof Error ? t('section2d.export.pdfFailed', { error: error.message }) : t('section2d.export.pdfFailedGeneric')));
+      .catch((error: unknown) => {
+        if (error instanceof NoNativeDrawingError) return;
+        if (error instanceof InvalidPdfScaleError) { toast.error(error.message ? t('section2d.export.invalidScaleDetail', { error: error.message }) : t('section2d.export.invalidScale')); return; }
+        toast.error(error instanceof Error ? t('section2d.export.pdfFailed', { error: error.message }) : t('section2d.export.pdfFailedGeneric'));
+      });
   };
 
   // Print handler

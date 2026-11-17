@@ -199,6 +199,7 @@ import type { Intersection } from './raycaster.js';
 import type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
+import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
 import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
@@ -3236,6 +3237,9 @@ export class Renderer {
     getCamera(): Camera {
         return this.camera;
     }
+
+    /** Diagnostic (#10264): every CPU geometry array the scene and the raycast index reference; views only. */
+    visitCpuGeometry(visit: CpuGeometryVisitor): void { this.scene.visitCpuGeometry(visit); this.raycastEngine.visitCpuGeometry(visit); }
 
     /** MEASURED external surface, not the 4400-line `Scene`: widening `SceneContents` is a published-API decision, not a detail — see `scene-contents.ts`. */
     getScene(): SceneContents {

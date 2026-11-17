@@ -260,6 +260,10 @@ reviews:
           Do NOT fire on a PR that is large but coherent, or on a mechanical
           rename across many files.
 
+  # Generated viewer operation catalogue; the same file the Claude lane excludes
+  # (scripts/review/input-exclusions.mjs).
+  path_filters:
+    - '!apps/viewer/src/lib/agent-tools/operations/generated/contracts.ts'
   path_instructions:
     - path: '.changeset/**'
       instructions: >-

@@ -44,6 +44,7 @@ export const analyticsChartReportOperations = [
     }, { signal: c.signal }); checkpoint(c);
     const now = useViewerStore.getState();
     if (isAnalysisStale(stamp, now) || now.chartSlice !== chartSlice || now.chartSliceSource !== chartSliceSource
+      || now.savedComparisons !== state.savedComparisons || now.savedClashReports !== state.savedClashReports
       || JSON.stringify(now.dashboards.find(row => row.id === i.id)) !== JSON.stringify(frozen)) throw new Error('Report source changed during rendering. Discarded artifact.');
     const saved: ReportSpec = { ...frozen, page: i.page, titleBlock: i.title_block, snapshots: i.snapshots };
     if (i.save_setup && !c.commit(() => useViewerStore.getState().upsertDashboard(saved))) throw new Error('Native report setup persistence failed.');

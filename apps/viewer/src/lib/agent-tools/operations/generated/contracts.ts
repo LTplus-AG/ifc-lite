@@ -10955,7 +10955,7 @@ export const operationContracts: readonly OperationContract[] = [
         "expected_json": {
           "type": "string",
           "minLength": 2,
-          "maxLength": 500000
+          "maxLength": 1000000
         }
       },
       "required": [

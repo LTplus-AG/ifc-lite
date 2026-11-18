@@ -31,7 +31,7 @@ export const analyticsLensOperations = [
     if (now.models !== before.models || now.ifcDataStore !== before.ifcDataStore || now.mutationVersion !== before.mutationVersion
       || now.savedLenses !== before.savedLenses || now.modelTags !== before.modelTags || now.modelTagAssignments !== before.modelTagAssignments
       || now.activeLensId !== before.activeLensId) throw new Error('Lens inputs or active lens changed during evaluation.');
-    c.commit(() => { switchNativeLens(i.id); applyNativeLensResult(snapshot, result); syncNativeLensHidden(); }); return inspect();
+    c.commit(() => { switchNativeLens(i.id); if (!applyNativeLensResult(snapshot, result)) throw new Error('Lens evaluation inputs changed before publication.'); syncNativeLensHidden(); }); return inspect();
   }),
   viewerOperation(metadata('lens.clear', 'lens', 'Deactivate the lens and release only its owned color/hide/isolation state.', ['configuration', 'view'], output), emptySchema, (_, c) => {
     checkpoint(c); c.commit(() => {

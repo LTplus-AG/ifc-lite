@@ -67,7 +67,7 @@ export const analyticsScheduleEditOperations = [
     c.commit(() => s.addTask({ nameDefault: i.Name, durationDays: i.duration_days, ...(i.after_id ? { afterGlobalId: i.after_id } : {}) })); return receipt();
   }),
   operation<{ id: string; expected_json: string }>(write('schedule.deleteTask', 'Delete a native task and its native dependent subtree/sequence cleanup with a complete expected schedule.nativeData data snapshot conflict check.'), {
-    type: 'object', properties: { id: idSchema.properties.id, expected_json: { type: 'string', minLength: 2, maxLength: 500000 } }, required: ['id', 'expected_json'], additionalProperties: false,
+    type: 'object', properties: { id: idSchema.properties.id, expected_json: { type: 'string', minLength: 2, maxLength: 1000000 } }, required: ['id', 'expected_json'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string; expected_json: string }>, (i, c) => {
     task(c, i.id);
     if (!matchesJsonSnapshot(useViewerStore.getState().scheduleData, i.expected_json)) throw new Error('Schedule changed since inspection.');

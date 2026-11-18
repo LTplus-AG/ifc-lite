@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { applyNativeLensResult, evaluateNativeLens, hasCurrentNativeLensResult } from '@/lib/lens/native-lens';
 import { beforeEach, describe, it } from 'node:test';
 import { EntityFlags, IfcTypeEnum } from '@ifc-lite/data';
 import type { ListDefinition } from '@ifc-lite/lists';
@@ -180,6 +181,22 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await run('lens.clear');
     await assert.rejects(pending, /active lens changed during evaluation/);
     assert.equal(useViewerStore.getState().activeLensId, null);
+  });
+
+  it('#10584 rejects a Lens result computed before a model tag assignment changed', async () => {
+    const lens: Lens = { id: 'tagged', name: 'Tagged', rules: [] };
+    const previous = useViewerStore.getState().modelTagAssignments;
+    useViewerStore.setState({ savedLenses: [lens], activeLensId: lens.id, modelTagAssignments: new Map([['A', new Set(['tag'])]]) });
+    try {
+      const pending = evaluateNativeLens(lens);
+      useViewerStore.setState({ modelTagAssignments: new Map() });
+      assert.equal(applyNativeLensResult(lens, await pending), false);
+      assert.equal(hasCurrentNativeLensResult(useViewerStore.getState()), false);
+      assert.equal(applyNativeLensResult(lens, await evaluateNativeLens(lens)), true);
+      assert.equal(hasCurrentNativeLensResult(useViewerStore.getState()), true);
+    } finally {
+      useViewerStore.setState({ modelTagAssignments: previous });
+    }
   });
 
   it('uses native chart aggregation with model-qualified IDs and creates actual SVG bytes', async () => {

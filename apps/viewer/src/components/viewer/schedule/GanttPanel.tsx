@@ -80,17 +80,23 @@ export function GanttPanel() {
 
   /** Last schedule-extraction error message (surfaced in the empty state). */
   const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [pendingSourceSchedule, setPendingSourceSchedule] = useState(false);
 
   // Extract schedule data whenever the resolved data store changes.
   useEffect(() => {
+    setPendingSourceSchedule(false);
     if (!activeStore) {
       if (scheduleData) setScheduleData(null);
       setExtractionError(null);
       return;
     }
+    const modelId = [...models].find(([, model]) => model.ifcDataStore === activeStore)?.[0]
+      ?? activeModelId ?? 'legacy';
+    const state = useViewerStore.getState();
+    const hasPendingSchedule = !!state.scheduleData && state.scheduleData.tasks.length > 0
+      && (state.scheduleIsEdited || state.scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0));
+    const keepPending = hasPendingSchedule && state.scheduleSourceModelId === modelId;
     try {
-      const modelId = [...models].find(([, model]) => model.ifcDataStore === activeStore)?.[0]
-        ?? activeModelId ?? 'legacy';
       const view = getMutationViewForModel(useViewerStore, modelId);
       const extraction = extractScheduleOnDemand(activeStore, view
         ? { overlay: createEffectiveRecordOverlay(view, activeStore) } : undefined);
@@ -106,10 +112,8 @@ export function GanttPanel() {
       // an exported IFC with no task entities and an empty Gantt on
       // re-import. Only replace when the extraction actually has data,
       // or when we've previously had no schedule in memory.
-      const s = useViewerStore.getState();
-      const hasPendingSchedule = !!s.scheduleData && s.scheduleData.tasks.length > 0
-        && (s.scheduleIsEdited || s.scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0));
-      if (hasPendingSchedule && s.scheduleSourceModelId === modelId) {
+      if (keepPending) {
+        setPendingSourceSchedule(extraction.hasSchedule);
         setExtractionError(null);
         return;
       }
@@ -127,7 +131,8 @@ export function GanttPanel() {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn('[GanttPanel] Failed to extract schedule', err);
-      setScheduleData(null);
+      if (keepPending) setPendingSourceSchedule(true);
+      else setScheduleData(null);
       setExtractionError(message);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -280,6 +285,12 @@ export function GanttPanel() {
       )}
 
       <GenerateScheduleDialog open={generateOpen} onOpenChange={setGenerateOpen} />
+
+      {pendingSourceSchedule && scheduleData && (
+        <output className="block px-3 py-2 border-b text-xs text-muted-foreground">
+          {t('schedule.panel.pendingSourceSchedule')}
+        </output>
+      )}
 
       {pendingImport && (
         <div

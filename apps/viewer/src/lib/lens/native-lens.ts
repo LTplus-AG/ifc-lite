@@ -9,14 +9,35 @@ import { evaluateLensGroups } from './evaluate-lens-groups';
 import { customGroupingsFromLenses } from './custom-groupings';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '../model-tags/evaluator-models';
 import { planLensHiddenSync } from '@/components/viewer/lens-visibility-ownership';
-function evaluationInputs(state: ReturnType<typeof useViewerStore.getState>) {
-  return [state.activeLensId, state.models, state.ifcDataStore, state.mutationVersion,
-    state.savedLenses, state.modelTags, state.modelTagAssignments] as const;
+export function nativeLensGroupingSource(lens: Lens | null, savedLenses: readonly Lens[]) {
+  return lens?.rules.some(rule => rule.groups?.some(group => group.rules.some(rule => rule.kind === 'customGrouping')))
+    ? savedLenses : null;
 }
-const evaluatedInputs = new WeakMap<Map<number, string>, ReturnType<typeof evaluationInputs>>();
+function evaluationInputs(lens: Lens, state: ReturnType<typeof useViewerStore.getState>) {
+  return { models: state.models, store: state.ifcDataStore, revision: state.mutationVersion,
+    lensId: lens.id, definition: state.savedLenses.find(row => row.id === lens.id),
+    groupings: nativeLensGroupingSource(lens, state.savedLenses), tags: state.modelTags, assignments: state.modelTagAssignments };
+}
+function inputsMatch(before: ReturnType<typeof evaluationInputs>, state: ReturnType<typeof useViewerStore.getState>) {
+  return before.store === state.ifcDataStore && before.revision === state.mutationVersion
+    && before.definition === state.savedLenses.find(row => row.id === before.lensId)
+    && (!before.groupings || before.groupings === state.savedLenses) && before.tags === state.modelTags
+    && before.assignments === state.modelTagAssignments
+    && (before.models === state.models || (before.models.size === state.models.size
+      && [...before.models].every(([id, model]) => {
+        const live = state.models.get(id);
+        return live && live.ifcDataStore === model.ifcDataStore && live.idOffset === model.idOffset;
+      })));
+}
+type NativeLensEvaluation = {
+  lensId: string;
+  inputs: ReturnType<typeof evaluationInputs>;
+  result: LensEvaluationResult | AutoColorEvaluationResult;
+};
+const evaluatedInputs = new WeakMap<Map<number, string>, Pick<NativeLensEvaluation, 'lensId' | 'inputs'>>();
 export function hasCurrentNativeLensResult(state: ReturnType<typeof useViewerStore.getState>): boolean {
   const previous = evaluatedInputs.get(state.lensColorMap);
-  return !!previous && evaluationInputs(state).every((value, i) => value === previous[i]);
+  return !!previous && previous.lensId === state.activeLensId && inputsMatch(previous.inputs, state);
 }
 
 export function clearLensOutput(): void {
@@ -30,7 +51,10 @@ export function clearLensOutput(): void {
   state.setPendingColorUpdates(new Map());
 }
 
-export function applyNativeLensResult(activeLens: Lens, result: LensEvaluationResult | AutoColorEvaluationResult): void {
+export function applyNativeLensResult(activeLens: Lens, evaluation: NativeLensEvaluation): boolean {
+      const state = useViewerStore.getState();
+      const { lensId, inputs, result } = evaluation;
+      if (lensId !== activeLens.id || lensId !== state.activeLensId || !inputsMatch(inputs, state)) return false;
       const { colorMap, hiddenIds, ruleCounts, ruleEntityIds } = result;
 
       // Build hex color map for UI legend (exclude ghost entries)
@@ -40,7 +64,7 @@ export function applyNativeLensResult(activeLens: Lens, result: LensEvaluationRe
           hexColorMap.set(id, rgbaToHex(rgba));
         }
       }
-      evaluatedInputs.set(hexColorMap, evaluationInputs(useViewerStore.getState()));
+      evaluatedInputs.set(hexColorMap, { lensId, inputs });
       useViewerStore.getState().setLensColorMap(hexColorMap);
       useViewerStore.getState().setLensHiddenIds(hiddenIds);
       useViewerStore.getState().setLensRuleCounts(ruleCounts);
@@ -62,21 +86,23 @@ export function applyNativeLensResult(activeLens: Lens, result: LensEvaluationRe
         matched_entity_count: colorMap.size,
         hidden_entity_count: hiddenIds.size,
       });
+      return true;
 }
 
 export async function evaluateNativeLens(activeLens: Lens, signal?: AbortSignal) {
   signal?.throwIfAborted();
   const state = useViewerStore.getState();
+  const inputs = evaluationInputs(activeLens, state);
   const { models, ifcDataStore, mutationViews } = state;
   if (models.size === 0 && !ifcDataStore) throw new Error('No loaded model has lens data.');
   const provider = createLensDataProvider(models, ifcDataStore, mutationViews,
     globalId => useViewerStore.getState().resolveGlobalIdFromModels(globalId));
-  if (activeLens.autoColor) return evaluateAutoColorLens(activeLens.autoColor, provider, activeLens.capturedScope);
+  if (activeLens.autoColor) return { lensId: activeLens.id, inputs, result: await evaluateAutoColorLens(activeLens.autoColor, provider, activeLens.capturedScope) };
   const evaluatorModels = models.size > 0 ? evaluatorModelsFromState(state)
     : [{ id: 'legacy', store: ifcDataStore, mutationView: mutationViews.get('legacy'), customGroupings: customGroupingsFromLenses(state.savedLenses, []) }];
   const matched = await evaluateLensGroups(activeLens, evaluatorModels, models, definedModelTagIdsOf(state), signal);
   signal?.throwIfAborted();
-  return evaluateLens(activeLens, provider, matched);
+  return { lensId: activeLens.id, inputs, result: evaluateLens(activeLens, provider, matched) };
 }
 
 export function syncNativeLensHidden(): void {

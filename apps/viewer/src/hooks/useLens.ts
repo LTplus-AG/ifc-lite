@@ -37,7 +37,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { releaseNativeLensRuleIsolation } from '@/lib/lens/native-controls';
 
-import { clearLensOutput, evaluateNativeLens, applyNativeLensResult, hasCurrentNativeLensResult, syncNativeLensHidden } from '@/lib/lens/native-lens';
+import { clearLensOutput, evaluateNativeLens, applyNativeLensResult, hasCurrentNativeLensResult, nativeLensGroupingSource, syncNativeLensHidden } from '@/lib/lens/native-lens';
 
 export function useLens(): void {
   const activeLensId = useViewerStore((s) => s.activeLensId);
@@ -52,8 +52,7 @@ export function useLens(): void {
   // A rule reading another lens as a custom grouping (#8425) re-evaluates when
   // any lens changes; a lens without one ignores edits to the others.
   const groupingSource = useMemo(
-    () => activeLens?.rules.some((rule) => rule.groups?.some((g) => g.rules.some((r) => r.kind === 'customGrouping')))
-      ? savedLenses : null,
+    () => nativeLensGroupingSource(activeLens, savedLenses),
     [activeLens, savedLenses],
   );
 
@@ -86,6 +85,8 @@ export function useLens(): void {
   // value needs this bump to actually pick it up, same trigger
   // useAppearanceAssignments.ts already subscribes to for the same reason.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const modelTags = useViewerStore((s) => s.modelTags);
+  const modelTagAssignments = useViewerStore((s) => s.modelTagAssignments);
 
   useEffect(() => {
     const modelSetChanged = prevModelSetKeyRef.current !== modelSetKey;
@@ -140,7 +141,7 @@ export function useLens(): void {
       toast.error(error instanceof Error ? error.message : 'Could not apply this lens.');
     });
     return () => controller.abort();
-  }, [activeLensId, activeLens, groupingSource, modelSetKey, mutationVersion]);
+  }, [activeLensId, activeLens, groupingSource, modelSetKey, mutationVersion, modelTags, modelTagAssignments]);
 
   // Identity, not `.size`: the evaluation above replaces the Set on every
   // recompute, and a same-size content swap must still resync (#5206).

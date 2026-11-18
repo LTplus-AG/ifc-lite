@@ -4,11 +4,11 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName } from '@ifc-lite/p
 import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
-import { StructuralCarriers } from './schema-converter-structural-carriers.js';
-import { conversionMode, namesWithheld, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
+import { CAUSED_BY, StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { conversionMode, namesWithheld, slotUnset, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
-import { SHARED_CONFIGURATION, StructuralVarying } from './schema-converter-structural-varying.js';
+import { SHARED_CONFIGURATION, StructuralVarying, varyingTarget } from './schema-converter-structural-varying.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
@@ -16,6 +16,21 @@ import { referencesAnyExpressId } from './step-ref-scan.js';
 const NONE: ReadonlySet<string> = new Set();
 const CAUSED_BY_UNCONVERTED = "IFC2X3 CausedBy of a varying action that stays unconverted is kept only in that IFC2X3 record; no 'Causes' relationship is written";
 const LINK = 'IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link';
+
+/**
+ * IFC2X3 -> IFC4: the type the export writes varying action `entity` as when
+ * it reports its CausedBy as not coming back: an unconverted action naming a
+ * point reaction keeps it only in its IFC2X3 record, and a converted one loses
+ * it unless one 'Causes' relationship restores it (`cause`, from `noteCause`).
+ * Null when it reports nothing.
+ */
+function strandedAs(entity: string, args: readonly string[], unconverted: boolean, reaction: boolean, cause: { restored: boolean } | null): string | null {
+  const target = varyingTarget(entity);
+  if (!target || slotUnset(args[CAUSED_BY])) return null;
+  // An unconverted action naming no point reaction keeps CausedBy unreported.
+  if (unconverted) return reaction ? entity : null;
+  return cause?.restored ? null : target;
+}
 
 export class StructuralDiagnostics {
   readonly axes = new StructuralAxes();
@@ -28,6 +43,8 @@ export class StructuralDiagnostics {
   private readonly carried = new Map<number, ReadonlySet<string>>();
   /** Source record id -> attributes the target leaves out or holds elsewhere that the reverse conversion writes back. */
   private readonly restored = new Map<number, Set<string>>();
+  /** Source record id -> the type an IFC2X3 varying action is written as when the export reports its CausedBy (`strandedAs`). */
+  private readonly stranded = new Map<number, string>();
 
   /** `roundTrip`: also find what the reverse conversion restores (`structuralRoundTrip`); an export does not. */
   constructor(private readonly roundTrip = false) { this.carriers.roundTrip = roundTrip; }
@@ -114,8 +131,11 @@ export class StructuralDiagnostics {
     if (this.roundTrip && !namesWithheld(args, withheld)) this.restore(id, this.carriers.restoredFrom(id));
     // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
     const unconverted = this.varying.staysUnconverted(entity, args);
-    if (unconverted && this.carriers.causeOf(entity, args, withheld) !== null) this.record(CAUSED_BY_UNCONVERTED);
+    const reaction = this.carriers.causeOf(entity, args, withheld) !== null;
+    if (unconverted && reaction) this.record(CAUSED_BY_UNCONVERTED);
     const cause = unconverted ? null : this.carriers.noteCause(id, entity, args, withheld);
+    const stranded = this.roundTrip ? strandedAs(entity, args, unconverted, reaction, cause) : null;
+    if (stranded) this.stranded.set(id, stranded);
     const thickness = cause ? [] : this.thickness.note(id, entity, args, withheld);
     const axis = cause || thickness.length ? null : this.axes.hold(id, args, withheld);
     const held = cause ? ['CausedBy'] : axis ? ['Axis'] : thickness;
@@ -125,7 +145,7 @@ export class StructuralDiagnostics {
       this.record(cause?.message ?? axis ?? THICKNESS_WRITTEN);
       this.carried.set(id, carried);
       // The downgrade reads a held thickness back (`StructuralThickness.rewrite`); a cause only when it says so.
-      if (cause?.restored !== false) this.restore(id, held);
+      if (this.roundTrip && cause?.restored !== false && (!axis || this.axes.fillWritten(id))) this.restore(id, held);
     }
     const attrs = this.links.link(entity, args);
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
@@ -146,8 +166,8 @@ export class StructuralDiagnostics {
     this.restored.set(id, set);
   }
 
-  /** Source record id -> the attributes `rewrite` found a carrier writes back on the reverse conversion. */
-  restoredAttributes(): ReadonlyMap<number, ReadonlySet<string>> { return this.restored; }
+  /** What `rewrite` found: per source record id, the attributes a carrier writes back on the reverse conversion, and the target type of a varying action whose CausedBy the export reports. */
+  roundTripResult(): StructuralRoundTrip { return { restored: this.restored, stranded: this.stranded }; }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }
   warnings(): string[] { return [...this.losses].sort(([a], [b]) => a.localeCompare(b)).map(([message, count]) => `${count} structural conversion record(s): ${message} (#9668).`); }
@@ -162,12 +182,20 @@ export class StructuralDiagnostics {
  * Describes an unedited full export, the only one that arms the carriers. Empty
  * for any other schema pair, and for a file the export refuses.
  */
-export function structuralRoundTrip(store: SourceStore, from: string, to: string, ids: readonly number[]): ReadonlyMap<number, ReadonlySet<string>> {
-  if (!conversionMode(from, to) || !ids.length) return new Map();
+export interface StructuralRoundTrip {
+  readonly restored: ReadonlyMap<number, ReadonlySet<string>>;
+  readonly stranded: ReadonlyMap<number, string>;
+}
+
+/** The round trip of a file the carriers do not run for. */
+export const NO_ROUND_TRIP: StructuralRoundTrip = { restored: new Map(), stranded: new Map() };
+
+export function structuralRoundTrip(store: SourceStore, from: string, to: string, ids: readonly number[]): StructuralRoundTrip {
+  if (!conversionMode(from, to) || !ids.length) return NO_ROUND_TRIP;
   try {
     const source = new SourceRecords(store);
     const records = ids.filter((id) => source.type(id)?.startsWith('IFCSTRUCTURAL'));
-    if (!records.length) return new Map();
+    if (!records.length) return NO_ROUND_TRIP;
     const run = new StructuralDiagnostics(true);
     run.fromStore(store, from, to, source);
     // Nothing is written, so every added record may take the same id.
@@ -175,15 +203,16 @@ export function structuralRoundTrip(store: SourceStore, from: string, to: string
     // Only an IFC2X3 target withholds ids.
     const withheld = to === 'IFC2X3' ? computeWithheldRefIds(store, to) : undefined;
     for (const id of records) {
-      const slots = source.slots(id);
+      // The writer passes a record it does not convert through untouched (`STEP_RECORD`), so no carrier acts on it.
+      const slots = source.convertedSlots(id);
       if (slots) run.rewrite(id, source.type(id)!, slots, withheld);
     }
-    return run.restoredAttributes();
+    return run.roundTripResult();
   } catch (error) {
     // The schema-only preview remains available even when the carrier prepass fails.
     if (!(error instanceof Error && error.message === SHARED_CONFIGURATION)) {
       console.warn('[analyzeConversionLoss] Could not evaluate structural carriers', error);
     }
-    return new Map();
+    return NO_ROUND_TRIP;
   }
 }

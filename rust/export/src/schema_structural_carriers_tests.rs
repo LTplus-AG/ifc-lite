@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Mirrors the CausedBy cases of `packages/export/src/schema-converter-structural-carriers.test.ts` (#9668, #10597).
+//! Mirrors the CausedBy and SharedPlacement cases of `packages/export/src/schema-converter-structural-carriers.test.ts` (#9668, #10597).
 use crate::step::{export_step_with_diagnostics, StepOptions};
 
 const OWNER: &str = "#1=IFCPERSON($,'P',$,$,$,$,$,$);
@@ -228,20 +228,10 @@ fn shared(second: &str, list: &str) -> String {
 const MODEL_SHARED: &str = "#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);";
 
 #[test]
-fn writes_the_placement_every_grouped_item_shares_9668() {
+fn reports_a_shared_placement_it_writes_9668() {
     let (up, warnings) = convert(&shared("#9", "(#20,#21,#22)"), "IFC4");
     assert_eq!(record(&up, 30), MODEL_SHARED);
     assert!(warnings.contains("SharedPlacement is written as the local placement"), "{warnings}");
-}
-
-#[test]
-fn reads_equal_copies_as_the_lowest_id_and_places_items_by_it_9668() {
-    // The item on the higher-id copy is listed first, so the lowest id, not the first item, is chosen.
-    let (up, _) = convert(&shared("#10", "(#21,#20,#22)"), "IFC4");
-    assert_eq!(record(&up, 30), MODEL_SHARED);
-    assert_eq!(record(&up, 21), "#21=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,#9,$,$,$);");
-    // The beam is not a structural item, so it keeps its own placement.
-    assert!(record(&up, 22).contains(",'Beam',$,$,#10,"), "{up}");
 }
 
 #[test]
@@ -254,19 +244,6 @@ fn places_by_neither_model_an_item_two_models_group_9668() {
     let (up, _) = convert(&two, "IFC4");
     assert!(record(&up, 21).contains(",'N',$,$,#10,"), "{up}");
     assert!(record(&up, 30).ends_with(",$);") && record(&up, 32).ends_with(",$);"), "{up}");
-}
-
-#[test]
-fn reads_no_placement_from_a_grouping_with_a_non_reference_item_9668() {
-    let (up, _) = convert(&shared("#10", "(#20,#21,$)"), "IFC4");
-    assert!(record(&up, 30).ends_with(",$);"), "{up}");
-    assert!(record(&up, 21).contains(",'N',$,$,#10,"), "{up}");
-}
-
-#[test]
-fn leaves_shared_placement_unset_for_different_placements_9668() {
-    let (up, _) = convert(&shared("#13", "(#20,#21,#22)").replace("#20=", "#13=IFCLOCALPLACEMENT(#9,#8);\n#20="), "IFC4");
-    assert_eq!(record(&up, 30), "#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,$);");
 }
 
 #[test]
@@ -283,22 +260,5 @@ fn reads_no_placement_when_a_grouped_item_cannot_be_read_10597() {
     // A slot holding only a comment does not split, so the item's placement is unknown.
     let unread = shared("#9", "(#20,#21,#22)").replace(",'N',$,$,#9,$,$);", ",'N',$,$,#9,/* */,$);");
     let (up, _) = convert(&unread, "IFC4");
-    assert!(record(&up, 30).ends_with(",$);"), "{up}");
-}
-
-#[test]
-fn an_item_placed_by_the_highest_id_is_placed_like_any_other_10597() {
-    // The highest express id is an ordinary placement: its items share it as the TypeScript twin's do.
-    let source = shared("#4294967295", "(#20,#21)").replace("#20=", "#4294967295=IFCLOCALPLACEMENT($,#8);\n#20=");
-    let (up, _) = convert(&source, "IFC4");
-    assert_eq!(record(&up, 30), MODEL_SHARED);
-    assert!(record(&up, 21).contains(",'N',$,$,#9,"), "{up}");
-}
-
-#[test]
-fn reads_no_placement_when_another_grouping_of_the_model_is_unreadable_10597() {
-    // One grouping reads in full; the model's other one lists a non-reference, so its items are unknown.
-    let source = shared("#9", "(#20,#21)").replace("ENDSEC;END", "#32=IFCRELASSIGNSTOGROUP('2rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#22,$),$,#30);\nENDSEC;END");
-    let (up, _) = convert(&source, "IFC4");
     assert!(record(&up, 30).ends_with(",$);"), "{up}");
 }

@@ -42,11 +42,11 @@ test('#10606 STEP warning toasts join with a period and format the count for the
   assert.equal(message('ru', 1_234), `Exported. ${n('ru', 1_234)} предупреждения`);
 });
 
-test('#10606 duplicate warnings are counted once and a summary ending in a period gets no second one', () => {
+test('#10606 identical warnings from two sources both count and a summary ending in a period gets no second one', () => {
   const info = mock.method(toast, 'info', () => {});
   const result = stepExportResult('Left out: annex.ifc.', ['same', 'same', 'other'], resolve);
-  assert.equal(result.message, 'Left out: annex.ifc. 2 warnings');
-  assert.deepEqual(result.warnings, ['same', 'other']);
+  assert.equal(result.message, 'Left out: annex.ifc. 3 warnings');
+  assert.deepEqual(result.warnings, ['same', 'same', 'other']);
   assert.equal(info.mock.callCount(), 1);
 });
 

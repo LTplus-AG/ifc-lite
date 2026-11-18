@@ -8,11 +8,10 @@ import type { ExportDialogShellResult } from './ExportDialogShell';
 
 /** Toast and dialog result for a finished STEP export (single or merged): an
  * export with exporter warnings toasts as info and lists them (#10606).
- * A repeated diagnostic is listed once, as `MergedExporter` does: the cropped
- * sources of a sectioned merge each report their own. The count is formatted
- * for the locale `t` resolves in, read when the export finishes. */
-export function stepExportResult(summary: string, allWarnings: readonly string[], t: UseTranslationResult['t']): ExportDialogShellResult {
-  const warnings = [...new Set(allWarnings)];
+ * Identical lines are kept: each cropped source of a sectioned merge reports
+ * its own records (e.g. "1 structural conversion record(s): ..."). The count
+ * is formatted for the locale `t` resolves in, read when the export finishes. */
+export function stepExportResult(summary: string, warnings: readonly string[], t: UseTranslationResult['t']): ExportDialogShellResult {
   if (!warnings.length) {
     toast.success(summary);
     return { success: true, message: summary };

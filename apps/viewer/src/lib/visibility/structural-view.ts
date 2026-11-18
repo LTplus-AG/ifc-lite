@@ -18,7 +18,7 @@ export function structuralGlyphsVisible(visibility: Pick<TypeVisibility, 'struct
 }
 
 /** The supports & loads layer is wanted but Physical hides it. */
-export function structuralGlyphsMasked(visibility: Pick<TypeVisibility, 'structuralGlyphs'>, mode: StructuralViewMode = 'both'): boolean {
+export function structuralGlyphsMasked(visibility: Pick<TypeVisibility, 'structuralGlyphs'>, mode: StructuralViewMode): boolean {
   return visibility.structuralGlyphs && mode === 'physical';
 }
 

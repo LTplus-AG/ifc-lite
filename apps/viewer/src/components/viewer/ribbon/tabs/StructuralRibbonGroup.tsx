@@ -15,6 +15,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { StructuralAnalytical, StructuralBoth, StructuralDerive, StructuralPhysical, StructuralSupports } from '@/icons';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
+import { resolveModelId } from '@/lib/commands/modeling/workspace-target';
 import { structuralGlyphsMasked, structuralGlyphsVisible } from '@/lib/visibility/structural-view';
 import { paletteAvailability } from '../../palette-availability';
 import { surfaceCommand, type SurfaceCommandId } from '../../surface-command-registry';
@@ -28,9 +30,11 @@ type StructuralCommandId = typeof IDS[number] & SurfaceCommandId;
 /** Why each control cannot run now, or null; the palette's own availability rules. */
 function useStructuralBlocks(): Record<StructuralCommandId, TranslationKey | null> {
   const hosts = usePersistentToolHosts();
-  // Only the inputs the rules read, Derive's write permission included: camera and pointer updates reach the store too.
+  // Only the inputs the rules read: camera and pointer updates reach the store too.
   const inputs = useViewerStore(useShallow((s) => [s.models, s.ifcDataStore, s.mutationViews, s.mutationVersion,
-    s.structuralViewMode, s.loading, s.collabRole, s.session, s.isMobile, s.editEnabled, s.activeModelId, s.serverPropertiesRuns]));
+    s.structuralViewMode, s.loading, s.collabRole, s.session, s.isMobile]));
+  // Derive's write permission, through the policy's own subscription rather than a copy of the fields it reads.
+  const writeDenial = useMutationDenialReason(useViewerStore((s) => resolveModelId(s, undefined)) ?? undefined);
   return useMemo(() => {
     const state = useViewerStore.getState();
     const out = {} as Record<StructuralCommandId, TranslationKey | null>;
@@ -39,7 +43,7 @@ function useStructuralBlocks(): Record<StructuralCommandId, TranslationKey | nul
       out[id] = availability.status === 'disabled' ? availability.reasonKey : null;
     }
     return out;
-  }, [inputs, hosts]);
+  }, [inputs, hosts, writeDenial]);
 }
 
 export function StructuralRibbonGroup() {

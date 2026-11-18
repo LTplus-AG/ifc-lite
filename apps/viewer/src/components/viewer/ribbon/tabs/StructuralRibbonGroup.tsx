@@ -15,7 +15,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { StructuralAnalytical, StructuralBoth, StructuralDerive, StructuralPhysical, StructuralSupports } from '@/icons';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { structuralGlyphsVisible } from '@/lib/visibility/structural-view';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
+import { resolveModelId } from '@/lib/commands/modeling/workspace-target';
+import { structuralGlyphsMasked, structuralGlyphsVisible } from '@/lib/visibility/structural-view';
 import { paletteAvailability } from '../../palette-availability';
 import { surfaceCommand, type SurfaceCommandId } from '../../surface-command-registry';
 import { usePersistentToolHosts } from '../../PersistentToolHosts';
@@ -31,6 +33,8 @@ function useStructuralBlocks(): Record<StructuralCommandId, TranslationKey | nul
   // Only the inputs the rules read: camera and pointer updates reach the store too.
   const inputs = useViewerStore(useShallow((s) => [s.models, s.ifcDataStore, s.mutationViews, s.mutationVersion,
     s.structuralViewMode, s.loading, s.collabRole, s.session, s.isMobile]));
+  // Derive's write permission, through the policy's own subscription rather than a copy of the fields it reads.
+  const writeDenial = useMutationDenialReason(useViewerStore((s) => resolveModelId(s, undefined)) ?? undefined);
   return useMemo(() => {
     const state = useViewerStore.getState();
     const out = {} as Record<StructuralCommandId, TranslationKey | null>;
@@ -39,7 +43,7 @@ function useStructuralBlocks(): Record<StructuralCommandId, TranslationKey | nul
       out[id] = availability.status === 'disabled' ? availability.reasonKey : null;
     }
     return out;
-  }, [inputs, hosts]);
+  }, [inputs, hosts, writeDenial]);
 }
 
 export function StructuralRibbonGroup() {
@@ -52,7 +56,7 @@ export function StructuralRibbonGroup() {
     const reason = blocks[id];
     return reason ? { 'aria-disabled': true, tooltip: t(reason), 'data-unavailable-reason': reason } : {};
   };
-  const glyphsMasked = glyphPreference && mode === 'physical';
+  const glyphsMasked = structuralGlyphsMasked({ structuralGlyphs: glyphPreference }, mode);
 
   return (
     <RibbonGroup label={t('ribbon.view.structuralGroup')}>

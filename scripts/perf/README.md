@@ -1935,6 +1935,14 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | C5b opening source probe/classifier | identical | BWK −1.7% (±3), Holter +2.5% (±18), ISSUE_098 +0.7% (±12), ISSUE_068 −1.5% (±17), schependomlaan −1.6% (±5), ISSUE_129 −1.7% (±5) vs D3 base c282c7bebf | neutral: owned classify/probe on every opening host, all deltas inside noise |
 | C5c opening gateway cutover | identical | BWK +1.2% (±8), Holter −0.4% (±9), ISSUE_098 +2.9% (±33), ISSUE_068 −3.1% (±55), schependomlaan +0.3% (±11), ISSUE_129 +1.1% (±14) vs C5b | neutral within noise; fingerprints identical on 6 models and 122/122 corpus models; deterministic FZK instruction ratchet is the strict check |
 
+## Recovering rejected cuts on touching shells (#10512)
+
+Manifold-gated recess cuts can fail when adjoining wall bodies leave internal
+faces in the merged host. The retry certifies complete consecutive shells,
+unites them without losing volume, and cuts with the original recess depth.
+The shell scan runs only on a gate rejection. Builds without the manifold gate
+keep the existing void routing.
+
 ## Exact rectangular opening union (#7941)
 
 **Native attribution complete; browser qualification remains pending.**

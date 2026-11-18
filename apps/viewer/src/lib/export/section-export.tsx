@@ -74,7 +74,7 @@ export async function sectionMergeInputs(
     const source = await new StepExporter(input.dataStore, input.mutationView).exportAsync({
       schema, visibleOnly: true, hiddenEntityIds: visibility.hidden.get(input.id), isolatedEntityIds: visibility.isolated.get(input.id),
     });
-    warnings.push(...source.stats.warnings);
+    for (const warning of source.stats.warnings) warnings.push(warning);
     const cropped = await exportSectionedStep(source.content, options);
     const buffer = new ArrayBuffer(cropped.content.byteLength);
     new Uint8Array(buffer).set(cropped.content);

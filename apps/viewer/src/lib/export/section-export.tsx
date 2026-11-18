@@ -58,7 +58,8 @@ export function useSectionExport(enabled: boolean) {
 type MergeVisibility = { hidden: Map<string, Set<number>>; isolated: Map<string, Set<number> | null> };
 
 /** Crop each source before merging; visibility is consumed in the original source namespace.
- * The merge never sees a cropped source's export warnings, so they are returned here (#10606). */
+ * The merge never sees a cropped source's export warnings, so they are returned here,
+ * each named for its model since two sources can report the same line (#10606). */
 export async function sectionMergeInputs(
   inputs: MergeModelInput[],
   visibility: MergeVisibility,
@@ -74,7 +75,7 @@ export async function sectionMergeInputs(
     const source = await new StepExporter(input.dataStore, input.mutationView).exportAsync({
       schema, visibleOnly: true, hiddenEntityIds: visibility.hidden.get(input.id), isolatedEntityIds: visibility.isolated.get(input.id),
     });
-    for (const warning of source.stats.warnings) warnings.push(warning);
+    for (const warning of source.stats.warnings) warnings.push(`${input.name}: ${warning}`);
     const cropped = await exportSectionedStep(source.content, options);
     const buffer = new ArrayBuffer(cropped.content.byteLength);
     new Uint8Array(buffer).set(cropped.content);

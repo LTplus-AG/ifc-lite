@@ -136,7 +136,9 @@ it('sectioned merged STEP export keeps each cropped model\'s warnings (#10606)',
   assert.equal(toasts.success.mock.callCount(), 0);
   assert.equal(toasts.info.mock.callCount(), 1);
   assert.match(details(), /ConditionCoordinateSystem has no slot in IFC2X3/);
-  // Each cropped source reports the same 3 lines for its own records; none is dropped as a duplicate.
+  // Each cropped source reports the same 3 lines for its own records, named for its model; none is dropped.
+  const lines = [...document.querySelectorAll('details li')].map(li => li.textContent ?? '');
+  assert.ok(lines.some(line => line.startsWith('structural.ifc: ')) && lines.some(line => line.startsWith('annex.ifc: ')), lines.join('\n'));
   assert.equal(document.querySelector('summary')?.textContent, '6 warnings');
   assert.match(toasts.info.mock.calls[0].arguments[0] ?? '', /\. 6 warnings$/);
 });

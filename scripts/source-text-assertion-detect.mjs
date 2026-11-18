@@ -33,8 +33,8 @@
  *   mutate(real.platform, …) → function mutate(source, …)  // through a parameter
  *
  * Propagation is deliberately over-eager: one flat name set, no scoping, and a
- * call taints the parameters of every function of its name, Node's `assert.*`
- * excepted (#10687). Stricter is safe for a ratchet; looser is decoration.
+ * call taints the parameters of every function of its name, `assert.*` on an
+ * unshadowed node:assert import excepted (#10687). Stricter is the safe side.
  *
  * ═══ WHY THIS PARSES INSTEAD OF SCANNING (#3174) ═══
  *

@@ -204,6 +204,10 @@ test('assert.ok(file bytes) does not taint a local function named ok', () => {
   assert.deepEqual(analyze(`${LOCAL_OK}\nassert.ok(source.length > 0);\nassert.ok(facts.ok('x'));`).hits, []);
 });
 
+test('a bare assert(…) call does not turn that off', () => {
+  assert.deepEqual(analyze(`${LOCAL_OK}\nassert(source);\nassert.ok(source.length > 0);`).hits, []);
+});
+
 test('a local ok called with file bytes, or through a non-imported assert, is still caught', () => {
   assert.ok(flagged(`${LOCAL_OK}\nassert.ok(source.includes('x'));`));
   assert.ok(flagged(`${LOCAL_OK}\nfacts.ok(source);`));

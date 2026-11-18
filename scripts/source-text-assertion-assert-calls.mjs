@@ -9,11 +9,11 @@
 
 import ts from 'typescript';
 
-/** TRUE when `id` roots a call's callee chain: `id.a.b(…)`. */
+/** TRUE when `id` roots a call's callee chain: `id(…)` or `id.a.b(…)`. */
 function rootsACall(id) {
   let n = id;
   while (ts.isPropertyAccessExpression(n.parent) && n.parent.expression === n) n = n.parent;
-  return n !== id && ts.isCallExpression(n.parent) && n.parent.expression === n;
+  return ts.isCallExpression(n.parent) && n.parent.expression === n;
 }
 
 const ASSERT_MODULES = new Set(['assert', 'node:assert', 'assert/strict', 'node:assert/strict']);

@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { MergeExportResult } from '@ifc-lite/export';
+import { formatLocaleNumber, getLocale, type UseTranslationResult } from '@/i18n';
+
 export interface StepExportSummaryInput {
   /** Entity lines in the written file. */
   entityCount: number;
@@ -27,4 +30,19 @@ export function stepExportSummary({ entityCount, pendingChanges, applyMutations,
   const exported = `Exported ${entityCount} entities`;
   if (visibleOnly) return exported;
   return `${exported} (${applyMutations ? pendingChanges : 0} modified)`;
+}
+
+/** Summary line for a merged STEP export. The entity count uses the viewer
+ * locale. Cropped sources' warnings come from their export before the crop and
+ * carry no entity ids to filter by, so the summary says what they cover. */
+export function mergedExportSummary(
+  stats: Pick<MergeExportResult['stats'], 'modelCount' | 'totalEntityCount' | 'normalizedModelCount'>,
+  skipNotice: string,
+  hasSectionWarnings: boolean,
+  t: UseTranslationResult['t'],
+): string {
+  const notes = [skipNotice, hasSectionWarnings ? t('exportDialog.sectionWarningsWholeModel') : ''].filter(Boolean).join(' ');
+  return `Merged ${stats.modelCount} models, ${formatLocaleNumber(getLocale(), stats.totalEntityCount)} entities`
+    + (stats.normalizedModelCount > 0 ? ` (${stats.normalizedModelCount} rescaled into the first model's unit)` : '')
+    + (notes ? `. ${notes}` : '');
 }

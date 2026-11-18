@@ -27,7 +27,7 @@ fn becomes(entity: &str, parent: &str) -> bool {
 }
 
 /// An entity reference slot, with STEP whitespace and comments around it allowed (#10248).
-fn slot_ref(token: &str) -> Option<u32> {
+pub(crate) fn slot_ref(token: &str) -> Option<u32> {
     let bytes = token.as_bytes();
     let start = skip_step_trivia(bytes, 0)?;
     let rest = token.get(start..)?.strip_prefix('#')?;
@@ -37,11 +37,14 @@ fn slot_ref(token: &str) -> Option<u32> {
     (digits > 0 && skip_step_trivia(bytes, end) == Some(bytes.len())).then(|| rest[..digits].parse().ok()).flatten()
 }
 
-/// Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248).
-fn slot_unset(token: &str) -> bool {
+/// Whether the slot is exactly `literal`, with STEP whitespace and comments around it allowed (#10248).
+pub(crate) fn slot_is(token: &str, literal: &[u8]) -> bool {
     let bytes = token.as_bytes();
-    skip_step_trivia(bytes, 0).is_some_and(|start| bytes.get(start) == Some(&b'$') && skip_step_trivia(bytes, start + 1) == Some(bytes.len()))
+    skip_step_trivia(bytes, 0).is_some_and(|start| bytes[start..].starts_with(literal) && skip_step_trivia(bytes, start + literal.len()) == Some(bytes.len()))
 }
+
+/// Whether the slot is the unset marker `$`.
+pub(crate) fn slot_unset(token: &str) -> bool { slot_is(token, b"$") }
 
 /// (member, element) of an `IFCRELASSIGNSTOPRODUCT` record of the shape the upgrade writes.
 fn endpoints(args: &[String]) -> Option<(u32, u32)> {

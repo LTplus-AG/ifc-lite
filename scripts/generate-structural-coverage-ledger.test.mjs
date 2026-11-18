@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEVELS, deriveCatalogue, notApplicable } from '../tests/structural-coverage/catalogue.mjs';
-import { ratchet, runProbes, score, tally, verifySummary, verifyTotals } from '../tests/structural-coverage/score.mjs';
+import { main, ratchet, runProbes, score, tally, verifySummary, verifyTotals } from '../tests/structural-coverage/score.mjs';
 import { readRow } from '../tests/structural-coverage/probes/read.mjs';
 import { checkExport } from '../tests/structural-coverage/probes/create.mjs';
 import { normalize } from '../tests/structural-coverage/lib/values.mjs';
@@ -114,6 +114,7 @@ test('limits (#9668): label every problem or count it open, never change a score
   const id = two[0].id;
   const problems = ['a.ifc#1: lost', 'a.ifc#2: lost', 'b.ifc#3: Axis null'];
   const limit = (extra = {}) => ({ row: id, level: 'convert', kind: 'schema', problem: /^a\.ifc#(\d+): lost$/, cite: 'no entity', holds: (f, m) => f.belowThree(Number(m[1])), ...extra });
+  // Not `ok`: check-source-text-assertions resolves every `assert.ok(...)` to a local `ok` by name.
   const facts = { belowThree: (n) => n < 3 };
   const fresh = (list = problems, status = 'partial') => {
     const cells = cellsOf({ [id]: { convert: status } });
@@ -143,6 +144,40 @@ test('limits (#9668): label every problem or count it open, never change a score
   const labelled = score(two, cells);
   assert.deepEqual([labelled.total, labelled.cells], [score(two, fresh()).total, score(two, fresh()).cells], 'a limit never changes a score');
   assert.ok(labelled.rows[0].levels.convert.limits && !('problems' in labelled.rows[0].levels.convert), 'the summary keeps the label, not the problem list');
+});
+
+test('score.mjs: a stale limit fails the run with exit 1 and names the label; the summary is still written (#10597)', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'structural-score-'));
+  const out = join(dir, 'summary.json');
+  const stale = { row: two[0].id, level: 'convert', kind: 'schema', problem: /^never reported$/, cite: 'test', holds: () => true };
+  const error = t.mock.method(console, 'error', () => {});
+  t.mock.method(console, 'log', () => {});
+  const run = async (limits, args = []) => {
+    error.mock.resetCalls();
+    const evaluate = async () => {
+      const cells = cellsOf({});
+      return { summary: score(two, cells), limitIssues: markLimits(cells, {}, limits) };
+    };
+    const code = await main(['--quiet', '--out', out, ...args], { evaluate });
+    return { code, errors: error.mock.calls.map((c) => String(c.arguments[0])).join('\n') };
+  };
+  try {
+    const failed = await run([stale]);
+    assert.equal(failed.code, 1, failed.errors);
+    assert.match(failed.errors, /Limits out of date \(tests\/structural-coverage\/limits\.mjs\)/);
+    assert.match(failed.errors, new RegExp(`${two[0].id} convert \\(schema\\) labels no problem the probe reported`));
+    assert.equal(JSON.parse(readFileSync(out, 'utf8')).total.max, 2, 'the summary is written for inspection');
+    assert.deepEqual(await run([]), { code: 0, errors: '' }, 'without the stale label the same run exits 0');
+    // CI runs with --check: a ratchet that holds must not mask the stale label.
+    const baseline = join(dir, 'baseline.json');
+    writeFileSync(baseline, readFileSync(out, 'utf8'));
+    const checked = await run([stale], ['--check', baseline]);
+    assert.equal(checked.code, 1, checked.errors);
+    assert.match(checked.errors, /Limits out of date/);
+    assert.deepEqual(await run([], ['--check', baseline]), { code: 0, errors: '' }, 'the ratchet itself holds');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('limits (#9668): each names a catalogue row, an applicable level, a kind and a citation', () => {

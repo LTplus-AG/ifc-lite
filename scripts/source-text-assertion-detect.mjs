@@ -32,9 +32,11 @@
  *   let s = readFileSync(p); s = s.replace(a, b)    // reassignment
  *   mutate(real.platform, …) → function mutate(source, …)  // through a parameter
  *
- * Propagation is deliberately over-eager: one flat name set, no scoping, and a
- * call taints the parameters of every function of its name, `assert.*` on an
- * unshadowed node:assert import excepted (#10687). Stricter is the safe side.
+ * Propagation is deliberately over-eager (one flat name set, no scoping, every
+ * call site of a function taints that function's parameters). Over-tainting
+ * makes the gate stricter, which is the safe direction for a ratchet;
+ * under-tainting would silently drop coverage, which is the direction that
+ * turns a gate into decoration.
  *
  * ═══ WHY THIS PARSES INSTEAD OF SCANNING (#3174) ═══
  *
@@ -140,10 +142,9 @@
  * accepts. The decision stays a grep-able line in the diff, which a structural
  * carve-out never would be.
  */
-
 import ts from 'typescript';
 import { isModuleSpecifierLiteral } from './source-text-assertion-module-specifier.mjs';
-import { assertCallTest } from './source-text-assertion-assert-calls.mjs';
+import { callsImportedModule } from './source-text-assertion-import-receiver.mjs';
 
 /**
  * The taint source: a disk read, however the call is qualified. This used to be
@@ -376,7 +377,6 @@ function enclosingStatement(node) {
  */
 function computeTainted(sourceFile) {
   const tainted = new Set(READ_NAMES);
-  const callsAssert = assertCallTest(sourceFile);
 
   const bindings = [];      // { names: string[], init: Node }
   const functions = [];     // { node, name, params: string[][] }
@@ -468,9 +468,9 @@ function computeTainted(sourceFile) {
         continue;
       }
 
-      // A tainted argument taints the parameter it lands in (never via Node's assert).
-      const named = callsAssert(call.expression) ? undefined : byName.get(calleeName(call.expression));
-      if (named)
+      // A tainted argument taints the parameter it lands in.
+      const named = byName.get(calleeName(call.expression));
+      if (named && !callsImportedModule(call.expression))
         for (const fn of named)
           args.forEach((arg, idx) => {
             if (idx < fn.params.length && carriesFileBytes(arg))

@@ -68,14 +68,11 @@ describeFixture(
       // IFC2X3 never defined a curve/surface reaction entity at all.
       expect(byType.get('IFCSTRUCTURALCURVEREACTION')).toMatchObject({ kind: 'proxied', count: 3 });
 
-      // Lossy (this PR's fix): renamed with a real IFC2X3 target, but not
-      // every attribute survives.
-      expect(byType.get('IFCSTRUCTURALLOADCASE')).toMatchObject({
-        kind: 'lossy',
-        targetType: 'IFCSTRUCTURALLOADGROUP',
-        count: 1,
-        droppedAttributes: ['SelfWeightCoefficients'],
-      });
+      // #9668: the load case #312 is written as a load group whose property
+      // set holds SelfWeightCoefficients, and the upgrade restores both, so
+      // it loses nothing (round trip below).
+      expect(byType.has('IFCSTRUCTURALLOADCASE')).toBe(false);
+      // Lossy: renamed with a real IFC2X3 target, but not every attribute survives.
       expect(byType.get('IFCSTRUCTURALCURVEACTION')).toMatchObject({
         kind: 'lossy',
         targetType: 'IFCSTRUCTURALLINEARACTION',
@@ -89,8 +86,15 @@ describeFixture(
       const describedTypes = report.describe().join('\n');
       expect(describedTypes).toContain('IFCSTRUCTURALLOADCONFIGURATION');
       expect(describedTypes).toContain('IFCSTRUCTURALCURVEREACTION');
-      expect(describedTypes).toContain('IFCSTRUCTURALLOADCASE');
       expect(describedTypes).toContain('IFCSTRUCTURALCURVEACTION');
+    });
+
+    it('brings back the load case the report leaves out (#9668)', async () => {
+      const ifc2x3 = exportToStep(await parse(new Uint8Array(readFileSync(FIXTURE))), { schema: 'IFC2X3' });
+      const back = exportToStep(await parse(new TextEncoder().encode(ifc2x3)), { schema: 'IFC4' });
+      expect(back.split('\n').find((l) => l.startsWith('#312='))).toBe(
+        "#312=IFCSTRUCTURALLOADCASE('2fv4DZfY55exwX8QDy8dmw',#209,'Structural Load Case #1',$,$,.LOAD_CASE.,.NOTDEFINED.,.NOTDEFINED.,1.,$,(0.,0.,0.));",
+      );
     });
 
     it('exports the full fixture to IFC2X3 with no crash and no dangling reference (#5114, #5115)', async () => {

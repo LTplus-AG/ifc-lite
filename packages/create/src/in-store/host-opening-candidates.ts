@@ -6,6 +6,10 @@ import { AnchorEntityReader } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
 import { sourceInventorySignature } from './source-inventory-signature.js';
 const TYPE = 'IFCRELVOIDSELEMENT';
+/** Up to this many effective voids, the canonical class walk is cheaper than
+ * the source projection, reference-slot queries and override classification,
+ * and it is already the reference order. Larger classes use the projection. */
+export const CANONICAL_VOID_WALK_LIMIT = 32;
 const sources = new WeakMap<IfcDataStore, { signature: unknown[]; buckets: Map<number | null, number[]>; order: Map<number, number> }>();
 
 /** Source overrides are conservatively untyped in the mutation index. Resolve
@@ -27,12 +31,29 @@ function openingOverrideIds(store: IfcDataStore, view: MutablePropertyView): num
 }
 
 
+/** Return the effective void class in canonical order when both the authored
+ * and effective counts are at most the limit. Count authored rows lazily first
+ * so a large authored class never gets copied by the canonical walk.
+ * The caller checks each relationship's RelatingBuildingElement (#10555). */
+export function smallVoidClass(reader: AnchorEntityReader, view?: MutablePropertyView | null): number[] | null {
+  if (!view || typeof view.readNewEntityKinds !== 'function') return null;
+  let authored = 0;
+  for (const _row of view.readNewEntityKinds(TYPE)) if (++authored > CANONICAL_VOID_WALK_LIMIT) return null;
+  const ids: number[] = [];
+  for (const id of reader.ids(TYPE)) if (ids.push(id) > CANONICAL_VOID_WALK_LIMIT) return null;
+  return ids;
+}
+
 /** Include unresolved hosts globally: their old conservative refusal is part
  * of the contract. Source projections are immutable; authored projections are
  * maintained by mutation maps, including nested drafts and escaped arrays. */
 export function hostOpeningCandidates(store: IfcDataStore, host: number, view?: MutablePropertyView | null): Iterable<number> {
   const reader = new AnchorEntityReader(store, view);
   if (!view || typeof view.getNewEntityReferenceSlotIds !== 'function') return reader.ids(TYPE);
+  // Same contract as the projection path below: this host's voids plus
+  // unresolved targets, in canonical order. Unreadable rows stay candidates.
+  const small = smallVoidClass(reader, view);
+  if (small) return small.filter(id => { const target = refId(reader.entity(id)?.attributes[4]); return target === null || target === host; });
   const signature = sourceInventorySignature(store);
   let source = sources.get(store);
   if (!source || signature.some((v, i) => v !== source!.signature[i])) {

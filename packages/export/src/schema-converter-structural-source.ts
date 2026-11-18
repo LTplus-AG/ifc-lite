@@ -36,9 +36,8 @@ const CARRIED = {
 
 /**
  * Attributes of `type` the target has no slot for but a carrier holds
- * elsewhere. `StructuralDiagnostics.inspect` and the conversion loss report
- * both leave them out of what they report lost. A carrier holds them only for
- * a record it can carry; the export reports any other one lost.
+ * elsewhere, for a record the carrier accepts. `StructuralDiagnostics` returns
+ * them for such a record; the conversion loss report asks only about these types.
  */
 export const carriedAttributes = (mode: ConversionMode, type: string): readonly string[] =>
   (mode && CARRIED[mode].get(type)) || [];

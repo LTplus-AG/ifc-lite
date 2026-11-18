@@ -25,6 +25,7 @@ export class StructuralDiagnostics {
   private readonly losses = new Map<string, number>();
   /** Source record id -> attributes the target holds elsewhere (`note*`), which `inspect` does not report lost. */
   private readonly carried = new Map<number, ReadonlySet<string>>();
+  private source: SourceRecords | null = null;
 
   /**
    * The source prepasses for an IFC2X3 <-> IFC4 export; the caller arms them
@@ -34,7 +35,7 @@ export class StructuralDiagnostics {
     if (from === 'IFC2X3') this.axes.fromStore(store);
     else this.links.fromStore(store);
     this.varying.fromStore(store, from, to);
-    const source = new SourceRecords(store);
+    const source = this.source = new SourceRecords(store);
     this.carriers.fromStore(source, from, to);
     this.thickness.fromStore(source, from, to);
   }
@@ -108,7 +109,7 @@ export class StructuralDiagnostics {
     // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
     const unconverted = this.varying.staysUnconverted(entity, args);
     if (unconverted && this.carriers.causeOf(entity, args, withheld) !== null) this.record(CAUSED_BY_UNCONVERTED);
-    const cause = unconverted ? null : this.carriers.noteCause(id, entity, args, withheld);
+    const cause = this.causes(entity, args, withheld) ? this.carriers.noteCause(id, entity, args, withheld) : null;
     const held = cause ? carriedAttributes('upgrade', entity) : this.thickness.note(id, entity, args, withheld);
     let carried = NONE;
     if (held.length) {
@@ -126,14 +127,20 @@ export class StructuralDiagnostics {
     return rewrite.body;
   }
 
+  /** Whether a 'Causes' relationship holds this record's CausedBy: an IFC4 product it can name is written. */
+  private causes(entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+    return !this.varying.staysUnconverted(entity, args) && this.carriers.causeOf(entity, args, withheld) !== null;
+  }
+
   /**
-   * The attributes of one source record the target holds elsewhere, decided as
-   * `rewrite` decides them, without writing anything. For a preview of the
-   * export (`analyzeConversionLoss`).
+   * The attributes of source record `id` the target holds elsewhere, decided
+   * with the checks `rewrite` uses, without writing anything. For a preview of
+   * the export after `fromStore` (`analyzeConversionLoss`).
    */
-  held(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): readonly string[] {
-    const cause = !this.varying.staysUnconverted(entity, args) && this.carriers.causeOf(entity, args, withheld) !== null;
-    if (cause || this.thickness.holds(id, entity, args, withheld)) return carriedAttributes('upgrade', entity);
+  held(id: number, withheld: ReadonlySet<number> | undefined): readonly string[] {
+    const entity = this.source?.type(id), args = this.source?.slots(id);
+    if (!entity || !args) return [];
+    if (this.causes(entity, args, withheld) || this.thickness.holds(id, entity, args, withheld)) return carriedAttributes('upgrade', entity);
     return this.carriers.holdsLoadCase(entity, args, withheld) ? carriedAttributes('downgrade', entity) : [];
   }
 

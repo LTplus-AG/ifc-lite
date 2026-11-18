@@ -38,7 +38,7 @@ import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix } from './schema-converter-renames.js';
 import { computeWithheldRefIds, isRootedEntityType } from './schema-untranslatable.js';
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
-import { conversionMode, SourceRecords } from './schema-converter-structural-source.js';
+import { carriedAttributes, conversionMode } from './schema-converter-structural-source.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
 export type EntityConversionKind =
@@ -217,28 +217,28 @@ function describeEntry(entry: ConversionLossEntry): string {
 }
 
 /**
- * For an IFC2X3 <-> IFC4 conversion of a store with its source text: whether
- * the export's structural carriers keep every one of `attrs` for record `id`
- * (#9668, #10597). Null for any other conversion, or a store without source.
+ * For an IFC2X3 <-> IFC4 conversion of a store with its source text and a
+ * type a structural carrier can keep: the ids of `type` whose `dropped`
+ * attributes the export's carriers do not all keep (#9668, #10597). The export
+ * arms them only for an unedited full export, which this preview assumes.
+ * Null otherwise.
  */
-function structuralCarriers(
+function uncarriedIds(
   store: Pick<IfcDataStore, 'entityIndex'> & Partial<Pick<IfcDataStore, 'source'>>,
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,
-): ((id: number, attrs: readonly string[]) => boolean) | null {
-  if (!conversionMode(fromSchema, toSchema) || !store.source) return null;
+): ((type: string, ids: readonly number[], dropped: readonly string[]) => readonly number[]) | null {
+  const mode = conversionMode(fromSchema, toSchema);
+  // @raw-entity-enumeration-ok same source-only preview as analyzeConversionLoss
+  if (!mode || !store.source || ![...store.entityIndex.byType.keys()].some((t) => carriedAttributes(mode, t.toUpperCase()).length)) return null;
   const full = store as IfcDataStore;
   const diagnostics = new StructuralDiagnostics();
   diagnostics.fromStore(full, fromSchema, toSchema);
   // Armed as the export arms it; `held` only asks, so no id is ever allocated.
   diagnostics.ids = () => { throw new Error('analyzeConversionLoss writes no records'); };
-  const source = new SourceRecords(full);
   const withheld = computeWithheldRefIds(full, toSchema);
-  return (id, attrs) => {
-    const type = source.type(id), args = source.slots(id);
-    const held = type && args ? diagnostics.held(id, type, args, withheld) : [];
-    return attrs.every((a) => held.includes(a));
-  };
+  return (type, ids, dropped) => !dropped.length || !carriedAttributes(mode, type).length ? ids
+    : ids.filter((id) => !dropped.every((a) => diagnostics.held(id, withheld).includes(a)));
 }
 
 /**
@@ -256,14 +256,12 @@ export function analyzeConversionLoss(
 ): ConversionLossReport {
   const entries: ConversionLossEntry[] = [];
   if (fromSchema !== toSchema) {
-    const carried = structuralCarriers(store, fromSchema, toSchema);
+    const uncarried = uncarriedIds(store, fromSchema, toSchema);
     // @raw-entity-enumeration-ok this report accepts only a source entityIndex and describes the parsed file's schema-conversion losses
     for (const [sourceType, allIds] of store.entityIndex.byType) {
       const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
       if (info.kind === 'identity' || info.kind === 'renamed') continue;
-      const expressIds = carried && info.kind === 'lossy' && info.droppedAttributes.length > 0
-        ? allIds.filter((id) => !carried(id, info.droppedAttributes))
-        : allIds;
+      const expressIds = uncarried && info.kind === 'lossy' ? uncarried(sourceType.toUpperCase(), allIds, info.droppedAttributes) : allIds;
       if (expressIds.length === 0) continue;
       entries.push({ ...info, sourceType: sourceType.toUpperCase(), count: expressIds.length, expressIds });
     }

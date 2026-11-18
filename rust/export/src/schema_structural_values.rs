@@ -151,7 +151,7 @@ impl StructuralValues {
         let mut unread = HashSet::new();
         for rel in source.ids("IFCRELASSIGNSTOGROUP") {
             let Some(args) = source.slots(rel) else { continue; };
-            // RelatedObjects and RelatingGroup, read at any arity as the TypeScript twin does.
+            // Read at any arity, as the TypeScript twin does.
             let Some(model) = args.get(RELATING_GROUP).and_then(|group| reference(group)).filter(|&id| source.kind(id, ANALYSIS_MODEL)) else { continue; };
             let listed = args.get(RELATED_OBJECTS).and_then(|related| list_items(related));
             if listed.as_ref().is_none_or(|items| items.iter().any(|item| reference(item).is_none())) { unread.insert(model); }

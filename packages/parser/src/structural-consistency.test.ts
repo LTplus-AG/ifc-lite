@@ -320,6 +320,8 @@ describe('geometry rule coverage', () => {
 
   it('recorded-element-unlinked: movement skips a member whose record names an element no longer linked to it', () => {
     expect(checkStructuralConsistency(linked, elements, {}, geometry({ record: 'P9' })).coverage).toEqual(skipped({ stale: 'recorded-element-unlinked' }));
+    // A linked element outside the fact classes may be the recorded one: only its axis is known to be missing.
+    expect(checkStructuralConsistency(linked, [fact(2, 'IfcBeam', true)], {}, geometry({ record: 'P1' })).coverage).toEqual(skipped({ stale: 'element-without-axis' }));
   });
 
   it('element-without-axis: both rules skip a member none of whose elements has an axis, and every member without geometry', () => {

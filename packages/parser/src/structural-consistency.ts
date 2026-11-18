@@ -276,7 +276,8 @@ function staleItems(
     if (!record) { result.skipped.set(member.expressId, 'no-derivation-record'); continue; }
     const recorded = withAxis.find(({ fact }) => fact.globalId === record.elementGlobalId);
     if (!recorded) {
-      const linked = elementIds.some((id) => globalIdOf(id) === record.elementGlobalId);
+      // An element with no fact has an unknown GlobalId: it may be the recorded one, and it has no axis the rule can use.
+      const linked = elementIds.some((id) => (globalIdOf(id) ?? record.elementGlobalId) === record.elementGlobalId);
       result.skipped.set(member.expressId, linked ? 'element-without-axis' : 'recorded-element-unlinked');
       continue;
     }

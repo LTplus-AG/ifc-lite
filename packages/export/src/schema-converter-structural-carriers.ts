@@ -39,7 +39,7 @@ import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
 export const LOAD_CASE_PSET = 'IFC4 IfcStructuralLoadCase';
 const CAUSES = 'Causes';
 /** IfcStructuralAction.CausedBy in IFC2X3 (IFC2X3_TC1.exp:7237): slot 10 of every action. */
-const CAUSED_BY = 10;
+export const CAUSED_BY = 10;
 /** IfcProduct.ObjectPlacement. */
 const OBJECT_PLACEMENT = 5;
 

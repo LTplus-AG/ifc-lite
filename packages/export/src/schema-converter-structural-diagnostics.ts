@@ -4,8 +4,8 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName, type IfcDataStore 
 import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
-import { StructuralCarriers } from './schema-converter-structural-carriers.js';
-import { carriedAttributes, SourceRecords } from './schema-converter-structural-source.js';
+import { CAUSED_BY, StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { carriedAttributes, slotUnset, SourceRecords } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
@@ -145,6 +145,19 @@ export class StructuralDiagnostics {
     if (this.causes(entity, args, withheld) || this.thickness.holds(id, entity, args, withheld)) return carriedAttributes('upgrade', entity);
     const downgrade = this.carriers.holdsLoadCase(entity, args, withheld) || this.axes.holds(id, args, withheld);
     return downgrade ? carriedAttributes('downgrade', entity) : [];
+  }
+
+  /**
+   * IFC2X3 -> IFC4: whether the export reports the CausedBy of varying action
+   * `id`: set, and held by no 'Causes' relationship, so a converted action
+   * loses it and an unconverted one keeps it only in its IFC2X3 record. The
+   * type classifier calls a varying action identity, so the preview asks here.
+   */
+  strandsCause(id: number, withheld: ReadonlySet<number> | undefined): boolean {
+    const entity = this.source?.type(id), args = this.source?.slots(id);
+    if (!entity || !args || slotUnset(args[CAUSED_BY]) || this.causes(entity, args, withheld)) return false;
+    // An unconverted action naming no point reaction keeps CausedBy in its own record, and the export reports nothing.
+    return !this.varying.staysUnconverted(entity, args) || this.carriers.causeOf(entity, args, withheld) !== null;
   }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }

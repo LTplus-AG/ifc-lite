@@ -216,32 +216,48 @@ function describeEntry(entry: ConversionLossEntry): string {
   }
 }
 
+interface StructuralPreview {
+  /** The ids of `type` whose `dropped` attributes the export's carriers do not all keep. */
+  uncarried(type: string, ids: readonly number[], dropped: readonly string[]): readonly number[];
+  /** The ids of an IFC2X3 varying action type, which classifies as identity, whose CausedBy the upgrade reports. */
+  stranded(type: string, ids: readonly number[]): readonly number[];
+}
+
 /**
  * For an IFC2X3 <-> IFC4 conversion of a store with its source text and a
- * type a structural carrier can keep: the ids of `type` whose `dropped`
- * attributes the export's carriers do not all keep (#9668, #10597). The export
- * arms them only for an unedited full export, which this preview assumes.
- * Null otherwise.
+ * type a structural carrier can keep: the export's carrier decisions per
+ * record (#9668, #10597). The export arms them only for an unedited full
+ * export, which this preview assumes. Null otherwise, and for a file the
+ * export's prepasses refuse, which is then reported without the carriers.
  */
-function uncarriedIds(
+function structuralPreview(
   store: Pick<IfcDataStore, 'entityIndex'> & Partial<Pick<IfcDataStore, 'source'>>,
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,
-): ((type: string, ids: readonly number[], dropped: readonly string[]) => readonly number[]) | null {
+): StructuralPreview | null {
   const mode = conversionMode(fromSchema, toSchema);
   // @raw-entity-enumeration-ok same source-only preview as analyzeConversionLoss
   if (!mode || !store.source || ![...store.entityIndex.byType.keys()].some((t) => carriedAttributes(mode, t.toUpperCase()).length)) return null;
   const full = store as IfcDataStore;
   const diagnostics = new StructuralDiagnostics();
-  diagnostics.fromStore(full, fromSchema, toSchema);
+  try {
+    diagnostics.fromStore(full, fromSchema, toSchema);
+  } catch {
+    // The export refuses this file (e.g. StructuralVarying's shared load configuration), so no carrier keeps anything.
+    return null;
+  }
   // Armed as the export arms it; `held` only asks, so no id is ever allocated.
   diagnostics.ids = () => { throw new Error('analyzeConversionLoss writes no records'); };
   const withheld = computeWithheldRefIds(full, toSchema);
-  return (type, ids, dropped) => !dropped.length || !carriedAttributes(mode, type).length ? ids
-    : ids.filter((id) => {
-      const held = diagnostics.held(id, withheld);
-      return !dropped.every((a) => held.includes(a));
-    });
+  return {
+    uncarried: (type, ids, dropped) => !dropped.length || !carriedAttributes(mode, type).length ? ids
+      : ids.filter((id) => {
+        const held = diagnostics.held(id, withheld);
+        return !dropped.every((a) => held.includes(a));
+      }),
+    stranded: (type, ids) => mode === 'upgrade' && carriedAttributes(mode, type).includes('CausedBy')
+      ? ids.filter((id) => diagnostics.strandsCause(id, withheld)) : [],
+  };
 }
 
 /**
@@ -259,14 +275,20 @@ export function analyzeConversionLoss(
 ): ConversionLossReport {
   const entries: ConversionLossEntry[] = [];
   if (fromSchema !== toSchema) {
-    const uncarried = uncarriedIds(store, fromSchema, toSchema);
+    const preview = structuralPreview(store, fromSchema, toSchema);
     // @raw-entity-enumeration-ok this report accepts only a source entityIndex and describes the parsed file's schema-conversion losses
     for (const [sourceType, allIds] of store.entityIndex.byType) {
-      const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
-      if (info.kind === 'identity' || info.kind === 'renamed') continue;
-      const expressIds = uncarried && info.kind === 'lossy' ? uncarried(sourceType.toUpperCase(), allIds, info.droppedAttributes) : allIds;
+      const type = sourceType.toUpperCase();
+      let info = classifyEntityTypeConversion(type, fromSchema, toSchema);
+      let expressIds: readonly number[] = allIds;
+      if (info.kind === 'identity' || info.kind === 'renamed') {
+        expressIds = preview?.stranded(type, allIds) ?? [];
+        info = { ...info, kind: 'lossy', droppedAttributes: ['CausedBy'] };
+      } else if (preview && info.kind === 'lossy') {
+        expressIds = preview.uncarried(type, allIds, info.droppedAttributes);
+      }
       if (expressIds.length === 0) continue;
-      entries.push({ ...info, sourceType: sourceType.toUpperCase(), count: expressIds.length, expressIds });
+      entries.push({ ...info, sourceType: type, count: expressIds.length, expressIds });
     }
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }

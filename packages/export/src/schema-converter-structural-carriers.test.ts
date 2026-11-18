@@ -15,6 +15,11 @@ const convert = async (text: string, schema: 'IFC2X3' | 'IFC4') => {
   return { step: new TextDecoder().decode(result.content), warnings: result.stats.warnings.join('\n') };
 };
 
+/** `Type.Attribute` -> the ids `analyzeConversionLoss` names as dropping it. */
+const lossIds = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') =>
+  Object.fromEntries(analyzeConversionLoss(await parse(text), from, to).entries
+    .flatMap((e) => e.droppedAttributes.map((a) => [`${e.sourceType}.${a}`, e.expressIds])));
+
 const OWNER = `#1=IFCPERSON($,'P',$,$,$,$,$,$);
 #2=IFCORGANIZATION($,'O',$,$,$);
 #3=IFCPERSONANDORGANIZATION(#1,#2,$);
@@ -408,6 +413,20 @@ ${geometry.replace('(#16),', aspect)}
     expect(up.warnings).not.toContain('stays unconverted');
   });
 
+  // #10597: the type classifier calls an IFC2X3 varying action identity, so the preview asks the carriers per record.
+  it('names CausedBy lost in the loss preview exactly when the export reports it', async () => {
+    const cases = [
+      { text: varying('(#16),'), why: 'unconverted, naming a reaction', reported: true },
+      { text: varying('(#14,#16,#16),'), why: 'converted, held by Causes', reported: false },
+      { text: varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'converted, naming no reaction', reported: true },
+      { text: varying('(#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'unconverted, kept in its own record', reported: false },
+    ];
+    for (const { text, why, reported } of cases) {
+      expect(/CausedBy (has no slot|of a varying action)/.test((await convert(text, 'IFC4')).warnings), why).toBe(reported);
+      expect((await lossIds(text, 'IFC2X3', 'IFC4'))['IFCSTRUCTURALLINEARACTIONVARYING.CausedBy'], why).toEqual(reported ? [30] : undefined);
+    }
+  });
+
   it('reports no CausedBy message for a CausedBy that names no point reaction', async () => {
     const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
@@ -600,6 +619,30 @@ describe('conversion loss report and structural carriers #10597', () => {
     const text = model(from, `${OWNER}\n${data}`);
     expect((await convert(text, to)).warnings).toContain(`${lost} has no slot`);
     expect(await preview(text, from, to)).toContain(lost);
+  });
+
+  it('names only the declined record of a type whose other record the carrier keeps', async () => {
+    const text = model('IFC4', `${OWNER}
+${cases[2][3]}
+${cases[2][3].replace('#20=', '#21=').replace('1gUSy$', '2gUSy$').replace('(0.,0.,-1.)', '(0.,-1.)')}`);
+    expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([21]);
+  });
+
+  // The export refuses this file (StructuralVarying.checkSharedConfigurations); the preview reports it without the carriers.
+  it('does not throw, and keeps the carriers out, when the export refuses a shared load configuration', async () => {
+    const text = model('IFC4', `${OWNER}
+#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
+#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#17=IFCSHAPEASPECT((#14,#16),'Locations',$,.T.,#15);
+#18=IFCSTRUCTURALLOADLINEARFORCE('end',0.,0.,-9.,0.,0.,0.);
+#25=IFCSTRUCTURALLOADCONFIGURATION($,(#11,#18),$);
+#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',#5,'Line',$,$,$,#15,#25,.GLOBAL_COORDS.,.F.,$,.LINEAR.);
+#31=IFCSTRUCTURALCURVEACTION('1d2HL$ILbNDhwyUI0qw12$',#5,'Sinus',$,$,$,#15,#25,.GLOBAL_COORDS.,.F.,$,.SINUS.);
+${cases[2][3]}`);
+    await expect(convert(text, 'IFC2X3')).rejects.toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
+    expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([20]);
   });
 
   it('still reports SharedPlacement lost into IFC2X3, as the export does', async () => {

@@ -1074,8 +1074,7 @@ gains, with further investigation bounded by #10555.
 
 ## Small void classes walk canonically (#10555)
 
-#10420's first hosted window in a 1K session was +4.258% slower than before
-(beyond its 2.641% boundary). Phase timing through the real session API put
+#10420's first hosted window in a 1K session exceeded the regression boundary. Phase timing through the real session API put
 the extra cost in `readHostOpeningExtents` for an empty void class. It came
 from the source projection, two reference-slot queries, override
 classification (the session carries one source override) and V8 compiling
@@ -1083,10 +1082,10 @@ that path on first use. The rejected bb492a5e skipped only the slot queries.
 Removing work from that call also moved its cold cost elsewhere: the
 `addOpeningToStore` pre-registration became the slot code's first execution.
 
-Up to 32 effective `IfcRelVoidsElement`, `readHostOpeningExtents` now takes the
-canonical class walk, which is the reference order. The pre-registration
-query is gone. Projections are built on first query, and classes of 32 or
-fewer never use one. Larger classes keep the #10420 candidate path. Fail-first
+When both the authored and effective counts of `IfcRelVoidsElement` are at
+most 32, `readHostOpeningExtents` takes the canonical class walk in reference
+order. The pre-registration query is gone. Larger classes keep the #10420
+candidate path and build the projection on the first query. Fail-first
 tests pin "no slot query or override classification" for a small class and
 for a session's first windows.
 
@@ -1096,13 +1095,7 @@ unchanged session worker, five fresh pairs per size, the original quiet
 guard (GPU samples all 0%, 0.51 busy cores) and the unchanged own-noise-floor
 gate. Prepared identities and the WASM matched.
 
-| session addHostedWindow | Base median ms | Branch median ms | Delta | 2× noise floor | Verdict |
-|---|---:|---:|---:|---:|---|
-| 1K | 4.670580 | 4.530952 | −2.990% | 4.061% | PASS |
-| 10K | 9.505519 | 7.695713 | −19.040% | 3.495% | PASS |
-| 50K | 34.052591 | 24.152032 | −29.074% | 7.100% | PASS |
-
-The branch was faster in every pair at every size. Two earlier submissions
+The original gate passed at 1K, 10K and 50K. The branch was faster in every pair at every size. Two earlier submissions
 were refused by the quiet guard on GPU load from the Pop desktop compositor;
 they recorded no timings. Still open, and not a registered row: a second
 window on a wall that already has an opening costs more after #10420

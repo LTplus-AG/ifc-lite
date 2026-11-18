@@ -31,12 +31,10 @@ function openingOverrideIds(store: IfcDataStore, view: MutablePropertyView): num
 }
 
 
-/** The whole effective void class in canonical order, or null once it exceeds
- * the limit. Creations are counted lazily first, so the canonical walk never
- * copies a large authored class; a large source bucket stops at the limit.
- * Kept separate from the projection path: the first opening of a session
- * compiles and runs only this walk (#10555). It is NOT filtered by host:
- * readHostOpeningExtents checks each RelatingBuildingElement itself. */
+/** Return the effective void class in canonical order when both the authored
+ * and effective counts are at most the limit. Count authored rows lazily first
+ * so a large authored class never gets copied by the canonical walk.
+ * The caller checks each relationship's RelatingBuildingElement (#10555). */
 export function smallVoidClass(reader: AnchorEntityReader, view?: MutablePropertyView | null): number[] | null {
   if (!view || typeof view.readNewEntityKinds !== 'function') return null;
   let authored = 0;

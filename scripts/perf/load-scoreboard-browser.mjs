@@ -28,7 +28,7 @@ import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots, webglAroundPick, framesBetween, presentTimes } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
-import { BOOT_OBSERVERS, armAfterBootSettled, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
+import { BOOT_OBSERVERS, armAfterBootSettled, quietAtArm, readBenchLongTasks, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
@@ -182,6 +182,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     // A mark created now with an earlier startTime gets its trace ts from that startTime (Chrome; args.data.callTime holds the creation time).
     const markError = tracing ? await markTraceWindow(page, fromAbs, toAbs, open.originAbs) : null;
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
+    if (!early) Object.assign(shell, quietAtArm(await page.evaluate(readBenchLongTasks), shell.armAbs));
     if (tracing) Object.assign(open, await stopCpuTrace(tracing, { spans: open.trace, file: join(outDir, `${tag}-${label}.cputrace.json.gz`) }));
     if (started && !tracing) open.cpuTime = { error: started.error };
     if (markError) open.cpuTime = { error: markError };

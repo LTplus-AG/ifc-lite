@@ -171,7 +171,6 @@ export const documentFr = {
   "document.panel.exportIdle": "Exporter en PDF",
   "document.panel.emptyBlocks": "Aucun bloc pour l'instant : utilisez « Ajouter un bloc » ci-dessus.",
   "document.panel.unsavedWarning": "Le document n'a pas pu être enregistré dans ce navigateur (stockage bloqué ou plein). Exportez-le comme modèle avant de recharger.",
-  "document.panel.blockEditRefused": "Impossible de déplacer ou de copier le bloc, car le document obtenu est invalide.",
   "document.panel.exportFailedWithMessage": "Échec de l'exportation du document : {message}",
   "document.panel.exportFailedGeneric": "Échec de l'exportation du document",
   "document.panel.exportSuccess": { one: "Document exporté : {countDisplay} page", other: "Document exporté : {countDisplay} pages", many: "Document exporté : {countDisplay} de pages" },

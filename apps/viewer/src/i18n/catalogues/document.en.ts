@@ -196,7 +196,6 @@ export const documentEn = {
   'document.panel.emptyBlocks': 'No blocks yet — "Add block" above.',
   'document.panel.unsavedWarning':
     'The document could not be saved in this browser (storage blocked or full). Export it as a template before you reload.',
-  'document.panel.blockEditRefused': 'Could not move or copy the block because the resulting document is invalid.',
   'document.panel.exportFailedWithMessage': 'Document export failed: {message}',
   'document.panel.exportFailedGeneric': 'Document export failed',
   'document.panel.exportSuccess': {

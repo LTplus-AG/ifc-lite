@@ -420,10 +420,14 @@ ${geometry.replace('(#16),', aspect)}
       { text: varying('(#14,#16,#16),'), why: 'converted, held by Causes', target: null },
       { text: varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'converted, naming no reaction', target: 'IFCSTRUCTURALCURVEACTION' },
       { text: varying('(#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'unconverted, kept in its own record', target: null },
+      // A source 'Causes' naming another reaction: IFC4 holds both, so the downgrade cannot restore CausedBy.
+      { text: varying('(#14,#16,#16),').replace('ENDSEC;\nEND', `#23=IFCSTRUCTURALPOINTREACTION('1KQ0efL39PrP5DeqBwaUNp',#5,'R2',$,$,#9,$,#12,.GLOBAL_COORDS.);
+#31=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#30);
+ENDSEC;\nEND`), why: 'converted, among several causes', target: 'IFCSTRUCTURALCURVEACTION' },
     ];
     for (const { text, why, target } of cases) {
       const { step, warnings } = await convert(text, 'IFC4');
-      expect(/CausedBy (has no slot|of a varying action)/.test(warnings), why).toBe(target !== null);
+      expect(/CausedBy (has no slot|of a varying action|is one of several)/.test(warnings), why).toBe(target !== null);
       const entry = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4').entries
         .find((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING' && e.droppedAttributes.includes('CausedBy'));
       // The entry names the type the export writes #30 as.
@@ -653,9 +657,12 @@ ${cases[2][3].replace('#20=', '#21=').replace('1gUSy$', '2gUSy$').replace('(0.,0
 
   // The writer converts only a record on one line (convertRecord), so a load case split over lines gets no carrier.
   it('reports SelfWeightCoefficients lost for a load case the writer passes through', async () => {
-    const text = model('IFC4', `${OWNER}
-${cases[2][3].replace(',.LOAD_CASE.,', ',.LOAD_CASE.,\n  ')}`);
-    expect((await convert(text, 'IFC2X3')).step).not.toContain("'IFC4 IfcStructuralLoadCase'");
+    const split = cases[2][3].replace(',.LOAD_CASE.,', ',.LOAD_CASE.,\n  ');
+    const text = model('IFC4', `${OWNER}\n${split}`);
+    const { step } = await convert(text, 'IFC2X3');
+    // Kept whole, coefficients included, and given no carrier.
+    expect(step).toContain(split);
+    expect(step).not.toContain("'IFC4 IfcStructuralLoadCase'");
     expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([20]);
   });
 

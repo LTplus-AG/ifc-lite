@@ -19,16 +19,17 @@ const LINK = 'IfcRelAssignsToProduct linking one structural member to its elemen
 
 /**
  * IFC2X3 -> IFC4: the type the export writes varying action `entity` as when
- * it reports its CausedBy: set, and held by no 'Causes' relationship, so a
- * converted action loses it and an unconverted one keeps it only in its IFC2X3
- * record. `reaction`: CausedBy names a point reaction. Null when it reports nothing.
+ * it reports its CausedBy as not coming back: an unconverted action naming a
+ * point reaction keeps it only in its IFC2X3 record, and a converted one loses
+ * it unless one 'Causes' relationship restores it (`cause`, from `noteCause`).
+ * Null when it reports nothing.
  */
-function strandedAs(entity: string, args: readonly string[], unconverted: boolean, reaction: boolean): string | null {
+function strandedAs(entity: string, args: readonly string[], unconverted: boolean, reaction: boolean, cause: { restored: boolean } | null): string | null {
   const target = varyingTarget(entity);
   if (!target || slotUnset(args[CAUSED_BY])) return null;
-  // A converted action naming a point reaction is held by 'Causes'; an unconverted one naming none keeps it unreported.
-  if (unconverted !== reaction) return null;
-  return unconverted ? entity : target;
+  // An unconverted action naming no point reaction keeps CausedBy unreported.
+  if (unconverted) return reaction ? entity : null;
+  return cause?.restored ? null : target;
 }
 
 export class StructuralDiagnostics {
@@ -132,9 +133,9 @@ export class StructuralDiagnostics {
     const unconverted = this.varying.staysUnconverted(entity, args);
     const reaction = this.carriers.causeOf(entity, args, withheld) !== null;
     if (unconverted && reaction) this.record(CAUSED_BY_UNCONVERTED);
-    const stranded = this.roundTrip ? strandedAs(entity, args, unconverted, reaction) : null;
-    if (stranded) this.stranded.set(id, stranded);
     const cause = unconverted ? null : this.carriers.noteCause(id, entity, args, withheld);
+    const stranded = this.roundTrip ? strandedAs(entity, args, unconverted, reaction, cause) : null;
+    if (stranded) this.stranded.set(id, stranded);
     const thickness = cause ? [] : this.thickness.note(id, entity, args, withheld);
     const axis = cause || thickness.length ? null : this.axes.hold(id, args, withheld);
     const held = cause ? ['CausedBy'] : axis ? ['Axis'] : thickness;

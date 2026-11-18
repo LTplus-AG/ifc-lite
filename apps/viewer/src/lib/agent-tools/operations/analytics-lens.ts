@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
 import { evaluateNativeLens, applyNativeLensResult, clearLensOutput, syncNativeLensHidden } from '@/lib/lens/native-lens';
-import { releaseNativeLensRuleIsolation } from '@/lib/lens/native-controls';
+import { releaseNativeLensRuleIsolation, switchNativeLens } from '@/lib/lens/native-controls';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { metadata, idSchema, jsonSchema, removedSchema, checkpoint } from './analytics-common';
 function inspect() {
@@ -26,7 +26,7 @@ export const analyticsLensOperations = [
     const models = useViewerStore.getState().models; const snapshot = structuredClone(lens); const result = await evaluateNativeLens(snapshot, c.signal); checkpoint(c);
     if (models !== useViewerStore.getState().models) throw new Error('The federation changed during lens evaluation.');
     if (JSON.stringify(useViewerStore.getState().savedLenses.find(row => row.id === i.id)) !== JSON.stringify(snapshot)) throw new Error('Lens definition changed during evaluation.');
-    c.commit(() => { useViewerStore.getState().setActiveLens(i.id); applyNativeLensResult(snapshot, result); syncNativeLensHidden(); }); return inspect();
+    c.commit(() => { switchNativeLens(i.id); applyNativeLensResult(snapshot, result); syncNativeLensHidden(); }); return inspect();
   }),
   viewerOperation(metadata('lens.clear', 'lens', 'Deactivate the lens and release only its owned color/hide/isolation state.', ['configuration', 'view'], output), emptySchema, (_, c) => {
     checkpoint(c); c.commit(() => {

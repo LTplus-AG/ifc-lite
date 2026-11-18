@@ -20,7 +20,7 @@
 import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Download, Upload, Sparkles, ArrowUpDown } from 'lucide-react';
-import { discoverNativeLensData, isolateNativeLensRule, releaseNativeLensRuleIsolation } from '@/lib/lens/native-controls';
+import { discoverNativeLensData, isolateNativeLensRule, releaseNativeLensRuleIsolation, switchNativeLens } from '@/lib/lens/native-controls';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -305,13 +305,8 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // and when switching to another lens). The sync effect below restores the
     // lens-owned hidden ids — so no showAll(), which would nuke the user's
     // own visibility.
-    releaseRuleIsolation();
-    if (activeLensId === id) {
-      setActiveLens(null);
-    } else {
-      setActiveLens(id);
-    }
-  }, [activeLensId, setActiveLens, releaseRuleIsolation]);
+    switchNativeLens(activeLensId === id ? null : id);
+  }, [activeLensId]);
 
   /** Click a rule/value row in the active lens to isolate matching entities */
   const handleIsolateRule = isolateNativeLensRule;

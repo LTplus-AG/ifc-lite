@@ -146,6 +146,21 @@ describe('native analytics operations (#10525 deeper automation)', () => {
       await run('lens.clear'); assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set([1]));
     }
   });
+  it('#10584 releases prior lens rule isolation on switch and preserves replacement isolation', async () => {
+    const first: Lens = { id: 'first', name: 'First', rules: [{ id: 'walls', name: 'Walls', enabled: true, action: 'colorize', color: '#123456', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }] }] };
+    const second: Lens = { id: 'second', name: 'Second', rules: [] };
+    useViewerStore.setState({ savedLenses: [first, second] });
+    for (const replacement of [null, [999]]) {
+      await run('lens.apply', { id: first.id });
+      await run('lens.ruleMembers', { id: 'walls', expected_lens_id: first.id, action: 'isolate' });
+      assert.ok(useViewerStore.getState().lensRuleIsolation);
+      if (replacement) useViewerStore.getState().isolateEntities(replacement);
+      await run('lens.apply', { id: second.id });
+      assert.equal(useViewerStore.getState().activeLensId, second.id);
+      assert.equal(useViewerStore.getState().lensRuleIsolation, null);
+      assert.deepEqual(useViewerStore.getState().isolatedEntities, replacement ? new Set(replacement) : null);
+    }
+  });
   it('uses native chart aggregation with model-qualified IDs and creates actual SVG bytes', async () => {
     await seed(2); const dashboard = modelOverviewDashboard(); useViewerStore.setState({ dashboards: [dashboard] });
     const target = { dashboard_id: dashboard.id, chart_id: dashboard.charts[0].id };

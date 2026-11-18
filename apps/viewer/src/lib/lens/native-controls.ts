@@ -21,6 +21,12 @@ export function releaseNativeLensRuleIsolation(): void {
   if (claim && ruleIsolationOwnsChannel(s.isolatedEntities, claim.entityIds)) s.clearIsolation();
   s.setLensRuleIsolation(null);
 }
+/** Switch lenses while releasing only isolation owned by the previous lens. */
+export function switchNativeLens(id: string | null): void {
+  if (useViewerStore.getState().activeLensId === id) return;
+  releaseNativeLensRuleIsolation();
+  useViewerStore.getState().setActiveLens(id);
+}
 /** Native same-rule toggle, preserving resolved assembly parts and ownership. */
 export function isolateNativeLensRule(ruleId: string): void {
   const s = useViewerStore.getState();

@@ -375,7 +375,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
 
         const skipNotice = mergeSkipNotice(skipped, t);
         // The cropped sources' warnings come from their export before the crop; they carry no
-        // entity ids to filter by, so the toast says they cover each whole model.
+        // entity ids to filter by, so the toast says they cover that export, not only what was kept.
         const notes = [skipNotice, prepared.warnings.length > 0 ? t('exportDialog.sectionWarningsWholeModel') : '']
           .filter(Boolean).join(' ');
         const msg = `Merged ${result.stats.modelCount} models, ${formatLocaleNumber(getLocale(), result.stats.totalEntityCount)} entities`

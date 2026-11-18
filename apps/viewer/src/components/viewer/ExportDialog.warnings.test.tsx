@@ -145,7 +145,7 @@ it('sectioned merged STEP export keeps each cropped model\'s warnings (#10606)',
   assert.equal(document.querySelector('summary')?.textContent, '6 warnings');
   // They come from each model's export before the crop, so the toast says what they cover.
   assert.match(toasts.info.mock.calls[0].arguments[0] ?? '',
-    /\. Warnings from models cropped at sections cover each whole model, not only the part the crop kept\. 6 warnings$/);
+    /\. Warnings from models cropped at sections cover what was exported before the crop, not only the part the crop kept\. 6 warnings$/);
 });
 
 it('merged STEP export formats its entity count for the viewer locale, like its warning count (#10624 follow-up)', async () => {
@@ -165,7 +165,7 @@ it('merged STEP export formats its entity count for the viewer locale, like its 
   await chooseMerged();
   await runExport(toasts);
   const message = [...toasts.success.mock.calls, ...toasts.info.mock.calls][0].arguments[0] ?? '';
-  // The runtime's own German separator, so the test does not assume ICU data.
+  // The runtime's German group separator rather than a literal; this needs full ICU, as Node ships by default.
   const group = new Intl.NumberFormat(locale).formatToParts(1_000).find((part) => part.type === 'group')?.value ?? '';
   const shown = /^Merged 2 models, (\S+) entities/.exec(message)?.[1] ?? '';
   const count = Number(shown.replaceAll(group, ''));

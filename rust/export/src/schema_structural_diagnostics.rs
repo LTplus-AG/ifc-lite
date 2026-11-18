@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit losses where the other structural schema has no semantic slot (#9668).
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use crate::schema_convert::{rename_type, schema_attribute_names};
 
 const LINK: &str = "IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link";
@@ -11,10 +11,12 @@ pub(crate) struct StructuralDiagnostics {
     pub(crate) axes: crate::schema_structural_axes::StructuralAxes,
     pub(crate) links: crate::schema_structural_links::StructuralLinks,
     pub(crate) varying: crate::schema_structural_varying::StructuralVarying,
+    pub(crate) carriers: crate::schema_structural_carriers::StructuralCarriers,
 }
 
 impl StructuralDiagnostics {
-    pub(crate) fn inspect(&mut self, entity: &str, args: &[String], from: &str, to: &str, axis_known: bool) {
+    pub(crate) fn inspect(&mut self, id: u32, entity: &str, args: &[String], from: &str, to: &str, axis_known: bool) {
+        let cause_carried = self.cause(id, entity).is_some();
         if crate::schema_structural::is_assignment_conversion(entity, from, to) {
             self.record("IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file".into());
             return;
@@ -35,6 +37,7 @@ impl StructuralDiagnostics {
             if *name == "DestabilizingLoad" && value.trim() == "$" && to == "IFC2X3" {
                 self.record(crate::schema_structural::destabilizing_unknown(entity));
             }
+            if *name == "CausedBy" && cause_carried { continue; }
             if !tgt.contains(name) && !matches!(value.trim(), "$" | "*" | "") {
                 let effect = if *name == "ConditionCoordinateSystem" { "; restraint directions in that coordinate system are not preserved" } else { "" };
                 self.record(format!("{entity}.{name} has no slot in {to}; its value is omitted{effect}"));
@@ -52,14 +55,62 @@ impl StructuralDiagnostics {
 
     /// A record written as another entity from source-derived facts
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
-    /// pair): the target record body, reported because the class changes.
-    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
-        let (body, losses) = match self.links.link(entity, args) {
-            Some(attrs) => (format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()]),
-            None => self.varying.rewrite(id, entity, args)?,
+    /// pair): the target body and whether the rewrite dropped a CausedBy value.
+    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, bool)> {
+        let cause = self.cause(id, entity);
+        let rewritten = match self.links.link(entity, args) {
+            Some(attrs) => Some((format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()], false)),
+            None => self.varying.rewrite(id, entity, args, cause.is_some()),
         };
+        // Queue the relationship only once the varying rewrite has produced an IFC4 action.
+        if crate::schema_structural_varying::StructuralVarying::is_varying(entity) && rewritten.is_none() {
+            if self.carriers.names_reaction(id) {
+                self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into());
+            }
+        } else if let Some(message) = cause {
+            self.record(message.into());
+            self.carriers.write(id);
+        }
+        let (body, losses, cause_dropped) = rewritten?;
         losses.into_iter().for_each(|loss| self.record(loss));
-        Some(body)
+        Some((body, cause_dropped))
+    }
+
+    /// The message for an action whose CausedBy a 'Causes' relationship holds, or None.
+    pub(crate) fn cause(&self, id: u32, entity: &str) -> Option<&'static str> {
+        if self.varying.stays_unconverted(id, entity) { None } else { self.carriers.cause(id) }
+    }
+
+    /// IFC2X3 -> IFC4: ids for the records the prepasses add, in the order the
+    /// TypeScript twin allocates them while writing: per action in id order,
+    /// its 'Causes' relationship, then its load configuration.
+    pub(crate) fn allocate(&mut self, mut allocate: impl FnMut() -> Option<u32>) {
+        let actions: BTreeSet<u32> = self.carriers.needs_ids().chain(self.varying.needs_ids()).collect();
+        for action in actions {
+            let configured = self.varying.plans(action);
+            // A varying action that stays unconverted gets no relationship.
+            let caused = self.carriers.needs_id(action, configured);
+            let relationship = if caused { let Some(id) = allocate() else { return }; Some(id) } else { None };
+            // When only one id fits, converting the action takes priority over carrying CausedBy.
+            let configuration = if configured { let Some(id) = allocate().or(relationship) else { return }; Some(id) } else { None };
+            if let Some(id) = relationship.filter(|id| Some(*id) != configuration) { self.carriers.assign(action, id); }
+            if let Some(id) = configuration { self.varying.assign(action, id); }
+        }
+    }
+
+    /// An already converted line with the values carriers fill in place (`StructuralCarriers::after`).
+    pub(crate) fn after(&mut self, id: u32, line: String) -> String {
+        match self.carriers.after(id, &line) {
+            Some(filled) => { self.record(crate::schema_structural_carriers::CAUSED_BY_READ.into()); filled }
+            None => line,
+        }
+    }
+
+    /// Records the conversion added: load configurations, then 'Causes' relationships, as the TypeScript twin appends them.
+    pub(crate) fn added(&mut self) -> Vec<String> {
+        let mut added = self.varying.added();
+        added.extend(self.carriers.added());
+        added
     }
 
     pub(crate) fn warnings(&self) -> Vec<String> {

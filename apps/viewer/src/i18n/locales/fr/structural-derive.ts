@@ -51,6 +51,7 @@ export const structuralDeriveFr = {
   "structuralDerive.consistency.uncheckedEdge": "{item} : son arête n'a pas pu être lue, l'écart d'axe n'a donc pas été vérifié",
   "structuralDerive.consistency.uncheckedRecord": "{item} : elle n'a pas d'enregistrement de dérivation, le déplacement n'a donc pas été vérifié",
   "structuralDerive.consistency.uncheckedRecordAxis": "{item} : aucun axe n'a été lu pour l'élément que nomme son enregistrement de dérivation, le déplacement n'a donc pas été vérifié",
+  "structuralDerive.consistency.uncheckedRecordUnlinked": "{item} : l'élément que nomme son enregistrement de dérivation ne lui est plus lié, le déplacement n'a donc pas été vérifié",
   "structuralDerive.consistency.failed": "Le modèle d'analyse n'a pas pu être vérifié : {error}",
   "structuralDerive.consistency.findings": "Écarts entre le modèle d'analyse et le modèle physique ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} est obsolète : {element} a été déplacé de {distance} m depuis sa dérivation",

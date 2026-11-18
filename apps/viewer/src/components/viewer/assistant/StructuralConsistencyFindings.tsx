@@ -26,7 +26,7 @@ function FindingRow({ modelId, issue }: { modelId: string; issue: StructuralCons
 }
 
 /** `elementIds` only on `uncheckedRow`, which names them. */
-type UncheckedRow = { memberId: number; key: 'uncheckedRow' | 'uncheckedEdge' | 'uncheckedRecord' | 'uncheckedRecordAxis'; elementIds?: readonly number[] };
+type UncheckedRow = { memberId: number; key: 'uncheckedRow' | 'uncheckedEdge' | 'uncheckedRecord' | 'uncheckedRecordAxis' | 'uncheckedRecordUnlinked'; elementIds?: readonly number[] };
 
 /** Why a geometry rule passed over a member, one row per rule; one row when no linked element has an axis, since then neither rule ran. */
 function uncheckedRows({ memberId, elementIds, axisDrift, stale }: StructuralSkippedMember): UncheckedRow[] {
@@ -35,6 +35,7 @@ function uncheckedRows({ memberId, elementIds, axisDrift, stale }: StructuralSki
   if (axisDrift === 'edge-unreadable') rows.push({ memberId, key: 'uncheckedEdge' });
   if (stale === 'no-derivation-record') rows.push({ memberId, key: 'uncheckedRecord' });
   if (stale === 'element-without-axis') rows.push({ memberId, key: 'uncheckedRecordAxis' });
+  if (stale === 'recorded-element-unlinked') rows.push({ memberId, key: 'uncheckedRecordUnlinked' });
   return rows;
 }
 

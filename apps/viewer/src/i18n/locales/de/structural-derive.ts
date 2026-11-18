@@ -51,6 +51,7 @@ export const structuralDeriveDe = {
   "structuralDerive.consistency.uncheckedEdge": "{item}: Seine Kante konnte nicht gelesen werden, daher wurde die Achsabweichung nicht geprüft",
   "structuralDerive.consistency.uncheckedRecord": "{item}: Er hat keinen Ableitungseintrag, daher wurde die Verschiebung nicht geprüft",
   "structuralDerive.consistency.uncheckedRecordAxis": "{item}: Für das im Ableitungseintrag genannte Element wurde keine Achse gelesen, daher wurde die Verschiebung nicht geprüft",
+  "structuralDerive.consistency.uncheckedRecordUnlinked": "{item}: Das im Ableitungseintrag genannte Element ist nicht mehr mit ihm verknüpft, daher wurde die Verschiebung nicht geprüft",
   "structuralDerive.consistency.failed": "Das Analysemodell konnte nicht geprüft werden: {error}",
   "structuralDerive.consistency.findings": "Wo Analysemodell und physisches Modell voneinander abweichen ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} ist veraltet: {element} wurde seit der Ableitung um {distance} m verschoben",

@@ -55,6 +55,7 @@ export const structuralDeriveEn = {
   "structuralDerive.consistency.uncheckedEdge": "{item}: its edge could not be read, so axis drift was not checked",
   "structuralDerive.consistency.uncheckedRecord": "{item}: it has no derivation record, so movement was not checked",
   "structuralDerive.consistency.uncheckedRecordAxis": "{item}: no axis was read for the element its derivation record names, so movement was not checked",
+  "structuralDerive.consistency.uncheckedRecordUnlinked": "{item}: the element its derivation record names is no longer linked to it, so movement was not checked",
   "structuralDerive.consistency.failed": "The analysis model could not be checked: {error}",
   "structuralDerive.consistency.findings": "Where the analysis model and the physical model disagree ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} is out of date: {element} moved {distance} m since it was derived",

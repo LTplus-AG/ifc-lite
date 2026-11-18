@@ -126,7 +126,8 @@ surface members and nodes, are not checked.
 `structuralConsistencyReport(store, { physicalAxes })` returns the same issues
 plus `coverage`: the number of linked curve members, and each one the
 axis-drift or movement rule skipped, with the reason per rule
-(`edge-unreadable`, `no-derivation-record`, `element-without-axis`).
+(`edge-unreadable`, `no-derivation-record`, `element-without-axis`,
+`recorded-element-unlinked`).
 `ifc-lite validate` reports them as `structural-unchecked-member`.
 
 ## Convert and known limits

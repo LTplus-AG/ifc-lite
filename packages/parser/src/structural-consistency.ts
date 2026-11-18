@@ -145,9 +145,10 @@ export interface StructuralConsistencyIssue {
  * - `edge-unreadable`: the member's own edge could not be read (axis drift).
  * - `no-derivation-record`: the member carries no complete derivation record (movement).
  * - `element-without-axis`: no linked element has an axis (both rules), or the
- *   element its record names is not linked or has none (movement).
+ *   element its record names has none (movement).
+ * - `recorded-element-unlinked`: the element its record names is no longer linked to it (movement).
  */
-export type StructuralSkipReason = 'edge-unreadable' | 'no-derivation-record' | 'element-without-axis';
+export type StructuralSkipReason = 'edge-unreadable' | 'no-derivation-record' | 'element-without-axis' | 'recorded-element-unlinked';
 
 /** A linked curve member that at least one geometry rule did not compare, and why, per rule. */
 export interface StructuralSkippedMember {
@@ -267,13 +268,18 @@ function staleItems(
   targets: readonly LinkedCurveMember[],
   derivationRecords: ReadonlyMap<number, StructuralDerivationRecord> | undefined,
   tolerance: number,
+  globalIdOf: (expressId: number) => string | undefined,
 ): RuleResult {
   const result: RuleResult = { issues: [], skipped: new Map() };
-  for (const { member, withAxis } of targets) {
+  for (const { member, elementIds, withAxis } of targets) {
     const record = derivationRecords?.get(member.expressId);
     if (!record) { result.skipped.set(member.expressId, 'no-derivation-record'); continue; }
     const recorded = withAxis.find(({ fact }) => fact.globalId === record.elementGlobalId);
-    if (!recorded) { result.skipped.set(member.expressId, 'element-without-axis'); continue; }
+    if (!recorded) {
+      const linked = elementIds.some((id) => globalIdOf(id) === record.elementGlobalId);
+      result.skipped.set(member.expressId, linked ? 'element-without-axis' : 'recorded-element-unlinked');
+      continue;
+    }
     const { fact, axis } = recorded;
     const distance = moved(axis, record.axis);
     // Not greater also skips NaN, from a non-finite coordinate.
@@ -373,7 +379,7 @@ export function checkStructuralConsistency(
   // A member none of whose elements has an axis is compared by neither rule.
   const targets = linked.filter(({ withAxis }) => withAxis.length > 0);
   const drift = axisDrift(targets, memberLines, tolerance);
-  const stale = staleItems(targets, derivationRecords, staleTolerance);
+  const stale = staleItems(targets, derivationRecords, staleTolerance, (id) => factById.get(id)?.globalId);
   issues.push(...drift.issues, ...stale.issues);
   const skipped = linked.flatMap(({ member, elementIds, withAxis }): StructuralSkippedMember[] => {
     const reasons = withAxis.length === 0

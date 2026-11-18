@@ -51,6 +51,7 @@ export const structuralDeriveRu = {
   "structuralDerive.consistency.uncheckedEdge": "{item}: его ребро не прочитано, поэтому отклонение от оси не проверено",
   "structuralDerive.consistency.uncheckedRecord": "{item}: у него нет записи о выводе, поэтому смещение не проверено",
   "structuralDerive.consistency.uncheckedRecordAxis": "{item}: для элемента, указанного в его записи о выводе, ось не прочитана, поэтому смещение не проверено",
+  "structuralDerive.consistency.uncheckedRecordUnlinked": "{item}: элемент, указанный в его записи о выводе, больше не связан с ним, поэтому смещение не проверено",
   "structuralDerive.consistency.failed": "Не удалось проверить расчётную модель: {error}",
   "structuralDerive.consistency.findings": "Расхождения между расчётной и физической моделью ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} устарел: {element} сдвинут на {distance} м после вывода",

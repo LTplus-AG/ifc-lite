@@ -51,6 +51,7 @@ export const structuralDeriveIt = {
   "structuralDerive.consistency.uncheckedEdge": "{item}: il suo spigolo non è stato letto, quindi la deviazione dall'asse non è stata verificata",
   "structuralDerive.consistency.uncheckedRecord": "{item}: non ha un record di derivazione, quindi lo spostamento non è stato verificato",
   "structuralDerive.consistency.uncheckedRecordAxis": "{item}: nessun asse è stato letto per l'elemento indicato dal suo record di derivazione, quindi lo spostamento non è stato verificato",
+  "structuralDerive.consistency.uncheckedRecordUnlinked": "{item}: l'elemento indicato dal suo record di derivazione non è più collegato, quindi lo spostamento non è stato verificato",
   "structuralDerive.consistency.failed": "Non è stato possibile verificare il modello di analisi: {error}",
   "structuralDerive.consistency.findings": "Dove il modello di analisi e il modello fisico non coincidono ({count})",
   "structuralDerive.consistency.rule.structural-stale-item": "{item} non è aggiornato: {element} è stato spostato di {distance} m dalla derivazione",

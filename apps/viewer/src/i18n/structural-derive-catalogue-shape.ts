@@ -51,6 +51,7 @@ export const structuralDeriveShape = {
   "consistency.uncheckedEdge": ["item"],
   "consistency.uncheckedRecord": ["item"],
   "consistency.uncheckedRecordAxis": ["item"],
+  "consistency.uncheckedRecordUnlinked": ["item"],
   "consistency.failed": ["error"],
   "consistency.findings": ["count"],
   "consistency.rule.structural-stale-item": ["distance", "element", "item"],

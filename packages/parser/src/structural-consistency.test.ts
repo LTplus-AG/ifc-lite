@@ -314,9 +314,12 @@ describe('geometry rule coverage', () => {
     expect(checkStructuralConsistency(linked, elements, {}, geometry({ record: null })).coverage).toEqual(skipped({ stale: 'no-derivation-record' }));
   });
 
-  it('element-without-axis: movement skips a member whose recorded element has no axis, or is not linked', () => {
+  it('element-without-axis: movement skips a member whose recorded element has no axis; axis drift still compares it', () => {
     expect(checkStructuralConsistency(linked, elements, {}, geometry({ axes: [2] })).coverage).toEqual(skipped({ stale: 'element-without-axis' }));
-    expect(checkStructuralConsistency(linked, elements, {}, geometry({ record: 'P9' })).coverage).toEqual(skipped({ stale: 'element-without-axis' }));
+  });
+
+  it('recorded-element-unlinked: movement skips a member whose record names an element no longer linked to it', () => {
+    expect(checkStructuralConsistency(linked, elements, {}, geometry({ record: 'P9' })).coverage).toEqual(skipped({ stale: 'recorded-element-unlinked' }));
   });
 
   it('element-without-axis: both rules skip a member none of whose elements has an axis, and every member without geometry', () => {

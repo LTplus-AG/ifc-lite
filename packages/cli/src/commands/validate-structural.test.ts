@@ -137,13 +137,13 @@ ENDSEC;END-ISO-10303-21;`;
       write.mockRestore();
       const unchecked = (JSON.parse(out.join('')) as { issues: Array<{ rule: string }> }).issues.filter((issue) => issue.rule === 'structural-unchecked-member');
       expect(unchecked).toEqual([
-        { severity: 'warning', rule: 'structural-unchecked-member', message: 'Movement or axis drift was not checked on 2 of 2 linked curve member(s)' },
+        { severity: 'info', rule: 'structural-unchecked-member', message: 'Movement or axis drift was not checked on 2 of 2 linked curve member(s)' },
         { severity: 'info', rule: 'structural-unchecked-member', entityId: 37, globalId: '2Curv000000000000000a',
           message: '#37 IfcStructuralCurveMember (2Curv000000000000000a): movement not checked: it has no derivation record' },
         { severity: 'warning', rule: 'structural-unchecked-member', entityId: 47, globalId: '2Curv000000000000000b',
           message: '#47 IfcStructuralCurveMember (2Curv000000000000000b): axis drift not checked: its edge could not be read; movement not checked: it has no derivation record' },
       ]);
-      expect(text).toContain('[WRN] structural-unchecked-member: Movement or axis drift was not checked on 2 of 2 linked curve member(s)');
+      expect(text).toContain('[INF] structural-unchecked-member: Movement or axis drift was not checked on 2 of 2 linked curve member(s)');
       expect(text).toContain('[WRN] structural-unchecked-member: #47 IfcStructuralCurveMember (2Curv000000000000000b): axis drift not checked: its edge could not be read');
     } finally {
       write.mockRestore();
@@ -163,7 +163,8 @@ ENDSEC;END-ISO-10303-21;`;
       ...[2675, 2706, 2725, 2744, 2763, 2782].map((id) => ['structural-unchecked-member', id]),
     ]);
     expect(issues.find((issue) => issue.rule === 'structural-unchecked-member')?.message).toBe('Movement or axis drift was not checked on 6 of 6 linked curve member(s)');
-    expect(issues.every((issue) => issue.severity === 'warning')).toBe(true);
+    // All warnings but the unchecked-member headline, which counts what the per-member warnings list.
+    expect(issues.filter((issue) => issue.severity !== 'warning').map((issue) => issue.message)).toEqual(['Movement or axis drift was not checked on 6 of 6 linked curve member(s)']);
     expect(issues[0].globalId).toBe('1SbQ76Ea9FQOHIEX6qOPFO');
   });
 });

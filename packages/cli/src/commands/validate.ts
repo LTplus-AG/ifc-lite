@@ -84,15 +84,16 @@ const SKIP_REASON: Record<StructuralSkipReason, string> = {
   'edge-unreadable': 'its edge could not be read',
   'no-derivation-record': 'it has no derivation record',
   'element-without-axis': 'no axis was read for its physical element',
+  'recorded-element-unlinked': 'the element its derivation record names is no longer linked to it',
 };
+
+const onlyRecordMissing = ({ axisDrift, stale }: StructuralSkippedMember) => !axisDrift && stale === 'no-derivation-record';
 
 /**
  * One `structural-unchecked-member` issue for a curve member the axis-drift or
  * movement rule did not compare. A warning, except when the only gap is a
  * missing derivation record: an authored member never has one.
  */
-const onlyRecordMissing = ({ axisDrift, stale }: StructuralSkippedMember) => !axisDrift && stale === 'no-derivation-record';
-
 function uncheckedMember(member: StructuralSkippedMember): ValidationIssue {
   const { memberId, globalId, type, axisDrift, stale } = member;
   const parts = axisDrift === 'element-without-axis'
@@ -282,7 +283,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
     const { linked, skipped } = coverage;
     if (skipped.length > 0) {
       issues.push({
-        severity: skipped.every(onlyRecordMissing) ? 'info' : 'warning', rule: 'structural-unchecked-member',
+        severity: 'info', rule: 'structural-unchecked-member',
         message: `Movement or axis drift was not checked on ${skipped.length} of ${linked} linked curve member(s)`,
       });
       issues.push(...skipped.slice(0, ISSUE_LIST_CAP).map(uncheckedMember));

@@ -83,6 +83,19 @@ const reactionSchema = (entity, what) => ({
   holds: (f, m) => recordOf(f, m)?.type === entity.toUpperCase() && !f.has('IFC2X3', entity),
 });
 
+/**
+ * IFC2X3 can hold an IFC4 curve member's Axis only as IfcRelAssociatesProfileProperties.ProfileOrientation,
+ * whose RelatingProfileProperties is required. With no profile properties in the source, writing it means
+ * pointing a required reference at a record made up for it (#10597).
+ */
+const axisPolicy = (entity) => ({
+  row: `IFC4/${entity}`, level: 'convert', kind: 'policy', problem: /^(.+)#(\d+): Axis null, was "#IFCDIRECTION"$/,
+  cite: 'IFC2X3 has no Axis (IFC2X3_TC1.exp:7281); its only slot is IfcRelAssociatesProfileProperties.ProfileOrientation (IFC2X3_TC1.exp:6548), whose RelatingProfileProperties is required. The source has no IfcProfileProperties, and the downgrade never points a required entity reference at a record it makes up (Ifc2x3SlotFill, #4714; #10597)',
+  holds: (f, m) => recordOf(f, m)?.type === entity.toUpperCase() && f.slot('IFC2X3', entity, 'Axis') === null
+    && f.required('IFC2X3', 'IfcRelAssociatesProfileProperties', 'RelatingProfileProperties')
+    && f.file(m[1]).count('IFCPROFILEPROPERTIES') === 0 && f.file(m[1]).count('IFCGENERALPROFILEPROPERTIES') === 0,
+});
+
 const ownerHistoryPolicy = (row) => ({
   row, level: 'convert', kind: 'policy', problem: OWNER_HISTORY,
   cite: 'IfcRoot.OwnerHistory is OPTIONAL in IFC4 (IFC4_ADD2_TC1.exp:8891) and required in IFC2X3 (IFC2X3_TC1.exp:6905); the source has no IfcOwnerHistory, and the downgrade never invents one (#4686)',
@@ -138,6 +151,8 @@ export const LIMITS = [
     holds: (f, m) => recordOf(f, m)?.type === 'IFCSTRUCTURALCURVECONNECTION' && f.slot('IFC2X3', 'IfcStructuralCurveConnection', 'Axis') === null,
   },
   ownerHistoryPolicy('IFC4/IfcStructuralCurveMember'),
+  axisPolicy('IfcStructuralCurveMember'),
+  axisPolicy('IfcStructuralCurveMemberVarying'),
   reactionSchema('IfcStructuralCurveReaction', 'curve'),
   {
     row: 'IFC4/IfcStructuralLoadConfiguration', level: 'convert', kind: 'schema',

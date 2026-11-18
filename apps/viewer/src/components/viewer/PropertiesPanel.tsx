@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useViewerStore } from '@/store';
+import { revealUnderStructuralMode } from '@/lib/visibility/structural-view';
 import { mutationDenialKey, dataMutationPermission } from '@/store/mutation-permission';
 import { effectiveQuantitySets } from './properties/effectiveSets';
 import { readOccurrenceQuantityResult } from './properties/readOccurrenceQuantityResult';
@@ -636,18 +637,17 @@ export function PropertiesPanel() {
   // Select a related entity by express id (e.g. click an IfcZone in the
   // Relationships card to inspect its Name/attributes). Resolves in the same
   // model as the currently-selected entity. Frames geometric targets; a no-op
-  // frame for non-geometric ones like IfcZone (#1075).
+  // frame for non-geometric ones like IfcZone (#1075). A target the structural view mode hides shows both (#10604).
   const handleSelectRelatedEntity = useCallback((expressId: number) => {
     if (!selectedEntity) return;
     const globalId = toGlobalIdFromModels(models, selectedEntity.modelId, expressId);
     setSelectedEntityIds([globalId]);
     setSelectedEntity({ modelId: selectedEntity.modelId, expressId });
+    revealUnderStructuralMode(useViewerStore.getState(), selectedEntity.modelId, expressId);
     if (useViewerStore.getState().selectedEntitiesSet.size > 0) {
       useViewerStore.setState({ selectedEntitiesSet: new Set<string>() });
     }
-    if (cameraCallbacks.frameSelection) {
-      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-    }
+    if (cameraCallbacks.frameSelection) window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
   }, [selectedEntity, models, setSelectedEntity, setSelectedEntityIds, cameraCallbacks]);
 
   const handleSelectAssembly = useSelectAssembly();

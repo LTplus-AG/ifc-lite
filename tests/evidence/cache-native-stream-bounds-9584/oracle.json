@@ -1,7 +1,7 @@
 {
   "issue": 7955,
-  "why": "PR #10361 adds the streaming writer to the new rust/cache crate, so a derived revert deletes the code its tests compile against (INCONCLUSIVE); this keeps the crate and drops the per-chunk u32 limit check, so a chunk that crosses the limit is written instead of refused and the bounds assertions fail.",
-  "key": "rust/cache/src/geometry/mod.rs",
+  "why": "PR #10361 adds rust/cache/src/geometry/section.rs, the incremental section writer, so a derived revert deletes the code its tests compile against (INCONCLUSIVE); this keeps the module and drops the per-chunk u32 limit check, so a chunk that crosses the limit is written instead of refused and the bounds assertions fail.",
+  "key": "rust/cache/src/geometry/section.rs",
   "mutation": "tests/evidence/cache-native-stream-bounds-9584/behaviour.oracle.patch",
-  "test": "rust/cache/src/geometry/mod_tests.rs"
+  "test": "rust/cache/src/geometry/section_tests.rs"
 }

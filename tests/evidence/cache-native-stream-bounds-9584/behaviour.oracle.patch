@@ -1,7 +1,7 @@
-diff --git a/rust/cache/src/geometry/mod.rs b/rust/cache/src/geometry/mod.rs
---- a/rust/cache/src/geometry/mod.rs
-+++ b/rust/cache/src/geometry/mod.rs
-@@ -160,7 +160,7 @@ impl SectionWriter {
+diff --git a/rust/cache/src/geometry/section.rs b/rust/cache/src/geometry/section.rs
+--- a/rust/cache/src/geometry/section.rs
++++ b/rust/cache/src/geometry/section.rs
+@@ -146,7 +146,7 @@ impl SectionWriter {
          // is written.
          let body_length = self.body_length + chunk.bytes.len() as u64;
          let at_least = self.section_start + 4 + body_length;

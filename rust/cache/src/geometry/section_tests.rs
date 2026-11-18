@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use record::tests::sample;
+use crate::geometry::record::tests::sample;
 
 fn limited(max_bytes: u64) -> Limits {
     Limits { max_bytes, ..Limits::FORMAT }

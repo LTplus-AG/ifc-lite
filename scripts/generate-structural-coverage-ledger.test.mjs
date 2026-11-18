@@ -114,7 +114,7 @@ test('limits (#9668): label every problem or count it open, never change a score
   const id = two[0].id;
   const problems = ['a.ifc#1: lost', 'a.ifc#2: lost', 'b.ifc#3: Axis null'];
   const limit = (extra = {}) => ({ row: id, level: 'convert', kind: 'schema', problem: /^a\.ifc#(\d+): lost$/, cite: 'no entity', holds: (f, m) => f.belowThree(Number(m[1])), ...extra });
-  // Not `ok`: check-source-text-assertions resolves every `assert.ok(...)` to a local `ok` by name.
+  // The fact a limit cites: a problem number below three.
   const facts = { belowThree: (n) => n < 3 };
   const fresh = (list = problems, status = 'partial') => {
     const cells = cellsOf({ [id]: { convert: status } });

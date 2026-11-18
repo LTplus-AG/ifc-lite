@@ -559,3 +559,97 @@ describe('carrier prepass on a truncated property set #9668', () => {
     for (const id of [32, 33]) expect(line(step, id)).toBeDefined();
   });
 });
+
+// #9668: IFC4 IfcStructuralCurveMember.Axis (IFC4_ADD2_TC1.exp:9423) has no
+// IFC2X3 slot (IFC2X3_TC1.exp:7281). IFC2X3 holds it as
+// IfcRelAssociatesProfileProperties.ProfileOrientation (IFC2X3_TC1.exp:6548),
+// in the analysis model's frame; IFC4 gives Axis in the ObjectPlacement frame.
+describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
+  const data = (step: string): string[] => step.split('\n').filter((l) => /^#\d+=/.test(l)).sort();
+  // #9 is unrotated; #31 turns +X to +Y; #33, relative to #31, turns +Z to +Y.
+  const FRAMES = `#30=IFCDIRECTION((0.,1.,0.));
+#31=IFCLOCALPLACEMENT($,#32);
+#32=IFCAXIS2PLACEMENT3D(#7,$,#30);
+#33=IFCLOCALPLACEMENT(#31,#34);
+#34=IFCAXIS2PLACEMENT3D(#7,#30,$);
+#35=IFCDIRECTION((0.,0.,1.));
+#36=IFCDIRECTION((1.,0.,0.));`;
+  const ifc4 = (members: string) => model('IFC4', `${OWNER}\n${FRAMES}\n${members}`);
+  const UNPLACED = ifc4(`#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,$,$,.RIGID_JOINED_MEMBER.,#35);
+#21=IFCSTRUCTURALCURVEMEMBERVARYING('1XciGbSFPUkgAKmWK4M6tc',#5,'V',$,$,#9,$,.RIGID_JOINED_MEMBER.,#35);`);
+  const PLACED = ifc4(`#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#31,$,.RIGID_JOINED_MEMBER.,#36);
+#21=IFCSTRUCTURALCURVEMEMBER('1XciGbSFPUkgAKmWK4M6tc',#5,'N',$,$,#33,$,.RIGID_JOINED_MEMBER.,#35);`);
+  const carrier = (step: string, member: number) => {
+    const rel = records(step, 'IFCRELASSOCIATESPROFILEPROPERTIES').find((l) => l.includes(`,(#${member}),`));
+    const [, props, orientation] = /,#(\d+),\$,#(\d+)\);$/.exec(rel ?? '') ?? [];
+    return { rel, props: line(step, Number(props)), orientation: line(step, Number(orientation)) };
+  };
+
+  it('writes the Axis of an unplaced or unrotated member as ProfileOrientation naming the same direction', async () => {
+    const down = await convert(UNPLACED, 'IFC2X3');
+    for (const member of [20, 21]) {
+      const { rel, props, orientation } = carrier(down.step, member);
+      expect(rel).toMatch(new RegExp(`^#\\d+=IFCRELASSOCIATESPROFILEPROPERTIES\\('[^']{22}',#5,'IFC4 Axis',\\$,\\(#${member}\\),#\\d+,\\$,#35\\);$`));
+      expect(props).toMatch(/^#\d+=IFCGENERALPROFILEPROPERTIES\(\$,\$,\$,\$,\$,\$,\$\);$/);
+      expect(orientation).toBe('#35=IFCDIRECTION((0.,0.,1.));');
+    }
+    expect(down.warnings).not.toContain('.Axis has no slot in IFC2X3');
+    expect(down.warnings).toContain('IFC4 Axis is written as IfcRelAssociatesProfileProperties.ProfileOrientation');
+  });
+
+  it('turns the Axis of a placed member into the analysis model frame', async () => {
+    const down = await convert(PLACED, 'IFC2X3');
+    // #20: local +X under a frame whose +X is world +Y.
+    expect(carrier(down.step, 20).orientation).toMatch(/^#\d+=IFCDIRECTION\(\(0\.,1\.,0\.\)\);$/);
+    // #21: local +Z is #31's +Y, which is world -X.
+    expect(carrier(down.step, 21).orientation).toMatch(/^#\d+=IFCDIRECTION\(\(-1\.,0\.,0\.\)\);$/);
+    expect(down.warnings).not.toContain('.Axis has no slot in IFC2X3');
+  });
+
+  it('gives back the source records and no others', async () => {
+    for (const source of [UNPLACED, PLACED]) {
+      const down = await convert(source, 'IFC2X3');
+      const up = await convert(down.step, 'IFC4');
+      expect(data(up.step)).toEqual(data(source));
+      expect(up.warnings).not.toContain('Axis is required by IFC4 but unknown');
+    }
+  });
+
+  it('fills the unset orientation of an association the member already has, and adds none', async () => {
+    const own = PLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,(#20),#40,$,$);
+#20=`);
+    const down = await convert(own, 'IFC2X3');
+    const rels = records(down.step, 'IFCRELASSOCIATESPROFILEPROPERTIES');
+    expect(rels).toHaveLength(2);
+    const [, orientation] = /^#41=IFCRELASSOCIATESPROFILEPROPERTIES\('2XciGbSFPUkgAKmWK4M6tc',#5,\$,\$,\(#20\),#40,\$,#(\d+)\);$/.exec(line(down.step, 41) ?? '') ?? [];
+    expect(line(down.step, Number(orientation))).toMatch(/=IFCDIRECTION\(\(0\.,1\.,0\.\)\);$/);
+    // The upgrade reads it back and keeps the association, which is the source's.
+    const up = await convert(down.step, 'IFC4');
+    expect(line(up.step, 20)).toBe(line(own, 20));
+    expect(line(up.step, 40)).toBe(line(own, 40));
+  });
+
+  it('keeps an association whose orientation already holds the Axis, and reports one that holds another as lost', async () => {
+    const held = (orientation: string) => UNPLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,(#20),#40,$,${orientation});
+#20=`);
+    const same = await convert(held('#30').replace('#35);', '#30);'), 'IFC2X3');
+    expect(records(same.step, 'IFCRELASSOCIATESPROFILEPROPERTIES').filter((l) => l.includes('(#20)'))).toEqual([line(held('#30'), 41)]);
+    const other = await convert(held('#36'), 'IFC2X3');
+    expect(records(other.step, 'IFCRELASSOCIATESPROFILEPROPERTIES').filter((l) => l.includes('(#20)'))).toEqual([line(held('#36'), 41)]);
+    expect(other.warnings).toContain('IFCSTRUCTURALCURVEMEMBER.Axis has no slot in IFC2X3; its value is omitted');
+  });
+
+  it('keeps an empty profile-properties association the IFC2X3 source had', async () => {
+    const ifc2x3 = model('IFC2X3', `${OWNER}
+#35=IFCDIRECTION((0.,0.,1.));
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,$,$,.RIGID_JOINED_MEMBER.);
+#40=IFCGENERALPROFILEPROPERTIES($,$,$,$,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,(#20),#40,$,#35);`);
+    const { step } = await convert(ifc2x3, 'IFC4');
+    expect(line(step, 20)).toContain('.RIGID_JOINED_MEMBER.,#35);');
+    expect(line(step, 40)).toBeDefined();
+    expect(line(step, 41)).toBeDefined();
+  });
+});

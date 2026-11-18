@@ -12,7 +12,7 @@ const TAB_BUTTON_COUNTS = [
   ['Home', 7],
   ['View', 26], // Settings moved to the persistent header (#5857); Site context and Surface runoff; Structural group (#10604)
   ['Elements', 18], // includes selected mesh hover outline (#5748) and Presentation layers (#7619)
-  ['Analyze', 18], // 17 commands including Linked records (#6643) plus the panel-browser content trigger (#5873)
+  ['Analyze', 18], // commands including Linked records (#6643) plus the panel-browser content trigger (#5873)
   ['Author', 7], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1); Model itself sits in the tab row (#9296)
 ] as const;
 

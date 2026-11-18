@@ -31,8 +31,9 @@ impl PartSource {
 pub(super) struct Bound {
     pub(super) source: PartSource,
     pub(super) fact: PresentationFacts,
-    /// Style-source ids of the enclosing `IfcMappedItem` occurrences, inner to outer. They never decide the
-    /// colour; they say which exact sub-mesh the part belongs to (one leaf under two occurrences is two).
+    /// Style-source ids of the enclosing `IfcMappedItem` occurrences, inner to outer (`SubMesh::occurrences`
+    /// in exact). They say which exact sub-mesh the part belongs to (one leaf under two occurrences is two),
+    /// and, with material colours, a styled one colours an unstyled leaf (#10698), as in exact.
     pub(super) occurrences: Vec<u32>,
 }
 impl Bound {
@@ -45,7 +46,8 @@ impl Bound {
 /// enclosing `IfcMappedItem` occurrence (`mapping_retained.rs`), and exact keys a styled sub-mesh by the
 /// item the walk reached (`mapping_accept.rs` `Merging::Styled(item.item().id, ..)`), calling `color` once
 /// per such leaf: so the LAST item binding decides (a Boolean result's own binding follows its host's), never
-/// the occurrence. A type part is the exception: exact colours it through its representation map, so the
+/// the occurrence; the occurrences ride along in `Bound::occurrences`, where a styled one can colour an
+/// unstyled leaf. A type part is the exception: exact colours it through its representation map, so the
 /// type completion decides. A texture or palette flag on ANY of the value's bindings is kept, so it refuses
 /// whichever binding decides. A value with bindings but no item or type binding has no sub-mesh identity
 /// in exact to match, and refuses.
@@ -105,7 +107,7 @@ pub(super) fn resolve_parts(
                 // The model prepass joins material styles under their own ids, as
                 // exact's flat style wire does. Missing styles use the same product-wide
                 // material cursor as exact's collection; styled bands do not advance it.
-                let (rgba, material_name) = color(job, *id, element_color, materials, &mut next_material, ctx, decoder, true);
+                let (rgba, material_name) = color(job, *id, &[], element_color, materials, &mut next_material, ctx, decoder, true);
                 PartAppearance { rgba, geometry_class: crate::element::GEOM_CLASS_LAYER_SLICE,
                     style_id: ctx.geometry_style_index.contains_key(id).then_some(*id),
                     material_name, geometry_item_id: None, material_id: Some(*id), texture_pending, palette_pending }
@@ -117,11 +119,11 @@ pub(super) fn resolve_parts(
                 let shared = match last.take() {
                     Some(shared) if shared.key.0 == *source && shared.key.1 == *occurrences => shared,
                     _ => {
-                        let (rgba, material_name) = color(job, *id, element_color, materials, &mut next_material, ctx, decoder, true);
+                        let (rgba, material_name) = color(job, *id, occurrences, element_color, materials, &mut next_material, ctx, decoder, true);
                         let style_id = find_geometry_item_style_source(*id, &|id| ctx.geometry_style_index.contains_key(&id), decoder)
                             .or_else(|| {
                                 materials?;
-                                occurrence_style_source(job.id, *id, ctx, decoder)
+                                occurrence_style_source(occurrences, ctx)
                             });
                         Shared { key: (*source, occurrences.clone()), rgba, material_name, style_id }
                     }

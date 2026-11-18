@@ -20,7 +20,10 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Ve
         entity: &entity, kind: ElementJobKind::Product, element_color: Some(context.element_color), metadata: None };
     let model = context.model.borrowed();
     let Some((item, _, _)) = value.bindings().next() else { return Vec::new() };
-    let (rgba, _) = crate::element::presentation_source::color(&AssemblyJob::from(&job), item,
+    let occurrences: Vec<u32> = value.presentation()
+        .filter(|fact| fact.representation_map.is_some() && fact.type_product.is_none())
+        .map(|fact| fact.style_source_id).collect();
+    let (rgba, _) = crate::element::presentation_source::color(&AssemblyJob::from(&job), item, &occurrences,
         context.element_color, model.element_material_colors.get(&product.product_id).map(Vec::as_slice),
         &mut 0, &model, &mut decoder, false);
     let part = &mut product.parts[0];

@@ -177,8 +177,8 @@ struct ItemStyles {
 }
 
 /// Visit `pending` items (id, depth, under a styled mapped item) and
-/// everything under them through nested `IfcMappedItem`s, as deep as the colour
-/// resolver goes (`MAX_MAPPED_ITEM_DEPTH`). `visited` keeps the depth each item
+/// everything under them through nested `IfcMappedItem`s, as deep as the
+/// geometry walk goes: leaves under up to `MAX_MAPPED_ITEM_DEPTH` mapped items. `visited` keeps the depth each item
 /// was explored at and allows a revisit only from nearer the root, the rule
 /// `element_color::find_geometry_item_color_at` documents.
 fn scan_item_styles(
@@ -199,7 +199,7 @@ fn scan_item_styles(
             }
             scan.styled = true;
         }
-        if depth >= MAX_MAPPED_ITEM_DEPTH || visited.get(&(id, inherited)).is_some_and(|&seen| seen <= depth) {
+        if depth > MAX_MAPPED_ITEM_DEPTH || visited.get(&(id, inherited)).is_some_and(|&seen| seen <= depth) {
             continue;
         }
         visited.insert((id, inherited), depth);
@@ -210,6 +210,12 @@ fn scan_item_styles(
         if item.ifc_type != IfcType::IfcMappedItem {
             scan.leaf = true;
             scan.unstyled_leaf |= own_style.is_none() && !inherited;
+            continue;
+        }
+        // A leaf under exactly `MAX_MAPPED_ITEM_DEPTH` mapped items still
+        // renders, but the geometry walk refuses a mapped item at that depth
+        // (`mapping_reduce::next_styled`, #7887): classify, don't expand.
+        if depth >= MAX_MAPPED_ITEM_DEPTH {
             continue;
         }
         let Some(mapped_repr) = mapped_item_representation_id(&item, decoder)

@@ -145,71 +145,6 @@ pub(crate) fn representation_map_style_source(
         .find_map(|item_id| find_geometry_item_style_source(item_id, has_style, decoder))
 }
 
-/// The styled `IfcMappedItem` that styles the occurrence of `leaf_id` in the
-/// element's shape: the nearest styled mapped item on a path from one of the
-/// `IfcProductDefinitionShape`'s items down to `leaf_id`, first path wins.
-/// `None` when no path reaches `leaf_id` or none of its mapped items is styled.
-///
-/// A style on an `IfcMappedItem` applies to that occurrence of the shared
-/// geometry, so it is the occurrence's own style and outranks the element's
-/// material, as a style on the geometry item does. The sub-mesh colour asks
-/// this only when the leaf itself has no style: a style on the mapped geometry
-/// stays the most specific.
-///
-/// The answer depends on the path (the ancestor), not on the item alone, so the
-/// visited set is keyed by `(item, styled ancestor)`: one item reached under
-/// two different styled ancestors is two questions. Depth is capped at
-/// [`MAX_MAPPED_ITEM_DEPTH`] like the other mapped chases.
-pub(crate) fn mapped_occurrence_style_source(
-    product_definition_shape_id: u32,
-    leaf_id: u32,
-    has_style: &dyn Fn(u32) -> bool,
-    decoder: &mut EntityDecoder,
-) -> Option<u32> {
-    let shape = decoder.decode_by_id(product_definition_shape_id).ok()?;
-    let mut visited: rustc_hash::FxHashSet<(u32, Option<u32>)> = rustc_hash::FxHashSet::default();
-    // (item, nearest styled mapped-item ancestor, depth)
-    let mut stack: Vec<(u32, Option<u32>, u32)> = Vec::new();
-    let shape_reprs: Vec<u32> = pds_representation_ids(&shape).collect();
-    for &shape_repr_id in shape_reprs.iter().rev() {
-        let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) else {
-            continue;
-        };
-        for item_id in shape_repr.ref_list_at(ifc_lite_core::slot::IfcRepresentation::ITEMS).unwrap_or_default().into_iter().rev() {
-            stack.push((item_id, None, 0));
-        }
-    }
-    while let Some((item_id, ancestor, depth)) = stack.pop() {
-        if item_id == leaf_id {
-            if ancestor.is_some() {
-                return ancestor;
-            }
-            continue;
-        }
-        if depth >= MAX_MAPPED_ITEM_DEPTH || !visited.insert((item_id, ancestor)) {
-            continue;
-        }
-        let Ok(item) = decoder.decode_by_id(item_id) else {
-            continue;
-        };
-        if item.ifc_type != IfcType::IfcMappedItem {
-            continue;
-        }
-        let ancestor = if has_style(item_id) { Some(item_id) } else { ancestor };
-        let Some(mapped_representation_id) = mapped_item_representation_id(&item, decoder) else {
-            continue;
-        };
-        let Ok(mapped_representation) = decoder.decode_by_id(mapped_representation_id) else {
-            continue;
-        };
-        let items = mapped_representation.ref_list_at(ifc_lite_core::slot::IfcRepresentation::ITEMS);
-        for underlying in items.unwrap_or_default().into_iter().rev() {
-            stack.push((underlying, ancestor, depth + 1));
-        }
-    }
-    None
-}
-
 /// The styled item an element's representation-level colour comes from
 /// (`processor::color_layer`'s element colour): each `IfcShapeRepresentation`
 /// of the `IfcProductDefinitionShape` in order, each of its items through
@@ -244,6 +179,52 @@ pub(crate) fn product_shape_style_source(
     None
 }
 
+/// Every styled `IfcMappedItem` in a product's shape, in walk order
+/// (representations, then items depth-first), each once, through at most
+/// [`MAX_MAPPED_ITEM_DEPTH`] mapped levels. These are the occurrence styles an
+/// unstyled sub-mesh can be coloured by (`presentation_source::color`, #10698):
+/// a joined-on property of the sub-mesh's colour (`style::finish_join`) has
+/// them as candidates, since the mesh no longer says which occurrence it was.
+pub(crate) fn mapped_item_style_sources(
+    product_definition_shape_id: u32,
+    has_style: &dyn Fn(u32) -> bool,
+    decoder: &mut EntityDecoder,
+) -> Vec<u32> {
+    let Ok(shape) = decoder.decode_by_id(product_definition_shape_id) else {
+        return Vec::new();
+    };
+    let mut stack: Vec<(u32, u32)> = Vec::new();
+    for shape_repr_id in pds_representation_ids(&shape).collect::<Vec<_>>().into_iter().rev() {
+        let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) else {
+            continue;
+        };
+        let items = shape_repr.ref_list_at(ifc_lite_core::slot::IfcRepresentation::ITEMS).unwrap_or_default();
+        stack.extend(items.into_iter().rev().map(|item| (item, 0)));
+    }
+    let mut sources = Vec::new();
+    let mut seen = rustc_hash::FxHashSet::default();
+    while let Some((item_id, depth)) = stack.pop() {
+        if depth >= MAX_MAPPED_ITEM_DEPTH || !seen.insert(item_id) {
+            continue;
+        }
+        let Ok(item) = decoder.decode_by_id(item_id) else {
+            continue;
+        };
+        if item.ifc_type != IfcType::IfcMappedItem {
+            continue;
+        }
+        if has_style(item_id) {
+            sources.push(item_id);
+        }
+        let Some(mapped) = mapped_item_representation_id(&item, decoder).and_then(|id| decoder.decode_by_id(id).ok())
+        else {
+            continue;
+        };
+        let children = mapped.ref_list_at(ifc_lite_core::slot::IfcRepresentation::ITEMS).unwrap_or_default();
+        stack.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
+    }
+    sources
+}
 
 /// Find the first representation item of `entity` that carries a full
 /// `IfcIndexedColourMap` (#858). Drives the element-level palette split on

@@ -17,6 +17,12 @@
 //! - #20's mapped item is unstyled: the control, it draws the teal material.
 //! - #30 maps a second map whose own item is styled red (#94): a style on the
 //!   mapped geometry itself keeps winning over the material.
+//! - #40 maps the same triangle set twice, once through grey-styled #43 and
+//!   once through unstyled #44: each occurrence is coloured by its own mapped
+//!   item, so one draws grey and one teal, though both share the leaf #60.
+//! - #50 carries the triangle set #60 directly AND through a grey-styled
+//!   mapped item (#53). The direct body is what renders (`Select::Meshed`
+//!   skips the duplicate map), so the grey occurrence must not colour it.
 
 use ifc_lite_processing::process_geometry;
 
@@ -63,6 +69,20 @@ DATA;
 #32=IFCPRODUCTDEFINITIONSHAPE($,$,(#34));
 #33=IFCMAPPEDITEM(#67,#7);
 #34=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#33));
+#40=IFCSLAB('4MappedItemTwiceShared',$,'Two occurrences of one leaf',$,$,#41,#42,$,.FLOOR.);
+#41=IFCLOCALPLACEMENT($,#5);
+#42=IFCPRODUCTDEFINITIONSHAPE($,$,(#45));
+#43=IFCMAPPEDITEM(#63,#7);
+#44=IFCMAPPEDITEM(#63,#9);
+#45=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#43,#44));
+#46=IFCSTYLEDITEM(#43,(#91),$);
+#50=IFCSLAB('5DirectBodyAndMapped0',$,'Direct body and a skipped map',$,$,#51,#52,$,.FLOOR.);
+#51=IFCLOCALPLACEMENT($,#5);
+#52=IFCPRODUCTDEFINITIONSHAPE($,$,(#54,#55));
+#53=IFCMAPPEDITEM(#63,#7);
+#54=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#53));
+#55=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#60));
+#56=IFCSTYLEDITEM(#53,(#91),$);
 #80=IFCMATERIAL('Teal',$,$);
 #81=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#82),#80);
 #82=IFCSTYLEDREPRESENTATION(#2,'Style','Material',(#83));
@@ -70,7 +90,7 @@ DATA;
 #84=IFCSURFACESTYLE('Teal',.POSITIVE.,(#85));
 #85=IFCSURFACESTYLERENDERING(#86,0.,$,$,$,$,$,$,.BLINN.);
 #86=IFCCOLOURRGB($,0.,0.5,0.5);
-#87=IFCRELASSOCIATESMATERIAL('0RelAssocMaterialTeal',$,$,$,(#10,#20,#30),#80);
+#87=IFCRELASSOCIATESMATERIAL('0RelAssocMaterialTeal',$,$,$,(#10,#20,#30,#40,#50),#80);
 #90=IFCSTYLEDITEM(#13,(#91),$);
 #91=IFCSURFACESTYLE('Grey',.POSITIVE.,(#92));
 #92=IFCSURFACESTYLERENDERING(#93,0.,$,$,$,$,$,$,.BLINN.);
@@ -120,5 +140,20 @@ fn an_unstyled_mapped_item_still_takes_the_material() {
 fn a_style_on_the_mapped_geometry_still_outranks_the_material() {
     for colour in colours_of(30) {
         assert!(approx_eq(colour, RED), "expected the mapped geometry's red, got {colour:?}");
+    }
+}
+
+#[test]
+fn each_occurrence_of_a_shared_leaf_takes_its_own_style() {
+    let colours = colours_of(40);
+    assert_eq!(colours.len(), 2, "two occurrences, two sub-meshes: {colours:?}");
+    assert!(colours.iter().any(|&c| approx_eq(c, GREY)), "the styled occurrence must draw grey: {colours:?}");
+    assert!(colours.iter().any(|&c| approx_eq(c, TEAL)), "the unstyled occurrence must draw teal: {colours:?}");
+}
+
+#[test]
+fn a_skipped_mapped_representation_does_not_colour_the_direct_body() {
+    for colour in colours_of(50) {
+        assert!(approx_eq(colour, TEAL), "the direct body has no style of its own: expected teal, got {colour:?}");
     }
 }

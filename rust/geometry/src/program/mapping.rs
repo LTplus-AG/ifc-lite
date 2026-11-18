@@ -75,6 +75,9 @@ pub(super) struct Template {
 
 /// A don't-bake occurrence's instance-only placeholder.
 pub(super) struct Placeholder {
+    /// The don't-bake `IfcMappedItem` occurrence itself: the placeholder's
+    /// innermost occurrence (`SubMesh::occurrences`).
+    item_id: u32,
     solid_id: u32,
     source_id: u32,
     transform: Option<Matrix4<f64>>,

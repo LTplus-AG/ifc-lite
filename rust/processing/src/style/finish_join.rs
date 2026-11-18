@@ -19,8 +19,11 @@
 //!    (`find_geometry_item_color`). A hit decides: the finish is that item's,
 //!    or none when its style authors none (a fill-only style).
 //! 2. **Element level**, when the item resolved nothing and the colour fell
-//!    back to the element's: the element's own style source. For a product
-//!    that is its `IfcProductDefinitionShape` walk; for a type product (#957
+//!    back to the element's, or to the style of the `IfcMappedItem`
+//!    occurrence the mesh was produced under (#10698; the mesh does not keep
+//!    which occurrence): the element's own style source, then each styled
+//!    occurrence in its shape. For a product that is its
+//!    `IfcProductDefinitionShape` walk; for a type product (#957
 //!    type geometry, no item id on its meshes) each `IfcRepresentationMap` in
 //!    order, which is where a finish authored only on a type's
 //!    representation map is reached. A fallback candidate is accepted only
@@ -28,8 +31,10 @@
 //!    competes with the material chain and the type default, both colour-only,
 //!    and the mesh does not record which one won. The equality is what tells
 //!    them apart, and for a type with several maps it is what pairs each mesh
-//!    with its own map. Its one blind spot is a material colour bit-identical
-//!    to the element's style colour, which renders identically anyway.
+//!    with its own map. Its blind spots are a material colour bit-identical
+//!    to the element's style colour, which renders identically anyway, and two
+//!    occurrence styles of one product with the same colour but different
+//!    finishes: the first in walk order gives both meshes its finish.
 //!
 //! `finishes` is [`crate::prepass::resolve_geometry_finishes`]'s index (the
 //! wasm host's `setStyleFinishes` wire decodes to the same map), keyed by
@@ -84,7 +89,8 @@ fn join_finish(
 
 /// Step 2's candidates for one element: every representation map of a type
 /// product (in `RepresentationMaps` order, as `produce_type_geometry` renders
-/// them), or the one product-shape source of a product. Attribute 6 is
+/// them), or a product's product-shape source followed by its styled
+/// `IfcMappedItem` occurrences (each can colour an unstyled sub-mesh, #10698). Attribute 6 is
 /// `RepresentationMaps` on `IfcTypeProduct` and `Representation` on
 /// `IfcProduct`.
 fn element_style_sources(
@@ -103,11 +109,17 @@ fn element_style_sources(
             .filter_map(|rep_map| crate::element::representation_map_style_source(rep_map, has_style, decoder))
             .collect();
     }
-    entity
-        .get_ref(6)
-        .and_then(|shape| crate::element::product_shape_style_source(shape, has_style, decoder))
-        .into_iter()
-        .collect()
+    let Some(shape) = entity.get_ref(6) else {
+        return Vec::new();
+    };
+    let mut sources: Vec<u32> =
+        crate::element::product_shape_style_source(shape, has_style, decoder).into_iter().collect();
+    for source in crate::element::mapped_item_style_sources(shape, has_style, decoder) {
+        if !sources.contains(&source) {
+            sources.push(source);
+        }
+    }
+    sources
 }
 
 /// The finish join over caller-held indexes: the wasm batch, which already

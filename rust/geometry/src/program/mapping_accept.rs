@@ -79,9 +79,9 @@ impl<'a> MappingControl<'a> {
         };
         let mut meshes = std::mem::take(&mut self.meshes);
         let produced = meshes.sub_meshes.get_mut(*start..).unwrap_or_default();
-        if let Some(transform) = &level.transform {
-            router.bake_styled_mapping(produced, transform);
-        }
+        if let Some(transform) = &level.transform { router.bake_styled_mapping(produced, transform); }
+        // The occurrence encloses all it produced (inner levels finished first); a `u32::MAX` root is none.
+        if level.item_id != u32::MAX { produced.iter_mut().for_each(|sub| sub.occurrences.push(level.item_id)); }
         if template.is_some() {
             GeometryRouter::retag_dont_bake_template(produced, level.source_id, level.transform.as_ref());
         }
@@ -111,10 +111,10 @@ impl<'a> MappingControl<'a> {
     /// `SubMeshCollection::add` drops empty meshes, and this one is
     /// intentionally empty (its InstanceMeta is the payload).
     pub(super) fn push_placeholder(&mut self, placeholder: Placeholder) -> MappingValue {
-        let Placeholder { solid_id, source_id, transform } = placeholder;
+        let Placeholder { item_id, solid_id, source_id, transform } = placeholder;
         let mut meshes = std::mem::take(&mut self.meshes);
         let mesh = GeometryRouter::dont_bake_placeholder(source_id, transform.as_ref());
-        meshes.sub_meshes.push(crate::SubMesh::new(solid_id, mesh));
+        meshes.sub_meshes.push(crate::SubMesh { occurrences: vec![item_id], ..crate::SubMesh::new(solid_id, mesh) });
         MappingValue::Placeholder(meshes)
     }
 

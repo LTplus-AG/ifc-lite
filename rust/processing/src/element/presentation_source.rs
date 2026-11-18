@@ -45,8 +45,8 @@ pub(super) fn submeshes(
             // occurrence, coloured exactly as its materialized twin would be.
             // Empty non-instances read no source and do not advance the cursor.
             if let Some(meta) = mesh.instance_meta.as_ref().filter(|meta| meta.instanceable) {
-                let (color, _) =
-                    color(job, sub.geometry_id, fallback, materials, &mut next_material, ctx, decoder, false);
+                let (color, _) = color(job, sub.geometry_id, &sub.occurrences, fallback, materials, &mut next_material,
+                    ctx, decoder, false);
                 occurrences.push(occurrence(job, source, meta, color));
             }
             continue;
@@ -60,7 +60,7 @@ pub(super) fn submeshes(
             calculate_normals(&mut mesh);
         }
         let (color, material_name) =
-            color(job, sub.geometry_id, fallback, materials, &mut next_material, ctx, decoder, true);
+            color(job, sub.geometry_id, &sub.occurrences, fallback, materials, &mut next_material, ctx, decoder, true);
         // #7955 J5: judged from source here, so the funnel stays source-free.
         let uv_authority =
             (job.provenance() && sub.texture.is_some()).then(|| judge_uv_authority(sub.geometry_id, ctx, decoder));
@@ -135,14 +135,15 @@ fn recompute_reason(mesh: &Mesh, flipped: bool) -> NormalProvenance {
 
 /// Direct style wins; else chase IfcMappedItem so mapped sub-geometry
 /// inherits its underlying style (#913 §2.7); else, when the element has
-/// material colours, the style on the `IfcMappedItem` occurrence that maps this
-/// geometry (`mapped_occurrence_style_source`); else the material cursor; else
-/// the element colour. Without material colours the occurrence's style is
-/// already the element colour this falls back to, so the walk is skipped.
+/// material colours, the style on the `IfcMappedItem` occurrence this sub-mesh
+/// was produced under (`occurrence_style_source`); else the material cursor;
+/// else the element colour. Without material colours the occurrence's style is
+/// the element colour this falls back to, as before #10698.
 #[allow(clippy::too_many_arguments)] // canonical precedence and one collection cursor
 pub(super) fn color(
     job: &AssemblyJob<'_>,
     id: u32,
+    occurrences: &[u32],
     fallback: [f32; 4],
     materials: Option<&[[f32; 4]]>,
     next: &mut usize,
@@ -156,7 +157,7 @@ pub(super) fn color(
         .or_else(|| find_geometry_item_color(id, ctx.geometry_style_index, decoder))
         .or_else(|| {
             materials?;
-            let source = occurrence_style_source(job.id, id, ctx, decoder)?;
+            let source = occurrence_style_source(occurrences, ctx)?;
             ctx.geometry_style_index.get(&source).map(|style| style.color)
         });
     let color = crate::style::resolve_submesh_color(direct, materials, next, fallback);
@@ -171,19 +172,13 @@ pub(super) fn color(
     (color, name)
 }
 
-/// The styled `IfcMappedItem` occurrence of geometry `leaf_id` in product
-/// `product_id`'s shape, if any: the style source of a sub-mesh coloured by
-/// its occurrence rather than its own item.
-pub(super) fn occurrence_style_source(
-    product_id: u32,
-    leaf_id: u32,
-    ctx: &MeshProductionContext<'_>,
-    decoder: &mut EntityDecoder,
-) -> Option<u32> {
-    let product = decoder.decode_by_id(product_id).ok()?;
-    let shape = ifc_lite_geometry::representation::product_shape_id(&product)?;
-    let styles = ctx.geometry_style_index;
-    mapped_occurrence_style_source(shape, leaf_id, &|item| styles.contains_key(&item), decoder)
+/// The style source of a sub-mesh coloured by its `IfcMappedItem` occurrence
+/// rather than its own item: the nearest styled one of `occurrences` (the
+/// mapped items it was produced under, inner to outer, `SubMesh::occurrences`).
+/// The occurrence chain, not the shared item, decides: one item mapped by a
+/// styled and an unstyled occurrence is two sub-meshes, coloured apart.
+pub(crate) fn occurrence_style_source(occurrences: &[u32], ctx: &MeshProductionContext<'_>) -> Option<u32> {
+    occurrences.iter().copied().find(|item| ctx.geometry_style_index.contains_key(item))
 }
 
 /// One assembled fallback body (a single frame part). Outward winding: a

@@ -186,9 +186,11 @@ describe('convertCommand', () => {
     captureStdout();
     captureStderr();
     const { dir, src } = await makeInput();
+    // Two coefficients, not three: the carrier that writes SelfWeightCoefficients
+    // as a property set (#9668) refuses it, so the loss is real.
     const withLoadCase = MODEL.replace(
       'ENDSEC;\nEND-ISO-10303-21;',
-      "#312= IFCSTRUCTURALLOADCASE('2fv4DZfY55exwX8QDy8dmw',#45,'Case',$,$,.LOAD_CASE.,.NOTDEFINED.,.NOTDEFINED.,1.,$,(0.,0.,0.));\n" +
+      "#312= IFCSTRUCTURALLOADCASE('2fv4DZfY55exwX8QDy8dmw',#45,'Case',$,$,.LOAD_CASE.,.NOTDEFINED.,.NOTDEFINED.,1.,$,(0.,-1.));\n" +
       'ENDSEC;\nEND-ISO-10303-21;',
     ).replace("FILE_SCHEMA(('IFC2X3'));", "FILE_SCHEMA(('IFC4'));");
     await writeFile(src, withLoadCase);

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
 import { LOAD_CASE_PSET } from './schema-converter-structural-carriers.js';
+import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 
 const model = (schema: string, data: string): string =>
   `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [StructuralAnalysisView]'),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;\n${data}\nENDSEC;\nEND-ISO-10303-21;\n`;
@@ -13,6 +14,11 @@ const convert = async (text: string, schema: 'IFC2X3' | 'IFC4') => {
   const result = new StepExporter(await parse(text)).export({ schema });
   return { step: new TextDecoder().decode(result.content), warnings: result.stats.warnings.join('\n') };
 };
+
+/** `Type.Attribute` -> the ids `analyzeConversionLoss` names as dropping it. */
+const lossIds = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') =>
+  Object.fromEntries(analyzeConversionLoss(await parse(text), from, to).entries
+    .flatMap((e) => e.droppedAttributes.map((a) => [`${e.sourceType}.${a}`, e.expressIds])));
 
 const OWNER = `#1=IFCPERSON($,'P',$,$,$,$,$,$);
 #2=IFCORGANIZATION($,'O',$,$,$);
@@ -413,6 +419,48 @@ ${geometry.replace('(#16),', aspect)}
     expect(up.warnings).not.toContain('stays unconverted');
   });
 
+  // #10597: the type classifier calls an IFC2X3 varying action identity, so the preview asks the carriers per record.
+  it('names CausedBy lost in the loss preview exactly when the export reports it', async () => {
+    const cases = [
+      { text: varying('(#16),'), why: 'unconverted, naming a reaction', target: 'IFCSTRUCTURALLINEARACTIONVARYING' },
+      { text: varying('(#14,#16,#16),'), why: 'converted, held by Causes', target: null },
+      { text: varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'converted, naming no reaction', target: 'IFCSTRUCTURALCURVEACTION' },
+      { text: varying('(#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'unconverted, kept in its own record', target: null },
+      // A source 'Causes' naming another reaction: IFC4 holds both, so the downgrade cannot restore CausedBy.
+      { text: varying('(#14,#16,#16),').replace('ENDSEC;\nEND', `#23=IFCSTRUCTURALPOINTREACTION('1KQ0efL39PrP5DeqBwaUNp',#5,'R2',$,$,#9,$,#12,.GLOBAL_COORDS.);
+#31=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#30);
+ENDSEC;\nEND`), why: 'converted, among several causes', target: 'IFCSTRUCTURALCURVEACTION' },
+    ];
+    for (const { text, why, target } of cases) {
+      const { step, warnings } = await convert(text, 'IFC4');
+      expect(/CausedBy (has no slot|of a varying action|is one of several)/.test(warnings), why).toBe(target !== null);
+      const entry = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4').entries
+        .find((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING' && e.droppedAttributes.includes('CausedBy'));
+      // The entry names the type the export writes #30 as.
+      expect(entry ? { target: entry.targetType, ids: entry.expressIds } : null, why).toEqual(target && { target, ids: [30] });
+      if (target) expect(line(step, 30), why).toMatch(new RegExp(`^#30=${target}\\(`));
+    }
+  });
+
+  it('keeps one entry for the type, naming each record group under the type the export writes it as', async () => {
+    // #30 converts and names no reaction; #31 stays unconverted (one aspect representation for two loads) and names one.
+    const text = varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,') .replace('ENDSEC;\nEND', `#18=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#19=IFCSHAPEASPECT((#16),'Coverage aspect',$,.T.,#18);
+#31=IFCSTRUCTURALLINEARACTIONVARYING('4sXjCM_kPHN8ZCpuBhV_98',#5,'W',$,$,#9,#18,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#19,(#11,#11));
+ENDSEC;\nEND`);
+    const step = (await convert(text, 'IFC4')).step;
+    expect(line(step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);
+    expect(line(step, 31)).toMatch(/^#31=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    const report = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4');
+    const entries = report.entries.filter((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].recordGroups?.map((g) => [g.targetType, g.expressIds])).toEqual([['IFCSTRUCTURALCURVEACTION', [30]], ['IFCSTRUCTURALLINEARACTIONVARYING', [31]]]);
+    expect(report.describe().filter((d) => d.includes('CausedBy'))).toEqual([
+      expect.stringContaining('IFCSTRUCTURALLINEARACTIONVARYING → IFCSTRUCTURALCURVEACTION (#30)'),
+      expect.stringContaining('IFCSTRUCTURALLINEARACTIONVARYING → IFCSTRUCTURALLINEARACTIONVARYING (#31)'),
+    ]);
+  });
+
   it('reports no CausedBy message for a CausedBy that names no point reaction', async () => {
     const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
@@ -566,6 +614,82 @@ describe('carrier prepass on a truncated property set #9668', () => {
   });
 });
 
+// #10597: the conversion loss preview does not name lost what a carrier keeps, and still names what it declines.
+describe('conversion loss report and structural carriers #10597', () => {
+  const preview = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') => Object.keys(await lossIds(text, from, to));
+  const cases = [
+    ['IFCSTRUCTURALLINEARACTION.CausedBy', 'IFC2X3', 'IFC4', `#20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
+#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);`],
+    ['IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness', 'IFC2X3', 'IFC4', `#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
+#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#17=IFCSHAPEASPECT((#16),'Thickness locations',$,.T.,#15);
+#20=IFCSTRUCTURALSURFACEMEMBERVARYING('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',$,$,#9,#15,.SHELL.,0.2,(0.25,0.3),#17);`],
+    ['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients', 'IFC4', 'IFC2X3', `#20=IFCSTRUCTURALLOADCASE('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S',(0.,0.,-1.));`],
+    ['IFCSTRUCTURALCURVEMEMBER.Axis', 'IFC4', 'IFC2X3', `#35=IFCDIRECTION((0.,0.,1.));
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,$,$,.RIGID_JOINED_MEMBER.,#35);`],
+  ] as const;
+
+  it.each(cases)('does not report %s lost, as the export keeps it', async (carried, from, to, data) => {
+    const text = model(from, `${OWNER}\n${data}`);
+    expect((await convert(text, to)).warnings).not.toContain(`${carried} has no slot`);
+    expect(await preview(text, from, to)).not.toContain(carried);
+  });
+
+  // The same records, each changed so its carrier declines it.
+  const declined = [
+    { lost: cases[0][0], from: 'IFC2X3', to: 'IFC4', data: cases[0][3].replace(',.F.,#20,', ',.F.,#9,'), why: 'CausedBy names no point reaction' },
+    { lost: cases[1][0], from: 'IFC2X3', to: 'IFC4', data: cases[1][3].replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), why: 'no thickness location' },
+    { lost: cases[2][0], from: 'IFC4', to: 'IFC2X3', data: cases[2][3].replace('(0.,0.,-1.)', '(0.,-1.)'), why: 'two coefficients' },
+    { lost: cases[3][0], from: 'IFC4', to: 'IFC2X3', data: cases[3][3].replace('#20=', `#42=IFCMATERIAL('Steel',$,$);
+#40=IFCMATERIALPROFILE($,$,#42,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,(#20),#40,$,$);
+#20=`), why: 'its association is refused' },
+  ] as const;
+
+  it.each(declined)('reports $lost lost when the export does ($why)', async ({ lost, from, to, data }) => {
+    const text = model(from, `${OWNER}\n${data}`);
+    expect((await convert(text, to)).warnings).toContain(`${lost} has no slot`);
+    expect(await preview(text, from, to)).toContain(lost);
+  });
+
+  it('names only the declined record of a type whose other record the carrier keeps', async () => {
+    const text = model('IFC4', `${OWNER}
+${cases[2][3]}
+${cases[2][3].replace('#20=', '#21=').replace('1gUSy$', '2gUSy$').replace('(0.,0.,-1.)', '(0.,-1.)')}`);
+    expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([21]);
+  });
+
+  // The writer converts only a record on one line (convertRecord), so a load case split over lines gets no carrier.
+  it('reports SelfWeightCoefficients lost for a load case the writer passes through', async () => {
+    const split = cases[2][3].replace(',.LOAD_CASE.,', ',.LOAD_CASE.,\n  ');
+    const text = model('IFC4', `${OWNER}\n${split}`);
+    const { step } = await convert(text, 'IFC2X3');
+    // Kept whole, coefficients included, and given no carrier.
+    expect(step).toContain(split);
+    expect(step).not.toContain("'IFC4 IfcStructuralLoadCase'");
+    expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([20]);
+  });
+
+  // The export refuses this file (StructuralVarying.checkSharedConfigurations); the preview reports it without the carriers.
+  it('does not throw, and keeps the carriers out, when the export refuses a shared load configuration', async () => {
+    const text = model('IFC4', `${OWNER}
+#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
+#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#17=IFCSHAPEASPECT((#14,#16),'Locations',$,.T.,#15);
+#18=IFCSTRUCTURALLOADLINEARFORCE('end',0.,0.,-9.,0.,0.,0.);
+#25=IFCSTRUCTURALLOADCONFIGURATION($,(#11,#18),$);
+#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',#5,'Line',$,$,$,#15,#25,.GLOBAL_COORDS.,.F.,$,.LINEAR.);
+#31=IFCSTRUCTURALCURVEACTION('1d2HL$ILbNDhwyUI0qw12$',#5,'Sinus',$,$,$,#15,#25,.GLOBAL_COORDS.,.F.,$,.SINUS.);
+${cases[2][3]}`);
+    await expect(convert(text, 'IFC2X3')).rejects.toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
+    expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([20]);
+  });
+});
+
 // #9668: IFC4 IfcStructuralCurveMember.Axis (IFC4_ADD2_TC1.exp:9423) has no
 // IFC2X3 slot (IFC2X3_TC1.exp:7281). IFC2X3 holds it as
 // IfcRelAssociatesProfileProperties.ProfileOrientation (IFC2X3_TC1.exp:6548),
@@ -664,6 +788,25 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     const up = await convert(down.step, 'IFC4');
     expect(line(up.step, 20)).toBe(line(own, 20));
     expect(line(up.step, 40)).toBe(line(own, 40));
+  });
+
+  it('reports the Axis lost in the preview when the association it would fill is split over lines', async () => {
+    // The writer converts only a record on one line (STEP_RECORD), so it passes this association through unfilled.
+    const split = PLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,
+  (#20),#40,$,$);
+#20=`);
+    expect((await convert(split, 'IFC2X3')).step).toContain('(#20),#40,$,$);');
+    expect((await lossIds(split, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALCURVEMEMBER.Axis']).toEqual([20]);
+  });
+
+  it('keeps the Axis in the preview when a split association already holds it, which the writer leaves as it is', async () => {
+    const split = UNPLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,
+  (#20),#40,$,#30);
+#20=`).replace('#35);', '#30);');
+    expect((await convert(split, 'IFC2X3')).step).toContain('(#20),#40,$,#30);');
+    expect((await lossIds(split, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALCURVEMEMBER.Axis']).toBeUndefined();
   });
 
   it('reports the Axis lost, and writes no direction, when the association it would fill is refused', async () => {

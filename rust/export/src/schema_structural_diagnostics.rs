@@ -8,6 +8,7 @@ const LINK: &str = "IfcRelAssignsToProduct linking one structural member to its 
 #[derive(Default)]
 pub(crate) struct StructuralDiagnostics {
     losses: BTreeMap<String, usize>,
+    pub(crate) values: crate::schema_structural_values::StructuralValues,
     pub(crate) axes: crate::schema_structural_axes::StructuralAxes,
     pub(crate) links: crate::schema_structural_links::StructuralLinks,
     pub(crate) varying: crate::schema_structural_varying::StructuralVarying,
@@ -57,6 +58,16 @@ impl StructuralDiagnostics {
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
     /// pair): the target body and whether the rewrite dropped a CausedBy value.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, bool)> {
+        if let Some((body, message)) = self.values.rewrite(id) {
+            self.record(message.into());
+            return Some((body, false));
+        }
+        if let Some((body, axis_carried)) = self.axes.carriers.rewrite(id, entity, args) {
+            if axis_carried {
+                self.record("IFC4 Axis is written as IfcRelAssociatesProfileProperties.ProfileOrientation in the analysis model frame".into());
+            }
+            return Some((body, false));
+        }
         let cause = self.cause(id, entity);
         let rewritten = match self.links.link(entity, args) {
             Some(attrs) => Some((format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()], false)),
@@ -100,9 +111,10 @@ impl StructuralDiagnostics {
 
     /// An already converted line with the values carriers fill in place (`StructuralCarriers::after`).
     pub(crate) fn after(&mut self, id: u32, line: String) -> String {
-        let Some((filled, message)) = self.carriers.after(id, &line) else { return line };
-        if let Some(message) = message { self.record(message.into()); }
-        filled
+        match self.carriers.after(id, &line) {
+            Some(filled) => { self.record(crate::schema_structural_carriers::CAUSED_BY_READ.into()); filled }
+            None => line,
+        }
     }
 
     /// Records the conversion added: load configurations, then 'Causes' relationships, as the TypeScript twin appends them.

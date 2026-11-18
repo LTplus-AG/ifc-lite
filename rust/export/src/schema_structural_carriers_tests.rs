@@ -287,10 +287,18 @@ fn reads_no_placement_when_a_grouped_item_cannot_be_read_10597() {
 }
 
 #[test]
-fn an_item_placed_by_the_highest_id_gives_its_model_no_shared_placement_10597() {
-    // u32::MAX marks a model internally; an item placed by #4294967295 must not read as one.
+fn an_item_placed_by_the_highest_id_is_placed_like_any_other_10597() {
+    // The highest express id is an ordinary placement: its items share it as the TypeScript twin's do.
     let source = shared("#4294967295", "(#20,#21)").replace("#20=", "#4294967295=IFCLOCALPLACEMENT($,#8);\n#20=");
     let (up, _) = convert(&source, "IFC4");
+    assert_eq!(record(&up, 30), MODEL_SHARED);
+    assert!(record(&up, 21).contains(",'N',$,$,#9,"), "{up}");
+}
+
+#[test]
+fn reads_no_placement_when_another_grouping_of_the_model_is_unreadable_10597() {
+    // One grouping reads in full; the model's other one lists a non-reference, so its items are unknown.
+    let source = shared("#9", "(#20,#21)").replace("ENDSEC;END", "#32=IFCRELASSIGNSTOGROUP('2rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#22,$),$,#30);\nENDSEC;END");
+    let (up, _) = convert(&source, "IFC4");
     assert!(record(&up, 30).ends_with(",$);"), "{up}");
-    assert!(record(&up, 21).contains(",'N',$,$,#4294967295,"), "{up}");
 }

@@ -238,8 +238,13 @@ pub fn convert_step_line(
     let mut checks = checks;
     let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
     if let Some(checks) = checks {
+        if let Some(placement) = checks.structural.values.placement(express_id) {
+            if let Some(repointed) = crate::step_log::replace_argument(&converted, 5, &format!("#{placement}")) {
+                converted = repointed;
+            }
+        }
         converted = checks.enums.apply(converted, cto);
-        converted = checks.structural.after(express_id, converted);
+        if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         (cto == "IFC4" && (cfrom != "IFC2X3" || converted.split('=').nth(1).is_some_and(|s| s.starts_with("IFCSTRUCTURAL")))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })

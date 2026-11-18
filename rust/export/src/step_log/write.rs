@@ -321,7 +321,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    written = written.checked_add_signed(checks.finish(body)?).unwrap_or(written);
+    written = written.checked_add_signed(checks.finish(body, target_is_ifc2x3.then_some(&mut slot_fill))?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     let mut warnings = std::mem::take(&mut pass.warnings);

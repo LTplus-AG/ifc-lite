@@ -106,12 +106,15 @@ echo "🟢 Building single-thread bundle → $OUT_DIR"
 # NEVER on CI: a real build failure there must stay a failure, so the fallback
 # is gated on $CI being unset. Anything that ships an artifact -- the release
 # and docker workflows, Vercel -- sets it.
+# Export runs on demand. Size-optimize its crate in the main engine bundle
+# while leaving native builds and the WASM geometry and parsing crates at -O3.
 if ! rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
   --target web \
   --out-dir "$OUT_DIR" \
   --out-name ifc-lite \
   --release \
-  $FEATURES
+  $FEATURES \
+  -- --config 'profile.release.package.ifc-lite-export.opt-level="s"'
 then
   if [ -z "${CI:-}" ] && [ -f "$EXPECTED_WASM" ]; then
     echo ""

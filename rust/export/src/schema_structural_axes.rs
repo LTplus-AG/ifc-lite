@@ -2,17 +2,22 @@
 //! IFC2X3 ProfileOrientation -> IFC4 member Axis (#9668).
 //! ProfileOrientation as IfcDirection is the section z-axis in the analysis
 //! model frame (IFC2x3 FINAL IfcRelAssociatesProfileProperties). It can be reused
-//! directly only when the member is in that same frame (no ObjectPlacement).
+//! directly only when the member's ObjectPlacement leaves that frame unturned.
 use std::collections::{HashMap, HashSet};
 use crate::step_slot::split_top_level_args;
+use nalgebra::{Matrix3, Vector3};
+use crate::schema_structural_axis_carriers::{AxisCarrierRecords, AxisPlan};
 
 #[derive(Default)]
 pub(crate) struct StructuralAxes {
     axes: HashMap<u32, Option<u32>>,
-    directions: HashSet<u32>,
+    directions: HashMap<u32, Vector3<f64>>,
+    placed_axes: HashMap<u32, u32>,
+    added: Vec<String>,
+    pub(crate) carriers: AxisCarrierRecords,
 }
 
-fn reference(token: &str) -> Option<u32> { token.trim().strip_prefix('#')?.trim().parse().ok() }
+pub(super) use crate::schema_structural_links::{slot_ref as reference, slot_unset as unset};
 
 pub(crate) fn list_items(token: &str) -> Option<Vec<String>> {
     let start = ifc_lite_core::parser::skip_step_trivia(token.as_bytes(), 0)?;
@@ -25,41 +30,193 @@ pub(crate) fn list_items(token: &str) -> Option<Vec<String>> {
 }
 
 impl StructuralAxes {
-    pub(crate) fn scan(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
+    pub(crate) fn scan(content: &[u8], kept: impl Fn(u32, usize) -> bool, downgrade: bool, mut allocate: impl FnMut() -> Option<u32>) -> Self {
+        if !has_members(content) { return Self::default(); }
         let mut result = Self::default();
+        let mut members = Vec::new();
+        let mut associations = Vec::new();
+        let mut properties = HashSet::new();
+        let mut placements = HashMap::new();
+        let mut frames = HashMap::new();
+        let mut planar = HashMap::new();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, end)) = scanner.next_entity() {
-            if (!ty.eq_ignore_ascii_case("IFCRELASSOCIATESPROFILEPROPERTIES") && !ty.eq_ignore_ascii_case("IFCDIRECTION")) || !kept(id, start) { continue; }
+            const KINDS: [&str; 8] = [
+                "IFCRELASSOCIATESPROFILEPROPERTIES", "IFCDIRECTION", "IFCSTRUCTURALCURVEMEMBER",
+                "IFCSTRUCTURALCURVEMEMBERVARYING", "IFCLOCALPLACEMENT",
+                "IFCAXIS2PLACEMENT3D", "IFCAXIS2PLACEMENT2D", "IFCGENERALPROFILEPROPERTIES",
+            ];
+            let Some(kind) = KINDS.into_iter().find(|kind| ty.eq_ignore_ascii_case(kind)) else { continue; };
+            if !kept(id, start) { continue; }
             let text = String::from_utf8_lossy(&content[start..end]);
-            let (Some(open), Some(close)) = (text.find('('), text.rfind(')')) else { continue };
-            if close <= open { continue; }
-            let Some(args) = split_top_level_args(&text[open + 1..close]) else { continue };
-            if ty.eq_ignore_ascii_case("IFCDIRECTION") {
-                let dimensions = args.first().and_then(|s| list_items(s)).map(|v| v.len());
-                let direction = ifc_lite_core::parser::StepRecord::parse(&content[start..end]).and_then(|r| r.point_at(0));
-                if dimensions == Some(3) && direction.is_some_and(|(x, y, z)| x != 0.0 || y != 0.0 || z != 0.0) {
-                    result.directions.insert(id);
+            let Some(frame) = crate::step_record_frame::record_frame(&text) else { continue; };
+            let Some(args) = split_top_level_args(frame.args(&text)) else { continue; };
+            match (kind, args.as_slice()) {
+                ("IFCDIRECTION", [ratios]) => {
+                    let dimensions = list_items(ratios).map(|values| values.len());
+                    let Some((x, y, z)) = ifc_lite_core::parser::StepRecord::parse(&content[start..end])
+                        .and_then(|record| record.point_at(0)) else { continue; };
+                    if ![x, y, z].into_iter().all(f64::is_finite) { continue; }
+                    match dimensions {
+                        Some(3) if x != 0. || y != 0. || z != 0. => { result.directions.insert(id, Vector3::new(x, y, z)); }
+                        Some(2) => { planar.insert(id, Vector3::new(x, y, 0.)); }
+                        _ => {}
+                    }
                 }
-            } else if args.len() == 8 {
-                let axis = reference(&args[7]);
-                let members = list_items(&args[4]);
-                for member in members.unwrap_or_default().iter().filter_map(|s| reference(s)) {
-                    result.axes.entry(member).and_modify(|old| { if *old != axis { *old = None; } }).or_insert(axis);
+                ("IFCRELASSOCIATESPROFILEPROPERTIES", [_, _, _, _, related, _, _, orientation]) => {
+                    let axis = reference(orientation);
+                    for member in list_items(related).unwrap_or_default().iter().filter_map(|s| reference(s)) {
+                        result.axes.entry(member).and_modify(|old| { if *old != axis { *old = None; } }).or_insert(axis);
+                    }
+                    associations.push((id, args));
                 }
+                ("IFCGENERALPROFILEPROPERTIES", values) if values.len() == 7 && values.iter().all(|v| unset(v)) => {
+                    properties.insert(id);
+                }
+                ("IFCSTRUCTURALCURVEMEMBER" | "IFCSTRUCTURALCURVEMEMBERVARYING", _) if args.len() == if downgrade { 9 } else { 8 } => {
+                    members.push((id, args));
+                }
+                ("IFCLOCALPLACEMENT", [parent, frame]) => { placements.insert(id, (parent.clone(), reference(frame))); }
+                ("IFCAXIS2PLACEMENT3D", [_, z, x]) => { frames.insert(id, (Some(z.clone()), x.clone())); }
+                ("IFCAXIS2PLACEMENT2D", [_, x]) => { frames.insert(id, (None, x.clone())); }
+                _ => {}
             }
+        }
+
+        if members.is_empty() { return result; }
+        members.sort_unstable_by_key(|(id, _)| *id);
+        let mut rotations = HashMap::new();
+        let mut plans = Vec::new();
+        for (member, args) in members {
+            let axis = if downgrade { reference(&args[8]) } else { result.axes.get(&member).copied().flatten() };
+            let Some(axis) = axis else { continue; };
+            let Some(values) = result.directions.get(&axis) else { continue; };
+            let rotation = if unset(&args[5]) { Some(Matrix3::identity()) }
+            else if let Some(placement) = reference(&args[5]) {
+                rotation_at(placement, &placements, &mut rotations, |id| {
+                    let (z, x) = frames.get(&id)?;
+                    let z_axis = match z.as_deref() {
+                        Some(token) if !unset(token) => result.directions.get(&reference(token)?)?.try_normalize(1e-9)?,
+                        _ => Vector3::z(),
+                    };
+                    let x_axis = if unset(x) {
+                        let x = Vector3::x() - z_axis * z_axis.x;
+                        if x.norm() > 1e-9 { x } else { Vector3::z().cross(&z_axis) }
+                    } else {
+                        let authored = if z.is_some() { &result.directions } else { &planar }.get(&reference(x)?)?;
+                        authored - z_axis * authored.dot(&z_axis)
+                    }.try_normalize(1e-9)?;
+                    Some(Matrix3::from_columns(&[x_axis, z_axis.cross(&x_axis), z_axis]))
+                })
+            } else { None };
+            let Some(rotation) = rotation else { continue; };
+            let turned = rotation != Matrix3::identity();
+            let ratios = if downgrade { rotation * values } else { rotation.transpose() * values };
+            if !ratios.iter().all(|v| v.is_finite()) { continue; }
+            plans.push(AxisPlan { member, axis, turned, ratios, args });
+        }
+        if downgrade {
+            result.carriers = AxisCarrierRecords::downgrade(plans, associations, &result.directions, &mut allocate);
+        } else {
+            result.restore_axes(plans, &associations, &properties, content, &kept, &mut allocate);
         }
         result
     }
 
-    pub(crate) fn axis(&self, id: u32, entity: &str, args: &[String]) -> Option<String> {
-        // Angles, placed members, conflicting section orientations, missing
-        // direction records and inferred defaults need a frame/geometry pass.
-        // They remain unknown here, with a diagnostic; never invent a z-axis.
-        if !matches!(entity, "IFCSTRUCTURALCURVEMEMBER" | "IFCSTRUCTURALCURVEMEMBERVARYING")
-            || args.len() != 8 || args[5].trim() != "$" { return None; }
-        let axis = self.axes.get(&id).copied().flatten()?;
-        self.directions.contains(&axis).then(|| format!("#{axis}"))
+    fn restore_axes(
+        &mut self,
+        plans: Vec<AxisPlan>,
+        associations: &[(u32, Vec<String>)],
+        properties: &HashSet<u32>,
+        content: &[u8],
+        kept: impl Fn(u32, usize) -> bool,
+        mut allocate: impl FnMut() -> Option<u32>,
+    ) {
+        let candidates = AxisCarrierRecords::removable_associations(associations, properties, &plans, content, kept);
+        let mut reusable = HashMap::new();
+        if plans.iter().any(|plan| plan.turned) {
+            let consumed_directions: HashSet<_> = candidates.values().filter_map(|carrier| carrier.direction).collect();
+            for (&id, &values) in &self.directions {
+                if consumed_directions.contains(&id) { continue; }
+                let key = direction_tuple(values, 12);
+                reusable.entry(key).and_modify(|old: &mut u32| *old = (*old).min(id)).or_insert(id);
+            }
+        }
+        for plan in plans {
+            let axis = if !plan.turned { plan.axis }
+            else if let Some(&existing) = reusable.get(&direction_tuple(plan.ratios, 12)) { existing }
+            else if let Some(new_id) = allocate() {
+                self.added.push(format!("#{new_id}=IFCDIRECTION({});", direction_tuple(plan.ratios, 15)));
+                new_id
+            } else { continue; };
+            self.placed_axes.insert(plan.member, axis);
+            if let Some(carrier) = candidates.get(&plan.member) {
+                self.carriers.consume(carrier);
+            }
+        }
     }
+
+    pub(crate) fn added(&mut self) -> Vec<String> {
+        let mut added = std::mem::take(&mut self.added);
+        added.extend(self.carriers.added());
+        added
+    }
+
+    pub(crate) fn axis(&self, id: u32, entity: &str, args: &[String]) -> Option<String> {
+        if !matches!(entity, "IFCSTRUCTURALCURVEMEMBER" | "IFCSTRUCTURALCURVEMEMBERVARYING")
+            || args.len() != 8 { return None; }
+        let axis = if unset(&args[5]) { self.axes.get(&id).copied().flatten()? }
+            else { *self.placed_axes.get(&id)? };
+        (self.directions.contains_key(&axis) || self.placed_axes.contains_key(&id)).then(|| format!("#{axis}"))
+    }
+}
+
+fn has_members(content: &[u8]) -> bool {
+    let mut scanner = ifc_lite_core::EntityScanner::new(content);
+    while let Some((_, kind, _, _)) = scanner.next_entity() {
+        if kind.eq_ignore_ascii_case("IFCSTRUCTURALCURVEMEMBER")
+            || kind.eq_ignore_ascii_case("IFCSTRUCTURALCURVEMEMBERVARYING") {
+            return true;
+        }
+    }
+    false
+}
+
+pub(super) fn direction_tuple(values: Vector3<f64>, digits: usize) -> String {
+    let ratios = values.map(|value| {
+        let rounded = if value.abs() < 1e-9 { 0. }
+            else { format!("{value:.precision$e}", precision = digits - 1).parse().unwrap_or(value) };
+        crate::step_log::format_step_real(rounded)
+    });
+    format!("({},{},{})", ratios.x, ratios.y, ratios.z)
+}
+
+/// Resolve a retained IfcLocalPlacement chain from the root and cache both
+/// valid and refused chains. Repeated ids stop cycles before any multiplication.
+fn rotation_at(
+    start: u32,
+    placements: &HashMap<u32, (String, Option<u32>)>,
+    cache: &mut HashMap<u32, Option<Matrix3<f64>>>,
+    frame: impl Fn(u32) -> Option<Matrix3<f64>>,
+) -> Option<Matrix3<f64>> {
+    let mut cursor = start;
+    let mut path = Vec::new();
+    let mut seen = HashSet::new();
+    let mut rotation = loop {
+        if let Some(value) = cache.get(&cursor) { break *value; }
+        if !seen.insert(cursor) { break None; }
+        let Some((parent, Some(axis))) = placements.get(&cursor) else { break None; };
+        path.push((cursor, *axis));
+        if unset(parent) { break Some(Matrix3::identity()); }
+        let Some(parent) = reference(parent) else { break None; };
+        cursor = parent;
+    };
+    for (id, axis) in path.into_iter().rev() {
+        rotation = rotation.zip(frame(axis)).map(|(parent, local)| parent * local);
+        cache.insert(id, rotation);
+    }
+    cache.insert(start, rotation);
+    rotation
 }
 
 #[cfg(test)]

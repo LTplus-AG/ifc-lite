@@ -8,6 +8,7 @@ const LINK: &str = "IfcRelAssignsToProduct linking one structural member to its 
 #[derive(Default)]
 pub(crate) struct StructuralDiagnostics {
     losses: BTreeMap<String, usize>,
+    pub(crate) values: crate::schema_structural_values::StructuralValues,
     pub(crate) axes: crate::schema_structural_axes::StructuralAxes,
     pub(crate) links: crate::schema_structural_links::StructuralLinks,
     pub(crate) varying: crate::schema_structural_varying::StructuralVarying,
@@ -54,6 +55,16 @@ impl StructuralDiagnostics {
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
     /// pair): the target record body, reported because the class changes.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
+        if let Some((body, message)) = self.values.rewrite(id) {
+            self.record(message.into());
+            return Some(body);
+        }
+        if let Some((body, axis_carried)) = self.axes.carriers.rewrite(id, entity, args) {
+            if axis_carried {
+                self.record("IFC4 Axis is written as IfcRelAssociatesProfileProperties.ProfileOrientation in the analysis model frame".into());
+            }
+            return Some(body);
+        }
         let (body, losses) = match self.links.link(entity, args) {
             Some(attrs) => (format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()]),
             None => self.varying.rewrite(id, entity, args)?,

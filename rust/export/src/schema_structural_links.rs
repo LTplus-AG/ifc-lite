@@ -27,7 +27,7 @@ fn becomes(entity: &str, parent: &str) -> bool {
 }
 
 /// An entity reference slot, with STEP whitespace and comments around it allowed (#10248).
-fn slot_ref(token: &str) -> Option<u32> {
+pub(super) fn slot_ref(token: &str) -> Option<u32> {
     let bytes = token.as_bytes();
     let start = skip_step_trivia(bytes, 0)?;
     let rest = token.get(start..)?.strip_prefix('#')?;
@@ -38,7 +38,7 @@ fn slot_ref(token: &str) -> Option<u32> {
 }
 
 /// Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248).
-fn slot_unset(token: &str) -> bool {
+pub(super) fn slot_unset(token: &str) -> bool {
     let bytes = token.as_bytes();
     skip_step_trivia(bytes, 0).is_some_and(|start| bytes.get(start) == Some(&b'$') && skip_step_trivia(bytes, start + 1) == Some(bytes.len()))
 }

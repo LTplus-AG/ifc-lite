@@ -5,6 +5,8 @@
 import type { Catalogue } from '../../registry';
 
 export const geometryExportDialogsRu = {
+  "geometryExport.shared.georefRequired": "Эта модель не имеет геопривязки. Добавьте местоположение перед экспортом.",
+  "geometryExport.shared.openGeoreferencing": "Открыть геопривязку",
   "cityJsonExport.description": "Экспорт выбранной модели IFC в CityJSON 2.0 или CityJSONSeq.",
   "cityJsonExport.localNotice": "У этой модели нет геопривязки. Файл будет использовать локальные координаты модели, а не координаты карты.",
   "cityJsonExport.sessionCrs": "Записывает координаты в {crs}, включая изменения геопривязки из этого сеанса.",

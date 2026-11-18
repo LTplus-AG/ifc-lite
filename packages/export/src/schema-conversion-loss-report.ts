@@ -250,8 +250,10 @@ function splitByRestored(
 /**
  * A complete, per-type loss report for converting every entity `store`
  * contains from `fromSchema` to `toSchema` — no export attempted, so this
- * never throws and always covers the whole file, not just the first record a
- * full export would have aborted on. With the source bytes, it leaves out what
+ * does not throw for a record the export cannot write and always covers the
+ * whole file, not just the first record a full export would have aborted on.
+ * It throws only what the export's own structural prepasses would. With the
+ * source bytes, it leaves out what
  * an IFC2X3 <-> IFC4 structural carrier brings back (#9668); it describes the
  * default export, an unedited full one, which is the only kind that arms them.
  */

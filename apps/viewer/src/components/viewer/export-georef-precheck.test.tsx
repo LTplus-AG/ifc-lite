@@ -85,8 +85,8 @@ const HALF_GEOREF = {
 } as const;
 for (const [half, { action, ...georef }] of Object.entries(HALF_GEOREF)) {
   test(`#10647 a model with only a ${half} routes to the row that completes it`, () => {
-    requestGeorefSectionFocus('half', 'addGeoref');
-    render(<GeoreferencingPanel georef={{ hasGeoreference: false, ...georef } as never} schemaVersion="IFC4" modelId="half" enableEditing />);
+    requestGeorefSectionFocus(`half-${half}`, 'addGeoref');
+    render(<GeoreferencingPanel georef={{ hasGeoreference: false, ...georef } as never} schemaVersion="IFC4" modelId={`half-${half}`} enableEditing />);
     assert.equal(pendingGeorefSectionFocus() === null, true);
     assert.equal(document.activeElement?.textContent?.trim(), action);
   });

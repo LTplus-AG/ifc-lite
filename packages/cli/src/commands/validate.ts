@@ -91,12 +91,15 @@ const SKIP_REASON: Record<StructuralSkipReason, string> = {
  * movement rule did not compare. A warning, except when the only gap is a
  * missing derivation record: an authored member never has one.
  */
-function uncheckedMember({ memberId, globalId, type, axisDrift, stale }: StructuralSkippedMember): ValidationIssue {
-  const parts = axisDrift === 'element-without-axis' && stale === 'element-without-axis'
+const onlyRecordMissing = ({ axisDrift, stale }: StructuralSkippedMember) => !axisDrift && stale === 'no-derivation-record';
+
+function uncheckedMember(member: StructuralSkippedMember): ValidationIssue {
+  const { memberId, globalId, type, axisDrift, stale } = member;
+  const parts = axisDrift === 'element-without-axis'
     ? [`movement and axis drift not checked: ${SKIP_REASON[axisDrift]}`]
     : [axisDrift && `axis drift not checked: ${SKIP_REASON[axisDrift]}`, stale && `movement not checked: ${SKIP_REASON[stale]}`].filter((part): part is string => !!part);
   return {
-    severity: !axisDrift && stale === 'no-derivation-record' ? 'info' : 'warning',
+    severity: onlyRecordMissing(member) ? 'info' : 'warning',
     rule: 'structural-unchecked-member', entityId: memberId, globalId,
     message: `#${memberId} ${type}${globalId ? ` (${globalId})` : ''}: ${parts.join('; ')}`,
   };
@@ -276,14 +279,16 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
     }
     for (const issue of structural) if (!capped.has(issue.rule)) issues.push(issue);
     // No finding is not a pass for the members the geometry rules passed over: say how many, then which.
-    if (coverage.skipped.length > 0) {
-      const unchecked = coverage.skipped.map(uncheckedMember);
-      const listed = coverage.skipped.length > ISSUE_LIST_CAP ? `; the first ${ISSUE_LIST_CAP} are listed` : '';
+    const { linked, skipped } = coverage;
+    if (skipped.length > 0) {
       issues.push({
-        severity: unchecked.some((issue) => issue.severity === 'warning') ? 'warning' : 'info', rule: 'structural-unchecked-member',
-        message: `Movement or axis drift was not checked on ${coverage.skipped.length} of ${coverage.linked} linked curve member(s)${listed}`,
+        severity: skipped.every(onlyRecordMissing) ? 'info' : 'warning', rule: 'structural-unchecked-member',
+        message: `Movement or axis drift was not checked on ${skipped.length} of ${linked} linked curve member(s)`,
       });
-      issues.push(...unchecked.slice(0, ISSUE_LIST_CAP));
+      issues.push(...skipped.slice(0, ISSUE_LIST_CAP).map(uncheckedMember));
+      if (skipped.length > ISSUE_LIST_CAP) {
+        issues.push({ severity: skipped.slice(ISSUE_LIST_CAP).every(onlyRecordMissing) ? 'info' : 'warning', rule: 'structural-unchecked-member', message: `${skipped.length - ISSUE_LIST_CAP} more unchecked curve member(s) not listed (${skipped.length} total)` });
+      }
     }
   } catch (err) {
     issues.push({ severity: 'warning', rule: 'structural-consistency', message: `Structural consistency checks could not run: ${err instanceof Error ? err.message : String(err)}` });

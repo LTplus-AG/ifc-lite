@@ -25,9 +25,8 @@ function FindingRow({ modelId, issue }: { modelId: string; issue: StructuralCons
   return <>{linkedText(t, `structuralDerive.consistency.rule.${issue.rule}`, { distance: issue.distance?.toFixed(3) ?? '' }, links)}</>;
 }
 
-type UncheckedRow =
-  | { memberId: number; key: 'uncheckedRow'; elementIds: readonly number[] }
-  | { memberId: number; key: 'uncheckedEdge' | 'uncheckedRecord' | 'uncheckedRecordAxis' };
+/** `elementIds` only on `uncheckedRow`, which names them. */
+type UncheckedRow = { memberId: number; key: 'uncheckedRow' | 'uncheckedEdge' | 'uncheckedRecord' | 'uncheckedRecordAxis'; elementIds?: readonly number[] };
 
 /** Why a geometry rule passed over a member, one row per rule; one row when no linked element has an axis, since then neither rule ran. */
 function uncheckedRows({ memberId, elementIds, axisDrift, stale }: StructuralSkippedMember): UncheckedRow[] {
@@ -74,7 +73,7 @@ export function StructuralConsistencyFindings({ modelId, prepared }: { modelId: 
     <Listing open summary={t('structuralDerive.consistency.unchecked', { count: skipped.length })} rows={skipped.flatMap(uncheckedRows)}
       row={(row) => linkedText(t, `structuralDerive.consistency.${row.key}`, {}, {
         item: <ElementLink modelId={modelId} expressId={row.memberId} />,
-        ...(row.key === 'uncheckedRow' ? { elements: row.elementIds.map((id, index) => <Fragment key={id}>{index > 0 && ', '}<ElementLink modelId={modelId} expressId={id} /></Fragment>) } : {}),
+        ...(row.elementIds ? { elements: row.elementIds.map((id, index) => <Fragment key={id}>{index > 0 && ', '}<ElementLink modelId={modelId} expressId={id} /></Fragment>) } : {}),
       })} />
   </section>;
 }

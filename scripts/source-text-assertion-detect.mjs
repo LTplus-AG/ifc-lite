@@ -32,11 +32,9 @@
  *   let s = readFileSync(p); s = s.replace(a, b)    // reassignment
  *   mutate(real.platform, …) → function mutate(source, …)  // through a parameter
  *
- * Propagation is deliberately over-eager (one flat name set, no scoping, every
- * call site of a function taints that function's parameters). Over-tainting
- * makes the gate stricter, which is the safe direction for a ratchet;
- * under-tainting would silently drop coverage, which is the direction that
- * turns a gate into decoration.
+ * Propagation is deliberately over-eager: one flat name set, no scoping, and a
+ * call taints the parameters of every function of its name, Node's `assert.*`
+ * excepted (#10687). Stricter is safe for a ratchet; looser is decoration.
  *
  * ═══ WHY THIS PARSES INSTEAD OF SCANNING (#3174) ═══
  *
@@ -145,6 +143,7 @@
 
 import ts from 'typescript';
 import { isModuleSpecifierLiteral } from './source-text-assertion-module-specifier.mjs';
+import { assertCallTest } from './source-text-assertion-assert-calls.mjs';
 
 /**
  * The taint source: a disk read, however the call is qualified. This used to be
@@ -266,59 +265,6 @@ function calleeName(expr) {
   return null;
 }
 
-/** The call whose callee chain `id` roots (`id.a.b(…)`), or `null`. */
-function callRootedAt(id) {
-  let n = id;
-  while (ts.isPropertyAccessExpression(n.parent) && n.parent.expression === n) n = n.parent;
-  return n !== id && ts.isCallExpression(n.parent) && n.parent.expression === n ? n.parent : null;
-}
-
-const ASSERT_MODULES = new Set(['assert', 'node:assert', 'assert/strict', 'node:assert/strict']);
-
-/**
- * Names bound to Node's assert module and used ONLY as a call namespace: every
- * mention outside the `import` is the root of a callee, as in `assert.ok(…)`.
- * Such a call runs Node's function, so its bare method name says nothing about
- * a local `ok` (`const facts = { ok: … }`, #10687).
- *
- * Only assert: it never turns a function handed to it into one of its own
- * methods, and calls what `throws`/`rejects` receive with no arguments. A
- * general import can (`reg.set('check', check); reg.check(source)`).
- *
- * Any other mention disqualifies the name: a `const assert` that shadows it, a
- * parameter of that name, `assert.ok = check`. The analysis has no scoping, so
- * it cannot tell whether such a call still means the import, and those keep
- * resolving by name.
- */
-function assertNamespaces(sourceFile) {
-  const imported = new Set();
-  for (const st of sourceFile.statements) {
-    if (!ts.isImportDeclaration(st) || !st.importClause) continue;
-    if (!ts.isStringLiteral(st.moduleSpecifier) || !ASSERT_MODULES.has(st.moduleSpecifier.text)) continue;
-    const { name, namedBindings } = st.importClause;
-    if (name) imported.add(name.text);
-    if (namedBindings && ts.isNamespaceImport(namedBindings)) imported.add(namedBindings.name.text);
-    if (namedBindings && ts.isNamedImports(namedBindings))
-      for (const el of namedBindings.elements) imported.add(el.name.text);
-  }
-  const disqualified = new Set();
-  walk(sourceFile, (n) => {
-    if (!ts.isIdentifier(n) || !imported.has(n.text)) return;
-    if (ts.findAncestor(n, ts.isImportDeclaration)) return;
-    if (ts.isPropertyAccessExpression(n.parent) && n.parent.name === n) return;
-    if (!callRootedAt(n)) disqualified.add(n.text);
-  });
-  return new Set([...imported].filter((name) => !disqualified.has(name)));
-}
-
-/** TRUE for a dotted call rooted in one of `namespaces`: `assert.ok(…)`. */
-function callsAssert(callee, namespaces) {
-  if (!ts.isPropertyAccessExpression(callee)) return false;
-  let root = callee.expression;
-  while (ts.isPropertyAccessExpression(root)) root = root.expression;
-  return ts.isIdentifier(root) && namespaces.has(root.text);
-}
-
 /** TRUE when the subtree PERFORMS a read, however the call is qualified. */
 function performsRead(node) {
   let found = false;
@@ -430,7 +376,7 @@ function enclosingStatement(node) {
  */
 function computeTainted(sourceFile) {
   const tainted = new Set(READ_NAMES);
-  const assertNames = assertNamespaces(sourceFile);
+  const callsAssert = assertCallTest(sourceFile);
 
   const bindings = [];      // { names: string[], init: Node }
   const functions = [];     // { node, name, params: string[][] }
@@ -522,9 +468,8 @@ function computeTainted(sourceFile) {
         continue;
       }
 
-      // A tainted argument taints the parameter it lands in, unless the call
-      // is Node's assert and so cannot land in a local function.
-      const named = callsAssert(call.expression, assertNames) ? undefined : byName.get(calleeName(call.expression));
+      // A tainted argument taints the parameter it lands in (never via Node's assert).
+      const named = callsAssert(call.expression) ? undefined : byName.get(calleeName(call.expression));
       if (named)
         for (const fn of named)
           args.forEach((arg, idx) => {

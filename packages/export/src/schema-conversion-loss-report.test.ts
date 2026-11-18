@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { classifyEntityTypeConversion, analyzeConversionLoss } from './schema-conversion-loss-report.js';
 import { exportToStep } from './step-exporter.js';
@@ -277,6 +277,25 @@ describe('analyzeConversionLoss and the structural carriers (#9668)', () => {
 #21=IFCDIRECTION((0.,1.,0.));`);
     expect(await losses(ifc4, 'IFC4', 'IFC2X3')).toEqual([]);
     expect(line(await roundTrip(ifc4, 'IFC4', 'IFC2X3'), 20)).toMatch(/,#21\);$/);
+  });
+
+  it('returns schema losses when evaluating the structural carriers fails (#9668)', async () => {
+    const store = await parse(model('IFC4', `${OWNER}
+#20=IFCSTRUCTURALLOADCASE('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S',(0.,0.,-1.));`));
+    const read = vi.spyOn(store.entityIndex.byId, 'get').mockImplementationOnce(() => {
+      throw new Error('source record is unavailable');
+    });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      expect(analyzeConversionLoss(store, 'IFC4', 'IFC2X3').entries).toContainEqual(expect.objectContaining({
+        sourceType: 'IFCSTRUCTURALLOADCASE',
+        expressIds: [20],
+        droppedAttributes: ['SelfWeightCoefficients'],
+      }));
+    } finally {
+      read.mockRestore();
+      warning.mockRestore();
+    }
   });
 
   it('leaves the report as it was for a store without source bytes', () => {

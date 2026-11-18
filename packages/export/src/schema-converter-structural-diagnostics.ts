@@ -164,24 +164,26 @@ export class StructuralDiagnostics {
  */
 export function structuralRoundTrip(store: SourceStore, from: string, to: string, ids: readonly number[]): ReadonlyMap<number, ReadonlySet<string>> {
   if (!conversionMode(from, to) || !ids.length) return new Map();
-  const source = new SourceRecords(store);
-  const records = ids.filter((id) => source.type(id)?.startsWith('IFCSTRUCTURAL'));
-  if (!records.length) return new Map();
-  const run = new StructuralDiagnostics(true);
   try {
+    const source = new SourceRecords(store);
+    const records = ids.filter((id) => source.type(id)?.startsWith('IFCSTRUCTURAL'));
+    if (!records.length) return new Map();
+    const run = new StructuralDiagnostics(true);
     run.fromStore(store, from, to, source);
+    // Nothing is written, so every added record may take the same id.
+    run.ids = () => 0;
+    // Only an IFC2X3 target withholds ids.
+    const withheld = to === 'IFC2X3' ? computeWithheldRefIds(store, to) : undefined;
+    for (const id of records) {
+      const slots = source.slots(id);
+      if (slots) run.rewrite(id, source.type(id)!, slots, withheld);
+    }
+    return run.restoredAttributes();
   } catch (error) {
-    // The export refuses this file with the same error, so nothing comes back.
-    if (error instanceof Error && error.message === SHARED_CONFIGURATION) return new Map();
-    throw error;
+    // The schema-only preview remains available even when the carrier prepass fails.
+    if (!(error instanceof Error && error.message === SHARED_CONFIGURATION)) {
+      console.warn('[analyzeConversionLoss] Could not evaluate structural carriers', error);
+    }
+    return new Map();
   }
-  // Nothing is written, so every added record may take the same id.
-  run.ids = () => 0;
-  // Only an IFC2X3 target withholds ids.
-  const withheld = to === 'IFC2X3' ? computeWithheldRefIds(store, to) : undefined;
-  for (const id of records) {
-    const slots = source.slots(id);
-    if (slots) run.rewrite(id, source.type(id)!, slots, withheld);
-  }
-  return run.restoredAttributes();
 }

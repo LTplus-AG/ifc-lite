@@ -225,9 +225,9 @@ export function selectNativeChartItems(aggregation: Aggregation, items: readonly
     state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null, colorOverrides: focused });
   }
 }
-export function clearNativeChartSelection(): void {
+export function clearNativeChartSelection(selection: 'owned' | 'all' = 'owned'): void {
   const state = useViewerStore.getState();
-  if (state.chartSelectionRevision === state.selectionRevision) state.clearEntitySelection();
+  if (selection === 'all' || state.chartSelectionRevision === state.selectionRevision) state.clearEntitySelection();
   state.setChartSlice(null);
   releaseChartVisibility();
   // With 'Colour in 3D' on, the bucket colours stay; the panel's overlay effect owns them.
@@ -250,7 +250,7 @@ export function useChart3DLink(): Chart3DLink {
     selectNativeChartItems(aggregation, items, focusMode);
   }, [focusMode]);
 
-  const clearSelection = useCallback(() => { clearNativeChartSelection(); }, []);
+  const clearSelection = useCallback(() => { clearNativeChartSelection('all'); }, []);
 
   const clearSelectionIfOwned = useCallback((sourceId: string, slice: Set<number>, buckets: readonly ChartBucketIdentity[]) => {
     const state = useViewerStore.getState();

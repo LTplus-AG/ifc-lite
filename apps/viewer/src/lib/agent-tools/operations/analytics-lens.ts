@@ -55,8 +55,8 @@ export const analyticsLensOperations = [
     const result = c.commit(() => {
       const state = useViewerStore.getState();
       const deleted = state.deleteLens(i.id);
-      // Deletion already clears the active ID in the slice. Compare the pre-write
-      // selection with the live one so a reconciled peer deletion is covered too.
+      // A successful save reconciles the active ID with the persisted lenses.
+      // Failed saves leave the active ID and its output intact.
       if (deleted.ok && state.activeLensId !== null && useViewerStore.getState().activeLensId === null) deactivateLens();
       return deleted;
     });

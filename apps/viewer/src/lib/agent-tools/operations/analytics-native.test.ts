@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
-import { presentChartIds } from '@/components/viewer/charts/useChart3DLink';
+import { clearNativeChartSelection, presentChartIds } from '@/components/viewer/charts/useChart3DLink';
 import { applyNativeLensResult, evaluateNativeLens, hasCurrentNativeLensResult } from '@/lib/lens/native-lens';
 import { beforeEach, describe, it } from 'node:test';
 import { EntityFlags, IfcTypeEnum } from '@ifc-lite/data';
@@ -250,6 +250,17 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await run('charts.focusBuckets', { ...target, data_fingerprint: result.dataFingerprint, items: [{ seriesIndex: 0, dataIndex: 0 }] });
     assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([1, 2, 101, 102]));
     await run('charts.clearFocus'); assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+
+    // #10584: manual clearing keeps the panel's existing semantics, while
+    // bridge cleanup preserves a pick made after chart focus.
+    for (const manual of [false, true]) {
+      await run('charts.focusBuckets', { ...target, data_fingerprint: result.dataFingerprint, items: [{ seriesIndex: 0, dataIndex: 0 }] });
+      useViewerStore.getState().setSelectedEntityIds([102]);
+      if (manual) clearNativeChartSelection('all');
+      else await run('charts.clearFocus');
+      assert.deepEqual([...useViewerStore.getState().selectedEntityIds], manual ? [] : [102]);
+      assert.equal(useViewerStore.getState().chartSlice, null);
+    }
   });
   it('#10584 rejects chart results when the cross-chart slice or its owner changes during evaluation', async () => {
     const dashboard = modelOverviewDashboard();

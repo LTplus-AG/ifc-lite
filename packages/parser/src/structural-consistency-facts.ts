@@ -126,7 +126,8 @@ function derivationRecord(store: IfcDataStore, reader: ItemGeometryReader, membe
   const c = DERIVATION_AXIS_PROPERTIES.map(value);
   if (typeof elementGlobalId !== 'string' || !c.every((v): v is number => typeof v === 'number' && Number.isFinite(v))) return null;
   const toWorld = reader.fromPlacementParent(memberId);
-  return toWorld && { elementGlobalId, axis: [toWorld([c[0], c[1], c[2]]), toWorld([c[3], c[4], c[5]])] };
+  if (!toWorld) return null;
+  return { elementGlobalId, axis: [toWorld([c[0], c[1], c[2]]), toWorld([c[3], c[4], c[5]])] };
 }
 
 /**

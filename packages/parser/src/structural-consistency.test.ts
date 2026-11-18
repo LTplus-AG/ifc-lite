@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { IfcParser } from './index.js';
 import { extractStructuralOnDemand } from './structural-extractor.js';
 import { checkStructuralConsistency, DEFAULT_AXIS_DRIFT_TOLERANCE, DEFAULT_STALE_TOLERANCE, type PhysicalElementFact, type StructuralConsistencyIssue, type StructuralLine } from './structural-consistency.js';
-import { structuralConsistencyFacts, structuralConsistencyIssues } from './structural-consistency-facts.js';
+import { structuralConsistencyFacts, structuralConsistencyIssues, structuralConsistencyReport } from './structural-consistency-facts.js';
 import type { StructuralConnectionInfo, StructuralExtraction, StructuralMemberInfo } from './structural-types.js';
 
 /** The findings alone, for the tests that read no coverage. */
@@ -386,6 +386,40 @@ const IFC4X3 = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.if
 ENDSEC;END-ISO-10303-21;`;
 
 describe('structuralConsistencyFacts on an IFC4X3 file', () => {
+  it('#10673 distinguishes an unreadable placement with a complete record from an absent record', async () => {
+    const step = IFC4X3
+      .replace("'On wall',$,$,$,$,.RIGID_JOINED_MEMBER.", "'On wall',$,$,#42,$,.RIGID_JOINED_MEMBER.")
+      .replace('ENDSEC;END-ISO-10303-21;', `
+#42=IFCLOCALPLACEMENT(#43,#44);
+#43=IFCLOCALPLACEMENT(#43,#44);
+#44=IFCAXIS2PLACEMENT3D(#45,$,$);
+#45=IFCCARTESIANPOINT((0.,0.,0.));
+#46=IFCPROPERTYSINGLEVALUE('PhysicalElement',$,IFCLABEL('2Wall000000000000000001'),$);
+#47=IFCPROPERTYSINGLEVALUE('PhysicalAxisStartX',$,IFCREAL(0.),$);
+#48=IFCPROPERTYSINGLEVALUE('PhysicalAxisStartY',$,IFCREAL(0.),$);
+#49=IFCPROPERTYSINGLEVALUE('PhysicalAxisStartZ',$,IFCREAL(0.),$);
+#50=IFCPROPERTYSINGLEVALUE('PhysicalAxisEndX',$,IFCREAL(4.),$);
+#51=IFCPROPERTYSINGLEVALUE('PhysicalAxisEndY',$,IFCREAL(0.),$);
+#52=IFCPROPERTYSINGLEVALUE('PhysicalAxisEndZ',$,IFCREAL(0.),$);
+#53=IFCPROPERTYSET('2Pset000000000000000010',$,'IfcLite_StructuralDerivation',$,(#46,#47,#48,#49,#50,#51,#52));
+#54=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000010',$,$,$,(#10),#53);
+ENDSEC;END-ISO-10303-21;`);
+    const physicalAxes = new Map<number, StructuralLine>([[3, [[0, 0, 0], [4, 0, 0]]]]);
+    const store = await parse(new TextEncoder().encode(step));
+    const absent = await parse(new TextEncoder().encode(step.replace(/^#54=.*$/m, '')));
+    const readable = await parse(new TextEncoder().encode(step.replace('#43=IFCLOCALPLACEMENT(#43,#44);', '#43=IFCLOCALPLACEMENT($,#44);')));
+    expect(structuralConsistencyReport(store, { physicalAxes }).coverage.skipped).toEqual([
+      expect.objectContaining({ memberId: 10, stale: 'derivation-record-unreadable' }),
+    ]);
+    expect(structuralConsistencyReport(absent, { physicalAxes }).coverage.skipped).toEqual([
+      expect.objectContaining({ memberId: 10, stale: 'no-derivation-record' }),
+    ]);
+    const movedAxes = new Map<number, StructuralLine>([[3, [[1, 0, 0], [5, 0, 0]]]]);
+    expect(structuralConsistencyReport(readable, { physicalAxes: movedAxes }).issues).toContainEqual(
+      expect.objectContaining({ rule: 'structural-stale-item', entityId: 10, target: 3, distance: 1 }),
+    );
+  });
+
   it('reads LoadBearing from the occurrence over its type, in any pset-name case, with UNKNOWN as unstated, and runs all three rules', async () => {
     const store = await parse(new TextEncoder().encode(IFC4X3));
     expect(store.schemaVersion).toBe('IFC4X3');

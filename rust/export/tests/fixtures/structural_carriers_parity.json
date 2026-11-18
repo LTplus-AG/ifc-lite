@@ -41,12 +41,12 @@
       "why": "a converted varying action: its relationship id is allocated before its configuration's, configurations are appended first",
       "from": "IFC2X3",
       "to": "IFC4",
-      "data": "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);\n#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));\n#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));\n#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));\n#17=IFCSHAPEASPECT((#14,#16,#16),'Coverage aspect',$,.T.,#15);\n#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);\n#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#17,(#11,#11));",
+      "data": "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);\n#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));\n#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));\n#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));\n#17=IFCSHAPEASPECT((#14,#16,#16),'Coverage aspect',$,.T.,#15);\n#18=IFCSTRUCTURALLOADLINEARFORCE('first subsequent',0.,0.,-6.,0.,0.,0.);\n#19=IFCSTRUCTURALLOADLINEARFORCE('second subsequent',0.,0.,-7.,0.,0.,0.);\n#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);\n#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#17,(#19,#18));",
       "expect": [
         "#2=IFCORGANIZATION($,'O',$,$,$);",
         "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);",
         "#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#33,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.NOTDEFINED.);",
-        "#33=IFCSTRUCTURALLOADCONFIGURATION($,(#11,#11,#11),$);",
+        "#33=IFCSTRUCTURALLOADCONFIGURATION($,(#11,#19,#18),$);",
         "#31=IFCRELASSIGNSTOPRODUCT('0_o4Q92PfJbxJO8HJ0YE$L',#5,'Causes',$,(#20),$,#21);",
         "#32=IFCRELASSIGNSTOPRODUCT('3K3y1LersjjWipqUOWpWlP',#5,'Causes',$,(#20),$,#30);"
       ]

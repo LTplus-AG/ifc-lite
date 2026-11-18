@@ -20,7 +20,7 @@ use crate::step_slot::slots_of;
 /// The IFC2X3 actions with a CausedBy slot (IFC2X3_TC1.exp:7237).
 const IFC2X3_ACTIONS: [&str; 5] = ["IFCSTRUCTURALPOINTACTION", "IFCSTRUCTURALLINEARACTION", "IFCSTRUCTURALPLANARACTION", "IFCSTRUCTURALLINEARACTIONVARYING", "IFCSTRUCTURALPLANARACTIONVARYING"];
 /// IfcStructuralAction.CausedBy in IFC2X3: slot 10 of every action.
-const CAUSED_BY: usize = 10;
+pub(crate) const CAUSED_BY: usize = 10;
 
 pub(crate) const CAUSED_BY_AMONG: &str = "IFC2X3 CausedBy is one of several reactions the action's 'Causes' relationships name in IFC4, so IFC2X3 CausedBy cannot be restored from them";
 pub(crate) const CAUSED_BY_WRITTEN: &str = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";

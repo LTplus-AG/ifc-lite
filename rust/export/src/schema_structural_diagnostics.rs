@@ -57,23 +57,27 @@ impl StructuralDiagnostics {
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
     /// pair): the target record body, reported because the class changes.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
-        // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
-        if self.varying.stays_unconverted(id, entity) && self.carriers.names_reaction(id) { self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into()); }
         let cause = self.cause(id, entity);
-        if let Some(message) = cause {
+        let rewritten = match self.links.link(entity, args) {
+            Some(attrs) => Some((format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()])),
+            None => self.varying.rewrite(id, entity, args, cause.is_some()),
+        };
+        // Queue the relationship only once the varying rewrite has produced an IFC4 action.
+        if crate::schema_structural_varying::StructuralVarying::is_varying(entity) && rewritten.is_none() {
+            if self.carriers.names_reaction(id) {
+                self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into());
+            }
+        } else if let Some(message) = cause {
             self.record(message.into());
             self.carriers.write(id);
         }
-        let (body, losses) = match self.links.link(entity, args) {
-            Some(attrs) => (format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()]),
-            None => self.varying.rewrite(id, entity, args, cause.is_some())?,
-        };
+        let (body, losses) = rewritten?;
         losses.into_iter().for_each(|loss| self.record(loss));
         Some(body)
     }
 
     /// The message for an action whose CausedBy a 'Causes' relationship holds, or None.
-    fn cause(&self, id: u32, entity: &str) -> Option<&'static str> {
+    pub(crate) fn cause(&self, id: u32, entity: &str) -> Option<&'static str> {
         if self.varying.stays_unconverted(id, entity) { None } else { self.carriers.cause(id) }
     }
 
@@ -86,10 +90,10 @@ impl StructuralDiagnostics {
             let configured = self.varying.plans(action);
             // A varying action that stays unconverted gets no relationship.
             let caused = self.carriers.needs_id(action, configured);
-            // All of an action's ids or none, so a relationship never names an action left unconverted.
             let relationship = if caused { let Some(id) = allocate() else { return }; Some(id) } else { None };
-            let configuration = if configured { let Some(id) = allocate() else { return }; Some(id) } else { None };
-            if let Some(id) = relationship { self.carriers.assign(action, id); }
+            // When only one id fits, converting the action takes priority over carrying CausedBy.
+            let configuration = if configured { let Some(id) = allocate().or(relationship) else { return }; Some(id) } else { None };
+            if let Some(id) = relationship.filter(|id| Some(*id) != configuration) { self.carriers.assign(action, id); }
             if let Some(id) = configuration { self.varying.assign(action, id); }
         }
     }

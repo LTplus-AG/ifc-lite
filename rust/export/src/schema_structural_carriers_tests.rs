@@ -170,3 +170,36 @@ fn reports_caused_by_lost_when_no_id_is_left_for_its_relationship_10597() {
     assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4"), "{warnings}");
     assert!(!warnings.contains("CausedBy is written as"), "{warnings}");
 }
+
+#[test]
+fn commented_varying_action_converts_before_its_causes_is_written_10597() {
+    let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");
+    let action = VARYING.replace("ACTIONVARYING(", "ACTIONVARYING /* note ( */ (");
+    let (up, _) = convert(&model("IFC2X3", &[&geometry, REACTION, &action].join("\n")), "IFC4");
+    assert!(record(&up, 30).starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{up}");
+    assert!(relationships(&up)[0].ends_with("'Causes',$,(#20),$,#30);"), "{up}");
+}
+
+#[test]
+fn the_last_id_goes_to_the_varying_load_configuration_10597() {
+    let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");
+    let source = model("IFC2X3", &[&geometry, REACTION, VARYING, "#4294967294=IFCCARTESIANPOINT((0.,0.,0.));"].join("\n"));
+    let (up, warnings) = convert(&source, "IFC4");
+    assert!(record(&up, 30).starts_with("#30=IFCSTRUCTURALCURVEACTION(") && record(&up, 30).contains(",#4294967295,"), "{up}");
+    assert!(record(&up, u32::MAX).starts_with("#4294967295=IFCSTRUCTURALLOADCONFIGURATION("), "{up}");
+    assert!(relationships(&up).is_empty(), "{up}");
+    assert!(warnings.contains("CausedBy has no slot"), "{warnings}");
+}
+
+#[test]
+fn the_loss_counter_only_counts_uncarried_caused_by_10597() {
+    let point = "#24=IFCSTRUCTURALPOINTACTION('3nopC4uRTI$9OB7Ig1TJsz',#5,'B',$,$,#9,$,#12,.GLOBAL_COORDS.,.F.,#20);";
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    for action in [CAUSED, point] {
+        for (data, expected) in [[REACTION, action], [REACTION, &action.replace("#20", "#999")]].into_iter().zip([0, 1]) {
+            let source = model("IFC2X3", &data.join("\n"));
+            let (_, stats, _) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+            assert_eq!(stats.attribute_values_dropped, expected, "{source}");
+        }
+    }
+}

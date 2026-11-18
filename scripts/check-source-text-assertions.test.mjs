@@ -1048,6 +1048,16 @@ ${call}
   assert.equal(flagged(src(`check(s, 'literal');`)), false, 'taint landed in the wrong parameter');
 });
 
+test('bare imported assert does not resolve to a local helper named assert (#10689)', () => {
+  const source = `import assert from 'node:assert/strict';
+const source = readFileSync('gate.mjs', 'utf8');
+const helpers = { assert: (value) => value.includes('x') };
+assert(source.length > 0);
+assert.ok(helpers.assert('x'));`;
+  assert.deepEqual(analyze(source).hits, []);
+  assert.ok(flagged(source + "\nassert.ok(source.includes('x'));"));
+});
+
 test('assert.ok does not resolve to a local helper that happens to be named ok', () => {
   // #10595: a helper `{ ok: (n) => n < 3 }` took the taint of a marked
   // `assert.ok(source…)`, and the flat taint set then marked every later `n`,

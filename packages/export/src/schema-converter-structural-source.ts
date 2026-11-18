@@ -73,16 +73,16 @@ export class SourceRecords {
   }
 
   /**
-   * Each source record naming any of `targets` outside strings and comments:
-   * which ones, and whether the writer converts it (`convertedSlots`). Reads
-   * every record and caches nothing, so callers ask only when they have targets.
+   * Each source record naming any of `targets` outside strings and comments,
+   * and which ones. Reads every record and caches nothing, so callers ask only
+   * when they have targets.
    */
-  *naming(targets: ReadonlySet<number>): Generator<{ id: number; named: ReadonlySet<number>; converted: boolean }> {
+  *naming(targets: ReadonlySet<number>): Generator<{ id: number; named: ReadonlySet<number> }> {
     // @raw-entity-enumeration-ok same unedited source-only prepass
     for (const [id, entry] of this.store.entityIndex.byId) {
       const text = this.decode(entry);
       const named = namedExpressIds(text.slice(Math.max(0, text.indexOf('('))), targets);
-      if (named.size) yield { id, named, converted: STEP_RECORD.test(text) };
+      if (named.size) yield { id, named };
     }
   }
 

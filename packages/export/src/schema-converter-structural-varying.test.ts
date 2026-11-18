@@ -54,9 +54,11 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
   it('refuses a configuration named by an action split over lines, its only referrer', async () => {
     const config = '#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);';
     const action = (sep: string, type = '.LINEAR.') => `#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,${sep}.GLOBAL_COORDS.,.F.,$,${type});`;
-    for (const type of ['.LINEAR.', '.SINUS.']) {
-      const store = await parse(model('IFC4', `${SHARED}\n${config}\n${action('\n  ', type)}`));
-      expect(() => exportToStep(store, { schema: 'IFC2X3' }), type).toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
+    const point = "#30=IFCSTRUCTURALPOINTACTION('0d2HL$ILbNDhwyUI0qw12$',$,'P',$,$,$,$,#25,\n  .GLOBAL_COORDS.,.F.);";
+    // LINEAR would convert on one line, SINUS would not; a point action leaves the file with no curve or surface action.
+    for (const record of [action('\n  '), action('\n  ', '.SINUS.'), point]) {
+      const store = await parse(model('IFC4', `${SHARED}\n${config}\n${record}`));
+      expect(() => exportToStep(store, { schema: 'IFC2X3' }), record).toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
     }
     // The preview agrees: no carrier writes the split action, so the configuration's Values are lost, which one line keeps.
     const values = async (sep: string) => analyzeConversionLoss(await parse(model('IFC4', `${SHARED}\n${config}\n${action(sep)}`)), 'IFC4', 'IFC2X3')

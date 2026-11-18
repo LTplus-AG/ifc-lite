@@ -61,7 +61,8 @@ export class StructuralVarying {
     const { byId, byType } = store.entityIndex;
     const present = (types: readonly string[]) => types.some((type) => byType.get(type)?.length);
     const work = mode === 'upgrade' ? present(KINDS.map((k) => k.ifc2x3))
-      : mode === 'downgrade' && present(['IFCSTRUCTURALLOADCONFIGURATION']) && present(KINDS.map((k) => k.ifc4));
+      // With no action to convert, a downgrade still checks what names a configuration.
+      : mode === 'downgrade' && present(['IFCSTRUCTURALLOADCONFIGURATION']);
     if (!work) return;
     for (const id of byType.get('IFCSHAPEASPECT') ?? []) {
       const args = source.slots(id);
@@ -98,8 +99,8 @@ export class StructuralVarying {
         consumed.add(refId(args[7])!);
       }
     }
-    for (const { id, named, converted } of source.naming(new Set(source.ids('IFCSTRUCTURALLOADCONFIGURATION')))) {
-      if (!candidates.has(id) && (!converted || [...named].some((c) => consumed.has(c)))) throw new Error(SHARED_CONFIGURATION);
+    for (const { id, named } of source.naming(new Set(source.ids('IFCSTRUCTURALLOADCONFIGURATION')))) {
+      if (!candidates.has(id) && ([...named].some((c) => consumed.has(c)) || !source.convertedSlots(id))) throw new Error(SHARED_CONFIGURATION);
     }
   }
 

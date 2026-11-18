@@ -110,7 +110,7 @@ export class StructuralDiagnostics {
     if (unconverted && this.carriers.causeOf(entity, args, withheld) !== null) this.record(CAUSED_BY_UNCONVERTED);
     const cause = unconverted ? null : this.carriers.noteCause(id, entity, args, withheld);
     const thickness = cause ? [] : this.thickness.note(id, entity, args, withheld);
-    const axis = cause || thickness.length ? null : this.axes.hold(id, entity, args, withheld);
+    const axis = cause || thickness.length ? null : this.axes.hold(id, args, withheld);
     const held = cause ? ['CausedBy'] : axis ? ['Axis'] : thickness;
     let carried = NONE;
     if (held.length) {

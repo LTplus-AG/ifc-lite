@@ -22,12 +22,12 @@
  * Reads the source store, so only an unedited full export arms it.
  * The upgrade for unplaced members matches rust/export/src/schema_structural_axes.rs.
  */
-import { formatStepReal } from '@ifc-lite/data';
+import { firstProjAxis, formatStepReal, walkPlacementChain } from '@ifc-lite/data';
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { readStepSlots } from './step-argument-parser.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 // A cycle with the source module, which reads lists here; only functions cross it, called after load.
-import { conversionMode, namesWithheld, slotRef, slotUnset, stepString, type ConversionMode, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { conversionMode, namesWithheld, slotRef, slotUnset, stepString, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
 
 /** The Name of an association the downgrade writes only to carry an Axis. */
 const AXIS_CARRIER = 'IFC4 Axis';
@@ -46,6 +46,8 @@ type Vec3 = [number, number, number];
 /** A rotation as the images of the local x, y and z axes. */
 type Frame = [Vec3, Vec3, Vec3];
 const IDENTITY: Frame = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+/** A member's Axis on the downgrade: in the world frame, its source direction, and its placement's rotation. */
+type Plan = { world: Vec3; axis: number; frame: Frame };
 
 export function listItems(token: string | undefined): readonly string[] | null {
   if (token === undefined) return null;
@@ -81,86 +83,77 @@ export class StructuralAxes {
   /** The exporter's express-id allocator, shared with every other record it appends. */
   ids: (() => number) | null = null;
   private readonly pending: string[] = [];
-  private mode: ConversionMode = null;
   /** Upgrade: member id -> its one ProfileOrientation, or null when its associations disagree. */
   private readonly axes = new Map<number, number | null>();
+  /** Direction id -> its ratios, for the directions a member or an association names. */
   private readonly directions = new Map<number, Vec3>();
-  /** Upgrade: direction value key -> the first source direction with it, built on the first turned member. */
-  private byValue: Map<string, number> | null = null;
-  /** Placement id -> its rotation in the world frame, or null when it does not read. */
-  private readonly frames = new Map<number, Frame | null>();
-  private source: SourceRecords | null = null;
-  /** Upgrade: member id -> the Axis written for it. */
+  /** Upgrade: member id -> its placement's rotation, for members with an orientation. */
+  private readonly memberFrames = new Map<number, Frame>();
+  /** Upgrade: direction value key -> the first source direction with it; built only when a member is turned. */
+  private readonly byValue = new Map<string, number>();
+  /** Upgrade: member id -> the Axis written for it (`axis` is asked twice per member). */
   private readonly filled = new Map<number, string | undefined>();
-  /** Upgrade: carrier records left out. Downgrade: association id -> the member whose Axis fills its orientation. */
+  /** Upgrade: carrier records left out. */
   private readonly consumed = new Set<number>();
-  private readonly fills = new Map<number, number>();
-  /** Downgrade: member id -> its world Axis and how it travels: in an association it has, or in a new one. */
-  private readonly carried = new Map<number, { world: Vec3; axis: number; frame: Frame; into: number | null }>();
+  /** Downgrade: association id -> the Axis that fills its unset orientation. */
+  private readonly fills = new Map<number, Plan>();
+  /** Downgrade: member id -> its Axis and where it travels: an association it has, or a new one (null). */
+  private readonly carried = new Map<number, Plan & { into: number | null }>();
 
   /** Reads one IFC2X3 record; `fromStore` reads them all. */
   note(line: string): void {
     const rec = readStepSlots(line), id = /^\s*#(\d+)/.exec(line)?.[1];
-    if (rec && id) this.read(Number(id), rec.type, rec.slots);
+    if (!rec || !id) return;
+    if (rec.type === 'IFCDIRECTION') {
+      const values = ratios(rec.slots[0]);
+      if (values) this.directions.set(Number(id), values);
+    } else this.readRelation(rec.type, rec.slots);
   }
 
-  private read(id: number, type: string, slots: readonly string[]): void {
-    if (type === 'IFCDIRECTION') {
-      const values = ratios(slots[0]);
-      if (values) this.directions.set(id, values);
-    } else if (type === RELATION && slots.length === 8) {
-      const axis = slotRef(slots[ORIENTATION]);
-      for (const token of listItems(slots[RELATED]) ?? []) {
-        const member = slotRef(token);
-        if (member === null) continue;
-        this.axes.set(member, this.axes.has(member) && this.axes.get(member) !== axis ? null : axis);
-      }
+  private readRelation(type: string | undefined, slots: readonly string[] | undefined): void {
+    if (type !== RELATION || slots?.length !== 8) return;
+    const axis = slotRef(slots[ORIENTATION]);
+    for (const token of listItems(slots[RELATED]) ?? []) {
+      const member = slotRef(token);
+      if (member === null) continue;
+      this.axes.set(member, this.axes.has(member) && this.axes.get(member) !== axis ? null : axis);
     }
   }
 
   fromStore(source: SourceRecords, from: string, to: string): void {
-    this.mode = conversionMode(from, to);
+    const mode = conversionMode(from, to);
     const rels = source.ids(RELATION);
-    if (!this.mode || (this.mode === 'upgrade' && !rels.length)) return;
+    if (!mode || (mode === 'upgrade' && !rels.length)) return;
     const members = [...MEMBERS].flatMap((t) => source.ids(t));
     if (!members.length) return;
-    this.source = source;
-    for (const id of source.ids('IFCDIRECTION')) this.read(id, 'IFCDIRECTION', source.slots(id) ?? []);
-    if (this.mode === 'upgrade') {
-      for (const id of rels) this.read(id, RELATION, source.slots(id) ?? []);
-      this.findCarriers(source, rels);
-    } else {
-      this.planCarriers(source, members, rels);
+    const frames = frameReader(source, (id) => this.direction(source, id));
+    if (mode === 'downgrade') {
+      this.planCarriers(source, members, rels, frames);
+      return;
+    }
+    for (const id of rels) this.readRelation(source.type(id), source.slots(id));
+    for (const [member, orientation] of this.axes) {
+      const frame = orientation !== null && MEMBERS.has(source.type(member) ?? '') && this.direction(source, orientation) ? frames(source.slots(member)?.[OBJECT_PLACEMENT]) : null;
+      if (frame) this.memberFrames.set(member, frame);
+    }
+    this.findCarriers(source, rels);
+    if ([...this.memberFrames.values()].some((f) => !isIdentity(f))) {
+      for (const d of source.ids('IFCDIRECTION')) {
+        const value = this.consumed.has(d) ? null : this.direction(source, d);
+        const k = value && key(value);
+        if (k && !this.byValue.has(k)) this.byValue.set(k, d);
+      }
     }
   }
 
-  /** The rotation of a placement slot in the world frame: identity for `$`, null when it does not read. */
-  private frame(token: string | undefined, depth = 0): Frame | null {
-    if (slotUnset(token)) return IDENTITY;
-    const id = slotRef(token);
-    if (id === null || depth > 64 || !this.source) return null;
-    if (this.frames.has(id)) return this.frames.get(id)!;
-    const source = this.source;
-    let frame: Frame | null = null;
-    const slots = source.type(id) === 'IFCLOCALPLACEMENT' ? source.slots(id) : undefined;
-    const place = slotRef(slots?.[1]);
-    const placement = source.slots(place), type = source.type(place);
-    const parent = slots ? this.frame(slots[0], depth + 1) : null;
-    const direction = (token: string | undefined, fallback: Vec3): Vec3 | null =>
-      slotUnset(token) ? fallback : source.type(slotRef(token)) === 'IFCDIRECTION' ? ratios(source.slots(slotRef(token))?.[0]) : null;
-    if (parent && placement && (type === 'IFCAXIS2PLACEMENT3D' || type === 'IFCAXIS2PLACEMENT2D')) {
-      // IfcBuildAxes: z, then x made orthogonal to it, then y = z x x.
-      const z = type === 'IFCAXIS2PLACEMENT3D' ? direction(placement[1], [0, 0, 1]) : [0, 0, 1] as Vec3;
-      const ref = direction(placement[type === 'IFCAXIS2PLACEMENT3D' ? 2 : 1], [1, 0, 0]);
-      const zu = z && unit(z);
-      const xu = zu && ref && unit([0, 1, 2].map((i) => ref[i] - dot(ref, zu) * zu[i]) as Vec3);
-      if (zu && xu) {
-        const local: Frame = [xu, cross(zu, xu), zu];
-        frame = local.map((axis) => apply(parent, axis)) as Frame;
-      }
+  /** The ratios of direction `id`, read once. */
+  private direction(source: SourceRecords, id: number | null): Vec3 | null {
+    if (id === null || source.type(id) !== 'IFCDIRECTION') return null;
+    if (!this.directions.has(id)) {
+      const values = ratios(source.slots(id)?.[0]);
+      if (values) this.directions.set(id, values);
     }
-    this.frames.set(id, frame);
-    return frame;
+    return this.directions.get(id) ?? null;
   }
 
   /** IFC2X3 -> IFC4: the carrier associations to leave out, each only an Axis the upgrade then fills. */
@@ -172,7 +165,8 @@ export class StructuralAxes {
       const props = slotRef(args?.[PROPERTIES]), axis = slotRef(args?.[ORIENTATION]), member = related[0] ?? null;
       if (args?.length !== 8 || stepString(args[2]) !== AXIS_CARRIER || !slotUnset(args[3]) || !slotUnset(args[6])
         || related.length !== 1 || member === null || !MEMBERS.has(source.type(member) ?? '')
-        || axis === null || this.axes.get(member) !== axis || source.type(props) !== 'IFCGENERALPROFILEPROPERTIES') continue;
+        || axis === null || this.axes.get(member) !== axis || !this.memberFrames.has(member)
+        || source.type(props) !== 'IFCGENERALPROFILEPROPERTIES') continue;
       const values = source.slots(props);
       if (values?.length !== 7 || !values.every(slotUnset)) continue;
       found.push({ rel, props: props!, axis, member });
@@ -181,51 +175,58 @@ export class StructuralAxes {
     const uses = source.referrers(new Set(found.flatMap((c) => [c.props, c.axis])));
     for (const c of found) {
       if (uses.get(c.props) !== 1) continue;
-      const frame = this.frame(source.slots(c.member)?.[OBJECT_PLACEMENT]);
-      if (!frame) continue;
       this.consumed.add(c.rel);
       this.consumed.add(c.props);
       // A turned Axis names another direction, so the world one goes with its carrier.
-      if (!isIdentity(frame) && uses.get(c.axis) === 1) this.consumed.add(c.axis);
+      if (!isIdentity(this.memberFrames.get(c.member)!) && uses.get(c.axis) === 1) this.consumed.add(c.axis);
     }
   }
 
   /** IFC4 -> IFC2X3: how each member's Axis travels, or nothing for one that cannot. */
-  private planCarriers(source: SourceRecords, members: readonly number[], rels: readonly number[]): void {
+  private planCarriers(source: SourceRecords, members: readonly number[], rels: readonly number[], frames: (token: string | undefined) => Frame | null): void {
     const owned = new Map<number, number[]>();
     for (const rel of rels) {
-      for (const m of listItems(source.slots(rel)?.[RELATED])?.map(slotRef) ?? []) if (m !== null) owned.set(m, [...owned.get(m) ?? [], rel]);
+      for (const m of listItems(source.slots(rel)?.[RELATED])?.map(slotRef) ?? []) {
+        if (m === null) continue;
+        const list = owned.get(m);
+        if (list) list.push(rel); else owned.set(m, [rel]);
+      }
     }
-    const plans = new Map<number, { world: Vec3; axis: number; frame: Frame }>();
+    const plans = new Map<number, Plan>();
     for (const member of members) {
       const args = source.slots(member);
       const axis = slotRef(args?.[AXIS]);
-      const local = axis === null ? undefined : this.directions.get(axis);
-      const frame = args?.length === 9 && local ? this.frame(args[OBJECT_PLACEMENT]) : null;
+      const local = args?.length === 9 ? this.direction(source, axis) : null;
+      const frame = local ? frames(args![OBJECT_PLACEMENT]) : null;
       if (frame) plans.set(member, { world: apply(frame, local!), axis: axis!, frame });
     }
+    /** Association id -> whether every member it relates agrees on one Axis, so its unset orientation can hold it. */
+    const agreed = new Map<number, boolean>();
     for (const [member, plan] of plans) {
       const rels = owned.get(member) ?? [];
       if (!rels.length) { this.carried.set(member, { ...plan, into: null }); continue; }
       // IFC2X3 reads one orientation per member, so a member with two associations takes no third.
-      const args = rels.length === 1 ? source.slots(rels[0]) : undefined;
+      const rel = rels[0], args = rels.length === 1 ? source.slots(rel) : undefined;
       if (args?.length !== 8) continue;
       const held = slotRef(args[ORIENTATION]);
       if (held !== null) {
-        const value = this.directions.get(held);
-        if (value && near(value, plan.world)) this.carried.set(member, { ...plan, into: rels[0] });
+        const value = this.direction(source, held);
+        if (value && near(value, plan.world)) this.carried.set(member, { ...plan, into: rel });
         continue;
       }
-      // An unset orientation holds the Axis of every member it relates, so they must all agree.
-      const related = listItems(args[RELATED])?.map(slotRef) ?? [];
-      if (!slotUnset(args[ORIENTATION]) || !related.every((m) => m !== null && plans.has(m) && near(plans.get(m)!.world, plan.world) && owned.get(m)!.length === 1)) continue;
-      this.carried.set(member, { ...plan, into: rels[0] });
-      if (!this.fills.has(rels[0])) this.fills.set(rels[0], member);
+      if (!slotUnset(args[ORIENTATION])) continue;
+      if (!agreed.has(rel)) {
+        const related = listItems(args[RELATED])?.map(slotRef) ?? [];
+        agreed.set(rel, related.every((m) => m !== null && plans.has(m) && near(plans.get(m)!.world, plan.world) && owned.get(m)!.length === 1));
+      }
+      if (!agreed.get(rel)) continue;
+      this.carried.set(member, { ...plan, into: rel });
+      if (!this.fills.has(rel)) this.fills.set(rel, plan);
     }
   }
 
   /** The direction id naming `world`: the member's own Axis when its frame is unturned, else a new record. */
-  private worldDirection(plan: { world: Vec3; axis: number; frame: Frame }): string {
+  private worldDirection(plan: Plan): string {
     if (isIdentity(plan.frame)) return `#${plan.axis}`;
     const id = this.ids!();
     this.pending.push(`#${id}=IFCDIRECTION(${tuple(plan.world)});`);
@@ -239,21 +240,18 @@ export class StructuralAxes {
    */
   axis(line: string): string | undefined {
     if (!/^\s*#\d+\s*=\s*IFCSTRUCTURALCURVEMEMBER(?:VARYING)?\s*\(/i.test(line)) return undefined;
-    const rec = readStepSlots(line), id = Number(/^\s*#(\d+)/.exec(line)?.[1]);
-    if (!rec || !id || !MEMBERS.has(rec.type) || rec.slots.length !== 8) return undefined;
+    const id = Number(/^\s*#(\d+)/.exec(line)?.[1]);
     if (this.filled.has(id)) return this.filled.get(id);
+    const rec = readStepSlots(line);
+    if (!rec || !id || !MEMBERS.has(rec.type) || rec.slots.length !== 8) return undefined;
     const orientation = this.axes.get(id);
     const world = orientation == null ? undefined : this.directions.get(orientation);
     // Without the source store (`note` alone) only an unplaced member reads.
-    const frame = slotUnset(rec.slots[OBJECT_PLACEMENT]) ? IDENTITY : this.frame(rec.slots[OBJECT_PLACEMENT]);
+    const frame = slotUnset(rec.slots[OBJECT_PLACEMENT]) ? IDENTITY : this.memberFrames.get(id);
     let axis: string | undefined;
     if (world && frame && isIdentity(frame)) axis = `#${orientation}`;
     else if (world && frame && this.ids) {
       const local = unapply(frame, world);
-      if (!this.byValue) {
-        this.byValue = new Map();
-        for (const [d, v] of this.directions) if (!this.consumed.has(d) && !this.byValue.has(key(v))) this.byValue.set(key(v), d);
-      }
       const same = this.byValue.get(key(local));
       if (same !== undefined) axis = `#${same}`;
       else {
@@ -266,8 +264,8 @@ export class StructuralAxes {
   }
 
   /** IFC4 -> IFC2X3: the message when this member's Axis travels in an association, writing a new one when it needs it; else null. */
-  hold(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
-    const plan = this.mode === 'downgrade' && MEMBERS.has(entity) ? this.carried.get(id) : undefined;
+  hold(id: number, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
+    const plan = this.carried.get(id);
     if (!plan || !this.ids || namesWithheld([args[1], args[AXIS]], withheld) || (plan.into !== null && withheld?.has(plan.into))) return null;
     if (plan.into === null) {
       const props = this.ids(), rel = this.ids();
@@ -282,12 +280,55 @@ export class StructuralAxes {
   /** The target body of a carrier record: left out on the upgrade, an association given the orientation on the downgrade. */
   rewrite(id: number, args: readonly string[]): StructuralRewrite | undefined {
     if (this.consumed.has(id)) return { body: null, losses: [] };
-    const member = this.fills.get(id);
-    const plan = member === undefined ? undefined : this.carried.get(member);
+    const plan = this.fills.get(id);
     if (!plan || !this.ids) return undefined;
     return { body: `${RELATION}(${[...args.slice(0, ORIENTATION), this.worldDirection(plan)].join(',')})`, losses: [] };
   }
 
   /** Records written so far, to append after the source records. */
   added(): string[] { return this.pending.splice(0); }
+}
+
+/**
+ * The world rotation of a placement slot: identity for `$`, null when the
+ * placement is not a chain of local placements with readable axes (a grid
+ * placement, a cycle). Memoized per placement for one prepass.
+ */
+function frameReader(source: SourceRecords, direction: (id: number | null) => Vec3 | null): (token: string | undefined) => Frame | null {
+  const cache = new Map<number, Frame | null>();
+  const localSlots = (id: number) => (source.type(id) === 'IFCLOCALPLACEMENT' ? source.slots(id) : undefined);
+  /** An axis placement's rotation by IfcBuildAxes: z, then x made orthogonal to it, then y = z x x. */
+  const axes = (id: number | null): Frame | null => {
+    const s = source.slots(id), type = source.type(id);
+    if (!s || (type !== 'IFCAXIS2PLACEMENT3D' && type !== 'IFCAXIS2PLACEMENT2D')) return null;
+    const read = (token: string | undefined, fallback: Vec3): Vec3 | null => (slotUnset(token) ? fallback : direction(slotRef(token)));
+    const z = type === 'IFCAXIS2PLACEMENT3D' ? read(s[1], [0, 0, 1]) : [0, 0, 1] as Vec3;
+    const zu = z && unit(z);
+    const refToken = s[type === 'IFCAXIS2PLACEMENT3D' ? 2 : 1];
+    // An unset RefDirection is the renderer's (`firstProjAxis`), which also settles an Axis along world X.
+    const ref = zu && (slotUnset(refToken) ? firstProjAxis(zu) : direction(slotRef(refToken)));
+    const xu = zu && ref && unit([0, 1, 2].map((i) => ref[i] - dot(ref, zu) * zu[i]) as Vec3);
+    return zu && xu ? [xu, cross(zu, xu), zu] : null;
+  };
+  return (token) => {
+    if (slotUnset(token)) return IDENTITY;
+    const start = slotRef(token);
+    if (start === null) return null;
+    if (cache.has(start)) return cache.get(start)!;
+    const walked = walkPlacementChain(start, (id) => {
+      const relTo = localSlots(id)?.[0];
+      return relTo === undefined || slotUnset(relTo) ? null : slotRef(relTo) ?? -1;
+    }, { stopAt: (id) => cache.has(id) });
+    const stopped = walked.end === 'stopped';
+    const chain = stopped ? walked.ids.slice(0, -1) : walked.ids;
+    let frame: Frame | null = walked.end === 'cycle' ? null : stopped ? cache.get(walked.ids[walked.ids.length - 1])! : IDENTITY;
+    // Composed from the top of the chain down. A top that is no local placement (a grid placement, an unreadable link) does not read.
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const slots = localSlots(chain[i]);
+      const local = slots ? axes(slotRef(slots[1])) : null;
+      frame = frame && local && local.map((axis) => apply(frame!, axis)) as Frame;
+      cache.set(chain[i], frame);
+    }
+    return cache.get(start) ?? null;
+  };
 }

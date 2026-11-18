@@ -19,7 +19,7 @@ export const geometryExportDialogsFr = {
   "geometryExport.shared.unknownError": "Erreur inconnue",
   "geometryExport.shared.geometryEngineUnavailableError": "Moteur géométrique indisponible",
   "geometryExport.shell.filenamePreviewLabel": "Sera enregistré sous :",
-  "geometryExport.shell.warningsSummary": {"one":"{count} avertissement","other":"{count} avertissements","many":"{count} avertissements"},
+  "geometryExport.shell.warningsSummary": {"one":"{countDisplay} avertissement","other":"{countDisplay} avertissements","many":"{countDisplay} avertissements"},
   "geometryExport.glb.triggerButton": "Exporter en GLB",
   "geometryExport.glb.dialogTitle": "Exporter un fichier GLB",
   "geometryExport.glb.dialogDescription": "Exporter la géométrie du modèle au format glTF binaire, avec son positionnement actuel dans l’espace de travail",

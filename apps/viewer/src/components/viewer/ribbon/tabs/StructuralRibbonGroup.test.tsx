@@ -75,6 +75,23 @@ it('offers Derive on a physical-only model and names it in the mode controls\' r
     'the reason drops Derive once it is unavailable');
 
   act(() => useViewerStore.setState({ collabRole: null }));
+  assert.equal(disabled('model:derive-structural'), false);
+
+  // Each write lock alone, with no other listed input changing (#10643 follow-up).
+  act(() => useViewerStore.setState({ editEnabled: false }));
+  assert.equal(reason('model:derive-structural'), 'mutationPermission.editModeRequired',
+    'turning Edit mode off updates Derive at once');
+  assert.equal(reason('vis:structural-both'), 'commandPalette.availability.structural');
+
+  act(() => useViewerStore.setState({ editEnabled: true }));
+  assert.equal(disabled('model:derive-structural'), false, 'turning Edit mode back on re-enables Derive');
+  assert.equal(reason('vis:structural-both'), 'commandPalette.availability.structuralDerivable');
+
+  act(() => useViewerStore.getState().setServerPropertiesRun('m', { kind: 'failed', runId: 1, error: 'offline' }));
+  assert.equal(reason('model:derive-structural'), 'mutationPermission.propertiesFailed',
+    'a model whose properties failed to load cannot be derived into');
+  act(() => useViewerStore.getState().setServerPropertiesRun('m', { kind: 'idle' }));
+  assert.equal(disabled('model:derive-structural'), false);
   click(control('model:derive-structural'));
   await waitFor(() => [...document.querySelectorAll('[role="dialog"]')]
     .some((dialog) => dialog.textContent?.includes(resolve('commandPalette.tool.deriveStructural.label'))),

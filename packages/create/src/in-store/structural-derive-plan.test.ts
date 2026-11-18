@@ -428,7 +428,7 @@ describe('structural derivation plan (#9668)', () => {
   });
 
   it('passes the analysis models already in the file through to the plan', () => {
-    const existing = [{ expressId: 7, name: 'Authored', derived: false }];
+    const existing = [{ expressId: 7, name: 'Authored', derived: false, memberIds: [8] }];
     const plan = planStructuralDerivation({ ...facts(beam(0, 6, 0, 3)), existingAnalysisModels: existing });
     expect(plan.existingAnalysisModels).toEqual(existing);
     expect(plan.refusal).toMatch(/already has an analysis model \(#7\)/);

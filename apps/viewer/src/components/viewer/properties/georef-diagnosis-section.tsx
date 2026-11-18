@@ -28,6 +28,7 @@ import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
 import { posthog } from '@/lib/analytics';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { diagnoseModelGeoreference, type DiagnosisItem, type GeorefDiagnosis } from '@/lib/geo/georef-diagnosis';
+import { findingDetail } from './georef-finding-detail';
 import { areaOfUseText } from './epsg-area-of-use';
 import { INSPECTOR_COUNT, InspectorSectionTrigger } from './inspector-ui';
 
@@ -92,7 +93,7 @@ function FindingRow({ item, notice, onApply }: { item: DiagnosisItem; notice?: T
       <Icon className={`h-3 w-3 mt-0.5 shrink-0 ${style.className}`} aria-label={t(style.label)} />
       <div className="min-w-0 flex-1">
         <div className="font-medium text-foreground">{t(CODE_TITLE[item.finding.code])}</div>
-        <div className="text-muted-foreground">{notice ? t(notice) : item.finding.message}</div>
+        <div className="text-muted-foreground">{notice ? t(notice) : findingDetail(item.finding, t)}</div>
         {onApply && item.fix && (
           <div className="mt-1 flex items-center gap-2">
             <Button type="button" size="sm" variant="outline" onClick={onApply} className="h-6 px-2 text-xs">

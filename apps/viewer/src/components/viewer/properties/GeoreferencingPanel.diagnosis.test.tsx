@@ -13,6 +13,8 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { registerLocale, setLocale } from '@/i18n/registry';
+import { georeferencingDe } from '@/i18n/locales/de/georeferencing';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { advance, cleanup, click, render, type } from '@/test/render.js';
@@ -27,6 +29,7 @@ const AREA_OF_USE_2056 = /Area of use: longitude 5\.\d+° to 10\.\d+°, latitude
 
 afterEach(() => {
   cleanup();
+  setLocale('en');
   useViewerStore.setState(initialState, true);
 });
 
@@ -168,4 +171,23 @@ it('shows the EPSG area of use in a lookup result (#10608, #10398)', async () =>
     .find((b) => b.querySelector('code')?.textContent === '2056');
   for (const deadline = Date.now() + 15_000; Date.now() < deadline && !AREA_OF_USE_2056.test(row()?.textContent ?? '');) await advance(25);
   assert.match(row()?.textContent ?? '', AREA_OF_USE_2056, 'the 2056 result shows its area of use');
+});
+
+it('renders the German doctor detail with the fixture height (#10658)', async () => {
+  const store = await fixture('height-in-millimetres');
+  seed(store);
+  registerLocale('de', georeferencingDe);
+  setLocale('de');
+  const host = panel(store, { editable: false });
+  for (const deadline = Date.now() + 15_000; Date.now() < deadline;) {
+    if (host.querySelector('[data-testid="georef-check-summary"]')?.textContent === '1 Warnung') break;
+    await advance(25);
+  }
+  const toggle = [...host.querySelectorAll('button')].find((b) => b.textContent?.includes('Georeferenzierungsprüfung'));
+  assert.ok(toggle);
+  click(toggle);
+  const detail = host.querySelector('[data-finding-code="ORTHOGONAL_HEIGHT_IMPLAUSIBLE"] .text-muted-foreground');
+  assert.equal(detail?.textContent, 'OrthogonalHeight 540000 ergibt eine Höhe von 540000 m außerhalb des plausiblen Bereichs. Prüfen, ob Millimeter statt Karteneinheiten eingetragen wurden.');
+  act(() => setLocale('en'));
+  assert.match(detail?.textContent ?? '', /gives a height of 540000 m/);
 });

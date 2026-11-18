@@ -41,8 +41,8 @@ import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { MergedExporter, Ifc5Exporter, type ExportProgress } from '@ifc-lite/export';
-import { withInstancedMeshes } from '../../utils/instancedExport.js';
+import { MergedExporter, type ExportProgress } from '@ifc-lite/export';
+import { exportModelIfcx } from '@/lib/export/model-ifcx-export';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { landXmlDownloadInput, landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
 import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
@@ -380,7 +380,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
             : '')
           + (skipNotice ? `. ${skipNotice}` : '');
         exportedFormat = 'ifc';
-        return stepExportResult(msg, result.stats.warnings, t);
+        return stepExportResult(msg, [...prepared.warnings, ...result.stats.warnings], t);
       }
 
       if (!selectedModel) {
@@ -417,31 +417,6 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         }
         const idOffset = federatedModel?.idOffset ?? 0;
 
-        // Include GPU-instanced occurrences (absent from geometryResult.meshes) so
-        // the USD/IFC5 export isn't missing them. GPU instancing stopped being
-        // primary-only on 2026-08-06 (#2255) — a federated model can carry
-        // instanced occurrences too — so scope by THIS model's
-        // `{ idOffset, maxExpressId }` bracket rather than an `idOffset === 0`
-        // gate, or a federation of N models would splice every other model's
-        // instanced entities into this one's export. `federatedModel` is
-        // undefined only for the legacy slot, which is provably the sole model
-        // loaded, so `null` (no filter) is correct there (#2865/#2878 follow-up).
-        const exportGeometry = selectedModel.geometryResult
-          ? withInstancedMeshes(
-              selectedModel.geometryResult,
-              federatedModel
-                ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
-                : null,
-            )
-          : selectedModel.geometryResult;
-
-        const exporter = new Ifc5Exporter(
-          selectedModel.ifcDataStore,
-          exportGeometry,
-          mutationView || undefined,
-          idOffset,
-        );
-
         // When changesOnly, restrict to mutated entities and force applyMutations
         let localHidden: Set<number> | undefined;
         let localIsolated: Set<number> | undefined;
@@ -465,16 +440,20 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           effectiveVisibleOnly = true;
         }
 
-        const result = exporter.export({
-          includeGeometry: changesOnly ? false : includeGeometry,
-          includeProperties: true,
-          applyMutations: effectiveApplyMutations,
-          visibleOnly: effectiveVisibleOnly,
-          hiddenEntityIds: localHidden,
-          isolatedEntityIds: localIsolated,
-          onlyKnownProperties,
-          author: 'ifc-lite',
-          stripPathPrefix: roomExportPathPrefix(useViewerStore.getState(), selectedModelId), // room path -> file path, #4444
+        const result = await exportModelIfcx({
+          modelId: selectedModelId, dataStore: selectedModel.ifcDataStore,
+          geometryResult: selectedModel.geometryResult, mutationView: mutationView ?? undefined,
+          idOffset, maxExpressId: federatedModel ? federatedModel.maxExpressId ?? 0 : undefined, models: useViewerStore.getState().models, options: {
+            includeGeometry: changesOnly ? false : includeGeometry,
+            includeProperties: true,
+            applyMutations: effectiveApplyMutations,
+            visibleOnly: effectiveVisibleOnly,
+            hiddenEntityIds: localHidden,
+            isolatedEntityIds: localIsolated,
+            onlyKnownProperties,
+            author: 'ifc-lite',
+            stripPathPrefix: roomExportPathPrefix(useViewerStore.getState(), selectedModelId), // room path -> file path, #4444
+          },
         });
 
         const suffix = changesOnly ? '_changes' : (visibleOnly ? '_visible' : '_export');

@@ -178,3 +178,9 @@ function smallestContainingIsoPaper(page: PageMm): PaperSizeDefinition | null {
   }
   return best;
 }
+
+/** Round a millimetre figure for display without inventing precision. */
+export function formatMm(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
+}

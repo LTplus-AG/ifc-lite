@@ -13,14 +13,12 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
-import { downloadBlob, modelExportFilename } from '@/lib/export/download';
+import { downloadBlob } from '@/lib/export/download';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
-import { hasGeorefEdits, isStepSourceModel, resolveStepExportSource } from './step-export-source';
+import { cityJsonEngine, cityJsonFilename, produceNativeCityJson, type CityJsonEngine } from '@/lib/export/native-cityjson';
+import { hasGeorefEdits, isStepSourceModel } from './step-export-source';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
-type CityJsonEngine = Pick<typeof import('@ifc-lite/geometry'), 'exportCityJson' | 'cityJsonRefusalReason'>;
-/** Load both the facade and the separate export WASM only on demand. An object so tests can fail the load. */
-export const cityJsonEngine = { load: (): Promise<CityJsonEngine> => import('@ifc-lite/geometry') };
 
 /** STEP-based export: preserve the producer's local-coordinate fallback (#10607); session georeferencing is written (#10602). */
 export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurface; trigger?: React.ReactNode }) {
@@ -48,12 +46,9 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     let engine: CityJsonEngine | undefined;
     try {
       engine = await cityJsonEngine.load();
-      const { exportCityJson } = engine;
-      const source = await resolveStepExportSource(model, getMutationView, georefMutations);
-      const exported = await exportCityJson(source.bytes, { sequence });
-      const result = { ...exported, warnings: [...source.warnings, ...exported.warnings] };
-      const blob = new Blob([result.text], { type: sequence ? 'application/x-ndjson' : 'application/json' });
-      downloadBlob(blob, modelExportFilename(model.name, sequence ? 'city.jsonl' : 'city.json'));
+      const result = await produceNativeCityJson(engine, model, getMutationView, georefMutations, sequence);
+      const { blob } = result;
+      downloadBlob(blob, result.filename);
       const message = t('cityJsonExport.exported');
       // Keep diagnostics visible and bounded; retain the full list inline.
       if (result.warnings.length) {
@@ -82,7 +77,7 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     exportingLabel={t('geometryExport.kmz.exportingButton')}
     successTitle={t('geometryExport.kmz.successTitle')}
     errorTitle={t('geometryExport.kmz.errorTitle')}
-    filenamePreview={model ? modelExportFilename(model.name, sequence ? 'city.jsonl' : 'city.json') : undefined}
+    filenamePreview={model ? cityJsonFilename(model.name, sequence) : undefined}
     exportDisabled={!model} onExport={handleExport} onOpenStateChange={setOpen}
   >{({ isExporting }) => <>
     {localCoordinates && <Alert><AlertDescription>{t('cityJsonExport.localNotice')}</AlertDescription></Alert>}

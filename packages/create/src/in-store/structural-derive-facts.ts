@@ -137,8 +137,10 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
     }
     elements.push(fact);
   }
+  const memberIdByGlobalId = new Map(structural.members.map((member) => [member.globalId, member.expressId]));
   const existingAnalysisModels = structural.analysisModels.map((model) => ({
     expressId: model.expressId, name: model.name ?? null, derived: model.description === DERIVED_ANALYSIS_MODEL_DESCRIPTION,
+    memberIds: model.itemGlobalIds.flatMap((globalId) => memberIdByGlobalId.get(globalId) ?? []),
   }));
   // listStoreys sorts by elevation, lowest first.
   return { elements, defaultStoreyId: listStoreys(store, view)[0]?.id ?? null, existingAnalysisModels };

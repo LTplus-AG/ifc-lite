@@ -14,8 +14,7 @@ import type { TranslationValue } from '../types';
  * file extensions remain exact identifiers and stay out of this catalogue.
  */
 export const exportDialogEn = {
-  'exportDialog.warningsCount': {"one": "{count} warning", "other": "{count} warnings"},
-  'exportDialog.warningsMore': "and {count} more",
+  'exportDialog.warningsMore': "and {countDisplay} more",
   'exportDialog.trigger': 'Export IFC',
   'exportDialog.title': 'Export IFC File',
   'exportDialog.description.ifc5': 'Export model data and geometry, including current workspace placement',

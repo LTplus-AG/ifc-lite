@@ -3,15 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { RenderPipeline } from './pipeline.js';
-import { classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
-import type { BatchedMesh, RenderOptions } from './types.js';
+import { DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
+import type { BatchedMesh } from './types.js';
 import { batchForWholeDraw, type WholeBatchResidency } from './residency.js';
+import { canFilterOnGpu, type BatchVisibility } from './batch-visibility.js';
 
 export interface ShadowBatchScene extends WholeBatchResidency {
   getBatchedMeshes(): BatchedMesh[];
-  requestBatchPieces(batch: BatchedMesh): void;
-  recordBatchSubsetDrawn(batch: BatchedMesh, onScreen?: boolean): void;
-  getOrCreatePartialBatch(key: string, colorKey: string, ids: Set<number>, device: GPUDevice, pipeline: RenderPipeline, epoch: number): BatchedMesh | null | undefined;
   subsetStandIns(batch: BatchedMesh): BatchedMesh[];
 }
 /** A whole batch casts from its own buffers. Returns what to cast: the
@@ -26,19 +24,27 @@ function noteResidency(scene: ShadowBatchScene, batch: BatchedMesh, device: GPUD
   const standIns = scene.subsetStandIns(batch);
   return standIns.length > 0 ? standIns : [batch];
 }
-export function shadowOccluderBatches(scene: ShadowBatchScene, options: RenderOptions, device: GPUDevice, filtered: boolean, pipeline: RenderPipeline | null, epoch: number): BatchedMesh[] {
-  const all = scene.getBatchedMeshes();
-  if (!filtered) return all.flatMap((batch) => noteResidency(scene, batch, device, pipeline));
+
+/**
+ * The batches the sun shadow pass casts, under the colour pass's visibility
+ * (#2670, #10264 S2). A fully hidden batch is dropped. A partly hidden one
+ * casts its own buffers whole, and the collector marks it for the shadow
+ * fragment's visibility test, so a hidden element throws no phantom shadow
+ * and no sub-batch is cut from the CPU copy of the geometry. Without the GPU
+ * table (see `canFilterOnGpu`) a partly hidden batch does not cast at all.
+ */
+export function shadowOccluderBatches(
+  scene: ShadowBatchScene,
+  device: GPUDevice,
+  pipeline: RenderPipeline | null,
+  visibility: (batch: BatchedMesh) => BatchVisibility,
+  gpuVisibility: boolean,
+): BatchedMesh[] {
   const result: BatchedMesh[] = [];
-  for (const batch of all) {
-    const visible = classifyBatchVisibility(batch.expressIds, options.hiddenIds, options.isolatedIds);
-    if (visible.kind === 'none') continue;
-    if (visible.kind === 'all') { result.push(...noteResidency(scene, batch, device, pipeline)); continue; }
-    if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA || !pipeline) continue;
-    if (batch.gpuResident === false) scene.requestBatchPieces(batch); // a subset reads pieces, not parent buffers (#9050)
-    const subset = scene.getOrCreatePartialBatch(`${batch.colorKey}:${batch.id}`, batch.colorKey, visible.visibleIds, device, pipeline, epoch);
-    // #9034/#9050: a subset cut from the parent's CPU pieces keeps those pieces warm, resident or not.
-    if (subset && subset.indexCount > 0) { scene.recordBatchSubsetDrawn(batch, false); result.push(subset); }
+  for (const batch of scene.getBatchedMeshes()) {
+    const vis = visibility(batch);
+    if (vis === 'none' || (vis !== 'all' && !canFilterOnGpu(batch, gpuVisibility))) continue;
+    result.push(...noteResidency(scene, batch, device, pipeline));
   }
   return result;
 }

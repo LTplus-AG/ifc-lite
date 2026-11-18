@@ -77,9 +77,9 @@ export interface PickResult {
  * froze authored elements under the gizmo. The two must agree about what a
  * shared piece is.
  *
- * Latent, not live: no in-tree producer sets `MeshData.entityIds` at all today
- * (`packages/`, `apps/`, and the Rust crates were all checked), so only
- * hand-built fixtures reach the scan. It is written to match the sibling rule,
+ * No in-tree producer emits foreign `MeshData.entityIds` today: authored
+ * meshes tag vertices with their own id. Hosts and hand-built fixtures can
+ * supply foreign ids. This scan is written to match the sibling rule,
  * not to fix an observed misattribution.
  *
  * ONE home, because the two pick routes reach that rule from different sides

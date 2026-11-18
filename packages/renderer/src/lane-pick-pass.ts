@@ -15,11 +15,11 @@
 import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
 import type { PickClipState } from './pick-types.js';
 import type { PickResult } from './pick-resolve.js';
-import { bindSectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { bindSectionExclusions, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 import { EXTRA_CLIP_BYTES } from './extra-clip-planes.js';
 import { writeFlatPickUniform } from './picker-rte-uniforms.js';
 import { lanePickShaderWgsl } from './picker-shaders.js';
-import { PickVisibilityCache } from './pick-visibility.js';
+import { EntityVisibilityCache } from './entity-visibility-table.js';
 
 /** Vertex layouts that carry the entity lane: 28-byte flat, 36-byte textured, 12-byte quantized. */
 export type LanePickLayout = 'flat' | 'textured' | 'quantized';
@@ -57,11 +57,8 @@ export class LanePickPass {
   private readonly pipelines: Record<LanePickLayout, GPURenderPipeline>;
   private readonly layout: GPUBindGroupLayout;
   private slots: { buffer: GPUBuffer; capacity: number } | null = null;
-  private visibility: { buffer: GPUBuffer; bytes: number } | null = null;
   private bindGroup: GPUBindGroup | null = null;
-  /** The image last uploaded into `visibility`; any other image is written before use. */
-  private uploaded: Uint32Array | null = null;
-  private readonly visibilityCache = new PickVisibilityCache();
+  private readonly visibilityCache = new EntityVisibilityCache();
   private readonly scratch = new Float32Array(SLOT_BYTES / 4);
   private readonly clipFlags = new Uint32Array(this.scratch.buffer, 44 * 4, 4);
 
@@ -84,7 +81,6 @@ export class LanePickPass {
         label: 'lane-pick-bgl',
         entries: [
           { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: SLOT_BYTES } },
-          { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
           { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', minBindingSize: EXTRA_CLIP_BYTES } },
         ],
       });
@@ -130,6 +126,20 @@ export class LanePickPass {
   }
 
   /**
+   * Write this pick's hide/isolate image into the shared table. False when the
+   * table cannot hold it yet: a larger table may be pending
+   * (`visibilityPending`), so `Picker` awaits that before encoding.
+   */
+  writeVisibility(input: LanePickInput): boolean {
+    return sectionExclusions(this.device).writeVisibility(this.visibilityCache.resolve(input.hiddenIds, input.isolatedIds));
+  }
+
+  /** Write shared storage before any bind group referencing it enters the pick pass. */
+  prepareVisibility(input: LanePickInput): void {
+    if (!this.writeVisibility(input)) throw new RangeError('Pick visibility ids exceed the GPU visibility table (storage limit or rejected allocation)');
+  }
+
+  /**
    * Encode every draw of `input` into `pass`. Returns the number drawn. A draw
    * outside the snapshot's camera-relative envelope is skipped, exactly as the
    * colour pass skips it, so the pick never sees what the frame cannot show.
@@ -142,13 +152,7 @@ export class LanePickPass {
   ): number {
     if (input.draws.length === 0) return 0;
     const slots = this.ensureSlots(input.draws.length);
-    const image = this.visibilityCache.resolve(input.hiddenIds, input.isolatedIds);
-    const visibility = this.ensureVisibility(image.byteLength);
-    if (image !== this.uploaded) {
-      this.device.queue.writeBuffer(visibility, 0, image);
-      this.uploaded = image;
-    }
-    const bindGroup = this.ensureBindGroup(slots, visibility);
+    const bindGroup = this.ensureBindGroup(slots);
     let current: LanePickLayout | null = null;
     let drawn = 0;
     for (let i = 0; i < input.draws.length; i++) {
@@ -180,26 +184,12 @@ export class LanePickPass {
     return buffer;
   }
 
-  private ensureVisibility(bytes: number): GPUBuffer {
-    if (this.visibility && bytes <= this.visibility.bytes) return this.visibility.buffer;
-    const limit = Math.min(this.device.limits.maxStorageBufferBindingSize, this.device.limits.maxBufferSize);
-    if (bytes > limit) throw new RangeError('Pick visibility ids exceed the GPU storage buffer limit');
-    this.visibility?.buffer.destroy();
-    const size = Math.max(bytes, 16);
-    const buffer = this.device.createBuffer({ label: 'lane-pick-visibility', size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    this.visibility = { buffer, bytes: size };
-    this.bindGroup = null;
-    this.uploaded = null;
-    return buffer;
-  }
-
-  private ensureBindGroup(slots: GPUBuffer, visibility: GPUBuffer): GPUBindGroup {
+  private ensureBindGroup(slots: GPUBuffer): GPUBindGroup {
     this.bindGroup ??= this.device.createBindGroup({
       label: 'lane-pick-bind-group',
       layout: this.layout,
       entries: [
         { binding: 0, resource: { buffer: slots, size: SLOT_BYTES } },
-        { binding: 1, resource: { buffer: visibility } },
         { binding: 2, resource: { buffer: this.extraClipBuffer } },
       ],
     });
@@ -208,10 +198,7 @@ export class LanePickPass {
 
   destroy(): void {
     this.slots?.buffer.destroy();
-    this.visibility?.buffer.destroy();
     this.slots = null;
-    this.visibility = null;
     this.bindGroup = null;
-    this.uploaded = null;
   }
 }

@@ -183,3 +183,17 @@ What still reads the CPU copy on this route, and why:
 - **The fallback.** When the batches cannot answer for every drawable (pending rebuild, finalize, an evicted batch on the ray, ids outside the lane range, missing pipelines), the whole pick takes the CPU raycast. A released scene then still has only the box raycast; on the ephemeral path that can miss flat entities, as recorded above.
 
 S1 frees nothing: release stays disabled, and hide/isolate (row 4) and highlight (row 5) still read the pieces. `__ifc_lite_pick_parity__({ columns, rows, rect? })` compares the GPU pick with `raycastScene` over a texel grid under the current visibility; `tests/e2e/gpu-batch-pick.e2e.spec.ts` runs it on public fixtures on a real adapter.
+
+## Stage S2: hide and isolate from the batches
+
+The "Hide / isolate / storey isolation" row above no longer applies. A partly hidden colour batch is drawn whole from its own GPU buffers and the GPU discards its hidden entities, in the colour pass and the shadow pass, against the same id table the S1 pick reads (see [Batching Strategy](rendering-pipeline.md#batching-strategy)). No sub-batch is cut from the CPU pieces for visibility, for any model size, so a scene whose CPU geometry was released keeps drawing and casting the visible batchmates. `renderer-render-paths.test.ts` pins this with the scene released; `tests/e2e/gpu-entity-visibility.e2e.spec.ts` compares the real frame with the frame of the visible pieces alone on public fixtures.
+
+What S2 does not change, and what still reads the CPU copy:
+
+- **X-Ray and lens promotion** still split a batch into per-alpha subsets cut from its pieces while it can be partitioned (row 5 of the original table). Without pieces the batch draws whole under the visibility test at the lowest alpha of its visible entities: a fade that is too wide, never a missing or hidden entity.
+- **Type visibility** (IfcSpace, openings, the Model/Types switch) is not hide/isolate: `useFilteredGeometry` drops those meshes from the list the scene uploads, so toggling a type re-uploads from the store's CPU arrays. It needs its own route before a release.
+- **Selection and hover highlight** (row 5) still build per-entity meshes from the pieces; that is S3.
+- **Colour-merged pieces.** Classification reads primary entries, as before S2. Partly visible batches test the vertex lane and hide secondary entities exactly. When every primary entry is visible, the test is skipped and a hidden secondary can remain drawn; when every primary entry is hidden, a visible secondary is dropped. No in-tree producer emits foreign per-vertex ids today, but hosts can supply them through `MeshData.entityIds`. [#10653](https://github.com/LTplus-AG/ifc-lite/issues/10653) tracks complete lane coverage before an in-tree producer emits foreign ids or CPU-geometry release is enabled for such host-supplied meshes.
+- **Textured meshes** are drawn one per mesh and were already filtered without CPU geometry. Instanced occurrences keep their per-instance hidden flag.
+
+S2 frees nothing and makes no speed claim; release stays disabled.

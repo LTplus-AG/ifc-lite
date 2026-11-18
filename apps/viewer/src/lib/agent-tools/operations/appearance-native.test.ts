@@ -260,6 +260,7 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
       target = { point: [10, 20, 30] as [number, number, number], feature: 'native-ifc-triangle' };
     const pairs = appendNativeScanPair([], pending, target);
     const edge = sourceLandmark(mesh, { triangleIndex: 0, barycentricCoord: { w: -Number.EPSILON, u: 0.9, v: 0.1 } }, 3);
+    assert.ok(edge.kind === 'triangle');
     assert.deepEqual(edge.barycentric, [0, 0.9, 0.1]);
     const fit = Array.from({ length: 256 }, (_, index) => ({
       ...pairs[0], correspondence: { ...pairs[0].correspondence, id: `fit-${index}` },

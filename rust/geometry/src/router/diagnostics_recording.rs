@@ -56,15 +56,10 @@ pub struct HostOpeningDiagnostic {
     /// `None` until `apply_void_context` runs (or doesn't, if there
     /// were no openings to apply).
     pub tris_before: Option<usize>,
-    /// Triangle count AFTER void subtraction. Compare with
-    /// `tris_before` to spot "cuts attempted, no effect" cases — the
-    /// classic silent-no-op signature when an opening box doesn't
-    /// actually intersect the host mesh.
+    /// Triangle count AFTER void subtraction.
     pub tris_after: Option<usize>,
     /// Number of axis-aligned rectangular openings synthesised into penetrating
-    /// box cutters and subtracted (exactly) for this host. Compare against
-    /// `tris_before == tris_after` to detect the "ran cuts, geometry unchanged"
-    /// silent-no-op.
+    /// box cutters and subtracted for this host.
     pub rect_boxes_processed: usize,
     /// Bounding box of the host mesh (min, max) in world coords. Useful
     /// for confirming that an opening box should overlap.
@@ -273,7 +268,24 @@ impl GeometryRouter {
 
     /// Drain and return the per-host opening diagnostic map.
     pub fn take_host_opening_diagnostics(&self) -> FxHashMap<u32, HostOpeningDiagnostic> {
-        std::mem::take(&mut *self.host_opening_diagnostics.borrow_mut())
+        self.take_host_opening_report().0
+    }
+
+    /// Drain opening diagnostics and count successful rectangular cuts with unchanged area and volume.
+    pub fn take_host_opening_report(&self) -> (FxHashMap<u32, HostOpeningDiagnostic>, u64) {
+        let diagnostics = std::mem::take(&mut *self.host_opening_diagnostics.borrow_mut());
+        let measurements = std::mem::take(&mut *self.unchanged_rectangular_cuts.borrow_mut());
+        let no_ops = measurements.into_iter().filter(|(id, unchanged)| {
+            *unchanged && diagnostics.get(id).is_some_and(|host| host.csg_failure_count == 0)
+        }).count() as u64;
+        (diagnostics, no_ops)
+    }
+
+    pub(crate) fn record_rectangular_cut_measure(&self, host_id: u32, unchanged: bool) {
+        // A change to any accepted part rules out a silent no-op for the host.
+        self.unchanged_rectangular_cuts.borrow_mut().entry(host_id)
+            .and_modify(|all_unchanged| *all_unchanged &= unchanged)
+            .or_insert(unchanged);
     }
 
     /// Accumulate one rect_fast cut's counters into THIS router (request-local).
@@ -330,12 +342,7 @@ impl GeometryRouter {
         entry.openings.extend(openings);
     }
 
-    /// Internal: tag the per-host diagnostic with the cut-effect data
-    /// (triangle counts before/after, rectangular boxes processed, host
-    /// bounds). Lets callers spot the "rectangular cut attempted but
-    /// produced no change" case — the silent-no-op signature when an
-    /// opening box's geometry doesn't actually intersect the host mesh
-    /// despite passing the AABB classifier.
+    /// Record triangle counts, rectangular cutters and bounds for the accepted cut.
     pub(crate) fn record_host_cut_effect(
         &self,
         host_id: u32,

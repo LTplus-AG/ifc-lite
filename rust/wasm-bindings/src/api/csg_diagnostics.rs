@@ -51,12 +51,12 @@ fn drain_diagnostics(
     router: &ifc_lite_geometry::GeometryRouter,
     collected_failures: rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
 ) -> ifc_lite_geometry::GeometryDiagnostics {
-    let drain = ifc_lite_processing::execution::RouterDrain::take(router);
+    let (drain, no_ops) = ifc_lite_processing::execution::RouterDrain::take_with_rectangular_no_ops(router);
     let mut csg_failures = router.take_csg_failures();
     for (product_id, fails) in collected_failures {
         csg_failures.entry(product_id).or_default().extend(fails);
     }
-    ifc_lite_geometry::aggregate_diagnostics(
+    let mut diagnostics = ifc_lite_geometry::aggregate_diagnostics(
         drain.classification,
         &csg_failures,
         &drain.hosts,
@@ -65,5 +65,7 @@ fn drain_diagnostics(
         drain.oversized_refs,
         &router.take_unsupported_items(),
         router.take_budget_refusal_report(),
-    )
+    );
+    diagnostics.silent_no_ops = no_ops;
+    diagnostics
 }

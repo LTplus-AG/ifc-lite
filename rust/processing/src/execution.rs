@@ -122,12 +122,18 @@ pub struct RouterDrain {
 }
 impl RouterDrain {
     pub fn take(router: &GeometryRouter) -> Self {
-        Self {
+        Self::take_with_rectangular_no_ops(router).0
+    }
+
+    /// Drain the same counters alongside the measured rectangular no-op count.
+    pub fn take_with_rectangular_no_ops(router: &GeometryRouter) -> (Self, u64) {
+        let (hosts, no_ops) = router.take_host_opening_report();
+        (Self {
             classification: router.take_classification_stats(),
-            hosts: router.take_host_opening_diagnostics(),
+            hosts,
             oversized_refs: router.take_content_hash_oversized_ref_drops() as u64,
             rect_fast: router.take_rect_fast_stats(),
-        }
+        }, no_ops)
     }
 }
 

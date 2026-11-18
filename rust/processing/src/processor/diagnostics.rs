@@ -15,6 +15,8 @@
 
 use rustc_hash::FxHashMap;
 
+type HostReport = (FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>, u64);
+
 /// Every request-local diagnostic sink for one native geometry pass.
 ///
 /// Request-local, not process-global: each is filled from this pass's own
@@ -28,10 +30,9 @@ pub(super) struct DiagnosticCollectors {
     /// Per-job router CSG diagnostics (parity with the wasm path's
     /// `drain_and_log_csg_diagnostics`).
     pub(super) csg_failures: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
-    /// Opening classification + per-host opening diagnostics.
+    /// Opening classification and host reports with the measured no-op count.
     pub(super) classification: std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
-    pub(super) host_diags:
-        std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
+    pub(super) host_diags: std::sync::Mutex<HostReport>,
     /// rect_fast engagement, drained per-job router so this pass's `rectFast`
     /// is isolated from any concurrent geometry pass.
     pub(super) rect_fast: std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
@@ -66,7 +67,7 @@ impl DiagnosticCollectors {
             audit,
             csg_failures: std::sync::Mutex::new(FxHashMap::default()),
             classification: std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default()),
-            host_diags: std::sync::Mutex::new(FxHashMap::default()),
+            host_diags: std::sync::Mutex::default(),
             rect_fast: std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default()),
             budget_refusals: std::sync::Mutex::new((0, Vec::new())),
             unsupported_items: std::sync::Mutex::new(FxHashMap::default()),
@@ -157,7 +158,7 @@ impl DiagnosticCollectors {
             log.0 += total;
             keep_budget_details(&mut log.1, refusals);
         }
-        let drain = crate::execution::RouterDrain::take(router);
+        let (drain, no_ops) = crate::execution::RouterDrain::take_with_rectangular_no_ops(router);
         let cls = drain.classification;
         if cls.rectangular != 0 || cls.diagonal != 0 || cls.non_rectangular != 0 {
             if let Ok(mut acc) = self.classification.lock() {
@@ -166,12 +167,11 @@ impl DiagnosticCollectors {
                 acc.non_rectangular += cls.non_rectangular;
             }
         }
-        let host_diags = drain.hosts;
-        if !host_diags.is_empty() {
+        if !drain.hosts.is_empty() {
             if let Ok(mut acc) = self.host_diags.lock() {
-                // Product ids are disjoint across jobs (one product = one job), so
-                // this is an insert; `extend` is robust if that ever changes.
-                acc.extend(host_diags);
+                acc.0.extend(drain.hosts);
+                // Product IDs are disjoint across jobs.
+                acc.1 += no_ops;
             }
         }
         // Content-hash oversized-ref refusals (#3421/#3752), diagnostic only.
@@ -274,14 +274,11 @@ pub(super) fn distinct_refusals(
     ids.len() as u64
 }
 
-/// Build the full `GeometryDiagnostics` contract from the drained sinks -- the
-/// SAME shape the wasm batch path surfaces, so a native consumer and a browser
-/// consumer see identical diagnostics. `None` when nothing diagnostic-worthy
-/// happened (mirrors the wasm `is_empty` skip).
+/// Build the same diagnostics as the browser. Skip an empty report.
 pub(super) fn collate(
     budget_refusals: std::sync::Mutex<(u64, Vec<ifc_lite_geometry::BudgetRefusal>)>,
     classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
-    host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
+    host_diag_collector: std::sync::Mutex<HostReport>,
     rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
     unsupported_item_collector: std::sync::Mutex<FxHashMap<String, u64>>,
     csg_failures: &FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
@@ -292,7 +289,7 @@ pub(super) fn collate(
     let classification = classification_collector
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let host_diags = host_diag_collector
+    let (host_diags, no_ops) = host_diag_collector
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let rect_fast = rect_fast_collector
@@ -302,7 +299,7 @@ pub(super) fn collate(
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     warn_if_dropped(&unsupported_items);
-    let diag = ifc_lite_geometry::aggregate_diagnostics(
+    let mut diag = ifc_lite_geometry::aggregate_diagnostics(
         classification,
         csg_failures,
         &host_diags,
@@ -312,6 +309,7 @@ pub(super) fn collate(
         &unsupported_items,
         budget_refusals.into_inner().unwrap_or_else(|p| p.into_inner()),
     );
+    diag.silent_no_ops = no_ops;
     super::budget_report::warn_if_refused(&diag);
     (!diag.is_empty()).then_some(diag)
 }

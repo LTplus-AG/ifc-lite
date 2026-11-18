@@ -62,3 +62,35 @@ fn native_pass_surfaces_geometry_diagnostics() {
     // The contract is only attached when non-empty; presence implies activity.
     assert!(!diag.is_empty(), "attached diagnostics are non-empty by construction");
 }
+
+#[test]
+fn equal_triangle_counts_do_not_hide_a_real_rectangular_cut_10510() {
+    use ifc_lite_processing::{process, ProcessingRequest};
+    use ifc_lite_testkit::mesh::signed_volume;
+    use std::sync::Arc;
+
+    let bytes = ifc_lite_testkit::fixture_bytes_or_skip!("ara3d/FM_ARC_DigitalHub.ifc");
+    for (host, expected_no_ops) in [(61_530, 0), (216_340, 1)] {
+        let request = ProcessingRequest::full_pass().ids(Some(Arc::new([host].into())));
+        let gross = process(&bytes, &request.clone().skip_voids(true), &mut ());
+        let cut = process(&bytes, &request, &mut ());
+        let volume = |meshes: &[ifc_lite_processing::MeshData]| {
+            meshes.iter()
+                .map(|mesh| signed_volume(&mesh.positions, &mesh.indices).abs())
+                .sum::<f64>()
+        };
+        let gross_volume = volume(&gross.meshes);
+        let cut_volume = volume(&cut.meshes);
+        assert!(gross_volume > 0.0, "fixture host #{host} must mesh");
+        if expected_no_ops == 0 {
+            assert!(cut_volume < 0.75 * gross_volume, "host #{host} must have a real cut");
+        } else {
+            assert!((cut_volume - gross_volume).abs() < 0.001 * gross_volume);
+        }
+
+        let diagnostics = cut.stats.geometry_diagnostics.expect("opening diagnostics");
+        assert!(diagnostics.classification.rectangular > 0, "host #{host}");
+        assert_eq!(diagnostics.total_csg_failures, 0, "host #{host}");
+        assert_eq!(diagnostics.silent_no_ops, expected_no_ops, "host #{host}");
+    }
+}

@@ -170,9 +170,7 @@ pub struct GeometryDiagnostics {
     pub classification: ClassificationSummary,
     /// Failure counts by stable reason label, sorted desc by count.
     pub failures_by_reason: Vec<ReasonCount>,
-    /// Hosts where rectangular cutters ran but the triangle count was unchanged
-    /// (cut attempted, geometry not modified) — the highest-signal "looks wrong
-    /// but did not error" indicator.
+    /// Hosts where rectangular cutters ran clean and left the area and volume unchanged.
     pub silent_no_ops: u64,
     /// rect_fast fast-path engagement.
     pub rect_fast: RectFastSummary,
@@ -305,11 +303,8 @@ pub fn aggregate_diagnostics(
     let silent_no_ops = host_diags
         .values()
         .filter(|hd| {
-            // A TRUE silent no-op: rect cutters ran, the triangle count was
-            // unchanged, AND the kernel recorded no failure. A host that already
-            // failed is a loud failure, not a silent one — excluding it keeps this
-            // the precise "ran clean but produced no change" signal (so it is not
-            // double-reported alongside total_csg_failures).
+            // Count-only callers supply the triangle-count estimate.
+            // Native and browser execution use geometry measurements from the cut.
             matches!((hd.tris_before, hd.tris_after), (Some(b), Some(a)) if b == a)
                 && hd.rect_boxes_processed > 0
                 && hd.csg_failure_count == 0

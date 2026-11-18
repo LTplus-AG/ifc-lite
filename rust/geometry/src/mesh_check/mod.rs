@@ -34,6 +34,7 @@
 //! The module is `pub(crate)`, and `pub` under the `test-support` feature so
 //! the shared test oracles can delegate to it.
 
+mod area;
 mod closure;
 mod hairline;
 mod ledger;
@@ -51,6 +52,7 @@ pub use closure::{
     edge_multiplicity_defects, is_watertight, strictly_paired_at, undirected_defect_count,
     ClosureVerdict, EdgeMultiplicityDefects,
 };
+pub(crate) use area::surface_area;
 pub use ledger::{Degenerate, EdgeLedger, Key3, VertexKey};
 pub use shape::{triangle_shape, TriangleShape};
 pub use volume::{signed_volume, signed_volume_about, volume_reference};

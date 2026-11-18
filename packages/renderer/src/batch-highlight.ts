@@ -33,7 +33,7 @@ import type { RenderPipeline } from './pipeline.js';
 import type { Scene } from './scene.js';
 import type { BatchedMesh, Mesh } from './types.js';
 
-export type BatchHighlightScene = Pick<Scene, 'getBatchedMeshes' | 'requestBatchResidency'>;
+export type BatchHighlightScene = Pick<Scene, 'getBatchedMeshes' | 'requestBatchResidency' | 'getTexturedMeshes'>;
 
 export interface BatchHighlightResources {
   device: GPUDevice;
@@ -240,7 +240,9 @@ export class HoverBatches {
     if (key === this.key && list === this.list && !this.watch.stale(scene)) return this.batches;
     this.list = list;
     const { batches, evicted, blocked, found, awaitsPipeline } = batchesHolding(scene, new Set([id]), modelIndex, resources);
-    this.batches = found.has(id) && !blocked.has(id) ? [...batches.keys()] : null;
+    // Textured pieces are outside the colour batches: such an entity keeps its copies, which cover every piece.
+    const textured = scene.getTexturedMeshes().some((mesh) => mesh.expressId === id && (modelIndex === undefined || mesh.modelIndex === modelIndex));
+    this.batches = found.has(id) && !blocked.has(id) && !textured ? [...batches.keys()] : null;
     this.watch.set(scene, this.batches ? batches : new Map(), evicted, awaitsPipeline ? quantizedPipelineReady(resources) : null);
     this.key = key;
     return this.batches;

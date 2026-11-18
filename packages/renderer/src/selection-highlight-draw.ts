@@ -60,6 +60,9 @@ export function drawSelectionHighlights(meshes: readonly Mesh[], f: HighlightDra
 
     tpl.set(f.viewProj, 0);
     tpl.set(mesh.transform.m, 16);
+    // A batch's origin moves in place with model placement: read it live, never from the record.
+    const batchOrigin: [number, number, number] | undefined = batch ? (batch.origin ? [batch.origin[0], batch.origin[1], batch.origin[2]] : [0, 0, 0]) : undefined;
+    if (batchOrigin) { tpl[28] = batchOrigin[0]; tpl[29] = batchOrigin[1]; tpl[30] = batchOrigin[2]; }
     tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
     tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
     packMeshMaterial(tpl, mesh.color[3], mesh.finish ?? mesh.material);
@@ -69,7 +72,7 @@ export function drawSelectionHighlights(meshes: readonly Mesh[], f: HighlightDra
     tplFlags[2] = 0;
     tplFlags[3] = 0;
     packRteFragmentSpace(f.relativeToEyeFrame, f.section, f.clipBox, tpl, f.extraPlanes);
-    const origin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
+    const origin = batchOrigin ?? mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
     if (!f.relativeToEyeFrame.tryPackDrawableOrigin(origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE | (batch ? MESH_FLAG_HIGHLIGHTED_ENTITIES : 0);
     const q = batch?.quantized;

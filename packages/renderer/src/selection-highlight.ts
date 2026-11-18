@@ -149,7 +149,7 @@ export interface SelectionHighlightInputs {
 }
 
 type HighlightScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces' | 'getMeshDataPieceList' | 'getPickGeometryRevision'
-  | 'removeMeshesWhere' | 'disposeHydratedMeshesExcept' | 'setInstancedSelection' | 'getBatchedMeshes' | 'requestBatchResidency'>;
+  | 'removeMeshesWhere' | 'disposeHydratedMeshesExcept' | 'setInstancedSelection' | 'getBatchedMeshes' | 'requestBatchResidency' | 'getTexturedMeshes'>;
 
 /** The shared highlight table (`section-exclusions.ts`) as the selection writes it. */
 export interface HighlightTable {
@@ -271,9 +271,10 @@ export class SelectionHighlight {
   private drawFromBatches(scene: HighlightScene, resources: HighlightResources): { covered: ReadonlySet<number>; draws: readonly Mesh[] } {
     if (this.visible.size === 0) { this.batches.clear(); this.table = EMPTY_TABLE; return { covered: new Set(), draws: [] }; }
     const exact = new Set<number>();
-    // #4382: an item filter names one representation item, which the lane does not carry.
+    // #4382: an item filter names one representation item, which the lane does not carry. While the
+    // entity's CPU pieces exist its copy answers exactly, even when no piece is that item (then nothing shows).
     const item = this.itemFilterExpressId;
-    if (item !== undefined && this.visible.has(item) && (scene.getMeshDataPieces(item, this.modelIndex, this.itemFilterItemId)?.length ?? 0) > 0) exact.add(item);
+    if (item !== undefined && this.visible.has(item) && (scene.getMeshDataPieces(item, this.modelIndex)?.length ?? 0) > 0) exact.add(item);
     const result = this.batches.sync(scene, this.visible, this.modelIndex, exact, resources);
     if (result.covered.size === 0) { this.table = EMPTY_TABLE; return result; }
     const image = entityHighlightImage(result.covered);

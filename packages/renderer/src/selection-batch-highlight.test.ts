@@ -373,6 +373,44 @@ describe('selection highlight from colour batches (#10264 S3)', () => {
   });
 });
 
+describe('review regressions (#10264 S3)', () => {
+  it('follows a model translation, which moves a batch origin in place', () => {
+    const h = makeHarness();
+    const meshes = model(range(1, 6), 1, () => ({ modelIndex: 0 } as Partial<MeshData>));
+    load(h, meshes);
+    const selectedIds = new Set([3]);
+    const before = kept(h, h.render({ selectedIds })).triangles;
+    assert.ok(h.scene.setModelTranslation(0, [10, 0, 0]), 'precondition: the model moved');
+    const after = kept(h, h.render({ selectedIds })).triangles;
+    const moved = expected(meshes.filter((m) => m.expressId === 3).map((m) => {
+      const p = Float32Array.from(m.positions); for (let i = 0; i < p.length; i += 3) p[i] += 10;
+      return { ...m, positions: p };
+    }));
+    assert.notDeepEqual(after, before);
+    assert.deepEqual(after, moved, 'the highlight is where the batch now draws');
+  });
+
+  it('an item filter naming an item the entity lacks highlights nothing, as the copies did (#4382)', () => {
+    const h = makeHarness();
+    load(h, model(range(1, 4)));
+    const frame = h.render({ selectedId: 2, selectedItemId: 2_999 });
+    assert.equal(kept(h, frame).ids.size, 0, 'not the whole product from its batch');
+    assert.equal(hydrated(h).length, 0);
+  });
+
+  it('hovers an entity with textured pieces through copies, which cover every piece', () => {
+    const h = makeHarness();
+    const textured = { ...piece(5, 1), uvs: new Float32Array([0, 0, 1, 0, 0, 1]),
+      texture: { width: 1, height: 1, rgba: new Uint8Array([255, 255, 255, 255]), repeatS: false, repeatT: false } } as MeshData;
+    load(h, [...model(range(1, 6), 1), textured]);
+    assert.ok(h.scene.getTexturedMeshes().some((m) => m.expressId === 5), 'precondition: entity 5 has a textured piece');
+    const before = h.stats.buffers.filter((b) => (b.usage & (GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX)) !== 0).length;
+    h.render({ hoverOutline: { id: 5 } });
+    const after = h.stats.buffers.filter((b) => (b.usage & (GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX)) !== 0).length;
+    assert.equal(after - before, 4, 'one vertex and one index buffer per piece: the flat and the textured one');
+  });
+});
+
 describe('hover outline from colour batches (#10264 S3)', () => {
   it('outlines the hovered entity from its batches, naming it in flags.w, and uploads nothing', () => {
     const h = makeHarness();

@@ -62,6 +62,7 @@ type ProbeWindow = typeof globalThis & {
   __ifc_lite_scene_settled__?: () => boolean;
   __ifc_lite_capture_color_frame__?: () => Promise<string | null>;
   __ifc_lite_pick_parity__?: (request: { columns: number; rows: number }) => Promise<{ rows: PickRow[] }>;
+  __ifc_lite_render_frame__?: () => { timestamp: number } | null;
   __IFC_LITE_QUANTIZED?: number;
 };
 
@@ -186,8 +187,8 @@ async function diff(page: Page, a: string, b: string): Promise<Diff> {
   }, [a, b] as const);
 }
 
-/** The flat entities the pick grid hits most, at or above `minId`: on screen by construction. */
-async function spreadIds(page: Page, count = 3, minId = 0, instanced = false): Promise<number[]> {
+/** The flat entities the pick grid hits most, in [minId, maxId): on screen by construction. */
+async function spreadIds(page: Page, count = 3, minId = 0, instanced = false, maxId = Infinity): Promise<number[]> {
   const report = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_pick_parity__!({ columns: 40, rows: 24 }));
   const hits = [...new Set(report.rows.flatMap((r) => (r.gpu ? [r.gpu.expressId] : [])))];
   const candidates = await page.evaluate(async ([wantInstanced, picked]) => {
@@ -199,7 +200,7 @@ async function spreadIds(page: Page, count = 3, minId = 0, instanced = false): P
   }, [instanced, hits] as const);
   const flat = new Set(candidates);
   const tally = new Map<number, number>();
-  for (const r of report.rows) if (!r.annotation && r.gpu && r.gpu.expressId >= minId && flat.has(r.gpu.expressId)) tally.set(r.gpu.expressId, (tally.get(r.gpu.expressId) ?? 0) + 1);
+  for (const r of report.rows) if (!r.annotation && r.gpu && r.gpu.expressId >= minId && r.gpu.expressId < maxId && flat.has(r.gpu.expressId)) tally.set(r.gpu.expressId, (tally.get(r.gpu.expressId) ?? 0) + 1);
   return [...tally].sort((x, y) => y[1] - x[1]).slice(0, count).map(([id]) => id);
 }
 
@@ -279,6 +280,15 @@ for (const quantized of [true, false]) {
     await load(page, FIXTURES.institute, 1);
     await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
     const ids = await spreadIds(page, 6);
+    expect(ids.length, 'two distinct entities at least: one is hidden while the other stays selected').toBeGreaterThanOrEqual(2);
+    const layout = await page.evaluate(async () => {
+      const module = '/src/hooks/useBCF.ts';
+      const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+      const all = getGlobalRenderer()!.getScene().getBatchedMeshes();
+      return { total: all.length, quantized: all.filter((b) => b.quantized).length };
+    });
+    await info.attach('batches.json', { body: JSON.stringify(layout), contentType: 'application/json' });
+    expect(layout.quantized > 0, 'batch layout follows the quantization switch').toBe(quantized);
     const rows = [];
     rows.push(await compare(page, info, { name: 'select-one', ids, steps: [['setSelectedEntityId', 'id0']] }));
     rows.push(await compare(page, info, { name: 'multi-select', ids, steps: [['setSelectedEntityId', 'id0'], ['setSelectedEntityIds', 'ids']] }));
@@ -295,8 +305,9 @@ test('instanced and flat entities selected together (#10264 S3)', async ({ page 
   await load(page, FIXTURES.tower, 1);
   const instanced = await spreadIds(page, 2, 0, true);
   test.skip(instanced.length === 0, 'no entity with instanced occurrences is on screen');
-  const flat = await spreadIds(page, 3);
-  const ids = [...new Set([...instanced, ...flat])];
+  const flat = (await spreadIds(page, 6)).filter((id) => !instanced.includes(id));
+  expect(flat.length, 'a flat entity beside the instanced ones').toBeGreaterThan(0);
+  const ids = [...instanced, ...flat.slice(0, 3)];
   await compare(page, info, { name: 'instanced-and-flat', ids, steps: [['setSelectedEntityIds', 'ids']] });
 });
 
@@ -306,8 +317,9 @@ test('federation (two models): a selection across both models (#10264 S3)', asyn
   await load(page, FIXTURES.duplex, 2);
   const offsets = await page.evaluate(() => [...(globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().models.values()].map((m) => m.idOffset).sort((x, y) => x - y));
   expect(offsets).toHaveLength(2);
-  const first = (await spreadIds(page, 3)).filter((id) => id < offsets[1]!);
+  const first = await spreadIds(page, 2, 0, false, offsets[1]!);
   const second = await spreadIds(page, 2, offsets[1]!);
+  expect(first.length, 'the first model is on screen').toBeGreaterThan(0);
   expect(second.length, 'the second model is on screen').toBeGreaterThan(0);
   await compare(page, info, { name: 'federation-select', ids: [...first.slice(0, 2), ...second], steps: [['setSelectedEntityIds', 'ids']] });
 });
@@ -332,9 +344,17 @@ test('a selection of 10,000 flat entities highlights from the batches and keeps 
   await info.attach('selection-size.json', { body: JSON.stringify({ flatEntities: flat.length, selected: all.length }), contentType: 'application/json' });
   expect(all.length, 'a ~10k selection').toBeGreaterThanOrEqual(9_000);
   const row = await compare(page, info, { name: 'select-10k-flat', ids: all, steps: [['setSelectedEntityIds', 'ids']] });
-  // Untimed: frames keep landing while the whole selection is drawn from the batches (no speed claim).
+  // Untimed: a new frame lands while the whole selection is drawn from the batches (no speed claim).
+  const frameAt = () => page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_render_frame__?.()?.timestamp ?? -1);
+  const before = await frameAt();
   await act(page, [['setSelectedEntityIds', 'ids']], all);
+  await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    getGlobalRenderer()!.requestRender();
+  });
   await settle(page);
+  expect(await frameAt(), 'the renderer submitted a newer frame with 10,000 entities selected').toBeGreaterThan(before);
   await info.attach('select-all-flat-row.json', { body: JSON.stringify(row), contentType: 'application/json' });
 });
 
@@ -347,14 +367,15 @@ test('after the scene releases its CPU geometry, selection and hover still highl
   await act(page, [['setSelectedEntityIds', []], ['setHoverHighlightEnabled', true], ['setHoverState', 'hover0']], ids.slice(1));
   const hoverBefore = await capture(page, info, 'released-hover-before');
   await act(page, [['clearHover']]);
+  const noHover = await capture(page, info, 'released-no-hover');
   const released = await page.evaluate(async (probe) => {
     const module = '/src/hooks/useBCF.ts';
     const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
     const renderer = getGlobalRenderer()!;
     renderer.getScene().releaseGeometryData(); // evidence only: the viewer never releases (S4 is not enabled)
     renderer.requestRender();
-    return renderer.getScene().getMeshDataPieces(probe) === undefined;
-  }, ids[0]!);
+    return probe.every((id) => renderer.getScene().getMeshDataPieces(id) === undefined);
+  }, ids);
   expect(released, 'the scene holds no CPU pieces to copy').toBe(true);
   // Selected after the release: only the batches can draw it.
   await act(page, [['setSelectedEntityIds', 'ids']], ids);
@@ -363,6 +384,8 @@ test('after the scene releases its CPU geometry, selection and hover still highl
   await act(page, [['setSelectedEntityIds', []], ['setHoverState', 'hover0']], ids.slice(1));
   const hoverAfter = await capture(page, info, 'released-hover-after');
   const sameHover = await diff(page, hoverBefore, hoverAfter);
+  const hoverShown = await diff(page, noHover, hoverAfter);
+  expect(await copiesInScene(page), 'no copy stands in after the release').toBe(0);
   // The copies route after the release has nothing to draw: the highlight vanishes.
   await act(page, [['clearHover'], ['setSelectedEntityIds', 'ids']], ids);
   await route(page, true);
@@ -372,5 +395,6 @@ test('after the scene releases its CPU geometry, selection and hover still highl
   await info.attach('released.json', { body: JSON.stringify({ select: { ...same, diffPng: undefined }, hover: { ...sameHover, diffPng: undefined }, copiesRoute: { ...lost, diffPng: undefined } }), contentType: 'application/json' });
   expect(same.differing, 'selection: the same draws, from the same buffers').toBe(0);
   expect(sameHover.differing, 'hover: the same draws, from the same buffers').toBe(0);
+  expect(hoverShown.strong, 'hover: the outline is actually drawn after the release').toBeGreaterThan(50);
   expect(lost.strong, 'the copies route has nothing to highlight once the pieces are gone').toBeGreaterThan(50);
 });

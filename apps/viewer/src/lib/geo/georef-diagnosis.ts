@@ -139,41 +139,34 @@ export function overlayGeorefEdits(facts: GeorefFacts, edits: GeorefMutationData
 
 const lowerFirst = (name: string): string => name.charAt(0).toLowerCase() + name.slice(1);
 
-/** IfcSite ids that this session's edits touched in a location slot (RefLatitude, RefLongitude, RefElevation). */
-function sitesWithLocationEdits(store: IfcDataStore, view: MutablePropertyView): number[] {
-  // @raw-entity-enumeration-ok source IfcSite ids, checked against this session's positional edits
-  return (store.entityIndex.byType.get('IFCSITE') ?? []).filter((id) => {
-    const edits = view.getPositionalMutationsForEntity(id);
-    return !view.isDeleted(id) && !!edits && Object.values(SITE_SLOTS).some((slot) => edits.has(slot));
-  });
-}
-
-/** An IfcSite whose location this session edited, and the location the edits leave (null: not both coordinates). */
-export interface EditedSite {
-  siteId: number;
-  location: NonNullable<GeorefFacts['siteLocation']> | null;
-}
-
 /**
- * The site location as this session's edits leave it, undefined when no edit
- * touched one. Serializable, so the panel can compare it to decide when to
- * re-check.
+ * The site location as this session's edits leave it: undefined when no edit
+ * touched an IfcSite location slot, null when no live site is left with both
+ * coordinates. Picks the site as the SDK reader does (`withSiteEdits`): the
+ * first live IfcSite with both coordinates. Serializable, so the panel can
+ * compare it to decide when to re-check.
  */
-export function editedSiteLocation(store: IfcDataStore, view: MutablePropertyView | null | undefined): EditedSite | undefined {
+export function editedSiteLocation(store: IfcDataStore, view: MutablePropertyView | null | undefined): GeorefFacts['siteLocation'] | null | undefined {
   if (!view) return undefined;
-  const [siteId] = sitesWithLocationEdits(store, view);
-  if (siteId === undefined) return undefined;
-  const v = readSiteValues(store, view, siteId);
-  if (v.RefLatitude === null || v.RefLongitude === null) return { siteId, location: null };
-  return { siteId, location: { siteId, latitude: v.RefLatitude, longitude: v.RefLongitude, ...(v.RefElevation === null ? {} : { elevation: v.RefElevation }) } };
+  // @raw-entity-enumeration-ok source IfcSite ids minus this session's tombstones
+  const sites = (store.entityIndex.byType.get('IFCSITE') ?? []).filter((id) => !view.isDeleted(id));
+  const touched = sites.some((id) => {
+    const edits = view.getPositionalMutationsForEntity(id);
+    return !!edits && Object.values(SITE_SLOTS).some((slot) => edits.has(slot));
+  });
+  if (!touched) return undefined;
+  for (const siteId of sites) {
+    const v = readSiteValues(store, view, siteId);
+    if (v.RefLatitude === null || v.RefLongitude === null) continue;
+    return { siteId, latitude: v.RefLatitude, longitude: v.RefLongitude, ...(v.RefElevation === null ? {} : { elevation: v.RefElevation }) };
+  }
+  return null;
 }
 
 /** The facts with this session's IfcSite location edits laid over the file's site location. */
-export function overlaySiteEdits(facts: GeorefFacts, edited: EditedSite | undefined): GeorefFacts {
-  if (!edited) return facts;
-  if (edited.location) return { ...facts, siteLocation: edited.location };
-  // The edit cleared this site's location; another site's location stands.
-  if (facts.siteLocation?.siteId !== edited.siteId) return facts;
+function overlaySiteEdits(facts: GeorefFacts, edited: GeorefFacts['siteLocation'] | null | undefined): GeorefFacts {
+  if (edited === undefined) return facts;
+  if (edited) return { ...facts, siteLocation: edited };
   const { siteLocation: _cleared, ...rest } = facts;
   return rest;
 }

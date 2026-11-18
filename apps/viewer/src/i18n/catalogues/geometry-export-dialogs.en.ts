@@ -25,7 +25,7 @@ import type { TranslationValue } from '../types';
 export const geometryExportDialogsEn = {
   "cityJsonExport.description": "Export the selected IFC model as CityJSON 2.0 or CityJSONSeq.",
   "cityJsonExport.localNotice": "This model has no georeferencing. The file will use the model’s local coordinates, not map coordinates.",
-  "cityJsonExport.sessionGeorefNotice": "Georeferencing changes made in this session are not included in this export.",
+  "cityJsonExport.sessionCrs": "Writes coordinates in {crs}, including this session’s georeferencing changes.",
   "cityJsonExport.noSource": "Load an IFC or IFCZIP model to export.",
   "cityJsonExport.document": "CityJSON (.city.json)",
   "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",
@@ -41,8 +41,8 @@ export const geometryExportDialogsEn = {
   // --- ExportDialogShell.tsx (#5848) ---
   'geometryExport.shell.filenamePreviewLabel': 'Will save as:',
   'geometryExport.shell.warningsSummary': {
-    one: '{count} warning',
-    other: '{count} warnings',
+    one: '{countDisplay} warning',
+    other: '{countDisplay} warnings',
   },
 
   // --- GLBExportDialog.tsx ---

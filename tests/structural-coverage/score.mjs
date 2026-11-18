@@ -236,7 +236,23 @@ function print(s) {
   console.log(Object.entries(s.levels).map(([l, v]) => `${l} ${v.score}/${v.max}`).join(' · '));
 }
 
-async function main(argv) {
+/** Runs every probe over the corpus and scores it; `main`'s default, injectable so a test can drive its exits. */
+async function evaluateCorpus({ rows, tables }, { offline }) {
+  const corpus = loadCorpus(ROOT, { offline });
+  const pkgs = await loadPackages(ROOT);
+  const ctx = { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() };
+  const cells = await runProbes(rows, ctx);
+  // An offline run scores absent files as skip, so its problems are not the ones the limits name.
+  const limitIssues = corpus.absent.length ? [] : markLimits(cells, factsOf(ctx));
+  const summary = score(rows, cells, {
+    offline: corpus.absent.length > 0,
+    absent: corpus.absent.map((a) => a.path),
+    corpus: corpus.files.map((f) => ({ path: f.path, sha256: f.sha256, schema: f.fileSchema })),
+  });
+  return { summary, limitIssues };
+}
+
+export async function main(argv, { evaluate = evaluateCorpus } = {}) {
   // Strict: a valued flag without its value, or a misspelt flag, exits 2 instead of running without the ratchet.
   let values;
   try {
@@ -276,20 +292,9 @@ async function main(argv) {
     if (baseline.offline) { console.error(`score: ${rel(check)} was scored offline (${baseline.absent?.length ?? 0} corpus file(s) absent); ${OFFLINE_REMEDY}`); return 2; }
   }
   let summary;
-  let limitIssues = [];
+  let limitIssues;
   try {
-    const { rows, tables } = catalogue;
-    const corpus = loadCorpus(ROOT, { offline: values.offline === true });
-    const pkgs = await loadPackages(ROOT);
-    const ctx = { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() };
-    const cells = await runProbes(rows, ctx);
-    // An offline run scores absent files as skip, so its problems are not the ones the limits name.
-    if (!corpus.absent.length) limitIssues = markLimits(cells, factsOf(ctx));
-    summary = score(rows, cells, {
-      offline: corpus.absent.length > 0,
-      absent: corpus.absent.map((a) => a.path),
-      corpus: corpus.files.map((f) => ({ path: f.path, sha256: f.sha256, schema: f.fileSchema })),
-    });
+    ({ summary, limitIssues = [] } = await evaluate(catalogue, { offline: values.offline === true }));
   } catch (e) {
     console.error(`score: ${e.message}`);
     return 2;

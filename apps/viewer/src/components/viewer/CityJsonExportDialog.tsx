@@ -14,15 +14,14 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
-import { downloadBlob, modelExportFilename } from '@/lib/export/download';
-import { isStepSourceModel, resolveStepExportBytes } from './step-export-source';
+import { downloadBlob } from '@/lib/export/download';
+import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import { cityJsonEngine, cityJsonFilename, produceNativeCityJson, type CityJsonEngine } from '@/lib/export/native-cityjson';
+import { hasGeorefEdits, isStepSourceModel, writesSessionGeoref } from './step-export-source';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
-type CityJsonEngine = Pick<typeof import('@ifc-lite/geometry'), 'exportCityJson' | 'cityJsonRefusalReason'>;
-/** Load both the facade and the separate export WASM only on demand. An object so tests can fail the load. */
-export const cityJsonEngine = { load: (): Promise<CityJsonEngine> => import('@ifc-lite/geometry') };
 
-/** STEP-based export: preserve the producer's local-coordinate fallback (#10607). */
+/** STEP-based export: preserve the producer's local-coordinate fallback (#10607); session georeferencing is written (#10602). */
 export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurface; trigger?: React.ReactNode }) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
@@ -35,25 +34,26 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     if (!modelList.some((m) => m.id === selectedId)) setSelectedId(modelList[0]?.id ?? '');
   }, [modelList, selectedId]);
   const model = modelList.find((m) => m.id === selectedId);
-  // resolveStepExportBytes does not apply session georeferencing edits, so the local notice stays keyed on the
-  // file and a separate notice says when such edits exist.
-  const sessionGeoref = useViewerStore((s) => {
-    const gm = model ? s.georefMutations.get(model.id) : undefined;
-    return !!gm && (Object.keys(gm.mapConversion ?? {}).length > 0 || Object.keys(gm.projectedCRS ?? {}).length > 0);
-  });
-  const localCoordinates = useMemo(() => open && !!model &&
-    (!model.ifcDataStore || !extractGeoreferencingOnDemand(model.ifcDataStore)?.hasGeoreference), [open, model]);
+  // Session georeferencing edits are written into the STEP the exporter reads when the model can take them, so
+  // the notices then follow the effective georeferencing: the file's own with this session's edits applied.
+  // Edits the exporter still refuses (a partial position) come back as export warnings.
+  const georefMutations = useViewerStore((s) => (model ? s.georefMutations.get(model.id) : undefined));
+  const writesSession = !!model && writesSessionGeoref(model) && hasGeorefEdits(georefMutations);
+  const georef = useMemo(() => {
+    if (!open || !model?.ifcDataStore) return null;
+    return writesSession ? getEffectiveGeoreference(model.ifcDataStore, undefined, georefMutations) : extractGeoreferencingOnDemand(model.ifcDataStore);
+  }, [open, model, writesSession, georefMutations]);
+  const localCoordinates = open && !!model && !georef?.hasGeoreference;
+  const sessionCrs = writesSession ? georef?.projectedCRS?.name.trim() || null : null;
 
   async function handleExport(): Promise<ExportDialogShellResult> {
     if (!model) return { success: false, message: t('cityJsonExport.noSource') };
     let engine: CityJsonEngine | undefined;
     try {
       engine = await cityJsonEngine.load();
-      const { exportCityJson } = engine;
-      const bytes = await resolveStepExportBytes(model, getMutationView);
-      const result = await exportCityJson(bytes, { sequence });
-      const blob = new Blob([result.text], { type: sequence ? 'application/x-ndjson' : 'application/json' });
-      downloadBlob(blob, modelExportFilename(model.name, sequence ? 'city.jsonl' : 'city.json'));
+      const result = await produceNativeCityJson(engine, model, getMutationView, georefMutations, sequence);
+      const { blob } = result;
+      downloadBlob(blob, result.filename);
       const message = t('cityJsonExport.exported');
       // Keep diagnostics visible and bounded; retain the full list inline.
       if (result.warnings.length) {
@@ -82,11 +82,11 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     exportingLabel={t('geometryExport.kmz.exportingButton')}
     successTitle={t('geometryExport.kmz.successTitle')}
     errorTitle={t('geometryExport.kmz.errorTitle')}
-    filenamePreview={model ? modelExportFilename(model.name, sequence ? 'city.jsonl' : 'city.json') : undefined}
+    filenamePreview={model ? cityJsonFilename(model.name, sequence) : undefined}
     exportDisabled={!model} onExport={handleExport} onOpenStateChange={setOpen}
   >{({ isExporting }) => <>
     {localCoordinates && <Alert><AlertDescription>{t('cityJsonExport.localNotice')}</AlertDescription></Alert>}
-    {sessionGeoref && <Alert><AlertDescription>{t('cityJsonExport.sessionGeorefNotice')}</AlertDescription></Alert>}
+    {sessionCrs && <p className="text-sm text-muted-foreground">{t('cityJsonExport.sessionCrs', { crs: sessionCrs })}</p>}
     {!model && <Alert><AlertDescription>{t('cityJsonExport.noSource')}</AlertDescription></Alert>}
     {modelList.length > 1 && <div className="space-y-2">
       <Label htmlFor="cityjson-model">{t('geometryExport.kmz.modelLabel')}</Label>

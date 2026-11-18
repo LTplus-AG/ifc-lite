@@ -5,10 +5,14 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
+import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import type { Renderer } from '@ifc-lite/renderer';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
-import { createBimContext } from '@ifc-lite/sdk';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { configuredView } from '@/test/agent-tools-fixture';
+import { ClashNamespace, createBimContext } from '@ifc-lite/sdk';
+import { summarizeClashes, type ClashResult } from '@ifc-lite/clash';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
@@ -32,6 +36,23 @@ const inspect = (id: string, input: unknown = {}, extra: Record<string, unknown>
   dispatchMainViewerTool(host, 'viewer_operation_inspect', { ...(viewerOperations().find(operation => operation.id === id)?.needs === 'model' ? { model_id: 'A' } : {}), operation_id: id, input, ...extra });
 const job = (job_id: string) => dispatchMainViewerTool(host, 'viewer_operation_job', { job_id });
 function data<T>(value: { structured: unknown; isError: boolean; text: string }): T { assert.equal(value.isError, false, value.text); return value.structured as T; }
+/** Holds `ClashNamespace.run` until its abort signal fires and, unless `released`, until `release()`. */
+function holdClashRunner(t: { mock: { method: typeof import('node:test').mock.method } }, { released = false } = {}) {
+  let entered!: () => void, aborted!: () => void, release!: () => void;
+  const settle = released ? Promise.resolve() : new Promise<void>(r => { release = r; });
+  const gate = { entered: new Promise<void>(r => { entered = r; }), aborted: new Promise<void>(r => { aborted = r; }), release: () => release?.() };
+  const run = ClashNamespace.prototype.run;
+  t.mock.method(ClashNamespace.prototype, 'run', async function (this: ClashNamespace, ...args: Parameters<typeof run>) {
+    entered();
+    const signal = args[2]?.signal;
+    assert.ok(signal, 'clash.analyze must pass its abort signal to the engine');
+    if (!signal.aborted) await once(signal, 'abort');
+    aborted();
+    await settle;
+    return run.apply(this, args);
+  });
+  return gate;
+}
 async function settled(id: string) {
   for (let i = 0; i < 50; i++) {
     await setImmediate();
@@ -105,6 +126,20 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal(useViewerStore.getState().measurements.length, 1);
     assert.equal((await execute('measurements.distance', { ...input, end: [1, 1, 1] }, { idempotency_key: 'distance-1' })).isError, true);
   });
+  it('exports a real changed IFC artifact without downloading or discarding pending edits', async () => {
+    const view = new MutablePropertyView(null, 'A');
+    view.setAttribute(1, 'Name', 'AGENT-EXPORTED-WALL');
+    useViewerStore.setState({ mutationViews: new Map([['A', view]]), mutationVersion: 1 });
+    const result = data<{ committed: boolean; result: { artifact: { artifact_id: string }; files: Array<{ model_id: string }> } }>(await execute('exports.changedModels'));
+    assert.equal(result.committed, true);
+    assert.equal(result.result.files[0].model_id, 'A');
+    const chunk = data<{ data: string; next_offset: number | null }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: result.result.artifact.artifact_id, offset: 0, length: 65536 }));
+    assert.equal(chunk.next_offset, null);
+    assert.match(Buffer.from(chunk.data, 'base64').toString('utf8'), /AGENT-EXPORTED-WALL/);
+    assert.equal(view.getMutations().length, 1, 'creating an export must not discard its pending edits');
+    assert.equal((await execute('model.unload')).isError, true, 'unexported edits still require native discard confirmation');
+    assert.ok(useViewerStore.getState().models.has('A'));
+  });
   it('validates every basket reference before changing native basket isolation', async () => {
     useViewerStore.getState().clearBasket();
     const before = useViewerStore.getState().isolatedEntities;
@@ -114,6 +149,31 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal((await inspect('basket.clear')).errorCode, 'READ_ONLY');
     assert.equal((await execute('basket.replace', { express_ids: [1] }, {}, false)).errorCode, 'READ_ONLY');
     assert.equal(useViewerStore.getState().pinboardEntities.size, 0);
+  });
+  it('exports explicit native STEP targets and refuses an unknown merge member before retaining an artifact', async () => {
+    const options = { schema: 'IFC4', include_geometry: true, apply_mutations: true, visible_only: false, section_mode: 'trim' };
+    const exported = data<{ result: { artifact: { artifact_id: string }; diagnostics_json: string } }>(await execute('exports.modelStep', options));
+    const bytes = data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: exported.result.artifact.artifact_id }));
+    assert.match(Buffer.from(bytes.data, 'base64').toString('utf8'), /IFCWALL/);
+    await seed(2);
+    const refused = await execute('exports.mergedStep', { ...options, model_ids: ['A', 'missing'], unit_reconciliation: 'assume-shared' });
+    assert.equal(refused.isError, true);
+    assert.deepEqual(data<{ artifacts: unknown[] }>(await dispatchMainViewerTool(host, 'viewer_artifacts', {})).artifacts, []);
+    // The fixture gives both models the same wall names and GlobalIds (the clash tests need that), and the
+    // merge de-duplicates by GlobalId. Give B's wall its own identity and mark one wall per model.
+    const views = new Map(['A', 'B'].map(id => {
+      const store = useViewerStore.getState().models.get(id)!.ifcDataStore!;
+      const view = configuredView(store, id);
+      view.setAttribute(1, 'Name', `Merged marker ${id}`);
+      if (id === 'B') view.setAttribute(1, 'GlobalId', '0001bbbbbbbbbbbbbbbbbb');
+      return [id, view] as const;
+    }));
+    useViewerStore.setState({ mutationViews: views });
+    const merged = data<{ result: { artifact: { artifact_id: string }; diagnostics_json: string } }>(await execute('exports.mergedStep', { ...options, model_ids: ['A', 'B'], unit_reconciliation: 'assume-shared' }));
+    const diagnostics = JSON.parse(merged.result.diagnostics_json) as { stats: { modelCount: number }; skipped: unknown[] };
+    assert.equal(diagnostics.stats.modelCount, 2); assert.deepEqual(diagnostics.skipped, []);
+    const mergedText = Buffer.from(data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: merged.result.artifact.artifact_id })).data, 'base64').toString('utf8');
+    for (const id of ['A', 'B']) assert.equal(mergedText.split(`Merged marker ${id}`).length - 1, 1, id);
   });
   it('runs native Rules filters, rejects stale configuration, and pages the published result', async () => {
     const state = data<{ result: { native_json: string } }>(await inspect('filters.state'));
@@ -204,6 +264,17 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     useViewerStore.setState({ mutationVersion: 3 });
     assert.equal((await execute('environment.exposure', { value: 1.1 }, { expected_revision: 2 })).errorCode, 'STATE_CHANGED');
   });
+  it('runs real box-mesh clash analysis with structured job completion', async () => {
+    const panelReport: ClashResult = { clashes: [], summary: summarizeClashes([]), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+    useViewerStore.setState({ clashResult: panelReport });
+    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+    const queued = data<{ job: { id: string; state: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+    assert.equal(queued.job.state, 'running');
+    const terminal = data<{ state: string; result: { result: { clashes: unknown[] } } }>(await settled(queued.job.id));
+    assert.equal(terminal.state, 'succeeded');
+    assert.ok(terminal.result.result.clashes.length > 0, 'real coincident meshes must clash');
+    assert.equal(useViewerStore.getState().clashResult, panelReport, 'analysis leaves the open panel report in place');
+  });
   it('refuses completed job results after a model edit and isolates host job ownership', async () => {
     const queued = data<{ job: { id: string } }>(await inspect('schedule.tasks', {}, { background: true }));
     assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'succeeded');
@@ -212,6 +283,23 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     useViewerStore.setState({ mutationVersion: 1 });
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
   });
+  it('cancels a real clash job and waits for native runner settlement', async (t) => {
+    // The runner signals entry, waits for the abort, then waits on a gate. While the gate is
+    // closed the job must still be running: cancellation is not terminal until the runner settles.
+    const gate = holdClashRunner(t);
+    try {
+      const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+      const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+      await gate.entered;
+      const requested = data<{ state: string; cancellationRequested?: boolean }>(await dispatchMainViewerTool(host, 'viewer_operation_cancel', { job_id: queued.job.id }));
+      assert.equal(requested.state, 'running');
+      assert.equal(requested.cancellationRequested, true);
+      await gate.aborted;
+      assert.equal(data<{ state: string }>(await job(queued.job.id)).state, 'running', 'cancelled only once the runner settles');
+      gate.release();
+      assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'cancelled');
+    } finally { gate.release(); }
+  });
   it('discards a completed result when the model object changes even if its store survives', async () => {
     const queued = data<{ job: { id: string } }>(await inspect('schedule.tasks', {}, { background: true }));
     assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'succeeded');
@@ -219,6 +307,16 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     models.set('A', { ...models.get('A')!, name: 'replacement' });
     useViewerStore.setState({ models });
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
+  });
+  it('aborts host-owned analysis after its original MCP call has returned', async (t) => {
+    const lifetime = new AbortController();
+    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), { lifetimeSignal: lifetime.signal });
+    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+    const gate = holdClashRunner(t, { released: true });
+    const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+    await gate.entered;
+    lifetime.abort();
+    assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'cancelled');
   });
   it('declares an explicit capability and closed runtime schema for every exact ID', () => {
     const ids = new Set<string>();

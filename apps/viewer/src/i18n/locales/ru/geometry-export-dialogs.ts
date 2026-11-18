@@ -7,7 +7,7 @@ import type { Catalogue } from '../../registry';
 export const geometryExportDialogsRu = {
   "cityJsonExport.description": "Экспорт выбранной модели IFC в CityJSON 2.0 или CityJSONSeq.",
   "cityJsonExport.localNotice": "У этой модели нет геопривязки. Файл будет использовать локальные координаты модели, а не координаты карты.",
-  "cityJsonExport.sessionGeorefNotice": "Изменения геопривязки, сделанные в этом сеансе, не включены в этот экспорт.",
+  "cityJsonExport.sessionCrs": "Записывает координаты в {crs}, включая изменения геопривязки из этого сеанса.",
   "cityJsonExport.noSource": "Загрузите модель IFC или IFCZIP для экспорта.",
   "cityJsonExport.document": "CityJSON (.city.json)",
   "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",
@@ -20,9 +20,10 @@ export const geometryExportDialogsRu = {
   "geometryExport.shared.geometryEngineUnavailableError": "Геометрический движок недоступен",
   "geometryExport.shell.filenamePreviewLabel": "Сохранится как:",
   "geometryExport.shell.warningsSummary": {
-    one: "{count} предупреждение",
-    many: "{count} предупреждений",
-    other: "{count} предупреждения",
+    one: "{countDisplay} предупреждение",
+    few: "{countDisplay} предупреждения",
+    many: "{countDisplay} предупреждений",
+    other: "{countDisplay} предупреждения",
   },
   "geometryExport.glb.triggerButton": "Экспортировать GLB",
   "geometryExport.glb.dialogTitle": "Экспорт файла GLB",

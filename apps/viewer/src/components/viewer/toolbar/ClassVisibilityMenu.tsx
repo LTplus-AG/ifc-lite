@@ -41,7 +41,7 @@ import { useViewerStore } from '@/store';
 import { isPreviewTier } from '@/store/constants';
 import { cn } from '@/lib/utils';
 import { openSettings } from '@/lib/settings/open-settings';
-import { structuralGlyphsVisible, toggleStructuralGlyphs } from '@/lib/visibility/structural-view';
+import { structuralGlyphsMasked, structuralGlyphsVisible, toggleStructuralGlyphs } from '@/lib/visibility/structural-view';
 
 interface ClassVisibilityRowProps {
   /** Colored class glyph (caller sets the tint). */
@@ -109,7 +109,7 @@ export function ClassVisibilityControls({ inMenu = false, onNavigate }: { inMenu
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
   const resetTypeVisibility = useViewerStore((state) => state.resetTypeVisibility);
   const structuralViewMode = useViewerStore((state) => state.structuralViewMode);
-  const glyphsMasked = typeVisibility.structuralGlyphs && structuralViewMode === 'physical';
+  const glyphsMasked = structuralGlyphsMasked(typeVisibility, structuralViewMode);
   // #957 follow-up: Model/Types 3D view switch — 'model' shows placed
   // occurrences (default), 'types' shows the type-library shapes.
   const typeViewMode = useViewerStore((state) => state.typeViewMode);

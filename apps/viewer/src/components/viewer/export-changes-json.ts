@@ -48,9 +48,9 @@ export type ExportedMutation = unknown;
  * available for a LandXML model, which has no data store at all (#4937), and
  * it is why the dialog's data-store guard must not cover this branch.
  */
-export function exportChangesJson(
+export function buildChangesJson(
   modelId: string, modelName: string, mutations: ExportedMutation[],
-): string {
+) {
   const data = {
     version: 1,
     modelId,
@@ -58,6 +58,11 @@ export function exportChangesJson(
     mutations,
     exportedAt: new Date().toISOString(),
   };
-  downloadFile(JSON.stringify(data, null, 2), modelExportFilename(modelName, 'json', '_changes'), 'application/json');
+  return { content: JSON.stringify(data, null, 2), filename: modelExportFilename(modelName, 'json', '_changes'), mime: 'application/json' };
+}
+
+export function exportChangesJson(modelId: string, modelName: string, mutations: ExportedMutation[]): string {
+  const artifact = buildChangesJson(modelId, modelName, mutations);
+  downloadFile(artifact.content, artifact.filename, artifact.mime);
   return `Exported ${mutations.length} changes as JSON`;
 }

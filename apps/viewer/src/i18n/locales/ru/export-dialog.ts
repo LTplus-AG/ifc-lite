@@ -5,8 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const exportDialogRu = {
-  'exportDialog.warningsCount': {"one": "{count} предупреждение", "few": "{count} предупреждения", "many": "{count} предупреждений", "other": "{count} предупреждения"},
-  'exportDialog.warningsMore': "и ещё {count}",
+  'exportDialog.warningsMore': "и ещё {countDisplay}",
   "exportDialog.trigger": "Экспортировать IFC",
   "exportDialog.title": "Экспорт файла IFC",
   "exportDialog.description.ifc5": "Экспортировать данные и геометрию модели, включая её текущее положение в рабочей области",
@@ -55,6 +54,7 @@ export const exportDialogRu = {
   "exportDialog.noStepRecords.error": "В этой модели нет записей IFC, из которых можно сформировать файл. Выберите IFC5, чтобы экспортировать её как IFCX.",
   "exportDialog.mergeSkipped.noRecords": "Не включены в объединённый файл, нет записей IFC, из которых можно сформировать файл: {models}.",
   "exportDialog.mergeSkipped.noData": "Не включены в объединённый файл, нет данных для экспорта: {models}.",
+  "exportDialog.sectionWarningsWholeModel": "Предупреждения для моделей, обрезанных по сечениям, относятся к экспорту до обрезки, а не только к сохранённой части.",
   "exportDialog.landXml.title": "Файл LandXML нельзя экспортировать в формате IFC",
   "exportDialog.landXml.description": "Данные о рельефе местности сохраняются в исходном формате; для экспорта не синтезируются никакие объекты IFC.",
   "exportDialog.landXml.error": "LandXML содержит исходную геометрию, а не IFC. Вместо этого экспортируйте исходный файл LandXML.",

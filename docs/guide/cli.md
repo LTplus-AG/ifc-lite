@@ -1217,6 +1217,9 @@ Checks:
   - `structural-unlinked-item`: a structural member or connection with no physical element assigned. Members and connections are each checked only when the file links at least one of that kind.
   - `structural-class-mismatch`: a curve member assigned to a slab or wall, or a surface member assigned to a beam, column or member (`target` names the physical element).
   - `structural-unconnected-member`: a structural member with no `IfcRelConnectsStructuralMember`. Checked only when the file connects at least one member.
+  - `structural-axis-drift`: a curve member whose end lies more than 0.05 m off the axis of the physical element it is assigned to (`target`, with `distance` in metres).
+  - `structural-stale-item`: a derived curve member whose physical element's line moved more than 1 mm since derivation (`target`, `distance`).
+  - `structural-unchecked-member`: a linked curve member the axis-drift or movement rule did not compare, with the reason per rule: its edge could not be read, its derivation record is absent or unreadable, its element has no readable axis, the axis data cannot produce a usable measurement, the recorded element is no longer linked, or a linked element has no readable GlobalId. One `info` summary issue first (`Movement or axis drift was not checked on N of M linked curve member(s)`), then one issue per member, detailed up to the first 50, after which a single rollup issue reports the remaining count and the total. A member whose only gap is an absent derivation record is `info`; the rest are warnings. Without this, no `structural-axis-drift` or `structural-stale-item` finding does not mean those members were checked.
 
 Returns exit code 0 (valid) or 1 (errors found).
 

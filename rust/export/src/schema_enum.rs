@@ -184,15 +184,18 @@ impl ConversionChecks {
         }
         match (from, to) {
             ("IFC2X3", "IFC4") => {
-                checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, kept, &mut *allocate);
+                checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, kept);
+                checks.structural.carriers = crate::schema_structural_carriers::StructuralCarriers::scan_ifc2x3(content, kept);
+                checks.structural.allocate(&mut *allocate);
                 checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept, false, allocate);
                 checks.structural.values = crate::schema_structural_values::StructuralValues::scan(content, kept, false, allocate);
             }
             ("IFC4", "IFC2X3") => {
-                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept, true, allocate);
-                checks.structural.values = crate::schema_structural_values::StructuralValues::scan(content, kept, true, allocate);
                 checks.structural.links = crate::schema_structural_links::StructuralLinks::scan(content, kept);
                 checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc4(content, kept);
+                checks.structural.carriers = crate::schema_structural_carriers::StructuralCarriers::scan_ifc4(content, kept);
+                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept, true, allocate);
+                checks.structural.values = crate::schema_structural_values::StructuralValues::scan(content, kept, true, allocate);
             }
             _ => {}
         }
@@ -211,7 +214,7 @@ impl ConversionChecks {
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
     ) -> std::io::Result<isize> {
         use std::io::Write as _;
-        let mut added = self.structural.varying.added();
+        let mut added = self.structural.added();
         added.extend(self.structural.values.added());
         added.extend(self.structural.axes.added());
         let count = added.len() as isize;

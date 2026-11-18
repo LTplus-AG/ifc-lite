@@ -100,7 +100,9 @@ export class StructuralCarriers {
       if (args?.length !== 7 || stepString(args[2]) !== CAUSES) continue;
       const action = slotRef(args[6]);
       if (action === null || !isSubtype(schema, source.type(action), 'IfcStructuralAction')) continue;
-      for (const r of (listItems(args[4]) ?? []).map(slotRef)) {
+      const reactions = listItems(args[4])?.map(slotRef);
+      if (!reactions || reactions.includes(null)) continue;
+      for (const r of reactions) {
         if (r !== null && isSubtype(schema, source.type(r), 'IfcStructuralReaction')) causes.set(action, (causes.get(action) ?? new Set<number>()).add(r));
       }
     }

@@ -8,7 +8,7 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, before, mock, test } from 'node:test';
-import { extractStructuralOnDemand } from '@ifc-lite/parser';
+import { extractStructuralOnDemand, structuralCounterparts, STRUCTURAL_DERIVATION_PSET } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { registerLocale, setLocale, type Locale } from '@/i18n';
 import { structuralDeriveEn } from '@/i18n/catalogues/structural-derive.en';
@@ -187,7 +187,7 @@ test('#10605 with no readable axes (IFC5), "no findings" does not claim the move
   // The physical axes are read for every schema but IFC5 (the derivation itself refuses IFC5 up front).
   dataStore.schemaVersion = 'IFC5';
   const root = render(<DerivationSummary review={review} />);
-  await waitFor(() => /Movement and axis drift were not checked on 3 of 3 linked curve members/.test(text(root)), `the check finishes: ${text(root)}`);
+  await waitFor(() => /Movement or axis drift was not checked on 3 of 3 linked curve members/.test(text(root)), `the check finishes: ${text(root)}`);
   assert.doesNotMatch(text(root), CONSISTENT);
 });
 
@@ -199,7 +199,7 @@ test('#10605 a linked beam whose axis cannot be read is reported unchecked, neve
   const root = render(<StructuralDerivationReview origin="test" />);
   await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
   click(button(root, /Derive and review/)!);
-  await waitFor(() => /Movement and axis drift were not checked on 1 of 3 linked curve members/.test(text(root)), `the check finishes: ${text(root)}`);
+  await waitFor(() => /Movement or axis drift was not checked on 1 of 3 linked curve members/.test(text(root)), `the check finishes: ${text(root)}`);
   assert.doesNotMatch(text(root), CONSISTENT);
   const rows = [...root.querySelectorAll('section[aria-label="Analysis model check"] li')];
   assert.equal(rows.length, 1, rows.map((li) => li.textContent).join('\n'));
@@ -208,6 +208,32 @@ test('#10605 a linked beam whose axis cannot be read is reported unchecked, neve
   assert.ok(beam);
   click(beam);
   assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: SAMPLE_MODEL, expressId: 65 });
+});
+
+test('#10640 a curve member skipped by both rules occupies one row', async () => {
+  const { dataStore, view } = await seed(false);
+  commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
+  // The member derived from the beam B1 (#65): clear its Representation (attribute 6), so axis drift has no edge to compare.
+  const [memberId] = structuralCounterparts(extractStructuralOnDemand(await parseIfc(editedModelBytes(dataStore, view))), 65)?.expressIds ?? [];
+  assert.ok(memberId, 'B1 has a derived member');
+  recordModellingCommit(useViewerStore, SAMPLE_MODEL, (editor) => { editor.setPositionalAttribute(memberId, 6, null); });
+  view.deletePropertySet(memberId, STRUCTURAL_DERIVATION_PSET);
+  const root = render(<StructuralDerivationReview origin="test" />);
+  await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
+  click(button(root, /Derive and review/)!);
+  await waitFor(() => /Movement or axis drift was not checked on 1 of 3 linked curve members/.test(text(root)), `the check finishes: ${text(root)}`);
+  assert.doesNotMatch(text(root), CONSISTENT);
+  const rows = [...root.querySelectorAll('section[aria-label="Analysis model check"] li')];
+  assert.equal(rows.length, 1, rows.map((li) => li.textContent).join('\n'));
+  assert.match(rows[0].textContent ?? '', /\(IfcStructuralCurveMember\): its edge could not be read, so axis drift was not checked/);
+  assert.match(rows[0].textContent ?? '', /it has no derivation record, so movement was not checked/);
+  const member = rows[0].querySelector('button');
+  assert.ok(member);
+  click(member);
+  assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: SAMPLE_MODEL, expressId: memberId });
+  registerLocale('ru-x-coverage-test', structuralDeriveRu);
+  setLocale('ru-x-coverage-test');
+  await waitFor(() => /Не проверены на смещение или отклонение от оси \(1\)/.test(text(root)), 'the Russian summary uses “or”');
 });
 
 const REFUSALS: Array<[Locale, Record<string, string>]> = [

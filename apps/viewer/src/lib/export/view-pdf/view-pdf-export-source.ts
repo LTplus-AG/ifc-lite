@@ -139,7 +139,7 @@ function gatherDrawnMeshes(state: ViewerState): MeshData[] {
 }
 
 /** The live camera pose + projection, or `null` when there is no renderer. */
-function readCameraSnapshot(): ViewCameraSnapshot | null {
+export function readCameraSnapshot(): ViewCameraSnapshot | null {
   const camera = getGlobalRenderer()?.getCamera();
   if (!camera) return null;
   return {

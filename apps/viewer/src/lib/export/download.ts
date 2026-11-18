@@ -218,7 +218,7 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
  * decodable data URL, so a failed capture drops the image instead of the
  * export.
  */
-export function dataUrlToBytes(dataUrl: string): Uint8Array | undefined {
+export function dataUrlToBytes(dataUrl: string): Uint8Array<ArrayBuffer> | undefined {
   const comma = dataUrl.indexOf(',');
   if (comma < 0) return undefined;
   try {

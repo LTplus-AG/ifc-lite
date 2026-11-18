@@ -137,10 +137,10 @@ fn is_opaque_opening(
         .into_iter()
         .filter_map(|repr_id| decoder.decode_by_id(repr_id).ok())
         .collect();
-    let pending: Vec<(u32, u32)> = meshed_representations(&entity, &reprs)
+    let pending: Vec<(u32, u32, bool)> = meshed_representations(&entity, &reprs)
         .filter_map(|repr| repr.get_refs(3))
         .flatten()
-        .map(|id| (id, 0))
+        .map(|id| (id, 0, false))
         .collect();
     let scan = scan_item_styles(pending, styles, decoder);
     if scan.glass {
@@ -169,25 +169,28 @@ struct ItemStyles {
     styled: bool,
     /// Some geometry (non-mapped) item was reached.
     leaf: bool,
-    /// Some geometry (non-mapped) item has no style of its own. Sub-meshes are
-    /// keyed by that leaf id and coloured from the leaf's own style only, so a
-    /// style on a mapped item above it does not reach it.
+    /// Some geometry (non-mapped) item has no style of its own and no styled
+    /// `IfcMappedItem` above it. A styled mapped item above an unstyled leaf
+    /// styles that occurrence, and its style outranks the material colours
+    /// (`presentation_source::color`), so such a leaf does not take them.
     unstyled_leaf: bool,
 }
 
-/// Visit `pending` items (id, depth) and
+/// Visit `pending` items (id, depth, under a styled mapped item) and
 /// everything under them through nested `IfcMappedItem`s, as deep as the colour
 /// resolver goes (`MAX_MAPPED_ITEM_DEPTH`). `visited` keeps the depth each item
 /// was explored at and allows a revisit only from nearer the root, the rule
 /// `element_color::find_geometry_item_color_at` documents.
 fn scan_item_styles(
-    mut pending: Vec<(u32, u32)>,
+    mut pending: Vec<(u32, u32, bool)>,
     styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
 ) -> ItemStyles {
     let mut scan = ItemStyles::default();
-    let mut visited: FxHashMap<u32, u32> = FxHashMap::default();
-    while let Some((id, depth)) = pending.pop() {
+    // Keyed by (item, under a styled mapped item): the same item reached with
+    // and without a styled ancestor answers `unstyled_leaf` differently.
+    let mut visited: FxHashMap<(u32, bool), u32> = FxHashMap::default();
+    while let Some((id, depth, inherited)) = pending.pop() {
         let own_style = styles.get(&id);
         if let Some(style) = own_style {
             if has_glass_style(style) {
@@ -196,17 +199,17 @@ fn scan_item_styles(
             }
             scan.styled = true;
         }
-        if depth >= MAX_MAPPED_ITEM_DEPTH || visited.get(&id).is_some_and(|&seen| seen <= depth) {
+        if depth >= MAX_MAPPED_ITEM_DEPTH || visited.get(&(id, inherited)).is_some_and(|&seen| seen <= depth) {
             continue;
         }
-        visited.insert(id, depth);
+        visited.insert((id, inherited), depth);
         // IfcMappedItem → IfcRepresentationMap → MappedRepresentation.Items
         let Ok(item) = decoder.decode_by_id(id) else {
             continue;
         };
         if item.ifc_type != IfcType::IfcMappedItem {
             scan.leaf = true;
-            scan.unstyled_leaf |= own_style.is_none();
+            scan.unstyled_leaf |= own_style.is_none() && !inherited;
             continue;
         }
         let Some(mapped_repr) = mapped_item_representation_id(&item, decoder)
@@ -214,8 +217,9 @@ fn scan_item_styles(
         else {
             continue;
         };
+        let styled_occurrence = inherited || own_style.is_some();
         for child in mapped_repr.get_refs(3).unwrap_or_default() {
-            pending.push((child, depth + 1));
+            pending.push((child, depth + 1, styled_occurrence));
         }
     }
     scan

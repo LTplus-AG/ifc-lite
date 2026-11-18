@@ -35,8 +35,9 @@ fn process_filtered(ifc: &str, mode: OpeningFilterMode) -> ProcessingResult {
 /// material; the unstyled item takes the element colour, which resolves to that
 /// opaque style rather than the transparent window default.
 /// #140: an `IfcWindow` whose mapped item carries an opaque style but maps an
-/// unstyled face set, with the frame/pane material list. The sub-mesh is keyed
-/// by the unstyled leaf, so it takes the transparent pane colour.
+/// unstyled face set, with the frame/pane material list. The mapped item's style
+/// styles that occurrence and outranks the material list, so the window renders
+/// opaque (#10698, `mapped_item_style_over_material.rs`).
 const OPENINGS_IFC: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ignore-opaque resolved colour fixture'),'2;1');
@@ -210,8 +211,12 @@ fn ignore_opaque_judges_the_colour_the_opening_renders_with() {
     assert!(
         unfiltered
             .iter()
-            .any(|m| m.express_id == 140 && m.color[3] < 1.0),
-        "window #140 renders its unstyled mapped leaf in the transparent pane colour"
+            .any(|m| m.express_id == 140)
+            && unfiltered
+                .iter()
+                .filter(|m| m.express_id == 140)
+                .all(|m| m.color[3] >= 1.0),
+        "window #140 renders its unstyled mapped leaf in the mapped item's opaque style"
     );
 
     let filtered = meshes(OpeningFilterMode::IgnoreOpaque);
@@ -244,8 +249,8 @@ fn ignore_opaque_judges_the_colour_the_opening_renders_with() {
         "window #130's unstyled item takes its opaque style colour, so IgnoreOpaque must suppress it"
     );
     assert!(
-        has_mesh(&filtered, 140),
-        "window #140's leaf ignores the mapped item's style and renders glazed, so IgnoreOpaque must keep it"
+        !has_mesh(&filtered, 140),
+        "window #140's leaf takes the mapped item's opaque style, so IgnoreOpaque must suppress it"
     );
 }
 

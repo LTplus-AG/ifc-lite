@@ -3,7 +3,7 @@
 //! (`presentation_source::color`, `resolve_color_for_representation_map`).
 use crate::element::assembly_job::AssemblyJob;
 use crate::element::element_color::{find_geometry_item_style_source, resolve_color_for_representation_map};
-use crate::element::presentation_source::color;
+use crate::element::presentation_source::{color, occurrence_style_source};
 use crate::element::session_retained::error::RetainedExecutionError as Error;
 use crate::element::session_retained::publication::PartAppearance;
 use crate::element::session_retained::refusal::{RefusalOrigin, RetainedProductRefusal};
@@ -118,7 +118,11 @@ pub(super) fn resolve_parts(
                     Some(shared) if shared.key.0 == *source && shared.key.1 == *occurrences => shared,
                     _ => {
                         let (rgba, material_name) = color(job, *id, element_color, materials, &mut next_material, ctx, decoder, true);
-                        let style_id = find_geometry_item_style_source(*id, &|id| ctx.geometry_style_index.contains_key(&id), decoder);
+                        let style_id = find_geometry_item_style_source(*id, &|id| ctx.geometry_style_index.contains_key(&id), decoder)
+                            .or_else(|| {
+                                materials?;
+                                occurrence_style_source(job.id, *id, ctx, decoder)
+                            });
                         Shared { key: (*source, occurrences.clone()), rgba, material_name, style_id }
                     }
                 };

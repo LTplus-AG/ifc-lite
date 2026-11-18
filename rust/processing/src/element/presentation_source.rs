@@ -134,8 +134,11 @@ fn recompute_reason(mesh: &Mesh, flipped: bool) -> NormalProvenance {
 }
 
 /// Direct style wins; else chase IfcMappedItem so mapped sub-geometry
-/// inherits its underlying style (#913 §2.7); else the material cursor; else
-/// the element colour.
+/// inherits its underlying style (#913 §2.7); else, when the element has
+/// material colours, the style on the `IfcMappedItem` occurrence that maps this
+/// geometry (`mapped_occurrence_style_source`); else the material cursor; else
+/// the element colour. Without material colours the occurrence's style is
+/// already the element colour this falls back to, so the walk is skipped.
 #[allow(clippy::too_many_arguments)] // canonical precedence and one collection cursor
 pub(super) fn color(
     job: &AssemblyJob<'_>,
@@ -150,7 +153,12 @@ pub(super) fn color(
     let style = ctx.geometry_style_index.get(&id);
     let direct = style
         .map(|style| style.color)
-        .or_else(|| find_geometry_item_color(id, ctx.geometry_style_index, decoder));
+        .or_else(|| find_geometry_item_color(id, ctx.geometry_style_index, decoder))
+        .or_else(|| {
+            materials?;
+            let source = occurrence_style_source(job.id, id, ctx, decoder)?;
+            ctx.geometry_style_index.get(&source).map(|style| style.color)
+        });
     let color = crate::style::resolve_submesh_color(direct, materials, next, fallback);
     let name = if material_name {
         style
@@ -161,6 +169,21 @@ pub(super) fn color(
         None
     };
     (color, name)
+}
+
+/// The styled `IfcMappedItem` occurrence of geometry `leaf_id` in product
+/// `product_id`'s shape, if any: the style source of a sub-mesh coloured by
+/// its occurrence rather than its own item.
+pub(super) fn occurrence_style_source(
+    product_id: u32,
+    leaf_id: u32,
+    ctx: &MeshProductionContext<'_>,
+    decoder: &mut EntityDecoder,
+) -> Option<u32> {
+    let product = decoder.decode_by_id(product_id).ok()?;
+    let shape = ifc_lite_geometry::representation::product_shape_id(&product)?;
+    let styles = ctx.geometry_style_index;
+    mapped_occurrence_style_source(shape, leaf_id, &|item| styles.contains_key(&item), decoder)
 }
 
 /// One assembled fallback body (a single frame part). Outward winding: a

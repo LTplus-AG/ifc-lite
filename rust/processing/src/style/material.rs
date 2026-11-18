@@ -139,7 +139,9 @@ pub fn pick_material_style_for_submesh(
 /// `element/element_color.rs` (`find_geometry_item_style_source` and the
 /// product/map helpers); typed style-map lookup adapters supply `direct_color`:
 ///
-/// 1. `direct_color` (a direct `IfcStyledItem`, incl. mapped geometry) wins;
+/// 1. `direct_color` wins: a direct `IfcStyledItem` on the geometry, incl.
+///    mapped geometry, else (with material colours present) the style on the
+///    `IfcMappedItem` occurrence that maps it;
 /// 2. else the material chain, alternating transparent/opaque per sub-mesh via
 ///    `mat_color_idx` (incremented here, only when a material list is present),
 ///    so a window's glass and frame split across its parts;

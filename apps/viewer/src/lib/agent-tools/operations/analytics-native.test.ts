@@ -174,6 +174,18 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([1, 2, 101, 102]));
     await run('charts.clearFocus'); assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
   });
+  it('#10584 rejects chart results when the cross-chart slice or its owner changes during evaluation', async () => {
+    const dashboard = modelOverviewDashboard();
+    const target = { dashboard_id: dashboard.id, chart_id: dashboard.charts[0].id };
+    const slice = new Set([1]);
+    useViewerStore.setState({ dashboards: [dashboard] });
+    for (const next of [new Set([2]), slice]) {
+      useViewerStore.getState().setChartSlice(slice, 'first-chart');
+      const pending = run('charts.evaluate', target);
+      useViewerStore.getState().setChartSlice(next, next === slice ? 'second-chart' : 'first-chart');
+      await assert.rejects(pending, /Chart selection changed during evaluation/);
+    }
+  });
   it('creates a 90 degree angle and unit circular-edge radius using real numerical completion', async () => {
     const angle = await run<{ outcome: { degrees: number } }>('measurements.angle', { points: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] });
     assert.equal(angle.outcome.degrees, 90); assert.equal(useViewerStore.getState().activeAngle, null);

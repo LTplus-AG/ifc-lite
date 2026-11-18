@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { Renderer } from '@ifc-lite/renderer';
+import { resolve } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { placementSnapshot, placementSnapshotIsCurrent } from '../model-placement/placement-snapshot';
 import { noteDeviationWrite } from '../model-placement/preview-analysis';
 export class NativeDeviationError extends Error {
-  constructor(readonly key: 'deviationPanel.positionsChangedError' | 'deviationPanel.noPointsError' | 'deviationPanel.noMeshError') { super(key); }
+  constructor(readonly key: 'deviationPanel.positionsChangedError' | 'deviationPanel.noPointsError' | 'deviationPanel.noMeshError') { super(resolve(key)); }
 }
 export class NativeDeviationReadError extends Error {
   constructor(readonly revision: number, cause: unknown) { super(cause instanceof Error ? cause.message : String(cause), { cause }); }

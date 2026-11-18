@@ -32,6 +32,9 @@ export async function evaluateDashboardChart(dashboard: DashboardSpec, chartId: 
     || now.clashResult !== state.clashResult || now.scheduleData !== state.scheduleData
     || now.idsValidationReport !== state.idsValidationReport || now.bcfProject !== state.bcfProject
     || now.compareResult !== state.compareResult) throw new Error('Chart source changed during evaluation.');
+  if (now.chartSlice !== state.chartSlice || now.chartSliceSource !== state.chartSliceSource) {
+    throw new Error('Chart selection changed during evaluation.');
+  }
   const dataset = chartCardDataset(spec, source.dataset, { status: 'ok', ids: ids ?? new Set() });
   return aggregate(spec, dataset, { slice: chartCardSlice(spec, isRecordedChart(spec), state.chartSlice, state.chartSliceSource) });
 }

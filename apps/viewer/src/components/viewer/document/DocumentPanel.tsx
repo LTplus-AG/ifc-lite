@@ -104,7 +104,11 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     const current = live.documents.find(entry => entry.id === document.id);
     if (!current) return false;
     let next: DocumentSpec;
-    try { next = moveNativeDocumentBlocks(current, ids, beforeId); } catch (error) { console.warn('[document] block move refused', error); return false; }
+    try { next = moveNativeDocumentBlocks(current, ids, beforeId); } catch (error) {
+      console.warn('[document] block move refused', error);
+      toast.error(t('document.panel.blockEditRefused'));
+      return false;
+    }
     if (next === current) return false;
     void update(next);
     return true;
@@ -117,7 +121,11 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     if (!current || index < 0) return;
     // The duplicate is the reviewer's own text; refresh only regenerates the original (#6918).
     let copy: ReturnType<typeof copyNativeDocumentBlock>;
-    try { copy = copyNativeDocumentBlock(current, id); } catch (error) { console.warn('[document] block copy refused', error); return; }
+    try { copy = copyNativeDocumentBlock(current, id); } catch (error) {
+      console.warn('[document] block copy refused', error);
+      toast.error(t('document.panel.blockEditRefused'));
+      return;
+    }
     // Read current content so consecutive copies keep each other's staged durable writes.
     void update(copy.document);
     selection.selectOnly(copy.id);

@@ -12,12 +12,15 @@
  * Findings the panel already explains in its own notices (#2526's double
  * map position, the scale note) say so instead of repeating it; the double
  * position keeps no fix, as the panel's note explains why it must not.
+ * An IfcSite location fix is written as positional attribute edits, the
+ * SDK's `bim.georef.setSite` encoding (#10659), and the check re-runs when
+ * this session's site location changes.
  *
  * Mounted through `georef-diagnosis-gate` (`React.lazy`), so this file and
  * everything it imports load only when the panel shows.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CircleAlert, Info, Stethoscope } from 'lucide-react';
 import type { GeorefFindingCode, Severity } from '@ifc-lite/sdk/georef-doctor';
 import { Button } from '@/components/ui/button';
@@ -27,7 +30,8 @@ import { useViewerStore } from '@/store';
 import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
 import { posthog } from '@/lib/analytics';
 import { useTranslation, type TranslationKey } from '@/i18n';
-import { diagnoseModelGeoreference, type DiagnosisItem, type GeorefDiagnosis } from '@/lib/geo/georef-diagnosis';
+import { diagnoseModelGeoreference, editedSiteLocation, type DiagnosisItem, type GeorefDiagnosis } from '@/lib/geo/georef-diagnosis';
+import { writeSiteLocation } from '@/lib/geo/site-location-write';
 import { areaOfUseText } from './epsg-area-of-use';
 import { INSPECTOR_COUNT, InspectorSectionTrigger } from './inspector-ui';
 
@@ -111,6 +115,12 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
   const store = useViewerStore((s) => s.models.get(modelId)?.ifcDataStore ?? null);
   const edits = useViewerStore((s) => s.georefMutations.get(modelId));
   const setGeorefFields = useViewerStore((s) => s.setGeorefFields);
+  const view = useViewerStore((s) => s.mutationViews.get(modelId) ?? null);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  // Re-check when this session's site location changes, not on every other edit; mutationVersion because
+  // the view's positional edits change in place.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const siteKey = useMemo(() => (store ? JSON.stringify(editedSiteLocation(store, view) ?? null) : ''), [store, view, mutationVersion]);
   const [state, setState] = useState<CheckState>({ status: 'running' });
   const [open, setOpen] = useState(false);
 
@@ -118,7 +128,7 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
     if (!store) return;
     let live = true;
     setState((prev) => ({ status: 'running', previous: prev.status === 'done' ? prev.diagnosis : prev.status === 'running' ? prev.previous : undefined }));
-    diagnoseModelGeoreference(store, edits, mapUnitScale).then(
+    diagnoseModelGeoreference(store, edits, mapUnitScale, useViewerStore.getState().mutationViews.get(modelId) ?? null).then(
       (diagnosis) => { if (live) setState({ status: 'done', diagnosis }); },
       (error) => {
         console.warn('[georef check] diagnosis failed', error);
@@ -126,12 +136,16 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
       },
     );
     return () => { live = false; };
-  }, [store, edits, mapUnitScale]);
+  }, [store, edits, mapUnitScale, modelId, siteKey]);
 
   const apply = useCallback((item: DiagnosisItem) => {
     if (!item.fix) return;
     const batch = newMutationBatchId();
-    const { projectedCRS, mapConversion } = item.fix.writes;
+    const { projectedCRS, mapConversion, site } = item.fix.writes;
+    if (site && !writeSiteLocation(modelId, site, batch).ok) {
+      toast.error(t('properties.georef.check.siteFixFailed'));
+      return;
+    }
     if (projectedCRS.length) setGeorefFields(modelId, 'projectedCRS', projectedCRS, batch);
     if (mapConversion.length) setGeorefFields(modelId, 'mapConversion', mapConversion, batch);
     posthog.capture('georeference_set', { method: 'diagnosis_fix', code: item.finding.code });

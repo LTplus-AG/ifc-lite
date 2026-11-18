@@ -25,13 +25,13 @@ const button = (text: string) => {
 };
 
 for (const format of ['kmz', 'ion'] as const) {
-  async function open() {
+  const open = async () => {
     const model = { ...fixtureModel('unlocated'), geometryResult: { meshes: [] } as GeometryResult, ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
     useViewerStore.setState({ ...fixtureModels(model), georefMutations: new Map() });
     render(format === 'kmz' ? <KmzExportDialog surface="ribbon" /> : <CesiumIonExportDialog surface="ribbon" />);
     click(button(format === 'kmz' ? 'Export KMZ' : 'Upload to Cesium ion'));
     if (format === 'ion') type(document.querySelector<HTMLInputElement>('#ion-token')!, 'test-token');
-  }
+  };
 
   test(`#10647 ${format} prechecks on open and routes to the selected model's add row`, async () => {
     await open();

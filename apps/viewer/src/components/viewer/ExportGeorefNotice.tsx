@@ -8,7 +8,7 @@ import { useTranslation } from '@/i18n';
 import { openGeorefSection } from '@/lib/site-context/site-context-command';
 
 /** `disabled` while an export runs: closing then would bypass the shell's busy guard and hide its progress. */
-export function ExportGeorefNotice({ modelId, onClose, disabled }: { modelId: string; onClose: () => void; disabled?: boolean }) {
+export function ExportGeorefNotice({ modelId, onClose, disabled }: { modelId: string; onClose: () => void; disabled: boolean }) {
   const { t } = useTranslation();
   return <Alert>
     <AlertDescription>{t('geometryExport.shared.georefRequired')}</AlertDescription>

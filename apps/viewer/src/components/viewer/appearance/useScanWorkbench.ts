@@ -1,11 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { nativeAppearanceScanSources } from '@/lib/appearance/appearance-native-scan-sources';
+import { appendNativeScanPair, registerNativeScanSession, refreshNativeScanBinding, changeNativeScanPartition } from '@/lib/appearance/appearance-native-scan';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
 import { prepareScanSession, type ScanSession, type ScanSourceSelector } from '@/lib/appearance/scan/session';
 import { targetLandmark } from '@/lib/appearance/scan/landmarks';
@@ -35,11 +37,7 @@ export function useScanWorkbench() {
   const section = useViewerStore(s => s.sectionPlane), terrain = useViewerStore(s => s.cesiumTerrainClipY), cesium = useViewerStore(s => s.cesiumEnabled);
   const placement = useViewerStore(s => s.modelPlacement), room = useViewerStore(s => s.collabRoomId);
   // Textured GLB surfaces, then completely streamed point clouds whose retained sample can be aligned (#4381).
-  const sources = useMemo((): ScanSourceOption[] => [...models.values()].flatMap(model => {
-    if (/\.glb$/i.test(model.sourceFile?.name ?? '')) return (model.geometryResult?.meshes ?? []).flatMap((mesh, index): ScanSourceOption[] => mesh.textureRef && mesh.uvs ? [{ id: `${model.id}:${index}`, modelId: model.id, selector: index, modelName: model.name, kind: 'surface', surfaceNumber: index + 1 }] : []);
-    const retained = model.pointCloudHandleId === undefined || model.loadState === 'error' ? null : getPointCloudScanSample(model.pointCloudHandleId);
-    return retained && retained.count >= 4 ? [{ id: `${model.id}:points`, modelId: model.id, selector: 'points', modelName: model.name, kind: 'points', retainedCount: retained.count, seenCount: retained.seen }] : [];
-  }), [models]);
+  const sources = useMemo(() => nativeAppearanceScanSources(models), [models]);
   const targets = useMemo(() => [...models.values()].filter(model => model.ifcDataStore && !/\.glb$/i.test(model.sourceFile?.name ?? '')), [models]);
   const [sourceId, setSourceId] = useState(''), [targetId, setTargetId] = useState(''), [restart, setRestart] = useState(0);
   const [session, setSession] = useState<ScanSession | null>(null), [pairs, setPairs] = useState<ScanPair[]>([]);
@@ -85,11 +83,7 @@ export function useScanWorkbench() {
       try {
         const rect = canvas.getBoundingClientRect(), target = targetLandmark(session, renderer, event.clientX - rect.left, event.clientY - rect.top);
         if (!target) return;
-        const existing = rows.current;
-        if (existing.some(row => row.correspondence.sourceObservation === pending.point.observation || row.correspondence.targetFeature === target.feature)) throw new ScanValidationError('appearance.scan.error.duplicateLandmark');
-        if (existing.filter(row => row.partition === pending.partition).length >= 256) throw new ScanValidationError('appearance.scan.error.pairLimit');
-        const row: ScanPair = { source: pending.point, partition: pending.partition, correspondence: { id: crypto.randomUUID(), sourceObservation: pending.point.observation, targetFeature: target.feature, source: pending.point.point, target: target.point } };
-        setPairs(previous => [...previous, row]); setPending(null); setResult(null); setAligned(false); setError(false); setStatus(translated('appearance.scan.status.pairAdded'));
+        setPairs(appendNativeScanPair(rows.current,pending,target)); setPending(null); setResult(null); setAligned(false); setError(false); setStatus(translated('appearance.scan.status.pairAdded'));
       } catch (failure) { setError(true); setStatus(scanFailureMessage(failure)); }
     };
     canvas.addEventListener('pointerdown', start, true); canvas.addEventListener('pointerup', pick, true);
@@ -106,10 +100,8 @@ export function useScanWorkbench() {
     const controller = new AbortController(); operation.current = controller;
     setBusy(true); setError(false); setStatus(translated('appearance.scan.status.calculating')); setPending(null);
     try {
-      session.validate();
-      const request: ScanRegistrationRequest = structuredClone({ sourceFrame: session.sourceFrame, targetFrame: session.targetFrame, fit: pairs.filter(p => p.partition === 'fit').map(p => p.correspondence), heldOut: pairs.filter(p => p.partition === 'check').map(p => p.correspondence) });
-      const report = await planner.current.registerScan(request, { signal: controller.signal });
-      controller.signal.throwIfAborted(); session.validate(); setResult({ request, report }); setStatus(translated('appearance.scan.status.reviewFit'));
+      const registered=await registerNativeScanSession(session,pairs,planner.current,controller.signal);
+      setResult(registered); setStatus(translated('appearance.scan.status.reviewFit'));
     } catch (failure) { if (!controller.signal.aborted) { setError(true); setStatus(raw(message(failure))); } }
     finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
@@ -117,12 +109,8 @@ export function useScanWorkbench() {
     const saved = recovery.current;
     if (!session || !saved || !planner.current) throw new ScanValidationError('appearance.scan.error.noRetainedBinding');
     setResult(null); setAligned(false); setStatus(translated('appearance.scan.status.refreshing'));
-    const next = await prepareScanSession(session.sourceModelId, session.selector, session.targetModelId, signal);
-    saved.rebind(next);
-    const request: ScanRegistrationRequest = { ...structuredClone(saved.request), sourceFrame: next.sourceFrame, targetFrame: next.targetFrame };
-    const report = await planner.current.registerScan(request, { signal });
-    next.validate(); signal.throwIfAborted();
-    recovery.current = { request, rebind: next.afterAppearance() }; setSession(next); setResult({ request, report }); setStale(false); setError(false);
+    const refreshed=await refreshNativeScanBinding(session,saved,planner.current,signal);
+    recovery.current=refreshed.recovery;setSession(refreshed.session);setResult(refreshed.result);setStale(false);setError(false);
     setStatus(translated('appearance.scan.status.refreshed'));
   }
   async function revalidateAppearance() {
@@ -166,7 +154,7 @@ export function useScanWorkbench() {
     busy, stale, applyAppearance, revalidateAppearance, canRevalidateAppearance: stale && recovery.current !== null, previewReady, setPreviewReady, status, error, aligned, setAligned, pickSource, calculate, cancel,
     restart() { setRestart(value => value + 1); },
     remove(id: string) { setPairs(previous => previous.filter(p => p.correspondence.id !== id)); setResult(null); setAligned(false); },
-    changePartition(id: string, value: 'fit' | 'check') { setPairs(previous => previous.map(p => p.correspondence.id === id ? { ...p, partition: value } : p)); setResult(null); setAligned(false); },
+    changePartition(id: string, value: 'fit' | 'check') { setPairs(previous => changeNativeScanPartition(previous,id,value)); setResult(null); setAligned(false); },
     previewError(value: string) { setError(true); setStatus(raw(value)); setPreviewReady(false); },
   };
 }

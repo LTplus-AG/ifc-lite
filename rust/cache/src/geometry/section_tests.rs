@@ -75,9 +75,12 @@ fn issue_9584_a_chunk_that_crosses_the_limit_is_refused_before_it_is_written() {
     let chunk = (head.body_length / 4) as usize;
     assert_eq!(head.body_length as usize, 4 * chunk, "four equal chunks");
 
-    // Room for the length field and two chunks, not three.
+    // Room for the length field, the mandatory head bytes and two chunks
+    // with their directory entries — not for a third.
+    let entry = DIRECTORY_ENTRY_BYTES as u64;
+    let through = |chunks: u64| 4 + MIN_HEAD_BYTES + chunks * (entry + chunk as u64);
     let mut body = Vec::new();
-    let mut writer = SectionWriter::new(false, 0, limited(4 + 2 * chunk as u64 + 1));
+    let mut writer = SectionWriter::new(false, 0, limited(through(2)));
     let mut refused = None;
     for mesh in &meshes {
         if let Err(error) = writer.push(mesh, &mut body) {
@@ -88,11 +91,35 @@ fn issue_9584_a_chunk_that_crosses_the_limit_is_refused_before_it_is_written() {
     // Four cells, so every chunk stays open until `finish` closes them.
     assert!(refused.is_none(), "nothing closes before the end");
     match writer.finish(CoordinateInfo::default(), &mut body) {
-        Err(CacheError::TooLarge(at_least)) => assert_eq!(at_least, 4 + 3 * chunk as u64),
+        Err(CacheError::TooLarge(at_least)) => assert_eq!(at_least, through(3)),
         other => panic!("expected TooLarge, got {:?}", other.err()),
     }
     assert_eq!(body.len(), 2 * chunk, "the crossing chunk was never appended");
-    assert!(bytes.len() > 4 + 2 * chunk + 1, "unlimited, the same input fits");
+    assert!(bytes.len() as u64 > through(2), "unlimited, the same input fits");
+}
+
+/// The head the chunk itself forces — the counts, the smallest
+/// `CoordinateInfo` and the chunk's own directory entry — counts against the
+/// limit too, so a chunk with room for its bytes alone is still refused
+/// before the body grows, not afterwards at `finish`.
+#[test]
+fn issue_9584_the_bytes_a_chunk_forces_into_the_head_are_counted_before_it_is_written() {
+    let meshes = [sample(1, [0.0; 3])];
+    let (head, _) = section(&meshes, false, Limits::FORMAT).unwrap();
+    let body_only = 4 + head.body_length;
+    assert!(body_only < 4 + MIN_HEAD_BYTES + DIRECTORY_ENTRY_BYTES as u64 + head.body_length);
+
+    let mut body = Vec::new();
+    let mut writer = SectionWriter::new(false, 0, limited(body_only));
+    writer.push(&meshes[0], &mut body).unwrap();
+    match writer.finish(CoordinateInfo::default(), &mut body) {
+        Err(CacheError::TooLarge(at_least)) => assert_eq!(
+            at_least,
+            4 + MIN_HEAD_BYTES + DIRECTORY_ENTRY_BYTES as u64 + head.body_length,
+        ),
+        other => panic!("expected TooLarge, got {:?}", other.map(|h| h.bytes.len())),
+    }
+    assert!(body.is_empty(), "the chunk was refused before the body grew");
 }
 
 #[test]

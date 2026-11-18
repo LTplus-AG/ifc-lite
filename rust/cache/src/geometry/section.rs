@@ -20,6 +20,12 @@ const MAX_VERTEX_COUNT: usize = 100_000_000;
 const MAX_INDEX_COUNT: usize = 300_000_000;
 const DIRECTORY_ENTRY_BYTES: usize = 44;
 
+/// The head bytes every section carries whatever it holds: `meshCount`,
+/// `totalVertices`, `totalTriangles`, the smallest `CoordinateInfo`, the
+/// v19 source-index pool count and `chunkCount`. The directory is counted
+/// per entry on top of this.
+const MIN_HEAD_BYTES: u64 = (3 * 4 + coordinate_info::MIN_BYTES + 4 + 4) as u64;
+
 /// Where closed chunk records go, in order, back to back.
 pub(crate) trait ChunkBody {
     fn append(&mut self, bytes: &[u8]) -> Result<(), CacheError>;
@@ -141,11 +147,17 @@ impl SectionWriter {
                 source: std::io::Error::other("injected failure"),
             });
         }
-        // The section's length field and the body so far: a lower bound on
-        // the file, so a cache past the limit is refused before more of it
-        // is written.
+        // The section's length field, the head bytes no section can do
+        // without, the directory entries through this chunk and the body it
+        // would make: a lower bound on the file, so the chunk that crosses
+        // the limit is refused before it is written rather than at `finish`.
         let body_length = self.body_length + chunk.bytes.len() as u64;
-        let at_least = self.section_start + 4 + body_length;
+        let entries = self.directory.len() as u64 + 1;
+        let at_least = self.section_start
+            + 4
+            + MIN_HEAD_BYTES
+            + entries * DIRECTORY_ENTRY_BYTES as u64
+            + body_length;
         if at_least > self.limits.max_bytes {
             return Err(CacheError::TooLarge(at_least));
         }

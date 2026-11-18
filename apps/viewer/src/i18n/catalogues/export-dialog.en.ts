@@ -63,6 +63,7 @@ export const exportDialogEn = {
   'exportDialog.noStepRecords.error': 'This model has no IFC records to write from. Choose IFC5 to export it as IFCX.',
   'exportDialog.mergeSkipped.noRecords': 'Left out of the merged file, no IFC records to write from: {models}.',
   'exportDialog.mergeSkipped.noData': 'Left out of the merged file, no data available for export: {models}.',
+  'exportDialog.sectionWarningsWholeModel': 'Warnings from models cropped at sections cover each whole model, not only the part the crop kept.',
   'exportDialog.landXml.title': 'LandXML cannot be exported as IFC',
   'exportDialog.landXml.description': 'Its terrain records remain in their original source format; no IFC entities are synthesized for export.',
   'exportDialog.landXml.error': 'LandXML is source geometry, not IFC. Export the original LandXML file instead.',

@@ -252,8 +252,8 @@ export class StructuralCarriers {
 /**
  * The structural items an IFC2X3 IfcRelAssignsToGroup groups into each
  * analysis model, with each item's ObjectPlacement id, for the models none of
- * whose items another model also groups: IFC4 would require both models to
- * share one placement.
+ * whose items another model also groups (IFC4 would require both models to
+ * share one placement) and each of whose groupings lists only references.
  */
 function soleModelItems(source: SourceRecords, schema: 'IFC2X3' | 'IFC4'): Map<number, Map<number, number | null>> {
   const models = new Map<number, Map<number, number | null>>();

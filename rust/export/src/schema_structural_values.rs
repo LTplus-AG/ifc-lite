@@ -149,12 +149,12 @@ impl StructuralValues {
         let mut unread = HashSet::new();
         for rel in source.ids("IFCRELASSIGNSTOGROUP") {
             let Some(args) = source.slots(rel) else { continue; };
-            let [_, _, _, _, related, _, relating_group] = args.as_slice() else { continue; };
-            let Some(model) = reference(relating_group).filter(|&id| source.kind(id, ANALYSIS_MODEL)) else { continue; };
+            // RelatedObjects and RelatingGroup, read at any arity as the TypeScript twin does.
+            let Some(model) = args.get(6).and_then(|group| reference(group)).filter(|&id| source.kind(id, ANALYSIS_MODEL)) else { continue; };
+            let listed = args.get(4).and_then(|related| list_items(related));
+            if listed.as_ref().is_none_or(|items| items.iter().any(|item| reference(item).is_none())) { unread.insert(model); }
             // The readable items of an unread grouping still count as grouped by this model.
-            let listed: Vec<Option<u32>> = list_items(related).map_or(vec![None], |items| items.iter().map(|item| reference(item)).collect());
-            if listed.contains(&None) { unread.insert(model); }
-            for item in listed.into_iter().flatten() {
+            for item in listed.iter().flatten().filter_map(|item| reference(item)) {
                 let Some(&(kind, _, _)) = source.index.get(&item) else { continue; };
                 if !ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(kind, "IfcStructuralItem") { continue; }
                 if owner.insert(item, model).is_some_and(|previous| previous != model) { shared.insert(item); }

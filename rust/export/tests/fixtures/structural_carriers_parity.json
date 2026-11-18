@@ -122,6 +122,18 @@
         "#22=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,#9,$,$,$);",
         "#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,$);"
       ]
+    },
+    {
+      "why": "a grouping with an extra trailing slot is read by position, as both writers read RelatedObjects and RelatingGroup",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#10=IFCLOCALPLACEMENT($,#8);\n#21=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#10,$,.RIGID_JOINED_MEMBER.);\n#22=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,#9,$,$);\n#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$);\n#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#21,#22),$,#30,$);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#9,$,.RIGID_JOINED_MEMBER.,$);",
+        "#22=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,#9,$,$,$);",
+        "#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);"
+      ]
     }
   ]
 }

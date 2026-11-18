@@ -256,7 +256,7 @@ fn reports_a_shared_placement_ifc2x3_cannot_hold_as_lost_9668() {
 }
 
 #[test]
-fn reads_no_placement_when_a_grouped_item_cannot_be_read_10597() {
+fn reads_no_placement_when_a_grouped_item_cannot_be_read_9668() {
     // A slot holding only a comment does not split, so the item's placement is unknown.
     let unread = shared("#9", "(#20,#21,#22)").replace(",'N',$,$,#9,$,$);", ",'N',$,$,#9,/* */,$);");
     let (up, _) = convert(&unread, "IFC4");

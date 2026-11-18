@@ -4,9 +4,9 @@
 
 The scorecard of the structural domain hill climb ([#9668](https://github.com/LTplus-AG/ifc-lite/issues/9668)): one row per concrete entity of the IFC structural analysis domain per schema, derived from the generated schema tables, plus capability rows. Every status below comes from a probe that ran (`tests/structural-coverage/`), never from a typed opinion.
 
-**Total: 111 / 119 rows** (met 103, partial 16, missing 0). **Cells: 762 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r12.json` fails when the total, the cell score, any row or any cell drops.
+**Total: 111.5 / 119 rows** (met 104, partial 15, missing 0). **Cells: 762.5 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r13.json` fails when the total, the cell score, any row or any cell drops.
 
-**Cells not met:** out of reach (schema) 12, policy-limited 1, reachable 2, upstream 1. A limit labels a problem no product change can fix: the schemas have no slot or entity for it, a policy forbids the fix, or the fixture's exporter wrote it (`tests/structural-coverage/limits.mjs`, each with its citation, checked on every run). It never changes a score.
+**Cells not met:** out of reach (schema) 12, policy-limited 2, upstream 1. A limit labels a problem no product change can fix: the schemas have no slot or entity for it, a policy forbids the fix, or the fixture's exporter wrote it (`tests/structural-coverage/limits.mjs`, each with its citation, checked on every run). It never changes a score.
 
 | Level | Score | Pass | Partial | Fail | Skip | Not written |
 |---|---|---|---|---|---|---|
@@ -17,10 +17,10 @@ The scorecard of the structural domain hill climb ([#9668](https://github.com/LT
 | create | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | edit | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
 | remove | 110 / 110 | 110 | 0 | 0 | 0 | 0 |
-| convert | 60.5 / 72 | 57 | 7 | 8 | 0 | 0 |
+| convert | 61 / 72 | 58 | 6 | 8 | 0 | 0 |
 | capability | 9 / 9 | 9 | 0 | 0 | 0 | 0 |
 
-Summary: `tests/structural-coverage/baseline/r12.json`, scored over 27 corpus files (`tests/structural-coverage/corpus.json`).
+Summary: `tests/structural-coverage/baseline/r13.json`, scored over 27 corpus files (`tests/structural-coverage/corpus.json`).
 
 ✅ pass · ◐ partial · ❌ fail · ⏸ skip · `·` probe not written yet · – not applicable (the rule is in `notApplicable()` of `tests/structural-coverage/catalogue.mjs`).
 
@@ -80,8 +80,8 @@ Summary: `tests/structural-coverage/baseline/r12.json`, scored over 27 corpus fi
 | `IfcStructuralAnalysisModel` | group | ✅ | ✅ | ✅ | – | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 1 problem(s) over 2 record(s): structural/analysis-models/beam_01.ifc#72: SharedPlacement "#IFCLOCALPLACEMENT", was null<br>out of reach (schema): IFC2X3 IfcStructuralAnalysisModel has no SharedPlacement (IFC2X3_TC1.exp:7251); a source that left it empty and one that set it to the placement its items share give the same IFC2X3 file, and IFC4 informal proposition 1 says it is provided when items are grouped |
 | `IfcStructuralCurveAction` | activity | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ◐ partial | **convert** fail: 2 problem(s) over 2 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#51: lost; ifcopenshell/structural_analysis_curve.ifc#317: lost<br>out of reach (schema): IFC2X3 has no IfcStructuralCurveAction (IfcStructuralAction ONEOF, IFC2X3_TC1.exp:7230); its varying action has no PredefinedType (IFC2X3_TC1.exp:7312), so a LINEAR or POLYGONAL action cannot come back as such |
 | `IfcStructuralCurveConnection` | item | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 4 problem(s) over 4 record(s): structural/analysis-models/slab_01.ifc#62: Axis null, was "#IFCDIRECTION"; structural/analysis-models/slab_01.ifc#72: Axis null, was "#IFCDIRECTION"; structural/analysi…<br>out of reach (schema): IFC2X3 IfcStructuralCurveConnection declares no attribute (IFC2X3_TC1.exp:7277) and IFC2X3 gives a connection no orientation, so its Axis (IFC4_ADD2_TC1.exp:9415) cannot be held |
-| `IfcStructuralCurveMember` | item | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 4 problem(s) over 3 record(s): ifcopenshell/generated_structural_edge_curve.ifc: 2 of 2 IfcStructuralCurveMember record(s) in the IFC2X3 file do not conform to IFC2X3 (OwnerHistory: required value em…<br>reachable (3 problem(s) not labelled): policy-limited: IfcRoot.OwnerHistory is OPTIONAL in IFC4 (IFC4_ADD2_TC1.exp:8891) and required in IFC2X3 (IFC2X3_TC1.exp:6905); the source has no IfcOwnerHistory, and the downgrade never invents one (#4686) |
-| `IfcStructuralCurveMemberVarying` | item | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#33: Axis null, was "#IFCDIRECTION" |
+| `IfcStructuralCurveMember` | item | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ◐ partial | **convert** partial: 1 problem(s) over 3 record(s): ifcopenshell/generated_structural_edge_curve.ifc: 2 of 2 IfcStructuralCurveMember record(s) in the IFC2X3 file do not conform to IFC2X3 (OwnerHistory: required value em…<br>policy-limited: IfcRoot.OwnerHistory is OPTIONAL in IFC4 (IFC4_ADD2_TC1.exp:8891) and required in IFC2X3 (IFC2X3_TC1.exp:6905); the source has no IfcOwnerHistory, and the downgrade never invents one (#4686) |
+| `IfcStructuralCurveMemberVarying` | item | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | `IfcStructuralCurveReaction` | activity | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ◐ partial | **convert** fail: 4 problem(s) over 4 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#57: lost; ifcopenshell/structural_analysis_curve.ifc#2773: lost; ifcopenshell/structural_analysis_curve.ifc#2781: lo…<br>out of reach (schema): IFC2X3 IfcStructuralReaction is ONEOF(IfcStructuralPointReaction) (IFC2X3_TC1.exp:7480): no IFC2X3 entity holds a curve reaction |
 | `IfcStructuralLinearAction` | activity | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | `IfcStructuralLoadCase` | group | ✅ | ✅ | ✅ | – | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
@@ -167,7 +167,7 @@ Summary: `tests/structural-coverage/baseline/r12.json`, scored over 27 corpus fi
 
 ```bash
 node tests/structural-coverage/score.mjs   # names the fetch command for any absent corpus file, then exits 2
-node tests/structural-coverage/score.mjs --out tests/structural-coverage/.out/summary.json --check tests/structural-coverage/baseline/r12.json
+node tests/structural-coverage/score.mjs --out tests/structural-coverage/.out/summary.json --check tests/structural-coverage/baseline/r13.json
 cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json   # only when a round is accepted
 node scripts/generate-structural-coverage-ledger.mjs
 ```

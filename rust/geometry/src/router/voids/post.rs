@@ -31,7 +31,7 @@ pub(super) struct PostContext<'a> {
     pub(super) host_mutated: bool,
 }
 
-/// Failure drain, sliver refinement, malformed recut, flap clip, conditional
+/// Failure drain, cut vertex canonicalization, malformed recut, flap clip, conditional
 /// shard sweep, cut effect — in that order.
 pub(super) fn finish(mut result: Mesh, context: PostContext<'_>) -> Mesh {
     let PostContext {
@@ -52,23 +52,11 @@ pub(super) fn finish(mut result: Mesh, context: PostContext<'_>) -> Mesh {
     // regression tests) once the outcome is published.
     drop(kernel_failures);
 
-    // WATERTIGHT SLIVER REFINEMENT (issue #1007): the exact-kernel cut of a
-    // long, tilted faceted-BREP host facet can emit a high-aspect corner
-    // sliver (a far-corner triangle fanned to two new rim vertices a few cm
-    // apart) that lands ALONE in its plane bucket and so bypasses the
-    // coplanar CDT. Bisect any >8:1 triangle's longest edge at its midpoint,
-    // splitting BOTH incident triangles in lockstep so the mesh stays
-    // watertight (no T-junction) and the midpoint lies ON the original edge
-    // ⇒ cut volume is preserved exactly. A no-op on clean cuts (no triangle
-    // exceeds 8:1), so it does not perturb the frozen corpus. Only runs when
-    // a cut was actually attempted (`!ctx.is_noop()` guarantees this path).
-    // The split is kept only when it leaves the mesh better by the census's
-    // sliver measure (`facet_weld::adopt`): on a thin host it only multiplied
-    // the host's own needles.
-    // This canonicalizer is likewise not a hygiene boundary: fresh sub-grid
-    // candidates require handling by the remaining repair/clip/sweep path,
-    // independently of the router's earlier source cleanup (#4797).
-    result = crate::facet_weld::refine_slivers_if_better(result);
+    // Canonicalize near-duplicate cut vertices before handling any remaining
+    // sub-grid output in the repair, clip and sweep passes (#4797).
+    if let Some(canonical) = crate::facet_weld::canonicalize_cut_vertices(&result, None) {
+        result = canonical;
+    }
 
     // UNDER-CUT REPAIR: a self-intersecting tessellated cutter (garbage
     // vertices metres from the real opening) makes the kernel UNDER-cut — a

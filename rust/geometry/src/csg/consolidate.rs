@@ -308,7 +308,7 @@ impl ClippingProcessor {
         // fields to zero/None. For a LOCAL-FRAME caller (origin != 0: the prism /
         // coaxial-union void fast paths, #1806/#1815) that reset drops the host's
         // per-element origin and mis-places the whole cut host at the world origin
-        // (the mesh.rs #1474 hazard; mirrors `refine_high_aspect_slivers`'s
+        // (the mesh.rs #1474 hazard; mirrors the cut vertex canonicalizer's
         // `rebuilt_like`). World-frame callers (origin 0) are unaffected. The early
         // `return mesh` branches above already carry the original frame.
         output.mesh.rtc_applied = mesh.rtc_applied;

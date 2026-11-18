@@ -52,5 +52,7 @@ pub use closure::{
     ClosureVerdict, EdgeMultiplicityDefects,
 };
 pub use ledger::{Degenerate, EdgeLedger, Key3, VertexKey};
-pub use shape::{triangle_shape, TriangleShape};
+pub use shape::triangle_shape;
+#[cfg(feature = "test-support")]
+pub use shape::TriangleShape;
 pub use volume::{signed_volume, signed_volume_about, volume_reference};

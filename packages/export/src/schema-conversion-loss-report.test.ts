@@ -233,6 +233,9 @@ describe('analyzeConversionLoss and the structural carriers (#9668)', () => {
     // #10 is a different placement, so the items share none.
     expect(await modelLosses(ifc4('#10'))).toEqual([{ type: 'IFCSTRUCTURALANALYSISMODEL', ids: [30], lost: ['SharedPlacement'] }]);
     expect(line(await roundTrip(ifc4('#10'), 'IFC4', 'IFC2X3'), 30)).toMatch(/,\$,\$\);$/);
+    // #10597: a grouping listing a non-reference leaves the model's items unknown, so the upgrade derives no SharedPlacement.
+    const unread = ifc4('#9').replace('(#20,#21),$,#30', '(#20,#21,$),$,#30');
+    expect(await modelLosses(unread)).toEqual([{ type: 'IFCSTRUCTURALANALYSISMODEL', ids: [30], lost: ['SharedPlacement'] }]);
   });
 
   it('IFC4 -> IFC2X3: leaves out the load configuration Values and a NOTDEFINED PredefinedType the varying action brings back', async () => {

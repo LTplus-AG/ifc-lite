@@ -1090,17 +1090,56 @@ test('x', () => {
   );
 });
 
-test('a method of any import does not resolve to a same-named local helper', () => {
-  const src = `
+test('an import used other than as x.m(...), or shadowed by a namespace, is still followed', () => {
+  // Found by CodeRabbit on #10667: each went quiet while the gate trusted the import.
+  const read = `import { readFileSync } from 'node:fs';
+function check(text) { return text.includes('x'); }`;
+  // A repo module is never trusted, even untouched: it can hold a local function.
+  for (const write of ['', 'hooks.register(check);'])
+    assert.equal(flagged(`import hooks from './hooks.mjs';\n${read}\n${write}\nhooks.check(readFileSync('a.ts', 'utf8'));`), true, `./hooks.mjs ${write}`);
+  for (const write of [
+    'util.check = check;', "util['check'] = check;", 'Object.assign(util, { check });',
+    'const h = util; h.check = check;', 'function reg(o) { o.check = check; } reg(util);', '[util.check] = [check];',
+  ])
+    assert.equal(flagged(`import util from 'node:util';\n${read}\n${write}\nutil.check(readFileSync('a.ts', 'utf8'));`), true, write);
+  assert.equal(
+    flagged(`import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+namespace Local { export const helpers = { ok: (text: string) => text.includes('x') }; }
+namespace fixtures {
+  import assert = Local.helpers;
+  assert.ok(readFileSync('a.ts', 'utf8'));
+}`),
+    true,
+    'an import-equals named like the import',
+  );
+  assert.equal(
+    flagged(`import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+namespace fixtures {
+  namespace assert { export function ok(text: string) { return text.includes('x'); } }
+  assert.ok(readFileSync('a.ts', 'utf8'));
+}`),
+    true,
+    'a namespace named like the import',
+  );
+});
+
+test('a method of a builtin import does not resolve to a same-named local helper', () => {
+  // Calls and types cannot put a local function behind a member, so they keep the import trusted.
+  for (const use of ['', 'path(1);', 'path.posix.join("a");', 'let p: path.ParsedPath;', 'type T = typeof path;']) {
+    const src = `
 import * as path from 'node:path';
 import { readFileSync } from 'node:fs';
 function join(n) { return n; }
+${use}
 const source = readFileSync('a.ts', 'utf8');
 path.join(source);
 const rows = [1, 2].map((n) => String(n));
 assert.ok(rows.includes('2'));
 `;
-  assert.deepEqual(analyze(src).hits, []);
+    assert.deepEqual(analyze(src).hits, [], use || 'no other use');
+  }
 });
 
 test('a marker written after the assertion on the same line still excuses it', () => {

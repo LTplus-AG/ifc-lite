@@ -212,6 +212,18 @@ const assert = { ok: (s) => s.includes('x') };
 assert.ok(readFileSync(p, 'utf8'));`));
 });
 
+// An import name that is also shadowed, a parameter, or assigned onto may not
+// mean the import at a given call, so those calls keep resolving by name.
+for (const [name, body] of [
+  ['a shadowing const', `function t() { const assert = { ok: (s) => s.includes('x') }; assert.ok(source); }`],
+  ['a parameter', `function run(assert) { assert.ok(source); }\nrun({ ok: (s) => s.includes('x') });`],
+  ['a mutation', `function check(s) { return s.includes('x'); }\nassert.ok = check;\nassert.ok(source);`],
+]) {
+  test(`a call through an import name used as ${name} is still caught`, () => {
+    assert.ok(flagged(`${LOCAL_OK}\n${body}`));
+  });
+}
+
 test('a path predicate on an untainted path is not flagged', () => {
   assert.equal(
     flagged(`${READ}

@@ -266,30 +266,50 @@ function calleeName(expr) {
   return null;
 }
 
-/** Every local name an `import` binds: default, namespace and named. */
-function importedNames(sourceFile) {
-  const names = new Set();
-  for (const st of sourceFile.statements) {
-    if (!ts.isImportDeclaration(st) || !st.importClause) continue;
-    const { name, namedBindings } = st.importClause;
-    if (name) names.add(name.text);
-    if (namedBindings && ts.isNamespaceImport(namedBindings)) names.add(namedBindings.name.text);
-    if (namedBindings && ts.isNamedImports(namedBindings))
-      for (const el of namedBindings.elements) names.add(el.name.text);
-  }
-  return names;
+/** The call whose callee chain `id` roots (`id.a.b(…)`), or `null`. */
+function callRootedAt(id) {
+  let n = id;
+  while (ts.isPropertyAccessExpression(n.parent) && n.parent.expression === n) n = n.parent;
+  return n !== id && ts.isCallExpression(n.parent) && n.parent.expression === n ? n.parent : null;
 }
 
 /**
- * TRUE for `assert.ok(…)` or `path.posix.join(…)`: a dotted call whose root is
- * an import. It runs another module's function, never a local one, so its bare
- * method name says nothing about a local `ok` (`const facts = { ok: … }`, #10687).
+ * Imports used ONLY as a call namespace: every mention outside the `import`
+ * is the root of a callee, as in `assert.ok(…)`. Such a call runs the other
+ * module's function and cannot land in a local one, so its bare method name
+ * says nothing about a local `ok` (`const facts = { ok: … }`, #10687).
+ *
+ * Any other mention disqualifies the name: a `const assert` that shadows it, a
+ * parameter of that name, `reg.check = check`, `Object.assign(reg, …)`. The
+ * analysis has no scoping, so it cannot tell whether such a call still means
+ * the import, and those keep resolving by name.
  */
-function callsIntoImport(callee, imports) {
+function importNamespaces(sourceFile) {
+  const imported = new Set();
+  for (const st of sourceFile.statements) {
+    if (!ts.isImportDeclaration(st) || !st.importClause) continue;
+    const { name, namedBindings } = st.importClause;
+    if (name) imported.add(name.text);
+    if (namedBindings && ts.isNamespaceImport(namedBindings)) imported.add(namedBindings.name.text);
+    if (namedBindings && ts.isNamedImports(namedBindings))
+      for (const el of namedBindings.elements) imported.add(el.name.text);
+  }
+  const disqualified = new Set();
+  walk(sourceFile, (n) => {
+    if (!ts.isIdentifier(n) || !imported.has(n.text)) return;
+    if (ts.findAncestor(n, ts.isImportDeclaration)) return;
+    if (ts.isPropertyAccessExpression(n.parent) && n.parent.name === n) return;
+    if (!callRootedAt(n)) disqualified.add(n.text);
+  });
+  return new Set([...imported].filter((name) => !disqualified.has(name)));
+}
+
+/** TRUE for a dotted call rooted in one of `namespaces`: `assert.ok(…)`. */
+function callsIntoImport(callee, namespaces) {
   if (!ts.isPropertyAccessExpression(callee)) return false;
   let root = callee.expression;
   while (ts.isPropertyAccessExpression(root)) root = root.expression;
-  return ts.isIdentifier(root) && imports.has(root.text);
+  return ts.isIdentifier(root) && namespaces.has(root.text);
 }
 
 /** TRUE when the subtree PERFORMS a read, however the call is qualified. */
@@ -403,7 +423,7 @@ function enclosingStatement(node) {
  */
 function computeTainted(sourceFile) {
   const tainted = new Set(READ_NAMES);
-  const imports = importedNames(sourceFile);
+  const imports = importNamespaces(sourceFile);
 
   const bindings = [];      // { names: string[], init: Node }
   const functions = [];     // { node, name, params: string[][] }

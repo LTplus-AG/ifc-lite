@@ -97,6 +97,7 @@ export class StructuralAxes {
   private readonly consumed = new Set<number>();
   /** Downgrade: association id -> the Axis that fills its unset orientation. */
   private readonly fills = new Map<number, Plan>();
+  private source: SourceRecords | null = null;
   /** Downgrade: member id -> its Axis and where it travels: an association it has (with its slots), or a new one (null). */
   private readonly carried = new Map<number, Plan & { into: number | null; intoArgs?: readonly string[] }>();
 
@@ -121,6 +122,7 @@ export class StructuralAxes {
   }
 
   fromStore(source: SourceRecords, from: string, to: string): void {
+    this.source = source;
     const mode = conversionMode(from, to);
     const rels = source.ids(RELATION);
     if (!mode || (mode === 'upgrade' && !rels.length)) return;
@@ -263,6 +265,16 @@ export class StructuralAxes {
     }
     this.filled.set(id, axis);
     return axis;
+  }
+
+  /**
+   * Whether the target holds this member's Axis as planned: `hold` writes a new
+   * association, the member's one already holds it, or the writer converts the
+   * one `rewrite` fills (`STEP_RECORD`), which it passes through otherwise.
+   */
+  fillWritten(id: number): boolean {
+    const into = this.carried.get(id)?.into ?? null;
+    return into === null || !this.fills.has(into) || !!this.source?.convertedSlots(into);
   }
 
   /** IFC4 -> IFC2X3: the message when this member's Axis travels in an association, writing a new one when it needs it; else null. */

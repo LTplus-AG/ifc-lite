@@ -45,8 +45,8 @@ const CAUSED_BY = 10;
 const OBJECT_PLACEMENT = 5;
 const IFC2X3_ACTIONS = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
 
-export const CAUSED_BY_AMONG = "IFC2X3 CausedBy is one of several reactions the action's 'Causes' relationships name in IFC4, so IFC2X3 CausedBy cannot be restored from them";
-export const CAUSED_BY_WRITTEN = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";
+const CAUSED_BY_AMONG = "IFC2X3 CausedBy is one of several reactions the action's 'Causes' relationships name in IFC4, so IFC2X3 CausedBy cannot be restored from them";
+const CAUSED_BY_WRITTEN = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";
 const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an action to one point reaction also fills the IFC2X3 CausedBy";
 const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
 const LOAD_CASE_READ = `an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set is written as the IFC4 IfcStructuralLoadCase it came from`;
@@ -55,6 +55,8 @@ const SHARED_PLACEMENT = 'IfcStructuralAnalysisModel.SharedPlacement is written 
 export class StructuralCarriers {
   /** The exporter's express-id allocator, shared with every other record it appends. */
   ids: (() => number) | null = null;
+  /** Whether to find what the reverse conversion restores (`restored`, `restoredFrom`); only the loss report asks. */
+  roundTrip = false;
   private readonly pending: string[] = [];
   private mode: ConversionMode = null;
   /** Upgrade: action id -> reaction ids a source 'Causes' relationship already names. */
@@ -69,6 +71,10 @@ export class StructuralCarriers {
   /** Upgrade: load group id -> its SelfWeightCoefficients token; the carrier records left out. */
   private readonly loadCases = new Map<number, string>();
   private readonly consumed = new Set<number>();
+  /** Downgrade: load cases that already have a carrier property set, so the upgrade would find two and read neither. */
+  private readonly carrierLoadCases = new Set<number>();
+  /** Downgrade: analysis models whose SharedPlacement the upgrade derives again from their items' placements. */
+  private readonly sharedBack = new Set<number>();
 
   fromStore(source: SourceRecords, from: string, to: string): void {
     this.mode = conversionMode(from, to);
@@ -82,12 +88,23 @@ export class StructuralCarriers {
         const [only] = reactions;
         if (reactions.size === 1 && source.type(only) === 'IFCSTRUCTURALPOINTREACTION') this.causedBy.set(action, only);
       }
+      if (!this.roundTrip) return;
+      if (source.ids('IFCSTRUCTURALLOADCASE').length) {
+        for (const set of readCarrierSets(source, LOAD_CASE_PSET, false)) for (const g of set.related) this.carrierLoadCases.add(g);
+      }
+      if (source.ids('IFCSTRUCTURALANALYSISMODEL').length) {
+        for (const [model, items] of soleModelItems(source, 'IFC4')) {
+          // The upgrade takes the placement all items share; it is this one when this one shares it too.
+          const args = source.slots(model);
+          if (args?.length === 10 && items.size && commonPlacement(source, [slotRef(args[9]), ...items.values()]) !== null) this.sharedBack.add(model);
+        }
+      }
       return;
     }
     this.causesWritten = causes;
     if (hasActions) this.reactions = new Set(source.ids('IFCSTRUCTURALPOINTREACTION'));
     if (source.ids('IFCSTRUCTURALANALYSISMODEL').length) {
-      for (const [model, items] of soleModelItems(source)) this.findSharedPlacement(source, model, items);
+      for (const [model, items] of soleModelItems(source, 'IFC2X3')) this.findSharedPlacement(source, model, items);
     }
     if (source.ids('IFCSTRUCTURALLOADGROUP').length) this.findLoadCases(source);
   }
@@ -110,14 +127,8 @@ export class StructuralCarriers {
   /** IFC2X3 -> IFC4: the SharedPlacement of a model whose items' local placements are one or equal copies of one. */
   private findSharedPlacement(source: SourceRecords, model: number, items: ReadonlyMap<number, number | null>): void {
     if (source.slots(model)?.length !== 9 || !items.size) return;
-    const keys = new Set<string>();
-    let placement = Infinity;
-    for (const p of items.values()) {
-      if (p === null || source.type(p) !== 'IFCLOCALPLACEMENT') return;
-      keys.add(source.slots(p)?.map((a) => a.trim()).join(',') ?? '');
-      placement = Math.min(placement, p);
-    }
-    if (keys.size !== 1) return;
+    const placement = commonPlacement(source, items.values());
+    if (placement === null) return;
     this.shared.set(model, placement);
     for (const [item, own] of items) if (own !== placement) this.itemPlacements.set(item, placement);
   }
@@ -131,8 +142,7 @@ export class StructuralCarriers {
       const prop = set.props.size === 1 ? set.props.get(COEFFICIENTS) : undefined;
       // A group with two carriers is ambiguous, so it keeps both and stays a load group.
       if (!set.exclusive || group === null || prop === undefined || perGroup.get(group) !== 1 || source.type(group) !== 'IFCSTRUCTURALLOADGROUP') continue;
-      const groupArgs = source.slots(group);
-      if (groupArgs?.length !== 10 || groupArgs[5].trim().toUpperCase() !== '.LOAD_CASE.') continue;
+      if (!isLoadCase(source.slots(group))) continue;
       const coefficients = this.coefficients(source.type(prop), source.slots(prop));
       if (coefficients === null) continue;
       this.loadCases.set(group, coefficients);
@@ -165,22 +175,30 @@ export class StructuralCarriers {
       const property = coefficientsProperty(args[10]);
       if (property === null) return undefined;
       this.pending.push(...writeCarrierSet(this.ids, `ifc4-load-case:${args[0].trim()}`, args[1], LOAD_CASE_PSET, id, [property]));
-      return { body: `IFCSTRUCTURALLOADGROUP(${args.slice(0, 10).join(',')})`, losses: [LOAD_CASE_WRITTEN] };
+      const group = args.slice(0, 10);
+      // The upgrade reads the set back only from a LOAD_CASE group that has no other.
+      const restored = isLoadCase(group) && !this.carrierLoadCases.has(id) ? [[id, [COEFFICIENTS]] as const] : [];
+      return { body: `IFCSTRUCTURALLOADGROUP(${group.join(',')})`, losses: [LOAD_CASE_WRITTEN], restored };
     }
     return undefined;
+  }
+
+  /** IFC4 -> IFC2X3: the attributes of record `id` that IFC2X3 leaves out and the upgrade derives again. */
+  restoredFrom(id: number): readonly string[] {
+    return this.sharedBack.has(id) ? ['SharedPlacement'] : [];
   }
 
   /**
    * IFC2X3 -> IFC4: the 'Causes' relationship for an action's CausedBy, added
    * unless the source's 'Causes' relationships already name that reaction.
-   * Returns the message to report when IFC4 holds the cause: CAUSED_BY_WRITTEN
-   * when the action ends with that one cause, which the downgrade reads back;
-   * CAUSED_BY_AMONG when it ends with several. Null when the carrier is not
+   * Returns the message to report when IFC4 holds the cause and whether the
+   * downgrade reads it back: it does when the action ends with that one cause
+   * (CAUSED_BY_WRITTEN), not with several (CAUSED_BY_AMONG). Null when the carrier is not
    * armed (no upgrade, no id allocator, a withheld set) or the record is not an
    * IFC2X3 action whose CausedBy names a point reaction; `inspect` then reports
    * a set CausedBy omitted.
    */
-  noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
+  noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): { message: string; restored: boolean } | null {
     const reaction = this.causeOf(entity, args, withheld);
     if (reaction === null || !this.ids) return null;
     const written = this.causesWritten.get(id) ?? new Set<number>();
@@ -190,7 +208,7 @@ export class StructuralCarriers {
     }
     // The downgrade restores CausedBy only for an action with exactly one cause.
     const total = written.size + (written.has(reaction) ? 0 : 1);
-    return total === 1 ? CAUSED_BY_WRITTEN : CAUSED_BY_AMONG;
+    return total === 1 ? { message: CAUSED_BY_WRITTEN, restored: true } : { message: CAUSED_BY_AMONG, restored: false };
   }
 
   /** IFC2X3 -> IFC4: the point reaction an action's CausedBy names that a 'Causes' relationship would carry, or null. */
@@ -235,7 +253,7 @@ export class StructuralCarriers {
  * whose items another model also groups: IFC4 would require both models to
  * share one placement.
  */
-function soleModelItems(source: SourceRecords): Map<number, Map<number, number | null>> {
+function soleModelItems(source: SourceRecords, schema: 'IFC2X3' | 'IFC4'): Map<number, Map<number, number | null>> {
   const models = new Map<number, Map<number, number | null>>();
   const owners = new Map<number, Set<number>>();
   for (const id of source.ids('IFCRELASSIGNSTOGROUP')) {
@@ -244,7 +262,7 @@ function soleModelItems(source: SourceRecords): Map<number, Map<number, number |
     if (!args || model === null || source.type(model) !== 'IFCSTRUCTURALANALYSISMODEL') continue;
     const items = models.get(model) ?? new Map<number, number | null>();
     for (const item of (listItems(args[4]) ?? []).map(slotRef)) {
-      if (item === null || !isSubtype('IFC2X3', source.type(item), 'IfcStructuralItem')) continue;
+      if (item === null || !isSubtype(schema, source.type(item), 'IfcStructuralItem')) continue;
       items.set(item, slotRef(source.slots(item)?.[OBJECT_PLACEMENT]));
       owners.set(item, (owners.get(item) ?? new Set<number>()).add(model));
     }
@@ -253,6 +271,25 @@ function soleModelItems(source: SourceRecords): Map<number, Map<number, number |
   for (const [model, items] of models) if ([...items.keys()].some((i) => owners.get(i)!.size > 1)) models.delete(model);
   return models;
 }
+
+/**
+ * The lowest-id local placement of `placements` when each is a local placement
+ * and all are equal copies, or null. The upgrade writes it as SharedPlacement,
+ * so the downgrade asks the same of the IFC4 one and its items' placements.
+ */
+function commonPlacement(source: SourceRecords, placements: Iterable<number | null>): number | null {
+  const keys = new Set<string>();
+  let placement = Infinity;
+  for (const p of placements) {
+    if (p === null || source.type(p) !== 'IFCLOCALPLACEMENT') return null;
+    keys.add(source.slots(p)?.map((a) => a.trim()).join(',') ?? '');
+    placement = Math.min(placement, p);
+  }
+  return keys.size === 1 ? placement : null;
+}
+
+/** Whether IFC2X3 load group slots are a LOAD_CASE group, the only kind the upgrade turns back into a load case. */
+const isLoadCase = (args: readonly string[] | undefined): boolean => args?.length === 10 && args[5].trim().toUpperCase() === '.LOAD_CASE.';
 
 /** Three ratios, each `0.` or `IFCRATIOMEASURE(0.)`, as bare numbers, or null. */
 function threeRatios(token: string): string[] | null {

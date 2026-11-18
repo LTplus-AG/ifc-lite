@@ -30,6 +30,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
+import { watchQuietInPage } from './viewer-load-boot.mjs';
 import { outsideOwnCgroup } from './load-scoreboard-host.mjs';
 
 // ---------------------------------------------------------------- pure helpers
@@ -242,6 +243,14 @@ function measureAgentMemory(timeoutMs) {
   ]);
 }
 
+export async function observeBootTti(page, shellReadyMs, timeoutMs) {
+  // Confirm quiet in-page before trusting the task history. A driver poll just
+  // after a block can see an advanced clock before the observer delivers it.
+  const { armAbs, timedOut, tasks } = await page.evaluate(watchQuietInPage, { timeoutMs, includeTasks: true });
+  const tti = bootTti(tasks, shellReadyMs, armAbs);
+  return { tasks, tti: timedOut ? { ...tti, settled: false } : tti };
+}
+
 /**
  * One `boot` sample: fresh browser, no file. Never throws; a failure is a row
  * with `ok: false`. `openShell(context)` navigates and waits for the shell
@@ -257,15 +266,8 @@ export async function bootSample({ chromium, launchOptions, initScripts, openShe
     const page = await openShell(context);
     const shellReadyMs = await page.evaluate(() => globalThis.__benchShellAt ?? null);
     if (!Number.isFinite(shellReadyMs)) throw new Error('app-shell readiness was not stamped (store or file input never appeared)');
-    // Boot interactivity first: observe until its 1 s quiet window has actually happened (capped). The
-    // memory reads below walk heaps on the main thread, so they come after, never inside, that window.
-    const started = Date.now();
-    let s = await page.evaluate(bootState), tti = bootTti(s.tasks, shellReadyMs, s.now);
-    while (!tti.settled && Date.now() - started < ttiCapMs) {
-      await page.waitForTimeout(200);
-      s = await page.evaluate(bootState);
-      tti = bootTti(s.tasks, shellReadyMs, s.now);
-    }
+    // Confirm boot interactivity before running the main-thread memory probes.
+    const { tasks, tti } = await observeBootTti(page, shellReadyMs, ttiCapMs);
     // Idle memory: at least `idleAfterMs` after navigation, and only once the shell has gone quiet.
     const now = await page.evaluate(() => performance.now());
     if (now < idleAfterMs) await page.waitForTimeout(idleAfterMs - now);
@@ -278,7 +280,7 @@ export async function bootSample({ chromium, launchOptions, initScripts, openShe
     const mib = (b) => (Number.isFinite(b) ? b / 2 ** 20 : null);
     Object.assign(row, {
       ok: true, shellReadyMs, interactiveMs: tti.settled ? tti.ms : null, bootInteractiveSettled: tti.settled,
-      bootLongTasks: s.tasks.length, bootLongTaskMs: s.tasks.reduce((a, [, d]) => a + d, 0), idleAtMs: idle.now,
+      bootLongTasks: tasks.length, bootLongTaskMs: tasks.reduce((a, [, d]) => a + d, 0), idleAtMs: idle.now,
       peakMemoryMiB: pss.pssMiB, peakMemoryMetric: `PSS sum of the profile's Chrome processes ${Math.round(idle.now)} ms after navigation (idle)`,
       idleRssMiB: pss.rssMiB, idleJsHeapMiB: mib(agent.jsBytes), idleAgentMiB: mib(agent.totalBytes), idleAgentByScope: agentRaw.byScope ?? null,
       idleAgentError: agentRaw.error ?? null, idleMainHeapMiB: mib(idle.jsHeap), idleVramMiB: pids.length ? vramOf(pids) : null,

@@ -208,3 +208,27 @@ export function thermalSection(samples) {
 
 
 export { cpuTimeSection } from './load-scoreboard-report-cpu.mjs';
+
+/** Per fixture x lane x side: how many quiet-shell arms had less real quiet than the arm asked for. */
+function armQuietRows(samples) {
+  const groups = new Map();
+  for (const r of samples) {
+    const sh = r.shell;
+    if (!sh || typeof sh.armedEarly !== 'boolean') continue;
+    const key = `${r.fixture}|${r.lane}|${r.side}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(sh);
+  }
+  return [...groups].map(([key, list]) => {
+    const [fixture, lane, side] = key.split('|');
+    const q = list.map((x) => x.quietAtArmMs).filter(Number.isFinite);
+    return `| ${fixture} | ${lane} | ${side} | ${list.length} | ${list.filter((x) => x.armedEarly).length} | ${list.filter((x) => x.armInsideLongTask).length} | ${q.length ? Math.min(...q).toFixed(0) : '—'} |`;
+  });
+}
+
+export function armQuietSection(samples) {
+  const rows = armQuietRows(samples);
+  if (!rows.length) return [];
+  return ['', '## Arm quiet check (real main-thread quiet before each quiet-shell arm, read from every long-task entry after the open)', '',
+    '| fixture | lane | side | arms | under 1 s quiet | inside a long task | min quiet ms |', '|---|---|---|---:|---:|---:|---:|', ...rows];
+}

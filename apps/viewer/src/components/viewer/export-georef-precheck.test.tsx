@@ -16,6 +16,14 @@ import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture
 import { KmzExportDialog } from './KmzExportDialog';
 import { CesiumIonExportDialog } from './CesiumIonExportDialog';
 
+const geometryResult: GeometryResult = {
+  meshes: [], totalTriangles: 0, totalVertices: 0,
+  coordinateInfo: {
+    originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+    originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+  },
+};
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 const button = (text: string) => {
@@ -26,7 +34,7 @@ const button = (text: string) => {
 
 for (const format of ['kmz', 'ion'] as const) {
   const open = async () => {
-    const model = { ...fixtureModel('unlocated'), geometryResult: { meshes: [] } as GeometryResult, ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+    const model = { ...fixtureModel('unlocated'), geometryResult, ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
     useViewerStore.setState({ ...fixtureModels(model), georefMutations: new Map() });
     render(format === 'kmz' ? <KmzExportDialog surface="ribbon" /> : <CesiumIonExportDialog surface="ribbon" />);
     click(button(format === 'kmz' ? 'Export KMZ' : 'Upload to Cesium ion'));

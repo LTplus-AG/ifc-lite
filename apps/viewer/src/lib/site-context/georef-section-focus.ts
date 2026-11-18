@@ -14,7 +14,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 
-export type GeorefSection = 'siteContext' | 'floodCheck';
+export type GeorefSection = 'siteContext' | 'floodCheck' | 'addGeoref';
 
 interface FocusRequest { modelId: string; section: GeorefSection; at: number }
 
@@ -67,7 +67,7 @@ export function useGeorefSectionFocus(modelId: string, section: GeorefSection, r
     pending = null;
     element.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     element.setAttribute(GEOREF_FOCUS_ATTRIBUTE, '');
-    element.querySelector<HTMLElement>('button:not([disabled])')?.focus({ preventScroll: true });
+    (element.querySelector<HTMLElement>('button:not([disabled])') ?? element).focus({ preventScroll: true });
     if (highlight.current) clearTimeout(highlight.current);
     highlight.current = setTimeout(() => { element.removeAttribute(GEOREF_FOCUS_ATTRIBUTE); highlight.current = null; }, HIGHLIGHT_MS);
     notify();

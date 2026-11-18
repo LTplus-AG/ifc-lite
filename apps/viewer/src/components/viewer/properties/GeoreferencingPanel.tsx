@@ -48,6 +48,7 @@ import { SiteContextSection } from '../site-context/SiteContextSection';
 import { FloodCheckSection } from '../site-context/FloodCheckSection';
 import { CrsAssumedBadge } from './crs-assumed-badge';
 import { GeorefEmptyState } from './georef-empty-state';
+import { GeorefCompleteRow } from './georef-complete-row';
 import { GeorefDiagnosis, GeorefSiteLocation } from './georef-diagnosis-gate';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
@@ -455,17 +456,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
-      {!mergedCRS && editable && mergedConversion && (
-        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.missingCrsNotice')}</span>
-          <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}>
-              <Search className="h-2.5 w-2.5" />
-              {t('properties.georef.addCrs')}
-            </button>
-          </EpsgLookupDialog>
-        </div>
-      )}
+      {!mergedCRS && editable && mergedConversion && <GeorefCompleteRow modelId={modelId} missing="crs" onEpsgSelect={handleEpsgSelect} />}
 
       {/* IfcMapConversion */}
       {mergedConversion && (
@@ -540,18 +531,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       )}
 
       {modelId && <GeorefSiteLocation modelId={modelId} editable={editable} />}
-      {!mergedConversion && editable && mergedCRS && (
-        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noConversionNotice')}</span>
-          <button
-            onClick={() => initializeMapConversionDefaults()}
-            className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}
-          >
-            <MapPin className="h-2.5 w-2.5" />
-            {t('properties.georef.addCoordinates')}
-          </button>
-        </div>
-      )}
+      {!mergedConversion && editable && mergedCRS && <GeorefCompleteRow modelId={modelId} missing="conversion" onAddCoordinates={() => initializeMapConversionDefaults()} />}
 
       {/* World-view settings — only when the Cesium overlay is active */}
       {cesiumEnabled && isActiveCesiumModel && mergedConversion && (

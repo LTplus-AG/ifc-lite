@@ -28,6 +28,7 @@ export const analyticsChartReportOperations = [
     const state = useViewerStore.getState(); const dashboard = state.dashboards.find(row => row.id === i.id);
     if (!dashboard || JSON.stringify(dashboard) !== JSON.stringify(JSON.parse(i.expected_json))) throw new Error('Dashboard changed since inspection.');
     const frozen = structuredClone(dashboard); const stamp = captureAnalysisStamp(true);
+    const { chartSlice, chartSliceSource } = useViewerStore.getState();
     const aggregations = new Map<string, Aggregation | null>();
     for (const chart of frozen.charts) { checkpoint(c); aggregations.set(chart.id, await evaluateDashboardChart(frozen, chart.id, c.signal)); }
     const result = await exportPreparedChartReport({ name: frozen.name, page: i.page, titleBlock: reportTitleBlock(i.title_block), snapshots: i.snapshots,
@@ -35,7 +36,9 @@ export const analyticsChartReportOperations = [
         message: chartSourceMessage(resolveChartSource(chart, { source: chart.source, columns: [], rows: [], fingerprint: '' }, chartSourceContext(state)), resolve) })),
       snapshotIds: id => largestBucketIds(aggregations.get(id)),
     }, { signal: c.signal }); checkpoint(c);
-    if (isAnalysisStale(stamp, useViewerStore.getState()) || JSON.stringify(useViewerStore.getState().dashboards.find(row => row.id === i.id)) !== JSON.stringify(frozen)) throw new Error('Report source changed during rendering. Discarded artifact.');
+    const now = useViewerStore.getState();
+    if (isAnalysisStale(stamp, now) || now.chartSlice !== chartSlice || now.chartSliceSource !== chartSliceSource
+      || JSON.stringify(now.dashboards.find(row => row.id === i.id)) !== JSON.stringify(frozen)) throw new Error('Report source changed during rendering. Discarded artifact.');
     const saved: ReportSpec = { ...frozen, page: i.page, titleBlock: i.title_block, snapshots: i.snapshots };
     if (i.save_setup && !c.commit(() => useViewerStore.getState().upsertDashboard(saved))) throw new Error('Native report setup persistence failed.');
     const artifact = await c.artifacts.create({ filename: `${sanitizeFilename(frozen.name, { fallback: 'report' })}-report.pdf`, mimeType: 'application/pdf', data: result.blob });

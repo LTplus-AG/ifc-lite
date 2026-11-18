@@ -31,7 +31,8 @@ export async function evaluateDashboardChart(dashboard: DashboardSpec, chartId: 
     || now.savedComparisons !== state.savedComparisons || now.savedClashReports !== state.savedClashReports
     || now.clashResult !== state.clashResult || now.scheduleData !== state.scheduleData
     || now.idsValidationReport !== state.idsValidationReport || now.bcfProject !== state.bcfProject
-    || now.compareResult !== state.compareResult) throw new Error('Chart source changed during evaluation.');
+    || now.compareResult !== state.compareResult || now.savedLenses !== state.savedLenses
+    || now.modelTags !== state.modelTags || now.modelTagAssignments !== state.modelTagAssignments) throw new Error('Chart source changed during evaluation.');
   if (now.chartSlice !== state.chartSlice || now.chartSliceSource !== state.chartSliceSource) {
     throw new Error('Chart selection changed during evaluation.');
   }

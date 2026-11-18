@@ -33,7 +33,7 @@ export const analyticsDeviationOperations = [
       const summary = await summarizeDeviationRun(read, { clipRange: 1 });
       const withinTolerance = await countDeviationWithinTolerance(read, i.tolerance_metres);
       const s = useViewerStore.getState();
-      if (!placementSnapshotIsCurrent(placement, s) || s.pointCloudDeviationRevision !== revision || !s.pointCloudDeviationComputed) throw new Error('Native deviation was superseded or model placement changed during analysis.');
+      if (isAnalysisStale(stamp, s) || !placementSnapshotIsCurrent(placement, s) || s.pointCloudDeviationRevision !== revision || !s.pointCloudDeviationComputed) throw new Error('Native deviation was superseded or model placement changed during analysis.');
       const report: PointCloudDeviationStatistics = recordDeviationSource(stampAnalysisReport({ revision, clipRange: 1, ...summary, withinTolerance }, stamp), source);
       s.setPointCloudDeviationStatistics(report); c.progress?.({ phase: 'Completed', done: 3, total: 3 }); return report;
     });

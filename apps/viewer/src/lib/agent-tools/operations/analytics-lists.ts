@@ -13,11 +13,12 @@ import { detectNumericColumns } from '@/components/viewer/lists/list-table-utils
 import { operation, viewerOperation, emptySchema } from './contract';
 import { metadata, idSchema, jsonSchema, artifactSchema, removedSchema, checkpoint } from './analytics-common';
 
-function definition(id: string) {
+function savedDefinition(id: string) {
   const value = useViewerStore.getState().listDefinitions.find(row => row.id === id);
   if (!value) throw new Error('Unknown saved list.');
-  return structuredClone(value);
+  return value;
 }
+function definition(id: string) { return structuredClone(savedDefinition(id)); }
 const resultSchema = { type: 'object', properties: { columns: { type: 'array' }, rows: { type: 'array' }, totalCount: { type: 'integer' }, executionTime: { type: 'number' }, groups: { type: 'array', nullable: true }, summary: { type: 'object', nullable: true } }, required: ['columns', 'rows', 'totalCount', 'executionTime'] };
 export const analyticsListOperations = [
   viewerOperation(metadata('lists.library', 'lists', 'Read persisted definitions, active result state and native save errors.', ['read'], {
@@ -52,8 +53,16 @@ export const analyticsListOperations = [
   operation<{ id: string; offset: number; limit: number }>(metadata('lists.run', 'lists', 'Await a saved native federated list query with provenance; publish completed rows to the panel and return a bounded page. Cancels before publishing.', ['read', 'configuration'], resultSchema), {
     type: 'object', properties: { id: idSchema.properties.id, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, required: ['id', 'offset', 'limit'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string; offset: number; limit: number }>, async (i, c) => {
-    const value = definition(i.id); const result = await executeNativeList(value, c); checkpoint(c);
-    c.commit(() => { const s = useViewerStore.getState(); s.setActiveListId(value.id); s.setListResult(result); s.setListError(null); });
+    const original = savedDefinition(i.id);
+    const value = structuredClone(original);
+    const result = await executeNativeList(value, c); checkpoint(c);
+    c.commit(() => {
+      const s = useViewerStore.getState();
+      if (s.listDefinitions.find(row => row.id === value.id) !== original) throw new Error('List definition changed during evaluation.');
+      s.setActiveListId(value.id);
+      s.setListResult(result);
+      s.setListError(null);
+    });
     return { columns: result.columns, rows: result.rows.slice(i.offset, i.offset + i.limit), totalCount: result.totalCount, executionTime: result.executionTime, groups: result.groups?.slice(0, i.limit), group_count: result.groups?.length ?? 0, summary: result.summary };
   }),
   operation<{ id: string; format: 'csv' | 'xlsx' | 'pdf' }>(metadata('lists.export', 'lists', 'Await a fresh native list run and real CSV/Excel/PDF writer. Return an artifact handle; never fabricate rows or report a dispatched download as complete.', ['read', 'artifact'], artifactSchema), {

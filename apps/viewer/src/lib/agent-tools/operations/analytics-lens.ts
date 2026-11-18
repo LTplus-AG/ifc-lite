@@ -21,11 +21,16 @@ export const analyticsLensOperations = [
     if (!result.ok) throw new Error(result.message); return inspect();
   }),
   operation<{ id: string }>(metadata('lens.apply', 'lens', 'Await the shared native rule evaluator, then apply exact renderer color/visibility output. Works with the Lens panel closed; refuses cancellation before committing.', ['read', 'configuration', 'view'], output), idSchema, async (i, c) => {
-    const lens = useViewerStore.getState().savedLenses.find(row => row.id === i.id);
+    const before = useViewerStore.getState();
+    const lens = before.savedLenses.find(row => row.id === i.id);
     if (!lens) throw new Error('Unknown lens.');
-    const models = useViewerStore.getState().models; const snapshot = structuredClone(lens); const result = await evaluateNativeLens(snapshot, c.signal); checkpoint(c);
-    if (models !== useViewerStore.getState().models) throw new Error('The federation changed during lens evaluation.');
-    if (JSON.stringify(useViewerStore.getState().savedLenses.find(row => row.id === i.id)) !== JSON.stringify(snapshot)) throw new Error('Lens definition changed during evaluation.');
+    const snapshot = structuredClone(lens);
+    const result = await evaluateNativeLens(snapshot, c.signal);
+    checkpoint(c);
+    const now = useViewerStore.getState();
+    if (now.models !== before.models || now.ifcDataStore !== before.ifcDataStore || now.mutationVersion !== before.mutationVersion
+      || now.savedLenses !== before.savedLenses || now.modelTags !== before.modelTags || now.modelTagAssignments !== before.modelTagAssignments
+      || now.activeLensId !== before.activeLensId) throw new Error('Lens inputs or active lens changed during evaluation.');
     c.commit(() => { switchNativeLens(i.id); applyNativeLensResult(snapshot, result); syncNativeLensHidden(); }); return inspect();
   }),
   viewerOperation(metadata('lens.clear', 'lens', 'Deactivate the lens and release only its owned color/hide/isolation state.', ['configuration', 'view'], output), emptySchema, (_, c) => {
@@ -35,8 +40,20 @@ export const analyticsLensOperations = [
     }); return inspect();
   }),
   viewerOperation<{ id: string }>(metadata('lens.delete', 'lens', 'Delete a saved native lens with explicit persistence-failure reporting.', ['configuration', 'view'], removedSchema), idSchema, (i, c) => {
-    if (!useViewerStore.getState().savedLenses.some(row => row.id === i.id)) throw new Error('Unknown lens.');
-    checkpoint(c); const result = c.commit(() => useViewerStore.getState().deleteLens(i.id));
+    const lens = useViewerStore.getState().savedLenses.find(row => row.id === i.id);
+    if (!lens) throw new Error('Unknown lens.');
+    if (lens.builtin) throw new Error('Built-in lenses cannot be deleted.');
+    checkpoint(c);
+    const result = c.commit(() => {
+      const state = useViewerStore.getState();
+      const deleted = state.deleteLens(i.id);
+      if (deleted.ok && state.activeLensId === i.id) {
+        releaseNativeLensRuleIsolation();
+        clearLensOutput();
+        syncNativeLensHidden();
+      }
+      return deleted;
+    });
     if (!result.ok) throw new Error(result.message); return { removed: i.id };
   }),
 ];

@@ -161,6 +161,23 @@ describe('native analytics operations (#10525 deeper automation)', () => {
       assert.deepEqual(useViewerStore.getState().isolatedEntities, replacement ? new Set(replacement) : null);
     }
   });
+  it('#10584 refuses to publish a list deleted while its query is running', async () => {
+    useViewerStore.setState({ listDefinitions: [list] });
+    const pending = run('lists.run', { id: list.id, offset: 0, limit: 10 });
+    useViewerStore.setState({ listDefinitions: [] });
+    await assert.rejects(pending, /List definition changed during evaluation/);
+    assert.equal(useViewerStore.getState().listResult, null);
+  });
+
+  it('#10584 keeps a cleared lens inactive when its pending evaluation completes', async () => {
+    const lens: Lens = { id: 'pending', name: 'Pending', rules: [] };
+    useViewerStore.setState({ savedLenses: [lens], activeLensId: lens.id });
+    const pending = run('lens.apply', { id: lens.id });
+    await run('lens.clear');
+    await assert.rejects(pending, /active lens changed during evaluation/);
+    assert.equal(useViewerStore.getState().activeLensId, null);
+  });
+
   it('uses native chart aggregation with model-qualified IDs and creates actual SVG bytes', async () => {
     await seed(2); const dashboard = modelOverviewDashboard(); useViewerStore.setState({ dashboards: [dashboard] });
     const target = { dashboard_id: dashboard.id, chart_id: dashboard.charts[0].id };

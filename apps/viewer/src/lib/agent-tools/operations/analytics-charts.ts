@@ -10,11 +10,12 @@ import { evaluateDashboardChart } from '@/lib/charts/evaluate-dashboard-chart';
 import { sanitizeFilename } from '@/lib/export/download';
 import { viewerOperation, emptySchema } from './contract';
 import { metadata, idSchema, jsonSchema, artifactSchema, removedSchema, checkpoint } from './analytics-common';
-function dashboard(id: string) {
+function savedDashboard(id: string) {
   const row = useViewerStore.getState().dashboards.find(item => item.id === id);
   if (!row) throw new Error('Unknown dashboard.');
-  return structuredClone(row);
+  return row;
 }
+function dashboard(id: string) { return structuredClone(savedDashboard(id)); }
 const targetSchema: JSONSchemaType<{ dashboard_id: string; chart_id: string }> = {
   type: 'object', properties: { dashboard_id: idSchema.properties.id, chart_id: idSchema.properties.id }, required: ['dashboard_id', 'chart_id'], additionalProperties: false,
 };
@@ -52,7 +53,10 @@ export const analyticsChartOperations = [
   viewerOperation<{ dashboard_id: string; chart_id: string; data_fingerprint: string; items: { seriesIndex: number; dataIndex: number }[] }>(metadata('charts.focusBuckets', 'charts', 'Resolve exact native chart marks, verify the inspected data fingerprint, and apply native highlight/isolate/ghost selection, cross-filter identities and optional 3D color overlays without mounting a chart.', ['read', 'selection', 'view'], { type: 'object', properties: { selected_ids: { type: 'array', items: { type: 'integer' } }, source: { type: ['string', 'null'] } }, required: ['selected_ids', 'source'], additionalProperties: false }), {
     type: 'object', properties: { dashboard_id: idSchema.properties.id, chart_id: idSchema.properties.id, data_fingerprint: { type: 'string', minLength: 1, maxLength: 10000 }, items: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: { seriesIndex: { type: 'integer', minimum: 0 }, dataIndex: { type: 'integer', minimum: 0 } }, required: ['seriesIndex', 'dataIndex'], additionalProperties: false } } }, required: ['dashboard_id', 'chart_id', 'data_fingerprint', 'items'], additionalProperties: false,
   } satisfies JSONSchemaType<{ dashboard_id: string; chart_id: string; data_fingerprint: string; items: { seriesIndex: number; dataIndex: number }[] }>, async (i, c) => {
-    const aggregation = await evaluateDashboardChart(dashboard(i.dashboard_id), i.chart_id, c.signal); checkpoint(c);
+    const target = savedDashboard(i.dashboard_id);
+    const aggregation = await evaluateDashboardChart(structuredClone(target), i.chart_id, c.signal);
+    checkpoint(c);
+    if (useViewerStore.getState().dashboards.find(row => row.id === i.dashboard_id) !== target) throw new Error('Chart dashboard changed during evaluation.');
     if (aggregation.dataFingerprint !== i.data_fingerprint) throw new Error('Chart source changed since inspection.');
     if (i.items.some(item => !aggregation.series[item.seriesIndex]?.buckets[item.dataIndex])) throw new Error('Unknown chart mark.');
     c.commit(() => selectNativeChartItems(aggregation, i.items, useViewerStore.getState().chartFocusMode));

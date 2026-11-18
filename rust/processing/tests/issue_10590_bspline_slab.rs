@@ -78,6 +78,23 @@ fn issue_10590_flat_bspline_bottom_is_trimmed_to_the_slab() {
             "vertex {p:?} lies outside the 4 m x 2 m footprint"
         );
     }
+    // A missing or reversed z=0 face contributes nothing to signed volume.
+    // Observe the bottom itself so neither defect can satisfy this test.
+    let bottom: Vec<_> = tris
+        .iter()
+        .filter(|t| t.iter().all(|p| p[2].abs() < 1e-4))
+        .collect();
+    assert!(!bottom.is_empty(), "trimmed bottom must be present");
+    let mut projected_area = 0.0;
+    for [a, b, c] in bottom {
+        let normal = cross(sub(*b, *a), sub(*c, *a));
+        assert!(normal[2] < 0.0, "bottom triangle {a:?} {b:?} {c:?} faces up");
+        projected_area -= normal[2] * 0.5;
+    }
+    assert!(
+        (projected_area - 8.0).abs() < 1e-4,
+        "trimmed bottom projected area is {projected_area} m2, not 8 m2"
+    );
 }
 
 #[test]

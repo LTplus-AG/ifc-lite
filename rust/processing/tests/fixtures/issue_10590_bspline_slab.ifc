@@ -1,7 +1,7 @@
 ISO-10303-21;
 HEADER;
-FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');
-FILE_NAME('issue_10590_bspline_slab.ifc','',(''),(''),'','','');
+FILE_DESCRIPTION(('Synthetic B-spline slab regression fixture'),'2;1');
+FILE_NAME('issue_10590_bspline_slab.ifc','2026-11-18T00:00:00Z',(''),(''),'','','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;

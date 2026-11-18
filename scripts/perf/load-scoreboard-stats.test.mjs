@@ -366,6 +366,25 @@ test('boot time-to-interactive ends at the last long task before the first 1 s q
   assert.equal(bootTti([[1000, 100]], null, 9000).ms, null, 'no app-shell time, no boot time');
 });
 
+test('boot TTI waits for a quiet window and reads the delayed task in the same snapshot (#9815)', async () => {
+  const { observeBootTti } = await lanesModule();
+  assert.equal(typeof observeBootTti, 'function');
+  const { watchQuietInPage } = await import('./viewer-load-boot.mjs');
+  const tasks = [[1000, 1400], [2500, 435]];
+  const page = {
+    async evaluate(probe, options) {
+      assert.equal(probe, watchQuietInPage);
+      assert.deepEqual(options, { timeoutMs: 30_000, includeTasks: true });
+      return { tasks, armAbs: 4100, timedOut: false };
+    },
+  };
+  assert.deepEqual(await observeBootTti(page, 900, 30_000), {
+    tasks, tti: { ms: 2935, settled: true },
+  });
+  page.evaluate = async () => ({ tasks, armAbs: 3110, timedOut: true });
+  assert.equal((await observeBootTti(page, 900, 30_000)).tti.settled, false);
+});
+
 test('the report summarizes the boot lane under its pseudo-fixture and counts snapshot adoption per reopen lane', async () => {
   const { summarize, BOOT_FIXTURE } = await report();
   const plan = { name: 't', kind: 'aa', lanes: ['boot', 'browser-warm1'], fixtures: [{ name: 'fx', set: 'tuning', bytes: 20 * 2 ** 20 }], sides: {} };

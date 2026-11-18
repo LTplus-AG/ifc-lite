@@ -85,9 +85,10 @@ export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000, 
 /**
  * In page (self-contained: it runs through page.evaluate): resolve at the first moment
  * the main thread was quiet for `quietMs`, observed directly by timer-tick gaps and by
- * reported longtask entries. Resolves `{ armAbs, timedOut, lateTicks }` (page clock).
+ * reported longtask entries. The boot lane can also capture the task history
+ * at that tick so its clock and entries come from one observation.
  */
-export function watchQuietInPage({ quietMs = 1000, timeoutMs = 15000, tickMs = 16, maxGapMs = 45 } = {}) {
+export function watchQuietInPage({ includeTasks = false, quietMs = 1000, timeoutMs = 15000, tickMs = 16, maxGapMs = 45 } = {}) {
   return new Promise((resolve) => {
     const t0 = performance.now();
     let windowStart = t0, prev = t0, lateTicks = 0;
@@ -98,12 +99,19 @@ export function watchQuietInPage({ quietMs = 1000, timeoutMs = 15000, tickMs = 1
       const tasks = globalThis.__benchLongTasks ?? [];
       const lastEnd = tasks.reduce((m, [st, d]) => Math.max(m, st + d), 0);
       const quietFrom = Math.max(windowStart, lastEnd);
-      if (now - quietFrom >= quietMs) return resolve({ armAbs: now, timedOut: false, lateTicks });
-      if (now - t0 >= timeoutMs) return resolve({ armAbs: now, timedOut: true, lateTicks });
+      if (now - quietFrom >= quietMs || now - t0 >= timeoutMs) {
+        return resolve({ armAbs: now, timedOut: now - quietFrom < quietMs, lateTicks,
+          ...(includeTasks ? { tasks: tasks.slice() } : {}) });
+      }
       setTimeout(tick, tickMs);
     };
     setTimeout(tick, tickMs);
   });
+}
+
+/** Read the completed long tasks on the page clock. */
+export function readBenchLongTasks() {
+  return globalThis.__benchLongTasks ?? [];
 }
 
 /**

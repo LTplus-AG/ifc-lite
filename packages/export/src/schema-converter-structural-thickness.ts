@@ -19,7 +19,7 @@
  * Reads the source store, so only an unedited full export arms it.
  */
 import { listItems } from './schema-converter-structural-axes.js';
-import { bareMeasure, carriedAttributes, conversionMode, readCarrierSets, slotRef, slotUnset, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { bareMeasure, conversionMode, readCarrierSets, slotRef, slotUnset, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { parseStepNumber } from './step-slot-grammar.js';
 
 const THICKNESS_PSET = 'Pset_StructuralSurfaceMemberVaryingThickness';
@@ -100,44 +100,30 @@ export class StructuralThickness {
   }
 
   /**
-   * IFC2X3 -> IFC4: the three thicknesses of a varying member IFC4 holds in a
-   * matching property set the member has or one `note` adds, when the location
-   * is the representation's one point aspect (WR62, WR63). Null otherwise.
-   * Writes nothing.
-   */
-  private held(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string[] | null {
-    // The added property set names only the member; an IFC4 target withholds none, so none is checked.
-    if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || withheld?.size || args.length !== 11) return null;
-    const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
-    if (values.length !== 3 || values.includes(null)) return null;
-    // Held only where the location comes back too, so the round trip is exact.
-    const location = slotRef(args[10]);
-    if (location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return null;
-    // A set giving locations is not read back by the downgrade, so it does not hold them.
-    if (this.located.has(id)) return null;
-    // A property set the member already has holds the thicknesses only when its values are these.
-    const existing = this.psets.get(id);
-    if (existing && (existing.length !== 3 || existing.some((v, i) => parseStepNumber(v) !== parseStepNumber(values[i]!)))) return null;
-    return values as string[];
-  }
-
-  /** Whether `note` holds this record's SubsequentThickness and VaryingThicknessLocation. */
-  holds(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
-    return this.held(id, entity, args, withheld) !== null;
-  }
-
-  /**
-   * IFC2X3 -> IFC4: the attributes of a varying member IFC4 holds elsewhere,
-   * adding the property set when the member has none. None unless `held`.
+   * IFC2X3 -> IFC4: the attributes of a varying member IFC4 holds elsewhere:
+   * SubsequentThickness and VaryingThicknessLocation, in a matching property
+   * set the member has or one this adds, when the location is the
+   * representation's one point aspect (WR62, WR63). None otherwise.
    */
   note(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): readonly string[] {
-    const values = this.held(id, entity, args, withheld);
-    if (!values || !this.ids) return [];
-    if (!this.psets.has(id)) {
+    // The added property set names only the member; an IFC4 target withholds none, so none is checked.
+    if (this.mode !== 'upgrade' || entity !== ENTITY || !this.ids || withheld?.size || args.length !== 11) return [];
+    const values = [args[8], ...listItems(args[9]) ?? []].map(thickness);
+    if (values.length !== 3 || values.includes(null)) return [];
+    // Held only where the location comes back too, so the round trip is exact.
+    const location = slotRef(args[10]);
+    if (location === null || this.aspectOf(args[6]) !== location || !this.pointAspects.has(location)) return [];
+    // A set giving locations is not read back by the downgrade, so it does not hold them.
+    if (this.located.has(id)) return [];
+    const existing = this.psets.get(id);
+    if (existing) {
+      // A property set the member already has holds the thicknesses only when its values are these.
+      if (existing.length !== 3 || existing.some((v, i) => parseStepNumber(v) !== parseStepNumber(values[i]!))) return [];
+    } else {
       const properties = values.map((v, i) => `IFCPROPERTYSINGLEVALUE('${NAMES[i]}',$,IFCPOSITIVELENGTHMEASURE(${v}),$)`);
       this.pending.push(...writeCarrierSet(this.ids, `ifc2x3-thickness:${args[0].trim()}`, args[1], THICKNESS_PSET, id, properties));
     }
-    return carriedAttributes('upgrade', ENTITY);
+    return ['SubsequentThickness', 'VaryingThicknessLocation'];
   }
 
   /** IFC4 -> IFC2X3: why a member the generic path writes has no IFC2X3 thicknesses (`rewrite` leaves located members to it), or undefined. */

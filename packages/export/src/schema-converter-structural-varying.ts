@@ -7,7 +7,7 @@ import { refId } from './schema-ifc2x3-records.js';
 import { decodeRange } from './source-ref-bounds.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { readStepSlots } from './step-argument-parser.js';
-import type { StructuralRewrite } from './schema-converter-structural-source.js';
+import type { SourceStore, StructuralRewrite } from './schema-converter-structural-source.js';
 
 /**
  * IFC2X3's varying actions and the IFC4 actions they become. IFC4 dropped
@@ -27,6 +27,9 @@ const KINDS = [
   { ifc2x3: 'IFCSTRUCTURALLINEARACTIONVARYING', ifc4: 'IFCSTRUCTURALCURVEACTION', first: ['IFCSTRUCTURALLOADLINEARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 2, spread: ['.NOTDEFINED.', '.LINEAR.', '.POLYGONAL.'] },
   { ifc2x3: 'IFCSTRUCTURALPLANARACTIONVARYING', ifc4: 'IFCSTRUCTURALSURFACEACTION', first: ['IFCSTRUCTURALLOADPLANARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 3, spread: ['.NOTDEFINED.', '.BILINEAR.'] },
 ] as const;
+
+/** Why the downgrade refuses a file: a configuration it converts is also named by a record it does not. */
+export const SHARED_CONFIGURATION = 'IFCSTRUCTURALLOADCONFIGURATION shared with a non-converted referrer has no representation in IFC2X3';
 
 const FROM_IFC2X3 = 'an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect of its representation keeps the locations';
 const TO_IFC2X3 = 'an IFC4 curve or surface action with an IfcStructuralLoadConfiguration is written as an IFC2X3 varying action, its locations taken from the one IfcShapeAspect of its representation; the configuration Name, Locations and the action PredefinedType have no slot in IFC2X3';
@@ -54,7 +57,7 @@ export class StructuralVarying {
   /** IfcProductDefinitionShape id -> the IfcShapeAspects naming it as PartOfProductDefinitionShape. */
   private readonly aspects = new Map<number, { id: number; representations: number }[]>();
 
-  fromStore(store: IfcDataStore, from: string, to: string): void {
+  fromStore(store: SourceStore, from: string, to: string): void {
     const mode = from === 'IFC2X3' && to === 'IFC4' ? 'upgrade' : from === 'IFC4' && to === 'IFC2X3' ? 'downgrade' : null;
     // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export
     const { byId, byType } = store.entityIndex;
@@ -94,7 +97,7 @@ export class StructuralVarying {
       if (!KINDS.some((k) => k.ifc4 === entry.type.toUpperCase())) continue;
       const args = slots(id);
       if (!args || args.some((a, i) => i !== 7 && referencesAnyExpressId(a, configs))) continue;
-      if (this.toIfc2x3(entry.type.toUpperCase(), args)) {
+      if (this.toIfc2x3(id, entry.type.toUpperCase(), args)) {
         candidates.add(id);
         consumed.add(refId(args[7])!);
       }
@@ -103,7 +106,7 @@ export class StructuralVarying {
     for (const [id] of this.byId) {
       if (candidates.has(id)) continue;
       if (slots(id)?.some((a) => referencesAnyExpressId(a, consumed))) {
-        throw new Error('IFCSTRUCTURALLOADCONFIGURATION shared with a non-converted referrer has no representation in IFC2X3');
+        throw new Error(SHARED_CONFIGURATION);
       }
     }
   }
@@ -111,8 +114,8 @@ export class StructuralVarying {
   private typeOf(id: number): string { return this.byId.get(id)?.type.toUpperCase() ?? ''; }
 
   /** The target record body for a varying action of either schema, or undefined. */
-  rewrite(entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
-    return this.mode === 'upgrade' ? this.toIfc4(entity, args, carried) : this.mode === 'downgrade' ? this.toIfc2x3(entity, args) : undefined;
+  rewrite(id: number, entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
+    return this.mode === 'upgrade' ? this.toIfc4(entity, args, carried) : this.mode === 'downgrade' ? this.toIfc2x3(id, entity, args) : undefined;
   }
 
   /** IfcStructuralLoadConfiguration records written so far, to append after the source records. */
@@ -162,16 +165,21 @@ export class StructuralVarying {
     return { body: `${kind.ifc4}(${[...args.slice(0, 7), `#${id}`, args[8], args[9], args[11], '.NOTDEFINED.'].join(',')})`, losses };
   }
 
-  private toIfc2x3(entity: string, args: readonly string[]): StructuralRewrite | undefined {
+  private toIfc2x3(id: number, entity: string, args: readonly string[]): StructuralRewrite | undefined {
     const kind = KINDS.find((k) => k.ifc4 === entity);
-    if (!kind || args.length !== 12 || !(kind.spread as readonly string[]).includes(args[11].trim().toUpperCase())) return undefined;
-    const values = this.configs.get(refId(args[7]) ?? -1);
+    if (!kind || args.length !== 12) return undefined;
+    const predefined = args[11].trim().toUpperCase();
+    if (!(kind.spread as readonly string[]).includes(predefined)) return undefined;
+    const config = refId(args[7]) ?? -1;
+    const values = this.configs.get(config);
     if (!values) return undefined;
     const aspect = this.convertible(kind, args[6], values);
     if (aspect === undefined) return undefined;
     const [first, ...rest] = values.map((v) => `#${v}`);
     // `inspect` reports this for the records it sees; a rewritten one skips it.
     const losses = [TO_IFC2X3, ...(args[9].trim() === '$' ? [destabilizingUnknown(entity)] : [])];
-    return { body: `${kind.ifc2x3}(${[...args.slice(0, 7), first, args[8], args[9], '$', args[10], `#${aspect}`, `(${rest.join(',')})`].join(',')})`, losses };
+    // The upgrade writes the same loads and PredefinedType NOTDEFINED (`toIfc4`).
+    const restored = [[config, ['Values']] as const, ...(predefined === '.NOTDEFINED.' ? [[id, ['PredefinedType']] as const] : [])];
+    return { body: `${kind.ifc2x3}(${[...args.slice(0, 7), first, args[8], args[9], '$', args[10], `#${aspect}`, `(${rest.join(',')})`].join(',')})`, losses, restored };
   }
 }

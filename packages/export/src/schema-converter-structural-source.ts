@@ -14,43 +14,28 @@ import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 
 export type ConversionMode = 'upgrade' | 'downgrade' | null;
 
+/** What the prepasses read: the source index and bytes. */
+export type SourceStore = Pick<IfcDataStore, 'entityIndex' | 'source'>;
+
 /** IFC2X3 -> IFC4 is an upgrade, IFC4 -> IFC2X3 a downgrade; the prepasses run for nothing else. */
 export const conversionMode = (from: string, to: string): ConversionMode =>
   from === 'IFC2X3' && to === 'IFC4' ? 'upgrade' : from === 'IFC4' && to === 'IFC2X3' ? 'downgrade' : null;
-
-/** The IFC2X3 actions with a CausedBy slot (IFC2X3_TC1.exp:7237). */
-export const IFC2X3_ACTIONS: ReadonlySet<string> = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
-
-/** IFC4 IfcStructuralLoadCase.SelfWeightCoefficients, which IFC2X3 has no slot for. */
-export const COEFFICIENTS = 'SelfWeightCoefficients';
-
-const CARRIED = {
-  // StructuralCarriers.noteCause, StructuralThickness.note.
-  upgrade: new Map<string, readonly string[]>([
-    ...[...IFC2X3_ACTIONS].map((t): [string, readonly string[]] => [t, ['CausedBy']]),
-    ['IFCSTRUCTURALSURFACEMEMBERVARYING', ['SubsequentThickness', 'VaryingThicknessLocation']],
-  ]),
-  // StructuralCarriers.rewrite, StructuralAxes.hold.
-  downgrade: new Map<string, readonly string[]>([
-    ['IFCSTRUCTURALLOADCASE', [COEFFICIENTS]],
-    ...['IFCSTRUCTURALCURVEMEMBER', 'IFCSTRUCTURALCURVEMEMBERVARYING'].map((t): [string, readonly string[]] => [t, ['Axis']]),
-  ]),
-};
-
-/**
- * Attributes of `type` the target has no slot for but a carrier holds
- * elsewhere, for a record the carrier accepts. `StructuralDiagnostics` returns
- * them for such a record; the conversion loss report asks only about these types.
- */
-export const carriedAttributes = (mode: ConversionMode, type: string): readonly string[] =>
-  (mode && CARRIED[mode].get(type)) || [];
 
 /** Whether any of `args` names an id this export withholds. */
 export const namesWithheld = (args: readonly string[] | undefined, withheld: ReadonlySet<number> | undefined): boolean =>
   !!withheld?.size && !!args?.some((a) => referencesAnyExpressId(a, withheld));
 
-/** A target record body, `null` for a source record the target leaves out, and what the change loses or moves. */
-export interface StructuralRewrite { readonly body: string | null; readonly losses: readonly string[] }
+/**
+ * A target record body, `null` for a source record the target leaves out, and
+ * what the change loses or moves. `restored` names, per source record id, the
+ * attributes the target holds elsewhere and the reverse conversion writes back;
+ * the loss report leaves them out (`structuralRoundTrip`).
+ */
+export interface StructuralRewrite {
+  readonly body: string | null;
+  readonly losses: readonly string[];
+  readonly restored?: readonly (readonly [number, readonly string[]])[];
+}
 
 const SUBTYPES = new Map<string, boolean>();
 /** Whether `keyword` names a subtype of `parent` in `schema`, memoized per triple. */
@@ -70,7 +55,7 @@ export function isSubtype(schema: 'IFC2X3' | 'IFC4', keyword: string | undefined
 /** Source records read by id, each decoded once. Lives only for one prepass. */
 export class SourceRecords {
   private readonly cache = new Map<number, { slots: readonly string[] | undefined; converted: boolean } | undefined>();
-  constructor(private readonly store: IfcDataStore) {}
+  constructor(private readonly store: SourceStore) {}
 
   private decode(entry: { byteOffset: number; byteLength: number }): string {
     return decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);

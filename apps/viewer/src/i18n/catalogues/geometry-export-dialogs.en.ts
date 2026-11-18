@@ -23,6 +23,8 @@
 import type { TranslationValue } from '../types';
 
 export const geometryExportDialogsEn = {
+  "geometryExport.shared.georefRequired": "This model has no georeferencing. Add a location before exporting.",
+  "geometryExport.shared.openGeoreferencing": "Open georeferencing",
   "cityJsonExport.description": "Export the selected IFC model as CityJSON 2.0 or CityJSONSeq.",
   "cityJsonExport.localNotice": "This model has no georeferencing. The file will use the model’s local coordinates, not map coordinates.",
   "cityJsonExport.sessionCrs": "Writes coordinates in {crs}, including this session’s georeferencing changes.",

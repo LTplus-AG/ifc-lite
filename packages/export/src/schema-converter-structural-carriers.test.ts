@@ -432,6 +432,25 @@ ${geometry.replace('(#16),', aspect)}
     }
   });
 
+  it('keeps one entry for the type, naming each record group under the type the export writes it as', async () => {
+    // #30 converts and names no reaction; #31 stays unconverted (one aspect representation for two loads) and names one.
+    const text = varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,') .replace('ENDSEC;\nEND', `#18=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#19=IFCSHAPEASPECT((#16),'Coverage aspect',$,.T.,#18);
+#31=IFCSTRUCTURALLINEARACTIONVARYING('4sXjCM_kPHN8ZCpuBhV_98',#5,'W',$,$,#9,#18,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#19,(#11,#11));
+ENDSEC;\nEND`);
+    const step = (await convert(text, 'IFC4')).step;
+    expect(line(step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);
+    expect(line(step, 31)).toMatch(/^#31=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    const report = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4');
+    const entries = report.entries.filter((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].recordGroups?.map((g) => [g.targetType, g.expressIds])).toEqual([['IFCSTRUCTURALCURVEACTION', [30]], ['IFCSTRUCTURALLINEARACTIONVARYING', [31]]]);
+    expect(report.describe().filter((d) => d.includes('CausedBy'))).toEqual([
+      expect.stringContaining('IFCSTRUCTURALLINEARACTIONVARYING → IFCSTRUCTURALCURVEACTION (#30)'),
+      expect.stringContaining('IFCSTRUCTURALLINEARACTIONVARYING → IFCSTRUCTURALLINEARACTIONVARYING (#31)'),
+    ]);
+  });
+
   it('reports no CausedBy message for a CausedBy that names no point reaction', async () => {
     const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
@@ -655,15 +674,6 @@ ${cases[2][3].replace(',.LOAD_CASE.,', ',.LOAD_CASE.,\n  ')}`);
 ${cases[2][3]}`);
     await expect(convert(text, 'IFC2X3')).rejects.toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
     expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([20]);
-  });
-
-  it('still reports SharedPlacement lost into IFC2X3, as the export does', async () => {
-    const text = model('IFC4', `${OWNER}
-#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#9,$,.RIGID_JOINED_MEMBER.,$);
-#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);
-#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#20),$,#30);`);
-    expect((await convert(text, 'IFC2X3')).warnings).toContain('IFCSTRUCTURALANALYSISMODEL.SharedPlacement has no slot in IFC2X3');
-    expect(await preview(text, 'IFC4', 'IFC2X3')).toContain('IFCSTRUCTURALANALYSISMODEL.SharedPlacement');
   });
 });
 

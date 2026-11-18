@@ -5,6 +5,8 @@
 import type { Catalogue } from '../../registry';
 
 export const geometryExportDialogsDe = {
+  "geometryExport.shared.georefRequired": "Dieses Modell hat keine Georeferenzierung. Fügen Sie vor dem Export einen Standort hinzu.",
+  "geometryExport.shared.openGeoreferencing": "Georeferenzierung öffnen",
   "cityJsonExport.description": "Das gewählte IFC-Modell als CityJSON 2.0 oder CityJSONSeq exportieren.",
   "cityJsonExport.localNotice": "Dieses Modell hat keine Georeferenzierung. Die Datei verwendet die lokalen Modellkoordinaten, keine Kartenkoordinaten.",
   "cityJsonExport.sessionCrs": "Schreibt Koordinaten in {crs}, einschließlich der Georeferenzierungsänderungen dieser Sitzung.",

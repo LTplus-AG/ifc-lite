@@ -9,7 +9,7 @@
  * and a way to show each analysis model.
  */
 import { useEffect, useState } from 'react';
-import type { StructuralConsistencyIssue } from '@ifc-lite/parser';
+import type { StructuralConsistencyIssue, StructuralSkippedMember } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import type { StructuralConsistencyReview } from '@/lib/actions/structural-consistency-review';
@@ -23,6 +23,24 @@ function FindingRow({ modelId, issue }: { modelId: string; issue: StructuralCons
     ...(issue.target === undefined ? {} : { element: <ElementLink modelId={modelId} expressId={issue.target} /> }),
   };
   return <>{linkedText(t, `structuralDerive.consistency.rule.${issue.rule}`, { distance: issue.distance?.toFixed(3) ?? '' }, links)}</>;
+}
+
+/** `elementIds` only on `uncheckedRow`, which names them. */
+type UncheckedRow = { memberId: number; key: 'uncheckedRow' | 'uncheckedEdge' | 'uncheckedRecord' | 'uncheckedRecordAxis' | 'uncheckedRecordUnlinked' | 'uncheckedDriftMeasurement' | 'uncheckedMovementMeasurement' | 'uncheckedUnreadableRecord' | 'uncheckedLinkIdentity'; elementIds?: readonly number[] };
+
+/** Why a geometry rule passed over a member, one row per rule; one row when no linked element has an axis, since then neither rule ran. */
+function uncheckedRows({ memberId, elementIds, axisDrift, stale }: StructuralSkippedMember): UncheckedRow[] {
+  if (axisDrift === 'element-without-axis') return [{ memberId, key: 'uncheckedRow', elementIds }];
+  const rows: UncheckedRow[] = [];
+  if (axisDrift === 'axis-unusable') rows.push({ memberId, key: 'uncheckedDriftMeasurement' });
+  if (stale === 'axis-unusable') rows.push({ memberId, key: 'uncheckedMovementMeasurement' });
+  if (stale === 'derivation-record-unreadable') rows.push({ memberId, key: 'uncheckedUnreadableRecord' });
+  if (stale === 'linked-element-identity-unreadable') rows.push({ memberId, key: 'uncheckedLinkIdentity' });
+  if (axisDrift === 'edge-unreadable') rows.push({ memberId, key: 'uncheckedEdge' });
+  if (stale === 'no-derivation-record') rows.push({ memberId, key: 'uncheckedRecord' });
+  if (stale === 'element-without-axis') rows.push({ memberId, key: 'uncheckedRecordAxis' });
+  if (stale === 'recorded-element-unlinked') rows.push({ memberId, key: 'uncheckedRecordUnlinked' });
+  return rows;
 }
 
 /** An analysis model as a link, with the button that shows it. */
@@ -60,7 +78,7 @@ export function StructuralConsistencyFindings({ modelId, prepared, existing }: {
     <p role="alert">{t('structuralDerive.consistency.failed', { error: result.failed })}</p>
     {existing.map((model) => <AnalysisModelRow key={model.expressId} modelId={modelId} expressId={model.expressId} memberIds={model.memberIds ?? []} />)}
   </section>;
-  const { linked, skipped } = result.axisCoverage;
+  const { linked, skipped } = result.coverage;
   return <section aria-label={t('structuralDerive.consistency.title')} className="space-y-2">
     {result.analysisModels.map((model) => <AnalysisModelRow key={model.expressId} modelId={modelId} expressId={model.expressId} memberIds={model.memberIds} />)}
     {result.issues.length === 0
@@ -69,9 +87,9 @@ export function StructuralConsistencyFindings({ modelId, prepared, existing }: {
       : <Listing open summary={t('structuralDerive.consistency.findings', { count: result.issues.length })} rows={result.issues}
         row={(issue) => <FindingRow modelId={modelId} issue={issue} />} />}
     <Listing open summary={t('structuralDerive.consistency.unchecked', { count: skipped.length })} rows={skipped}
-      row={({ memberId, elementIds }) => linkedText(t, 'structuralDerive.consistency.uncheckedRow', {}, {
-        item: <ElementLink modelId={modelId} expressId={memberId} />,
-        elements: <ElementLinks modelId={modelId} ids={elementIds} />,
-      })} />
+      row={(member) => uncheckedRows(member).map((row) => <div key={row.key}>{linkedText(t, `structuralDerive.consistency.${row.key}`, {}, {
+        item: <ElementLink modelId={modelId} expressId={row.memberId} />,
+        ...(row.elementIds ? { elements: <ElementLinks modelId={modelId} ids={row.elementIds} /> } : {}),
+      })}</div>)} />
   </section>;
 }

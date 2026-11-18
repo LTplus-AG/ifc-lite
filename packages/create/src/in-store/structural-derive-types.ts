@@ -189,8 +189,8 @@ export interface ExistingAnalysisModel {
   name: string | null;
   /** Written by an earlier derivation. */
   derived: boolean;
-  /** The structural members it groups, so a caller can show it: the group itself has no geometry. */
-  memberIds: number[];
+  /** The structural members it groups, so a caller can show it: the group itself has no geometry. Read facts always fill it. */
+  memberIds?: number[];
 }
 
 export interface StructuralDerivationFacts {

@@ -158,7 +158,7 @@ describe('derive structural analysis model: session idempotence (#9668)', () => 
     const memberIds = sorted(liveStructuralExtraction(store, editor.getMutationView()).members.map((member) => member.expressId));
     expect(memberIds).toHaveLength(plan.curveMembers.length + plan.surfaceMembers.length);
     const [existing] = second.existingAnalysisModels;
-    expect({ ...existing, memberIds: sorted(existing.memberIds) })
+    expect({ ...existing, memberIds: sorted(existing.memberIds ?? []) })
       .toEqual({ expressId: analysisModelId, name: 'Derived analysis model', derived: true, memberIds });
     expect(() => applyStructuralDerivation(editor, store, plan)).toThrow(/already has an analysis model/);
   });

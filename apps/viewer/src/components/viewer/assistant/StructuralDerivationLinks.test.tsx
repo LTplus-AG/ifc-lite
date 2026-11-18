@@ -244,7 +244,7 @@ test('#10621 follow-up: when the consistency check itself fails, the analysis mo
   commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
   const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
   const [existing] = review.plan.existingAnalysisModels;
-  assert.equal(existing.memberIds.length, 3, 'the plan carries the three derived members');
+  assert.equal(existing.memberIds?.length, 3, 'the plan carries the three derived members');
   // The check exports the edited model before reading it; make that export fail.
   mock.method(StepExporter.prototype, 'export', () => { throw new Error('export exploded'); });
   const root = render(<DerivationSummary review={review} />);
@@ -256,5 +256,5 @@ test('#10621 follow-up: when the consistency check itself fails, the analysis mo
   assert.equal(state.structuralViewMode, 'analytical');
   assert.deepEqual(state.selectedEntity, { modelId: SAMPLE_MODEL, expressId: existing.expressId });
   // The group owns no geometry: its members are highlighted and framed with it.
-  assert.deepEqual([...state.selectedEntityIds].sort(), [...existing.memberIds, existing.expressId].map(globalId).sort());
+  assert.deepEqual([...state.selectedEntityIds].sort(), [...existing.memberIds ?? [], existing.expressId].map(globalId).sort());
 });

@@ -186,6 +186,33 @@
         "#44=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#41,#42));",
         "#45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#24),#44);"
       ]
+    },
+    {
+      "why": "on the upgrade, a member's readable thickness set whose relationship also lists a non-reference still counts as the member's set: no second set is written",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);\n#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));\n#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));\n#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));\n#17=IFCSHAPEASPECT((#16),'Thickness locations',$,.T.,#15);\n#24=IFCSTRUCTURALSURFACEMEMBERVARYING('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',$,$,#9,#15,.SHELL.,0.2,(0.25,0.3),#17);\n#40=IFCPROPERTYSINGLEVALUE('Thickness1',$,IFCPOSITIVELENGTHMEASURE(0.2),$);\n#41=IFCPROPERTYSINGLEVALUE('Thickness2',$,IFCPOSITIVELENGTHMEASURE(0.25),$);\n#42=IFCPROPERTYSINGLEVALUE('Thickness3',$,IFCPOSITIVELENGTHMEASURE(0.3),$);\n#44=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#41,#42));\n#45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#24,$),#44);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#24=IFCSTRUCTURALSURFACEMEMBERVARYING('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',$,$,#9,#15,.SHELL.,0.2);",
+        "#44=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#41,#42));",
+        "#45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#24,$),#44);"
+      ]
+    },
+    {
+      "why": "a group named by two carrier sets stays a group, even when one relationship also lists a non-reference",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#21=IFCSTRUCTURALLOADGROUP('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S');\n#30=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.)),$);\n#31=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'IFC4 IfcStructuralLoadCase',$,(#30));\n#32=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#21,$),#31);\n#33=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-2.)),$);\n#34=IFCPROPERTYSET('4gUSy$VNbHyPCNtxi3Mz27',#5,'IFC4 IfcStructuralLoadCase',$,(#33));\n#35=IFCRELDEFINESBYPROPERTIES('1hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#21),#34);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLOADGROUP('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S');",
+        "#30=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.)),$);",
+        "#31=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'IFC4 IfcStructuralLoadCase',$,(#30));",
+        "#32=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#21,$),#31);",
+        "#34=IFCPROPERTYSET('4gUSy$VNbHyPCNtxi3Mz27',#5,'IFC4 IfcStructuralLoadCase',$,(#33));",
+        "#35=IFCRELDEFINESBYPROPERTIES('1hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#21),#34);"
+      ]
     }
   ]
 }

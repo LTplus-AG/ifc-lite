@@ -169,17 +169,17 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
   const uses = checkExclusive ? source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)]))) : undefined;
   return members.map(({ rel, pset, propIds }) => {
     // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that does
-    // not, or lists a property it cannot read, still counts as present (for ambiguity checks) but gives no
-    // property and is never consumed.
+    // not, that lists a property it cannot read, or whose relationship lists a non-reference, still counts as
+    // present for the objects it does name (for ambiguity checks) but gives no property and is never consumed.
+    const listed = listItems(source.slots(rel)?.[4] ?? '')?.map(slotRef) ?? [];
+    const related = listed.filter((r): r is number => r !== null);
     const props = new Map<string, number>();
     for (const p of propIds) {
       const propName = stepString(source.slots(p)?.[0]);
       if (p === null || propName === null || props.has(propName)) { props.clear(); break; }
       props.set(propName, p);
     }
-    // A relationship listing a non-reference relates the set to nothing it reads.
-    const listed = listItems(source.slots(rel)?.[4] ?? '')?.map(slotRef);
-    const related = listed && !listed.includes(null) ? listed as number[] : [];
+    if (related.length !== listed.length) props.clear();
     const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
     return { rel, pset, related, props, exclusive };
   });

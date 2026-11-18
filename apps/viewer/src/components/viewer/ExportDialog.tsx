@@ -443,7 +443,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         const result = await exportModelIfcx({
           modelId: selectedModelId, dataStore: selectedModel.ifcDataStore,
           geometryResult: selectedModel.geometryResult, mutationView: mutationView ?? undefined,
-          idOffset, maxExpressId: federatedModel ? federatedModel.maxExpressId ?? 0 : undefined, options: {
+          idOffset, maxExpressId: federatedModel ? federatedModel.maxExpressId ?? 0 : undefined, models: useViewerStore.getState().models, options: {
             includeGeometry: changesOnly ? false : includeGeometry,
             includeProperties: true,
             applyMutations: effectiveApplyMutations,

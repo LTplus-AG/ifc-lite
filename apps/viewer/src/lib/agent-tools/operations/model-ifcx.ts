@@ -24,17 +24,17 @@ export const ifcxExportOperations = [
     const state = useViewerStore.getState(), model = state.models.get(c.model.id), view = c.model.mutationView();
     if (model?.gaussianSplat) throw new Error('Gaussian captures are omitted by native model exporters.');
     if (i.include_geometry && !i.changes_only && model && hasRetainedShapeOnlyModel(new Map([[model.id, model]]))) throw new Error('Native retained geometry is incomplete or shape-only for IFCX export.');
-    // Without a mutation view there are no pending changes; a changes-only file must not fall back to the full model.
-    if (i.changes_only && !view) throw new Error('This model has no pending changes to export.');
+    // A changes-only file must not fall back to the full model, nor publish an empty one, when nothing is pending.
+    if (i.changes_only && !view?.getMutations().length) throw new Error('This model has no pending changes to export.');
     const visibility = resolveExportVisibility(state, c.model.id);
     const result = await exportModelIfcx({ modelId: c.model.id, dataStore: c.model.store, mutationView: view ?? undefined,
       geometryResult: model ? model.geometryResult : state.geometryResult, idOffset: model?.idOffset ?? 0,
-      maxExpressId: model ? model.maxExpressId ?? 0 : undefined,
+      maxExpressId: model ? model.maxExpressId ?? 0 : undefined, models: state.models,
       options: { includeGeometry: i.changes_only ? false : i.include_geometry, includeProperties: true,
-        applyMutations: i.changes_only && view ? true : i.apply_mutations,
-        visibleOnly: i.changes_only && view ? true : i.visible_only,
-        hiddenEntityIds: !(i.changes_only && view) && i.visible_only ? visibility.hiddenLocalIds : undefined,
-        isolatedEntityIds: i.changes_only && view ? new Set(view.getMutations().map(mutation => mutation.entityId))
+        applyMutations: i.changes_only || i.apply_mutations,
+        visibleOnly: i.changes_only || i.visible_only,
+        hiddenEntityIds: !i.changes_only && i.visible_only ? visibility.hiddenLocalIds : undefined,
+        isolatedEntityIds: i.changes_only ? new Set(view!.getMutations().map(mutation => mutation.entityId))
           : i.visible_only ? visibility.isolatedLocalIds ?? undefined : undefined,
         onlyKnownProperties: i.only_known_properties, author: 'ifc-lite', stripPathPrefix: roomExportPathPrefix(state, c.model.id) },
     });

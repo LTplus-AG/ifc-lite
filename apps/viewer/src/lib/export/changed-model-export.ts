@@ -78,7 +78,7 @@ export async function exportChangedModelToIfcx(
 ): Promise<ChangesExportArtifact> {
   const result = await exportModelIfcx({
     modelId, dataStore, geometryResult: invocation.geometryResult, mutationView: view,
-    idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId,
+    idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId, models: invocation.models,
     options: { includeGeometry: true, includeProperties: true, applyMutations: true, visibleOnly: false,
       stripPathPrefix: invocation.stripPathPrefix, onlyKnownProperties: false, author: 'ifc-lite' },
   });

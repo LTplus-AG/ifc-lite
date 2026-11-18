@@ -5,19 +5,20 @@ import { Ifc5Exporter, type Ifc5ExportOptions } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { useViewerStore } from '@/store';
+import type { FederatedModel } from '@/store/types';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 /** Shared IFCX producer for the Export dialog, changed-model export and operations.
  * Every instanced occurrence is scoped to this model's renderer-ID bracket. */
 export async function exportModelIfcx(input: {
   modelId: string; dataStore: IfcDataStore; geometryResult: GeometryResult | null | undefined;
-  mutationView?: MutablePropertyView; idOffset: number; maxExpressId?: number; options: Ifc5ExportOptions;
+  mutationView?: MutablePropertyView; idOffset: number; maxExpressId?: number;
+  /** Loaded models, to resolve this model's renderer index: it separates a collab-joined model from one with an overlapping id range. */
+  models: ReadonlyMap<string, FederatedModel>; options: Ifc5ExportOptions;
 }) {
   const { withInstancedMeshes } = await import('../../utils/instancedExport.js');
   const geometry = input.geometryResult ? withInstancedMeshes(input.geometryResult,
-    // The renderer index separates a collab-joined model from a loaded one with an overlapping id range.
     input.maxExpressId !== undefined ? { modelId: input.modelId, idOffset: input.idOffset, maxExpressId: input.maxExpressId,
-      rendererModelIndex: modelIndices(useViewerStore.getState().models).get(input.modelId) } : null,
+      rendererModelIndex: modelIndices(input.models).get(input.modelId) } : null,
   ) : input.geometryResult;
   return new Ifc5Exporter(input.dataStore, geometry, input.mutationView, input.idOffset).export(input.options);
 }

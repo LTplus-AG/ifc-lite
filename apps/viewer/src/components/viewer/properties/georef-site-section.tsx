@@ -14,7 +14,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { ChevronRight, Landmark } from 'lucide-react';
+import { Landmark } from 'lucide-react';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { posthog } from '@/lib/analytics';
@@ -22,6 +23,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { readSiteLocation, writeSiteLocation, type SiteLocationAttribute } from '@/lib/geo/site-location-write';
 import { GeorefRow } from './georef-rows';
+import { INSPECTOR_COUNT, InspectorSectionTrigger } from './inspector-ui';
 
 export interface GeorefSiteSectionProps {
   modelId: string;
@@ -62,22 +64,16 @@ export default function GeorefSiteSection({ modelId, editable }: GeorefSiteSecti
   const degrees = (v: number) => `${formatLocaleNumber(locale, v, { maximumFractionDigits: 6 })}°`;
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-muted text-left transition-colors border-b border-border"
-      >
-        <ChevronRight className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
-        <Landmark className="h-3 w-3 text-muted-foreground shrink-0" />
-        <span className="text-xs font-semibold text-foreground flex-1 text-left">{t('properties.georef.site.heading')}</span>
-        {!open && lat != null && lon != null && (
-          <span className="text-xs font-mono text-muted-foreground" data-testid="georef-site-summary">{degrees(lat)}, {degrees(lon)}</span>
-        )}
-      </button>
-      {open && (
-        <div className="divide-y divide-border">
+    <Collapsible open={open} onOpenChange={setOpen} className="border-b border-border">
+      <InspectorSectionTrigger
+        icon={<Landmark className="h-3 w-3 text-muted-foreground shrink-0" />}
+        title={t('properties.georef.site.heading')}
+        trailing={!open && lat != null && lon != null
+          ? <span className={INSPECTOR_COUNT} data-testid="georef-site-summary">{degrees(lat)}, {degrees(lon)}</span>
+          : undefined}
+      />
+      <CollapsibleContent>
+        <div className="divide-y divide-border border-t border-border">
           {ATTRIBUTES.map((attribute) => (
             <GeorefRow
               key={attribute}
@@ -93,7 +89,7 @@ export default function GeorefSiteSection({ modelId, editable }: GeorefSiteSecti
             />
           ))}
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

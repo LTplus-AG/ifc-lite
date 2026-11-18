@@ -198,6 +198,8 @@ test('plan.bootIdleAfterMs sets when the boot lane reads idle memory; absent kee
   withPlanDir((plan) => {
     assert.equal(plan({}).bootIdleAfterMs, undefined);
     assert.equal(plan({ bootIdleAfterMs: 60_000 }).bootIdleAfterMs, 60_000);
-    for (const bad of [-1, 300_001, '60000', Number.NaN]) assert.throws(() => plan({ bootIdleAfterMs: bad }), /bootIdleAfterMs/, String(bad));
+    assert.equal(plan({ bootIdleAfterMs: 0 }).bootIdleAfterMs, 0);
+    assert.equal(plan({ bootIdleAfterMs: 300_000 }).bootIdleAfterMs, 300_000);
+    for (const bad of [-1, 300_001, '60000', null]) assert.throws(() => plan({ bootIdleAfterMs: bad }), /bootIdleAfterMs/, String(bad));
   });
 });

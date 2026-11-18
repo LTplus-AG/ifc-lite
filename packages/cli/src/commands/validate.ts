@@ -18,7 +18,7 @@
 import { loadIfcFile } from '../loader.js';
 import { hasFlag, fatal, printJson } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
-import { expandTypes, getInheritanceChainAcrossSchemas, structuralConsistencyIssues, type IfcDataStore } from '@ifc-lite/parser';
+import { expandTypes, getInheritanceChainAcrossSchemas, structuralConsistencyReport, type IfcDataStore, type StructuralSkipReason, type StructuralSkippedMember } from '@ifc-lite/parser';
 import { structuralPhysicalAxes } from '@ifc-lite/create';
 import { resolvedTypeName } from '@ifc-lite/data';
 import { collectDanglingReferences } from './validate-references.js';
@@ -78,6 +78,36 @@ export const namedElementTypes = (schemaVersion: string | undefined): readonly s
 /** `QUANTIFIABLE_BASE_TYPES` plus every subtype this store's schema declares under one. */
 export const quantifiableTypes = (schemaVersion: string | undefined): readonly string[] =>
   expandTypes([...QUANTIFIABLE_BASE_TYPES], schemaVersion);
+
+/** Why a geometry rule passed over a member, as the end of a sentence. */
+const SKIP_REASON: Record<StructuralSkipReason, string> = {
+  'axis-unusable': 'the available axis data could not produce a usable measurement',
+  'derivation-record-unreadable': 'its derivation record could not be read',
+  'linked-element-identity-unreadable': 'a linked element has no readable GlobalId to match against its derivation record',
+  'edge-unreadable': 'its edge could not be read',
+  'no-derivation-record': 'it has no derivation record',
+  'element-without-axis': 'no axis was read for its physical element',
+  'recorded-element-unlinked': 'the element its derivation record names is no longer linked to it',
+};
+
+const onlyRecordMissing = ({ axisDrift, stale }: StructuralSkippedMember) => !axisDrift && stale === 'no-derivation-record';
+
+/**
+ * One `structural-unchecked-member` issue for a curve member the axis-drift or
+ * movement rule did not compare. A warning, except when the only gap is a
+ * missing derivation record.
+ */
+function uncheckedMember(member: StructuralSkippedMember): ValidationIssue {
+  const { memberId, globalId, type, axisDrift, stale } = member;
+  const parts = axisDrift === 'element-without-axis'
+    ? [`movement and axis drift not checked: ${SKIP_REASON[axisDrift]}`]
+    : [axisDrift && `axis drift not checked: ${SKIP_REASON[axisDrift]}`, stale && `movement not checked: ${SKIP_REASON[stale]}`].filter((part): part is string => !!part);
+  return {
+    severity: onlyRecordMissing(member) ? 'info' : 'warning',
+    rule: 'structural-unchecked-member', entityId: memberId, globalId,
+    message: `#${memberId} ${type}${globalId ? ` (${globalId})` : ''}: ${parts.join('; ')}`,
+  };
+}
 
 /** Cap on individually-reported dangling references and unlinked load-bearing elements; the remainder is rolled into one summary issue. */
 const ISSUE_LIST_CAP = 50;
@@ -239,7 +269,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
     // @raw-entity-enumeration-ok class census of the parsed file; no attribute decoding
     const hasCurveMember = [...(store.entityIndex?.byType.keys() ?? [])].some((type) => /^ifcstructuralcurvemember/i.test(type));
     const physicalAxes = hasCurveMember && store.schemaVersion !== 'IFC5' ? structuralPhysicalAxes(store) : undefined;
-    const structural = structuralConsistencyIssues(store, { physicalAxes });
+    const { issues: structural, coverage } = structuralConsistencyReport(store, { physicalAxes });
     const capped = new Map([
       ['structural-unlinked-element', 'load-bearing element(s) with no structural item'],
       ['structural-unconnected-member', 'structural member(s) with no connection'],
@@ -252,6 +282,18 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
       }
     }
     for (const issue of structural) if (!capped.has(issue.rule)) issues.push(issue);
+    // No finding is not a pass for the members the geometry rules passed over: say how many, then which.
+    const { linked, skipped } = coverage;
+    if (skipped.length > 0) {
+      issues.push({
+        severity: 'info', rule: 'structural-unchecked-member',
+        message: `Movement or axis drift was not checked on ${skipped.length} of ${linked} linked curve member(s)`,
+      });
+      issues.push(...skipped.slice(0, ISSUE_LIST_CAP).map(uncheckedMember));
+      if (skipped.length > ISSUE_LIST_CAP) {
+        issues.push({ severity: skipped.slice(ISSUE_LIST_CAP).every(onlyRecordMissing) ? 'info' : 'warning', rule: 'structural-unchecked-member', message: `${skipped.length - ISSUE_LIST_CAP} more unchecked curve member(s) not listed (${skipped.length} total)` });
+      }
+    }
   } catch (err) {
     issues.push({ severity: 'warning', rule: 'structural-consistency', message: `Structural consistency checks could not run: ${err instanceof Error ? err.message : String(err)}` });
   }

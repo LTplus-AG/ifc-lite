@@ -55,11 +55,11 @@ impl StructuralDiagnostics {
 
     /// A record written as another entity from source-derived facts
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
-    /// pair): the target record body, reported because the class changes.
-    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
+    /// pair): the target body and whether the rewrite dropped a CausedBy value.
+    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, bool)> {
         let cause = self.cause(id, entity);
         let rewritten = match self.links.link(entity, args) {
-            Some(attrs) => Some((format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()])),
+            Some(attrs) => Some((format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()], false)),
             None => self.varying.rewrite(id, entity, args, cause.is_some()),
         };
         // Queue the relationship only once the varying rewrite has produced an IFC4 action.
@@ -71,9 +71,9 @@ impl StructuralDiagnostics {
             self.record(message.into());
             self.carriers.write(id);
         }
-        let (body, losses) = rewritten?;
+        let (body, losses, cause_dropped) = rewritten?;
         losses.into_iter().for_each(|loss| self.record(loss));
-        Some(body)
+        Some((body, cause_dropped))
     }
 
     /// The message for an action whose CausedBy a 'Causes' relationship holds, or None.

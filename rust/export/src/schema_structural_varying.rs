@@ -194,16 +194,19 @@ impl StructuralVarying {
         result
     }
 
-    /// The target record body for a varying action of either schema, and what the change loses.
+    /// The target body, loss warnings, and whether the rewrite dropped a CausedBy value.
     /// `cause_carried`: a 'Causes' relationship holds the action's CausedBy, so it is not lost.
-    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String], cause_carried: bool) -> Option<(String, Vec<String>)> {
+    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String], cause_carried: bool) -> Option<(String, Vec<String>, bool)> {
         if let Some((kind, loads, config)) = self.upgrades.get(&id).filter(|(k, ..)| k.ifc2x3 == entity && args.len() == 14) {
             let values = loads.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join(",");
             self.pending.insert(*config, format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
             let mut losses = vec![FROM_IFC2X3.to_string()];
-            if args[10].trim() != "$" && !cause_carried { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
+            let cause = &args[crate::schema_structural_carriers::CAUSED_BY];
+            // Keep the warning predicate in sync with the TypeScript rewrite.
+            if !cause_carried && cause.trim() != "$" { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
+            let cause_dropped = !cause_carried && crate::schema_convert::holds_value(cause);
             let body = [&args[..7], &[format!("#{config}"), args[8].clone(), args[9].clone(), args[11].clone(), ".NOTDEFINED.".into()]].concat();
-            return Some((format!("{}({})", kind.ifc4, body.join(",")), losses));
+            return Some((format!("{}({})", kind.ifc4, body.join(",")), losses, cause_dropped));
         }
         let (kind, values, aspect) = self.downgrades.get(&id).filter(|(k, ..)| k.ifc4 == entity && args.len() == 12)?;
         let rest = values[1..].iter().map(|v| format!("#{v}")).collect::<Vec<_>>().join(",");
@@ -211,7 +214,7 @@ impl StructuralVarying {
         let mut losses = vec![TO_IFC2X3.to_string()];
         // `inspect` reports this for the records it sees; a rewritten one skips it.
         if args[9].trim() == "$" { losses.push(crate::schema_structural::destabilizing_unknown(entity)); }
-        Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), losses))
+        Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), losses, false))
     }
 
     /// Whether the record is a configuration every referrer of which became a varying action.

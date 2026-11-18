@@ -115,7 +115,7 @@ fn values_without_a_name(values: &[String], src_names: &[&str], tgt_names: &[&st
 }
 
 /// A slot that carries information: not `$`, `*` or empty.
-fn holds_value(slot: &str) -> bool {
+pub(crate) fn holds_value(slot: &str) -> bool {
     !matches!(slot.trim(), "" | "$" | "*")
 }
 
@@ -284,7 +284,12 @@ fn convert_record(
         return Ok(line.to_string());
     };
 
-    if let Some(body) = checks.as_deref_mut().and_then(|c| c.structural.rewrite(express_id, &entity_type, &args)) { return Ok(format!("{prefix}{body};")); }
+    if let Some(c) = checks.as_deref_mut() {
+        if let Some((body, cause_dropped)) = c.structural.rewrite(express_id, &entity_type, &args) {
+            c.attribute_values_dropped += usize::from(cause_dropped);
+            return Ok(format!("{prefix}{body};"));
+        }
+    }
     let cause_carried = checks.as_ref().is_some_and(|c| c.structural.cause(express_id, &entity_type).is_some());
     let axis = checks.as_ref().filter(|_| cfrom == "IFC2X3" && cto == "IFC4").and_then(|c| c.structural.axes.axis(express_id, &entity_type, &args));
     if let Some(c) = checks.as_deref_mut() { c.structural.inspect(express_id, &entity_type, &args, cfrom, cto, axis.is_some()); }

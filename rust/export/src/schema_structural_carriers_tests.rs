@@ -203,3 +203,17 @@ fn the_loss_counter_only_counts_uncarried_caused_by_10597() {
         }
     }
 }
+
+#[test]
+fn a_varying_rewrite_counts_a_missing_caused_by_even_with_free_ids_10597() {
+    let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    for (action, expected) in [(VARYING.to_owned(), 0), (VARYING.replace("#20", "#999"), 1)] {
+        let source = model("IFC2X3", &[&geometry, REACTION, &action].join("\n"));
+        let (out, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+        assert!(record(&out, 30).starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{out}");
+        assert_eq!(relationships(&out).len(), 1 - expected);
+        assert_eq!(warnings.iter().any(|w| w.contains("CausedBy has no slot")), expected == 1);
+        assert_eq!(stats.attribute_values_dropped, expected, "{out}");
+    }
+}

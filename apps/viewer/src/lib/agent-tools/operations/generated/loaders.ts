@@ -35,6 +35,7 @@ export const operationLoaders: Record<string, () => Promise<Record<string, unkno
   'model-step': () => import('../model-step'),
   'model-ifcx': () => import('../model-ifcx'),
   'model-landxml': () => import('../model-landxml'),
+  'model-cityjson': () => import('../model-cityjson'),
   'search': () => import('../search'),
   'export-native-scenes': () => import('../export-native-scenes'),
   'export-native-data': () => import('../export-native-data'),

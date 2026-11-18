@@ -12,6 +12,7 @@ export const nativeExportRegistryInventory = [
   { registry_id: '3dm', operations: ['exports.rhino'], controls: ['one model', 'version', 'units', 'local/world', 'layer scheme', 'instancing', 'properties', 'spaces', 'visible only', 'native worker cancellation'] },
   { registry_id: 'energy', operations: ['exports.energy'], controls: ['one model', 'HBJSON/DFJSON', 'edited source and authored spaces', 'native skipped-space diagnostics'] },
   { registry_id: 'landxml-terrain', operations: ['exports.terrainLandXml'], controls: ['one model', 'explicit terrain products', 'units', 'decimals', 'surface names', 'native producer preflight/refusal'] },
+  { registry_id: 'cityjson', operations: ['exports.cityjson'], controls: ['one model', 'CityJSON or CityJSONSeq', 'local-coordinate fallback', 'producer warnings and refusals'] },
   { registry_id: 'csv', operations: ['exports.csv'], controls: ['explicit single model', 'entities/properties/quantities/spatial', 'current pending edits'] },
   { registry_id: 'json', operations: ['exports.json'], controls: ['explicit single model', 'native effective entity envelope'] },
   { registry_id: 'screenshot', operations: ['exports.screenshot'], controls: ['current viewport PNG', 'native frame capture'] },

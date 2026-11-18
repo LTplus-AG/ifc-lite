@@ -35,6 +35,7 @@ const modules = [
   ['model-step', 'stepExportOperations'],
   ['model-ifcx', 'ifcxExportOperations'],
   ['model-landxml', 'landXmlExportOperations'],
+  ['model-cityjson', 'cityJsonExportOperations'],
   ['search', 'searchOperations'],
   ['export-native-scenes', 'exportNativeSceneOperations'],
   ['export-native-data', 'exportNativeDataOperations'],

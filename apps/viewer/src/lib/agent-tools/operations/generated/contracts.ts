@@ -13998,6 +13998,83 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "landXmlExportOperations"
   },
   {
+    "id": "exports.cityjson",
+    "version": 1,
+    "owner": "exports",
+    "features": [
+      "export.files"
+    ],
+    "description": "Produce native CityJSON (or CityJSONSeq with sequence=true) from the explicit model's current edited IFC source, through the same producer as the toolbar dialog. A model without georeferencing exports in local coordinates; producer warnings are returned, and package refusals (for example no IfcBuilding) are errors.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "target_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "sequence": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "target_model_id",
+        "sequence"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "diagnostics_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact",
+        "diagnostics_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "model-cityjson",
+    "exportName": "cityJsonExportOperations"
+  },
+  {
     "id": "filters.state",
     "version": 1,
     "owner": "search",

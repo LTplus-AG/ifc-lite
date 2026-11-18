@@ -18,12 +18,13 @@ import { exportNativeSceneOperations } from './export-native-scenes';
 import { exportNativeDataOperations } from './export-native-data';
 import { exportNativeAnonymizedOperations } from './export-native-anonymized';
 import { exportNativeViewOperations } from './export-native-view';
+import { cityJsonExportOperations } from './model-cityjson';
 import { nativeExportGuard } from './export-native-runtime';
 import { nativeExportRegistryInventory } from './export-native-inventory';
 import { EXPORT_COMMAND_IDS } from '@/components/viewer/toolbar/export-commands';
 import { produceNativeViewPdf } from '@/lib/export/native-view-pdf';
 import { DEFAULT_ANONYMIZE_TOGGLES } from '@/components/viewer/anonymized-export/AnonymizationOptionsPanel';
-const entries: Operation[] = [...exportNativeSceneOperations, ...exportNativeDataOperations, ...exportNativeViewOperations, ...exportNativeAnonymizedOperations];
+const entries: Operation[] = [...exportNativeSceneOperations, ...exportNativeDataOperations, ...exportNativeViewOperations, ...exportNativeAnonymizedOperations, ...cityJsonExportOperations];
 let c: ViewerOperationContext;
 beforeEach(async () => {
   resetFeaturesForTest(); await seedCoincidentWalls(2, 4);
@@ -39,6 +40,11 @@ describe('native export registry automation (#10525)', () => {
   it('accounts for every actual toolbar command with a native operation or explicit existing host boundary', () => {
     for (const id of EXPORT_COMMAND_IDS) { const row = nativeExportRegistryInventory.find(row => row.registry_id === id); assert.ok(row, id); assert.ok(row.operations.length || 'classification' in row, id); }
     for (const op of entries) assert.ok(nativeExportRegistryInventory.some(row => (row.operations as readonly string[]).includes(op.id)), op.id);
+  });
+  it('exports.cityjson refuses unknown models and models without a retained IFC source before loading the writer', async () => {
+    await assert.rejects(run('exports.cityjson', { target_model_id: 'missing', sequence: false }), /Unknown loaded native model/);
+    assert.equal(useViewerStore.getState().models.get('A')?.sourceFile, undefined);
+    await assert.rejects(run('exports.cityjson', { target_model_id: 'A', sequence: true }), /retained \.ifc\/\.ifczip source/);
   });
   it('writes real single-model JSON entity bytes and refuses unknown/capture targets instead of mixing federation IDs', async () => {
     const store = useViewerStore.getState().models.get('B')?.ifcDataStore; assert.ok(store);

@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEVELS, deriveCatalogue, notApplicable } from '../tests/structural-coverage/catalogue.mjs';
-import { ratchet, runProbes, score, tally, verifySummary, verifyTotals } from '../tests/structural-coverage/score.mjs';
+import { main, ratchet, runProbes, score, tally, verifySummary, verifyTotals } from '../tests/structural-coverage/score.mjs';
 import { readRow } from '../tests/structural-coverage/probes/read.mjs';
 import { checkExport } from '../tests/structural-coverage/probes/create.mjs';
 import { normalize } from '../tests/structural-coverage/lib/values.mjs';
@@ -144,6 +144,37 @@ test('limits (#9668): label every problem or count it open, never change a score
   const labelled = score(two, cells);
   assert.deepEqual([labelled.total, labelled.cells], [score(two, fresh()).total, score(two, fresh()).cells], 'a limit never changes a score');
   assert.ok(labelled.rows[0].levels.convert.limits && !('problems' in labelled.rows[0].levels.convert), 'the summary keeps the label, not the problem list');
+});
+
+test('score.mjs: a stale limit fails the run with exit 1 and names the label; the summary is still written (#10597)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'structural-score-'));
+  const out = join(dir, 'summary.json');
+  const stale = { row: two[0].id, level: 'convert', kind: 'schema', problem: /^never reported$/, cite: 'test', holds: () => true };
+  const run = async (limits) => {
+    const errors = [];
+    const { error, log } = console;
+    console.error = (m) => errors.push(String(m));
+    console.log = () => {};
+    try {
+      const evaluate = async () => {
+        const cells = cellsOf({});
+        return { summary: score(two, cells), limitIssues: markLimits(cells, {}, limits) };
+      };
+      return { code: await main(['--quiet', '--out', out], { evaluate }), errors: errors.join('\n') };
+    } finally {
+      Object.assign(console, { error, log });
+    }
+  };
+  try {
+    const failed = await run([stale]);
+    assert.equal(failed.code, 1);
+    assert.match(failed.errors, /Limits out of date \(tests\/structural-coverage\/limits\.mjs\)/);
+    assert.match(failed.errors, new RegExp(`${two[0].id} convert \\(schema\\) labels no problem the probe reported`));
+    assert.equal(JSON.parse(readFileSync(out, 'utf8')).total.max, 2, 'the summary is written for inspection');
+    assert.deepEqual(await run([]), { code: 0, errors: '' }, 'without the stale label the same run exits 0');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('limits (#9668): each names a catalogue row, an applicable level, a kind and a citation', () => {

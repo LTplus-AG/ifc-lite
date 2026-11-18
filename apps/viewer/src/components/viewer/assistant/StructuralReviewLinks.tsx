@@ -38,7 +38,7 @@ export function ElementLink({ modelId, expressId }: { modelId: string; expressId
 
 /** Several elements of `modelId`, comma-separated links. */
 export function ElementLinks({ modelId, ids }: { modelId: string; ids: readonly number[] }) {
-  return <>{ids.map((id, index) => <Fragment key={id}>{index > 0 && ', '}<ElementLink modelId={modelId} expressId={id} /></Fragment>)}</>;
+  return <>{ids.map((id, index) => <Fragment key={`${index}:${id}`}>{index > 0 && ', '}<ElementLink modelId={modelId} expressId={id} /></Fragment>)}</>;
 }
 
 const MARK = '\u0001';

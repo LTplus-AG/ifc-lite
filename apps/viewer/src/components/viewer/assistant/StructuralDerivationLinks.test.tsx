@@ -215,8 +215,10 @@ const REFUSALS: Array<[Locale, Record<string, string>]> = [
 ];
 for (const [locale, catalogue] of REFUSALS) {
   test(`#10621 follow-up: the refusal names the existing analysis model as a link (${locale})`, async () => {
-    if (locale !== 'en') registerLocale(locale, catalogue);
-    setLocale(locale);
+    // A test-only locale name, so the shipped catalogue registered under `locale` is left alone.
+    const name: Locale = locale === 'en' ? 'en' : `${locale}-x-refusal-test`;
+    if (name !== 'en') registerLocale(name, catalogue);
+    setLocale(name);
     await seed(true);
     commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
     const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
@@ -242,6 +244,7 @@ test('#10621 follow-up: when the consistency check itself fails, the analysis mo
   commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
   const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
   const [existing] = review.plan.existingAnalysisModels;
+  assert.equal(existing.memberIds.length, 3, 'the plan carries the three derived members');
   // The check exports the edited model before reading it; make that export fail.
   mock.method(StepExporter.prototype, 'export', () => { throw new Error('export exploded'); });
   const root = render(<DerivationSummary review={review} />);
@@ -252,4 +255,6 @@ test('#10621 follow-up: when the consistency check itself fails, the analysis mo
   const state = useViewerStore.getState();
   assert.equal(state.structuralViewMode, 'analytical');
   assert.deepEqual(state.selectedEntity, { modelId: SAMPLE_MODEL, expressId: existing.expressId });
+  // The group owns no geometry: its members are highlighted and framed with it.
+  assert.deepEqual([...state.selectedEntityIds].sort(), [...existing.memberIds, existing.expressId].map(globalId).sort());
 });

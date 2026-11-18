@@ -36,11 +36,10 @@ function AnalysisModelRow({ modelId, expressId, memberIds }: { modelId: string; 
 /**
  * Runs the consistency checks for `modelId` and lists what they find. They run
  * again for each new `prepared` review, since the model may have changed in between.
- * If the check itself fails, the `existing` analysis models can still be shown,
- * though without their members: the derivation plan does not carry them.
+ * If the check itself fails, the `existing` analysis models the plan read can still be shown.
  */
 export function StructuralConsistencyFindings({ modelId, prepared, existing }: {
-  modelId: string; prepared: object; existing: readonly { expressId: number }[];
+  modelId: string; prepared: object; existing: readonly { expressId: number; memberIds: readonly number[] }[];
 }) {
   const { t } = useTranslation();
   const [result, setResult] = useState<StructuralConsistencyReview | 'checking' | { failed: string }>('checking');
@@ -57,10 +56,10 @@ export function StructuralConsistencyFindings({ modelId, prepared, existing }: {
     return () => { live = false; };
   }, [modelId, prepared]);
   if (result === 'checking') return <output className="block">{t('structuralDerive.consistency.checking')}</output>;
-  if ('failed' in result) return <div className="space-y-2">
+  if ('failed' in result) return <section aria-label={t('structuralDerive.consistency.title')} className="space-y-2">
     <p role="alert">{t('structuralDerive.consistency.failed', { error: result.failed })}</p>
-    {existing.map((model) => <AnalysisModelRow key={model.expressId} modelId={modelId} expressId={model.expressId} memberIds={[]} />)}
-  </div>;
+    {existing.map((model) => <AnalysisModelRow key={model.expressId} modelId={modelId} expressId={model.expressId} memberIds={model.memberIds} />)}
+  </section>;
   const { linked, skipped } = result.axisCoverage;
   return <section aria-label={t('structuralDerive.consistency.title')} className="space-y-2">
     {result.analysisModels.map((model) => <AnalysisModelRow key={model.expressId} modelId={modelId} expressId={model.expressId} memberIds={model.memberIds} />)}

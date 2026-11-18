@@ -15,13 +15,10 @@ const convert = async (text: string, schema: 'IFC2X3' | 'IFC4') => {
   return { step: new TextDecoder().decode(result.content), warnings: result.stats.warnings.join('\n') };
 };
 
-/** `Type.Attribute` -> the target type and ids `analyzeConversionLoss` names as dropping it. */
-const lossEntries = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') =>
-  analyzeConversionLoss(await parse(text), from, to).entries
-    .flatMap((e) => e.droppedAttributes.map((a) => [`${e.sourceType}.${a}`, e] as const));
 /** `Type.Attribute` -> the ids `analyzeConversionLoss` names as dropping it. */
 const lossIds = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') =>
-  Object.fromEntries((await lossEntries(text, from, to)).map(([key, e]) => [key, e.expressIds]));
+  Object.fromEntries(analyzeConversionLoss(await parse(text), from, to).entries
+    .flatMap((e) => e.droppedAttributes.map((a) => [`${e.sourceType}.${a}`, e.expressIds])));
 
 const OWNER = `#1=IFCPERSON($,'P',$,$,$,$,$,$);
 #2=IFCORGANIZATION($,'O',$,$,$);
@@ -427,7 +424,8 @@ ${geometry.replace('(#16),', aspect)}
     for (const { text, why, target } of cases) {
       const { step, warnings } = await convert(text, 'IFC4');
       expect(/CausedBy (has no slot|of a varying action)/.test(warnings), why).toBe(target !== null);
-      const entry = (await lossEntries(text, 'IFC2X3', 'IFC4')).find(([key]) => key === 'IFCSTRUCTURALLINEARACTIONVARYING.CausedBy')?.[1];
+      const entry = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4').entries
+        .find((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING' && e.droppedAttributes.includes('CausedBy'));
       // The entry names the type the export writes #30 as.
       expect(entry ? { target: entry.targetType, ids: entry.expressIds } : null, why).toEqual(target && { target, ids: [30] });
       if (target) expect(line(step, 30), why).toMatch(new RegExp(`^#30=${target}\\(`));
@@ -767,6 +765,16 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     const up = await convert(down.step, 'IFC4');
     expect(line(up.step, 20)).toBe(line(own, 20));
     expect(line(up.step, 40)).toBe(line(own, 40));
+  });
+
+  it('reports the Axis lost in the preview when the association it would fill is split over lines', async () => {
+    // The writer converts only a record on one line (STEP_RECORD), so it passes this association through unfilled.
+    const split = PLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,
+  (#20),#40,$,$);
+#20=`);
+    expect((await convert(split, 'IFC2X3')).step).toContain('(#20),#40,$,$);');
+    expect((await lossIds(split, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALCURVEMEMBER.Axis']).toEqual([20]);
   });
 
   it('reports the Axis lost, and writes no direction, when the association it would fill is refused', async () => {

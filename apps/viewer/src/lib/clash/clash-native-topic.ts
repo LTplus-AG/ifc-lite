@@ -36,6 +36,10 @@ interface TopicOptions {
   signal?: AbortSignal;
   commit?: <T>(write: () => T) => T;
 }
+/** The run is still wanted but the scene or camera changed under the capture (a cancelled run returns null). */
+export class StaleCaptureError extends Error {
+  constructor() { super('The loaded models changed while the BCF viewpoint was being captured. Try again.'); }
+}
 /** One native create path for panel single/report topics and manual-group topics.
  * Captured camera/scene checks run before publication; failures create nothing. */
 export async function createNativeClashTopic(options: TopicOptions): Promise<{ guid: string } | null> {
@@ -63,7 +67,9 @@ export async function createNativeClashTopic(options: TopicOptions): Promise<{ g
   const captureIsCurrent = () =>
     isCurrent() &&
     (!focused || (focusedSceneRevisionIsCurrent(focused) && focusedCameraViewpointIsCurrent(framedCamera)));
-  if (!captureIsCurrent()) return null;
+  // Superseded or cancelled: quiet. Still wanted but the scene/camera moved: say so.
+  const staleOrQuiet = (): null => { if (isCurrent()) throw new StaleCaptureError(); return null; };
+  if (!captureIsCurrent()) return staleOrQuiet();
   const state = useViewerStore.getState();
   const title =
     groupName ??
@@ -110,7 +116,9 @@ export async function createNativeClashTopic(options: TopicOptions): Promise<{ g
     'clash',
   );
   options.signal?.throwIfAborted();
-  if (!captured.ok || !captureIsCurrent()) return null;
+  // A stale capture also comes back !ok (the capture skips its own toast then); only a real failure reported itself.
+  if (!captureIsCurrent()) return staleOrQuiet();
+  if (!captured.ok) return null;
   const viewpoint = captured.viewpoint;
   const publish = () => {
     if (!captureIsCurrent()) throw new Error('Clash capture became stale before publication.');

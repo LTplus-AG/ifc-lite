@@ -40,13 +40,13 @@ const IFC2X3 = model('IFC2X3', `${SHARED}
 // #9668: IFC4 has no varying actions. It holds the loads in an
 // IfcStructuralLoadConfiguration on a curve or surface action.
 describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
-  it('refuses a configuration shared by convertible LINEAR and non-convertible SINUS actions (A)', async () => {
+  it('refuses a shared configuration even when the SINUS referrer has a comment before its arguments (#10715)', async () => {
     const source = model('IFC4', `${SHARED}
 #25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);
 #30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.LINEAR.);
-#31=IFCSTRUCTURALCURVEACTION('1d2HL$ILbNDhwyUI0qw12$',$,'Sinus',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.SINUS.);`);
+#31=IFCSTRUCTURALCURVEACTION/* (' */('1d2HL$ILbNDhwyUI0qw12$',$,'Sinus',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.SINUS.);`);
     const awaitedStore = await parse(source);
-    expect(() => exportToStep(awaitedStore, { schema: 'IFC2X3' })).toThrow(/IFCSTRUCTURALLOADCONFIGURATION/);
+    expect(() => exportToStep(awaitedStore, { schema: 'IFC2X3' })).toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
   });
 
   it('converts a split-line varying action and withholds its split-line configuration (#10715)', async () => {

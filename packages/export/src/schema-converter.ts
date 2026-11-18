@@ -16,7 +16,9 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, isGridPlacementInSourceLayout, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
-import { splitTopLevelStepArguments, STEP_RECORD } from './step-argument-parser.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { frameArgs, stepRecordFrame } from './step-record-frame.js';
+import { skipStepTrivia } from './step-slot-grammar.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
@@ -306,15 +308,14 @@ function convertRecord(
   structuralAxis?: string,
   structuralDiagnostics?: EnumReconciliation['structural'],
 ): string | null {
-  // Parse: #ID=TYPE(attrs);  — tolerate whitespace around `=` and `(` (Tekla's
-  // `#34498= IFCOPENINGELEMENT(`, Viadotto_Acerno's `#159655 = IFC...(`, #7742).
-  // Otherwise the line passed through unconverted under the target header.
-  const match = line.match(STEP_RECORD);
-  if (!match) return line; // not a STEP entity line, pass through
+  const frame = stepRecordFrame(line, { allowMissingSemicolon: true });
+  if (frame === null) return line;
 
-  const prefix = `${match[1]}=`, expressId = Number(match[1].slice(1)); // "#123=", 123
-  const entityType = match[2].toUpperCase();
-  const attrsRaw = match[3] ?? '';
+  const { head } = frame;
+  const id = /^#\d+/.exec(line.slice(skipStepTrivia(line, 0)))![0];
+  const prefix = `${id}=`, expressId = Number(id.slice(1));
+  const entityType = line.slice(head.typeStart, head.typeEnd).toUpperCase();
+  const attrsRaw = frameArgs(line, frame);
 
   // Validate before choosing any conversion branch. A malformed slot list
   // must not still receive a type rename, proxy replacement, trim, or padding:

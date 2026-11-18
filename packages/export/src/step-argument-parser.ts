@@ -290,6 +290,3 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   }
   return parts;
 }
-
-/** `#ID=TYPE(attrs);` record, including arguments spread over multiple lines. */
-export const STEP_RECORD = /^\s*(#\d+)\s*=\s*(\w+)\s*\((.*)\)\s*;?\s*$/s;

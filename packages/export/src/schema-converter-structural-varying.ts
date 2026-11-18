@@ -90,7 +90,7 @@ export class StructuralVarying {
     const configs = new Set(this.configs.keys());
     for (const [id, entry] of this.byId) {
       if (!KINDS.some((k) => k.ifc4 === entry.type.toUpperCase())) continue;
-      const args = source.convertedSlots(id);
+      const args = source.slots(id);
       if (!args || args.some((a, i) => i !== 7 && referencesAnyExpressId(a, configs))) continue;
       if (this.toIfc2x3(id, entry.type.toUpperCase(), args)) {
         candidates.add(id);

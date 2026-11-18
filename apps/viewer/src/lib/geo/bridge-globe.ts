@@ -17,7 +17,7 @@ import { linearizeWarp } from './geo-jacobian';
 import { planGlobePlacement, type GlobePlacementMode, type GlobePlacementPlan } from './globe-placement';
 import { buildLinearizedViewerToEcefMatrix } from './cesium-viewer-frame';
 import { shouldApplyGeoidUndulation } from './cesium-placement';
-import { egm96Undulation } from './egm96-undulation';
+import { egm96Undulation } from '@ifc-lite/geo';
 
 export interface BridgeGlobe {
   mapping: GeoMapping;

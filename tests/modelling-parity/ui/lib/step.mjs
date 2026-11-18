@@ -63,6 +63,7 @@ export function parseArgs(text) {
     throw new Error(`STEP parse error at ${i}: ${text.slice(i, i + 40)}`);
   };
   const out = value();
+  if (text.slice(i).trim()) throw new Error('Malformed STEP argument list: trailing content');
   return out;
 }
 
@@ -83,6 +84,8 @@ export function readStep(text) {
     if (!byType.has(type)) byType.set(type, []);
     byType.get(type).push(entity);
   }
+  const residue = data.replace(re, '').split('ENDSEC;')[0].replace(/\/\*[\s\S]*?\*\//g, '').trim();
+  if (residue) throw new Error('Malformed STEP record: incomplete or unparsed entity');
   const of = (type) => byType.get(type.toUpperCase()) ?? [];
   const get = (ref) => (ref && typeof ref === 'object' && 'ref' in ref ? entities.get(ref.ref) : entities.get(ref));
   return {

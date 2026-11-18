@@ -251,3 +251,51 @@ describe('the streaming `complete` event payload (buildGeometryWorkerCompleteMes
     expect(wh.triangleCount).toBeUndefined();
   });
 });
+
+it('#9268 preserves budget refusals through worker/batch merging', () => {
+  const refusal = { budget: 'walk mapped attempts', limit: 65536, reached: 65537,
+    productId: 25, productType: 'IfcFlowTerminal', GlobalId: 'test', sourceId: 22 };
+  const merged = mergeGeometryDiagnostics(make({ budgetRefusals: [refusal] }), make());
+  expect(merged?.budgetRefusals).toEqual([refusal]);
+  expect(merged?.totalUnsupportedItems).toBeUndefined();
+});
+
+it('issue 9268 merge caps budget detail while preserving the complete count', () => {
+  const refusal = { budget: 'logical mapped attempts', limit: 3, reached: 4,
+    sourceId: 8, productId: null, productType: null, GlobalId: null };
+  const merged = mergeGeometryDiagnostics(make({ totalBudgetRefusals: 40,
+    budgetRefusals: Array.from({ length: 16 }, () => refusal) }),
+  make({ budgetRefusals: [refusal] }));
+  expect(merged?.totalBudgetRefusals).toBe(41);
+  expect(merged?.budgetRefusals).toHaveLength(16);
+});
+
+it('issue 9268 merge keeps the same sixteen refusal details whichever worker finishes first', () => {
+  const refusal = (productId: number | null) => ({ budget: 'mapped attempts', limit: 3, reached: 4,
+    sourceId: 1000 + (productId ?? 0), productId, productType: 'IfcWall', GlobalId: null });
+  const low = make({ budgetRefusals: [refusal(null), ...Array.from({ length: 9 }, (_, i) => refusal(i + 1))] });
+  const high = make({ budgetRefusals: Array.from({ length: 10 }, (_, i) => refusal(20 - i)) });
+  const ids = (d: ReturnType<typeof mergeGeometryDiagnostics>) => d?.budgetRefusals?.map((r) => r.productId);
+  expect(ids(mergeGeometryDiagnostics(high, low))).toEqual(ids(mergeGeometryDiagnostics(low, high)));
+  expect(ids(mergeGeometryDiagnostics(high, low))).toEqual([null, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16]);
+});
+
+it('issue 9268 merge preserves counted zero budget refusals and absent fields', () => {
+  const counted = mergeGeometryDiagnostics(
+    make({ totalBudgetRefusals: 0, budgetRefusals: [] }),
+    make({ totalBudgetRefusals: 0, budgetRefusals: [] }),
+  );
+  expect(counted).toHaveProperty('totalBudgetRefusals', 0);
+  expect(counted).toHaveProperty('budgetRefusals', []);
+
+  // A scalar zero must also survive without a truthy detail array.
+  const scalarOnly = mergeGeometryDiagnostics(
+    make({ totalBudgetRefusals: 0 }), make({ totalBudgetRefusals: 0 }),
+  );
+  expect(scalarOnly).toHaveProperty('totalBudgetRefusals', 0);
+  expect(scalarOnly).toHaveProperty('budgetRefusals', []);
+
+  const absent = mergeGeometryDiagnostics(make(), make());
+  expect(absent).not.toHaveProperty('totalBudgetRefusals');
+  expect(absent).not.toHaveProperty('budgetRefusals');
+});

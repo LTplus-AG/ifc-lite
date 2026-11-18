@@ -26,7 +26,7 @@
  * dialog on a live room shows what was shared.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { AlertTriangle, Check, Copy, Link2, Users } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -39,7 +39,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
-import { modelsInShareScope, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
+import { seedableModelsInScope, shareRefusesEveryModel, shareScopeIsChoice, unshareableModelsInScope, type ShareScope } from '@/lib/collab/share-scope';
 import { useShareRoomCreation } from './useShareRoomCreation';
 import { ShareScopeField } from './ShareScopeField';
 
@@ -114,10 +114,34 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   }, [models, activeModelId]);
 
   const hasModel = models.size > 0;
-  // What "all loaded models" can put in a room: a GLB, a point cloud or a
-  // model still loading has no parsed store and is left out of the seed.
-  const seedableCount = useMemo(() => modelsInShareScope(models, activeModelId, 'all')
-    .filter((model) => model.ifcDataStore).length, [models, activeModelId]);
+  // What "all loaded models" can put in a room. The seed asks the same
+  // predicate, so the "{seedable} of {loaded}" notice cannot promise a model
+  // the seed then drops.
+  const seedableCount = useMemo(() => seedableModelsInScope(models, activeModelId, 'all').length, [models, activeModelId]);
+  // Which loaded models this share will NOT carry, and why. Derived, not
+  // state, so the warning is on screen while the owner is still deciding
+  // rather than only after the room is committed — the Export dialog names a
+  // merged export's skips in its description for the same reason. Only a
+  // model with a store the seed cannot read is named; a GLB or point cloud
+  // has nothing to drop (see `unshareableModelsInScope`).
+  //
+  // Read at the SELECTED scope, never from `seedableCount`, which is fixed to
+  // 'all' for the "{n} of {m} models" notice. Mixing them made the line
+  // disagree with the mint: an 'active' share of a `.3dm` beside a loaded IFC
+  // said "left out" and then created no room.
+  //
+  // "Nothing here can be shared" is the no-room sentence, so it reads the
+  // same `shareRefusesEveryModel` the mint guard does. A GLB beside a `.3dm`
+  // still gets its empty room, as on main, and reads the "left out" line.
+  const noRoomToCreate = shareRefusesEveryModel(models, activeModelId, scope);
+  const refusalId = useId();
+  const unshareable = useMemo(() => {
+    if (collabRoomId) return null;
+    const refused = unshareableModelsInScope(models, activeModelId, scope);
+    if (refused.length === 0) return null;
+    return t(noRoomToCreate ? 'shareDialog.shareSkipped.allRefused' : 'shareDialog.shareSkipped.noRecords',
+      { models: refused.join(', ') });
+  }, [models, activeModelId, scope, collabRoomId, noRoomToCreate, t]);
   const isJoiner = Boolean(collabRoomId && collabRole && collabRole !== 'admin');
   // The room exists but the model is still going in: no invite until it has.
   const seedInFlight = Boolean(collabRoomId) && isCollabSeedInFlight(seedPhase);
@@ -136,7 +160,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   }, [open]);
 
   const resetLink = useCallback(() => { setLink(''); setCopied(false); }, []);
-  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink });
+  const withdrawConsent = useCallback(() => setScopeConfirmed(false), []);
+  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink, withdrawConsent });
 
   // 2. Mint the invite — re-minted when the dialog opens or the role changes,
   // and only once the seed has settled (`seedInFlight` false). Until then the
@@ -214,8 +239,9 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
 
   const waiting = awaitingConsent || (creating && !collabRoomId) || seedInFlight || minting;
   const seedLabel = describeSeedPhase(seedPhase, seedProgress);
+  // A refused scope has no link to create, so the field gives no instruction.
   const linkFieldText = awaitingConsent
-    ? t(scopeIsChoice ? 'shareDialog.linkField.awaitingScope' : 'shareDialog.linkField.awaitingConsent')
+    ? noRoomToCreate ? '' : t(scopeIsChoice ? 'shareDialog.linkField.awaitingScope' : 'shareDialog.linkField.awaitingConsent')
     : seedInFlight
       ? t('shareDialog.linkField.seedInFlight')
       : creating && !collabRoomId
@@ -249,6 +275,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                 editable={awaitingConsent}
                 onConfirm={() => setScopeConfirmed(true)}
                 loadedCount={models.size}
+                refusalId={noRoomToCreate ? refusalId : null}
                 seedableCount={seedableCount}
                 activeModelName={modelName}
                 roomModelCount={collabRoomId ? sharedModelCount : null}
@@ -301,6 +328,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
               </output>
             )}
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
+            {unshareable && <p id={refusalId} className="text-xs text-muted-foreground">{unshareable}</p>}
             {seedFailure && (
               <div
                 role="alert"

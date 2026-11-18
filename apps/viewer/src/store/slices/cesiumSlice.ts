@@ -18,6 +18,7 @@ import type { StateCreator } from 'zustand';
 import type { MapConversion } from '@ifc-lite/parser';
 
 import { clearTerrainElevationCache } from '@/lib/geo/terrain-elevation';
+import { isFeatureEnabled } from '@/lib/features';
 import {
   decodeCustomBasemap,
   encodeCustomBasemap,
@@ -225,12 +226,10 @@ function resolveIonToken(): string {
 
 /**
  * Cross-slice surface CesiumSlice reaches into. Turning on the placement
- * editor implies global edit mode, which is the Model workspace (#6232):
- * it goes through UISlice's `setEditEnabled`, never a bare flag write.
+ * editor explicitly enters Model for geometry editing (#9296).
  */
 export interface CesiumCrossSliceState {
-  editEnabled: boolean;
-  setEditEnabled?: (enabled: boolean) => void;
+  enterModelWorkspace: () => boolean;
 }
 
 export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState, [], [], CesiumSlice> = (set, get) => ({
@@ -254,10 +253,14 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   cesiumPlacementDraftModelId: null,
   cesiumPlacementDraft: null,
 
-  setCesiumAvailable: (available) => set((s) => s.cesiumAvailable === available ? s : { cesiumAvailable: available }),
-  setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled }),
+  // The world context streams imagery and terrain from an outside service; a host can switch that off (`lib/features`).
+  setCesiumAvailable: (wanted) => set((s) => {
+    const available = wanted && isFeatureEnabled('privacy.third-party');
+    return s.cesiumAvailable === available ? s : { cesiumAvailable: available };
+  }),
+  setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled && isFeatureEnabled('privacy.third-party') }),
   toggleCesium: () => set((s) => ({
-    cesiumEnabled: !s.cesiumEnabled,
+    cesiumEnabled: !s.cesiumEnabled && isFeatureEnabled('privacy.third-party'),
     ...(s.cesiumEnabled
       ? {
           cesiumPlacementEditMode: false,
@@ -352,20 +355,14 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   setCesiumTerrainClipY: (y) => set({ cesiumTerrainClipY: y }),
   setCesiumGlbLoaded: (loaded) => set({ cesiumGlbLoaded: loaded }),
   setCesiumPlacementEditMode: (enabled) => {
-    // Turning the placement editor on implies global edit mode — the user
-    // can't end up "moving the georef" while the rest of the UI claims it's
-    // read-only; if edit mode is refused (collab role, no editable model),
-    // the editor stays off. Turning it off does *not* exit global edit;
-    // other sub-tools may still be in use — but the placement draft is
-    // cleared so callers exiting via the setter leave no stale draft.
+    // Placement is geometry editing and requires Model. Entry enforces the
+    // role and entity rules; turning this sub-mode off leaves the workspace
+    // open but clears its draft.
     if (!enabled) {
       set({ cesiumPlacementEditMode: false, cesiumPlacementDraftModelId: null, cesiumPlacementDraft: null });
       return;
     }
-    const s = get();
-    if (!s.editEnabled && s.setEditEnabled) s.setEditEnabled(true);
-    else if (!s.editEnabled) set({ editEnabled: true });
-    if (get().editEnabled) set({ cesiumPlacementEditMode: true });
+    if (get().enterModelWorkspace()) set({ cesiumPlacementEditMode: true });
   },
   toggleCesiumPlacementEditMode: () => get().setCesiumPlacementEditMode(!get().cesiumPlacementEditMode),
   beginCesiumPlacementDraft: (modelId, conversion) => set({

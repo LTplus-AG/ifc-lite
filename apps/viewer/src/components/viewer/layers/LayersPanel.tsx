@@ -15,6 +15,7 @@
  * composition's `layerStackPathToId` bridge and nothing here persists ids.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useRef, useState } from 'react';
 import { Bot, FolderOpen, GitMerge, Layers, Sparkles, User, Users2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -250,7 +251,7 @@ export function LayersPanel(_props: LayersPanelProps) {
             {t('layersPanel.panel.heroDescription')}
           </p>
           <div className="flex flex-col gap-1.5 pt-2">
-            <Button
+            {isFeatureEnabled('files.samples') && <Button
               size="sm"
               className="h-7 gap-1.5 px-3 text-2xs"
               onClick={() => void loadDemo()}
@@ -259,7 +260,8 @@ export function LayersPanel(_props: LayersPanelProps) {
             >
               <Sparkles className="size-3.5" aria-hidden />
               {t(demoBusy ? 'layersPanel.panel.loadingDemo' : 'layersPanel.panel.loadDemoStack')}
-            </Button>
+            </Button>}
+            {isFeatureEnabled('files.local') && <>
             <Button
               size="sm"
               variant="outline"
@@ -281,6 +283,7 @@ export function LayersPanel(_props: LayersPanelProps) {
                 if (files.length > 0) void loadFederatedIfcx(files);
               }}
             />
+            </>}
           </div>
           <p className="max-w-[30ch] pt-1 text-2xs text-muted-foreground">
             {t('layersPanel.panel.dropHint')}

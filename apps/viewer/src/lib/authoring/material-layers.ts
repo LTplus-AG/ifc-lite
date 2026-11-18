@@ -14,7 +14,7 @@ import type { ModelEditTarget, ModellingMethods } from '@/store/slices/mutation-
 export interface LayerInput {
   /** SI metres, > 0. */
   readonly thickness: number;
-  readonly material: { readonly id: number } | { readonly name: string } | null;
+  readonly material: { readonly id: number } | { readonly name: string; readonly color?: string } | null;
 }
 export interface ApplyLayersSpec {
   readonly kind: AuthoredElementKind;
@@ -64,7 +64,7 @@ export function writeMaterialLayersInDraft(target: ModelEditTarget, draft: Store
       if ('id' in layer.material) {
         if (!liveEntityConforms(target.dataStore, layer.material.id, 'IfcMaterial', live.view)) throw new Error('The selected layer material is not a current IfcMaterial');
         Material = layer.material.id;
-      } else Material = methods.addMaterial(target.modelId, { Name: layer.material.name }).expressId;
+      } else Material = methods.addMaterial(target.modelId, { Name: layer.material.name, Color: layer.material.color }).expressId;
     }
     return { LayerThickness: layer.thickness, Material };
   });

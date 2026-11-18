@@ -15,7 +15,7 @@
 mod tests;
 
 #[path = "landxml_terrain_georef.rs"]
-mod georef;
+pub(crate) mod georef;
 #[path = "landxml_terrain_tin.rs"]
 mod tin;
 

@@ -1,0 +1,40 @@
+{
+  "manifestVersion": 1,
+  "id": "org.ifclite.e2e.palette-access",
+  "name": "Palette Access Witness",
+  "description": "Issue #8947 real browser install and visibility witness.",
+  "version": "1.0.0",
+  "engines": {
+    "ifcLiteSdk": ">=2.0.0"
+  },
+  "capabilities": [
+    "model.read",
+    "viewer.read",
+    "viewer.isolate"
+  ],
+  "activation": [
+    "onCommand:palette-witness.visibility"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "id": "palette-witness.visibility",
+        "title": "Witness visibility handler"
+      }
+    ],
+    "dock": [
+      {
+        "id": "palette-witness.dock",
+        "slot": "dock.right",
+        "title": "Palette witness dock",
+        "widget": "widgets/panel.json",
+        "when": "model.loaded"
+      }
+    ]
+  },
+  "entry": {
+    "commands": {
+      "palette-witness.visibility": "src/visibility.js"
+    }
+  }
+}

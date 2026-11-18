@@ -142,7 +142,13 @@ const NOT_RENDERED_IN_THIS_STATE: SharedKey[] = [
   // #8947: loading-only fixture has no eligible STEP model; the real
   // loaded-model tooltip is exercised separately below.
   'exportCommands.ion.tooltip',
+  // #8947: transient screenshot outcomes are exercised through the actual
+  // palette in CommandPalette.export-child-access and the GPU browser case.
+  'exportCommands.screenshot.saved',
+  'exportCommands.screenshot.notReady',
+  'exportCommands.screenshot.failed',
   'classVisibility.pinnedDetail.descriptionIgnored',
+  'classVisibility.structuralGlyphs.maskedHint', // the structural view is not Physical-only
   'classVisibility.fastGeometry.descriptionExact',
   'exportCommands.csv.item.entities',
   'exportCommands.csv.item.properties',

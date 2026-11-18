@@ -5,11 +5,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { mintRoomId, mintRoomToken, releaseRoomClaim } from '@/lib/collab/share-link';
-import { buildShareSeed, prepareShareSeed, type ShareScope } from '@/lib/collab/share-scope';
+import { buildShareSeed, prepareShareSeed, shareRefusesEveryModel, type ShareScope } from '@/lib/collab/share-scope';
 
-export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink }: {
+export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink, withdrawConsent }: {
   open: boolean; hasModel: boolean; collabRoomId: string | null; awaitingConsent: boolean; scope: ShareScope;
   setNotice: (notice: string | null) => void; resetLink: () => void;
+  /** Hands the consent back, so a later Create link starts a fresh attempt. */
+  withdrawConsent: () => void;
 }) {
   const { t } = useTranslation();
   const startCollab = useViewerStore(s => s.startCollab);
@@ -38,6 +40,23 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
       return;
     }
     if (!hasModel || collabRoomId || roomAttemptRef.current || awaitingConsent) return;
+    // Nothing to put in a room and nothing that was ever going to go in one:
+    // don't claim it. Asked here so a refused share claims nothing, and again
+    // after the last await before startCollab, since the models can change at
+    // any of them. Every refusal hands back the consent and the slot, so
+    // Create link starts a fresh attempt once the models are shareable again.
+    // WHICH models, and why, is the dialog's own derived line; both read the
+    // one predicate at the SELECTED scope so they cannot disagree.
+    const refuse = () => {
+      roomAttemptRef.current = null;
+      setCreating(false);
+      withdrawConsent();
+    };
+    const current = useViewerStore.getState();
+    if (shareRefusesEveryModel(current.models, current.activeModelId, scope)) {
+      refuse();
+      return;
+    }
     const roomId = mintRoomId();
     setCreating(true);
     setNotice(null);
@@ -48,16 +67,28 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
     void (async () => {
       let adminToken: string | undefined;
       try {
-        // Reject known-invalid metadata before claiming a room (#6565).
+        // Reject known-invalid metadata before claiming a room (#6565):
+        // `buildShareSeed` throws on it. The seed itself is deliberately NOT
+        // kept — holding it across the three awaits below would pin a removed
+        // model's store and its tessellated meshes until the mint returns.
         const preflight = useViewerStore.getState();
         buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
         adminToken = await mintRoomToken({ roomId, role: 'admin' });
-        // Models can change during minting. Read fresh and always pass a seed,
-        // even empty, so startCollab retains the owner path (#4444).
+        // Models can change during minting. Read fresh and pass a seed even
+        // when it is empty (a GLB workspace), so startCollab retains the owner
+        // path (#4444); only a scope that refuses every model is declined.
         if (!isCurrent()) return;
         const st = useViewerStore.getState();
+        const seedRefuses = shareRefusesEveryModel(st.models, st.activeModelId, scope);
         const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope, st.georefMutations);
         if (!isCurrent()) return;
+        // Both the snapshot the seed was built from and the store as it is
+        // now must have something to share.
+        const now = useViewerStore.getState();
+        if (seedRefuses || shareRefusesEveryModel(now.models, now.activeModelId, scope)) {
+          refuse();
+          return;
+        }
         owner.joining = true;
         await startCollab({
           roomId,
@@ -84,7 +115,7 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         if (isCurrent()) setCreating(false);
       }
     })();
-  }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope, setNotice, resetLink, t]);
+  }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope, setNotice, resetLink, withdrawConsent, t]);
 
   return creating;
 }

@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const moveRotateIt = {
+  'moveRotate.mirror.label': "Specchia",
+  'moveRotate.mirror.hintStart': "Fare clic sul primo punto dell’asse di simmetria",
+  'moveRotate.mirror.hintEnd': "Fare clic sul secondo punto o digitare un angolo e Invio · Alt conserva l’originale",
+  'moveRotate.mirror.keepOriginal': "Mantieni originale",
+  'moveRotate.offset.label': "Scostamento",
+  'moveRotate.offset.hint': "Digitare una distanza positiva e fare clic sul lato della copia parallela",
+  'moveRotate.offset.wallOnly': "Selezionare una parete diritta da sfalsare",
+  'commands.model.mirror': "Specchia la selezione (area Modello)",
+  'commands.model.offset': "Sfalsa una parete (area Modello)",
   "moveRotate.move.label": "Sposta",
   "moveRotate.move.hintBase": "Fai clic sul punto da cui spostare, oppure digita una distanza",
   "moveRotate.move.hintTarget": "Fai clic sulla destinazione, oppure digita una distanza e una direzione, poi Invio",

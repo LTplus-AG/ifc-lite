@@ -29,6 +29,7 @@ export function IfcFederationSettingsSlot() {
 export function IfcSharedVerticalDatumNoticeSlot({ model }: { model: FederatedModel }) {
   const aligned = model.federationAlignmentStatus === 'identity'
     || model.federationAlignmentStatus === 'same-crs' || model.federationAlignmentStatus === 'reprojected';
-  if (!aligned || !model.ifcSharedVerticalDatumAssumed) return null;
+  // Site context reports its own LN02 assumption on its card (SiteContextCard).
+  if (!aligned || !model.ifcSharedVerticalDatumAssumed || model.spatialReference?.sourceMetadata?.format === 'site-context') return null;
   return <Suspense fallback={null}><Notice model={model} /></Suspense>;
 }

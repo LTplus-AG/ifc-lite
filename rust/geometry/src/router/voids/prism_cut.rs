@@ -84,6 +84,8 @@ mod vertex_dedup;
 mod opening_prism;
 use opening_prism::prepare_prism;
 mod finish;
+mod reconsolidate;
+mod rim_refine;
 mod tjunction_close;
 mod planar_correction;
 #[cfg(test)]

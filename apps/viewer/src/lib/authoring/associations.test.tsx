@@ -48,7 +48,10 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-const IFC4 = step('IFC4', `#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
+const IFC4 = step('IFC4', `#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,(#40),$);
+#40=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#41,$);
+#41=IFCAXIS2PLACEMENT3D(#42,$,$);
+#42=IFCCARTESIANPOINT((0.,0.,0.));
 #10=IFCWALL('0Wall00000000000000010',$,'Wall A',$,$,$,$,$,$);
 #11=IFCWALL('0Wall00000000000000011',$,'Wall B',$,$,$,$,$,$);
 #12=IFCWALL('0Wall00000000000000012',$,'Wall C',$,$,$,$,$,$);
@@ -296,10 +299,10 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.equal(extractAllMaterialsOnDemand(store, 99, view()).length, 1);
     });
 
-    it('refuses a conflicting material association on an element that already has one', () => {
-      assert.deepEqual(api().addMaterialAssociation('m', 11, { name: 'Steel' }), { ok: false, reasonKey: 'propertyEditor.association.hasMaterial' });
+    it('replaces a material association on an element that already has one (#9296)', () => {
+      assert.deepEqual(api().addMaterialAssociation('m', 11, { name: 'Steel' }), { ok: true });
       api().addMaterialAssociation('m', 10, { name: 'Steel' });
-      assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Wood' }), { ok: false, reasonKey: 'propertyEditor.association.hasMaterial' });
+      assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Wood' }), { ok: true });
     });
 
     it('refuses text the STEP writer would read as a token', () => {

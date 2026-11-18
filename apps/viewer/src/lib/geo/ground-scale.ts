@@ -45,7 +45,7 @@
  */
 
 import type { MapConversion } from '@ifc-lite/parser';
-import { wgs84RadiiOfCurvature } from './proj4-utils';
+import { wgs84RadiiOfCurvature } from '@ifc-lite/geo/proj4';
 
 /**
  * How far (relative) an effective horizontal scale may sit from the computed

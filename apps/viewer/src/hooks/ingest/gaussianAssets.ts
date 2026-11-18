@@ -5,17 +5,17 @@
 import { useEffect, useState, type MutableRefObject } from 'react';
 import { totalYupOffset, type RenderFrameInfo } from '@ifc-lite/geometry/world-frame';
 import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
-import type { GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, NormalizedGaussianAttributes, Renderer } from '@ifc-lite/renderer';
+import type { GaussianRowSource, GaussianSplatApi, GaussianSplatBounds, GaussianSplatHandle, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { appliedGaussianUpAxis, gaussianCaptureFrame, gaussianUploadPlacement } from './gaussianCaptureFrame.js';
-import { prepareGaussianCapture } from './gaussianIngest.js';
-import { decodeGaussianInWorker } from './gaussianWorker.js';
+import { openGaussianCaptureRows } from './gaussianWorker.js';
 import type { CaptureUpAxis } from './pointCloudFrame.js';
 import { getGlobalRenderer } from '../useBCF.js';
 
 /** `splats` issued `handle`; every call on the handle goes to that adapter alone. */
-interface OwnedAsset { handle: GaussianSplatHandle; splats: GaussianSplatApi; attributes?: NormalizedGaussianAttributes; visible?: boolean; placedOffset: { x: number; y: number; z: number } }
+/** `rows` is the capture's canonical row source (#9018); no copy of the rows is kept here. */
+interface OwnedAsset { handle: GaussianSplatHandle; splats: GaussianSplatApi; rows?: GaussianRowSource; visible?: boolean; placedOffset: { x: number; y: number; z: number } }
 
 interface AdapterFrame { offset: { x: number; y: number; z: number }; update?: Promise<boolean>; pending: Map<GaussianSplatHandle, { x: number; y: number; z: number }> }
 
@@ -42,7 +42,7 @@ const registry: Registry = host.__ifc_lite_gaussian_assets__ ??= { owned: new Ma
  * so removal, replacement, a primary reload and clear free the renderer asset
  * in the same tick, and model visibility/isolate mirror onto it.
  */
-export function adoptGaussianAsset(modelId: string, handle: GaussianSplatHandle, splats: GaussianSplatApi, attributes?: NormalizedGaussianAttributes): void {
+export function adoptGaussianAsset(modelId: string, handle: GaussianSplatHandle, splats: GaussianSplatApi, rows?: GaussianRowSource): void {
   const frames = registry.frames ??= new WeakMap();
   if (![...registry.owned.values()].some(asset => asset.splats === splats
     && ['resident', 'pending'].includes(splats.getState(asset.handle).state)) && !frames.has(splats)) frames.set(splats, {
@@ -51,7 +51,7 @@ export function adoptGaussianAsset(modelId: string, handle: GaussianSplatHandle,
   const frame = frames.get(splats)!;
   const placedOffset = frame.pending.get(handle) ?? useViewerStore.getState().models.get(modelId)?.gaussianSplat?.frameOffset ?? frame.offset;
   frame.pending.delete(handle);
-  registry.owned.set(modelId, { handle, splats, attributes, placedOffset });
+  registry.owned.set(modelId, { handle, splats, rows, placedOffset });
   registry.replaced.delete(modelId);
   if (!registry.subscribed) {
     registry.subscribed = true;
@@ -215,18 +215,20 @@ async function reanchorGaussianCapture(
   placement: readonly number[], oldPlacement: readonly number[],
   offset: { x: number; y: number; z: number },
 ): Promise<GaussianSplatHandle | null> {
-  let attributes = asset.attributes;
-  if (!attributes) {
-    // Assets published before a hot reload may lack the retained reference.
-    // Use the same worker decode and normalisation as the canonical loader.
+  let rows = asset.rows;
+  if (!rows) {
+    // Assets published before a hot reload may lack the row source.
+    // Use the same worker stream as the canonical loader.
     if (!current.sourceFile) return null;
-    attributes = prepareGaussianCapture(await decodeGaussianInWorker(current.sourceFile, new AbortController().signal)).attributes;
+    const opened = await openGaussianCaptureRows(current.sourceFile);
+    opened.close(); // the add below reads afresh
+    rows = opened.rows;
   }
-  const retained = attributes;
+  const retained = rows;
   const splats = asset.splats;
   if (!splats.remove(asset.handle)) return null;
   const add = (matrix: readonly number[]) => splats.add({
-    attributes: retained, placement: { matrix: gaussianUploadPlacement(matrix, capture.decodeOrigin) },
+    rows: retained, placement: { matrix: gaussianUploadPlacement(matrix, capture.decodeOrigin) },
     modelIndex: asset.handle.modelIndex, visible: current.visible,
   }, { qualification: 'internal-unqualified' });
   try {
@@ -237,7 +239,7 @@ async function reanchorGaussianCapture(
       return null;
     }
     asset.handle = handle;
-    asset.attributes = attributes;
+    asset.rows = rows;
     asset.placedOffset = offset;
     return handle;
   } catch (error) {
@@ -246,7 +248,7 @@ async function reanchorGaussianCapture(
       const latest = useViewerStore.getState().models.get(modelId);
       if (latest?.gaussianSplat === capture && registry.owned.get(modelId) === asset) {
         asset.handle = handle;
-        asset.attributes = attributes;
+        asset.rows = rows;
         asset.placedOffset = offset;
         useViewerStore.getState().updateModel(modelId, { gaussianSplat: { ...capture, handle } });
       } else splats.remove(handle);

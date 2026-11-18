@@ -5,13 +5,14 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { federationRegistry } from '@ifc-lite/renderer';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser } from '@ifc-lite/parser';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from './index.js';
-import { canMutate, mutationPermission } from './mutation-permission.js';
+import { canMutate, dataMutationPermission, mutationPermission } from './mutation-permission.js';
 import { startWorkflowRun } from '@/lib/flow/run-session';
 
 const first = fixtureModel('first', { entities: [{ expressId: 11, type: 'IfcWall', name: 'A' }] });
@@ -145,3 +146,74 @@ describe('explicit property declarations reject before local history (#6643, Q9X
     assert.equal(useViewerStore.getState().undoStacks.get(first.id)?.length, 1);
   });
 });
+
+it('refuses live when authored overlay ids consume the remaining headroom', () => {
+  const model = fixtureModel('headroom', { entities: [{ expressId: 11, type: 'IfcWall' }] });
+  model.ifcDataStore!.entityIndex.byId = new Map(); // The fixture's entity table supplies the source watermark.
+  const view = new MutablePropertyView(null, model.id);
+  federationRegistry.clear();
+  try {
+    federationRegistry.registerModel(model.id, 11);
+    federationRegistry.registerModel('later', 10);
+    useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map([[model.id, view]]), collabRole: null });
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: true });
+    view.setExpressIdWatermark(1_000_010);
+    federationRegistry.publishOverlayRange(model.id, 12, 1_000_010);
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: true }, 'last id remains publishable');
+    const observed: boolean[] = [];
+    const stop = useViewerStore.subscribe(state => { observed.push(dataMutationPermission(state, model.id).allowed); });
+    try {
+      assert.equal(view.createEntity('IfcWall', []).expressId, 1_000_011);
+      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: false, reason: 'id-space-exhausted' });
+      view.clear();
+      assert.equal(view.peekNextExpressId(), 1_000_011);
+      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: true });
+      assert.deepEqual(observed, [false, true], 'allocator transitions notify permission subscribers');
+      view.createEntity('IfcWall', []);
+      federationRegistry.publishOverlayRange(model.id, 1_000_011, 1_000_011);
+      view.clear();
+    } finally { stop(); }
+    assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: false, reason: 'id-space-exhausted' });
+  } finally { federationRegistry.clear(); }
+});
+
+for (const registeredMax of [5, 11, 30]) {
+  it(`unpublished creation keeps property editing allowed (registry bound ${registeredMax})`, () => {
+    federationRegistry.clear();
+    try {
+      const model = fixtureModel('allocator', { entities: [{ expressId: 11, type: 'IfcWall' }] });
+      model.ifcDataStore!.entityIndex.byId = new Map();
+      federationRegistry.registerModel(model.id, registeredMax);
+      useViewerStore.setState({ ...fixtureModels(model), collabRole: null, mutationViews: new Map(), storeEditors: new Map() });
+      const view = getOrCreateMutationView(useViewerStore, model.id)!;
+      const editor = new StoreEditor(model.ifcDataStore!, view);
+      const created = editor.addEntity('IfcMaterial', ['Material']);
+      assert.equal(created.expressId, Math.max(11, registeredMax) + 1);
+      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: true });
+      assert.ok(useViewerStore.getState().setProperty(model.id, 11, 'Pset_Test', 'Value', 'edited'));
+    } finally { federationRegistry.clear(); }
+  });
+}
+for (const reset of ['clearMutations', 'view.clear'] as const) {
+  it(`${reset} allocates above permanently published overlays`, () => {
+    federationRegistry.clear();
+    try {
+      const model = fixtureModel('allocator', { entities: [{ expressId: 11, type: 'IfcWall' }] });
+      model.ifcDataStore!.entityIndex.byId = new Map();
+      model.maxExpressId = 11;
+      federationRegistry.registerModel(model.id, 11);
+      useViewerStore.setState({ ...fixtureModels(model), collabRole: null, mutationViews: new Map(), storeEditors: new Map() });
+      const view = getOrCreateMutationView(useViewerStore, model.id)!;
+      const editor = new StoreEditor(model.ifcDataStore!, view);
+      const first = editor.addEntity('IfcMaterial', ['First']);
+      useViewerStore.getState().toGlobalId(model.id, first.expressId);
+      if (reset === 'clearMutations') useViewerStore.getState().clearMutations(model.id);
+      else view.clear();
+      assert.deepEqual(dataMutationPermission(useViewerStore.getState(), model.id), { allowed: true });
+      assert.equal(view.peekNextExpressId(), first.expressId + 1);
+      const next = editor.addEntity('IfcMaterial', ['Second']);
+      assert.equal(next.expressId, first.expressId + 1);
+      assert.equal(useViewerStore.getState().toGlobalId(model.id, next.expressId), next.expressId);
+    } finally { federationRegistry.clear(); }
+  });
+}

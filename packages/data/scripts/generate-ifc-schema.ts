@@ -23,6 +23,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DECODER_IMPORT, tableModuleSection } from './schema-table-module.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const upstreamDir = path.join(here, 'upstream');
@@ -853,7 +854,8 @@ function parseAttributes(): Record<IfcVersion, AttrRow[]> {
 
 function emitAttributes(rows: Record<IfcVersion, AttrRow[]>): void {
   const lines: string[] = [HEADER];
-  lines.push("import type { IfcAttributeInfo } from '../types.js';\n");
+  lines.push("import type { IfcAttributeInfo } from '../types.js';");
+  lines.push(DECODER_IMPORT);
   for (const [v, list] of Object.entries(rows) as [IfcVersion, AttrRow[]][]) {
     // Aggregate per-attribute (name → {entities, hasSimpleValue, hasComplex,
     // xsdTypesByEntity}). The same name can appear with both kinds and
@@ -897,24 +899,17 @@ function emitAttributes(rows: Record<IfcVersion, AttrRow[]>): void {
         }
       }
     }
-    lines.push(
-      `export const ATTRIBUTES_${VERSION_KEY[v]}: readonly IfcAttributeInfo[] = [`
-    );
-    for (const [name, info] of merged) {
-      const xsdEntries = [...info.xsdTypesByEntity.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([entity, types]) => `${ts(entity)}: ${ts([...types].sort())}`);
-      const xsdLiteral =
-        xsdEntries.length === 0 ? '{}' : `{ ${xsdEntries.join(', ')} }`;
-      lines.push(
-        `  { name: ${ts(name)}, simpleValueEntities: ${ts(
-          [...info.entitiesWithValue].sort()
-        )}, complexEntities: ${ts(
-          [...info.entitiesWithoutValue].sort()
-        )}, xsdTypesByEntity: ${xsdLiteral} },`
-      );
-    }
-    lines.push('];\n');
+    const table = [...merged].map(([name, info]) => ({
+      name,
+      simpleValueEntities: [...info.entitiesWithValue].sort(),
+      complexEntities: [...info.entitiesWithoutValue].sort(),
+      xsdTypesByEntity: Object.fromEntries(
+        [...info.xsdTypesByEntity.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([entity, types]) => [entity, [...types].sort()])
+      ),
+    }));
+    lines.push(tableModuleSection(`ATTRIBUTES_${VERSION_KEY[v]}`, 'readonly IfcAttributeInfo[]', table));
   }
   fs.writeFileSync(path.join(outDir, 'attributes.ts'), lines.join('\n'));
   console.log('  attributes.ts — emitted');
@@ -922,16 +917,10 @@ function emitAttributes(rows: Record<IfcVersion, AttrRow[]>): void {
 
 function emitDataTypes(rows: DataTypeRow[]): void {
   const lines: string[] = [HEADER];
-  lines.push("import type { IfcDataTypeInfo } from '../types.js';\n");
-  lines.push(
-    `export const IFC_DATA_TYPES: readonly IfcDataTypeInfo[] = [`
-  );
-  for (const r of rows) {
-    lines.push(
-      `  { name: ${ts(r.name)}, versions: ${ts(r.versions.map(versionKey))}, backingType: ${ts(r.backingType)} },`
-    );
-  }
-  lines.push('];\n');
+  lines.push("import type { IfcDataTypeInfo } from '../types.js';");
+  lines.push(DECODER_IMPORT);
+  const table = rows.map((r) => ({ name: r.name, versions: r.versions.map(versionKey), backingType: r.backingType }));
+  lines.push(tableModuleSection('IFC_DATA_TYPES', 'readonly IfcDataTypeInfo[]', table));
   fs.writeFileSync(path.join(outDir, 'data-types.ts'), lines.join('\n'));
   console.log(`  data-types.ts — ${rows.length} dataTypes`);
 }
@@ -994,19 +983,21 @@ function emitEntities(
     const otMap = new Map(objectTypes[v]);
     const lines: string[] = [];
     lines.push(HEADER);
-    lines.push("import type { IfcEntityInfo } from '../types.js';\n");
-    lines.push(`export const ENTITIES_${VERSION_KEY[v]}: readonly IfcEntityInfo[] = [`);
-    for (const c of list) {
+    lines.push("import type { IfcEntityInfo } from '../types.js';");
+    lines.push(DECODER_IMPORT);
+    const table = list.map((c) => {
       const objType = otMap.get(c.name.toUpperCase());
-      lines.push(
-        `  { name: ${ts(c.name)}, parent: ${ts(c.parent || undefined)}, ` +
-          `abstract: ${c.abstract}, predefinedTypes: ${ts(c.predefinedTypes)}, ` +
-          `attributes: ${ts(c.attributes)}, source: ${ts(c.source || undefined)}` +
-          (objType ? `, typeEntity: ${ts(objType)}` : '') +
-          ' },'
-      );
-    }
-    lines.push('];\n');
+      return {
+        name: c.name,
+        parent: c.parent || undefined,
+        abstract: c.abstract,
+        predefinedTypes: c.predefinedTypes,
+        attributes: c.attributes,
+        source: c.source || undefined,
+        ...(objType ? { typeEntity: objType } : {}),
+      };
+    });
+    lines.push(tableModuleSection(`ENTITIES_${VERSION_KEY[v]}`, 'readonly IfcEntityInfo[]', table));
     fs.writeFileSync(
       path.join(outDir, `entities-${v.toLowerCase()}.ts`),
       lines.join('\n')
@@ -1023,27 +1014,19 @@ function emitPropertySets(
   for (const [v, list] of Object.entries(psets) as [IfcVersion, PsetInfo[]][]) {
     const lines: string[] = [];
     lines.push(HEADER);
-    lines.push("import type { IfcPropertySetInfo } from '../types.js';\n");
-    lines.push(
-      `export const PROPERTY_SETS_${VERSION_KEY[v]}: readonly IfcPropertySetInfo[] = [`
-    );
-    for (const p of list) {
-      lines.push('  {');
-      lines.push(`    name: ${ts(p.name)},`);
-      lines.push(`    applicableEntities: ${ts(p.applicableEntities)},`);
-      lines.push(`    properties: [`);
-      for (const prop of p.properties) {
-        lines.push(
-          `      { name: ${ts(prop.name)}, kind: ${ts(prop.kind)}` +
-            (prop.dataType ? `, dataType: ${ts(prop.dataType)}` : '') +
-            (prop.enumeration ? `, enumeration: ${ts(prop.enumeration)}` : '') +
-            ' },'
-        );
-      }
-      lines.push(`    ],`);
-      lines.push('  },');
-    }
-    lines.push('];\n');
+    lines.push("import type { IfcPropertySetInfo } from '../types.js';");
+    lines.push(DECODER_IMPORT);
+    const table = list.map((p) => ({
+      name: p.name,
+      applicableEntities: p.applicableEntities,
+      properties: p.properties.map((prop) => ({
+        name: prop.name,
+        kind: prop.kind,
+        ...(prop.dataType ? { dataType: prop.dataType } : {}),
+        ...(prop.enumeration ? { enumeration: prop.enumeration } : {}),
+      })),
+    }));
+    lines.push(tableModuleSection(`PROPERTY_SETS_${VERSION_KEY[v]}`, 'readonly IfcPropertySetInfo[]', table));
     fs.writeFileSync(
       path.join(outDir, `psets-${v.toLowerCase()}.ts`),
       lines.join('\n')

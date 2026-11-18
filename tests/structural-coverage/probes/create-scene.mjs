@@ -11,7 +11,12 @@
  * carry, or a function of the schema returning that. An entity's `unchecked` lists
  * attributes with no expected value yet; it caps the cell at partial. `needs` names earlier steps
  * whose results it uses; `schemas` limits a step to the schemas that have its
- * entities (omit it to run everywhere).
+ * entities (omit it to run everywhere). A step that authors a load alone names
+ * `appliedBy(ctx, loadId)`, returning the activity that applies it, and
+ * optionally `appliedTo`, the step whose item it acts on (default a curve
+ * member): the extractor reads a load through the activity whose AppliedLoad
+ * names it, as every corpus file does, so the edit probe applies the load
+ * before reading the edit back.
  *
  * To register a new builder: append a step. Nothing else changes.
  */
@@ -20,6 +25,8 @@
 const FIXED = { type: 'IFCBOOLEAN', value: true };
 const FREE = { type: 'IFCBOOLEAN', value: false };
 const guid = (tag) => `0SC${tag}`.padEnd(22, '0').slice(0, 22);
+/** The curve action that applies the load configuration, as portal_01.ifc #317 does. */
+const configuredCurve = ({ create, editor, anchor }, load) => create.addStructuralCurveActionToStore(editor, anchor, { Name: 'Configured curve', AppliedLoad: load, PredefinedType: 'LINEAR' });
 const G = {
   member: guid('Member'), connection: guid('Connection'), point: guid('PointAction'),
   linear: guid('LinearAction'), group: guid('LoadGroup'), loadCase: guid('LoadCase'), model: guid('AnalysisModel'),
@@ -35,6 +42,20 @@ const analysisModel = (id, schemas, needs, loadedBy) => ({
   build: ({ create, editor, anchor, done }) => create.addStructuralAnalysisModelToStore(editor, anchor, {
     Name: 'Probe model', GlobalId: G.model, PredefinedType: 'LOADING_3D', LoadGroupIds: needs.map((n) => done.get(n)),
   }).analysisModelId,
+});
+
+/** Each shape representation describes exactly one station, in sample order. */
+const stationShape = (id, count) => ({
+  id, builder: 'ShapeAspect scene geometry', emits: {}, needs: ['surface-member'],
+  build: ({ editor, anchor, done }) => {
+    const reps = Array.from({ length: count }, (_, i) => {
+      const position = count === 3 ? [[0,0,0],[4,0,0],[0,3,0]][i] : [4 * i,0,0];
+      const p = editor.addEntity('IfcCartesianPoint', [position]).expressId;
+      return `#${editor.addEntity('IfcShapeRepresentation', [`#${anchor.axisContextId}`, 'Reference', 'Point', [`#${p}`]]).expressId}`;
+    });
+    const shape = editor.getNewEntity(done.get('surface-member')).attributes[6];
+    return editor.addEntity('IfcShapeAspect', [reps, 'Stations', null, true, shape]).expressId;
+  },
 });
 
 export const SCENE = [
@@ -71,13 +92,11 @@ export const SCENE = [
   {
     id: 'point-connection',
     builder: 'addStructuralPointConnectionToStore',
-    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch. The expected IFC2X3
-    // values follow from the decided mapping of a fixed (true) or free (false) degree of freedom, written down with the
-    // IFC2X3 builder, not copied from its output; until then `unchecked` caps the cell at partial.
+    // IFC2X3 fixed/free stiffness uses the EXPRESS measure convention -1/0.
     emits: (schema) => ({
       IfcStructuralPointConnection: { GlobalId: G.connection, Name: 'Probe support' },
       IfcBoundaryNodeCondition: schema === 'IFC2X3'
-        ? { Name: 'Probe pinned', unchecked: ['LinearStiffnessX', 'LinearStiffnessY', 'LinearStiffnessZ', 'RotationalStiffnessX', 'RotationalStiffnessY', 'RotationalStiffnessZ'] }
+        ? { Name: 'Probe pinned', LinearStiffnessX: -1, LinearStiffnessY: -1, LinearStiffnessZ: -1, RotationalStiffnessX: 0, RotationalStiffnessY: 0, RotationalStiffnessZ: 0 }
         : { Name: 'Probe pinned', TranslationalStiffnessX: FIXED, TranslationalStiffnessY: FIXED, TranslationalStiffnessZ: FIXED, RotationalStiffnessX: FREE, RotationalStiffnessY: FREE, RotationalStiffnessZ: FREE },
     }),
     build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, {
@@ -212,16 +231,112 @@ export const SCENE = [
     }).activityId,
   },
   {
+    id: 'warping-support', builder: 'addStructuralPointConnectionToStore',
+    emits: schema => ({ IfcBoundaryNodeConditionWarping: { Name: 'Warping', WarpingStiffness: schema === 'IFC2X3' ? 12 : { type: 'IFCWARPINGMOMENTMEASURE', value: 12 } } }),
+    build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, { Position: [0,0,0], BoundaryCondition: { Name: 'Warping', WarpingStiffness: 12 } }).connectionId,
+  },
+  ...['IfcFailureConnectionCondition', 'IfcSlippageConnectionCondition'].map((Type, i) => ({
+    id: Type, builder: 'connectStructuralMemberToConnectionInStore', needs: ['curve-member', 'warping-support'],
+    emits: {
+      [Type]: i ? { Name: Type, SlippageX: 0.1, SlippageY: 0.2, SlippageZ: 0.3 } : { Name: Type, TensionFailureX: 10, CompressionFailureZ: 20 },
+      ...(i ? {} : { IfcRelConnectsWithEccentricity: { RelatingStructuralMember: G.member }, IfcConnectionPointEccentricity: { EccentricityInX: 0.1, EccentricityInY: 0.2, EccentricityInZ: 0.3 } }),
+    },
+    build: ({ create, editor, anchor, done }) => create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, done.get('curve-member'), done.get('warping-support'), undefined, {
+      AdditionalConditions: i ? { Type, Name: Type, SlippageX: 0.1, SlippageY: 0.2, SlippageZ: 0.3 } : { Type, Name: Type, TensionFailureX: 10, CompressionFailureZ: 20 },
+      ...(i ? {} : { ConnectionConstraint: { PointOnRelatingElement: [0,0,0], PointOnRelatedElement: [0.1,0.2,0.3], EccentricityInX: 0.1, EccentricityInY: 0.2, EccentricityInZ: 0.3 } }),
+    }),
+  })),
+  {
+    id: 'varying-curve-member', builder: 'addStructuralCurveMemberToStore',
+    emits: { IfcStructuralCurveMemberVarying: { Name: 'Varying curve', PredefinedType: 'RIGID_JOINED_MEMBER' } },
+    build: ({ create, editor, anchor }) => create.addStructuralCurveMemberToStore(editor, anchor, { Type: 'IfcStructuralCurveMemberVarying', Name: 'Varying curve', Start: [0,0,0], End: [3,0,0], PredefinedType: 'RIGID_JOINED_MEMBER' }).memberId,
+  },
+  stationShape('stations', 3),
+  stationShape('surface-stations', 3),
+  stationShape('linear-stations', 2),
+  {
+    id: 'varying-surface-member', builder: 'addStructuralSurfaceMemberToStore', needs: ['surface-stations'],
+    emits: schema => ({ IfcStructuralSurfaceMemberVarying: { Name: 'Varying surface', Thickness: 0.2, ...(schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4] } : {}) } }),
+    build: ({ create, editor, anchor, done }) => {
+      const result = create.addStructuralSurfaceMemberToStore(editor, anchor, { Type: 'IfcStructuralSurfaceMemberVarying', Name: 'Varying surface', Boundary: [[0,0,0],[4,0,0],[4,3,0],[0,3,0]], Thickness: 0.2, ...(anchor.schema === 'IFC2X3' ? { SubsequentThickness: [0.3,0.4], VaryingThicknessLocation: done.get('surface-stations') } : {}) });
+      return result.memberId;
+    },
+  },
+  ...['IfcStructuralLoadSingleForceWarping', 'IfcStructuralLoadSingleDisplacementDistortion'].map((Type, i) => ({
+    id: Type, builder: 'addStructuralPointReactionToStore',
+    emits: { [Type]: i ? { Name: Type, DisplacementZ: 0.02, Distortion: 0.03 } : { Name: Type, ForceZ: 10, WarpingMoment: 20 } },
+    build: ({ create, editor, anchor }) => create.addStructuralPointReactionToStore(editor, anchor, { AppliedLoad: { Type, Name: Type, ...(i ? { DisplacementZ: 0.02, Distortion: 0.03 } : { ForceZ: 10, WarpingMoment: 20 }) } }).activityId,
+  })),
+  {
+    id: 'reinforcement', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'], appliedTo: 'surface-member',
+    emits: { IfcSurfaceReinforcementArea: { Name: 'Reinforcement', SurfaceReinforcement1: [0.01,0.02], SurfaceReinforcement2: [0.03,0.04,0.05], ShearReinforcement: 0.006 } },
+    build: ({ create, editor, anchor }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcSurfaceReinforcementArea', Name: 'Reinforcement', SurfaceReinforcement1: [0.01,0.02], SurfaceReinforcement2: [0.03,0.04,0.05], ShearReinforcement: 0.006 }),
+    // A reinforcement area is a result, reported by a surface reaction. The
+    // reaction builder authors its own planar force, so write the record directly.
+    appliedBy: ({ editor, anchor }, load) => editor.addEntity('IfcStructuralSurfaceReaction', [guid('ReinforcementResult'), `#${anchor.ownerHistoryId}`,
+      'Reinforcement result', null, null, null, null, `#${load}`, '.GLOBAL_COORDS.', '.CONST.']).expressId,
+  },
+  {
+    id: 'configuration-second-load', builder: 'addStructuralLinearActionToStore', schemas: ['IFC4','IFC4X3'], emits: {},
+    build: ({ create, editor, anchor }) => create.addStructuralLinearActionToStore(editor, anchor, { LoadName: 'Configuration end force', LinearForceZ: -7.5 }).loadId,
+  },
+  {
+    id: 'load-configuration', builder: 'addStructuralLoadToStore', schemas: ['IFC4','IFC4X3'], needs: ['linear-action', 'configuration-second-load'],
+    emits: { IfcStructuralLoadConfiguration: { Name: 'Configuration', Locations: [[0],[1]] } },
+    build: ({ create, editor, anchor, done }) => create.addStructuralLoadToStore(editor, anchor, { Type: 'IfcStructuralLoadConfiguration', Name: 'Configuration', Values: [Number(editor.getNewEntity(done.get('linear-action')).attributes[7].slice(1)), done.get('configuration-second-load')], Locations: [[0],[1]] }),
+    appliedBy: configuredCurve,
+  },
+  {
+    id: 'curve-action', builder: 'addStructuralCurveActionToStore', schemas: ['IFC4','IFC4X3'], needs: ['load-configuration'],
+    emits: { IfcStructuralCurveAction: { Name: 'Configured curve', PredefinedType: 'LINEAR' } },
+    build: (ctx) => configuredCurve(ctx, ctx.done.get('load-configuration')),
+  },
+  ...['Linear', 'Planar'].flatMap(kind => {
+    const planar = kind === 'Planar';
+    return [{
+      // Varying actions borrow their subsequent loads, so the actions owning
+      // those loads are prerequisites, not part of the varying occurrence.
+      id: `varying-${kind}-loads`, builder: `addStructural${kind}ActionToStore`, schemas: ['IFC2X3'], emits: {},
+      build: ({ create, editor, anchor }) => planar
+        ? [-3, -4].map(PlanarForceZ => create.addStructuralPlanarActionToStore(editor, anchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ } }).loadId)
+        : [create.addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -3 }).loadId],
+    }, {
+      id: `varying-${kind}`, builder: `addStructural${kind}ActionToStore`, schemas: ['IFC2X3'], needs: ['stations', 'linear-stations', `varying-${kind}-loads`],
+      emits: { [`IfcStructural${kind}ActionVarying`]: { Name: `Varying ${kind}` } },
+      build: ({ create, editor, anchor, done }) => create[`addStructural${kind}ActionToStore`](editor, anchor, { Name: `Varying ${kind}`, VaryingAppliedLoadLocation: done.get(planar ? 'stations' : 'linear-stations'), SubsequentAppliedLoads: done.get(`varying-${kind}-loads`), ...(planar ? { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -2 } } : { LinearForceZ: -2 }) }).activityId,
+    }];
+  }),
+  {
+    id: 'physical-element', builder: 'addBeamToStore', schemas: ['IFC2X3'], emits: {},
+    build: ({ create, editor, anchor }) => create.addBeamToStore(editor, anchor, { Start: [0,0,0], End: [5,0,0], Width: 0.2, Height: 0.3 }).beamId,
+  },
+  {
+    id: 'structural-element-link', builder: 'connectStructuralElementInStore', schemas: ['IFC2X3'], needs: ['physical-element','curve-member'],
+    emits: { IfcRelConnectsStructuralElement: { RelatedStructuralMember: G.member } },
+    build: ({ create, editor, anchor, done }) => create.connectStructuralElementInStore(editor, anchor.ownerHistoryId, done.get('physical-element'), done.get('curve-member')),
+  },
+  {
     id: 'result-group', builder: 'addStructuralResultGroupToStore',
     needs: ['load-group', 'PointReaction-SingleForce', 'PointReaction-SingleDisplacement'],
     emits: { IfcStructuralResultGroup: { GlobalId: guid('Results'), TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: G.group, IsLinear: true } },
     build: ({ create, editor, anchor, done }) => create.addStructuralResultGroupToStore(editor, anchor, {
       GlobalId: guid('Results'), TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: done.get('load-group'), IsLinear: true,
-      ReactionIds: [done.get('PointReaction-SingleForce'), done.get('PointReaction-SingleDisplacement')],
+      ReactionIds: editor.getMutationView().getNewEntities().filter(e => /IfcStructural.*Reaction$/i.test(e.type)).map(e => e.expressId),
     }).resultGroupId,
   },
   analysisModel('analysis-model-ifc2x3', ['IFC2X3'], ['load-group'], [G.group]),
   analysisModel('analysis-model', ['IFC4', 'IFC4X3'], ['load-group', 'load-case'], [G.group, G.loadCase]),
+  {
+    id: 'complete-graph', builder: 'structural relationship builders', emits: {},
+    build: ({ create, editor, anchor, done }) => {
+      const entities = editor.getMutationView().getNewEntities();
+      const activities = entities.filter(e => /IfcStructural.*(Action|Reaction)/i.test(e.type));
+      const linked = new Set(entities.filter(e => e.type.toUpperCase() === 'IFCRELCONNECTSSTRUCTURALACTIVITY').map(e => e.attributes[5]));
+      for (const activity of activities) if (!linked.has(`#${activity.expressId}`)) create.connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, done.get('curve-member'), activity.expressId);
+      create.assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, done.get('load-group'), activities.filter(e => !/Reaction/i.test(e.type)).map(e => e.expressId));
+      create.assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, done.get(anchor.schema === 'IFC2X3' ? 'analysis-model-ifc2x3' : 'analysis-model'), [done.get('curve-member'), done.get('point-connection'), done.get('surface-member')]);
+    },
+  },
 ];
 
 /** The steps that run in `schema`, with `emits` resolved for it. */
@@ -234,7 +349,7 @@ export function blankModel(schema) {
 HEADER;
 FILE_DESCRIPTION(('structural coverage probe'),'2;1');
 FILE_NAME('blank.ifc','2026-01-01T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('${schema}'));
+FILE_SCHEMA(('${schema === 'IFC4X3' ? 'IFC4X3_ADD2' : schema}'));
 ENDSEC;
 DATA;
 #1=IFCPERSON($,'Probe',$,$,$,$,$,$);

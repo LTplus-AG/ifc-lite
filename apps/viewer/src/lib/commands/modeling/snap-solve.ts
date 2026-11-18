@@ -137,6 +137,7 @@ export function solveCommandSnap(runtime: CommandRuntimeState, plane: Workplane,
         // Host/region picks are not free points; move and copy targets are.
         if (command.aimsAtElement?.(runtime.gesture) === true || command.aimsAtRegion?.(runtime.gesture) === true) return;
         if (input.aim && input.aim !== 'snap') return;
+        if (!(q.metresPerPixel > 0) || !Number.isFinite(q.metresPerPixel)) return;
         // A decimal increment around 1–10px, down to micrometre precision.
         const spacing = Math.max(1e-6, 10 ** Math.floor(Math.log10(q.metresPerPixel * 10) + 1e-9));
         const local = nearestGridNode(q.cursor, { origin: query.anchor ?? [0, 0], spacing });

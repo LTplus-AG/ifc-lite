@@ -47,18 +47,29 @@
  * and runs in full. A batch ran the push-only lanes too, so `replay_queue=true`
  * lets test.yml skip those as well.
  *
- * A commit touching NO_REPLAY paths also replays this way when each of those
- * files changes again in a later commit on main. The same file means the same
- * caches, and path filters run the same lanes: a later workflow-only full run
- * would not re-key what a Cargo.lock change needs. Only the newest runs in full.
+ * A commit touching cache-keying paths (keysMainCaches) also replays this way
+ * when each of those files changes again in a later commit on main. The same
+ * file means the same caches, and path filters run the same lanes: a later
+ * workflow-only full run would not re-key what a Cargo.lock change needs. Only
+ * the newest runs in full.
+ *
+ * WORKFLOW AND ACTION FILES: one listed in scripts/ci-cache-keying-files.txt,
+ * or the list itself, blocks; so does any file under `.github/workflows/` that is
+ * not top-level YAML. Other workflow and action files are not part of a Test
+ * run and key none of its caches, so they replay. The list is committed because
+ * this job cannot parse YAML (no install); lib/cache-keying-files.test.mjs keeps
+ * it exact with a YAML parser, in the Node guards lane of the very run whose
+ * green verdict a replay needs. A missing, empty or unreadable list blocks every
+ * workflow and action file.
  */
 
 import { appendFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 import { gh, GhError } from './lib/gh.mjs';
 import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { KEYING_LIST_PATH, isListed, parseKeyingList, validKeyingList } from './lib/cache-keying-list.mjs';
 
 export const TREE_ARTIFACT_PREFIX = 'tested-tree-';
 export const TEST_WORKFLOW_FILE = 'test.yml';
@@ -70,12 +81,26 @@ export const TEST_WORKFLOW_FILE = 'test.yml';
  * replay would leave every later PR restoring a stale or cold cache.
  */
 const NO_REPLAY = [
-  /^Cargo\.(lock|toml)$/,
-  /(^|\/)Cargo\.toml$/,
-  /^rust-toolchain\.toml$/,
-  /^\.github\/workflows\//,
-  /^\.github\/actions\//,
+  /(^|\/)Cargo\.(lock|toml)$/,
+  /(^|\/)rust-toolchain(\.toml)?$/,
+  // Part of Swatinem/rust-cache's key, at any workspace root.
+  /(^|\/)\.cargo\/config(\.toml)?$/,
 ];
+const WORKFLOW_OR_ACTION = /^\.github\/(?:workflows|actions)\//;
+const TOP_LEVEL_WORKFLOW = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+
+/** Whether a changed path keys a cache that only a push to main writes. */
+function keysMainCaches(file, keyingList) {
+  // test.yml is the root every listed file is found from, so it blocks even if the list is wrong.
+  if (NO_REPLAY.some((re) => re.test(file)) || file === KEYING_LIST_PATH || file === `.github/workflows/${TEST_WORKFLOW_FILE}`) return true;
+  if (!WORKFLOW_OR_ACTION.test(file)) return false;
+  // Missing, unreadable or malformed (readInputs passes null), or not naming test.yml: trust none of it.
+  if (!Array.isArray(keyingList) || !keyingList.includes(`.github/workflows/${TEST_WORKFLOW_FILE}`)) return true;
+  // GitHub runs only top-level workflow YAML; anything else under workflows/ is a file a
+  // step may read, so it blocks.
+  if (file.startsWith('.github/workflows/') && !TOP_LEVEL_WORKFLOW.test(file)) return true;
+  return isListed(file, keyingList);
+}
 
 const SHA = /^[0-9a-f]{40}$/;
 
@@ -115,18 +140,19 @@ const isGreenBatchRun = (r, repo) =>
  *   queueEvidence?: Array<{tree: string, runs: Array<object>}>,
  *   laterChangedFiles?: string[],
  *   rekeyAlreadyJudged?: boolean,
+ *   keyingList?: string[] | null,
  * }} input `queueEvidence` lists this commit's tree, then later commits' trees, each with the runs holding its artifact.
  * @returns {{replay: true, runId: number, pr: number, queue?: true} | {replay: false, reason: string}}
  */
 export function decidePushReplay(input) {
-  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [], rekeyAlreadyJudged = false } = input;
+  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [], rekeyAlreadyJudged = false, keyingList = null } = input;
   if (!SHA.test(pushSha ?? '') || !SHA.test(pushTree ?? '')) return { replay: false, reason: 'push SHA or tree is not a full hash' };
   // One squash commit on top of the previous tip. A multi-commit push (a
   // direct push, a rebase merge) is not the shape a single PR run tested.
   if (!SHA.test(before ?? '') || parentSha !== before) {
     return { replay: false, reason: `push is not a single commit on ${String(before).slice(0, 9)}` };
   }
-  const keysCaches = (f) => NO_REPLAY.some((re) => re.test(f));
+  const keysCaches = (f) => keysMainCaches(f, keyingList);
   const blocker = changedFiles.find(keysCaches);
   const blockerReason = `${blocker} changed; caches that only main writes must be re-keyed by a full run`;
   // A full page may be truncated, so it proves nothing: that only means a full run.
@@ -174,7 +200,10 @@ function emit(output, key, value) {
 }
 
 function readInputs(repo, pushSha, pushTree, parentSha, before) {
-  const changedFiles = git('diff', '--name-only', `${parentSha}`, pushSha).split('\n').filter(Boolean);
+  // --no-renames: a moved file counts on both sides. -z: git quotes a non-ASCII path
+  // otherwise, and `".github/actions/\303\251/x"` would match no blocking rule.
+  // Not git(): its trim would cut a leading space off the first path.
+  const changedFiles = execFileSync('git', ['diff', '-z', '--no-renames', '--name-only', parentSha, pushSha], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
   const pulls = gh(['api', `repos/${repo}/commits/${pushSha}/pulls`, '--method', 'GET'], `the PRs of ${pushSha.slice(0, 9)}`);
   if (!Array.isArray(pulls)) throw new GhError('GH_BAD_SHAPE', 'commits/{sha}/pulls did not return an array');
   const merged = pulls.filter((p) => p?.merge_commit_sha === pushSha);
@@ -198,7 +227,25 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
     }
   }
   const { queueEvidence, laterChangedFiles } = readQueueEvidence(repo, pushSha, pushTree);
-  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles };
+  // The list as the push commit has it, read on every push (two or three git calls).
+  // Null when it is absent, unreadable, not a regular file (`cat-file` of a symlink
+  // returns the target path), or malformed: it must name test.yml, and every entry a
+  // file of the pushed tree. --full-tree: pathspecs from the repo root, whatever the cwd.
+  const listMode = gitOrNull('ls-tree', '--full-tree', pushSha, '--', KEYING_LIST_PATH)?.split(' ')[0];
+  const listText = listMode === '100644' || listMode === '100755' ? gitOrNull('cat-file', 'blob', `${pushSha}:${KEYING_LIST_PATH}`) : null;
+  const treeFiles = listText === null ? null : gitOrNull('ls-tree', '-z', '-r', '--full-tree', '--name-only', pushSha, '--', '.github/workflows', '.github/actions')?.split('\0').filter(Boolean);
+  const keyingList = treeFiles ? validKeyingList(parseKeyingList(listText), treeFiles) : null;
+  if (keyingList === null) console.warn(`[push-replay] ${KEYING_LIST_PATH} is missing, unreadable or malformed at ${pushSha.slice(0, 9)}; every workflow and action file blocks`);
+  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, keyingList };
+}
+
+/** A git command's stdout, or null when it fails (absent file, bad ref); the caller then blocks. */
+function gitOrNull(...args) {
+  const r = spawnSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
+  if (r.status === 0) return r.stdout;
+  // A null list blocks every workflow and action file, so say why.
+  console.warn(`[push-replay] git ${args.join(' ')}: ${(r.stderr || r.error?.message || 'failed').trim()}`);
+  return null;
 }
 
 /** This commit's tree, then those of the commits main has gained since, each with the runs that recorded it. */

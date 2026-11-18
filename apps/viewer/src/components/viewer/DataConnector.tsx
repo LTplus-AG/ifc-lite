@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { createModelMutationView } from '@/utils/model-mutation-view';
 import { useToolDialog, type ToolDialogProps } from './useToolDialog';
 /**
  * Data Connector UI - Import data from CSV files and map to IFC properties
@@ -53,12 +55,10 @@ import { ACTIVE_STATE_CLASS } from '@/components/ui/active-state';
 import { useViewerStore } from '@/store';
 import { useTranslation, localeCount } from '@/i18n';
 import { canMutateData, dataMutationPermission, mutationDenialKey } from '@/store/mutation-permission';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { defaultAuthoringModelId } from '@/lib/model-placement/history';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
   CsvConnector,
-  MutablePropertyView,
   type CsvRow,
   type MatchStrategy,
   type PropertyMapping,
@@ -67,7 +67,6 @@ import {
   type ImportStats,
   type ImportProgress,
 } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ChangeConversion } from '@/lib/actions/change-conversion';
 import { tableRowsOf, tableToModelChanges } from '@/lib/actions/table-changes';
 import type { ColumnValueType, TableMapping } from '@/lib/actions/table-mapping';
@@ -109,8 +108,10 @@ export function DataConnector(props: ToolDialogProps) {
   const [open, setOpen] = useToolDialog(props);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   // Importing data edits properties in place, like the Properties panel (#9296).
+  // The properties run decides the wording while a server model's properties load or after they fail.
+  const serverPropertiesRuns = useViewerStore((s) => s.serverPropertiesRuns);
   const editPermission = useMemo(() => dataMutationPermission(useViewerStore.getState(), selectedModelId),
-    [collabEditRole, selectedModelId, models]);
+    [collabEditRole, selectedModelId, models, serverPropertiesRuns]);
   const canEditInSession = editPermission.allowed;
 
   // Raw CSV content
@@ -200,9 +201,7 @@ export function DataConnector(props: ToolDialogProps) {
 
     // Create new mutation view with on-demand property extractor
     const dataStore = selectedModel.ifcDataStore;
-    mutationView = new MutablePropertyView(dataStore.properties || null, selectedModelId);
-
-    configureMutationView(mutationView, dataStore as IfcDataStore);
+    mutationView = createModelMutationView(dataStore, selectedModelId);
 
     // Register the mutation view
     registerMutationView(selectedModelId, mutationView);

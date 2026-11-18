@@ -30,6 +30,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
+import { outsideOwnCgroup } from './load-scoreboard-host.mjs';
 
 // ---------------------------------------------------------------- pure helpers
 
@@ -43,7 +44,7 @@ import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
  */
 export function rebaseToArm(open) {
   const paint = open.shell?.armedAtMs, origin = open.originAbs;
-  const keys = ['firstFrameMs', 'interactiveMs', 'uiQuietMs', 'geometryMs', 'propsMs', 'storeSettledMs', 'settlePaintMs', 'publishPaintMs'];
+  const keys = ['firstFrameMs', 'interactiveMs', 'uiQuietMs', 'geometryMs', 'propsMs', 'storeSettledMs', 'settlePaintMs', 'publishPaintMs', 'interactiveMsOldGate'];
   if (!Number.isFinite(paint) || !Number.isFinite(origin) || origin < paint) {
     return { ...open, clockFrom: 'unverifiable (no first-paint anchor)', interactiveFromChangeMs: open.interactiveMs, ...Object.fromEntries(keys.map((k) => [k, null])) };
   }
@@ -290,6 +291,8 @@ export async function bootSample({ chromium, launchOptions, initScripts, openShe
     row.error = `boot: ${String(err?.message ?? err).slice(0, 600)}`;
     log?.(`  ${tag} FAILED ${row.error}`);
   } finally {
+    // Its browser process sits in its own systemd scope: its CPU is this sample's, not foreign (settleHostLoad).
+    row.browserOutside = outsideOwnCgroup(chromePids(profileDir));
     await context?.close().catch(() => {});
     rmSync(profileDir, { recursive: true, force: true });
   }

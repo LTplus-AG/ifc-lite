@@ -393,9 +393,10 @@
   --z-hud: 20;
   --z-hud-popover: 30;
   --z-float: 40;
+  /* Notifications stay above viewport tools, below modal scrims/actions (#9849). */
+  --z-toast: 45;
   --z-chrome: 50;
   --z-modal: 60;
-  --z-toast: 70;
   --z-command-palette: 80;
 }
 

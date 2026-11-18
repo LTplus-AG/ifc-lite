@@ -12,6 +12,7 @@
  * re-read inside their atomic draft and refuse a stale plan.
  */
 
+import { storeyInventoryCache, validateStoreyInventoryCache } from './storey-inventory-cache.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { effectiveReferencers } from '@ifc-lite/export';
@@ -125,7 +126,13 @@ function relationshipsOf(reader: AnchorEntityReader, deleted: ReadonlySet<number
       if (rel) result.push(rel);
     }
   }
-  return result;
+  return result.sort(relationshipOrder);
+}
+
+/** Both complete graphs and sparse lookups choose the same first parent. */
+function relationshipOrder(a: StoreyRelationship, b: StoreyRelationship): number {
+  const rank = (type: string) => (SPATIAL_RELATIONSHIPS as readonly string[]).indexOf(type);
+  return rank(a.type) - rank(b.type) || a.id - b.id;
 }
 
 function relationshipMaps(relationships: readonly StoreyRelationship[]) {
@@ -156,8 +163,7 @@ function incomingThroughReferencers(
     if (rel?.children.includes(id)) found.push(rel);
   }
   // The order a whole-graph read lists them in: relationship class, then id.
-  const rank = (type: string) => (SPATIAL_RELATIONSHIPS as readonly string[]).indexOf(type);
-  return found.sort((a, b) => rank(a.type) - rank(b.type) || a.id - b.id);
+  return found.sort(relationshipOrder);
 }
 
 /** Read the live storeys and spatial relationships of one model. */
@@ -168,8 +174,19 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
     ? safeLengthUnitScale(store.source, store.entityIndex, 'readStoreyInventory') ?? 1
     : store.lengthUnitScale ?? 1;
   const deleted = view.getTombstones();
-  let graph = options.lazyRelationships ? undefined : relationshipMaps(relationshipsOf(reader, deleted));
-  const full = () => graph ??= relationshipMaps(relationshipsOf(reader, deleted));
+  const cache = storeyInventoryCache(store, view, reader, parent => { readStoreyInventory(store, parent, { lazyRelationships: true }); });
+  const revision = view.getMutationRevision();
+  let graph = options.lazyRelationships ? undefined : cache.graph ?? relationshipMaps(relationshipsOf(reader, deleted));
+  const full = () => {
+    if (!graph) {
+      const unchanged = view.getMutationRevision() === revision;
+      graph = unchanged && cache.graph ? cache.graph : relationshipMaps(relationshipsOf(
+        unchanged ? reader : new CachedReader(store, view, names), view.getTombstones()));
+      if (unchanged) cache.graph = graph;
+    }
+    return graph;
+  };
+  if (graph) cache.graph = graph;
   // Aggregates are few (the spatial tree and assemblies); read them whole.
   const aggregates = graph ? undefined : relationshipMaps(relationshipsOf(reader, deleted, ['IFCRELAGGREGATES']));
   let referencers: ((id: number) => readonly number[]) | undefined;
@@ -200,13 +217,15 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
     });
   }
   storeys.sort((a, b) => a.elevation - b.elevation || a.expressId - b.expressId);
-  return {
+  const inventory: StoreyInventory = {
     store, view, reader, scale, schema: String(store.schemaVersion ?? 'IFC4').toUpperCase(), storeys,
     get relationships() { return full().relationships; },
     get outgoing() { return full().outgoing; },
     get incoming() { return full().incoming; },
     incomingOf,
   };
+  validateStoreyInventoryCache(cache, inventory);
+  return inventory;
 }
 
 export function storeyRecord(inventory: StoreyInventory, storeyId: number): StoreyRecord {
@@ -231,8 +250,10 @@ export function siblingStoreys(inventory: StoreyInventory, storeyId: number): St
 /** The storey directly above / below in elevation order within its building, or null. */
 export function storeyNeighbour(inventory: StoreyInventory, storeyId: number, direction: 1 | -1): StoreyRecord | null {
   const siblings = siblingStoreys(inventory, storeyId);
-  const index = siblings.findIndex((storey) => storey.expressId === storeyId);
-  return index < 0 ? null : siblings[index + direction] ?? null;
+  const own = siblings.find(storey => storey.expressId === storeyId);
+  if (!own) return null;
+  return (direction === 1 ? siblings : [...siblings].reverse()).find(storey =>
+    direction === 1 ? storey.elevation > own.elevation : storey.elevation < own.elevation) ?? null;
 }
 
 /** Floor-to-floor height in metres to the storey above, or null for the top storey. */

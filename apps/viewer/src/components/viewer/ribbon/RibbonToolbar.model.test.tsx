@@ -18,8 +18,9 @@ function Keys() { useKeyboardShortcuts(); return null; }
 for (const tab of ['home', 'view', 'file', 'elements', 'analyze', 'author'] satisfies RibbonTabId[]) {
   it(`Model is persistent on ${tab}; M and the button agree (#9296)`, async () => {
     await seedModelingSession();
-    useViewerStore.setState({ ribbonTab: tab, workspaceMode: 'view', session: null });
+    useViewerStore.setState({ ribbonTab: tab, ribbonContextualTabs: false, workspaceMode: 'view', session: null });
     const ui = render(<><RibbonToolbar /><Keys /></>);
+    assert.equal(useViewerStore.getState().ribbonTab, tab);
     const buttons = ui.querySelectorAll<HTMLButtonElement>('[data-command-id="tool:edit-mode"]');
     assert.equal(buttons.length, 1);
     const button = buttons[0];

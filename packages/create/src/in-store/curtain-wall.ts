@@ -37,6 +37,7 @@
  * plates); IFC2X3 has none on these classes; IFC5 is refused.
  */
 
+import { writeCurtainWallVGrid } from './curtain-wall-spec.js';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertFinitePoint3 } from '../ifc-creator-math.js';
@@ -337,6 +338,7 @@ export function addCurtainWallToStore(
     'IfcCurtainWall',
     schemaAttributes(registry, 'IfcCurtainWall', curtainWallValues(`#${placementId}`), op) as Attrs,
   ).expressId;
+  writeCurtainWallVGrid(editor.getMutationView(), curtainWallId, params.VGrid ?? 1);
   const relAggregatesId = editor.addEntity('IfcRelAggregates', schemaAttributes(registry, 'IfcRelAggregates', {
     GlobalId: generateIfcGuid(anchor.guidRandom),
     OwnerHistory: owner,

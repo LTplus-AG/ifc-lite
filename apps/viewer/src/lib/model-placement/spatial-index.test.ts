@@ -15,6 +15,8 @@ import { emptyPlacementState } from './state';
 import { buildPlacedSpatialIndex, createPlacementIndexSync } from './spatial-index';
 import { modelIndices } from './model-indices';
 import { settle } from '@/test/settle';
+import { afterSettledFrame } from '@/lib/settled-frame';
+import { noteLiveFrame } from '@/lib/live-frame-count';
 import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, subscribeInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 afterEach(() => discardInstancedShards());
@@ -28,6 +30,10 @@ function subscribeSync(sync: ReturnType<typeof createPlacementIndexSync>): () =>
   const offShards = subscribeInstancedShards((event) => sync.instancedShards(event, useViewerStore.getState()));
   return () => { offStore(); offShards(); };
 }
+
+/** A fake renderer's scene with nothing streaming or finalizing: the placement
+ * index builds only once the scene has settled (`isSceneSettled`). */
+const SETTLED_SCENE = { hasQueuedMeshes: () => false, hasStreamingFragments: () => false, isFinalizeInProgress: () => false };
 
 /** The production BVH yields between build phases; await publication, not a microtask count. */
 async function waitForPublication<T>(read: () => T | undefined, description: string): Promise<T> {
@@ -49,6 +55,9 @@ async function waitForPublication<T>(read: () => T | undefined, description: str
  */
 async function pastDebounce(message: string): Promise<void> {
   await new Promise<void>(resolve => setTimeout(resolve, 250));
+  // The build also waits for the settled scene's frame (settled-frame.ts); a
+  // wait started after the debounce ends no earlier than the sync's own.
+  await new Promise<void>(resolve => { afterSettledFrame(resolve); });
   await settle(message);
 }
 
@@ -91,7 +100,7 @@ it('waits for GPU shard drain and indexes pure instances for primary and federat
   const instances = [occurrence(20, 156, rendererIndices.get('primary')!),
     occurrence(50, 1156, rendererIndices.get('federated')!)];
   let materializations = 0;
-  const fakeRenderer = { getScene: () => ({ getAllInstancedMeshData: () => { materializations++; return instances; } }) } as unknown as Renderer;
+  const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, getAllInstancedMeshData: () => { materializations++; return instances; } }) } as unknown as Renderer;
   setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
   const sync = createPlacementIndexSync();
   const unsubscribe = subscribeSync(sync);
@@ -172,7 +181,7 @@ it('indexes a drained instance when its data store arrives afterward (#5275)', a
   const mesh = { expressId: 7, modelIndex: modelIndices(useViewerStore.getState().models).get('late-store')!,
     positions: new Float32Array([30, 0, 0, 31, 0, 0, 30, 1, 0]),
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] } as MeshData;
-  const fakeRenderer = { getScene: () => ({ getAllInstancedMeshData: () => [mesh] }) } as unknown as Renderer;
+  const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, getAllInstancedMeshData: () => [mesh] }) } as unknown as Renderer;
   setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
   const sync = createPlacementIndexSync();
   const unsubscribe = subscribeSync(sync);
@@ -198,7 +207,7 @@ it('replaces a flat index when an instance drains during placement-sync remount 
     geometryResult: { meshes: [flat], totalTriangles: 1 } as GeometryResult } as FederatedModel;
   useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
   const pieces: MeshData[] = [];
-  const fakeRenderer = { getScene: () => ({ getAllInstancedMeshData: () => pieces }) } as unknown as Renderer;
+  const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, getAllInstancedMeshData: () => pieces }) } as unknown as Renderer;
   setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
   const sync = createPlacementIndexSync();
   try {
@@ -301,7 +310,7 @@ it('does not leak an occurrence into another model\'s index when the two share a
   // The SAME expressId too — both models' occurrences fall in the shared
   // bracket, so only the renderer `modelIndex` tells them apart.
   const occA = box(0, 500, indexA), occB = box(50, 500, indexB);
-  const fakeRenderer = { getScene: () => ({ getAllInstancedMeshData: () => [occA, occB] }) } as unknown as Renderer;
+  const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, getAllInstancedMeshData: () => [occA, occB] }) } as unknown as Renderer;
   setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
   try {
     buildPlacedSpatialIndex(useViewerStore.getState(), 'a');
@@ -343,4 +352,61 @@ it('records the first placed build after a load as that load\'s bvh.build span, 
   const builds = tracer.latest()!.spans.filter((s) => s.name === 'bvh.build');
   assert.equal(builds.length, 1, 'a rebuild after the load is not recorded on it');
   assert.ok(builds[0].end !== null && builds[0].end >= builds[0].start, 'the span closes when the index publishes');
+});
+
+it('builds no placed index while the scene is still draining or finalizing, then builds it once settled (L1)', async () => {
+  const mesh: MeshData = { expressId: 5, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
+  const model = { ...fixtureModel('settling'), maxExpressId: 5, loadState: 'complete',
+    geometryResult: { meshes: [mesh], totalTriangles: 1 } as GeometryResult } as FederatedModel;
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
+  let finalizing = true;
+  let materializations = 0;
+  const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, isFinalizeInProgress: () => finalizing,
+    getAllInstancedMeshData: () => { materializations++; return []; } }) } as unknown as Renderer;
+  setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
+  const sync = createPlacementIndexSync();
+  try {
+    sync.refreshMissing(useViewerStore.getState());
+    await pastDebounce('a load-complete model whose scene still finalizes');
+    await pastDebounce('and a second debounce period');
+    assert.ok(model.ifcDataStore!.spatialIndex === undefined, 'no index is built while the scene finalizes');
+    assert.ok(materializations === 0, 'no instanced occurrence is materialised during the load');
+    finalizing = false;
+    const index = await waitForPublication(() => model.ifcDataStore!.spatialIndex, 'the index once the scene settled');
+    assert.deepEqual(index.queryAABB({ min: [0, 0, 0], max: [1, 1, 0] }), [5]);
+  } finally {
+    sync.dispose(); setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  }
+});
+
+it('builds only after the viewport has drawn the settled scene, and nothing when disposed while waiting', async () => {
+  const mesh: MeshData = { expressId: 5, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
+  const model = { ...fixtureModel('drawn'), maxExpressId: 5, loadState: 'complete',
+    geometryResult: { meshes: [mesh], totalTriangles: 1 } as GeometryResult } as FederatedModel;
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
+  let drawPending = true; // the finalized scene's draw is requested, not yet submitted
+  let materializations = 0;
+  const fakeRenderer = { getScene: () => ({ ...SETTLED_SCENE, getAllInstancedMeshData: () => { materializations++; return []; } }),
+    getGPUDevice: () => ({}), peekRenderRequest: () => drawPending } as unknown as Renderer;
+  setGlobalRendererRef({ current: fakeRenderer } as RefObject<Renderer | null>);
+  const disposed = createPlacementIndexSync();
+  const sync = createPlacementIndexSync();
+  try {
+    disposed.refreshMissing(useViewerStore.getState());
+    sync.refreshMissing(useViewerStore.getState());
+    await new Promise<void>(resolve => setTimeout(resolve, 400));
+    await settle('settled, frame not drawn');
+    assert.equal(materializations, 0, 'the build (instanced materialisation) must not run in front of the settled frame');
+    assert.equal(model.ifcDataStore!.spatialIndex, undefined);
+    disposed.dispose(); // e.g. the viewer unmounts, or a new load replaces the sync, before the frame
+    noteLiveFrame(); drawPending = false;
+    const index = await waitForPublication(() => model.ifcDataStore!.spatialIndex, 'the index once the frame was drawn');
+    assert.deepEqual(index.queryAABB({ min: [0, 0, 0], max: [1, 1, 0] }), [5]);
+    await settle('the disposed sync');
+    assert.equal(materializations, 1, 'only the live sync built: the disposed one ran nothing');
+  } finally {
+    sync.dispose(); setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  }
 });

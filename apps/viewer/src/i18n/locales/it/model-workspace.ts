@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelWorkspaceIt = {
+  'modelWorkspace.leave': 'Esci',
   "modelWorkspace.rail.aria": "Strumenti del modello",
   "modelWorkspace.rail.hosted": "Aperture, porte e finestre",
   "modelWorkspace.rail.circulation": "Scale e parapetti",

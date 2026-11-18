@@ -5,7 +5,7 @@
 /**
  * Joints between curve members, the "Joints" rule in
  * `structural-derive-types.ts`: free member ends move along their own axis to
- * meet another member's axis, and a member met in its interior is split there.
+ * meet another member's axis, and every member met in its interior is split there.
  * Pure: world metres in, adjusted lines and the record of every move out.
  */
 
@@ -79,6 +79,11 @@ export class SegmentGrid {
 
 interface Hit { j: number; t: number; target: Vec3; along: number; otherEnd: number | null }
 
+/** How far a free end may move to meet a member of this section. A set reach is never below the tolerance: an end within it already touches. */
+export function jointReachOf(tolerance: number, jointReach: number | null, section: number | null): number {
+  return jointReach !== null ? Math.max(tolerance, jointReach) : tolerance + (section ?? 0) / 2;
+}
+
 /**
  * Move free ends along their own axes to meet other members, split members met
  * inside. `supported` says whether a point already has a support (a footing):
@@ -91,8 +96,7 @@ export function joinEnds(
   jointReach: number | null,
   supported: (p: Vec3) => boolean,
 ): { pieces: Array<{ source: number; start: Vec3; end: Vec3 }>; extended: ExtendedEnd[] } {
-  // A set reach is never below the tolerance: an end within it already touches.
-  const reachOf = (section: number | null) => (jointReach !== null ? Math.max(tolerance, jointReach) : tolerance + (section ?? 0) / 2);
+  const reachOf = (section: number | null) => jointReachOf(tolerance, jointReach, section);
   const maxReach = lines.reduce((m, line) => Math.max(m, reachOf(line.section)), tolerance);
   const ends = lines.flatMap((line): Vec3[] => [[...line.start], [...line.end]]);
   const roots = clusterEnds(ends, tolerance);
@@ -145,6 +149,15 @@ export function joinEnds(
       extended.push({ elementId: lines[i].elementId, end: endName(e), distance: best.t, toElementId: lines[best.j].elementId });
     }
     joined.add(e);
+    // Every other member whose axis passes through the joint is split there too (crossing beams); not one
+    // running along this member, whose axis never meets it. Cuts outside a span are dropped below.
+    for (const k of grid.near(best.target)) {
+      if (k === i || k === best.j) continue;
+      const a = ends[2 * k], v = sub(ends[2 * k + 1], a), lv = length(v);
+      if (lv <= tolerance || Math.abs(dot(u, v)) >= lv * (1 - 1e-9)) continue;
+      const s = dot(sub(best.target, a), v) / (lv * lv);
+      if (length(sub(add(a, scale(v, s)), best.target)) <= tolerance) splits[k].push(best.target);
+    }
     if (best.otherEnd !== null) {
       const k = best.otherEnd;
       extended.push({ elementId: lines[best.j].elementId, end: endName(k), distance: length(sub(best.target, ends[k])), toElementId: lines[i].elementId });

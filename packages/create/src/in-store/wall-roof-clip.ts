@@ -120,7 +120,7 @@ export function clipWallToRoof(target: EditTarget, wallId: number, roofId: numbe
   const rep = own.reader.entity(own.repId)!;
   const context = refId(rep.attributes[0]);
   if (context === null) throw new Error('Unreadable wall representation context');
-  const cutters = emitFootprintRoofBody(target.editor, unit, context, { ...definition, Thickness: cap });
+  const cutters = emitFootprintRoofBody(target.editor, unit, context, { ...definition, Thickness: cap }, { undersideCutters: true });
   let root = own.base;
   for (const id of cutters.solidIds) {
     const solid = own.reader.entity(id)!;

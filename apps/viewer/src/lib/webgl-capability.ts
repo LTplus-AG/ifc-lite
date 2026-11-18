@@ -52,6 +52,7 @@ export interface WebglVerdict<Reason extends string> {
 /** Minimal structural types so the probe can be driven by a fake in tests. */
 export interface ProbeContext {
   getExtension(name: string): { loseContext?: () => void } | null;
+  getShaderPrecisionFormat?(shaderType: number, precisionType: number): { precision: number } | null;
 }
 export interface ProbeCanvas {
   getContext(type: string, attributes?: unknown): ProbeContext | null;
@@ -115,6 +116,8 @@ export interface WebglCapabilityGateOptions<Reason extends string> {
   probeFailureReason: Reason;
   /** Short consumer name used in the two `console.warn` paths, e.g. `map`. */
   label: string;
+  /** Consumer-specific capabilities, checked before releasing the probe. */
+  validateContext?: (context: ProbeContext) => boolean;
 }
 
 const defaultCanvasFactory = (): ProbeCanvas | null =>
@@ -150,18 +153,20 @@ export function createWebglCapabilityGate<Reason extends string>(
       if (verdict) return verdict;
 
       let gl: ProbeContext | null = null;
+      let usable = false;
       let canvas: ProbeCanvas | null = null;
       try {
         canvas = createCanvas();
         // No DOM to probe with: stay optimistic and let the `try/catch` decide.
         if (!canvas) return (verdict = supported);
         gl = canvas.getContext('webgl2', options.attributes);
+        usable = gl !== null && (options.validateContext?.(gl) ?? true);
       } catch (err) {
         // `getContext` is not specified to throw, but a wedged GPU process has
         // been seen to. Treat a throw exactly like a refusal — and say so,
         // because this branch firing is itself the interesting signal.
         console.warn(`[ifc-lite] ${options.label} WebGL probe threw; treating as unsupported`, err);
-        gl = null;
+        usable = false;
       } finally {
         // Hand the context straight back, on every path including failure.
         try {
@@ -172,7 +177,7 @@ export function createWebglCapabilityGate<Reason extends string>(
         }
       }
 
-      verdict = gl ? supported : { supported: false, reason: options.probeFailureReason };
+      verdict = usable ? supported : { supported: false, reason: options.probeFailureReason };
       return verdict;
     },
 

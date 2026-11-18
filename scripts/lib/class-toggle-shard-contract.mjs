@@ -119,8 +119,8 @@ function partition(IfcAPI, bytes) {
 
 export async function runClassToggleShardContract(IfcAPI, test) {
   console.log('\n📋 #5409 class-toggled classes stay off the instanced shard');
-  // Type stripping loads the viewer table from source; its only import is
-  // type-only, so nothing else needs resolving.
+  // Type stripping loads the viewer table from source. Its runtime predicate
+  // must remain Node-resolvable without the viewer loader or workspace builds.
   const { buildHiddenIfcTypes } = await import('../../apps/viewer/src/store/typeVisibilityFilter.ts');
   const allOff = { spaces: false, spatialZones: false, openings: false, virtualElements: false,
     site: false, ifcAnnotations: false };

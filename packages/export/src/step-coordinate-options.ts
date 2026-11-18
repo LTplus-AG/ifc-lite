@@ -36,5 +36,11 @@ export interface StepGeoreferencingOptions {
   georefMutations?: {
     projectedCRS?: Partial<ProjectedCRS>;
     mapConversion?: Partial<MapConversion>;
+    /**
+     * The IfcGeometricRepresentationContexts a created IfcMapConversion may convert from, in the planner's order of
+     * preference (`bim.georef` ranks them on the session's created, deleted and edited contexts). The exporter takes
+     * the first one that is still a context when it writes. Absent for a host that does not plan.
+     */
+    sourceCrs?: readonly number[];
   };
 }

@@ -307,7 +307,7 @@ export const createPinboardSlice: StateCreator<
     const now = Date.now();
     const view: BasketView = {
       id,
-      name: options?.name?.trim() || createNextViewName(state.basketViews),
+      name: options?.name?.trim().slice(0, 200) || createNextViewName(state.basketViews),
       entityRefs: Array.from(state.pinboardEntities),
       thumbnailDataUrl: options?.thumbnailDataUrl ?? null,
       transitionMs: options?.transitionMs ?? null,
@@ -362,7 +362,7 @@ export const createPinboardSlice: StateCreator<
   },
 
   renameBasketView: (viewId, name) => {
-    const nextName = name.trim();
+    const nextName = name.trim().slice(0, 200);
     if (!nextName) return;
     set((state) => ({
       basketViews: state.basketViews.map((view) =>

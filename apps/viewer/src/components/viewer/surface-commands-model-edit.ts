@@ -8,6 +8,7 @@ import { useViewerStore } from '@/store';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import { copyShortcut, pasteShortcut } from '@/lib/commands/modeling/copy-keys';
 import { stepSessionStorey } from '@/lib/commands/modeling/workspace-storeys';
+import { leaveModelWorkspace } from './model/leave-model-workspace';
 import type { SurfaceCommandDefinition } from './surface-command-types';
 
 export const MODEL_EDIT_SURFACE_COMMANDS = ([
@@ -28,7 +29,7 @@ export const MODEL_EDIT_SURFACE_COMMANDS = ([
   { id: 'model:storey-down', labelKey: 'commandPalette.model.storeyDown', keywords: 'work storey below floor level down', icon: ArrowDown,
     shortcut: 'model.storeyDown', run: () => { stepSessionStorey(useViewerStore.getState(), -1); } },
   { id: 'model:exit', labelKey: 'modelWorkspace.tool.leave', keywords: 'leave exit close model workspace cancel drawing', icon: LogOut,
-    run: () => { useViewerStore.getState().exitModelWorkspace(); } },
+    run: () => { leaveModelWorkspace(); } },
 ] as const).map(entry => ({ ...entry, category: 'Tools' as const, surfaces: ['palette'] as const,
   enabled: ({ canEditInSession }: { canEditInSession: boolean }) => entry.id === 'model:exit' || canEditInSession,
 })) satisfies readonly SurfaceCommandDefinition[];

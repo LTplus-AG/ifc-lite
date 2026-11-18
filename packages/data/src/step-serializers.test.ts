@@ -11,12 +11,25 @@ import {
   parseStepValue,
   ref,
   serializeValue,
+  stepString,
   toStepLineWithRegistry,
 } from './step-serializers.js';
 
 /** A conforming STEP REAL: mantissa carries a decimal point, exponent (if any)
  *  is uppercase `E`. */
 const STEP_REAL_RE = /^-?\d+\.\d*(?:E[+-]?\d+)?$/;
+
+describe('explicit literal strings (#9876)', () => {
+  it.each(['$', '*', '#42', '.AREA.', '', "O'Brien", 'Label\nΔ'])('round-trips %j as text', value => {
+    const token = serializeValue(stepString(value));
+    expect(token.startsWith("'")).toBe(true);
+    expect(parseStepValue(token)).toBe(value);
+  });
+  it('preserves the existing derived and omitted marker conventions', () => {
+    expect(serializeValue('*')).toBe('*');
+    expect(serializeValue(null)).toBe('$');
+  });
+});
 
 describe('formatStepReal', () => {
   it('rewrites exponential magnitudes into valid STEP REAL literals', () => {

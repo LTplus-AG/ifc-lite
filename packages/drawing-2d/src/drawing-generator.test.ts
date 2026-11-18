@@ -465,3 +465,27 @@ describe('generate() line work on non-outward-wound meshes (issue #2682)', () =>
     expect(inward.bounds).toEqual(outward.bounds);
   });
 });
+
+describe('generate() cut rings carry only real corners', () => {
+  // Plan cut through a 6 m long, 0.2 m thick, 3 m high wall. Each side face is
+  // two triangles whose diagonal crosses the cut plane, so the cutter returns
+  // each 6 m face as two collinear segments. The ring used to keep the split
+  // point as a vertex (building-architecture.ifc "house left": 4.26 m + 1.74 m),
+  // which the 2D measure tool snapped to.
+  it('drops tessellation split points on straight faces', async () => {
+    const wall = boxMesh(1, [0, 0, 0], [0.2, 3, 6]);
+    const drawing = await drawingFor([wall], bandedPlanConfig(0.8));
+    const rings = drawing.cutPolygons.filter((p) => p.entityId === 1);
+    expect(rings).toHaveLength(1);
+    const outer = rings[0].polygon.outer;
+    expect(outer).toHaveLength(4);
+    const edges = outer.map((a, i) => {
+      const b = outer[(i + 1) % outer.length];
+      return Math.hypot(b.x - a.x, b.y - a.y);
+    }).sort((a, b) => a - b);
+    expect(edges[0]).toBeCloseTo(0.2, 6);
+    expect(edges[1]).toBeCloseTo(0.2, 6);
+    expect(edges[2]).toBeCloseTo(6, 6);
+    expect(edges[3]).toBeCloseTo(6, 6);
+  });
+});

@@ -6,6 +6,9 @@ import type { TranslationValue } from '../types';
 
 /** The Model inspector side panel (charter #6232, M2). IFC class names and unit symbols stay untranslated. */
 export const modelInspectorEn = {
+  "modelInspector.multipleModels": "Select elements from one model to edit them together.",
+  'modelInspector.unavailable': 'Unavailable element',
+  'modelInspector.multiple': '{count} selected elements',
   'modelInspector.panel.title': 'Model inspector',
   'modelInspector.close': 'Close the Model inspector',
   'modelInspector.empty.noSession': 'Enter the Model workspace to edit',

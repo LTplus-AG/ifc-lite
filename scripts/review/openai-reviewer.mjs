@@ -3,10 +3,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { readStdinUtf8 } from '../lib/read-stdin.mjs';
 
 export const OPENAI_REVIEW_MODEL = 'gpt-6-sol';
 
@@ -104,7 +104,7 @@ if (isMainEntry(import.meta.url)) {
     if (!apiKey) throw new Error('OPENAI_API_KEY is missing.');
     const envTimeout = Number(process.env.OPENAI_TIMEOUT_MS);
     const timeoutMs = Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : OPENAI_TIMEOUT_MS_DEFAULT;
-    process.stdout.write(await requestOpenAiReview({ prompt: readFileSync(0, 'utf8'), apiKey, timeoutMs }));
+    process.stdout.write(await requestOpenAiReview({ prompt: readStdinUtf8(), apiKey, timeoutMs }));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);

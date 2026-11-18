@@ -15,7 +15,8 @@
  * Relationships pass when both ends carry the link. See `readRow`.
  */
 
-import { cached, storeOf } from '../lib/packages.mjs';
+import { cached, structuralDataOf } from '../lib/packages.mjs';
+import { isStructuralItem } from '../lib/step.mjs';
 import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
 const NO_FIELD = Symbol('no field');
@@ -32,23 +33,43 @@ const ref = (x) => (x ? `#${x.expressId}` : null);
 function rootedField(ix, type, info, attr) {
   const key = ix.fields.get(type)?.has(attr) ? attr : RENAMED[attr] ?? attr[0].toLowerCase() + attr.slice(1);
   if (!ix.fields.get(type)?.has(key)) return NO_FIELD;
-  const v = info[key];
-  return v && typeof v === 'object' && !Array.isArray(v) && 'expressId' in v ? ref(v) : v;
+  return info[key];
 }
 
 function resourceField(info, attr) {
   if (attr === 'Name') return info.name;
   if (info.configuration && attr === 'Values') return info.configuration.entries.map((e) => ref(e.value));
   if (info.configuration && attr === 'Locations') return info.configuration.entries.map((e) => e.location ?? []);
-  return info.components?.[attr];
+  return attr in info ? info[attr] : info.components?.[attr];
+}
+
+/**
+ * Interpret read ids only where the corresponding STEP slot is a reference.
+ * Recurse by slot so numeric measures, list length and duplicates stay intact.
+ */
+function referenceValues(got, raw, step, types) {
+  if (Array.isArray(got) && Array.isArray(raw)) return got.map((v, i) => referenceValues(v, raw[i], step, types));
+  if (raw && typeof raw === 'object' && 'ref' in raw) {
+    if (typeof got === 'number') return normalize({ ref: got }, step, types);
+    if (got && typeof got === 'object' && 'expressId' in got) return normalize({ ref: got.expressId }, step, types);
+  }
+  return got;
 }
 
 /** Relationship end attributes and how the read model is expected to carry the link, by catalogue root. */
 const LINKS = {
-  IfcRelConnectsStructuralMember: ['RelatingStructuralMember', 'RelatedStructuralConnection', (ix, a, b) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
-  IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity', (ix, a, b) => ix.byGuid.get(b)?.appliesToGlobalId === a],
-  // IFC2X3 only: a physical element to its structural member. The read model has no field for it yet.
-  IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', () => false],
+  IfcRelConnectsStructuralMember: ['RelatingStructuralMember', 'RelatedStructuralConnection', ({ ix, a, b }) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
+  IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity',
+    // Some writers swap the two ends (portal-demo.ifc); the read model carries the link either way.
+    // A physical IfcElement end is not in the structural read model and is exempt from the item-side check;
+    // a structural item or an unresolved reference is not.
+    ({ ix, a, b, rawA, rawB, step }) => [[a, b, rawA], [b, a, rawB]].some(([item, activity, rawItem]) => {
+      if (!item || ix.byGuid.get(activity)?.appliesToGlobalId !== item) return false;
+      const end = step.get(rawItem);
+      return (end && !isStructuralItem(end)) || Boolean(ix.byGuid.get(item)?.activityGlobalIds?.includes(activity));
+    })],
+  // IFC2X3 only: the member carries the physical element's model-local id.
+  IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', ({ ix, b, rawA }) => ix.byGuid.get(b)?.physicalElementIds?.includes(rawA?.ref)],
 };
 
 /** Every read-model object of the extraction, by expressId and GlobalId, plus the fields each type has. */
@@ -63,6 +84,7 @@ function indexExtraction(x) {
     if (!fields.has(type)) fields.set(type, new Set());
     for (const k of Object.keys(info)) fields.get(type).add(k);
   };
+  for (const area of x.reinforcementAreas ?? []) put('resource', area);
   for (const m of x.members) put('item', m);
   for (const c of x.connections) put('item', c);
   for (const a of x.activities) put('activity', a);
@@ -70,14 +92,20 @@ function indexExtraction(x) {
   for (const g of x.resultGroups) put('group', g, 'IfcStructuralResultGroup');
   for (const g of x.analysisModels) put('group', g, 'IfcStructuralAnalysisModel');
   const loads = (l) => { if (!l || byId.has(l.expressId)) return; put('resource', l); for (const e of l.configuration?.entries ?? []) loads(e.value); };
-  for (const a of x.activities) loads(a.appliedLoad);
+  for (const a of x.activities) for (const l of [a.appliedLoad, ...(a.subsequentLoads ?? [])]) loads(l);
   for (const c of x.connections) if (c.appliedCondition) put('resource', c.appliedCondition);
+  for (const m of x.members) for (const rel of m.IfcRelConnectsStructuralMember ?? []) {
+    put('relationship', rel, 'IfcRelConnectsStructuralMember');
+    if (rel.AppliedCondition) put('resource', rel.AppliedCondition);
+    if (rel.AdditionalConditions) put('resource', rel.AdditionalConditions);
+    if (rel.ConnectionConstraint) put('resource', rel.ConnectionConstraint, 'IfcConnectionPointEccentricity');
+  }
   return { byId, byGuid, fields };
 }
 
 /** The indexed read model of one corpus file, shared by every probe that reads it. */
 export function extraction(ctx, file) {
-  return cached(ctx, `read:${file.path}`, async () => indexExtraction(ctx.pkgs.parser.extractStructuralOnDemand(await storeOf(ctx, file))));
+  return cached(ctx, `read:${file.path}`, async () => indexExtraction(await structuralDataOf(ctx, file)));
 }
 
 /** `{ file, ix }`, or `{ file, ix: null, error }` when the product cannot parse or extract the file. */
@@ -117,11 +145,12 @@ export function readRow(row, entries, types) {
   const all = ordered.flatMap(({ file, ix }) => file.step.of(row.entity).map((rec) => ({ file, ix, rec, where: `${file.path}#${rec.id}` })));
   const records = all.filter((r) => r.ix);
   if (!records.length) return { status: 'fail', reason: problems.join('; ') || 'no record was checked' };
-  const value = (r, attr) => normalize(r.rec.args[row.attributes.indexOf(attr)], r.file.step, types);
+  const raw = (r, attr) => r.rec.args[row.attributes.indexOf(attr)];
+  const value = (r, attr) => normalize(raw(r, attr), r.file.step, types);
   const out = [...problems];
   const link = LINKS[row.root];
   const [from, to, held] = link ?? [];
-  const found = new Set(records.filter((r) => (link ? held(r.ix, value(r, from), value(r, to)) : r.ix.byId.get(r.rec.id)?.type === row.entity)));
+  const found = new Set(records.filter((r) => (link ? held({ ix: r.ix, a: value(r, from), b: value(r, to), rawA: raw(r, from), rawB: raw(r, to), step: r.file.step }) : r.ix.byId.get(r.rec.id)?.type === row.entity)));
   const lost = records.filter((r) => !found.has(r));
   if (lost.length) {
     const hit = lost[0].ix.byId.get(lost[0].rec.id);
@@ -134,19 +163,16 @@ export function readRow(row, entries, types) {
     // Any carrier that sets the attribute counts as a fixture for it, read or not.
     const setters = all.filter((r) => value(r, attr) !== null);
     if (!setters.length) { out.push(`${attr}: no fixture sets it, so reading it is unproven`); continue; }
-    if (link) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
     const read = setters.filter((r) => found.has(r));
     if (!read.length) continue; // its records are already reported as not in the read model
-    const slot = row.attributes.indexOf(attr);
     const field = (r) => {
       const hit = r.ix.byId.get(r.rec.id);
+      if (!hit) return NO_FIELD;
       const got = row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(r.ix, hit.type, hit.info, attr);
       // Exact EXPRESS reference fields hold model-local express ids. Only
       // reinterpret numbers when the fixture slot is a reference, never a
       // numeric measure that happens to equal an entity id.
-      const raw = r.rec.args[slot];
-      return typeof got === 'number' && raw && typeof raw === 'object' && 'ref' in raw
-        ? normalize({ ref: got }, r.file.step, types) : got;
+      return referenceValues(got, raw(r, attr), r.file.step, types);
     };
     if (read.every((r) => field(r) === NO_FIELD)) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
     const wrong = read.filter((r) => { const got = field(r); return got === NO_FIELD || !equal(value(r, attr), got ?? null); });

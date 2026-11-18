@@ -118,6 +118,10 @@ export const miscPanelsBFr = {
   'shareDialog.guestName': 'Invité',
   'shareDialog.roomCreationFailed':
     'Aucune session n’a été créée. Fermez puis rouvrez cette boîte de dialogue pour réessayer.',
+  'shareDialog.shareSkipped.noRecords':
+    'Absents de la session partagée, aucun enregistrement IFC à partager : {models}.',
+  'shareDialog.shareSkipped.allRefused':
+    'Rien ne peut être partagé ici, aucun enregistrement IFC à partager : {models}.',
   'shareDialog.linkCreationFailed': 'Échec de la création du lien. Vérifiez la connexion et réessayez.',
   'shareDialog.joinedViaInvite':
     'Vous avez rejoint la session via une invitation ; la partager transmet le même accès. Seul l’administrateur de la session peut créer de nouveaux liens.',
@@ -153,6 +157,7 @@ export const miscPanelsBFr = {
   'loadReportPanel.selectAndFrameTitle': 'Sélectionner et cadrer cette entité',
   'loadReportPanel.entitySummary':
     '#{productId} {ifcType} — {csgFailures} échec(s), {openings} ouverture(s)',
+  'loadReportPanel.budgetRefusal': '{budget} : limite {limit}, atteint {reached} ; source #{sourceId}',
   'loadReportPanel.tierSuffix': ' · niveau {tier}',
   'loadReportPanel.fastModeSuffix': ' · mode rapide',
   'loadReportPanel.affectedEntitiesLabel': 'Entités concernées',

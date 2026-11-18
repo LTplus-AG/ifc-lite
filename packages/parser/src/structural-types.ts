@@ -26,6 +26,8 @@ export interface StructuralConnectionConditionInfo {
 /** One `IfcRelConnectsStructuralMember` (or `IfcRelConnectsWithEccentricity`); ids are model-local. */
 export interface StructuralMemberConnectionInfo {
   expressId: number;
+  /** `IfcRelConnectsStructuralMember`, or its subtype `IfcRelConnectsWithEccentricity`. */
+  type: string;
   RelatedStructuralConnection: number;
   /** Member-end release or fixity at this connection, resolved. */
   AppliedCondition?: BoundaryConditionInfo;
@@ -35,6 +37,8 @@ export interface StructuralMemberConnectionInfo {
   /** `IfcConnectionPointEccentricity`, the only constraint subtype read. */
   ConnectionConstraint?: {
     expressId: number;
+    /** `IfcConnectionPointEccentricity`. */
+    type: string;
     EccentricityInX?: number;
     EccentricityInY?: number;
     EccentricityInZ?: number;
@@ -55,6 +59,9 @@ export interface StructuralMemberInfo {
   predefinedType?: string;
   /** `IfcStructuralSurfaceMember.Thickness`, when the file carries it. */
   thickness?: number;
+  /** IFC2X3 varying surface-member thickness stations. */
+  SubsequentThickness?: number[];
+  VaryingThicknessLocation?: number;
   /** IFC4+ direction reference (model-local expressId). */
   Axis?: number;
   /** Physical `IfcElement`s linked by assignment or IFC2X3 structural-element relations (model-local expressIds). */
@@ -110,6 +117,18 @@ export interface StructuralActivityInfo {
   /** `IfcStructuralActivity.GlobalOrLocal`, e.g. `GLOBAL_COORDS`. */
   globalOrLocal?: string;
   ProjectedOrTrue?: string;
+  /** IFC2X3 reaction that caused this action (model-local expressId). */
+  CausedBy?: number;
+  /** IFC2X3 varying-action shape aspect (model-local expressId). */
+  VaryingAppliedLoadLocation?: number;
+  /** IFC2X3 subsequent load references, in station order (model-local expressIds). */
+  SubsequentAppliedLoads?: number[];
+  /**
+   * `SubsequentAppliedLoads` resolved like `appliedLoad`, one entry per slot of
+   * the file's list (so it can be longer than the reference ids above), and
+   * `undefined` where a slot holds no reference or its load does not read.
+   */
+  subsequentLoads?: (StructuralLoadInfo | undefined)[];
   /** `IfcStructuralAction.DestabilizingLoad`; absent on reactions. */
   destabilizingLoad?: boolean;
   /** `IfcStructuralActivity.AppliedLoad`, resolved. */
@@ -167,6 +186,9 @@ export interface StructuralAnalysisModelInfo {
   description?: string;
   objectType?: string;
   predefinedType?: string;
+  /** Model-local placement references. */
+  OrientationOf2DPlane?: number;
+  SharedPlacement?: number;
   /** `LoadedBy` — load group globalIds. */
   loadGroupGlobalIds: string[];
   /** `HasResults` — result group globalIds. */
@@ -176,6 +198,8 @@ export interface StructuralAnalysisModelInfo {
 }
 
 export interface StructuralExtraction {
+  /** Standalone or referenced IFC4/IFC4X3 reinforcement results, indexed by local express id. */
+  reinforcementAreas?: StructuralLoadInfo[];
   analysisModels: StructuralAnalysisModelInfo[];
   members: StructuralMemberInfo[];
   connections: StructuralConnectionInfo[];

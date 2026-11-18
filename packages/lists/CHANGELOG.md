@@ -1,5 +1,19 @@
 # @ifc-lite/lists
 
+## 3.3.0
+
+### Minor Changes
+
+- [#10413](https://github.com/LTplus-AG/ifc-lite/pull/10413) [`f4eb6e2`](https://github.com/LTplus-AG/ifc-lite/commit/f4eb6e28a630f249aaedef0a94047f67f93a1beb) Thanks [@louistrue](https://github.com/louistrue)! - Expose numeric per-object triangle counts in lists and model/object information, counting every instanced occurrence without expanding its geometry. Keep compact metadata through CPU geometry release and update subscribers when topology changes.
+  
+  Renderer hosts publish completion with `setTriangleCountReplayComplete(true)` only after supplying the complete source snapshot, and can query `isTriangleCountReplayComplete()`. A new Scene, cleared source, or source append invalidates the receipt; viewer inspector/list counts remain unavailable during partial replay.
+
+### Patch Changes
+
+- Updated dependencies [[`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`6cbd92c`](https://github.com/LTplus-AG/ifc-lite/commit/6cbd92c9cd0dc6669c2429c80c9fed354ecee192), [`e15f582`](https://github.com/LTplus-AG/ifc-lite/commit/e15f5824cb0747471e0f2dc15c16ef47972fcb89), [`13ab690`](https://github.com/LTplus-AG/ifc-lite/commit/13ab690f111eeebe7dd2ac28a944feadc98fd5c4), [`9505c27`](https://github.com/LTplus-AG/ifc-lite/commit/9505c2734a8061b62277f034a1bb87ba822a025f), [`358d4bf`](https://github.com/LTplus-AG/ifc-lite/commit/358d4bf05c9a723b169fb93b250c59f7366f0ea9), [`a3fc186`](https://github.com/LTplus-AG/ifc-lite/commit/a3fc1869c457a2262033cb42f72a5157f173fe49), [`6c8cdee`](https://github.com/LTplus-AG/ifc-lite/commit/6c8cdee71b36d120f17bbb2907715695f4952ff8), [`dded228`](https://github.com/LTplus-AG/ifc-lite/commit/dded228fd11fa6a7c514be1f6525f9b3906a0a7c), [`53730fd`](https://github.com/LTplus-AG/ifc-lite/commit/53730fdab891c3463e18680f4a84f0c5674a25b0), [`ef74836`](https://github.com/LTplus-AG/ifc-lite/commit/ef748363a34f40ea69805973372e1476f590218b)]:
+  - @ifc-lite/data@7.0.0
+  - @ifc-lite/rules@0.8.1
+
 ## 3.2.0
 
 ### Minor Changes

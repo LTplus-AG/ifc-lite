@@ -619,6 +619,16 @@ fn rebuilt_like_clears_welded_in_object_frame() {
     );
 }
 
+/// `clear` drops the weld flag with the buffers: `build_mesh_data` skips its
+/// weld on it, so a cleared and refilled mesh must not claim the old weld.
+#[test]
+fn clear_drops_welded_in_object_frame() {
+    let mut mesh = Mesh::new();
+    mesh.welded_in_object_frame = true;
+    mesh.clear();
+    assert!(!mesh.welded_in_object_frame);
+}
+
 use crate::test_support::open_edges as open_edges_exact;
 
 /// A cap sliver (A, C, M), its cap neighbour across A-C, and a wall that uses

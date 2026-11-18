@@ -21,7 +21,8 @@ import {
   type AnnotationText2D,
   type AnnotationsForStorey,
 } from '../lib/overlay-parse/symbolic-parse.js';
-import { ensureParseFor, getParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
+import { ensureParseFor, getDisplayParseFor, storeHasParse, subscribeToParseCache } from './symbolic-parse-cache.js';
+import { modelLoadSettled, runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import { useOverlayChannelGate } from './useOverlayChannelGate.js';
 import {
   buildSymbolicLineChannels,
@@ -77,8 +78,20 @@ function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore
 
   useEffect(() => {
     if (!enabled) return undefined;
-    ensureParseFor(stores.map((s) => ({ store: s.store, mutationView: s.mutationView })));
-    return subscribeToParseCache(() => setVersion((v) => v + 1));
+    // A store's FIRST parse is its model's 'overlay-parse' after-load job (idle, after its own load
+    // settled), also when first seen after the settle (a cache hit publishes and settles in one commit).
+    // A parsed store (an edit or re-key) re-parses at once; the render keeps its last parse meanwhile.
+    const state = useViewerStore.getState();
+    const now: Array<Pick<SymbolicActiveStore, 'store' | 'mutationView'>> = [];
+    const cancels: Array<() => void> = [];
+    for (const { store, mutationView, modelId: id } of stores) {
+      const modelId = id === 'legacy' ? null : id;
+      if (storeHasParse(store) && modelLoadSettled(state, modelId)) now.push({ store, mutationView });
+      else cancels.push(runAfterModelSettled({ job: 'overlay-parse', modelId, store }, () => Promise.allSettled(ensureParseFor([{ store, mutationView }]))));
+    }
+    if (now.length > 0) ensureParseFor(now);
+    const unsubscribe = subscribeToParseCache(() => setVersion((v) => v + 1));
+    return () => { for (const cancel of cancels) cancel(); unsubscribe(); };
   }, [enabled, stores]);
 
   return version;
@@ -196,7 +209,7 @@ export function useSymbolicAnnotations(params: {
     // Stores whose parse isn't cached yet drop out (logged below).
     const entries: SymbolicLineChannelsEntry[] = [];
     for (const entry of stores) {
-      const cached = placedSymbols(getParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
+      const cached = placedSymbols(getDisplayParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
       if (cached) entries.push({ cached, toGlobalId: id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id), isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isIsolatedOut: makeHiddenOwnerPredicate(entry, NO_HIDES, visibility?.isolated) });
       else if (debugEnabled()) console.log(`[annotations] store not yet ready: ${entry.modelId}`);
     }
@@ -352,7 +365,7 @@ export function useSymbolicAnnotationsForDrawing(params: {
       : (f: AnnotationFill2D) => fills.push(f);
 
     for (const entry of stores) {
-      const cached = placedSymbols(getParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
+      const cached = placedSymbols(getDisplayParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
       if (!cached) continue;
 
       // Drawing-2D pulls BOTH annotation and grid buckets (issue #862
@@ -426,7 +439,7 @@ export function useSymbolicAnnotationsRichData(params: {
     // Stores whose parse isn't cached yet drop out.
     const entries: SymbolicRichChannelsEntry[] = [];
     for (const entry of stores) {
-      const cached = placedSymbols(getParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
+      const cached = placedSymbols(getDisplayParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
       if (cached) entries.push({ cached, toGlobalId: id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id), isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isIsolatedOut: makeHiddenOwnerPredicate(entry, NO_HIDES, visibility?.isolated), isMeshedFill: meshedFillItems(entry.meshes, id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id)) });
     }
 

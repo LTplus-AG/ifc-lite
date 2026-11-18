@@ -14,6 +14,7 @@ import { undoPendingMutations } from './mutation-undo.js';
 // adding a published diagnostic API or a second mutation ledger.
 import { captureCompoundInverse } from '../../../mutations/dist/compound-inverse.js';
 import { cooperativeOverlay } from '../../../mutations/dist/cooperative-overlay-access.js';
+import { materializeOverlay } from '../../../mutations/dist/sparse-overlay.js';
 
 async function walls() {
   const creator = new IfcCreator();
@@ -33,7 +34,9 @@ describe('#6232 D5 canonical compound undo', () => {
     const anchor = resolveSpatialAnchor(store, [...store.entityIndex.byType.get('IFCBUILDINGSTOREY')!][0], view);
     const sizes: number[] = [];
     for (let i = 0; i < 24; i++) {
-      const before = structuredClone({ ...cooperativeOverlay(editor.getMutationView()).capture() });
+      // #8452: the internal journal is indexed; materialize the checkpoint,
+      // as production snapshotting does, before passing it to structuredClone.
+      const before = structuredClone(materializeOverlay(cooperativeOverlay(editor.getMutationView()).capture()));
       addWallToStore(editor, anchor, { Start: [0, 10 + i, 0], End: [4, 10 + i, 0], Thickness: 0.2, Height: 3, Axis: true });
       const inverse = captureCompoundInverse(before, cooperativeOverlay(view).capture());
       expect(inverse.history).toEqual([]);

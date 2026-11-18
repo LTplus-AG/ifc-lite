@@ -68,8 +68,10 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
       const t = old ? 'Linear' : 'Translational';
       expect(relations?.[0].AppliedCondition).toEqual({expressId:55,type:'IfcBoundaryNodeCondition',name:'Release',components:{[`${t}StiffnessX`]:old ? 1 : true,[`${t}StiffnessY`]:2,[`${t}StiffnessZ`]:old ? 3 : true,RotationalStiffnessX:old ? 4 : false,RotationalStiffnessY:5,RotationalStiffnessZ:old ? 6 : false}});
       expect(relations?.[1].AppliedCondition).toBeUndefined();
+      // The relation and its constraint name their own EXPRESS type, so no reader infers it (#9949).
+      expect(relations?.map(r => r.type)).toEqual(['IfcRelConnectsStructuralMember','IfcRelConnectsWithEccentricity']);
       expect(relations?.[0].ConnectionConstraint).toBeUndefined();
-      expect(relations?.[1].ConnectionConstraint).toEqual({expressId:60,EccentricityInX:1.25,EccentricityInY:-2.5,EccentricityInZ:3.75,PointOnRelatingElement:70,PointOnRelatedElement:71});
+      expect(relations?.[1].ConnectionConstraint).toEqual({expressId:60,type:'IfcConnectionPointEccentricity',EccentricityInX:1.25,EccentricityInY:-2.5,EccentricityInZ:3.75,PointOnRelatingElement:70,PointOnRelatedElement:71});
     });
 
     it('reads edge, face and warping support component values in the declared schema', async () => {
@@ -93,6 +95,21 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
       expect(byId.get(30)?.components).toEqual({[`${prefix}StiffnessX`]:old ? 11 : true,[`${prefix}StiffnessY`]:old ? 22 : false,[`${prefix}StiffnessZ`]:33,RotationalStiffnessX:44,RotationalStiffnessY:55,RotationalStiffnessZ:66,WarpingStiffness:77});
     });
 
+    it('reads analysis placements and IFC2X3 varying surface thickness (#9668)', async () => {
+      const out = await extract(schema, [
+        `#1=IFCSTRUCTURALANALYSISMODEL('model',$,$,$,$,.LOADING_3D.,#90,$,$${old ? '' : ',#91'});`,
+        `#10=IFCSTRUCTURALSURFACEMEMBERVARYING('m',$,$,$,$,$,$,.SHELL.,0.2${old ? ',(0.25,0.3),#92' : ''});`,
+        '#90=IFCAXIS2PLACEMENT3D(#93,$,$);',
+        '#91=IFCLOCALPLACEMENT($,#90);',
+        '#92=IFCSHAPEASPECT((),$,$,.T.,$);',
+        '#93=IFCCARTESIANPOINT((0.,0.,0.));',
+      ]);
+      expect(out.analysisModels[0].OrientationOf2DPlane).toBe(90);
+      expect(out.analysisModels[0].SharedPlacement).toBe(old ? undefined : 91);
+      expect(out.members[0].SubsequentThickness).toEqual(old ? [0.25, 0.3] : undefined);
+      expect(out.members[0].VaryingThicknessLocation).toBe(old ? 92 : undefined);
+    });
+
     it('returns all temperature, planar force, displacement, distortion and warping load values', async () => {
       const loads = [
         ['IFCSTRUCTURALLOADTEMPERATURE', "'Temp',12.,-3.,4.", old ? {DeltaT_Constant:12,DeltaT_Y:-3,DeltaT_Z:4} : {DeltaTConstant:12,DeltaTY:-3,DeltaTZ:4}],
@@ -112,11 +129,19 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
       const actionTypes = old ? ['POINTACTION','LINEARACTION','LINEARACTIONVARYING','PLANARACTION','PLANARACTIONVARYING'] : ['POINTACTION','CURVEACTION','LINEARACTION','SURFACEACTION','PLANARACTION'];
       const reactionTypes = old ? ['POINTREACTION'] : ['POINTREACTION','CURVEREACTION','SURFACEREACTION'];
       const out = await extract(schema, [
-        ...actionTypes.map((type, i) => `#${10+i}=IFCSTRUCTURAL${type}('a${i}',$,$,$,$,$,$,#100,.LOCAL_COORDS.,.T.${type === 'POINTACTION' && !old ? '' : ','}${type === 'POINTACTION' ? (old ? '#200' : '') : (old ? '#200,.PROJECTED_LENGTH.' : '.TRUE_LENGTH.,.CONST.')}${type.endsWith('VARYING') ? ',#201,(#100)' : ''});`),
+        ...actionTypes.map((type, i) => `#${10+i}=IFCSTRUCTURAL${type}('a${i}',$,$,$,$,$,$,#100,.LOCAL_COORDS.,.T.${type === 'POINTACTION' && !old ? '' : ','}${type === 'POINTACTION' ? (old ? '#200' : '') : (old ? '#200,.PROJECTED_LENGTH.' : '.TRUE_LENGTH.,.CONST.')}${type.endsWith('VARYING') ? ',#201,(#101,#100,#100)' : ''});`),
         ...reactionTypes.map((type, i) => `#${30+i}=IFCSTRUCTURAL${type}('r${i}',$,$,$,$,$,$,#100,.GLOBAL_COORDS.${type === 'POINTREACTION' ? '' : ',.CONST.'});`),
         "#100=IFCSTRUCTURALLOADTEMPERATURE('T',1.,2.,3.);",
+        "#101=IFCSTRUCTURALLOADTEMPERATURE('T2',4.,5.,6.);",
       ]);
       for (const a of out.activities.filter(a => a.kind === 'Action')) {
+        // #9668: IFC2X3 action subtype references must retain their own slots.
+        expect(a.CausedBy).toBe(old ? 200 : undefined);
+        expect(a.VaryingAppliedLoadLocation).toBe(a.type.endsWith('Varying') ? 201 : undefined);
+        expect(a.SubsequentAppliedLoads).toEqual(a.type.endsWith('Varying') ? [101,100,100] : undefined);
+        // The resolved payloads follow the same order as the ids (#101 = 4,5,6; #100 = 1,2,3).
+        const t = (x: number, y: number, z: number) => old ? {DeltaT_Constant:x,DeltaT_Y:y,DeltaT_Z:z} : {DeltaTConstant:x,DeltaTY:y,DeltaTZ:z};
+        expect(a.subsequentLoads?.map(l => l?.components)).toEqual(a.type.endsWith('Varying') ? [t(4,5,6), t(1,2,3), t(1,2,3)] : undefined);
         expect(a.globalOrLocal).toBe('LOCAL_COORDS');
         expect(a.destabilizingLoad).toBe(true);
         expect(a.ProjectedOrTrue).toBe(a.type === 'IfcStructuralPointAction' ? undefined : old ? 'PROJECTED_LENGTH' : 'TRUE_LENGTH');

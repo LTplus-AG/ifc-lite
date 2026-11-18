@@ -21,6 +21,7 @@ pub(crate) struct UnsupportedItemState {
     /// Dropped items (no processor / errored), by `IfcType`. Drained per
     /// element or batch by `take_unsupported_items`.
     counts: FxHashMap<String, u64>,
+    pub(super) budget_refusals: Option<Box<super::budget::BudgetRefusalLog>>,
     /// `IfcRepresentationMap` source ids already counted, so a source is
     /// counted ONCE however many `IfcMappedItem` occurrences walk it.
     sources_recorded: FxHashSet<u32>,
@@ -100,6 +101,13 @@ impl GeometryRouter {
         let is_body = crate::router::effective_rep_type(mapped_repr)
             .is_none_or(crate::router::is_body_representation);
         is_body && self.unsupported.borrow_mut().sources_recorded.insert(source_id)
+    }
+
+    /// Whether any walk on this router has claimed `source_id` as a Body
+    /// source. Drains keep the claims; only `forget_sources` clears them. A
+    /// non-Body source is never claimed, so this tells the two apart.
+    pub(crate) fn unsupported_source_claimed(&self, source_id: u32) -> bool {
+        self.unsupported.borrow().sources_recorded.contains(&source_id)
     }
 
     /// Open a scope with an already-claimed source's recording decision.

@@ -1,14 +1,22 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { StepExporter } from '@ifc-lite/export';
 import { existsSync, readFileSync } from 'node:fs';
-import { beforeAll, it, expect, describe } from 'vitest';
+import { afterAll, beforeAll, it, expect, describe } from 'vitest';
 import { QuantityType } from '@ifc-lite/data';
-import { scaleWallQuantities, wallQuantitySetCount } from './storey/storey-level-write.js';
+import { extractQuantitiesOnDemand, parseModel } from '@ifc-lite/parser';
+import { wallQuantitySetCount } from './storey/storey-level-write.js';
+import { scaleWallQuantities } from './storey/wall-height-quantities.js';
 import { recordCompoundMutation, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
+import { copyBatchInStore } from './copy-batch.js';
+import { parse, session } from './__test__/storey-fixtures.oracle.js';
+import { readTopAttachment } from './storey/storey-attachment.js';
+import { readStoreyInventory } from './storey/storey-model.js';
 import { addWallToStore } from './wall.js';
 import { addRoofToStore } from './roof.js';
+import { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
 import { addSlabToStore } from './slab.js';
 import { deriveBaseQuantitySet } from './base-quantities.js';
 import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
@@ -22,6 +30,7 @@ const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 describe.skipIf(!existsSync(wasm))('roof attachments through the mesh kernel (build WASM to run)', () => {
 let api: IfcAPI;
 beforeAll(() => { initSync({ module: readFileSync(wasm) }); api = new IfcAPI(); });
+afterAll(() => api.free());
 it.each(['IFC4', 'IFC2X3', 'IFC4X3'] as const)('%s: a wall top meets both slopes of a gable underside and follows a roof lift (#9296)', async (schema) => {
   const s = await newStorey(schema);
   const roof = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
@@ -40,6 +49,42 @@ it.each(['IFC4', 'IFC2X3', 'IFC4X3'] as const)('%s: a wall top meets both slopes
   expect(translateProduct(s.store, s.view, s.editor, roof, [0, 0, 1]).ok).toBe(true);
   check(1);
 });
+for (const together of [false, true]) {
+  it.each([false, true])(`#9352 a readable footprint-roof copy refits and an unreadable copy reports detachment (roof copied=${together}, reopen=%s)`, async reopen => {
+    const source = await newStorey();
+    const roof = addRoofToStore(source.editor, source.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25,
+      EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
+    const wall = addWallToStore(source.editor, source.anchor, { Start: [5, 0, 0], End: [5, 6, 0], Height: 3, Thickness: .2 }).wallId;
+    setTopConstraintInStore(source.store, source.editor, wall, { kind: 'roof', roofId: roof });
+    let s: Pick<ReturnType<typeof session>, 'store' | 'view' | 'editor'> = reopen ? session(await parse(exportText(source))) : source;
+    // Own shapes allow the same edit after reopening without touching source CSG.
+    const offset: [number, number, number] = together ? [20, 0, 0] : [0, 1, 0];
+    const results = copyBatchInStore(s.store, s.editor, together ? [wall, roof] : [wall], [{ offset }], { shape: 'own' });
+    const copy = results[0].copyId, targetRoof = together ? results[1].copyId : roof;
+    if (reopen) {
+      // File-shape cloning retains REAL wrappers. The existing body reader
+      // cannot resize that copy, so preserve its fixed shape and report it.
+      expect(results[0].unattachedTops).toEqual([{ copyId: copy, reason: expect.stringMatching(/body cannot be read/) }]);
+    } else expect(results[0].unattachedTops ?? []).toEqual([]);
+    const text = new TextDecoder().decode(new StepExporter(s.store, s.view).export({ schema: 'IFC4', applyMutations: true }).content);
+    s = session(await parse(text));
+    const attachment = readTopAttachment(readStoreyInventory(s.store, s.view), copy);
+    if (reopen) expect(attachment).toBeNull();
+    else expect(attachment?.targetElementId).toBe(targetRoof);
+    const meshes = meshWalls(api, text).get(copy) ?? [];
+    expect(meshes.length).toBeGreaterThan(0);
+    for (const y of [2, 3, 5, 6]) {
+      const roofY = together || reopen ? y - 1 : y;
+      const z = 4 + Math.min(roofY, 8 - roofY) * Math.tan(Math.PI / 6);
+      const worldY = together ? y - 1 : y;
+      expect(insideMesh(meshes, [5 + offset[0], z - .03, -worldY])).toBe(true);
+      expect(insideMesh(meshes, [5 + offset[0], z + .03, -worldY])).toBe(false);
+    }
+    const sourceMeshes = meshWalls(api, text).get(wall) ?? [];
+    expect(insideMesh(sourceMeshes, [5, 4 + Math.tan(Math.PI / 6) - .03, -1])).toBe(true);
+    expect(insideMesh(sourceMeshes, [5, 4 + Math.tan(Math.PI / 6) + .03, -1])).toBe(false);
+  });
+}
 it('a slab attachment follows a direct target lift, not only a storey edit (#9296)', async () => {
   const s = await newStorey();
   const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .3, ExtrudedDirection: [0, 0, -1] }).slabId;
@@ -60,6 +105,9 @@ it.each(['roof-first', 'wall-first'] as const)('moving a roof and attached wall 
     selected: order === 'roof-first' ? [roof,wall] : [wall,roof], op: {kind: 'move',delta: [20,0]},
   });
   expect(moved.remesh).toEqual(expect.arrayContaining([roof,wall]));
+  const planes = getFootprintRoofPlaneParts(s.store, s.view, roof);
+  expect(planes).toHaveLength(2);
+  expect(moved.remesh).toEqual(expect.arrayContaining([roof,wall,...planes]));
   const parts = meshWalls(api, exportText(s)).get(wall) ?? [];
   for (const y of [1,4,7]) {
     const z = 4 + Math.min(y,8-y) * Math.tan(Math.PI / 6);
@@ -177,4 +225,34 @@ it('a resize the roof cannot cover is refused without writing, and the four-writ
   expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Signature')).toBe(before);
   expect(resizeRectangleWall(s.store, s.view, s.editor, wall, [3, 0, 0], [3, 8, 0])).toMatchObject({ ok: false });
   expect(s.view.getMutationCount()).toBe(count);
+});
+
+
+it.each([false, true])('#9352 roof quantity upkeep waits for clipping (pitched=%s)', async pitched => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, pitched ? GABLE
+    : { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25 }).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5, 0, 0], End: [5, 8, 0], Height: 3, Thickness: .2 }).wallId;
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'GrossVolume', 4.8, QuantityType.Volume);
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  const quantities = s.view.getQuantitiesForEntity(wall).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
+  expect(quantities.find(q => q.name === 'Height')?.value).toBeCloseTo(pitched ? 3 : 4, 8);
+  expect(quantities.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(pitched ? 4.8 : 6.4, 8);
+  const { store } = await parseModel(new TextEncoder().encode(exportText(s)), { disableWorkerScan: true });
+  const saved = extractQuantitiesOnDemand(store, wall).find(set => set.name === 'Qto_WallBaseQuantities')!.quantities;
+  expect(saved.find(q => q.name === 'Height')?.value).toBeCloseTo(pitched ? 3 : 4, 8);
+  expect(saved.find(q => q.name === 'GrossVolume')?.value).toBeCloseTo(pitched ? 4.8 : 6.4, 8);
+});
+
+it('a carried roof plane does not permit moving an unrelated occurrence sharing the roof placement (#9357)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25,
+    EdgeSlopes: [Math.PI/6,0,Math.PI/6,0] });
+  const peer = addSlabToStore(s.editor, s.anchor, { Position: [40,40,4], Width: 2, Depth: 2, Thickness: .2 });
+  s.editor.setPositionalAttribute(peer.slabId, 5, `#${roof.placementId}`);
+  const before = structuredClone({ records: s.view.getNewEntities(), journal: s.view.getMutations(), next: s.view.peekNextExpressId() });
+  expect(() => transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor,
+    selected: [roof.roofId], op: { kind: 'move', delta: [20,0] } })).toThrow(new RegExp(`#${peer.slabId}; shared occurrences`));
+  expect({ records: s.view.getNewEntities(), journal: s.view.getMutations(), next: s.view.peekNextExpressId() }).toEqual(before);
 });

@@ -11,6 +11,12 @@
 import '@/test/setup-dom.js';
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { getFootprintRoofPlaneParts } from '@ifc-lite/create';
+import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { StepExporter } from '@ifc-lite/export';
+import { AnchorEntityReader } from '../../../../../packages/create/src/in-store/resolve-anchor.js';
+import { refId } from '../../../../../packages/create/src/in-store/host-geometry-frame.js';
+import type { RoofEditOutcome } from './mutation-roof.js';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
@@ -36,8 +42,23 @@ const body = (roofId: number) => {
   const created = target.editor.getNewEntity(roofId)?.attributes ?? [];
   const edited = target.view.getPositionalMutationsForEntity(roofId);
   const attribute = (index: number) => (edited?.has(index) ? edited.get(index) : created[index]);
-  return { shape: attribute(6), type: attribute(8) };
+  const parts = getFootprintRoofPlaneParts(target.dataStore, target.view, roofId);
+  const shape = parts.map(id => target.view.getPositionalMutationsForEntity(id)?.get(6) ?? target.editor.getNewEntity(id)?.attributes[6]);
+  assert.equal(attribute(6), null, 'roof geometry is owned by its aggregated planes (#9357)');
+  return { shape, type: attribute(8) };
 };
+
+function assertRoofRemesh(outcome: RoofEditOutcome, id: number): void {
+  if (!outcome.ok) throw new Error(outcome.reason);
+  const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+  const reader = new AnchorEntityReader(target.dataStore, target.view);
+  const parts = [...reader.ids('IFCRELAGGREGATES')].flatMap(rel => {
+    const a = reader.entity(rel)?.attributes;
+    return a && refId(a[4]) === id && Array.isArray(a[5]) ? a[5].map(refId).filter((n): n is number => n !== null) : [];
+  });
+  assert.ok(parts.length >= 2, 'the edited pitched roof has multiple geometric planes');
+  assert.deepEqual(outcome.remesh, [id, ...parts]);
+}
 
 /** Check the real edit's journal, including absent tags rather than only distinct values. */
 function assertSingleUndoBatch(depth: number): void {
@@ -61,9 +82,9 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.equal(hip.type, '.HIP_ROOF.');
 
     const depth = undoDepth();
-    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0], Overhang: 0.5 }), { ok: true, remesh: [roofId] });
+    assertRoofRemesh(editRoofIn(useViewerStore, MODEL_ID, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0], Overhang: 0.5 }), roofId);
     assert.equal(body(roofId).type, '.GABLE_ROOF.');
-    assert.notEqual(body(roofId).shape, hip.shape, 'the planes were rebuilt');
+    assert.notDeepEqual(body(roofId).shape, hip.shape, 'the planes were rebuilt');
     assertSingleUndoBatch(depth);
 
     useViewerStore.getState().undo(MODEL_ID);
@@ -77,7 +98,7 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     });
     assert.ok('expressId' in added);
     const depth = undoDepth();
-    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] }), { ok: true, remesh: [added.expressId] });
+    assertRoofRemesh(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] }), added.expressId);
     assert.equal(body(added.expressId).type, '.GABLE_ROOF.');
     assertSingleUndoBatch(depth);
     // Fault injection: keep the actual edit and undo rows, lose only their tags.
@@ -87,26 +108,30 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.throws(() => assertSingleUndoBatch(depth), /every edit mutation has a real batch tag/);
   });
 
-  it('publishes the recorded definition with the rebuilt body (#9356 review)', async () => {
+  it('exports the recorded definition with the rebuilt body (#9356 review, #9357)', async () => {
     const { editRoofIn } = await roof();
     const added = useViewerStore.getState().addRoof(MODEL_ID, STOREY, {
-      Position: [0, 0, 3], Width: 10, Depth: 8, Thickness: 0.25, EdgeSlopes: [30 * D, 30 * D, 30 * D, 30 * D],
+      Position: [0, 0, 3], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(30 * D),
     });
     assert.ok('expressId' in added);
-    const published: Array<[string, unknown]> = [];
-    const original = useViewerStore.getState().mirrorPropertyEdit;
-    useViewerStore.setState({ mirrorPropertyEdit: (_model, entity, pset, name, value) => {
-      if (entity === added.expressId && pset === 'IfcLite_RoofFootprint') published.push([name, value]);
-    } });
-    try {
-      assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { Edge: { Index: 1, Slope: 0 }, Overhang: 0.5 }), { ok: true, remesh: [added.expressId] });
-    } finally {
-      useViewerStore.setState({ mirrorPropertyEdit: original });
-    }
-    const sent = Object.fromEntries(published);
-    assert.equal(sent.Overhang, 0.5);
+    assertRoofRemesh(editRoofIn(useViewerStore, MODEL_ID, added.expressId,
+      { Edge: { Index: 1, Slope: 0 }, Overhang: .5 }), added.expressId);
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    const bytes = new StepExporter(target.dataStore, target.view).export({ schema: 'IFC4', applyMutations: true }).content;
+    const parsed = await new IfcParser().parseColumnar(Uint8Array.from(bytes).buffer, { disableWorkerScan: true });
+    const definition = extractPropertiesOnDemand(parsed, added.expressId).find(set => set.name === 'IfcLite_RoofFootprint');
+    assert.ok(definition);
+    const sent = Object.fromEntries(definition.properties.map(p => [p.name, p.value]));
+    assert.equal(sent.Overhang, .5);
     assert.deepEqual(JSON.parse(String(sent.EdgeSlopes)), [30 * D, 0, 30 * D, 30 * D]);
     assert.deepEqual(Object.keys(sent).sort(), ['EdgeSlopes', 'Footprint', 'Overhang', 'Thickness']);
+    const reader = new AnchorEntityReader(parsed, null);
+    const planes = [...reader.ids('IFCRELAGGREGATES')].flatMap(id => {
+      const a = reader.entity(id)?.attributes;
+      return a && refId(a[4]) === added.expressId && Array.isArray(a[5]) ? a[5].map(refId).filter((n): n is number => n !== null) : [];
+    });
+    assert.equal(planes.length, 3, 'the same export contains the three rebuilt plane slabs');
+    for (const id of planes) assert.equal(reader.entity(id)?.type.toUpperCase(), 'IFCSLAB');
   });
 
   it('a refused edit says why and leaves the undo stack alone', async () => {

@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 import type { LineVertices } from './section-2d-line-buffer.js';
 import { bindSectionExclusions, emptyBindGroup, sectionExclusions } from './section-exclusions.js';
 import { PickClipRevision } from './pick-clip-revision.js';
@@ -76,7 +75,8 @@ export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
 export { hostsOtherEntities } from './mesh-entity-hosting.js';
-export { FederationRegistry, federationRegistry } from './federation-registry.js';
+export { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
+export { FederationRegistry, federationRegistry, ModelRangeExtensionRefusedError } from './federation-registry.js';
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
 export * from './types.js';
 export { MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';
@@ -199,11 +199,15 @@ import type { Intersection } from './raycaster.js';
 import type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
+import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
 import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
-import { addMergedSelectionMeshes, hydrateSelectedEntities, retireStaleSelectionHydration } from './selection-hydration.js';
+import { addMergedSelectionMeshes } from './selection-hydration.js';
+import { recordSelectionSource } from './selection-hydration-order.js';
+import { isBorrowedSelection, stageBorrowedSelection } from './textured-selection.js';
+import { SelectionHighlight, SelectionSnapshot } from './selection-highlight.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { resolveOpaqueDrawMode } from './opaque-draw-variants.js'; import { sortOpaqueFrontToBack } from './opaque-draw-order.js'; import { renderTargetBytes, type RenderTargetBytes } from './render-target-bytes.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
@@ -220,7 +224,9 @@ import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
-import { batchForWholeDraw, pushWholeSplit } from './residency.js';
+import { batchForWholeDraw, pushSplit } from './residency.js';
+import { BatchVisibilityCache, canFilterOnGpu } from './batch-visibility.js';
+import { FrameEntityVisibility, MESH_FLAG_ENTITY_VISIBILITY } from './entity-visibility-table.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
@@ -513,26 +519,17 @@ export class Renderer {
     private _lastColorOverrideGen: number = -1;
     private _xrayVersion: number = 0;
     private _lastHadPartialSources: boolean = false;
-    // Cached per-batch visibility, valid only while `_batchVisibilityEpoch`
-    // matches `_visibilityVersion`. Avoids the O(total element count) recompute
-    // (+ per-batch visible-id Set allocation) every frame while hide/isolate
-    // holds. Keyed by batch object (immutable expressIds per instance); a
-    // rebuilt batch is a new object → recomputed lazily. WeakMap, not Map:
-    // residency eviction/restore churn while ONE filter epoch holds (e.g. a
-    // schedule animation) would otherwise pin every dead batch object until
-    // the next visibility change.
-    private _batchVisibilityEpoch: number = -1;
-    private _batchVisibilityCache = new WeakMap<
-        BatchedMesh,
-        { visible: boolean; fullyVisible: boolean; visibleIds?: Set<number> }
-    >();
-    // Selection snapshot from the previous frame — a change triggers disposal of
-    // now-unselected hydrated meshes (leak + double-draw fix). The model index
-    // is part of the snapshot: federated models can share express ids, so a
-    // same-id selection in ANOTHER model is still a change that must free the
-    // old model's hydrated mesh.
-    private _prevHydratedSelection: Set<number> = new Set();
-    private _prevHydratedSelectionModelIndex: number | undefined = undefined; private _prevHydratedSelectionItemExpressId: number | undefined; private _prevHydratedSelectionItemId: number | undefined;
+    // Per-batch hide/isolate class for the current visibility epoch, shared by
+    // the colour and shadow passes (batch-visibility.ts, #10264 S2).
+    private readonly _batchVisibility = new BatchVisibilityCache();
+    // This frame's write into the shared GPU visibility table; false when the
+    // table cannot hold the sets, so partly hidden batches stay undrawn.
+    private readonly _frameVisibility = new FrameEntityVisibility();
+    private _gpuVisibility = false;
+    // The selection and its highlight meshes, kept across frames so a frame of an
+    // unchanged selection does no work per selected entity (#9835).
+    private readonly _selection = new SelectionSnapshot();
+    private readonly _selectionHighlight = new SelectionHighlight();
 
     // One-shot log guard — prints Y-up clip bounds on first section-enable so
     // users can confirm the slider is operating on the intended range.
@@ -700,13 +697,13 @@ export class Renderer {
         // Provide a snapshot of pickable point nodes per pick. The
         // sizing must mirror the live splat shader so click hit-testing
         // matches what the user actually sees on screen.
-        this.pickingManager.setPointPickProvider(() => {
+        this.pickingManager.setPointPickProvider((filter) => {
             const pcr = this.pointCloudRenderer;
             if (!pcr || !pcr.hasAssets()) return null;
             const opts = pcr.getOptions();
             const sizeMode = opts.sizeMode === 'fixed-px' ? 0 : opts.sizeMode === 'adaptive-world' ? 1 : 2;
             return {
-                nodes: pcr.getPickNodes(),
+                nodes: pcr.getPickNodes(filter),
                 sizing: {
                     sizeMode: sizeMode as 0 | 1 | 2,
                     worldRadius: opts.worldRadius,
@@ -1031,10 +1028,8 @@ export class Renderer {
             throw pointCloudSupport() ? new Error('Renderer not initialized. Call init() first.') : pointCloudsUnavailableError();
         }
         this.pickSources.noteEmbeddedChanged(); // first, so an upload that throws partway still counts
-        for (const asset of assets) {
-            this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
-            this.pointCloudRenderer.addAsset(asset);
-        }
+        for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
+        this.pointCloudRenderer.addAssets(assets);
         this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
@@ -1345,30 +1340,10 @@ export class Renderer {
         this.modelBoundsTracker.set(bounds);
     }
 
-    /**
-     * The batched occluders the sun shadow pass should cast, filtered to the same
-     * visibility the colour pass draws (#2670, Phase 2b). Without filtering every
-     * batch casts. With hide/isolate active a fully-hidden batch is dropped and a
-     * partially-hidden OPAQUE batch casts only its visible subset via the SAME
-     * cached partial sub-batch the colour pass renders (shared cache key
-     * `${colorKey}:${id}` + `_partialBatchEpoch`), so no extra clone memory and no
-     * phantom shadow from an individually-hidden element in a shared batch. That
-     * sharing lapses while X-Ray splits the same batch further (#4129): the colour
-     * pass then draws `:x0`/`:x1` slots and this slot owns its own clone — right,
-     * since a ghosted element still casts its real shadow.
-     *
-     * Transparent (glass-like) partially-hidden parents are left to the collector's
-     * material-alpha filter — they don't cast at all, so building a visible subset
-     * for them would waste a clone (and diverge from the colour pass's promotion
-     * split keys). Fully-visible transparent batches pass through unchanged and the
-     * collector drops them.
-     */
-    private shadowOccluderBatches(
-        options: RenderOptions,
-        device: GPUDevice,
-        hasVisibilityFiltering: boolean,
-    ): BatchedMesh[] {
-        return shadowOccluderBatches(this.scene, options, device, hasVisibilityFiltering, this.pipeline, this._partialBatchEpoch);
+    /** The batched occluders the sun shadow pass casts (shadow-occluder-batches.ts). */
+    private shadowOccluderBatches(options: RenderOptions, device: GPUDevice): BatchedMesh[] {
+        const visibility = (batch: BatchedMesh) => this._batchVisibility.classify(batch, this._visibilityVersion, options.hiddenIds, options.isolatedIds);
+        return shadowOccluderBatches(this.scene, device, this.pipeline, visibility, this._gpuVisibility);
     }
 
     /** Guarded entry point (#4885) for the unguarded body below. */
@@ -1395,13 +1370,9 @@ export class Renderer {
         const { vertexBuffer, indexBuffer, indexCount, transform, rteOrigin } = uploadIndividualMesh(
             this.device.getDevice(), meshData, this.individualMeshFrame(meshData));
 
-        // Keep the hydrated mesh in its decoded local frame.  Folding this
-        // origin back into f32 vertices used to make selection/highlight the
-        // only mesh path that lost centimetres at national-grid coordinates.
-        // Flagged `hydrated` so it can be freed when its entity leaves the
-        // selection — these duplicate geometry already drawn by a batch and would
-        // otherwise accumulate + double-draw (see Scene.disposeHydratedMeshesExcept).
-        this.scene.addMesh({
+        // Keep the source frame and identity: borrowed pieces do not occupy
+        // the owned list's ordinals when hydration history is reconstructed.
+        const mesh: Mesh = {
             expressId: meshData.expressId,
             modelIndex: meshData.modelIndex,  // Preserve modelIndex for multi-model selection
             // Source item, so a pick can report it (#2985) — via the shared rule,
@@ -1417,12 +1388,14 @@ export class Renderer {
             color: meshData.color,
             ...(meshData.material ? { finish: meshData.material } : {}), // #5582
             hydrated: true,
-        });
+        };
+        recordSelectionSource(this.scene, mesh, meshData);
+        this.scene.addMesh(mesh);
     }
 
     /** Guarded like createMeshFromData: one merged highlight per colour and frame (#9192). */
-    private createMergedMeshes(pieces: readonly MeshData[], merged: NonNullable<Mesh['mergedSelection']>): void {
-        this.guardedHighlightUpload('merged selection highlight', () => addMergedSelectionMeshes(this.scene, this.device.getDevice(), pieces, merged, (m) => this.individualMeshFrame(m)));
+    private createMergedMeshes(pieces: readonly MeshData[], merged: NonNullable<Mesh['mergedSelection']>): boolean {
+        return this.guardedHighlightUpload('merged selection highlight', () => { addMergedSelectionMeshes(this.scene, this.device.getDevice(), pieces, merged, (m) => this.individualMeshFrame(m)); return true; }) === true;
     }
 
     /** A highlight upload that fails leaves nothing behind and is retried next frame; it warns once per kind (#9192). */
@@ -1434,35 +1407,6 @@ export class Renderer {
             console.warn(`[Renderer] ${kind} upload failed; it is skipped and retried on a later frame:`, outcome.error);
         }
         return undefined;
-    }
-
-    /**
-     * On a selection change, free the hydrated (pick/selection-highlight)
-     * individual meshes whose entity is no longer selected. These duplicate
-     * geometry already drawn by a batch; without this they accumulate in
-     * scene.meshes (VRAM grows with selection history) and — for transparent
-     * entities — re-draw every frame on top of their still-drawn batch copy
-     * (double alpha-blend darkens glass). Currently-selected entities keep their
-     * hydrated meshes so the highlight pass doesn't rebuild them each change.
-     * No-op when the selection set is unchanged to avoid per-frame buffer churn.
-     * Selection identity is the (modelIndex, expressId) PAIR: federated models
-     * can share express ids, so re-selecting the same id in a different model
-     * must still free the previous model's hydrated mesh (it would otherwise
-     * stay resident and keep drawing unhighlighted).
-     */
-    private syncHydratedSelectionMeshes(selected: ReadonlySet<number>, selectedModelIndex: number | undefined, itemFilterExpressId: number | undefined, itemFilterItemId: number | undefined): void {
-        const prev = this._prevHydratedSelection;
-        let changed = selected.size !== prev.size || selectedModelIndex !== this._prevHydratedSelectionModelIndex
-            || itemFilterExpressId !== this._prevHydratedSelectionItemExpressId || itemFilterItemId !== this._prevHydratedSelectionItemId;
-        if (!changed) {
-            for (const id of selected) {
-                if (!prev.has(id)) { changed = true; break; }
-            }
-        }
-        if (!changed) return;
-        this._prevHydratedSelection = new Set(selected);
-        this._prevHydratedSelectionModelIndex = selectedModelIndex; this._prevHydratedSelectionItemExpressId = itemFilterExpressId; this._prevHydratedSelectionItemId = itemFilterItemId;
-        this.scene.disposeHydratedMeshesExcept(selected, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
     }
 
     /**
@@ -1721,15 +1665,7 @@ export class Renderer {
         const selectedId = options.selectedId;
         const selectedIds = options.selectedIds;
         const selectedModelIndex = options.selectedModelIndex;
-        const selectedExpressIds = new Set<number>();
-        if (selectedId !== undefined && selectedId !== null) {
-            selectedExpressIds.add(selectedId);
-        }
-        if (selectedIds) {
-            for (const id of selectedIds) {
-                selectedExpressIds.add(id);
-            }
-        }
+        const selectedExpressIds = this._selection.update(selectedId, selectedIds, options.isInteracting === true);
         const itemFilterExpressId = (options.selectedItemId !== undefined && selectedId !== undefined && selectedId !== null) ? selectedId : undefined; const itemFilterItemId = itemFilterExpressId !== undefined ? options.selectedItemId : undefined; // #4382
 
         // ─── Visibility / override epoch bookkeeping ────────────────────────
@@ -1748,7 +1684,7 @@ export class Renderer {
         const visibilityChanged = newVisibilityVersion !== this._visibilityVersion;
         this._visibilityVersion = newVisibilityVersion;
         const colorOverrideGen = this.scene.getColorOverrideGeneration();
-        const xrayVersion = this._xrayEpochs.update(options, selectedExpressIds);
+        const xrayVersion = this._xrayEpochs.update(options, selectedExpressIds, this._selection.getVersion());
         const partialEpochChanged =
             visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen || xrayVersion !== this._xrayVersion;
         if (partialEpochChanged) {
@@ -1768,22 +1704,15 @@ export class Renderer {
         }
         this._lastHadPartialSources = hasPartialSources;
 
-        // Free hydrated (pick/selection) individual meshes whose entity is no
-        // longer selected BEFORE we snapshot the mesh list, so stale glass
-        // doesn't double-draw over its batch copy or accumulate until clear().
-        // Only acts on a selection change (avoids per-frame buffer churn) and
-        // never touches authored (non-hydrated) or batch geometry.
-        this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
-        retireStaleSelectionHydration(this.scene, selectedExpressIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId);
+        // Resolve before snapshotting meshes: retire old copies and borrow only live textured buffers.
+        const selectedMeshes = this._selectionHighlight.resolve(this.scene, {
+            selected: selectedExpressIds, selectionVersion: this._selection.getVersion(),
+            hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds, visibilityVersion: newVisibilityVersion,
+            modelIndex: selectedModelIndex, itemFilterExpressId, itemFilterItemId, pool: this.scene.getBatchedMeshes().length > 0 || this.scene.getTexturedMeshes().length > 0,
+        }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged), { device, pipeline: this.pipeline });
 
         let meshes = this.scene.getMeshes();
 
-        // Keep the GPU-instanced occurrences' per-instance selected flag in sync.
-        // The Scene diff makes this a no-op (no writeBuffer) when the set is
-        // unchanged, so calling it every frame is cheap; it no-ops entirely when
-        // no instanced data is loaded. The flat path handles selection inline
-        // below via `selectedExpressIds`.
-        this.scene.setInstancedSelection(selectedExpressIds, itemFilterExpressId, itemFilterItemId);
         // Mirror hide/isolate onto the instanced occurrences (the flat path filters
         // its mesh list by hiddenIds/isolatedIds below; the instanced pass can't, so
         // it carries a per-instance hidden flag the shader discards on). Diffed → a
@@ -1945,6 +1874,7 @@ export class Renderer {
                 : null;
             this._sectionExcludedIds = new Set(options.sectionExcludedIds);
             sectionExclusions(device).update(this._sectionExcludedIds);
+            this._gpuVisibility = this._frameVisibility.write(sectionExclusions(device), this._visibilityVersion, options.hiddenIds, options.isolatedIds, () => this.requestRender());
             this._activePickExtraPlanes = extraClipPlanes.length > 0 ? extraClipPlanes.map((p) => ({ normal: [...p.normal] as [number, number, number], distance: p.distance, flipped: p.flipped })) : null;
             this._activePickClipBox = options.clipBox?.enabled
                 ? {
@@ -2097,7 +2027,7 @@ export class Renderer {
                             // sub-batch the colour pass renders), so an
                             // individually-hidden element in a shared batch stops
                             // casting instead of throwing a phantom shadow.
-                            batches: this.shadowOccluderBatches(options, device, hasVisibilityFiltering),
+                            batches: this.shadowOccluderBatches(options, device),
                             instanced: this.scene.getInstancedTemplates(),
                             textured: this.scene.getTexturedMeshes(),
                             // Individual meshes cast too (Renderer.addMesh() /
@@ -2283,7 +2213,7 @@ export class Renderer {
             // (#5390) after `pass.end()` below. Populated inside the batched
             // branch, where the highlight draw itself happens; empty in the
             // no-batches fallback, which does not draw selection either.
-            let selectedMeshesForMask: Mesh[] = [];
+            let selectedMeshesForMask: readonly Mesh[] = [];
 
             // Check if we have batched meshes (preferred for performance)
             const allBatchedMeshes = this.scene.getBatchedMeshes();
@@ -2332,60 +2262,29 @@ export class Renderer {
                     };
                 }
 
-                // Per-batch visibility (only meaningful while filtering is active).
-                // A batch is visible if ANY of its elements are visible, fully
-                // visible if ALL are. Cached across frames keyed by the visibility
-                // version so the O(total element count) scan + per-batch visible-id
-                // Set allocation happens once per visibility change, not per frame.
-                // The cache map is keyed by batch object (immutable expressIds per
-                // instance); a rebuilt batch is a new object → recomputed lazily.
-                if (this._batchVisibilityEpoch !== this._visibilityVersion) {
-                    this._batchVisibilityCache = new WeakMap();
-                    this._batchVisibilityEpoch = this._visibilityVersion;
-                }
-                const batchVisibilityCache = this._batchVisibilityCache;
-                const getBatchVisibility = (
-                    batch: typeof allBatchedMeshes[number],
-                ): { visible: boolean; fullyVisible: boolean; visibleIds?: Set<number> } => {
-                    let vis = batchVisibilityCache.get(batch);
-                    if (vis) return vis;
-                    const total = batch.expressIds.length;
-                    // Build the visible-id set in one pass; drop it for fully-visible
-                    // batches (they draw from their own buffers, no subset needed).
-                    const visibleIds = new Set<number>();
-                    for (const expressId of batch.expressIds) {
-                        const isHidden = options.hiddenIds?.has(expressId) ?? false;
-                        const isIsolated = !hasIsolatedFilter || options.isolatedIds!.has(expressId);
-                        if (!isHidden && isIsolated) visibleIds.add(expressId);
-                    }
-                    const fullyVisible = visibleIds.size === total;
-                    vis = {
-                        visible: visibleIds.size > 0,
-                        fullyVisible,
-                        visibleIds: fullyVisible ? undefined : visibleIds,
-                    };
-                    batchVisibilityCache.set(batch, vis);
-                    return vis;
-                };
-
-                // Separate batches into opaque and transparent, filtering by visibility
-                // IMPORTANT: Only render FULLY visible batches - partially visible batches
-                // need individual mesh rendering to show only the visible elements
+                // Separate batches into opaque and transparent, filtering by visibility.
+                // A partly hidden batch is drawn whole and the GPU discards its hidden
+                // entities (#10264 S2): `filtered` maps each such draw to its visible
+                // part, which decides its fade, ghosting and routing.
                 const opaqueBatches: typeof allBatchedMeshes = [];
                 const transparentBatches: typeof allBatchedMeshes = [];
+                const filtered = new Map<BatchedMesh, AlphaBatchLike>();
+                const drawnPart = (batch: BatchedMesh): AlphaBatchLike => filtered.get(batch) ?? batch;
 
-                // PERFORMANCE FIX: Track partially visible batches for sub-batch rendering
-                // Instead of creating 10,000+ individual meshes, we create cached sub-batches.
-                // The collector also owns the override-promotion split (#677) and the
-                // per-entity X-Ray alpha split (#4129) — see partial-batch-requests.ts.
+                // Sub-batches only for colour, never for visibility: the override-
+                // promotion split (#677) and the per-entity X-Ray alpha split (#4129),
+                // see partial-batch-requests.ts.
                 const partialRequests = new PartialBatchRequests(
                     colorOverrides,
                     xray,
                     (b) => this.scene.canPartitionBatch(b),
                 );
                 const partiallyVisibleBatches = partialRequests.items;
-                const pushVisibleAsPartial = partialRequests.pushVisible.bind(partialRequests);
-                const pushAlphaSplit = partialRequests.pushAlphaSplit.bind(partialRequests);
+                const route = (b: BatchedMesh, part: AlphaBatchLike | null): void => {
+                    if (part) filtered.set(b, part);
+                    const drawn = part ?? b;
+                    (shouldRouteBatchTransparent(alphaForBatch(drawn, b.color[3]), drawn.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(b);
+                };
 
                 for (let batch of allBatchedMeshes) {
                     // Frustum culling: skip batches entirely outside the camera view
@@ -2412,49 +2311,33 @@ export class Renderer {
                         }
                     }
 
-                    const alpha = alphaForBatch(batch, batch.color[3]);
+                    // Skip a completely hidden batch; a partly hidden one keeps its visible part.
+                    const vis = hasVisibilityFiltering ? this._batchVisibility.classify(batch, this._visibilityVersion, options.hiddenIds, options.isolatedIds) : 'all';
+                    if (vis === 'none') continue;
+                    const part = vis === 'all' ? null : vis;
+                    const alpha = alphaForBatch(part ?? batch, batch.color[3]);
                     const nativelyTransparent = alpha < 0.99;
 
-                    // Check visibility
-                    if (hasVisibilityFiltering) {
-                        const vis = getBatchVisibility(batch);
-                        if (!vis.visible) continue; // Skip completely hidden batches
-
-                        // Handle partially visible batches - create sub-batches instead of individual meshes
-                        if (!vis.fullyVisible) {
-                            // The visible subset was computed once for this
-                            // visibility epoch (cached) — reuse it, don't rebuild.
-                            const visibleIds = vis.visibleIds;
-                            if (visibleIds && visibleIds.size > 0 && !pushAlphaSplit(batch, visibleIds)) {
-                                pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
-                            }
-                            // A COLD parent has no CPU meshData, so the sub-batch above comes back
-                            // empty: restore its pieces (only them, the subset never reads the parent's
-                            // GPU buffers, #9050) or the subset stays missing under hide/isolate forever.
-                            // Missing this frame, so it counts as not resident (#9227).
-                            if (batch.gpuResident === false && this.scene.requestBatchPieces(batch)) frameBatchesNotResident++;
-                            continue; // Don't add batch to render list
-                        }
-                    }
-
-                    // Fully visible but drawn as sub-batches: per X-Ray alpha (#4129), or
-                    // promoted/remaining for a transparent batch with mixed overrides
-                    // (#677). Decided before the residency step, since the subsets never
-                    // read the parent's own GPU buffers (#9136).
-                    const split = pushWholeSplit(partialRequests, this.scene, batch, nativelyTransparent);
+                    // Drawn as sub-batches: per X-Ray alpha (#4129), or promoted/remaining
+                    // for a transparent batch with mixed overrides (#677). Decided before
+                    // the residency step, since the subsets never read the parent's own
+                    // GPU buffers (#9136).
+                    const split = pushSplit(partialRequests, this.scene, batch, nativelyTransparent, part?.visibleIds ?? null);
                     if (split !== 'whole') { if (split === 'pieces') frameBatchesNotResident++; continue; }
+                    // Never drawn with its hidden entities: without the GPU test it stays out.
+                    if (part && !canFilterOnGpu(batch, this._gpuVisibility)) { frameBatchesNotResident++; continue; }
 
                     // Drawn from its OWN GPU buffers. An evicted batch (residency budget,
                     // #1682 phase 3a) is skipped for a frame while its rebuild is queued;
-                    // an evicted parent past the rebuild cap draws last frame's subsets (#9227).
+                    // an evicted parent past the rebuild cap draws last frame's subsets (#9227),
+                    // under this frame's visibility test when it is partly hidden.
                     const whole = batchForWholeDraw(this.scene, batch, device, this.pipeline);
                     if (!whole) {
                         frameBatchesNotResident++;
-                        for (const sub of this.scene.subsetStandIns(batch)) (shouldRouteBatchTransparent(alphaForBatch(sub, sub.color[3]), sub.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(sub);
+                        for (const sub of this.scene.subsetStandIns(batch)) route(sub, part);
                         continue;
                     }
-                    batch = whole; // an evicted parent's rebuild when its subset was on screen (#9050)
-                    (shouldRouteBatchTransparent(alpha, batch.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(batch);
+                    route(whole, part); // an evicted parent's rebuild when its subset was on screen (#9050)
                 }
 
                 // Retire the alpha-split slots this frame's classification did NOT
@@ -2514,7 +2397,7 @@ export class Renderer {
                     tpl[32] = batch.color[0];
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
-                    tpl[35] = alphaForBatch(batch, batch.color[3]);
+                    tpl[35] = alphaForBatch(drawnPart(batch), batch.color[3]);
                     packMeshMaterial(tpl, batch.color[3], batch.finish);
 
                     // Rebase batch-local vertices; translation lives in tpl[28..30].
@@ -2526,7 +2409,7 @@ export class Renderer {
                     // fragment work (section/shadow); vertex projection uses
                     // this f64-subtracted high/low origin instead.
                     if (!relativeToEyeFrame.tryPackDrawableOrigin(o ?? [0, 0, 0], tpl, MESH_UNIFORM_OFFSET.drawableDelta)) return;
-                    tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
+                    tplFlags[0] = (tplFlags[0] | MESH_FLAG_RTE_DRAWABLE) & ~MESH_FLAG_ENTITY_VISIBILITY | (filtered.has(batch) ? MESH_FLAG_ENTITY_VISIBILITY : 0);
 
                     // Quantized dequantization params (issue #1682 phase 6);
                     // zeroed for f32 batches (their pipelines ignore them).
@@ -2566,9 +2449,10 @@ export class Renderer {
                 const opaqueMode = (instancedDiscards?: boolean) => resolveOpaqueDrawMode({ perspective: this.camera.getProjectionMode() !== 'orthographic',
                     clipping: sectionPlaneData?.enabled === true || tplClipBit !== 0 || extraClipPlanes.length > 0, edges: needsObjectIdPass, instancedDiscards });
                 const flatMode = opaqueMode();
+                const filteredMode = { ...flatMode, discardFree: false }; // the visibility test discards
                 const pipeFor = (batch: typeof allBatchedMeshes[0], kind: 'opaque' | 'transparent'): GPURenderPipeline => {
-                    if (kind === 'opaque') return this.pipeline!.opaquePipeline(batch.quantized ? 'quantized' : 'flat', flatMode);
-                    const ghost = xray.isGhostBatch(batch) ? this.pipeline!.getGhostPipeline(!!batch.quantized, () => this.requestRender()) : null;
+                    if (kind === 'opaque') return this.pipeline!.opaquePipeline(batch.quantized ? 'quantized' : 'flat', filtered.has(batch) ? filteredMode : flatMode);
+                    const ghost = xray.isGhostBatch(drawnPart(batch)) ? this.pipeline!.getGhostPipeline(!!batch.quantized, () => this.requestRender()) : null;
                     return ghost ?? (batch.quantized ? this.pipeline!.getQuantizedPipelineVariant('transparent') : null) ?? this.pipeline!.getTransparentPipeline();
                 };
 
@@ -2698,7 +2582,7 @@ export class Renderer {
                         // world origin.
                         tpl[28] = tm.origin[0]; tpl[29] = tm.origin[1]; tpl[30] = tm.origin[2];
                         if (!relativeToEyeFrame.tryPackDrawableOrigin(tm.origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
-                        tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
+                        tplFlags[0] = (tplFlags[0] | MESH_FLAG_RTE_DRAWABLE) & ~MESH_FLAG_ENTITY_VISIBILITY; // filtered on the CPU above
                         tpl[32] = txOverride ? txOverride[0] : tm.color[0];
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];
@@ -2723,13 +2607,8 @@ export class Renderer {
                     }
                 }
 
-                // PERFORMANCE FIX: Render partially visible batches as sub-batches (not individual meshes!)
-                // This is the key optimization: instead of 10,000+ individual draw calls,
-                // we create cached sub-batches with only visible elements and render them as single draw calls.
-                // We also collect resolved opaque sub-batches so the section cap pass below can
-                // include them in its parity count — otherwise hidden/isolated opaque geometry
-                // would show open, un-capped cut holes.
-                const opaqueSubBatches: typeof allBatchedMeshes = [];
+                // The X-Ray and promotion sub-batches: cached subsets of a batch's
+                // pieces, each drawn with one call.
                 if (partiallyVisibleBatches.length > 0) {
                     // Transparent sub-batches are deferred to a second pass below:
                     // they write no depth, so an opaque sub-batch drawn after one
@@ -2768,7 +2647,6 @@ export class Renderer {
                             // so culling punched holes (wall read hollow). See the
                             // full-batch path above.
                             usePipeline(pipeFor(subBatch, 'opaque'));
-                            opaqueSubBatches.push(subBatch);
                             renderBatch(subBatch, true); // one draw call for the whole subset
                         }
                     }
@@ -2791,27 +2669,6 @@ export class Renderer {
 
                 // Prepare selected meshes once, then render them LAST so transparent batches
                 // don't overwrite highlight color (glass otherwise appears unhighlighted).
-                const visibleSelectedIds = new Set<number>();
-                for (const selId of selectedExpressIds) {
-                    if (options.hiddenIds?.has(selId)) continue;
-                    if (hasIsolatedFilter && !options.isolatedIds!.has(selId)) continue;
-                    visibleSelectedIds.add(selId);
-                }
-
-                hydrateSelectedEntities(
-                    this.scene, visibleSelectedIds, selectedModelIndex, itemFilterExpressId, itemFilterItemId,
-                    (piece) => { this.createMeshFromData(piece); },
-                    (pieces, merged) => { this.createMergedMeshes(pieces, merged); },
-                );
-
-                const selectedMeshes = visibleSelectedIds.size > 0
-                    ? this.scene.getMeshes().filter(mesh => {
-                        if (!visibleSelectedIds.has(mesh.expressId)) return false;
-                        if (selectedModelIndex !== undefined && mesh.modelIndex !== selectedModelIndex) return false;
-                        if (mesh.expressId === itemFilterExpressId && mesh.geometryItemId !== itemFilterItemId) return false; // #4382
-                        return true;
-                    })
-                    : [];
                 selectedMeshesForMask = selectedMeshes;
 
                 // Transparent instanced sub-pass — drawn here (after ALL opaque incl. the
@@ -2911,9 +2768,9 @@ export class Renderer {
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     this.uniformOverrideU32[0] = mesh.expressId;
-                    device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
+                    if (!stageBorrowedSelection(mesh, tpl)) device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
-                    usePipeline(this.pipeline.getSelectionPipeline());
+                    usePipeline(isBorrowedSelection(mesh) ? this.pipeline.getTexturedSelectionPipeline() : this.pipeline.getSelectionPipeline());
                     pass.setBindGroup(0, mesh.bindGroup);
                     pass.setVertexBuffer(0, mesh.vertexBuffer);
                     pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
@@ -2962,6 +2819,7 @@ export class Renderer {
             // viewport size to convert pixel sizes into clip-space offsets.
             if (this.pointCloudRenderer && this.pointCloudRenderer.hasAssets()) {
                 this.pointCloudRenderer.draw(pass, {
+                    hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds,
                     viewProj: relativeToEyeFrame.getViewProjection().m,
                     relativeToEyeFrame,
                     sectionPlane: sectionPlaneData
@@ -3010,7 +2868,7 @@ export class Renderer {
                 && (!hasIsolatedFilter || options.isolatedIds!.has(hovered.id)) ? hovered.id : null;
             const hoverModel = hovered?.modelIndex;
             const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel))
-                ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))) ?? []
+                ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m), this.scene.getPickGeometryRevision())) ?? []
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,
@@ -3304,6 +3162,9 @@ export class Renderer {
     getCamera(): Camera {
         return this.camera;
     }
+
+    /** Diagnostic (#10264): every CPU geometry array the scene and the raycast index reference; views only. */
+    visitCpuGeometry(visit: CpuGeometryVisitor): void { this.scene.visitCpuGeometry(visit); this.raycastEngine.visitCpuGeometry(visit); }
 
     /** MEASURED external surface, not the 4400-line `Scene`: widening `SceneContents` is a published-API decision, not a detail — see `scene-contents.ts`. */
     getScene(): SceneContents {
@@ -3617,7 +3478,7 @@ export class Renderer {
         }
 
         releaseRendererGpuTiming(this);
-        // Render pipelines (textures + uniform buffers)
+        this._selectionHighlight.clear(); // borrowed uniform slots, never source geometry
         this.pipeline?.destroy();
         this.pipeline = null;
         this.scene.setQuantizedBatches(false);

@@ -68,6 +68,7 @@ export function effectiveStoreyResolver(
         }
       }
       const sourceParents = store.relationships.inverse.getEdges(id, RelationshipType.Aggregates)
+        .concat(store.relationships.inverse.getEdges(id, RelationshipType.Nests))
         .filter((edge) => edgeSurvives(edge, superseded)).map((edge) => edge.target);
       for (const parent of [...sourceParents, ...(aggregateParents.get(id) ?? [])]) {
         // A spatial child a storey aggregates (IfcSpace, IfcSpatialZone) is on

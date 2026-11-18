@@ -30,6 +30,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'serverPropertiesRuns', // #9538 model-owned optional property polling
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
+  'siteContextAbort', 'siteContextCategories', 'siteContextError', 'siteContextLastChoice', 'siteContextModels', 'siteContextProgress', 'siteContextRequest', 'siteContextStats', // site context: the fetch and its context models belong to the session
+  'floodCheck', 'floodColoursShown', // flood check: the screening result belongs to the session's checked model
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'documentPanelVisible', // #4594 documents: templates survive, the panel closes
   'flowPanelVisible', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: graphs survive, the last run holds handles of the outgoing model
@@ -95,14 +97,18 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
   'sheetEnabled', 'sheetPanelVisible', // #6232: the Split tool's fields moved into the element.split command gesture
-  'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
-  'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D', 'dimension2DUndo', 'dimension2DRedo', // dimensions die with the session like the other markup
+  'titleBlockEditorVisible', 'typeViewMode',
+  'structuralViewMode', 'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
   'analysisRunGeneration', // A1/A2: a session reset ends every in-flight analysis run
 ];
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'structuralViewMode',
+  'siteContextAbort', 'siteContextCategories', 'siteContextModels', 'siteContextProgress', 'siteContextRequest', // site context: every context-model record goes with the models, no category stays reported loaded, and a running fetch ends (#10481 review)
+  'floodCheck', // flood check: the result and its verdict colours go with the checked model
   'serverPropertiesRuns', // #9538 model-owned optional property polling
   'pendingPresentationLayerReveal', // #9273 one-shot layer reveal belongs to the outgoing model
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
@@ -176,7 +182,7 @@ const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'polygonArea2DPoints', 'polygonArea2DResults',
   'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys', 'selectionRevision',
-  'textAnnotation2DEditing', 'textAnnotations2D',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D', 'dimension2DUndo', 'dimension2DRedo',
 ];
 
 /**
@@ -235,6 +241,8 @@ function modelRemovedFixture() {
 const PINNED_OWNED_KEYS: readonly string[] = [
   'serverPropertiesRuns', // #9538 model-owned optional property polling
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
+  'siteContextAbort', 'siteContextCategories', 'siteContextError', 'siteContextLastChoice', 'siteContextModels', 'siteContextProgress', 'siteContextRequest', 'siteContextStats', // site context: the fetch and its context models belong to the session
+  'floodCheck', 'floodColoursShown', // flood check: the screening result belongs to the session's checked model
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'authoringDefaults', // #6232 M2: type / layer-set picks name one model's entities; dimensions survive
   'documentPanelVisible', // #4594 documents
@@ -303,8 +311,9 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
   'sheetEnabled', 'sheetPanelVisible', // #6232: the Split tool's fields moved into the element.split command gesture
-  'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
-  'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
+  'textAnnotation2DEditing', 'textAnnotations2D', 'tagAnnotations2D', 'dimension2DPoints', 'dimensions2D', 'dimension2DUndo', 'dimension2DRedo',
+  'titleBlockEditorVisible', 'typeViewMode',
+  'structuralViewMode', 'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
   'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 owned by the draft slice
   'analysisRunGeneration', // A1/A2

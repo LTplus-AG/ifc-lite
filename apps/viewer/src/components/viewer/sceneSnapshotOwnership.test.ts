@@ -34,6 +34,7 @@ describe('sceneSnapshotKey', () => {
     const key = sceneSnapshotKey('p', 'model', visibility);
     assert.equal(sceneSnapshotKey('p', 'model', { ...visibility }), key);
     assert.notEqual(sceneSnapshotKey('other', 'model', visibility), key);
+    assert.notEqual(sceneSnapshotKey('p', 'model', visibility, 'physical'), key, '#9923 mode belongs to the saved snapshot key');
     assert.notEqual(sceneSnapshotKey('p', 'types', visibility), key);
     assert.notEqual(sceneSnapshotKey('p', 'model', { ...visibility, spaces: true }), key);
   });

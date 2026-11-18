@@ -262,8 +262,8 @@ export class IFCLiteEmbed {
 
   /**
    * Toggle IFC type visibility: `spaces`, `spatialZones`, `openings`,
-   * `virtualElements`, `site`, `ifcAnnotations`, `ifcGrid`. Omitted flags are
-   * left as they are. See `TypeVisibilityFlags` for the classes each one gates.
+   * `virtualElements`, `site`, `ifcAnnotations`, `ifcGrid`, `structuralGlyphs`.
+   * Omitted flags are left as they are. See `TypeVisibilityFlags` for the classes each one gates.
    */
   setTypeVisibility(opts: TypeVisibilityFlags): Promise<void> {
     return this.request('SET_TYPE_VISIBILITY', opts) as Promise<void>;

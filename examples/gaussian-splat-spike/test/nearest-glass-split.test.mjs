@@ -11,7 +11,10 @@ import { fileURLToPath } from 'node:url';
 import { buildScene } from '../contract/peel-scene.mjs';
 import { compareByLayers, judgeNearest, layerCounts, mirrorSensitive } from '../contract/peel-nearest.mjs';
 import { glassOverSplats } from '../contract/native-adapter-glass-reference.mjs';
-import { depthConventionRendererHash, publishedShadersHash, readDepthConventionRenderer, readPublishedShaders, stripDepthIntervalHook } from '../depth-patch.mjs';
+import {
+  depthConventionRendererHash, publishedShadersHash, readDepthConventionRenderer, readPublishedShaders, rendererBefore9018, shadersBefore9018,
+  stripDepthIntervalHook, workspace9018RendererHash, workspace9018ShadersHash, workspacePatchedRendererHash, workspacePatchedShadersHash,
+} from '../depth-patch.mjs';
 import { createHash } from 'node:crypto';
 
 const image = texels => new Uint8Array(texels.flat());
@@ -75,8 +78,13 @@ test('stripping the #8564 depth-interval hook restores the recorded upstream byt
   const sha256 = text => createHash('sha256').update(text).digest('hex');
   const shaders = await readFile(dist + 'splat-shaders.js', 'utf8'), renderer = await readFile(dist + 'splat-renderer.js', 'utf8');
   assert.ok(shaders.includes('getSplatDepthIntervalWGSLShader') && renderer.includes('depthIntervalSamples'), 'the installed patch carries the hook');
-  assert.equal(sha256(stripDepthIntervalHook(shaders)), publishedShadersHash);
-  assert.equal(sha256(stripDepthIntervalHook(renderer)), depthConventionRendererHash);
+  // #9018 extended the workspace patch; reverting its exact hunks gives back the #8564 workspace bytes.
+  assert.equal(sha256(shaders), workspace9018ShadersHash);
+  assert.equal(sha256(renderer), workspace9018RendererHash);
+  assert.equal(sha256(shadersBefore9018(shaders)), workspacePatchedShadersHash);
+  assert.equal(sha256(rendererBefore9018(renderer)), workspacePatchedRendererHash);
+  assert.equal(sha256(stripDepthIntervalHook(shadersBefore9018(shaders))), publishedShadersHash);
+  assert.equal(sha256(stripDepthIntervalHook(rendererBefore9018(renderer))), depthConventionRendererHash);
   assert.equal(sha256(await readPublishedShaders(dist + 'splat-shaders.js')), publishedShadersHash);
   assert.equal(sha256(await readDepthConventionRenderer(dist + 'splat-renderer.js')), depthConventionRendererHash);
 });

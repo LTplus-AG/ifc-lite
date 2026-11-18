@@ -144,11 +144,15 @@ import { splitToolRu } from './ru/split-tool';
 import { stairRailingRu } from './ru/stair-railing';
 import { storeyContextRu } from './ru/storey-context';
 import { storeyManagerRu } from './ru/storey-manager';
+import { structuralGlyphsRu } from './ru/structural-glyphs';
 import { structuralPropertiesRu } from './ru/structural-properties';
 import { structuralReviewRu } from './ru/structural-review';
+import { structuralDeriveRu } from './ru/structural-derive';
 import { sweptDiskInspectionRu } from './ru/swept-disk-inspection';
 import { tableCorrectionsRu } from './ru/table-corrections';
 import { terrainImageryRu } from './ru/terrain-imagery';
+import { siteContextRu } from './ru/site-context';
+import { floodCheckRu } from './ru/flood-check';
 import { toursRu } from './ru/tours';
 import { trimExtendRu } from './ru/trim-extend';
 import { validationEditorRu } from './ru/validation-editor';
@@ -303,11 +307,15 @@ export default {
   ...stairRailingRu,
   ...storeyContextRu,
   ...storeyManagerRu,
+  ...structuralGlyphsRu,
   ...structuralPropertiesRu,
   ...structuralReviewRu,
+  ...structuralDeriveRu,
   ...sweptDiskInspectionRu,
   ...tableCorrectionsRu,
   ...terrainImageryRu,
+  ...siteContextRu,
+  ...floodCheckRu,
   ...toursRu,
   ...trimExtendRu,
   ...validationEditorRu,

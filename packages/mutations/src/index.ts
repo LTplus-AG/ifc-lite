@@ -24,6 +24,7 @@ export { ChangeSetManager } from './change-set.js';
 export { recordCompoundMutation, undoRecordedMutationOperations } from './compound-recording.js';
 export { replayQuantityMutation } from './quantity-replay.js';
 export { recordSessionMutation } from './session-history.js';
+export { highestExistingExpressId } from './express-id-watermark.js';
 export { storeHasSourceEntity } from './source-entity-index.js';
 export {
   iterateEffectiveEntityIds,
@@ -66,3 +67,5 @@ export type { EntityOperation, EntityOperationEffect, EntityPreparationOptions, 
 
 export { snapshotOverlay, restoreOverlay, OverlaySourceMismatchError } from './overlay-snapshot.js';
 export type { OverlaySnapshotV1, OverlaySnapshotHistory, OverlaySnapshotOptions, OverlayRestoreOptions, OverlayRestoreResult } from './overlay-snapshot-types.js';
+
+export type { EntityChangeTracker } from './overlay-change-tracker.js';

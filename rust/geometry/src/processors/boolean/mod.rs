@@ -24,6 +24,7 @@ pub(crate) mod spine_plan;
 mod polygonal_chain;
 mod operand;
 pub(crate) mod halfspace_cap;
+mod halfspace_section_weld;
 mod polygonal_boundary;
 mod polygonal_prism;
 mod single_cutter_gate;

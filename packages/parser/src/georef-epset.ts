@@ -224,6 +224,7 @@ export function extractEPSetMapConversion(
       // IfcProjectedCRS path). When absent, leave it undefined so consumers fall
       // back to the project length unit per the buildingSMART convention.
       mapUnitScale: inferMapUnitScaleFromLabel(mapUnit),
+      ...(mapUnit === undefined ? {} : { mapUnitResolved: inferMapUnitScaleFromLabel(mapUnit) !== undefined }),
     };
   }
 

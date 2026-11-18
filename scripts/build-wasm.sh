@@ -24,6 +24,15 @@ echo "🦀 Building IFC-Lite WASM..."
 # `unstable.build-std`, so host builds (`cargo test --release`, etc.) never
 # see it.
 export CARGO_UNSTABLE_BUILD_STD="std,panic_abort"
+# Path-independent bytes: panic locations would otherwise embed the checkout,
+# cargo registry and toolchain paths of whatever machine built the wasm, so the
+# raw size the `engine-wasm-bytes` ratchet gates would differ between hosted
+# and self-hosted runners (different checkout paths) and from a local build.
+# Cargo's trim-paths (the env equivalent of `-Z trim-paths` plus the profile's
+# `trim-paths = "all"`) rewrites them to package-relative and `/rustc/<hash>`
+# forms, as for `std` itself; it also keeps local paths out of published wasm.
+export CARGO_UNSTABLE_TRIM_PATHS=true
+export CARGO_PROFILE_RELEASE_TRIM_PATHS=all
 
 # Build with wasm-pack
 echo "📦 Running wasm-pack..."
@@ -97,12 +106,15 @@ echo "🟢 Building single-thread bundle → $OUT_DIR"
 # NEVER on CI: a real build failure there must stay a failure, so the fallback
 # is gated on $CI being unset. Anything that ships an artifact -- the release
 # and docker workflows, Vercel -- sets it.
+# Export runs on demand. Size-optimize its crate in the main engine bundle
+# while leaving native builds and the WASM geometry and parsing crates at -O3.
 if ! rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
   --target web \
   --out-dir "$OUT_DIR" \
   --out-name ifc-lite \
   --release \
-  $FEATURES
+  $FEATURES \
+  -- --config 'profile.release.package.ifc-lite-export.opt-level="s"'
 then
   if [ -z "${CI:-}" ] && [ -f "$EXPECTED_WASM" ]; then
     echo ""
@@ -281,16 +293,6 @@ if [ "${BUILD_THREADED:-}" = "1" ]; then
     fi
   fi
   ls -lh "$THREADED_WASM" | awk '{print "   Threaded WASM: " $5 " (no budget — not the default bundle)"}'
-fi
-
-# --- Optional third bundle: wide-arithmetic ---------------------------------
-# Off by default. Enable with `BUILD_WIDE=1 ./scripts/build-wasm.sh`. Builds on
-# its own LLVM >= 23 toolchain (WIDE_TOOLCHAIN); the why, and the refusal rules,
-# live with the function in scripts/lib/build-wasm-wide.sh.
-if [ "${BUILD_WIDE:-}" = "1" ]; then
-  # shellcheck source=lib/build-wasm-wide.sh
-  . "$SCRIPT_DIR/lib/build-wasm-wide.sh"
-  build_wide_bundle || exit 1
 fi
 
 # --- Optional bundle: retained browser executor ------------------------------

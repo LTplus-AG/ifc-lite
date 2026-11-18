@@ -3,20 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Internal, unqualified Gaussian adapter (#8564). Identity-validated handles,
- * serialized mutations and epoch checks prevent publication after teardown. */
+ * serialized mutations and epoch checks prevent publication after teardown.
+ * No CPU copy of asset rows is kept (#9018, see gaussian-repack). */
 
 import { translateGaussianFrame } from './gaussian-frame-translation.js';
-import type { NormalizedGaussianAttributes } from './gaussian-attributes.js';
 import type { GaussianBackend, GaussianBackendFactory, GaussianBackendScene, GaussianEncodeTarget } from './gaussian-backend.js';
 import { assertUsableLifetime, GaussianSplatError, requireDevice } from './gaussian-errors.js';
 import { SerialQueue } from './gaussian-serial.js';
 import { loadGaussianOps as loadOps, loadLumaBackend } from './gaussian-lazy.js';
 import { GaussianDeviceSlot } from './gaussian-device-slot.js';
-import type { PackedScene, ShDegree } from './gaussian-pack.js';
+import type { PackedScene } from './gaussian-pack.js';
+import { gaussianAssetRows } from './gaussian-rows.js';
+import { uploadRepack, type GaussianAssetRecord as AssetRecord } from './gaussian-repack.js';
 import type { SimilarityPlacement } from './gaussian-placement.js';
 import { gaussianReadiness, type GaussianReadiness } from './gaussian-readiness.js';
 export type { GaussianSplatApi } from './gaussian-types.js';
-import type { GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle, GaussianSplatPlacement, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
+import type { GaussianSplatAddOptions, GaussianSplatApi, GaussianSplatAssetInput, GaussianSplatBounds, GaussianSplatHandle, GaussianSplatPlacement, GaussianSplatRowsInput, GaussianSplatState, GaussianSplatStats } from './gaussian-types.js';
 import { anchoredCamera, boundsChange, centreClipFilter, clipKey, layerStats, sameTranslation, STATES, unionBounds } from './gaussian-frame.js';
 import { GaussianGlassComposer, type DeferredPassRecorder, type GaussianCompositionMode, type GlassFrameInput, type GlassVisibility } from './gaussian-glass-frame.js';
 import type { PickClipState } from '../pick-types.js';
@@ -38,20 +40,6 @@ export interface GaussianFrameInput extends Omit<GaussianEncodeTarget, 'depthFor
   readonly clip: PickClipState | null;
 }
 
-interface AssetRecord {
-  readonly handle: GaussianSplatHandle;
-  readonly slot: number;
-  readonly degree: ShDegree;
-  attributes: NormalizedGaussianAttributes | null;
-  /** Local placement of the committed rows, and the model translation they used. */
-  committed: SimilarityPlacement;
-  translation: readonly [number, number, number] | undefined;
-  /** Latest requested local placement; model re-placement always starts from it. */
-  requested: SimilarityPlacement;
-  visible: boolean;
-  failure: string | null;
-  bounds: GaussianSplatBounds;
-}
 
 export class GaussianSplatLayer implements GaussianSplatApi {
   private readonly records = new Map<GaussianSplatHandle, AssetRecord>();
@@ -82,7 +70,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     return gaussianReadiness(life.ready, life.lost, life.disposed, life.generation, this.slot.upstream);
   }
 
-  async add(input: GaussianSplatAssetInput, options: GaussianSplatAddOptions): Promise<GaussianSplatHandle> {
+  async add(input: GaussianSplatAssetInput | GaussianSplatRowsInput, options: GaussianSplatAddOptions): Promise<GaussianSplatHandle> {
     if (options?.qualification !== 'internal-unqualified') {
       throw new GaussianSplatError('not-ready', 'Gaussian rendering is unqualified; internal use must pass { qualification: "internal-unqualified" }.');
     }
@@ -90,35 +78,29 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     assertUsableLifetime(life);
     if (!Number.isSafeInteger(input.modelIndex) || input.modelIndex < 0) throw new GaussianSplatError('invalid-placement', 'modelIndex must be a non-negative integer.');
     const checkpoint = this.checkpoint(this.epoch, life.generation, options.signal); // before any await: a clear meanwhile aborts
+    const rows = gaussianAssetRows(input);
     const ops = await loadOps();
     checkpoint();
-    ops.validateGaussianAttributes(input.attributes);
     const local = ops.decomposeSimilarity(input.placement.matrix);
     const backend = await this.slot.backendFor(requireDevice(this.host.device()));
     checkpoint();
     if (!backend.upstreamReverseZ) throw new GaussianSplatError('upstream-capability-missing', 'Installed @luma.gl/splats lacks reverse-Z ordering (luma.gl #3619).');
     return this.queue.run(async () => {
       checkpoint();
-      const { attributes, modelIndex } = input;
-      const slot = this.nextSlot++;
+      const { modelIndex } = input, slot = this.nextSlot++;
       const translation = this.host.modelTranslation(modelIndex);
       const placement = ops.placeInWorld(local, translation);
       const anchor = this.anchor ?? [...placement.translation] as [number, number, number];
-      const degree = ops.effectiveShDegree(attributes);
-      const live = this.liveRecords();
-      const packedDegree = Math.max(degree, ...live.map((r) => r.degree)) as ShDegree;
-      const rows = live.reduce((sum, r) => sum + (this.packed?.slices.get(r.slot)?.rows ?? 0), attributes.count);
-      ops.assertPackedBudget(rows, packedDegree, requireDevice(this.host.device()).limits);
-      const built = await ops.buildPacked(this.packed, live.map((r) => r.slot), { slot, attributes, placement, degree }, anchor, packedDegree, checkpoint);
-      const backendNow = await this.slot.backendFor(requireDevice(this.host.device()));
-      checkpoint();
-      const scene = this.sceneFor(requireDevice(this.host.device()), backendNow);
-      try { await scene.replaceSource(built.scene.source); } catch (error) { checkpoint(); throw error; } // a clear or loss outranks the upload error
+      const handle: GaussianSplatHandle = Object.freeze({ id: this.nextId, modelIndex });
+      const record: AssetRecord = {
+        handle, slot, degree: rows.effectiveShDegree, count: rows.count, rows, committed: local, translation, requested: local,
+        visible: input.visible ?? true, failure: null, bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+      };
+      const built = await this.repack([...this.liveRecords(), record], new Map([[record, placement]]), anchor, checkpoint);
       try { checkpoint(); } catch (error) { this.abandonUpload(); throw error; } // scene holds rows the layer never published
-      const handle: GaussianSplatHandle = Object.freeze({ id: this.nextId++, modelIndex });
-      const record: AssetRecord = { handle, slot, degree, attributes, committed: local, translation, requested: local, visible: input.visible ?? true, failure: null, bounds: built.addedBounds! };
+      this.nextId++;
       this.records.set(handle, record);
-      this.commit(built.scene, anchor, true);
+      this.commit(built.scene, anchor, true, built.bounds); // sets record.bounds
       if (!sameTranslation(translation, this.host.modelTranslation(modelIndex))) this.followModel(record); // moved while packing
       return handle;
     });
@@ -128,7 +110,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     const record = this.records.get(handle);
     if (!record) return false;
     this.records.delete(handle);
-    record.attributes = null;
+    record.rows = null;
     this.applyFilter(true);
     this.compact();
     return true;
@@ -185,14 +167,14 @@ export class GaussianSplatLayer implements GaussianSplatApi {
   }
 
   getStats(): GaussianSplatStats {
-    return layerStats(this.liveRecords(), this.packed?.source, this.uploadedOnCurrentDevice() ? this.slot.scene?.gpuBytes ?? 0 : 0, this.drawnFrames, this.lastEncodeMs, this.glass.report);
+    return layerStats(this.liveRecords(), this.packed, this.uploadedOnCurrentDevice() ? this.slot.scene?.gpuBytes ?? 0 : 0, this.drawnFrames, this.lastEncodeMs, this.glass.report);
   }
 
   setCompositionMode(mode: GaussianCompositionMode): void { this.glass.setMode(mode); }
 
   clear(): void {
     this.clears++;
-    for (const record of this.records.values()) record.attributes = null;
+    for (const record of this.records.values()) record.rows = null;
     this.records.clear();
     this.resetPacked();
   }
@@ -204,7 +186,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     this.uploadedVersion = -1;
     if (dispose) { this.clear(); return; }
     if (!clearScene) return;
-    for (const record of this.records.values()) { record.failure = 'reload-required'; record.attributes = null; }
+    for (const record of this.records.values()) { record.failure = 'reload-required'; record.rows = null; }
     this.resetPacked();
   }
   /** Decide before the main pass whether this frame ends in the splat pass (which then resolves MSAA). */
@@ -230,35 +212,39 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     this.lastEncodeMs = performance.now() - started;
   }
 
-  /** Re-place from fresh rows; superseded edits and failed transforms never commit.
+  /** Re-place by reading the asset's rows again; superseded edits and failed transforms never commit.
    * Model following uses committed placement, never a pending edit. */
   private place(record: AssetRecord, edit: SimilarityPlacement | null): Promise<SimilarityPlacement | null> {
     const epoch = this.epoch;
     const clears = this.clears;
-    const stale = () => this.records.get(record.handle) !== record || this.epoch !== epoch || this.clears !== clears || !record.attributes || !!record.failure;
+    const stale = () => this.records.get(record.handle) !== record || this.epoch !== epoch || this.clears !== clears || !record.rows || !!record.failure;
     return this.queue.run(async () => {
       const packed = this.packed;
-      const slice = packed?.slices.get(record.slot);
-      if (stale() || !packed || !slice || !this.anchor || !record.attributes) return null;
+      if (stale() || !packed || !packed.slices.has(record.slot) || !this.anchor || !record.rows) return null;
       if (edit && record.requested !== edit) return null;
       const local = edit ?? record.committed;
       const translation = this.host.modelTranslation(record.handle.modelIndex);
       if (local === record.committed && sameTranslation(translation, record.translation)) return local;
       const ops = await loadOps();
-      const rows = await ops.transformSlice(record.attributes, ops.placeInWorld(local, translation), this.anchor, packed.source.sphericalHarmonicsDegree, () => {
-        if (stale()) throw new GaussianSplatError('aborted', 'Superseded Gaussian placement edit.');
-      }).catch((error: unknown) => { if (stale()) return null; throw error; });
-      if (!rows || stale() || this.packed !== packed) return null;
-      const update = { positions: rows.positions, scales: rows.scales, rotations: rows.rotations, ...(rows.sphericalHarmonics ? { sphericalHarmonics: rows.sphericalHarmonics } : {}) };
-      if (this.uploadedOnCurrentDevice()) {
-        this.slot.scene!.updateRows(slice.offset, update); // writes GPU rows and the packed CPU copy
-      } else {
-        ops.writeSliceRows(packed.source, slice, update);
-        this.version++; // any in-flight upload carries the old rows; upload again
+      const placement = ops.placeInWorld(local, translation);
+      const check = () => { if (stale() || this.packed !== packed) throw new GaussianSplatError('aborted', 'Superseded Gaussian placement edit.'); };
+      const settle = <T>(work: Promise<T>) => work.catch((error: unknown) => { if (stale() || this.packed !== packed) return null; throw error; });
+      if (!this.host.device() || this.host.lifetime().lost) {
+        // No device: validate and bound the placement from the source. The version bump makes any in-flight
+        // upload stale, so the next upload (recovery, or a device that arrived meanwhile) reads it.
+        const bounds = await settle(ops.placedBounds(record.rows, placement, this.anchor, record.degree, check));
+        if (!bounds || stale() || this.packed !== packed) return null;
+        Object.assign(record, { committed: local, translation, bounds });
+        this.version++;
+        this.clipKey = '';
+        this.applyFilter(true);
+        return local;
       }
-      Object.assign(record, { committed: local, translation, bounds: rows.bounds });
-      this.clipKey = '';
-      this.applyFilter(true);
+      const anchor = this.anchor;
+      const built = await settle(this.repack(this.liveRecords(), new Map([[record, placement]]), anchor, check));
+      if (!built || stale() || this.packed !== packed) { if (built) this.abandonUpload(); return null; }
+      Object.assign(record, { committed: local, translation });
+      this.commit(built.scene, anchor, true, built.bounds);
       return local;
     });
   }
@@ -269,7 +255,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       if (this.records.get(record.handle) !== record || record.failure) return;
       console.error('[Gaussian] asset could not follow its model translation:', error);
       record.failure = error instanceof GaussianSplatError ? error.code : 'reload-required';
-      record.attributes = null;
+      record.rows = null;
       this.applyFilter(true);
     });
   }
@@ -283,29 +269,42 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       if (this.epoch !== epoch || this.clears !== clears || !packed || !this.anchor) return;
       const live = this.liveRecords();
       if (live.length === 0) { this.resetPacked(); return; }
-      const degree = Math.max(0, ...live.map((r) => r.degree)) as ShDegree;
-      const built = await (await loadOps()).buildPacked(packed, live.map((r) => r.slot), null, this.anchor, degree, check);
-      // Upload before publishing: the previous source keeps drawing (removed slots filtered) meanwhile.
-      const uploaded = this.uploadedOnCurrentDevice() ? this.slot.scene : null;
-      if (uploaded) { try { await uploaded.replaceSource(built.scene.source); } catch (error) { check(); throw error; } }
-      try { check(); } catch (error) { if (uploaded) this.abandonUpload(); throw error; }
-      this.commit(built.scene, this.anchor!, uploaded !== null && this.slot.scene === uploaded);
+      // Nothing drawn on this device: the next upload reads the remaining assets anyway.
+      if (!this.uploadedOnCurrentDevice()) return;
+      const anchor = this.anchor;
+      // Upload before publishing: the previous rows keep drawing (removed slots filtered) meanwhile.
+      const built = await this.repack(live, new Map(), anchor, check);
+      try { check(); } catch (error) { this.abandonUpload(); throw error; }
+      this.commit(built.scene, anchor, true, built.bounds);
     }).catch((error: unknown) => {
       if (error instanceof GaussianSplatError && error.code === 'aborted') return; // superseded by a clear, loss or newer source
       console.error('[Gaussian] compaction failed; removed rows stay hidden until the next repack:', error);
     });
   }
 
+  /** Upload a new pack of `live` on the current device (see uploadRepack); on failure the backend has released it. */
+  private async repack(live: readonly AssetRecord[], reads: ReadonlyMap<AssetRecord, SimilarityPlacement>, anchor: readonly [number, number, number], check: () => void) {
+    const ops = await loadOps();
+    check();
+    const device = requireDevice(this.host.device());
+    const backend = await this.slot.backendFor(device);
+    check();
+    const previous = this.uploadedOnCurrentDevice() ? this.packed : null;
+    return uploadRepack(ops, device, this.sceneFor(device, backend), previous, live, reads, anchor, check);
+  }
+
   /** Publish a new packed source. `uploaded`: the current scene already holds it. */
-  private commit(scene: PackedScene, anchor: [number, number, number], uploaded: boolean): void {
+  private commit(scene: PackedScene, anchor: readonly [number, number, number], uploaded: boolean, bounds?: ReadonlyMap<number, GaussianSplatBounds>): void {
+    for (const record of this.records.values()) { const read = bounds?.get(record.slot); if (read) record.bounds = read; }
     this.packed = scene;
-    this.anchor = anchor;
+    this.anchor = [...anchor] as [number, number, number];
     this.version++;
     this.uploadedVersion = uploaded ? this.version : -1;
     this.clipKey = '';
     this.applyFilter(true);
   }
 
+  /** Upload the published assets on this device (first draw, recovery, an abandoned upload) by reading their rows again. */
   private queueUpload(): void {
     if (this.uploadQueued) return;
     this.uploadQueued = true;
@@ -316,20 +315,21 @@ export class GaussianSplatLayer implements GaussianSplatApi {
       const device = this.host.device();
       const packed = attempted = this.packed;
       const version = this.version;
-      if (!device || !packed || this.epoch !== epoch || this.uploadedOnCurrentDevice()) return;
+      const anchor = this.anchor;
+      if (!device || !packed || !anchor || this.epoch !== epoch || this.uploadedOnCurrentDevice()) return;
       const stale = () => this.epoch !== epoch || this.packed !== packed || this.version !== version || this.host.device() !== device;
-      const backend = await this.slot.backendFor(device);
-      if (stale()) return; // cleared, lost or superseded while the backend loaded: create and upload nothing
-      const scene = this.sceneFor(device, backend);
-      await scene.replaceSource(packed.source);
-      if (stale() || this.slot.scene !== scene) { if (this.slot.scene === scene) this.abandonUpload(); return; }
-      this.uploadedVersion = version;
-      this.applyFilter();
+      const check = () => { if (stale()) throw new GaussianSplatError('aborted', 'Gaussian upload superseded.'); };
+      let built;
+      try { built = await this.repack(this.liveRecords(), new Map(), anchor, check); }
+      catch (error) { if (stale()) return; throw error; } // cleared, lost or superseded: create and upload nothing more
+      if (stale()) { this.abandonUpload(); return; }
+      attempted = built.scene;
+      this.commit(built.scene, anchor, true, built.bounds);
     }).catch((error: unknown) => {
       this.uploadQueued = false;
-      if (this.epoch !== epoch || this.packed !== attempted) return; // superseded by loss, clear or a newer source
+      if (this.epoch !== epoch || (this.packed !== attempted)) return; // superseded by loss, clear or a newer source
       console.error('[Gaussian] upload failed; assets need a reload:', error);
-      for (const record of this.records.values()) { record.failure = 'reload-required'; record.attributes = null; }
+      for (const record of this.records.values()) { record.failure = 'reload-required'; record.rows = null; }
       this.resetPacked();
     });
   }
@@ -338,7 +338,7 @@ export class GaussianSplatLayer implements GaussianSplatApi {
     if (boundsChanged) this.notifyBounds();
     this.host.requestRender();
     const include = new Set([...this.records.values()].filter((r) => r.visible && !r.failure).map((r) => r.slot));
-    this.slot.scene?.setFilter(include, centreClipFilter(this.clipState, this.packed?.source, this.anchor));
+    this.slot.scene?.setFilter(include, centreClipFilter(this.clipState, this.packed?.sort, this.anchor));
   }
 
   private updateClip(clip: PickClipState | null): void {

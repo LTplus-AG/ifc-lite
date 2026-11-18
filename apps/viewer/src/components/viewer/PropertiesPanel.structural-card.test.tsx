@@ -6,7 +6,8 @@
  * #4736: a structural member with no ordinary property sets must still reach
  * the Structural Analysis card instead of the Properties tab's empty state.
  * #9668: the card lists the physical-to-analytical counterparts from either
- * end and selects one on click.
+ * end and selects one on click, and shows every structural record, not only
+ * members.
  */
 
 import '@/test/setup-dom.js';
@@ -39,6 +40,9 @@ const LINKED_SOURCE = SOURCE.replace('#10=', `#20=IFCWALL('wall-gid',$,'Wall A',
 #11=IFCSTRUCTURALCURVECONNECTION('connection-gid',$,'Edge',$,$,$,$,$,$);
 #12=IFCSTRUCTURALCURVEMEMBER('member-2-gid',$,'Rib',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
 #30=IFCRELASSIGNSTOPRODUCT('rel-gid',$,$,$,(#10,#11),$,#20);
+#10=`);
+
+const LOAD_CASE_SOURCE = SOURCE.replace('#10=', `#40=IFCSTRUCTURALLOADCASE('case-gid',$,'Snow',$,$,.LOAD_CASE.,.VARIABLE_Q.,.SNOW_S.,1.5,$,$);
 #10=`);
 
 async function loadModel(source: string, expressId: number) {
@@ -132,11 +136,38 @@ describe('PropertiesPanel structural-only selection', () => {
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [ID_OFFSET + 20]);
   });
 
+  it('a counterpart jump leaves a structural view mode that hides the target (#10604)', async () => {
+    await loadModel(LINKED_SOURCE, 20);
+    useViewerStore.setState({ structuralViewMode: 'physical' });
+    const ui = await renderPanel();
+    const mode = () => useViewerStore.getState().structuralViewMode;
+
+    click(counterpartRow(ui, 10));
+    assert.equal(mode(), 'both', 'Physical hides the analytical member, so the jump shows both');
+
+    useViewerStore.setState({ structuralViewMode: 'analytical' });
+    click(counterpartRow(ui, 20));
+    assert.equal(mode(), 'both', 'Analytical hides the wall, so the jump shows both');
+
+    useViewerStore.setState({ structuralViewMode: 'analytical' });
+    click(counterpartRow(ui, 11));
+    assert.equal(mode(), 'analytical', 'a target the mode draws keeps the mode');
+  });
+
   it('shows the physical element of a connection (#9668)', async () => {
     await loadModel(LINKED_SOURCE, 11);
     const ui = await renderPanel();
     assert.ok(ui.textContent?.includes('Physical elements (1)'), `connection card in: ${ui.textContent}`);
     assert.ok(counterpartRow(ui, 20).textContent?.includes('Wall A'));
+  });
+
+  it('shows a load case\'s EXPRESS attributes (#9668)', async () => {
+    await loadModel(LOAD_CASE_SOURCE, 40);
+    const text = (await renderPanel()).textContent ?? '';
+    assert.ok(text.includes('StructuralLoadCase'), `type badge in: ${text}`);
+    assert.match(text, /ActionTypeVARIABLE_Q/);
+    assert.match(text, /ActionSourceSNOW_S/);
+    assert.match(text, /Coefficient1\.5/);
   });
 
   it('shows no counterpart section without a link (#9668)', async () => {

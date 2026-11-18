@@ -90,6 +90,9 @@ export class SceneSnapshotLifecycle {
 
   notePiece(piece: MeshData, source: MeshData): void { this.capture?.notePiece(piece, source); }
 
+  /** A capture waits for this finalize: streamed fragments keep their bytes for its assembled batches. */
+  get capturing(): boolean { return this.capture !== null; }
+
   /** The upload's callback for a bucket batch while capturing; fragments and derived batches have no key. */
   mergedSink(bucketKey: string | undefined, batchId: number): ((bytes: MergedBatchBytes) => void) | undefined {
     const capture = this.capture;

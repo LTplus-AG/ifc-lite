@@ -14,6 +14,16 @@ export interface CreatedRows {
 }
 export const EMPTY_CREATED: CreatedRows = new Map<number, NewEntity>();
 
+const indexRows = new WeakMap<object, CreatedRows>();
+
+/** Share one authored snapshot across index analysis and output serialization. */
+export function registerCreatedRows(index: object, rows: CreatedRows): void { indexRows.set(index, rows); }
+export function createdRowsSnapshot(index: object, view: MutablePropertyView): NewEntity[] {
+  const rows = indexRows.get(index);
+  return rows ? Array.from(rows.keys(), id => rows.get(id)).filter(row => row !== undefined)
+    : view.readNewEntities?.() ?? view.getNewEntities();
+}
+
 /**
  * Created rows read through the view on demand (#8452). Building an index no
  * longer copies every created row: a point lookup borrows one row, keeps it
@@ -30,13 +40,19 @@ export function borrowedCreatedRows(view: MutablePropertyView): CreatedRows | nu
     if (row === undefined) rows.set(id, row = view.readNewEntity(id));
     return row ?? undefined;
   };
+  const ids = () => Array.from(view.readNewEntityKinds?.() ?? view.readNewEntities(), row => row.expressId);
   return {
     get,
     has: id => rows.has(id) ? rows.get(id) !== null : view.hasNewEntity(id),
     get size() { return view.getNewEntityCount(); },
-    *keys() { for (const row of view.readNewEntities()) yield row.expressId; },
+    *keys() {
+      // Snapshot IDs, not frozen payloads: a later point lookup already keeps
+      // the row it needs. Retaining both arrays duplicates a large session.
+      yield* ids();
+    },
     *[Symbol.iterator]() {
-      for (const row of view.readNewEntities()) { rows.set(row.expressId, row); yield [row.expressId, row] as [number, NewEntity]; }
+      const snapshot = ids().map(get).filter(row => row !== undefined);
+      for (const row of snapshot) yield [row.expressId, row] as [number, NewEntity];
     },
   };
 }

@@ -35,6 +35,13 @@ function triangle(expressId: number, x: number, color = RED): MeshData {
 const model = () => [triangle(1, 0), triangle(2, 2, BLUE), triangle(3, 4)];
 
 let written: { bytes: number[]; usage: number; buffer: object }[];
+/** What each buffer holds, whether written or copied into (the fragments' writes predate `written`'s reset). */
+const contents = new WeakMap<object, number[]>();
+function store(buffer: object, offset: number, bytes: ArrayLike<number>): void {
+  const held = contents.get(buffer) ?? [];
+  for (let i = 0; i < bytes.length; i++) held[offset + i] = bytes[i];
+  contents.set(buffer, held);
+}
 let destroyed: number;
 let failCreateAfter: number;
 
@@ -46,10 +53,20 @@ function stubDevice(): GPUDevice {
       return { usage, destroyed: false, destroy() { destroyed++; this.destroyed = true; } };
     },
     createBindGroup: () => ({}),
+    // Finalize assembles a streamed bucket's batch from its fragments on the GPU.
+    createCommandEncoder: () => ({
+      copyBufferToBuffer: (from: object, fromOffset: number, to: object, toOffset: number, size: number) => {
+        store(to, toOffset, (contents.get(from) ?? []).slice(fromOffset, fromOffset + size));
+      },
+      finish: () => ({}),
+    }),
     queue: {
-      writeBuffer: (buffer: { usage: number }, _offset: number, data: ArrayBuffer | ArrayBufferView, dataOffset = 0, size?: number) => {
+      submit() {},
+      writeBuffer: (buffer: { usage: number }, offset: number, data: ArrayBuffer | ArrayBufferView, dataOffset = 0, size?: number) => {
         const view = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-        written.push({ bytes: [...view.subarray(dataOffset, size === undefined ? undefined : dataOffset + size)], usage: buffer.usage, buffer });
+        const bytes = [...view.subarray(dataOffset, size === undefined ? undefined : dataOffset + size)];
+        written.push({ bytes, usage: buffer.usage, buffer });
+        store(buffer, offset, bytes);
       },
     },
   } as unknown as GPUDevice;
@@ -59,9 +76,9 @@ const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({
 
 let lastFinalized: Scene;
 
-/** Each batch's uploaded vertex and index bytes, by bucket key. */
+/** What each batch's vertex and index buffers hold, by bucket key: written, or assembled by GPU copies. */
 function uploadedByBatch(scene: Scene): Record<string, string[]> {
-  const bytes = (buffer: GPUBuffer) => written.find((w) => w.buffer === buffer)?.bytes.join();
+  const bytes = (buffer: GPUBuffer) => contents.get(buffer)?.join();
   return Object.fromEntries(scene.getBatchedMeshes().map((b) => [b.colorKey, [bytes(b.vertexBuffer)!, bytes(b.indexBuffer)!]]));
 }
 
@@ -249,14 +266,14 @@ describe('finished-scene snapshot', () => {
     const drawnIndices = (visible: Set<number> | null, batch = glass): number => {
       const requests = new PartialBatchRequests(lens, new XRayAlpha({}, new Set()), (b) => scene.canPartitionBatch(b));
       let drawn = 0;
-      if (visible) requests.pushVisible(batch, visible, true);
-      else if (!requests.pushWholeSplit(batch, true)) drawn += batch.indexCount;
+      // Not split: drawn whole, a partly hidden batch under the GPU visibility test (#10264 S2).
+      if (!requests.pushSplit(batch, true, visible)) drawn += batch.indexCount;
       for (const r of requests.items) drawn += scene.getOrCreatePartialBatch(r.sourceBatchKey, r.colorKey, r.visibleIds, device, pipeline)?.indexCount ?? 0;
       return drawn;
     };
     assert.strictEqual(scene.isSceneSnapshotHydrating(), true);
     assert.strictEqual(drawnIndices(null), 9, 'fully visible: the whole batch, once');
-    assert.strictEqual(drawnIndices(new Set([4, 5])), 9, 'under hide: the whole batch, once, until the pieces arrive');
+    assert.strictEqual(drawnIndices(new Set([4, 5])), 9, 'under hide: the whole batch, once, its hidden entity discarded on the GPU');
 
     // A fragment streamed in meanwhile has its own pieces, but every slot is still served
     // the bucket's whole batch: splitting it would draw that batch once per subset.

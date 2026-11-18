@@ -785,3 +785,14 @@ fn values_without_a_target_slot_are_counted_7683() {
     assert_eq!(dropped("#1=IFCALIGNMENT('g',$,'A',$,$,#5,#6,.ROAD.);", "IFC4X3", "IFC4"), 1, "PredefinedType");
     assert_eq!(dropped("#1=IFCWALL('g',$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4"), 0, "a pad loses nothing");
 }
+
+/// #9668 review: spaces around '=' are normalized before the required-slot
+/// checker sees the converted record; an unknown Axis must still be counted.
+#[test]
+fn structural_required_axis_is_counted_with_record_head_whitespace_9668() {
+    let line = "#50 = IFCSTRUCTURALCURVEMEMBER('id',#1,$,$,$,$,$,.RIGID_JOINED_MEMBER.);";
+    let mut checks = crate::schema_enum::ConversionChecks::new();
+    let out = convert_step_line(line, "IFC2X3", "IFC4", 50, &mut none(), Some(&mut checks)).unwrap();
+    assert!(out.ends_with(".RIGID_JOINED_MEMBER.,$);"));
+    assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 1, "{out}");
+}

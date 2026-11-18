@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
 import { resolveCommand } from './lib/revert-oracle-run-plan.mjs';
 import { classifyDiff, parseNameStatus } from './lib/revert-oracle.mjs';
 import { discoverOracles, oracleArgs } from './revert-oracle-discover.mjs';
+import { ciMirrorGates, UI_DRIFT } from './lib/pre-handoff-ci-mirror.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export function gateCommands(base) {
@@ -57,8 +58,43 @@ export function runGates(root, commands, log = console.log) {
   });
 }
 
+/** Workspace packages a test dir loads (transitively) whose build output is absent. */
+function unbuiltWorkspaceDeps(dir, seen = new Set(), top = true) {
+  const manifest = resolve(dir, 'package.json');
+  if (!existsSync(manifest)) return [];
+  const pkg = JSON.parse(readFileSync(manifest, 'utf8'));
+  const deps = top ? { ...pkg.dependencies, ...pkg.devDependencies } : pkg.dependencies;
+  const unbuilt = [];
+  for (const [name, spec] of Object.entries(deps ?? {})) {
+    const depDir = resolve(dir, 'node_modules', name);
+    if (!String(spec).startsWith('workspace:') || seen.has(name) || !existsSync(depDir)) continue;
+    seen.add(name);
+    const dep = JSON.parse(readFileSync(resolve(depDir, 'package.json'), 'utf8'));
+    if (dep.scripts?.build && dep.main && !existsSync(resolve(depDir, dep.main))) unbuilt.push(name);
+    unbuilt.push(...unbuiltWorkspaceDeps(depDir, seen, false));
+  }
+  return unbuilt;
+}
+
+/** Any reference to the harness module, static or dynamic. */
+const CONTRAST_HARNESS_IMPORT = /['"][^'"]*\/(?:render-harness|rendered-text-contrast)(?:\.[jt]sx?)?['"]/;
+const contrastBrowserByRoot = new Map();
+
+/** Which browser the viewer's contrast harness would use under the revert
+ *  oracle, which runs tests with `CI=1`: asks the harness's own resolver. */
+export function probeContrastBrowser(root) {
+  if (contrastBrowserByRoot.has(root)) return contrastBrowserByRoot.get(root);
+  const code = "const { resolveHostContrastBrowser } = await import('./src/test/contrast/browser-resolution.ts');"
+    + "process.stdout.write(resolveHostContrastBrowser({ ...process.env, CI: '1' }).source);";
+  const probe = spawnSync(process.execPath, ['--import', 'tsx/esm', '--input-type=module', '-e', code],
+    { cwd: resolve(root, 'apps/viewer'), encoding: 'utf8', timeout: 60000 });
+  if (probe.status !== 0) throw new Error(`contrast browser probe failed: ${(probe.stderr || probe.error?.message || '').trim()}`);
+  contrastBrowserByRoot.set(root, probe.stdout.trim());
+  return contrastBrowserByRoot.get(root);
+}
+
 /** Preflight derived runners so a missing local toolchain is explicitly skipped. */
-export function oraclePrerequisites(root, oracle, base) {
+export function oraclePrerequisites(root, oracle, base, contrastBrowser = probeContrastBrowser) {
   const tests = oracle.test ? [oracle.test] : classifyDiff(parseNameStatus(execFileSync('git',
     ['diff', '--name-status', `${base}...HEAD`], { cwd: root, encoding: 'utf8' }))).test
     .map((entry) => entry.path).filter((path) => existsSync(resolve(root, path)));
@@ -74,11 +110,26 @@ export function oraclePrerequisites(root, oracle, base) {
     for (const dependency of runner.args.filter((arg) => ['tsx', 'tsx/esm'].includes(arg))) {
       if (missingDependencies(dir, [dependency]).length) missing.add(`${dependency} (run pnpm install)`);
     }
+    const unbuilt = unbuiltWorkspaceDeps(dir);
+    if (unbuilt.length) missing.add(`built packages (${unbuilt.length} unbuilt, e.g. ${unbuilt.slice(0, 3).join(', ')}; run pnpm build)`);
+  }
+  // Under the oracle's CI=1 the harness fails at launch instead of skipping,
+  // which would read as a regression; name the missing browser instead.
+  const contrastTests = tests.filter((path) => /\.test\.tsx?$/.test(path)
+    && CONTRAST_HARNESS_IMPORT.test(readFileSync(resolve(root, path), 'utf8')));
+  if (contrastTests.length > 0) {
+    let browser;
+    try { browser = contrastBrowser(root); }
+    catch (error) { missing.add(`a contrast browser answer (${error.message.split('\n')[0]})`); }
+    if (browser === 'missing') {
+      missing.add(`Google Chrome for the contrast harness (${contrastTests.length} test file(s); `
+        + 'install it or set IFCLITE_TEST_CHROME_EXECUTABLE)');
+    }
   }
   return missing.size ? `unavailable prerequisites: ${[...missing].join(', ')}` : null;
 }
 
-export function main(argv = process.argv.slice(2), root = fileURLToPath(new URL('..', import.meta.url))) {
+export function main(argv = process.argv.slice(2), root = fileURLToPath(new URL('..', import.meta.url)), commands = gateCommands) {
   let base = 'origin/main';
   if (argv.length) {
     if (argv.length !== 2 || argv[0] !== '--base' || !argv[1]) throw new Error('Usage: node scripts/pre-handoff.mjs [--base origin/main]');
@@ -87,13 +138,19 @@ export function main(argv = process.argv.slice(2), root = fileURLToPath(new URL(
   // A dirty/untracked manifest would otherwise silently escape HEAD discovery.
   const status = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim();
   if (status) throw new Error('Commit local changes before pre-handoff; mutation checks require a clean tree.');
-  const diff = execFileSync('git', ['diff', '--name-only', '-z', `${base}...HEAD`], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
-  console.log(`Pre-handoff: ${diff.length} changed paths vs ${base}; global CI invariants scan their full input scope.`);
+  const baseMissing = spawnSync('git', ['rev-parse', '--verify', '--quiet', `${base}^{commit}`], { cwd: root }).status === 0
+    ? null : `${base} not found; run git fetch origin main`;
+  const diff = baseMissing ? [] : execFileSync('git', ['diff', '--name-only', '-z', `${base}...HEAD`], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean);
+  console.log(baseMissing ? `Pre-handoff: ${baseMissing}; diff-scoped gates are skipped.`
+    : `Pre-handoff: ${diff.length} changed paths vs ${base}; global CI invariants scan their full input scope.`);
   let oracles = [], discoveryError;
-  try { oracles = discoverOracles(root, base); }
-  catch (error) { discoveryError = error.message; }
-  const results = runGates(root, gateCommands(base));
-  results.push({ gate: 'oracle discovery', result: discoveryError ? 'FAIL' : 'PASS', detail: discoveryError ?? `${oracles.length} added manifests` });
+  if (!baseMissing) {
+    try { oracles = discoverOracles(root, base); }
+    catch (error) { discoveryError = error.message; }
+  }
+  const results = runGates(root, commands(base).map((gate) => (baseMissing && gate.args.includes(base) ? { ...gate, unavailable: baseMissing } : gate)));
+  results.push(baseMissing ? { gate: 'oracle discovery', result: 'SKIPPED', detail: baseMissing }
+    : { gate: 'oracle discovery', result: discoveryError ? 'FAIL' : 'PASS', detail: discoveryError ?? `${oracles.length} added manifests` });
   for (const oracle of oracles) {
     // The existing oracle derives each language's runner and validates actual
     // assertion evidence. Missing tooling remains a visible failure to explain,
@@ -107,6 +164,22 @@ export function main(argv = process.argv.slice(2), root = fileURLToPath(new URL(
       '--verify-restored', '--timeout-ms', '120000', ...oracleArgs([oracle]),
     ] }]));
   }
+  // The two PR-only CI gates agents kept failing late, invoked exactly as test.yml does.
+  const production = baseMissing ? [] : classifyDiff(parseNameStatus(execFileSync('git',
+    ['diff', '--name-status', `${base}...HEAD`], { cwd: root, encoding: 'utf8' }))).production;
+  let mirror;
+  try {
+    mirror = ciMirrorGates({
+      base, baseMissing, paths: diff, production, oracleArgs: oracleArgs(oracles),
+      workflowText: readFileSync(resolve(root, '.github/workflows/test.yml'), 'utf8'),
+      // The diff's own tests plus every manifest slice's --test witness.
+      prerequisites: () => [{}, ...oracles].map((oracle) => oraclePrerequisites(root, oracle, base))
+        .filter(Boolean).join('; ') || null,
+    });
+  } catch (error) { mirror = [UI_DRIFT]; results.push({ gate: 'CI mirror', result: 'FAIL', detail: error.message }); }
+  results.push(...runGates(root, mirror));
+  // Every diff-scoped gate above is SKIPPED without a base; that is not a passing handoff.
+  if (baseMissing) results.push({ gate: 'base', result: 'FAIL', detail: baseMissing });
   console.table(results);
   return results.some((row) => row.result === 'FAIL') ? 1 : 0;
 }

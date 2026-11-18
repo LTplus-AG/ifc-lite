@@ -43,11 +43,18 @@
  * restoring the IFC's embedded markup: if that reports `'pending'` (the
  * hash hasn't resolved yet), this module WAITS, via
  * `onLocalStorageDecidedFor`, rather than racing it; if it reports `true`
- * (a saved entry exists, empty or not), this restore backs off for good;
- * only `false` (no entry — never saved for this file, or `localStorage`
- * unavailable) lets the IFC-embedded markup through. The outcome is now a
- * pure function of "does a localStorage entry exist", never of which
+ * (a saved entry with markup, or one that records absorbed embedded markup —
+ * see `drawingMarkupRestorePrecedence.ts`'s `outranksEmbeddedMarkup`), this
+ * restore backs off for good; only `false` (no such entry — never saved for
+ * this file, an empty entry persisted by a display-option change before any
+ * markup existed, or `localStorage` unavailable) lets the IFC-embedded markup
+ * through. The outcome is a pure function of the saved entry, never of which
  * promise happened to settle first.
+ *
+ * A restore that applies records what it read as absorbed
+ * (`drawing-markup-absorbed.ts`) before writing; "save markup to model"
+ * replaces only absorbed embedded annotations, so markup this restore never
+ * loaded (it backed off, or the user drew first) is never deleted by a save.
  *
  * `restoredForModel` additionally makes each model's restore attempt
  * run-once-until-emptied: a model this session already attempted (whether
@@ -57,10 +64,18 @@
  * suddenly injects the model's embedded markup over what the user just drew.
  */
 
+import { mergeRestoredMeasures, mergeRestoredDimensions } from '@/lib/export/drawing-annotation-restore';
+import { canReadDrawingAnnotations, restorableDrawingAnnotationRecords, restoredDrawingAnnotations } from '@/lib/export/drawing-annotations';
+import { useLoadWindowHold } from './loadWindow.js';
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { hasEmbeddedDrawingMarkup, restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
+import {
+  hasEmbeddedDrawingMarkup,
+  restoreDrawingMarkupFromModel,
+  restoredEmbeddedMarkupIdentities,
+} from '@/lib/drawing2d-markup/drawing-markup-restore';
+import { absorbEmbeddedMarkup } from '@/lib/drawing2d-markup/drawing-markup-absorbed';
 import { ensureParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawing2DPersistence.js';
 
@@ -119,7 +134,8 @@ function markupFieldsEmpty(): boolean {
     s.measure2DResults.length === 0 &&
     s.polygonArea2DResults.length === 0 &&
     s.textAnnotations2D.length === 0 &&
-    s.cloudAnnotations2D.length === 0
+    s.cloudAnnotations2D.length === 0 &&
+    s.dimensions2D.length === 0 && s.tagAnnotations2D.length === 0
   );
 }
 
@@ -136,6 +152,10 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   if (restoredForModel.has(modelId)
     && restoredForModel.get(modelId)?.deref() === useViewerStore.getState().models.get(modelId)?.sourceFile) return;
   if (useViewerStore.getState().activeModelId !== modelId) return;
+  const state = useViewerStore.getState();
+  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
+  // Do not mark a loading model attempted or request a parse until it is readable.
+  if (!canReadDrawingAnnotations(store)) return;
   if (!markupFieldsEmpty()) {
     // Something else (a user drawing) already populated this model's
     // fields — never overwrite it.
@@ -151,9 +171,7 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     // #9621: precedence gates the WRITE, not a candidate's worker request.
     // With overlays hidden this hook is the only parse producer. Keep it
     // parallel with the hash, while still skipping provably blank sources.
-    const state = useViewerStore.getState();
-    const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
-    if (requestParse && store && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
+    if (requestParse && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
       ensureParseFor([{ store, mutationView: state.getMutationView(modelId) ?? undefined }]);
     }
     if (!awaitingLocalStorageDecision.has(modelId)) {
@@ -166,17 +184,20 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     return;
   }
   if (persisted) {
-    // A localStorage entry exists (empty or not) for this exact file —
+    // A localStorage entry for this exact file holds a markup decision —
     // it always wins over the IFC's embedded markup. Back off for good.
     markRestored(modelId);
     return;
   }
 
-  const state = useViewerStore.getState();
-  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
-  if (!store) return;
+  const annotations = restoredDrawingAnnotations(store, modelId, state.getMutationView(modelId) ?? undefined);
   if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
     markRestored(modelId);
+    if (annotations) {
+      absorbEmbeddedMarkup(modelId, restorableDrawingAnnotationRecords(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
+      const { paperScale, ...fields } = annotations;
+      useViewerStore.setState({ ...fields, drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, scale: paperScale }, dimension2DUndo: [], dimension2DRedo: [] });
+    }
     return;
   }
   const result = restoreDrawingMarkupFromModel(modelId);
@@ -190,7 +211,9 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     result.measure2DResults.length +
     result.polygonArea2DResults.length +
     result.textAnnotations2D.length +
-    result.cloudAnnotations2D.length;
+    result.cloudAnnotations2D.length +
+    result.dimensions2D.length +
+    (annotations ? annotations.measure2DResults.length + annotations.dimensions2D.length + annotations.tagAnnotations2D.length : 0);
   if (total === 0) return;
 
   // Re-check immediately before writing: resolving `result` above is
@@ -198,11 +221,19 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   // triggered this call may have already run its own write.
   if (!markupFieldsEmpty() || useViewerStore.getState().activeModelId !== modelId) return;
 
+  // Before the write: the save subscription persists the set with it.
+  absorbEmbeddedMarkup(modelId, restoredEmbeddedMarkupIdentities(modelId, result));
+  if (annotations) absorbEmbeddedMarkup(modelId, restorableDrawingAnnotationRecords(store, state.getMutationView(modelId) ?? undefined).map(record => record.identity));
   useViewerStore.setState({
-    measure2DResults: result.measure2DResults,
+    measure2DResults: mergeRestoredMeasures(result.measure2DResults, annotations?.measure2DResults ?? []),
     polygonArea2DResults: result.polygonArea2DResults,
     textAnnotations2D: result.textAnnotations2D,
     cloudAnnotations2D: result.cloudAnnotations2D,
+    dimensions2D: mergeRestoredDimensions(result.dimensions2D, annotations?.dimensions2D ?? []),
+    ...(annotations ? { tagAnnotations2D: annotations.tagAnnotations2D, drawing2DPlane: annotations.drawing2DPlane,
+      drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, scale: annotations.paperScale } } : {}),
+    dimension2DUndo: [],
+    dimension2DRedo: [],
   });
 }
 
@@ -239,8 +270,12 @@ export function useDrawingMarkupRestoreOnLoad(): void {
     return null;
   });
 
+  // Restoring needs the symbolic parse, whose spatial key walks the model: wait
+  // while this model loads (loadWindow.ts) instead of running inside its load.
+  const restoreHeld = useLoadWindowHold().isHeld(activeModelId ?? 'legacy');
+
   useEffect(() => {
-    if (!activeModelId || !dataStore) return;
+    if (!activeModelId || !dataStore || restoreHeld) return;
     tryRestoreDrawingMarkup(activeModelId, true);
     const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId, true));
     return () => {
@@ -253,5 +288,5 @@ export function useDrawingMarkupRestoreOnLoad(): void {
       // again immediately and re-registers a fresh wait if still pending.
       cancelPendingRestoreWaitFor(activeModelId);
     };
-  }, [activeModelId, dataStore, rtcPublication]);
+  }, [activeModelId, dataStore, restoreHeld, rtcPublication]);
 }

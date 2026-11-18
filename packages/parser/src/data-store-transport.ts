@@ -191,6 +191,7 @@ export interface DataStoreTransport {
   georeferencing?: GeoreferenceInfo | null;
   fileSize: number;
   schemaVersion: IfcDataStore['schemaVersion'];
+  sourceKind?: IfcDataStore['sourceKind'];
   sourceHeader?: IfcDataStore['sourceHeader'];
   entityCount: number;
   parseTime: number;
@@ -209,6 +210,7 @@ export interface DataStoreTransport {
   quantities: QuantityTableColumns;
   relationships: RelationshipGraphColumns;
   relationshipsPending?: true;
+  selectionRelationshipIndex?: IfcDataStore['selectionRelationshipIndex'];
 
   spatialHierarchy?: SpatialHierarchyColumns;
 
@@ -357,6 +359,7 @@ export function toTransport(
   const payload: DataStoreTransport = {
     fileSize: store.fileSize,
     schemaVersion: store.schemaVersion,
+    sourceKind: store.sourceKind,
     sourceHeader: store.sourceHeader,
     entityCount: store.entityCount,
     parseTime: store.parseTime,
@@ -377,6 +380,7 @@ export function toTransport(
     properties: propertyTableToColumns(store.properties),
     quantities: quantityTableToColumns(store.quantities),
     relationships: relationshipGraphToColumns(store.relationships),
+    selectionRelationshipIndex: store.selectionRelationshipIndex,
     // The spatial-ready store crosses the worker boundary still marked as such (#9192).
     ...(store.relationshipsPending ? { relationshipsPending: true as const } : {}),
 
@@ -448,6 +452,7 @@ export function fromTransport(
   const store = attachDataStoreAccessors({
     fileSize: payload.fileSize,
     schemaVersion: payload.schemaVersion,
+    sourceKind: payload.sourceKind,
     sourceHeader: payload.sourceHeader,
     entityCount: payload.entityCount,
     parseTime: payload.parseTime,
@@ -464,6 +469,7 @@ export function fromTransport(
     properties,
     quantities,
     relationships,
+    selectionRelationshipIndex: payload.selectionRelationshipIndex,
     ...(payload.relationshipsPending ? { relationshipsPending: true as const } : {}),
     spatialHierarchy,
 

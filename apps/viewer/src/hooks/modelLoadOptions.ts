@@ -3,12 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
+import type { ProcessedModelSource } from '@/lib/processed-model';
 import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
 
 /** Terminal Gaussian load result; publication alone is not completion. */
 export type GaussianLoadOutcome = 'completed' | 'cancelled' | 'failed';
 
 export interface ModelLoadOptions {
+  /**
+   * Open a model the processing server has already processed, named by the
+   * SHA-256 of its source file. The `File` passed alongside carries the display
+   * name only: no source bytes are read, hashed, cached or uploaded, and there
+   * is no local fallback. Primary target only.
+   */
+  processedModel?: ProcessedModelSource;
   sourceHandle?: FileSystemFileHandle;
   /** Retry the owning operation (e.g. replacement), including its commit/cleanup. */
   retryOperation?: () => void;
@@ -42,10 +50,22 @@ export interface ModelLoadOptions {
   onLoadError?: (message: string) => void;
   /** A federated target: THIS load registered its model (another load may reuse an explicit id). */
   onModelRegistered?: () => void;
+  /** A site-context model loaded by the panel's fetch run (absent for a dropped site-context GLB). */
+  siteContextArrival?: SiteContextArrival;
+}
+
+/** Which fetch run a site-context load belongs to, so the one arrival step can tell a live run from a cancelled one. */
+export interface SiteContextArrival {
+  /** The run's identity in the slice (`siteContextAbort`). */
+  run: AbortController;
+  /** The model the site context was fetched around. */
+  anchorModelId: string;
+  /** False once the run was cancelled, replaced or detached: its model is then not adopted. */
+  isCurrent(): boolean;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
-export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianUpAxis' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved' | 'onGaussianLoadSettled'> {
+export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'siteContextArrival' | 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianUpAxis' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved' | 'onGaussianLoadSettled'> {
   name?: string;
   modelId?: string;
   loadedAt?: number;

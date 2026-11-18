@@ -14,6 +14,7 @@
  */
 
 import { getViewerStoreApi } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 import type { ViewerState } from '@/store';
 import { loadIdsContent } from '@/hooks/ids/loadIdsContent';
 import { EVENT_ADD_MODEL, EVENT_LOAD_FILE } from './events';
@@ -53,6 +54,8 @@ export function waitForModelSettled(timeoutMs = 180_000): Promise<void> {
 }
 
 async function fetchAsFile(path: string, name: string): Promise<File> {
+  // Every sample load comes through here; a host can switch sample models off (`lib/features`).
+  if (!isFeatureEnabled('files.samples')) throw new Error('Sample models are switched off in this viewer');
   const res = await fetch(path);
   if (!res.ok) throw new Error(`demo kit fetch failed: ${res.status} ${path}`);
   const blob = await res.blob();

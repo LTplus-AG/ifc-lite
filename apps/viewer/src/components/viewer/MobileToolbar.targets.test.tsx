@@ -31,7 +31,7 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { cleanup, render } from '@/test/render';
-import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { MobileToolbar } from './MobileToolbar';
 import { classifyFormFactor, mobileCommandPlacement, type MobileCommandPlacement } from '@/lib/layout/form-factor';
 
@@ -158,7 +158,7 @@ function assertTargetsFit(layout: ToolbarLayout, width: number, expected = EXPEC
 
 describe('phone toolbar targets (#8802)', () => {
   for (const width of PHONE_WIDTHS) {
-    it(`at rest, every phone toolbar button is a 44x44 target in one row at ${width}px`, async () => {
+    it(`at rest, every phone toolbar button is a 44x44 target in one row at ${width}px`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       useViewerStore.setState({ ...fixtureModels(fixtureModel('model', { idOffset: 0 })), loading: false, activeTool: 'select' });
       const layout = await layoutAt(toolbarHtml(), width);
       assertTargetsFit(layout, width);
@@ -168,7 +168,7 @@ describe('phone toolbar targets (#8802)', () => {
   }
 
   for (const width of PHONE_WIDTHS) {
-    it(`while another model loads at ${width}px, the bar still fits, More stays fully reachable and progress is shown and announced`, async () => {
+    it(`while another model loads at ${width}px, the bar still fits, More stays fully reachable and progress is shown and announced`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       useViewerStore.setState({
         ...fixtureModels(fixtureModel('model', { idOffset: 0 })),
         activeTool: 'select',

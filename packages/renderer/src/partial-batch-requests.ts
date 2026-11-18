@@ -6,9 +6,11 @@
  * Turning one colour batch into the set of partial sub-batches that should be
  * drawn for it this frame.
  *
- * A colour batch draws with ONE uniform per draw, so any per-entity property
- * that disagrees within a batch has to be expressed by drawing subsets of it.
- * Two such properties exist, and they compose:
+ * A colour batch draws with ONE uniform per draw, so a per-entity colour or
+ * alpha that disagrees within a batch has to be expressed by drawing subsets
+ * of it. Visibility is not such a property: a partly hidden batch is drawn
+ * whole and the GPU discards its hidden entities (`entity-visibility-table.ts`,
+ * #10264 S2). Two properties do split, and they compose:
  *
  * - **Colour-override promotion** (#677): an entity carrying a deliberate lens/
  *   Pset override must draw through the OPAQUE pipeline, the only draws the
@@ -71,82 +73,52 @@ export class PartialBatchRequests {
   }
 
   /**
-   * Request `visibleIds` of `sourceBatch` as a sub-batch (the visible subset of
-   * a hidden/isolated batch), splitting by override promotion when the batch is
-   * transparent and only SOME of those ids carry a deliberate override.
+   * Request `batch` as sub-batches when one uniform cannot draw it: one per
+   * X-Ray alpha (#4129), or `:promoted` and `:remaining` for a transparent
+   * id set with mixed override membership (#677). Both splits pass the
+   * `canPartition` gate (#9220).
    *
-   * The promotion split passes the same `canPartition` gate as the alpha split
-   * (#9220). A batch that fails it is requested as ONE sub-batch at its native
-   * routing: split anyway, a colour-merged piece is registered under every id
-   * it holds, so it would land whole in both halves and draw twice.
-   */
-  pushVisible(sourceBatch: BatchedMesh, visibleIds: Set<number>, isTransparent: boolean): void {
-    this.emit(sourceBatch, this.partitionedPromotion(sourceBatch, visibleIds, isTransparent) ?? visibleIds, '');
-  }
-
-  /**
-   * Request `batch` as one sub-batch per distinct X-Ray alpha (#4129), so
-   * fading one element stops fading its colour batchmates.
-   *
-   * @param ids Restrict to this subset (the visible subset of a partially
-   *            hidden batch), or `null` for the batch's own ids.
-   * @returns `false` when the batch must be drawn WHOLE after all — it needs no
-   *          split, or its geometry cannot be partitioned. The caller then falls
-   *          back to the batch-wide minimum alpha, which is the pre-#4129
-   *          behaviour: a fade that is too wide, never missing geometry.
-   */
-  pushAlphaSplit(batch: BatchedMesh, ids: Set<number> | null): boolean {
-    const groups = this.alphaGroups(batch, ids);
-    if (groups == null || !this.canPartition(batch)) return false;
-    // Groups arrive in a stable order, so a group keeps the same slot across
-    // frames while its content is unchanged. Partitionable, so each group may
-    // split by promotion too.
-    for (let i = 0; i < groups.length; i++) {
-      const g = groups[i];
-      this.emit(batch, mixedPromotion(g.ids, this.colorOverrides, g.alpha < OPAQUE_ALPHA_CUTOFF) ?? g.ids, alphaSlotSuffix(i));
-    }
-    return true;
-  }
-
-  /**
-   * Request a FULLY visible batch as sub-batches when one uniform cannot draw
-   * it: one per X-Ray alpha (#4129), or `:promoted` and `:remaining` for a
-   * transparent batch with mixed override membership (#677). Both splits pass
-   * the `canPartition` gate (#9220).
-   *
+   * @param ids Restrict to this subset (the visible ids of a partly hidden
+   *            batch), or `null` for the batch's own ids. A subset is cut
+   *            from the visible pieces only, so it needs no visibility test.
    * @returns `false` when the batch draws whole from its own buffers: it needs
    *          no split, or it cannot be partitioned (CPU geometry released, a
-   *          colour-merged piece, a cold bucket). The whole draw then routes it
-   *          by `shouldRouteBatchTransparent`, the pre-#677 behaviour: a mixed
-   *          batch stays transparent, never missing or drawn twice.
+   *          colour-merged piece, a cold bucket). Hide/isolate alone never
+   *          splits: a partly hidden batch is drawn whole and its hidden
+   *          entities are discarded on the GPU (#10264 S2). The whole draw is
+   *          routed by `shouldRouteBatchTransparent` and faded by the lowest
+   *          alpha of `ids`, the pre-#677/#4129 behaviour: a mixed batch stays
+   *          transparent and a fade is too wide, never missing or drawn twice.
    */
-  pushWholeSplit(batch: BatchedMesh, isTransparent: boolean): boolean {
-    if (this.pushAlphaSplit(batch, null)) return true;
-    const split = this.partitionedPromotion(batch, batch.expressIds, isTransparent);
-    if (split == null) return false;
+  pushSplit(batch: BatchedMesh, isTransparent: boolean, ids: Set<number> | null = null): boolean {
+    const groups = this.alphaGroups(batch, ids);
+    if (groups != null && this.canPartition(batch)) {
+      // Groups arrive in a stable order, so a group keeps the same slot across
+      // frames while its content is unchanged. Each may split by promotion too.
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        this.emit(batch, mixedPromotion(g.ids, this.colorOverrides, g.alpha < OPAQUE_ALPHA_CUTOFF) ?? g.ids, alphaSlotSuffix(i));
+      }
+      return true;
+    }
+    const split = mixedPromotion(ids ?? batch.expressIds, this.colorOverrides, isTransparent);
+    if (split == null || !this.canPartition(batch)) return false;
     this.emit(batch, split, '');
     return true;
   }
 
   /**
-   * Whether the X-Ray state or the overrides alone want this fully visible
-   * batch split, whether or not its pieces can be partitioned right now. A
-   * cold batch cannot be until its pieces are back from disk (#9136).
+   * Whether the X-Ray state or the overrides alone want this batch (or its
+   * `ids` subset) split, whether or not its pieces can be partitioned right
+   * now. A cold batch cannot be until its pieces are back from disk (#9136).
    */
-  wantsWholeSplit(batch: BatchedMesh, isTransparent: boolean): boolean {
-    return this.alphaGroups(batch, null) != null || mixedPromotion(batch.expressIds, this.colorOverrides, isTransparent) != null;
+  wantsSplit(batch: BatchedMesh, isTransparent: boolean, ids: Set<number> | null = null): boolean {
+    return this.alphaGroups(batch, ids) != null || mixedPromotion(ids ?? batch.expressIds, this.colorOverrides, isTransparent) != null;
   }
 
   private alphaGroups(batch: BatchedMesh, ids: Set<number> | null): AlphaGroup[] | null {
     if (!this.xray.active) return null;
     return ids ? this.xray.groupsForIds(ids, batch.color[3]) : this.xray.groupsForBatch(batch, batch.color[3]);
-  }
-
-  /** The promotion split of `ids` when it is mixed AND `batch` passes the
-   *  `canPartition` gate the alpha split uses (#9220); checked last, as the dearest. */
-  private partitionedPromotion(batch: BatchedMesh, ids: Iterable<number>, isTransparent: boolean): PromotionSplit | null {
-    const split = mixedPromotion(ids, this.colorOverrides, isTransparent);
-    return split != null && this.canPartition(batch) ? split : null;
   }
 
   /**

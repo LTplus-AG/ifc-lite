@@ -23,6 +23,7 @@ import {
   emitRelContainedInSpatialStructure,
   ifcElementHeader,
 } from './_emit-helpers.js';
+import { roofMeasureScales, writeRoofPlaneParts } from './roof-plane-parts.js';
 import { emitFootprintRoofBody, footprintDefinition, writeFootprintDefinition, type RoofFootprintFields } from './roof-footprint.js';
 
 export type RoofInStoreParams = RoofRectangleParams | RoofPolygonParams;
@@ -59,7 +60,9 @@ export interface RoofBuildResult {
   placementId: number;
   profileId: number;
   solidId: number;
+  /** The first plane's representation for footprint roofs; otherwise the roof Body. */
   shapeRepId: number;
+  /** The first plane's product shape for footprint roofs; otherwise the roof shape. */
   productShapeId: number;
   relContainedId: number;
   /** Every plane's solid of a roof by footprint (its first is `solidId`). */
@@ -133,6 +136,7 @@ export function addRoofToStore(
  */
 function addFootprintRoofToStore(editor: StoreEditor, anchor: SpatialAnchor, params: RoofInStoreParams): RoofBuildResult {
   assertPositiveFinite([params.Thickness], 'addRoofToStore: Thickness must be positive');
+  roofMeasureScales(anchor);
   if (params.Position !== undefined) assertFinitePoint3({ Position: params.Position }, 'addRoofToStore');
   let footprint: Array<[number, number]>;
   if (isPolygonParams(params)) {
@@ -145,11 +149,13 @@ function addFootprintRoofToStore(editor: StoreEditor, anchor: SpatialAnchor, par
   const body = emitFootprintRoofBody(editor, anchor, anchor.bodyContextId, definition);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, toNativePoint3(anchor, params.Position ?? [0, 0, 0]));
   const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, body.productShapeId, params, 'Roof', anchor.guidRandom);
+  attrs[6] = null;
   // IFC4 PredefinedType and IFC2X3 ShapeType share the slot and these values.
   attrs.push(`.${body.plan.shapeType}.`);
   const roofId = editor.addEntity('IfcRoof', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
   const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, roofId, anchor.storeyId, anchor.guidRandom);
   writeFootprintDefinition(editor.getMutationView(), roofId, { ...definition, PredefinedType: body.plan.shapeType });
+  writeRoofPlaneParts(editor, anchor, roofId, body, definition.Thickness, undefined, body.planeMeasurements);
   return {
     roofId, placementId, profileId: body.profileIds[0], solidId: body.solidIds[0], solidIds: body.solidIds,
     shapeRepId: body.shapeRepId, productShapeId: body.productShapeId, relContainedId,

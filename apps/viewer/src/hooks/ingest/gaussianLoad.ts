@@ -15,11 +15,13 @@ import type { GaussianAdmission } from './gaussianAdmission.js';
 import type { GaussianLoadOutcome, ModelLoadOptions } from '../modelLoadOptions.js';
 import { gaussianAdmissionEnabled, showcaseGaussianPlacement } from './gaussianAdmissionPolicy.js';
 import { adoptGaussianAsset, forgetPendingGaussianAsset, uploadInGaussianFrame } from './gaussianAssets.js';
-import { gaussianModelShell, prepareGaussianCapture, uploadGaussianCapture, type GaussianSplatModel } from './gaussianIngest.js';
+import {
+  gaussianModelShell, inMemoryGaussianCapture, prepareGaussianCapture, uploadGaussianCapture, type GaussianSplatModel, type GaussianUploadCapture,
+} from './gaussianIngest.js';
 import { captureLoadFailure, captureRefusal, type CaptureRefusal } from './gaussianRefusals.js';
 import { reserveSceneSplats } from './gaussianSceneBudget.js';
 import { reportCaptureLoad } from './gaussianTelemetry.js';
-import { decodeGaussianInWorker } from './gaussianWorker.js';
+import { openGaussianCaptureRows, type decodeGaussianInWorker } from './gaussianWorker.js';
 import { LOAD_COMPLETE } from '../modelLoadCanceller.js';
 
 export interface GaussianLoadContext {
@@ -37,7 +39,7 @@ export interface GaussianLoadContext {
   settleLoadUi(progress?: { phase: string; percent: number } | null): void;
   finalize(dataStore: IfcDataStore, geometryResult: GeometryResult, schemaVersion: 'IFC4',
     patch: { gaussianSplat: GaussianSplatModel; loadPath: 'gaussian' }): Promise<void>;
-  /** In-process decoder seam for tests; production decodes in the dedicated worker. */
+  /** In-process decoder seam for tests; production streams rows from the dedicated worker (#9018). */
   decode?: typeof decodeGaussianInWorker;
 }
 
@@ -116,8 +118,16 @@ async function decodeAndPublish(
   const splats = renderer.gaussianSplats;
   store.setProgress({ phase: `Decoding ${format === 'splat' ? '.splat' : 'Gaussian PLY'} capture`, percent: 10 });
   let upload: Awaited<ReturnType<typeof uploadGaussianCapture>>;
+  let closeCapture = () => {};
   try {
-    const capture = prepareGaussianCapture(await (ctx.decode ?? decodeGaussianInWorker)(ctx.file, ctx.signal));
+    // The decoded capture stays in the worker; the renderer pulls placed slices of it (#9018).
+    let capture: GaussianUploadCapture;
+    if (ctx.decode) capture = inMemoryGaussianCapture(prepareGaussianCapture(await ctx.decode(ctx.file, ctx.signal)));
+    else {
+      const opened = await openGaussianCaptureRows(ctx.file, ctx.signal);
+      closeCapture = opened.close;
+      capture = opened;
+    }
     if (!ctx.isCurrent()) return 'cancelled';
     store.setProgress({ phase: 'Uploading Gaussian capture', percent: 70 });
     upload = await uploadInGaussianFrame(splats, frame => uploadGaussianCapture({
@@ -132,6 +142,8 @@ async function decodeAndPublish(
     // A superseded or cancelled load: its canceller or successor owns the UI.
     if (!ctx.isCurrent()) return 'cancelled';
     return fail(captureLoadFailure(error instanceof Error ? error.message : String(error)), 'gaussian_load_failed');
+  } finally {
+    closeCapture(); // a decode the renderer never read ends here
   }
   if (!upload) return ctx.isCurrent() ? 'failed' : 'cancelled';
   const shell = gaussianModelShell(ctx.file.size);
@@ -147,7 +159,7 @@ async function decodeAndPublish(
     upload.rollback(); // Finalization declined: superseded before publication.
     return ctx.isCurrent() ? 'failed' : 'cancelled';
   }
-  adoptGaussianAsset(ctx.modelId, upload.record.handle, splats, upload.attributes);
+  adoptGaussianAsset(ctx.modelId, upload.record.handle, splats, upload.rows);
   upload.commit();
   releaseBudget(); // The store now counts this capture's splats.
   if (!ctx.isCurrent()) return 'cancelled';

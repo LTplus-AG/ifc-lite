@@ -27,9 +27,21 @@
  */
 
 import type { IfcEntityInfo } from './types.js';
-import { ENTITIES_IFC4 } from './generated/entities-ifc4.js';
+import { getEntitiesIfc4 } from './generated/entities-ifc4.js';
 import { IFC4_EXPRESS_OVERRIDES, IFC4_UNDECLARED_ENTITIES } from './ifc4-express-corrections.js';
+import { eagerSchemaTable } from './table-codec.js';
 
-export const ENTITIES_IFC4_EXPRESS: readonly IfcEntityInfo[] = ENTITIES_IFC4
-  .filter((entity) => !IFC4_UNDECLARED_ENTITIES.has(entity.name))
-  .map((entity) => (Object.hasOwn(IFC4_EXPRESS_OVERRIDES, entity.name) ? { ...entity, ...IFC4_EXPRESS_OVERRIDES[entity.name] } : entity));
+let entitiesIfc4Express: readonly IfcEntityInfo[] | undefined;
+
+/** `ENTITIES_IFC4_EXPRESS`, built on first call (the generated IFC4 table is
+ *  decoded on first use too) and the same array afterwards. */
+export function getEntitiesIfc4Express(): readonly IfcEntityInfo[] {
+  if (entitiesIfc4Express === undefined) {
+    entitiesIfc4Express = getEntitiesIfc4()
+      .filter((entity) => !IFC4_UNDECLARED_ENTITIES.has(entity.name))
+      .map((entity) => (Object.hasOwn(IFC4_EXPRESS_OVERRIDES, entity.name) ? { ...entity, ...IFC4_EXPRESS_OVERRIDES[entity.name] } : entity));
+  }
+  return entitiesIfc4Express;
+}
+
+export const ENTITIES_IFC4_EXPRESS: readonly IfcEntityInfo[] = /* @__PURE__ */ eagerSchemaTable('ifc-lite-eager-table:ENTITIES_IFC4_EXPRESS', getEntitiesIfc4Express);

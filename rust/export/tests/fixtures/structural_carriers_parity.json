@@ -1,0 +1,79 @@
+{
+  "about": "Shared by packages/export/src/structural-carriers.parity.test.ts and rust/export/tests/structural_carriers_parity.rs (#10597). Each case: OWNER lines then data, exported from `from` to `to`; expect lists the output records selected by exact id or entity type, in output order. Selecting #2 exercises the id-prefix collision with records such as #20 and #21.",
+  "owner": "#1=IFCPERSON($,'P',$,$,$,$,$,$);\n#2=IFCORGANIZATION($,'O',$,$,$);\n#3=IFCPERSONANDORGANIZATION(#1,#2,$);\n#4=IFCAPPLICATION(#2,'1','A','A');\n#5=IFCOWNERHISTORY(#3,#4,$,.NOCHANGE.,$,$,$,1);\n#6=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',#5,'P',$,$,$,$,$,$);\n#7=IFCCARTESIANPOINT((0.,0.,0.));\n#8=IFCAXIS2PLACEMENT3D(#7,$,$);\n#9=IFCLOCALPLACEMENT($,#8);\n#11=IFCSTRUCTURALLOADLINEARFORCE('line',0.,0.,-5.,0.,0.,0.);\n#12=IFCSTRUCTURALLOADSINGLEDISPLACEMENT('disp',0.,0.,-0.001,0.,0.,0.);\n#20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);\n#23=IFCSTRUCTURALPOINTREACTION('1KQ0efL39PrP5DeqBwaUNp',#5,'R2',$,$,#9,$,#12,.GLOBAL_COORDS.);",
+  "selectIds": [
+    2,
+    21,
+    22,
+    30
+  ],
+  "selectTypes": [
+    "IFCRELASSIGNSTOPRODUCT",
+    "IFCSTRUCTURALLOADCONFIGURATION"
+  ],
+  "cases": [
+    {
+      "why": "each action's CausedBy becomes its own 'Causes' relationship, in action id order",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);\n#22=IFCSTRUCTURALPOINTACTION('3nopC4uRTI$9OB7Ig1TJsz',#5,'B',$,$,#9,$,#12,.GLOBAL_COORDS.,.F.,#23);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);",
+        "#22=IFCSTRUCTURALPOINTACTION('3nopC4uRTI$9OB7Ig1TJsz',#5,'B',$,$,#9,$,#12,.GLOBAL_COORDS.,.F.);",
+        "#24=IFCRELASSIGNSTOPRODUCT('0_o4Q92PfJbxJO8HJ0YE$L',#5,'Causes',$,(#20),$,#21);",
+        "#25=IFCRELASSIGNSTOPRODUCT('28rDuc_hLVcVpGyeTox8qU',#5,'Causes',$,(#23),$,#22);"
+      ]
+    },
+    {
+      "why": "a source 'Causes' naming another reaction stays, CausedBy is added beside it",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);\n#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#21);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);",
+        "#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#21);",
+        "#31=IFCRELASSIGNSTOPRODUCT('0_o4Q92PfJbxJO8HJ0YE$L',#5,'Causes',$,(#20),$,#21);"
+      ]
+    },
+    {
+      "why": "a converted varying action: its relationship id is allocated before its configuration's, configurations are appended first",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);\n#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));\n#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));\n#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));\n#17=IFCSHAPEASPECT((#14,#16,#16),'Coverage aspect',$,.T.,#15);\n#18=IFCSTRUCTURALLOADLINEARFORCE('first subsequent',0.,0.,-6.,0.,0.,0.);\n#19=IFCSTRUCTURALLOADLINEARFORCE('second subsequent',0.,0.,-7.,0.,0.,0.);\n#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);\n#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#17,(#19,#18));",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);",
+        "#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#33,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.NOTDEFINED.);",
+        "#33=IFCSTRUCTURALLOADCONFIGURATION($,(#11,#19,#18),$);",
+        "#31=IFCRELASSIGNSTOPRODUCT('0_o4Q92PfJbxJO8HJ0YE$L',#5,'Causes',$,(#20),$,#21);",
+        "#32=IFCRELASSIGNSTOPRODUCT('3K3y1LersjjWipqUOWpWlP',#5,'Causes',$,(#20),$,#30);"
+      ]
+    },
+    {
+      "why": "one 'Causes' naming one point reaction fills CausedBy; one naming two does not",
+      "from": "IFC4",
+      "to": "IFC2X3",
+      "data": "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);\n#22=IFCSTRUCTURALPOINTACTION('3nopC4uRTI$9OB7Ig1TJsz',#5,'B',$,$,$,$,#12,.GLOBAL_COORDS.,.F.);\n#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20),$,#21);\n#31=IFCRELASSIGNSTOPRODUCT('1bbbbbbbbbbbbbbbbbbbbb',#5,'Causes',$,(#20,#23),$,#22);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);",
+        "#22=IFCSTRUCTURALPOINTACTION('3nopC4uRTI$9OB7Ig1TJsz',#5,'B',$,$,$,$,#12,.GLOBAL_COORDS.,.F.,$);",
+        "#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20),$,#21);",
+        "#31=IFCRELASSIGNSTOPRODUCT('1bbbbbbbbbbbbbbbbbbbbb',#5,'Causes',$,(#20,#23),$,#22);"
+      ]
+    },
+    {
+      "why": "a Causes relationship with a non-reference list item cannot restore CausedBy",
+      "from": "IFC4",
+      "to": "IFC2X3",
+      "data": "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);\n#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20,$),$,#21);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.);",
+        "#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20,$),$,#21);"
+      ]
+    }
+  ]
+}

@@ -7,6 +7,7 @@
  * coordinate system info, and project information.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useMemo } from 'react';
 import { FileBox, BookMarked } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,10 +29,13 @@ import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAM
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
 import { FederationAssumptionsNotice } from './FederationAssumptionsNotice';
 import { TerrainImageryCard } from './TerrainImageryCard';
+import { SiteContextCard } from './SiteContextCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
+import { useLoadWindowHold } from '@/hooks/loadWindow';
 import { isModelStreaming } from '@/lib/streaming-refresh';
+import { TriangleCountRow } from './TriangleCountRow';
 import { GaussianCaptureMetadataPanel } from './GaussianCaptureMetadataPanel';
 
 /** Model metadata. A Gaussian capture is a different component type, so
@@ -42,6 +46,9 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     : <IfcModelMetadataPanel model={model} />;
 }
 
+/** Shown while this model's load settles; a number is never shown before it is final. */
+const STAT_PENDING = '—';
+
 /** IFC (and source-model) metadata: file info, schema version, entity counts, etc. */
 function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   const { t, locale, revision } = useTranslation();
@@ -51,6 +58,10 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const fromGlobalId = useViewerStore((s) => s.fromGlobalId);
+  // This model's whole-model statistics wait while it loads (loadWindow.ts):
+  // computed then, they ran in the drain and finalize that end the load. A
+  // model that had settled keeps its statistics while another model loads.
+  const statsHeld = useLoadWindowHold().isHeld(model.id);
   const mutationView = useViewerStore((s) => s.getMutationView?.(normalizeMutationModelId(s, model.id)));
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
@@ -94,8 +105,8 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Membership changes with source/overlay edits, not with each streamed
   // geometry batch. Keep it stable while the shaped count catches up.
   const physicalIds = useMemo(
-    () => dataStore?.spatialHierarchy ? sharedEffectivePhysicalEntityIds(dataStore, mutationView, mutationVersion) : new Set<number>(),
-    [dataStore, mutationView, mutationVersion],
+    () => !statsHeld && dataStore?.spatialHierarchy ? sharedEffectivePhysicalEntityIds(dataStore, mutationView, mutationVersion) : new Set<number>(),
+    [dataStore, statsHeld, mutationView, mutationVersion],
   );
 
   // Count storeys and elements — see `modelMetadataStats.ts` for what
@@ -109,7 +120,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
     (held, next) => held.modelId === next.modelId && held.streaming && next.streaming,
   ).geometry;
   const stats = useMemo(
-    () => computeModelStats(dataStore, statsGeometry, {
+    () => statsHeld ? null : computeModelStats(dataStore, statsGeometry, {
       mutationView,
       physicalIds,
       // A completed cache hit may validly contain no geometry result. That is
@@ -126,7 +137,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
         return ref?.modelId === model.id ? ref.expressId : undefined;
       },
     }),
-    [dataStore, fromGlobalId, model.geometryLoadState, statsGeometry, model.id, model.loadState, mutationView, physicalIds],
+    [dataStore, statsHeld, fromGlobalId, model.geometryLoadState, statsGeometry, model.id, model.loadState, mutationView, physicalIds],
   );
 
   // The statistics describe the model as edited; the file rows above them stay
@@ -134,6 +145,8 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   const entityCount = useMemo(() => effectiveEntityCount(dataStore, mutationView), [dataStore, mutationView, mutationVersion]);
   const maxExpressId = useMemo(() => effectiveMaxExpressId(model.maxExpressId, mutationView), [model.maxExpressId, mutationView, mutationVersion]);
 
+  // Georeferencing is model data placed by the Placement feature; a host can switch either off (`lib/features`).
+  const georefEditable = isFeatureEnabled('edit.placement') && isFeatureEnabled('edit.model');
   // Extract georeferencing info
   const georef = useMemo(() => {
     if (!dataStore) return null;
@@ -205,7 +218,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
             reserved for real warnings (#8802). */}
         <section className="border-b border-border pb-1">
           <InspectorHeading>{t('properties.modelMetadata.fileInformationHeading')}</InspectorHeading>
-          <InspectorRow label={t(mutationView?.hasPendingChanges() ? 'properties.modelMetadata.fileSizeAsLoaded' : 'properties.modelMetadata.fileSize')} value={formatFileSize(model.fileSize)} copy={false} />
+          <InspectorRow label={t(mutationView?.hasPendingChanges() ? 'properties.modelMetadata.fileSizeAsLoaded' : 'properties.modelMetadata.fileSize')} value={model.processedModel && model.fileSize === 0 ? t('properties.modelMetadata.notAvailable') : formatFileSize(model.fileSize)} copy={false} />
           <InspectorRow label={t('properties.modelMetadata.loadedAt')} value={formatDate(model.loadedAt)} mono copy={false} />
           {dataStore && dataStore.parseTime != null && (
             <InspectorRow label={t('properties.modelMetadata.parseTime')} value={t('properties.modelMetadata.parseTimeValue', { ms: formatLocaleNumber(locale, dataStore.parseTime, { maximumFractionDigits: 0 }) })} copy={false} />
@@ -257,20 +270,22 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
           />
           <InspectorRow
             label={model.sourceSchema ? t('properties.modelMetadata.sourcePoints') : t('properties.modelMetadata.buildingStoreys')}
-            value={formatLocaleNumber(locale, model.sourceSchema ? landXmlStats.points : stats.storeys)}
+            value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.points) : stats ? formatLocaleNumber(locale, stats.storeys) : STAT_PENDING}
             copy={false}
           />
           <InspectorRow
             label={model.sourceSchema ? t('properties.modelMetadata.sourceOverlays') : t('properties.modelMetadata.elementsWithGeometry')}
-            value={formatLocaleNumber(locale, model.sourceSchema ? landXmlStats.overlays : stats.elementsWithGeometry)}
+            value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.overlays) : stats ? formatLocaleNumber(locale, stats.elementsWithGeometry) : STAT_PENDING}
             copy={false}
           />
+          <TriangleCountRow modelId={model.id} />
           {!model.sourceSchema && (
             <InspectorRow label={t('properties.modelMetadata.maxExpressId')} value={formatLocaleNumber(locale, maxExpressId)} copy={false} />
           )}
         </section>
 
         {model.sourceSchema && model.landXmlDocument && <TerrainImageryCard model={model} />}
+        <SiteContextCard model={model} />
 
         {model.sourceSchema && model.landXmlDocument && <LandXmlModelSourceNavigation
           modelId={model.id}
@@ -307,7 +322,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
         {/* Georeferencing — kept at the bottom because it embeds a
             tall location map; placing it earlier would push the
             statistics + project metadata below the fold. */}
-        <GeoreferencingPanel georef={georef} modelId={model.id} enableEditing schemaVersion={model.schemaVersion} coordinateInfo={model.geometryResult?.coordinateInfo} geometryResult={model.geometryResult} lengthUnitScale={unitInfo?.scale} />
+        <GeoreferencingPanel georef={georef} modelId={model.id} enableEditing={georefEditable} schemaVersion={model.schemaVersion} coordinateInfo={model.geometryResult?.coordinateInfo} geometryResult={model.geometryResult} lengthUnitScale={unitInfo?.scale} />
       </ScrollArea>
     </div>
   );

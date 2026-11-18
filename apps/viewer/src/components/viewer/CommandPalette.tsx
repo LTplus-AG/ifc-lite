@@ -1,6 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { registerAgentCommandHost } from '@/lib/agent-bridge/command-host';
+import { useAgentBridgeState } from '@/lib/agent-bridge/state';
+import { useInlineSearchHost } from './inline-search-focus';
+import { useErrorReportDestination } from '@/lib/error-reports/destination';
 import { useRetainedReportHost } from './retained-report-destination';
 import { useSplitWidth } from './model/model-layout';
 import { usePlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
@@ -12,10 +16,10 @@ import { usePersistentToolHosts } from './PersistentToolHosts';
 
 import { useContext, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
-import { toast } from '@/components/ui/toast';
-import { Search, X } from 'lucide-react';
 import { PaletteLauncherContext } from './command-palette-launcher';
 import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
+import { toast } from '@/components/ui/toast';
+import { Search, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { readCopyClipboard, subscribeCopyClipboard } from '@/lib/commands/modeling/copy-clipboard';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
@@ -89,6 +93,7 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuery = '' }: CommandPaletteProps) {
+  const agentActive = useAgentBridgeState().status.kind === 'connected';
   const hostLauncher = useContext(PaletteLauncherContext);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -106,6 +111,8 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const dockDestinations = useExtensionDockDestinations();
   const fileHost = useMountedFileHost();
   const toolHosts = usePersistentToolHosts();
+  const inlineSearchHost = useInlineSearchHost();
+  const errorReportDestination = useErrorReportDestination();
   const retainedReportHost = useRetainedReportHost();
   const splitWidth = useSplitWidth();
   const placementGeoref = usePlacementGeorefContext();
@@ -134,7 +141,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
 
   // Retain export ownership while closed without following invisible command prerequisites.
   const copyClipboard = useSyncExternalStore(subscribeCopyClipboard, readCopyClipboard, readCopyClipboard);
-  const prerequisites = useViewerStore(useShallow(s => open ? palettePrerequisites(s) : null));
+  const prerequisites = useViewerStore(useShallow(s => open || agentActive ? palettePrerequisites(s) : null));
   const collabRole = prerequisites?.role ?? null;
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   // Cesium only has something to show once a model carries georeferencing.
@@ -144,7 +151,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
-  const commands = useMemo<Command[]>(() => !open ? [] : [...buildCommandPaletteCommands({
+  const commands = useMemo<Command[]>(() => !open && !agentActive ? [] : [...buildCommandPaletteCommands({
     execute,
     surfaceContext: { ...toolHosts, ...surfaceContext,
       openBulkProperties: (surfaceContext?.openBulkProperties ?? toolHosts.openBulkProperties)
@@ -166,9 +173,11 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), ...dockDestinations.commands], [open, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, locale, revision]);
-
-
+  }), ...dockDestinations.commands], [open, agentActive, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, errorReportDestination, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, inlineSearchHost, locale, revision]);
+  useLayoutEffect(() => {
+    if (!agentActive) return;
+    return registerAgentCommandHost(() => commands);
+  }, [agentActive, commands]);
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.
   // When browsing (no query), results are grouped by category.
@@ -230,7 +239,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
     };
     // The destination takes focus only after Radix releases its closing scope.
     // A frame callback alone does not order its delayed close-focus timer.
-    closeFocusAction.current = cmd.id === 'elements:entity-actions' ? activate : null;
+    closeFocusAction.current = cmd.id === 'search:inline' || cmd.id === 'elements:entity-actions' ? activate : null;
     onOpenChange(false);
     if (closeFocusAction.current) return;
     // File picker activation stays in the trusted event stack.
@@ -348,7 +357,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
           <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted-foreground select-none">
             {flatItems.length > 0 && <>
               <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↑↓</kbd> {t('commandPalette.footer.navigate')}</span>
-              <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↵</kbd> {t('commandPalette.footer.run')}</span>
+              {activeOption && activeOption.cmd.availability?.status !== 'disabled' && <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">↵</kbd> {t('commandPalette.footer.run')}</span>}
             </>}
             <span><kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border bg-muted px-1 font-mono text-xs">{t('commandPalette.escKey')}</kbd> {t('commandPalette.footer.close')}</span>
           </div>

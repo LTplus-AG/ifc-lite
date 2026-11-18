@@ -14,6 +14,11 @@
  * the model's top-left quarter with tracked-caps captions. The one button sits
  * at the bottom edge instead, level with the Home/zoom pill
  * (`MOBILE_NAV_ROW`), where a thumb reaches it and the model is not.
+ *
+ * The list opens wherever panels open (`MobilePanelHost`, #9718): a sheet on a
+ * portrait phone, the docked pane beside the model in landscape and on a
+ * near-tablet. In a fold the list has the control segment to itself while no
+ * panel is open, so it is shown there inline and there is no button.
  */
 
 import { useState } from 'react';
@@ -25,19 +30,21 @@ import { useRailPanelIds } from '@/hooks/useRailPanelIds';
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
-import { MobileBottomSheet } from './MobileBottomSheet';
+import { MobilePanelHost } from './MobilePanelHost';
 import { mobileNavRowStyle } from './mobile-overlay-layout';
-import { mobileCommandPlacement } from '@/lib/layout/form-factor';
+import { mobileCommandPlacement, mobilePanelHost } from '@/lib/layout/form-factor';
 
 export function MobilePanelLauncher() {
   const { t } = useTranslation();
   const placement = useViewerStore((s) => mobileCommandPlacement(s.formFactor));
+  const host = useViewerStore((s) => mobilePanelHost(s.formFactor));
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   const { openInHome, closePanel } = usePanelControls();
   const openBottomPanel = activeBottomPanel(useBottomPanelFlags());
   const railIds = useRailPanelIds();
   const [listOpen, setListOpen] = useState(false);
+  const inline = host === 'segment';
 
   const openMobilePanel = (id: WorkspacePanelId) => {
     setListOpen(false);
@@ -59,28 +66,32 @@ export function MobilePanelLauncher() {
     <>
       {/* Named by its visible label, so what a sighted user reads is what a
           screen reader announces (WCAG 2.5.3). 44px tall: a phone target. */}
-      <button
-        type="button"
-        aria-expanded={listOpen}
-        data-mobile-panels-launcher
-        className="absolute z-20 inline-flex h-11 items-center gap-2 rounded-md border border-border bg-background/90 pl-3 pr-4 text-sm font-medium text-foreground shadow-sm backdrop-blur-sm touch-manipulation active:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        style={mobileNavRowStyle(placement, 'right')}
-        onClick={() => setListOpen(true)}
-      >
-        <LayoutGrid className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        {t('shellChrome.layout.panelsLabel')}
-      </button>
-      {listOpen && (
+      {!inline && (
+        <button
+          type="button"
+          aria-expanded={listOpen}
+          data-mobile-panels-launcher
+          className="absolute z-20 inline-flex h-11 items-center gap-2 rounded-md border border-border bg-background/90 pl-3 pr-4 text-sm font-medium text-foreground shadow-sm backdrop-blur-sm touch-manipulation active:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          style={mobileNavRowStyle(placement, 'right')}
+          onClick={() => setListOpen((open) => !open)}
+        >
+          <LayoutGrid className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          {t('shellChrome.layout.panelsLabel')}
+        </button>
+      )}
+      {(listOpen || inline) && (
         <>
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label={t('shellChrome.layout.closePanelListAriaLabel')}
-            className="absolute inset-0 bg-scrim/40 z-30 animate-in fade-in duration-200"
-            onClick={() => setListOpen(false)}
-          />
-          <MobileBottomSheet title={t('shellChrome.layout.panelsLabel')} onClose={() => setListOpen(false)}>
-            <ul className="py-1">
+          {host === 'sheet' && (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={t('shellChrome.layout.closePanelListAriaLabel')}
+              className="absolute inset-0 bg-scrim/40 z-30 animate-in fade-in duration-200"
+              onClick={() => setListOpen(false)}
+            />
+          )}
+          <MobilePanelHost title={t('shellChrome.layout.panelsLabel')} onClose={inline ? undefined : () => setListOpen(false)}>
+            <ul data-mobile-panel-list className="py-1">
               {railIds.map((id) => {
                 const def = getPanelDef(id);
                 if (!def) return null;
@@ -99,7 +110,7 @@ export function MobilePanelLauncher() {
                 );
               })}
             </ul>
-          </MobileBottomSheet>
+          </MobilePanelHost>
         </>
       )}
     </>

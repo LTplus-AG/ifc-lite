@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/hooks/ingest/confirmLocalIfcAdmission.ts
++++ b/apps/viewer/src/hooks/ingest/confirmLocalIfcAdmission.ts
+@@ -47,7 +47,7 @@
+     const head = await file.slice(0, 4096).arrayBuffer();
+     const format = detectFormat(head);
+     const unknownIfc = format === 'unknown' && (/\.(ifc|ifczip|ifcxml)$/i.test(file.name) || new TextDecoder().decode(head).trimStart().startsWith('ISO-10303-21'));
+-    if (!options.isCurrent() || ((format === 'ifc' || headIsZip(head)) && !await options.admit(file.size, head))) {
++    if (!options.isCurrent() || ((format === 'ifc' || unknownIfc || headIsZip(head)) && !await options.admit(file.size, head))) {
+       options.finish(); return null;
+     }
+     return head;

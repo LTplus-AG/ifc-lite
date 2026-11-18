@@ -133,7 +133,7 @@ export function aaNoiseFloor(pairs, options) {
  * floor (omit for an A/A run itself). `minAbs`: smallest absolute median
  * difference, in the metric's unit, that can count at all (timer resolution).
  */
-export function verdictFor(pairs, { failures = { base: 0, branch: 0 }, aaFloor = null, minAbs = 1, minSamples = 5, seed = 1 } = {}) {
+export function verdictFor(pairs, { failures = { base: 0, branch: 0 }, underLoad = { base: 0, branch: 0 }, aaFloor = null, minAbs = 1, minSamples = 5, seed = 1 } = {}) {
   const base = pairs.map((p) => p[0]).filter(Number.isFinite);
   const branch = pairs.map((p) => p[1]).filter(Number.isFinite);
   const out = {
@@ -145,6 +145,12 @@ export function verdictFor(pairs, { failures = { base: 0, branch: 0 }, aaFloor =
   };
   if (failures.branch > failures.base) {
     return { ...out, verdict: 'regression: more failed loads', regression: true };
+  }
+  // A sample taken while the host was busy (another lane's build, CPU pressure) is not evidence either way:
+  // no verdict until its round is rerun as a complete unit. Never dropped by hand, never averaged in.
+  const busy = (underLoad?.base ?? 0) + (underLoad?.branch ?? 0);
+  if (busy > 0) {
+    return { ...out, underLoad, verdict: `inconclusive: ${busy} sample(s) taken under host load; rerun those rounds as complete units` };
   }
   if (base.length < minSamples || branch.length < minSamples || out.gain === null || out.ownFloor === null) {
     return { ...out, verdict: 'inconclusive: too few successful samples' };
@@ -374,4 +380,16 @@ export function expectedCacheTier(bytes) {
   if (bytes <= 150 * MB) return 'source (10-150 MB)';
   if (bytes <= 400 * MB) return 'mesh-only (150-400 MB)';
   return 'none (>400 MB, uncached)';
+}
+
+/** Aggregate fixture verdicts by lane for the report summary. */
+export function laneSummary(fixtures, lanes) {
+  const out = {};
+  for (const lane of lanes) {
+    const rows = fixtures.filter((f) => f.lanes[lane]?.primary).map((f) => ({ fixture: f.name, set: f.set, ...f.lanes[lane].primary, output: f.lanes[lane].output }));
+    const by = (pred) => rows.filter(pred).map((r) => r.fixture);
+    out[lane] = { gains: by((r) => r.pass), regressions: by((r) => r.regression), noDifference: by((r) => r.verdict === 'no significant difference'),
+      inconclusive: by((r) => r.verdict.startsWith('inconclusive')), outputChanged: by((r) => r.output !== 'match') };
+  }
+  return out;
 }

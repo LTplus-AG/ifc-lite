@@ -1,0 +1,62 @@
+{
+  "name": "@ifc-lite/site-context",
+  "version": "0.1.0",
+  "description": "Site context as data for Swiss projects: swissALTI3D terrain, the cadastral parcel and neighbouring swissBUILDINGS3D buildings around a georeferenced model, in one EPSG:2056 frame, as a self-describing GLB",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run",
+    "smoke:live": "node scripts/live-smoke.mjs"
+  },
+  "dependencies": {
+    "@ifc-lite/geo": "workspace:^",
+    "@ifc-lite/geodata-ch": "workspace:^",
+    "@ifc-lite/tiles3d": "workspace:^"
+  },
+  "devDependencies": {
+    "@mergifyio/vitest": "^2026.11.8",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/site-context"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "gis",
+    "site-context",
+    "terrain",
+    "cadastre",
+    "glb",
+    "lv95",
+    "switzerland",
+    "3d-tiles",
+    "buildings"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

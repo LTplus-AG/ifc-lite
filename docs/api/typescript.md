@@ -31,7 +31,9 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/encoding`](#ifc-liteencoding) | IFC string encoding/decoding and property value parsing for IFC-Lite |
 | [`@ifc-lite/cache`](#ifc-litecache) | Binary cache format for IFC-Lite - fast model loading |
 | [`@ifc-lite/pointcloud`](#ifc-litepointcloud) | Point cloud decoders and types for IFC-Lite |
+| [`@ifc-lite/geo`](#ifc-litegeo) | Headless CRS engine for IFC-Lite: resolve a CRS, reproject to and from WGS84, grid convergence and scale factors, EGM96 undulation |
 | [`@ifc-lite/solar`](#ifc-litesolar) | Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite |
+| [`@ifc-lite/tiles3d`](#ifc-litetiles3d) | Headless OGC 3D Tiles reader: region queries over tilesets, b3dm/glb decoding (incl. Draco) into per-feature ECEF meshes with attributes |
 | [`@ifc-lite/sdk`](#ifc-litesdk) | Scripting SDK for ifc-lite — the bim.* API for BIM automation |
 | [`@ifc-lite/sandbox`](#ifc-litesandbox) | QuickJS-in-WASM sandboxed script execution for ifc-lite |
 | [`@ifc-lite/extensions`](#ifc-liteextensions) | Extension manifest, capability grammar, and slot registry for ifc-lite user customization |
@@ -51,8 +53,11 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
 | [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
 | [`@ifc-lite/documents-api`](https://www.npmjs.com/package/@ifc-lite/documents-api) | OpenCDE Documents API 1.0 client: select, download, query and upload documents against a buildingSMART Documents API server |
+| [`@ifc-lite/flood-check`](https://www.npmjs.com/package/@ifc-lite/flood-check) | Headless check of a georeferenced building model against a surface-runoff hazard map (Swiss BAFU provider included) |
 | [`@ifc-lite/flow`](https://www.npmjs.com/package/@ifc-lite/flow) | Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs |
 | [`@ifc-lite/flow-nodes`](https://www.npmjs.com/package/@ifc-lite/flow-nodes) | Standard node library for @ifc-lite/flow over the ifc-lite SDK: model reads and writes, tables, viewer, and a sandboxed Script node |
+| [`@ifc-lite/geodata-ch`](https://www.npmjs.com/package/@ifc-lite/geodata-ch) | Typed headless client for Swiss federal geodata (address search, parcels, swissALTI3D terrain, swissBUILDINGS3D tiles, swissTLM3D features, ÖREB) as site context in LV95 |
+| [`@ifc-lite/georef-check`](https://www.npmjs.com/package/@ifc-lite/georef-check) | Diagnose IFC georeferencing: Levels of Georeferencing found, and findings with plain-language explanations and structured fixes (double map position, scale slips, zone prefixes, LV03/LV95, tool-default site locations) |
 | [`@ifc-lite/ids-agent`](https://www.npmjs.com/package/@ifc-lite/ids-agent) | Headless IDS authoring agent: a tool-calling loop over the IDS Studio op vocabulary, grounded by the gate, producing reviewable proposals |
 | [`@ifc-lite/ids-authoring`](https://www.npmjs.com/package/@ifc-lite/ids-authoring) | Headless IDS authoring core: Studio document with stable node ids, typed invertible operations, a grounding gate against the IFC schema tables, history, sidecar and re-identification |
 | [`@ifc-lite/load-trace`](https://www.npmjs.com/package/@ifc-lite/load-trace) | Dependency-free load-trace spans: performance.measure plus a per-load, cross-thread span tree with worker clock alignment and Chrome-trace export |
@@ -62,9 +67,10 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/opencde-foundation`](https://www.npmjs.com/package/@ifc-lite/opencde-foundation) | buildingSMART OpenCDE Foundation API client: version discovery, auth discovery, OAuth2 flows and the shared HTTP client used by every OpenCDE service client |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
 | [`@ifc-lite/regex-guard`](https://www.npmjs.com/package/@ifc-lite/regex-guard) | A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input |
-| [`@ifc-lite/rhino3dm`](https://www.npmjs.com/package/@ifc-lite/rhino3dm) | Lazy Rhino 3dm writer for encoded ifc-lite RhinoScene data |
+| [`@ifc-lite/rhino3dm`](https://www.npmjs.com/package/@ifc-lite/rhino3dm) | Lazy Rhino 3dm reader and writer: .3dm bytes to plain RhinoImport data, encoded ifc-lite RhinoScene data to .3dm |
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/semantic`](https://www.npmjs.com/package/@ifc-lite/semantic) | Portable semantic datasets, profiles, validation and IFC identity resolution |
+| [`@ifc-lite/site-context`](https://www.npmjs.com/package/@ifc-lite/site-context) | Site context as data for Swiss projects: swissALTI3D terrain, the cadastral parcel and neighbouring swissBUILDINGS3D buildings around a georeferenced model, in one EPSG:2056 frame, as a self-describing GLB |
 | [`@ifc-lite/source-autodesk`](https://www.npmjs.com/package/@ifc-lite/source-autodesk) | Autodesk Forma and Data Exchange cloud-source provider for ifc-lite |
 | [`@ifc-lite/source-bimcollab`](https://www.npmjs.com/package/@ifc-lite/source-bimcollab) | BIMcollab Documents file-source provider for ifc-lite |
 | [`@ifc-lite/source-buildagil`](https://www.npmjs.com/package/@ifc-lite/source-buildagil) | buildagil openCDE documents file-source provider for ifc-lite |
@@ -186,6 +192,12 @@ Many more on-demand extractors are exported (classifications, materials, documen
 `secondsToIso8601Duration(seconds: number): string | undefined` is a new export: it renders a signed number of seconds as an ISO 8601 duration string suitable for `IfcDuration` (`86400` -> `"P1D"`, `-172800` -> `"-P2D"`), preferring the coarsest whole unit that divides cleanly and falling back to a decimal-seconds form for fractional values. It returns `undefined` for non-finite input (`NaN`, `±Infinity`) rather than fabricating `"PT0S"`. `parseIso8601Duration(value: string | undefined): number | undefined` is its decode counterpart — already public before this change — and the two form a round trip: `parseIso8601Duration(secondsToIso8601Duration(s)) === s` for every finite, representable `s`. Both also accept/emit the ISO 8601-2 signed extension (`-P2D`) to carry IFC schedule lead time; see `docs/guide/schedule-import.md`.
 
 Other exports include the STEP scanning/tokenizing building blocks (`StepTokenizer`, `EntityExtractor`, `scanIfcEntities`, `CompactEntityIndex`), unit extraction (`extractProjectUnits`, `ProjectUnits`), the STEP serializer helpers (`generateStepFile`, `toStepLine`, `serializeValue`), the generated IFC schema registry (`SCHEMA_REGISTRY`, `getAttributeNames`), and re-exported IFCX parsing from `@ifc-lite/ifcx`.
+
+`EntityExtractor.extractAttribute(ref, index)` reads one zero-based positional
+attribute with the same STEP value rules as `extractEntity`, without decoding
+unrequested values. Missing attributes return `undefined`. It reads source data;
+use the effective metadata APIs when mutation overlays must be applied.
+
 
 ---
 
@@ -1099,9 +1111,17 @@ Binary cache format for fast model loading: `BinaryCacheWriter`, `BinaryCacheRea
 
 Point cloud decoders and types: `decodePcd`, LAS/LAZ support including `LasStreamingSource` for chunked streaming, and `decompressLZF`.
 
+## @ifc-lite/geo
+
+Headless CRS engine: `resolveCrs({ epsg, name, wkt })` returns a transformer with `toWgs84` / `fromWgs84` (projected coordinates in metres even for a foot-based CRS, whose own unit is reported as `linearUnit`; longitude first) and `gridFactors` (grid convergence and point scale factor). Also `egm96Undulation`; `configureCrsLoaders` for the optional epsg.io and cdn.proj.org lookups (one configuration per process) and `createCrsEngine` for an engine with loaders and caches of its own; `configureCrsDiagnostics` for its warnings, silent by default. Nothing reaches the network unless a loader is installed. There is no vertical transformation, and the datum shift in use is reported per transformer; see the package README for the accuracy notes. `@ifc-lite/geo/wkt` reads what a CRS WKT states without resolving it.
+
 ## @ifc-lite/solar
 
 Solar position, sunrise/sunset, and 3D sun-path geometry: `sunPosition`, `sunTimes`, and the sun-path dome builders (day paths, hourly analemmas). Renderer-agnostic.
+
+## @ifc-lite/tiles3d
+
+Headless OGC 3D Tiles reader: `readTilesetRegion` returns the features of a tileset inside a WGS84 region as float64 meshes (tileset frame / ECEF) with batch table attributes, primitive groups and tile provenance. It handles b3dm and glb content (with Draco), budgets and explicit truncation, and has a `readSwisstopoBuildings` preset. `ecefToGeodetic` / `geodeticToEcef` convert positions.
 
 ## @ifc-lite/sdk
 
@@ -1173,6 +1193,8 @@ WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the 
 `@ifc-lite/wasm/rhino` holds the Rhino .3dm scene builder (`exportRhinoScene`)
 outside the default engine. `@ifc-lite/geometry`'s `exportRhinoScene` loads it on
 first use; `@ifc-lite/rhino3dm` writes the returned scene to a .3dm archive.
+It also holds the CityJSON 2.0 writer (`exportCityJson`), which
+`@ifc-lite/geometry`'s `exportCityJson` loads the same way.
 
 ### Independent diff WASM module
 

@@ -136,6 +136,7 @@ export async function exportIfc(s, { count = true, schema } = {}) {
 
 /** Export without counting and parse it. */
 export async function oracleModel(s) {
+  await s.harness.dismissToasts();
   const dl = await exportIfc(s, { count: false });
   s.lastExport = dl;
   return { name: dl.name, text: dl.text, step: readStep(dl.text) };

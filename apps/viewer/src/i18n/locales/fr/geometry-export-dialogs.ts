@@ -5,11 +5,23 @@
 import type { Catalogue } from '../../registry';
 
 export const geometryExportDialogsFr = {
+  "geometryExport.shared.georefRequired": "Ce modèle ne possède pas de géoréférencement. Ajoutez un emplacement avant de l’exporter.",
+  "geometryExport.shared.openGeoreferencing": "Ouvrir le géoréférencement",
+  "cityJsonExport.description": "Exporter le modèle IFC sélectionné en CityJSON 2.0 ou CityJSONSeq.",
+  "cityJsonExport.localNotice": "Ce modèle n’est pas géoréférencé. Le fichier utilisera les coordonnées locales du modèle, et non les coordonnées cartographiques.",
+  "cityJsonExport.sessionCrs": "Écrit les coordonnées en {crs}, y compris les modifications de géoréférencement de cette session.",
+  "cityJsonExport.noSource": "Chargez un modèle IFC ou IFCZIP à exporter.",
+  "cityJsonExport.document": "CityJSON (.city.json)",
+  "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",
+  "cityJsonExport.exported": "CityJSON exporté",
+  "cityJsonExport.warnings": "Exporté avec {count} avertissements :\n{warnings}",
+  "cityJsonExport.failed": "Échec de l’export CityJSON : {reason}",
+
   "geometryExport.shared.currentModelFallbackName": "Modèle actuel",
   "geometryExport.shared.unknownError": "Erreur inconnue",
   "geometryExport.shared.geometryEngineUnavailableError": "Moteur géométrique indisponible",
   "geometryExport.shell.filenamePreviewLabel": "Sera enregistré sous :",
-  "geometryExport.shell.warningsSummary": {"one":"{count} avertissement","other":"{count} avertissements","many":"{count} avertissements"},
+  "geometryExport.shell.warningsSummary": {"one":"{countDisplay} avertissement","other":"{countDisplay} avertissements","many":"{countDisplay} avertissements"},
   "geometryExport.glb.triggerButton": "Exporter en GLB",
   "geometryExport.glb.dialogTitle": "Exporter un fichier GLB",
   "geometryExport.glb.dialogDescription": "Exporter la géométrie du modèle au format glTF binaire, avec son positionnement actuel dans l’espace de travail",

@@ -1,0 +1,345 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Where a structural item's topology sits, read from the file alone: the
+ * oracle of the member render probe. Like `step.mjs` it shares no code with
+ * the product. It follows the item's `IfcTopologyRepresentation` (vertex,
+ * edge, oriented edge, face bound) through its `IfcLocalPlacement` chain into
+ * IFC world coordinates, in metres, Z up. A topology representation reached
+ * through an `IfcMappedItem` counts too, placed by its map's `MappingOrigin`
+ * and then the item's `MappingTarget` (the order IfcOpenShell composes).
+ *
+ * Only the topology vertices are returned, not curve interiors: a drawn axis
+ * or surface has to reach every one of them.
+ */
+
+const PREFIX = { EXA: 1e18, PETA: 1e15, TERA: 1e12, GIGA: 1e9, MEGA: 1e6, KILO: 1e3, HECTO: 1e2, DECA: 10, DECI: 0.1, CENTI: 1e-2, MILLI: 1e-3, MICRO: 1e-6, NANO: 1e-9 };
+
+const enumOf = (v) => (v && typeof v === 'object' && 'enum' in v ? v.enum : undefined);
+const refOf = (v) => (v && typeof v === 'object' && 'ref' in v ? v.ref : undefined);
+const numberOf = (v) => (typeof v === 'number' ? v : v && typeof v === 'object' && 'value' in v ? numberOf(v.value) : undefined);
+
+/** Metres per unit of an `IfcSIUnit` or `IfcConversionBasedUnit` record, or undefined when it is neither. */
+function unitScale(step, unit, depth = 0) {
+  if (unit?.type === 'IFCSIUNIT') return PREFIX[enumOf(unit.args[2])] ?? 1;
+  if (unit?.type !== 'IFCCONVERSIONBASEDUNIT' || depth > 4) return undefined;
+  const measure = step.get(unit.args[3]);
+  const factor = numberOf(measure?.args[0]);
+  const base = unitScale(step, step.get(measure?.args[1]), depth + 1);
+  return factor && base ? factor * base : undefined;
+}
+
+/** Metres per file length unit: the project's `LENGTHUNIT` in its `UnitsInContext`, else metres. */
+export function lengthScale(step) {
+  for (const project of step.of('IfcProject')) {
+    for (const ref of step.get(project.args[8])?.args[0] ?? []) {
+      const unit = step.get(ref);
+      if (enumOf(unit?.args[1]) === 'LENGTHUNIT') return unitScale(step, unit) ?? 1;
+    }
+  }
+  return 1;
+}
+
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const scaled = (v, k) => v.map((c) => c * k);
+const unit = (a) => { const l = Math.hypot(...a); return l > 1e-12 ? a.map((c) => c / l) : null; };
+/** `v` with its component along each unit axis removed, as a unit vector; null when nothing is left. */
+const normalTo = (v, ...axes) => unit(axes.reduce((a, n) => sub(a, scaled(n, dot(a, n))), v));
+/**
+ * The default x for a unit z axis (`IfcFirstProjAxis`): (1, 0, 0), else
+ * (0, 1, 0) when z lies along x, where the schema leaves nothing (or only
+ * rounding noise) to project. The same threshold as rust/retained-native's oracle.
+ */
+const defaultX = (z) => (Math.abs(z[0]) > 0.999999 ? [0, 1, 0] : [1, 0, 0]);
+/** A point in `f`'s axes, in its parent's. */
+const apply = (f, p) => [0, 1, 2].map((i) => f.o[i] + f.x[i] * p[0] + f.y[i] * p[1] + f.z[i] * p[2]);
+const rotate = (f, v) => [0, 1, 2].map((i) => f.x[i] * v[0] + f.y[i] * v[1] + f.z[i] * v[2]);
+const IDENTITY = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+/** `outer` after `inner`: a point in `inner`'s axes, in `outer`'s parent's. */
+const compose = (outer, inner) => ({ o: apply(outer, inner.o), x: rotate(outer, inner.x), y: rotate(outer, inner.y), z: rotate(outer, inner.z) });
+
+function coords(step, id) {
+  const r = step.get(id);
+  if (r?.type !== 'IFCCARTESIANPOINT' && r?.type !== 'IFCDIRECTION') return null;
+  if (!Array.isArray(r.args[0])) return null;
+  const c = r.args[0].map(numberOf);
+  return c.length >= 2 && c.every(Number.isFinite) ? [c[0], c[1], c[2] ?? 0] : null;
+}
+
+/** A direction attribute as a unit vector: undefined when omitted, null when given but unreadable or zero. */
+function direction(step, value) {
+  const id = refOf(value);
+  if (id === undefined) return undefined;
+  const c = step.get(id)?.type === 'IFCDIRECTION' ? coords(step, id) : null;
+  return c && unit(c);
+}
+
+/**
+ * `IfcAxis2Placement3D` (or `2D`, in the XY plane): z = Axis, x =
+ * RefDirection made normal to z; IFC defaults when omitted, and a
+ * RefDirection along z falls back as R8 did (then to the default x). Null when a given one does not read.
+ */
+function axisPlacement(step, id) {
+  const r = step.get(id);
+  const is3d = r?.type === 'IFCAXIS2PLACEMENT3D';
+  if (!is3d && r?.type !== 'IFCAXIS2PLACEMENT2D') return null;
+  const o = coords(step, refOf(r.args[0]));
+  const [axis, ref] = is3d ? [direction(step, r.args[1]), direction(step, r.args[2])] : [undefined, direction(step, r.args[1])];
+  if (!o || axis === null || ref === null) return null;
+  const z = axis ?? [0, 0, 1];
+  const x = normalTo(ref ?? defaultX(z), z) ?? unit(cross([0, 1, 0], z)) ?? normalTo(defaultX(z), z);
+  return x && { o, x, y: cross(z, x), z };
+}
+
+/** World frame of an `IfcLocalPlacement` chain, in file units; null for a cycle or another placement kind. */
+function placementFrame(step, id) {
+  const chain = [];
+  const seen = new Set();
+  for (let at = id; at !== undefined; at = refOf(step.get(at)?.args[0])) {
+    if (seen.has(at)) return null;
+    seen.add(at);
+    const r = step.get(at);
+    if (r?.type !== 'IFCLOCALPLACEMENT') return null;
+    chain.push(r);
+  }
+  let frame = IDENTITY;
+  for (const r of chain.reverse()) {
+    const local = axisPlacement(step, refOf(r.args[1]));
+    if (!local) return null;
+    frame = compose(frame, local);
+  }
+  return frame;
+}
+
+/** The vertex points under one topology item, in its product's axes. Bounded: edges nest at most 16 deep. */
+function topologyVertices(step, id, depth = 0) {
+  const r = step.get(id);
+  if (!r || depth > 16) return [];
+  const vertex = (v) => { const p = step.get(v); return p?.type === 'IFCVERTEXPOINT' ? [coords(step, refOf(p.args[0]))].filter(Boolean) : []; };
+  switch (r.type) {
+    case 'IFCVERTEXPOINT': return vertex({ ref: id });
+    case 'IFCEDGE': case 'IFCEDGECURVE': case 'IFCSUBEDGE': return [...vertex(r.args[0]), ...vertex(r.args[1])];
+    case 'IFCORIENTEDEDGE': return topologyVertices(step, refOf(r.args[2]), depth + 1);
+    case 'IFCFACE': case 'IFCFACESURFACE': case 'IFCADVANCEDFACE':
+      return r.args[0].flatMap((b) => {
+        const loop = step.get(step.get(b)?.args[0]);
+        if (loop?.type === 'IFCPOLYLOOP') return loop.args[0].map((p) => coords(step, refOf(p))).filter(Boolean);
+        if (loop?.type === 'IFCEDGELOOP') return loop.args[0].flatMap((e) => topologyVertices(step, refOf(e), depth + 1));
+        return [];
+      });
+    default: return [];
+  }
+}
+
+/** The operator kinds this oracle reads, with the attribute index of Scale2 and Scale3 where they have one. */
+const OPERATORS = {
+  IFCCARTESIANTRANSFORMATIONOPERATOR3D: { twoD: false },
+  IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM: { twoD: false, scale2: 5, scale3: 6 },
+  IFCCARTESIANTRANSFORMATIONOPERATOR2D: { twoD: true },
+  IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM: { twoD: true, scale2: 4 },
+};
+
+/**
+ * An `IfcCartesianTransformationOperator2D` or `3D` (or a non-uniform
+ * subtype) as a frame with scaled axes, by the schema's `BaseAxis`; null
+ * when unreadable. 3D: z = Axis3, x = Axis1 made normal to z, y = Axis2 made
+ * normal to both. 2D: x = Axis1, else Axis2 turned clockwise; y = x turned
+ * counter-clockwise, reversed when Axis2 points against it.
+ */
+function transformOperator(step, id) {
+  const r = step.get(id);
+  const kind = OPERATORS[r?.type];
+  if (!kind) return null;
+  const { twoD, scale2, scale3 } = kind;
+  const o = coords(step, refOf(r.args[2]));
+  const [axis1, axis2, axis3] = [direction(step, r.args[0]), direction(step, r.args[1]), twoD ? undefined : direction(step, r.args[4])];
+  if (!o || axis1 === null || axis2 === null || axis3 === null) return null;
+  const z = axis3 ?? [0, 0, 1];
+  const x = normalTo(axis1 ?? (twoD && axis2 ? [axis2[1], -axis2[0], 0] : defaultX(z)), z);
+  if (!x) return null;
+  const turned = [-x[1], x[0], 0];
+  // `IfcSecondProjAxis`: Axis2, else (0, 1, 0), made normal to z and x; a mirror keeps its sign.
+  // Without Axis2, a default that lies in the z-x plane leaves nothing; then z x x, a rotation.
+  const y = twoD ? (axis2 && dot(axis2, turned) < 0 ? scaled(turned, -1) : turned)
+    : normalTo(axis2 ?? [0, 1, 0], z, x) ?? (axis2 ? null : cross(z, x));
+  if (!y) return null;
+  // The schema requires every scale > 0; a zero one would collapse the map onto LocalOrigin.
+  const s = numberOf(r.args[3]) ?? 1;
+  const s2 = (scale2 === undefined ? undefined : numberOf(r.args[scale2])) ?? s;
+  const s3 = (scale3 === undefined ? undefined : numberOf(r.args[scale3])) ?? s;
+  if (!(s > 0 && s2 > 0 && s3 > 0)) return null;
+  return { o, x: scaled(x, s), y: scaled(y, s2), z: scaled(z, s3) };
+}
+
+/** A representation's items; none when the record is not a representation. */
+const itemsOf = (rep) => (/REPRESENTATION$/.test(rep?.type ?? '') && Array.isArray(rep.args[3]) ? rep.args[3] : []);
+
+/** A mapped item's map and the representation it maps; null for another item, or a map or source that does not resolve. */
+function mappedSource(step, item) {
+  if (item?.type !== 'IFCMAPPEDITEM') return null;
+  const map = step.get(refOf(item.args[0]));
+  const source = map?.type === 'IFCREPRESENTATIONMAP' ? step.get(refOf(map.args[1])) : undefined;
+  return source ? { map, source } : null;
+}
+
+/** Per parsed file: memoised answers keyed by representation id. */
+const memoOf = (cache, step) => cache.get(step) ?? cache.set(step, new Map()).get(step);
+const holds = new WeakMap();
+const walked = new WeakMap();
+
+/**
+ * Whether a representation reaches a topology item with a readable vertex,
+ * itself or through its mapped items: an iterative walk, memoised per file.
+ */
+function holdsTopology(step, rep) {
+  const memo = memoOf(holds, step);
+  if (memo.has(rep.id)) return memo.get(rep.id);
+  const seen = new Set();
+  const stack = [rep];
+  let held = false;
+  while (stack.length && !held) {
+    const r = stack.pop();
+    if (!r || seen.has(r.id)) continue;
+    seen.add(r.id);
+    for (const ref of itemsOf(r)) {
+      const mapped = mappedSource(step, step.get(refOf(ref)));
+      if (mapped) stack.push(mapped.source);
+      else if (r.type === 'IFCTOPOLOGYREPRESENTATION' && topologyVertices(step, refOf(ref)).length) held = true;
+    }
+  }
+  memo.set(rep.id, held);
+  return held;
+}
+
+/** Vertices one representation may take through its mapped items; more (shared maps multiply them) is refused. */
+const MAX_MAPPED_VERTICES = 10000;
+
+/**
+ * The topology vertices of one representation, in its axes: its own items
+ * when it is an `IfcTopologyRepresentation`, and those of every mapped item's
+ * source representation. An iterative post-order walk, memoised per file, so
+ * each map is walked once, at any nesting, whichever member reaches it first.
+ * Null when a mapped item that reaches topology cannot be followed (a map
+ * cycle through topology, over 10000 mapped vertices, an origin or target
+ * this oracle does not read): fewer vertices would check less. A map that
+ * yields no vertices is skipped before its frames are read. Direct topology
+ * is read whole, as R8 did.
+ */
+function representationVertices(step, root) {
+  if (!root) return [];
+  const memo = memoOf(walked, step);
+  const open = new Set();
+  const stack = [root];
+  while (stack.length) {
+    const rep = stack[stack.length - 1];
+    if (memo.has(rep.id)) { stack.pop(); continue; }
+    if (!open.has(rep.id)) {
+      // First visit: its sources go first. An open source is an ancestor: a cycle, left to `combine`.
+      open.add(rep.id);
+      for (const ref of itemsOf(rep)) {
+        const source = mappedSource(step, step.get(refOf(ref)))?.source;
+        if (source && !memo.has(source.id) && !open.has(source.id)) stack.push(source);
+      }
+      continue;
+    }
+    stack.pop();
+    memo.set(rep.id, combine(step, rep, memo));
+    open.delete(rep.id);
+  }
+  return memo.get(root.id);
+}
+
+/** One representation's vertices, its mapped sources already walked (or open: a cycle). */
+function combine(step, rep, memo) {
+  const topology = rep.type === 'IFCTOPOLOGYREPRESENTATION';
+  const points = [];
+  let mappedCount = 0;
+  for (const ref of itemsOf(rep)) {
+    const id = refOf(ref);
+    const item = step.get(id);
+    const { map, source } = mappedSource(step, item) ?? {};
+    if (!map) {
+      if (topology) for (const p of topologyVertices(step, id)) points.push(p);
+      continue;
+    }
+    // Not yet memoised: open, so back into a cycle; refused only when it reaches topology.
+    const mapped = memo.has(source.id) ? memo.get(source.id) : holdsTopology(step, source) ? null : [];
+    if (!mapped) return null;
+    if (!mapped.length) continue;
+    const origin = axisPlacement(step, refOf(map.args[0]));
+    const target = transformOperator(step, refOf(item.args[1]));
+    mappedCount += mapped.length;
+    if (!origin || !target || mappedCount > MAX_MAPPED_VERTICES) return null;
+    const frame = compose(target, origin);
+    for (const p of mapped) points.push(apply(frame, p));
+  }
+  return points;
+}
+
+/**
+ * The topology vertices of a product, in IFC world metres. Empty when the file
+ * gives it no topology representation; null when it has a placement or
+ * mapped topology this oracle does not follow.
+ */
+export function topologyPoints(step, productId, scale = lengthScale(step)) {
+  const product = step.get(productId);
+  const placementId = refOf(product?.args[5]);
+  const frame = placementId === undefined ? IDENTITY : placementFrame(step, placementId);
+  const shape = step.get(product?.args[6]);
+  if (!shape) return [];
+  const points = (Array.isArray(shape.args[2]) ? shape.args[2] : []).map((repRef) => representationVertices(step, step.get(repRef)));
+  if (points.includes(null)) return null;
+  const flat = points.flat();
+  if (!frame) return flat.length ? null : [];
+  return flat.map((p) => apply(frame, p).map((c) => c * scale));
+}
+
+/** Distance from point `p` to triangle `a b c` (all 3-vectors). */
+function triangleDistance(p, a, b, c) {
+  const ab = sub(b, a); const ac = sub(c, a); const ap = sub(p, a);
+  const d1 = dot(ab, ap); const d2 = dot(ac, ap);
+  const at = (s, t) => Math.hypot(...sub(p, [0, 1, 2].map((i) => a[i] + ab[i] * s + ac[i] * t)));
+  if (d1 <= 0 && d2 <= 0) return Math.hypot(...ap);
+  const bp = sub(p, b); const d3 = dot(ab, bp); const d4 = dot(ac, bp);
+  if (d3 >= 0 && d4 <= d3) return Math.hypot(...bp);
+  const cp = sub(p, c); const d5 = dot(ab, cp); const d6 = dot(ac, cp);
+  if (d6 >= 0 && d5 <= d6) return Math.hypot(...cp);
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) return at(d1 / (d1 - d3), 0);
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) return at(0, d2 / (d2 - d6));
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+    const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+    return Math.hypot(...sub(p, [0, 1, 2].map((i) => b[i] + (c[i] - b[i]) * w)));
+  }
+  const denom = 1 / (va + vb + vc);
+  return at(vb * denom, vc * denom);
+}
+
+/**
+ * Distance from an IFC world point (metres, Z up) to the nearest triangle of
+ * `meshes`: the geometry module's output, `origin + positions` in the render
+ * frame (Y up), which sits `originShift` plus the wasm RTC offset away from
+ * IFC world (`coordinateInfo`). Infinity without triangles.
+ */
+export function meshDistance(meshes, [x, y, z], info = {}) {
+  const shift = info.originShift ?? { x: 0, y: 0, z: 0 };
+  const rtc = info.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
+  const p = [x - shift.x - rtc.x, z - shift.y - rtc.z, -y - shift.z + rtc.y];
+  let best = Infinity;
+  for (const m of meshes) {
+    const o = m.origin ?? [0, 0, 0];
+    const v = (i) => [o[0] + m.positions[3 * i], o[1] + m.positions[3 * i + 1], o[2] + m.positions[3 * i + 2]];
+    for (let t = 0; t + 2 < m.indices.length; t += 3) {
+      // A degenerate triangle measures NaN, which this comparison skips.
+      const d = triangleDistance(p, v(m.indices[t]), v(m.indices[t + 1]), v(m.indices[t + 2]));
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}

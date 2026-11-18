@@ -59,6 +59,7 @@ import {
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { trackExportCompleted } from '@/lib/analytics';
+import { downloadBlob } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
 import { collectViewMeshes } from '@/lib/export/view-pdf/collect-view-meshes';
@@ -70,6 +71,7 @@ import {
 } from '@/lib/export/view-pdf/view-pdf-page-estimate';
 import {
   deriveDisplayedScaleFactor,
+  formatMm,
   describePage,
 } from '@/lib/export/view-pdf/view-pdf-scale';
 import { viewPdfPhaseLabel } from '@/lib/export/view-pdf/view-pdf-progress';
@@ -103,11 +105,6 @@ interface PdfViewExportDialogProps {
 /** The drafting scales offered as presets, coarsest detail last. */
 const SCALE_PRESETS = [10, 20, 50, 100, 200, 500] as const;
 
-/** Round a millimetre figure for display without inventing precision. */
-function formatMm(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
-}
 
 export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfViewExportDialogProps) {
   const { t } = useTranslation();
@@ -119,9 +116,13 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const classFilter = useViewerStore((s) => s.classFilter);
+  // A retype changes the class a mesh is filtered by without touching the models (#10246).
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
   const projectionMode = useViewerStore((s) => s.projectionMode);
   const setProjectionMode = useViewerStore((s) => s.setProjectionMode);
 
@@ -150,8 +151,8 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
   const source = useMemo(
     () => (open ? readViewPdfSource(useViewerStore.getState()) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- these are invalidation triggers; the values are read from getState() above.
-    [open, models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility,
-      sectionPlane, selectedStoreys, classFilter, projectionMode],
+    [open, models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
+      sectionPlane, selectedStoreys, classFilter, projectionMode, mutationVersion, mutationViews],
   );
 
   const camera = source?.camera ?? null;
@@ -235,8 +236,10 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
       // load lands in the catch below, not on the console as an unhandled
       // rejection.
       const runExport = exportViewPdf ?? (async (pdfInput: ViewPdfExportInput) => {
-        const { generateViewPdf } = await import('@/lib/export/view-pdf/generate-view-pdf');
-        return generateViewPdf(pdfInput);
+        const { produceNativeViewPdf } = await import('@/lib/export/native-view-pdf');
+        const { result, blob } = await produceNativeViewPdf(pdfInput);
+        downloadBlob(blob, result.filename);
+        return result;
       });
       const result = await runExport({
         view: source.view,

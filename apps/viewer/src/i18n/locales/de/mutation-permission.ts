@@ -8,5 +8,9 @@ export const mutationPermissionDe = {
   'mutationPermission.workflowRunning': 'Warten Sie, bis die Workflow-Prüfung oder die PDF-Erfassung abgeschlossen ist, oder brechen Sie den Workflow ab',
   'mutationPermission.editModeRequired': 'Aktivieren Sie den Bearbeitungsmodus, um dieses Modell zu ändern',
   'mutationPermission.roleRequired': 'Zum Bearbeiten ist in dieser geteilten Sitzung Bearbeiterzugriff erforderlich',
+  'mutationPermission.switchedOff': 'Bearbeiten ist in diesem Viewer nicht verfügbar',
   'mutationPermission.modelUnavailable': 'Dieses Modell enthält keine bearbeitbaren IFC-Daten',
+  'mutationPermission.propertiesLoading': 'Die Eigenschaften des Modells werden noch geladen',
+  'mutationPermission.propertiesFailed': 'Die Eigenschaften des Modells konnten nicht geladen werden, daher ist es nicht bearbeitbar',
+  'mutationPermission.idSpaceExhausted': 'Für dieses Modell sind in dieser Sitzung nicht genügend sichere Entitäts-IDs für Bearbeitungen verfügbar',
 } satisfies Catalogue;

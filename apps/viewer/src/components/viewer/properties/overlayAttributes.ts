@@ -2,8 +2,42 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { NewEntity } from '@ifc-lite/mutations';
-import { getAttributeNames } from '@ifc-lite/parser';
+import type { MutablePropertyView, NewEntity } from '@ifc-lite/mutations';
+import { getAttributeNames, getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
+
+type DisplayAttribute = { name: string; value: string | number | boolean };
+
+/**
+ * The entity's displayed attributes with this session's edits laid over
+ * them: named attribute edits (bSDD, the attribute editor), and positional
+ * edits of a numeric slot the list already shows, such as an IfcSite
+ * RefElevation the georeferencing check wrote (#10659). A positional edit
+ * of any other value (a list, a reference) shows in the Raw STEP tab.
+ */
+export function mergeAttributeMutations(
+  base: DisplayAttribute[],
+  view: MutablePropertyView | null | undefined,
+  expressId: number | undefined,
+  typeName: string | undefined,
+): DisplayAttribute[] {
+  if (!view || !expressId) return base;
+  const merged = [...base];
+  const put = (name: string, value: string | number | boolean, addMissing: boolean) => {
+    const idx = merged.findIndex((a) => a.name === name);
+    if (idx >= 0) merged[idx] = { name, value };
+    else if (addMissing) merged.push({ name, value });
+  };
+  const positional = view.getPositionalMutationsForEntity(expressId);
+  if (positional?.size && typeName) {
+    const names = getAttributeNamesAcrossSchemas(typeName);
+    for (const [index, value] of positional) {
+      const number = typeof value === 'number' ? value : value !== null && typeof value === 'object' && 'real' in value ? value.real : undefined;
+      if (number !== undefined && names[index]) put(names[index], number, false);
+    }
+  }
+  for (const ma of view.getAttributeMutationsForEntity(expressId)) put(ma.name, ma.value === '$' ? '' : ma.value, true);
+  return merged;
+}
 
 /** Synthesize display attributes for overlay-only duplicates and scripted adds. */
 export function attributesFromOverlayEntity(

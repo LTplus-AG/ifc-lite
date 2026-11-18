@@ -51,14 +51,15 @@ export async function parseIfc(bytes: Uint8Array): Promise<IfcDataStore> {
   return new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
 }
 
-export async function seedAuthoringSample(options: { editEnabled?: boolean } = {}): Promise<{ dataStore: IfcDataStore; view: MutablePropertyView }> {
+/** `bytes` seeds another IFC under the same model id; the default is the committed architecture sample. */
+export async function seedAuthoringSample(options: { editEnabled?: boolean; bytes?: Uint8Array } = {}): Promise<{ dataStore: IfcDataStore; view: MutablePropertyView }> {
   // Parser/reference-only consumers need neither the singleton store nor its
   // remesh graph. Keep the placement reader boot above eager: existing tests
   // also rely on that registration without calling this seeder.
   const { MutablePropertyView } = await import('@ifc-lite/mutations');
   const { useViewerStore } = await import('@/store');
   const { setRemeshClientFactory } = await import('@/lib/remesh/remesh-service');
-  const dataStore = await parseIfc(readFileSync(sample));
+  const dataStore = await parseIfc(options.bytes ?? readFileSync(sample));
   const geometry = {
     meshes: [], totalTriangles: 0, totalVertices: 0,
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },

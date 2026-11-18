@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelWorkspaceRu = {
+  'modelWorkspace.leave': 'Выйти',
   "modelWorkspace.rail.aria": "Инструменты моделирования",
   "modelWorkspace.rail.hosted": "Проёмы, двери и окна",
   "modelWorkspace.rail.circulation": "Лестницы и ограждения",

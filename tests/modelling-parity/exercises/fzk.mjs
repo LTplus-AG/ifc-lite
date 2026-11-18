@@ -40,7 +40,7 @@ export function buildFzk(bim,{M,step,add,expected,openings}) {
   for(let i=0;i<4;i++) add(`beam-${i}`,'columns-beams-on-grid-follow-levels',()=>bim.store.addBeam(M,i?attic.expressId:ground.expressId,{Start:[1,1+i*2,2.4],End:[11,1+i*2,2.4],Width:0.2,Height:0.3}));
   const stair=add('stair','stairs-railings',()=>bim.store.addStair(M,ground.expressId,{Position:[5,1,0],Direction:Math.PI/2,NumberOfRisers:15,RiserHeight:0.18,TreadLength:0.25,Width:1}));
   if(stair) expected.push({expressId:stair.expressId,kind:'stair',min:0,max:2.7});
-  add('gable-roof-attempt','roof-by-footprint',()=>bim.store.addRoof(M,attic.expressId,{Position:[0,0,2.7],Width:12,Depth:10,Thickness:0.3,RoofType:'GABLE_ROOF',Slope:30}));
+  add('gable-roof-attempt','roof-by-footprint',()=>bim.store.addRoof(M,attic.expressId,{Position:[0,0,2.7],Width:12,Depth:10,Thickness:0.3,EdgeSlopes:[Math.PI/6,0,Math.PI/6,0],Overhang:0.5}));
   // Exercise constraints without changing the reference's final occupied levels.
   for(const Height of [3,2.7]) step(`floor-height-${Height}`,'storeys',()=>bim.store.editStorey(M,{kind:'floorHeight',storeyId:ground.expressId,Height}));
   step('storey-elevations-oracle','storeys',()=>{for(const s of target.storeys) if(!levels().some(l=>l.Name===s.name&&Math.abs(l.elevation-s.elevation)<=target.tolerances.elevationM.value)) throw new Error(`Missing reference storey ${s.name} at ${s.elevation}`);});

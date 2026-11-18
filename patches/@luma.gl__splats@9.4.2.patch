@@ -12,10 +12,161 @@ index 74ac68030eb8cc140385833d88a82fd96dbb7eb6..722f6bb9fb95c5006123c1bd9a8a8ecc
      clearColor?: [number, number, number, number];
      /** Optional final row count used to reserve one persistent progressively populated graph. */
 diff --git a/dist/index.cjs b/dist/index.cjs
-index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8ed16a38f 100644
+index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..00a296bd8c6275ada1a2f83ea671d14b84a52da8 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
-@@ -864,6 +864,73 @@ fn vertexMain(input : SplatVertexInputs) -> SplatFragmentInputs {
+@@ -168,7 +168,8 @@ var GPUSplatData = class {
+     this.device = device;
+     this.source = source;
+     this.length = length;
+-    this.sphericalHarmonicsDegree = getSplatSourceSphericalHarmonicsDegree(source, length);
++    // ifc-lite #9018 gpu-columns: GPU-only or packed coefficients state their degree explicitly.
++    this.sphericalHarmonicsDegree = source.gpuColumns?.sphericalHarmonics || source.sphericalHarmonicsEncoding === "float16x2" ? source.sphericalHarmonicsDegree ?? 0 : getSplatSourceSphericalHarmonicsDegree(source, length);
+     this.sourceInfo = {
+       sourceBatchIndex: source.sourceBatchIndex ?? 0,
+       sourceRowIndexOffset: rowIndexBase,
+@@ -178,19 +179,26 @@ var GPUSplatData = class {
+     for (let rowIndex = 0; rowIndex < length; rowIndex++) {
+       rowIndices[rowIndex] = this.sourceInfo.sourceRowIndexOffset + rowIndex;
+     }
+-    this.positions = createSplatGPUVector(device, "positions", source.positions, "float32x3", length);
+-    this.scales = createSplatGPUVector(device, "scales", source.scales, "float32x3", length);
+-    this.rotations = createSplatGPUVector(device, "rotations", source.rotations, "float32x4", length);
+-    const colorFormat = source.colors instanceof Float32Array ? "float32x4" : "unorm8x4";
+-    this.colors = createSplatGPUVector(device, "colors", source.colors, colorFormat, length);
+-    this.opacities = createSplatGPUVector(device, "opacities", source.opacities, "float32", length);
++    // ifc-lite #9018 gpu-columns >>>
++    const gpu = source.gpuColumns ?? {};
++    const vector = (name, values, format, count) => gpu[name] ? adoptSplatGPUVector(name, gpu[name], format, count) : createSplatGPUVector(device, name, values, format, count);
++    this.positions = vector("positions", source.positions, "float32x3", length);
++    this.scales = vector("scales", source.scales, "float32x3", length);
++    this.rotations = vector("rotations", source.rotations, "float32x4", length);
++    const colorFormat = source.colorFormat ?? (source.colors instanceof Float32Array ? "float32x4" : "unorm8x4");
++    this.colors = vector("colors", source.colors, colorFormat, length);
++    this.opacities = vector("opacities", source.opacities, "float32", length);
+     this.rowIndices = createSplatGPUVector(device, "rowIndices", rowIndices, "uint32", length);
+-    if (source.semanticIds) {
+-      this.semanticIds = createSplatGPUVector(device, "semanticIds", source.semanticIds, "uint32", length);
++    if (source.semanticIds || gpu.semanticIds) {
++      this.semanticIds = vector("semanticIds", source.semanticIds, "uint32", length);
+     }
+-    if (source.sphericalHarmonics) {
++    this.sphericalHarmonicsEncoding = source.sphericalHarmonicsEncoding ?? "float32";
++    if (gpu.sphericalHarmonics) {
++      this.sphericalHarmonics = adoptSplatGPUVector("sphericalHarmonics", gpu.sphericalHarmonics, "float32", gpu.sphericalHarmonics.byteLength / 4);
++    } else if (source.sphericalHarmonics) {
+       this.sphericalHarmonics = createSplatGPUVector(device, "sphericalHarmonics", source.sphericalHarmonics, "float32", source.sphericalHarmonics.length);
+     }
++    // <<< ifc-lite #9018 gpu-columns
+     this.table = new import_gpu_tables.GPUTable({
+       vectors: {
+         positions: this.positions,
+@@ -275,6 +283,19 @@ var GPUSplatData = class {
+     }
+     this.currentRevision++;
+   }
++  // ifc-lite #9018 gpu-columns >>>
++  /** Writes values into one column's GPU buffer at a byte offset, without a CPU copy or a re-sort. */
++  writeGPUColumn(name, values, byteOffset) {
++    if (this.isDestroyed) {
++      throw new Error("Cannot update destroyed Gaussian splat data");
++    }
++    const vector = this[name];
++    if (!vector || name === "rowIndices") {
++      throw new Error(`Unknown Gaussian splat column ${name}`);
++    }
++    vector.data[0].buffer.write(values, byteOffset);
++  }
++  // <<< ifc-lite #9018 gpu-columns
+   /** Updates complete source rows beginning at a batch-local row offset. */
+   updateRows(rowOffset, update) {
+     this.update({ ...update, rowOffset });
+@@ -316,7 +337,10 @@ function makeGPUSplatData(device, source) {
+ }
+ function getSplatSourceLength(source) {
+   const length = source.positions.length / 3;
+-  if (!Number.isInteger(length) || source.scales.length !== length * 3 || source.rotations.length !== length * 4 || source.colors.length !== length * 4 || source.opacities.length !== length || source.semanticIds && source.semanticIds.length !== length) {
++  // ifc-lite #9018 gpu-columns: a column held only on the GPU has no CPU array to check.
++  const gpu = source.gpuColumns ?? {};
++  const rows = (name, stride) => gpu[name] ? gpu[name].byteLength === length * stride * 4 : source[name]?.length === length * stride;
++  if (!Number.isInteger(length) || !rows("scales", 3) || !rows("rotations", 4) || (gpu.colors ? gpu.colors.byteLength !== length * ((source.colorFormat ?? (source.colors instanceof Float32Array ? "float32x4" : "unorm8x4")) === "unorm8x4" ? 4 : 16) : source.colors.length !== length * 4) || source.opacities.length !== length || source.semanticIds && source.semanticIds.length !== length) {
+     throw new Error("SplatSource columns must contain matching Gaussian splat rows");
+   }
+   return length;
+@@ -343,6 +367,11 @@ function getSplatSourceSphericalHarmonicsDegree(source, rowCount) {
+   }
+   return inferredDegree;
+ }
++// ifc-lite #9018 gpu-columns >>>
++function adoptSplatGPUVector(name, buffer, format, length) {
++  return new import_gpu_data.GPUVector({ type: "buffer", name, buffer, format, length, ownsBuffer: true });
++}
++// <<< ifc-lite #9018 gpu-columns
+ function createSplatGPUVector(device, name, values, format, length) {
+   const usage = import_core.Buffer.VERTEX | import_core.Buffer.COPY_DST | import_core.Buffer.COPY_SRC | (device.type === "webgpu" ? import_core.Buffer.STORAGE : 0);
+   const buffer = device.createBuffer({
+@@ -777,13 +806,32 @@ fn getSplatSphericalHarmonicBasis(basisIndex : u32, direction : vec3<f32>) -> f3
+   }
+ }
+ 
++// ifc-lite #9018 float16x2 >>>
++fn splatHalfCoefficient(index : u32) -> f32 {
++  let pair = unpack2x16float(bitcast<u32>(splatSphericalHarmonics[index >> 1u]));
++  return select(pair.x, pair.y, (index & 1u) == 1u);
++}
++// <<< ifc-lite #9018 float16x2
++
+ fn evaluateSplatSphericalHarmonics(
+   color : vec3<f32>,
+   position : vec3<f32>,
+   rowIndex : u32
+ ) -> vec3<f32> {
+-  let coefficientCount = arrayLength(&splatSphericalHarmonics) /
+-    max(arrayLength(&splatOpacities), 1u);
++  // ifc-lite #9018 float16x2 >>>
++  // Float32 storage holds exactly rows * (9 | 24 | 45) words. Anything else is float16x2: two halves per
++  // word, row-major without per-row padding, so the stored count is the largest of 9 / 24 / 45 that fits.
++  // Halves are always finite (the writer falls back to float32 otherwise), so no word is an f32 NaN.
++  let shRows = max(arrayLength(&splatOpacities), 1u);
++  let shWords = arrayLength(&splatSphericalHarmonics);
++  var coefficientCount = shWords / shRows;
++  let shFloat32 = shWords == shRows * coefficientCount &&
++    (coefficientCount == 9u || coefficientCount == 24u || coefficientCount == 45u);
++  if (!shFloat32) {
++    let halves = (2u * shWords) / shRows;
++    coefficientCount = select(select(select(0u, 9u, halves >= 9u), 24u, halves >= 24u), 45u, halves >= 45u);
++  }
++  // <<< ifc-lite #9018 float16x2
+   let requestedBasisCount =
+     (splat.sphericalHarmonicsDegree + 1u) * (splat.sphericalHarmonicsDegree + 1u) - 1u;
+   let basisCount = min(coefficientCount / 3u, requestedBasisCount);
+@@ -797,11 +845,20 @@ fn evaluateSplatSphericalHarmonics(
+   var evaluatedColor = color;
+   for (var basisIndex = 0u; basisIndex < basisCount; basisIndex++) {
+     let coefficientOffset = rowIndex * coefficientCount + basisIndex * 3u;
+-    let coefficients = vec3<f32>(
+-      splatSphericalHarmonics[coefficientOffset],
+-      splatSphericalHarmonics[coefficientOffset + 1u],
+-      splatSphericalHarmonics[coefficientOffset + 2u]
+-    );
++    var coefficients : vec3<f32>;
++    if (shFloat32) {
++      coefficients = vec3<f32>(
++        splatSphericalHarmonics[coefficientOffset],
++        splatSphericalHarmonics[coefficientOffset + 1u],
++        splatSphericalHarmonics[coefficientOffset + 2u]
++      );
++    } else {
++      coefficients = vec3<f32>(
++        splatHalfCoefficient(coefficientOffset),
++        splatHalfCoefficient(coefficientOffset + 1u),
++        splatHalfCoefficient(coefficientOffset + 2u)
++      );
++    }
+     evaluatedColor += coefficients *
+       getSplatSphericalHarmonicBasis(basisIndex, normalizedDirection);
+   }
+@@ -864,6 +921,73 @@ fn vertexMain(input : SplatVertexInputs) -> SplatFragmentInputs {
  }
  `
  );
@@ -89,7 +240,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
  var SPLAT_VS_GLSL = (
    /* glsl */
    `#version 300 es
-@@ -3367,6 +3434,11 @@ var SplatRenderer = class {
+@@ -3367,6 +3491,11 @@ var SplatRenderer = class {
    usesFloatWebGLColors = false;
    hasExplicitToneMapping = false;
    isDestroyed = false;
@@ -101,7 +252,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
    /** Creates a renderer over optionally supplied caller-owned Gaussian source batches. */
    constructor(device, props = {}) {
      this.device = device;
-@@ -3377,6 +3449,10 @@ var SplatRenderer = class {
+@@ -3377,6 +3506,10 @@ var SplatRenderer = class {
        sphericalHarmonicsDegree: props.sphericalHarmonicsDegree ?? 3,
        semanticFilter: props.semanticFilter,
        sortMode: props.sortMode ?? "global",
@@ -112,7 +263,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
        alphaCutoff: props.alphaCutoff ?? props.opacityThreshold ?? 1 / 255,
        screenSizeCutoffPixels: props.screenSizeCutoffPixels ?? 0,
        gaussianSupportRadius: props.gaussianSupportRadius ?? 3,
-@@ -3390,6 +3466,11 @@ var SplatRenderer = class {
+@@ -3390,6 +3523,11 @@ var SplatRenderer = class {
        depthWriteEnabled: props.depthWriteEnabled ?? false
      };
      this.hasExplicitToneMapping = props.toneMapping !== void 0;
@@ -124,7 +275,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
      this.updateShaderInputs();
      for (const batch of normalizeSplatBatches(props.data)) {
        this.appendData(batch);
-@@ -3434,6 +3515,19 @@ var SplatRenderer = class {
+@@ -3434,6 +3572,19 @@ var SplatRenderer = class {
      this.requiresUpdate = true;
      this.requiresWebGLSourceUpdate = this.device.type !== "webgpu";
    }
@@ -144,7 +295,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
    /** Updates camera, sorting, visibility, and styling controls in place. */
    setProps(props) {
      var _a;
-@@ -3463,6 +3557,14 @@ var SplatRenderer = class {
+@@ -3463,6 +3614,14 @@ var SplatRenderer = class {
        this.requiresUpdate = true;
        this.requiresWebGLSourceUpdate = this.device.type !== "webgpu";
      }
@@ -159,7 +310,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
      if (props.sortMode !== void 0) {
        this.setResolvedProp("sortMode", props.sortMode);
      }
-@@ -3619,6 +3721,13 @@ var SplatRenderer = class {
+@@ -3619,6 +3778,13 @@ var SplatRenderer = class {
      (_d = this.placeholderSphericalHarmonicsBuffer) == null ? void 0 : _d.destroy();
      this.placeholderSphericalHarmonicsBuffer = void 0;
      this.shaderInputs.destroy();
@@ -173,7 +324,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
      this.isDestroyed = true;
    }
    createModel(table) {
-@@ -3660,6 +3769,14 @@ var SplatRenderer = class {
+@@ -3660,6 +3826,14 @@ var SplatRenderer = class {
            splatSphericalHarmonics: ((_c = (_b = (_a = this.batches[0]) == null ? void 0 : _a.sphericalHarmonics) == null ? void 0 : _b.data[0]) == null ? void 0 : _c.buffer) ?? this.placeholderSphericalHarmonicsBuffer
          }
        } : {},
@@ -188,7 +339,17 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
        isInstanced: true,
        instanceCount: table.numRows,
        vertexCount: 4,
-@@ -3805,7 +3922,8 @@ var SplatRenderer = class {
+@@ -3755,7 +3929,8 @@ var SplatRenderer = class {
+         if (!acceptsSplatSemantic(this.props.semanticFilter, batch, batchRowIndex)) {
+           continue;
+         }
+-        const opacity = opacities[batchRowIndex] * colors[batchRowIndex * 4 + 3] * colorAlphaScale * this.props.alphaScale;
++        // ifc-lite #9018 gpu-columns: GPU-only colours carry alpha one.
++        const opacity = opacities[batchRowIndex] * (colors ? colors[batchRowIndex * 4 + 3] * colorAlphaScale : 1) * this.props.alphaScale;
+         if (!Number.isFinite(opacity) || opacity < this.props.alphaCutoff) {
+           continue;
+         }
+@@ -3805,7 +3980,8 @@ var SplatRenderer = class {
            const tileRow = Math.max(0, Math.floor(screenPositionY / SPLAT_TILE_SIZE_PIXELS));
            tileIndex = tileRow * tileColumns + tileColumn;
          }
@@ -198,7 +359,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
          let reference = cachedBatchReferences[batchRowIndex];
          if (reference) {
            reference.depth = depth;
-@@ -3920,6 +4038,11 @@ var SplatRenderer = class {
+@@ -3920,6 +4096,11 @@ var SplatRenderer = class {
      if (!this.model || !this.table) {
        return false;
      }
@@ -210,7 +371,7 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
      let drawSuccess = true;
      for (const run of this.drawRuns) {
        const batch = this.table.batches[run.batchIndex];
-@@ -3936,6 +4059,11 @@ var SplatRenderer = class {
+@@ -3936,6 +4117,11 @@ var SplatRenderer = class {
          splatSortedIndices: run.indexBuffer,
          splatSphericalHarmonics: ((_b = (_a = this.batches[run.batchIndex].sphericalHarmonics) == null ? void 0 : _a.data[0]) == null ? void 0 : _b.buffer) ?? this.placeholderSphericalHarmonicsBuffer
        });
@@ -222,6 +383,161 @@ index 1b44b3289d9901e1fc82342e79a0df6496bb8e3c..92a4d6789c0cd8ec803cb5e02898f8c8
        this.model.setInstanceCount(run.rowIndices.length);
        drawSuccess = this.model.draw(renderPass) && drawSuccess;
      }
+diff --git a/dist/splat-data.d.ts b/dist/splat-data.d.ts
+index be3758765f6a9623057ed35378d5e35072571032..1c696eb4c13602bc5367378922f93a7212c217b7 100644
+--- a/dist/splat-data.d.ts
++++ b/dist/splat-data.d.ts
+@@ -1,4 +1,4 @@
+-import { type Device } from '@luma.gl/core';
++import { type Buffer, type Device } from '@luma.gl/core';
+ import { GPUVector } from '@luma.gl/gpgpu/gpu-data';
+ import { GPUTable, type GPURecordBatchSourceInfo } from '@luma.gl/experimental/gpu-tables';
+ import { type SplatSphericalHarmonicsDegree } from "./splat-spherical-harmonics.js";
+@@ -7,11 +7,11 @@ export type SplatSource = {
+     /** Packed world-space XYZ centers, one Float32 triplet per splat. */
+     positions: Float32Array;
+     /** Packed linear one-sigma XYZ scales, one Float32 triplet per splat. */
+-    scales: Float32Array;
++    scales?: Float32Array;
+     /** Packed quaternion rotations in `[w, x, y, z]` order. */
+-    rotations: Float32Array;
++    rotations?: Float32Array;
+     /** Packed RGBA colors as normalized Uint8 values or unclamped linear Float32 radiance. */
+-    colors: Uint8Array | Float32Array;
++    colors?: Uint8Array | Float32Array;
+     /** Decoded linear opacity values, without source-format logit encoding. */
+     opacities: Float32Array;
+     /** Optional compact semantic class identifier for each source row. */
+@@ -24,6 +24,12 @@ export type SplatSource = {
+     sourceBatchIndex?: number;
+     /** Zero-based global row index of the first source row. */
+     rowIndexBase?: number;
++    /** ifc-lite #9018: filled GPU buffers whose ownership moves to the batch; their CPU arrays may be omitted. */
++    gpuColumns?: Partial<Record<'positions' | 'scales' | 'rotations' | 'colors' | 'opacities' | 'semanticIds' | 'sphericalHarmonics', Buffer>>;
++    /** ifc-lite #9018: format of `gpuColumns.colors` when no CPU colours are given. */
++    colorFormat?: 'unorm8x4' | 'float32x4';
++    /** ifc-lite #9018: 'float16x2' packs two half coefficients per 32-bit word (row-major, no per-row padding). */
++    sphericalHarmonicsEncoding?: 'float32' | 'float16x2';
+ };
+ /** Typed GPU columns retained by one prepared Gaussian splat batch. */
+ export type GPUSplatVectors = {
+@@ -120,6 +126,10 @@ export declare class GPUSplatData {
+     get destroyed(): boolean;
+     /** Updates complete source rows without reallocating owned GPU buffers or changing row identity. */
+     update(update: SplatDataUpdate): void;
++    /** ifc-lite #9018: encoding of the spherical-harmonic GPU column. */
++    readonly sphericalHarmonicsEncoding: 'float32' | 'float16x2';
++    /** ifc-lite #9018: write one column's GPU buffer at a byte offset, without a CPU copy or re-sort. */
++    writeGPUColumn(name: 'positions' | 'scales' | 'rotations' | 'colors' | 'opacities' | 'semanticIds' | 'sphericalHarmonics', values: ArrayBufferView, byteOffset: number): void;
+     /** Updates complete source rows beginning at a batch-local row offset. */
+     updateRows(rowOffset: number, update: Omit<SplatDataUpdate, 'rowOffset'>): void;
+     /** Releases each owned source-column allocation exactly once. */
+diff --git a/dist/splat-data.js b/dist/splat-data.js
+index 7c9d3f54e43ce2f5954d09f67d20f6a492e66fb4..f4a2ad3ee354b6f1e567ead7db234f5b3f0394ef 100644
+--- a/dist/splat-data.js
++++ b/dist/splat-data.js
+@@ -49,7 +49,10 @@ export class GPUSplatData {
+         this.device = device;
+         this.source = source;
+         this.length = length;
+-        this.sphericalHarmonicsDegree = getSplatSourceSphericalHarmonicsDegree(source, length);
++        // ifc-lite #9018 gpu-columns: GPU-only or packed coefficients state their degree explicitly.
++        this.sphericalHarmonicsDegree = source.gpuColumns?.sphericalHarmonics || source.sphericalHarmonicsEncoding === 'float16x2'
++            ? (source.sphericalHarmonicsDegree ?? 0)
++            : getSplatSourceSphericalHarmonicsDegree(source, length);
+         this.sourceInfo = {
+             sourceBatchIndex: source.sourceBatchIndex ?? 0,
+             sourceRowIndexOffset: rowIndexBase,
+@@ -59,19 +62,31 @@ export class GPUSplatData {
+         for (let rowIndex = 0; rowIndex < length; rowIndex++) {
+             rowIndices[rowIndex] = this.sourceInfo.sourceRowIndexOffset + rowIndex;
+         }
+-        this.positions = createSplatGPUVector(device, 'positions', source.positions, 'float32x3', length);
+-        this.scales = createSplatGPUVector(device, 'scales', source.scales, 'float32x3', length);
+-        this.rotations = createSplatGPUVector(device, 'rotations', source.rotations, 'float32x4', length);
+-        const colorFormat = source.colors instanceof Float32Array ? 'float32x4' : 'unorm8x4';
+-        this.colors = createSplatGPUVector(device, 'colors', source.colors, colorFormat, length);
+-        this.opacities = createSplatGPUVector(device, 'opacities', source.opacities, 'float32', length);
++        // ifc-lite #9018 gpu-columns >>>
++        // A column in `source.gpuColumns` is an already-filled GPU buffer whose ownership moves to this batch;
++        // its CPU array may then be omitted, so the batch retains only the columns the CPU sort reads.
++        const gpu = source.gpuColumns ?? {};
++        const vector = (name, values, format, count) => gpu[name]
++            ? adoptSplatGPUVector(name, gpu[name], format, count)
++            : createSplatGPUVector(device, name, values, format, count);
++        this.positions = vector('positions', source.positions, 'float32x3', length);
++        this.scales = vector('scales', source.scales, 'float32x3', length);
++        this.rotations = vector('rotations', source.rotations, 'float32x4', length);
++        const colorFormat = source.colorFormat ?? (source.colors instanceof Float32Array ? 'float32x4' : 'unorm8x4');
++        this.colors = vector('colors', source.colors, colorFormat, length);
++        this.opacities = vector('opacities', source.opacities, 'float32', length);
+         this.rowIndices = createSplatGPUVector(device, 'rowIndices', rowIndices, 'uint32', length);
+-        if (source.semanticIds) {
+-            this.semanticIds = createSplatGPUVector(device, 'semanticIds', source.semanticIds, 'uint32', length);
++        if (source.semanticIds || gpu.semanticIds) {
++            this.semanticIds = vector('semanticIds', source.semanticIds, 'uint32', length);
+         }
+-        if (source.sphericalHarmonics) {
++        this.sphericalHarmonicsEncoding = source.sphericalHarmonicsEncoding ?? 'float32';
++        if (gpu.sphericalHarmonics) {
++            this.sphericalHarmonics = adoptSplatGPUVector('sphericalHarmonics', gpu.sphericalHarmonics, 'float32', gpu.sphericalHarmonics.byteLength / 4);
++        }
++        else if (source.sphericalHarmonics) {
+             this.sphericalHarmonics = createSplatGPUVector(device, 'sphericalHarmonics', source.sphericalHarmonics, 'float32', source.sphericalHarmonics.length);
+         }
++        // <<< ifc-lite #9018 gpu-columns
+         this.table = new GPUTable({
+             vectors: {
+                 positions: this.positions,
+@@ -159,6 +174,19 @@ export class GPUSplatData {
+         }
+         this.currentRevision++;
+     }
++    // ifc-lite #9018 gpu-columns >>>
++    /** Writes values into one column's GPU buffer at a byte offset, without a CPU copy or a re-sort. */
++    writeGPUColumn(name, values, byteOffset) {
++        if (this.isDestroyed) {
++            throw new Error('Cannot update destroyed Gaussian splat data');
++        }
++        const vector = this[name];
++        if (!vector || name === 'rowIndices') {
++            throw new Error(`Unknown Gaussian splat column ${name}`);
++        }
++        vector.data[0].buffer.write(values, byteOffset);
++    }
++    // <<< ifc-lite #9018 gpu-columns
+     /** Updates complete source rows beginning at a batch-local row offset. */
+     updateRows(rowOffset, update) {
+         this.update({ ...update, rowOffset });
+@@ -200,10 +228,13 @@ export function makeGPUSplatData(device, source) {
+ }
+ function getSplatSourceLength(source) {
+     const length = source.positions.length / 3;
++    // ifc-lite #9018 gpu-columns: a column held only on the GPU has no CPU array to check.
++    const gpu = source.gpuColumns ?? {};
++    const rows = (name, stride) => gpu[name] ? gpu[name].byteLength === length * stride * 4 : source[name]?.length === length * stride;
+     if (!Number.isInteger(length) ||
+-        source.scales.length !== length * 3 ||
+-        source.rotations.length !== length * 4 ||
+-        source.colors.length !== length * 4 ||
++        !rows('scales', 3) ||
++        !rows('rotations', 4) ||
++        (gpu.colors ? gpu.colors.byteLength !== length * ((source.colorFormat ?? (source.colors instanceof Float32Array ? 'float32x4' : 'unorm8x4')) === 'unorm8x4' ? 4 : 16) : source.colors.length !== length * 4) ||
+         source.opacities.length !== length ||
+         (source.semanticIds && source.semanticIds.length !== length)) {
+         throw new Error('SplatSource columns must contain matching Gaussian splat rows');
+@@ -232,6 +263,11 @@ function getSplatSourceSphericalHarmonicsDegree(source, rowCount) {
+     }
+     return inferredDegree;
+ }
++// ifc-lite #9018 gpu-columns >>>
++function adoptSplatGPUVector(name, buffer, format, length) {
++    return new GPUVector({ type: 'buffer', name, buffer, format, length, ownsBuffer: true });
++}
++// <<< ifc-lite #9018 gpu-columns
+ function createSplatGPUVector(device, name, values, format, length) {
+     const usage = Buffer.VERTEX |
+         Buffer.COPY_DST |
 diff --git a/dist/splat-renderer.d.ts b/dist/splat-renderer.d.ts
 index 04d6f844d1ec123a7d732e533ef5d137cf208078..7e02b7d50bd3407f4711b5a8ac4aadad1c6e6015 100644
 --- a/dist/splat-renderer.d.ts
@@ -304,7 +620,7 @@ index 04d6f844d1ec123a7d732e533ef5d137cf208078..7e02b7d50bd3407f4711b5a8ac4aadad
      setProps(props: Partial<SplatRendererProps>): void;
      /** Recomputes camera-dependent ordering and flushes managed uniforms before a render pass. */
 diff --git a/dist/splat-renderer.js b/dist/splat-renderer.js
-index bca4d1df87c1919d837be4698304941ccad2c897..7d6839cc3568da0a55ac75b5b14223f311c0b8be 100644
+index bca4d1df87c1919d837be4698304941ccad2c897..05d9b58b17952be60782cf9217aaadff10c80b91 100644
 --- a/dist/splat-renderer.js
 +++ b/dist/splat-renderer.js
 @@ -11,6 +11,9 @@ import { acceptsSplatSemantic } from "./splat-filter.js";
@@ -416,6 +732,18 @@ index bca4d1df87c1919d837be4698304941ccad2c897..7d6839cc3568da0a55ac75b5b14223f3
              isInstanced: true,
              instanceCount: table.numRows,
              vertexCount: 4,
+@@ -504,9 +557,9 @@ export class SplatRenderer {
+                 if (!acceptsSplatSemantic(this.props.semanticFilter, batch, batchRowIndex)) {
+                     continue;
+                 }
++                // ifc-lite #9018 gpu-columns: GPU-only colours carry alpha one.
+                 const opacity = opacities[batchRowIndex] *
+-                    colors[batchRowIndex * 4 + 3] *
+-                    colorAlphaScale *
++                    (colors ? colors[batchRowIndex * 4 + 3] * colorAlphaScale : 1) *
+                     this.props.alphaScale;
+                 if (!Number.isFinite(opacity) || opacity < this.props.alphaCutoff) {
+                     continue;
 @@ -558,7 +611,8 @@ export class SplatRenderer {
                      const tileRow = Math.max(0, Math.floor(screenPositionY / SPLAT_TILE_SIZE_PIXELS));
                      tileIndex = tileRow * tileColumns + tileColumn;
@@ -468,10 +796,71 @@ index 3df07f88966cfba41d563005298510831a237722..64ce3dceab941de8042428735cb4bc20
  //# sourceMappingURL=splat-shaders.d.ts.map
 \ No newline at end of file
 diff --git a/dist/splat-shaders.js b/dist/splat-shaders.js
-index a096d2fd47b08bf8e3e1fb965a8553b8646ee991..76c9998ede735dbc1303a8890108203a9132cdd6 100644
+index a096d2fd47b08bf8e3e1fb965a8553b8646ee991..b3df0251e0532e549b8ee846763d1c99208e0c30 100644
 --- a/dist/splat-shaders.js
 +++ b/dist/splat-shaders.js
-@@ -428,4 +428,71 @@ void main() {
+@@ -205,13 +205,32 @@ fn getSplatSphericalHarmonicBasis(basisIndex : u32, direction : vec3<f32>) -> f3
+   }
+ }
+ 
++// ifc-lite #9018 float16x2 >>>
++fn splatHalfCoefficient(index : u32) -> f32 {
++  let pair = unpack2x16float(bitcast<u32>(splatSphericalHarmonics[index >> 1u]));
++  return select(pair.x, pair.y, (index & 1u) == 1u);
++}
++// <<< ifc-lite #9018 float16x2
++
+ fn evaluateSplatSphericalHarmonics(
+   color : vec3<f32>,
+   position : vec3<f32>,
+   rowIndex : u32
+ ) -> vec3<f32> {
+-  let coefficientCount = arrayLength(&splatSphericalHarmonics) /
+-    max(arrayLength(&splatOpacities), 1u);
++  // ifc-lite #9018 float16x2 >>>
++  // Float32 storage holds exactly rows * (9 | 24 | 45) words. Anything else is float16x2: two halves per
++  // word, row-major without per-row padding, so the stored count is the largest of 9 / 24 / 45 that fits.
++  // Halves are always finite (the writer falls back to float32 otherwise), so no word is an f32 NaN.
++  let shRows = max(arrayLength(&splatOpacities), 1u);
++  let shWords = arrayLength(&splatSphericalHarmonics);
++  var coefficientCount = shWords / shRows;
++  let shFloat32 = shWords == shRows * coefficientCount &&
++    (coefficientCount == 9u || coefficientCount == 24u || coefficientCount == 45u);
++  if (!shFloat32) {
++    let halves = (2u * shWords) / shRows;
++    coefficientCount = select(select(select(0u, 9u, halves >= 9u), 24u, halves >= 24u), 45u, halves >= 45u);
++  }
++  // <<< ifc-lite #9018 float16x2
+   let requestedBasisCount =
+     (splat.sphericalHarmonicsDegree + 1u) * (splat.sphericalHarmonicsDegree + 1u) - 1u;
+   let basisCount = min(coefficientCount / 3u, requestedBasisCount);
+@@ -225,11 +244,20 @@ fn evaluateSplatSphericalHarmonics(
+   var evaluatedColor = color;
+   for (var basisIndex = 0u; basisIndex < basisCount; basisIndex++) {
+     let coefficientOffset = rowIndex * coefficientCount + basisIndex * 3u;
+-    let coefficients = vec3<f32>(
+-      splatSphericalHarmonics[coefficientOffset],
+-      splatSphericalHarmonics[coefficientOffset + 1u],
+-      splatSphericalHarmonics[coefficientOffset + 2u]
+-    );
++    var coefficients : vec3<f32>;
++    if (shFloat32) {
++      coefficients = vec3<f32>(
++        splatSphericalHarmonics[coefficientOffset],
++        splatSphericalHarmonics[coefficientOffset + 1u],
++        splatSphericalHarmonics[coefficientOffset + 2u]
++      );
++    } else {
++      coefficients = vec3<f32>(
++        splatHalfCoefficient(coefficientOffset),
++        splatHalfCoefficient(coefficientOffset + 1u),
++        splatHalfCoefficient(coefficientOffset + 2u)
++      );
++    }
+     evaluatedColor += coefficients *
+       getSplatSphericalHarmonicBasis(basisIndex, normalizedDirection);
+   }
+@@ -428,4 +456,71 @@ void main() {
    fragmentColor = vec4(mappedColor, alpha);
  }
  `;

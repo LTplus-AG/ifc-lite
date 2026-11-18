@@ -20,7 +20,7 @@ import {
 } from '@ifc-lite/geometry';
 import { totalYupOffset } from './coordinate-frame';
 import { resolveProjectionId } from './reproject';
-import { projectedUnitToMetres } from '../../hooks/ingest/projected-units.js';
+import { projectedUnitToMetres } from '@ifc-lite/geo/proj4';
 
 export interface IfcOriginPlacement {
   /** Viewer-local position (Y-up) where this model's IFC (0,0,0) currently sits. */

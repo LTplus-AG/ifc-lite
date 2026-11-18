@@ -68,6 +68,11 @@ def _validate_manifest(manifest, blob):
     for i, layer in enumerate(manifest["layers"]):
         if layer["parent"] is not None:
             index(layer["parent"], i, f"layers[{i}].parent (must precede child)")
+        strings = layer.get("userStrings")
+        if not isinstance(strings, list) or not all(
+                isinstance(pair, list) and len(pair) == 2 and all(isinstance(s, str) for s in pair)
+                for pair in strings):
+            raise ValueError(f"layers[{i}].userStrings must be a list of [key, value] string pairs")
     for i, mesh in enumerate(manifest["meshes"]):
         field = f"meshes[{i}]"
         count = buffer(mesh["positions"], 8, f"{field}.positions")
@@ -157,6 +162,8 @@ def write_3dm(scene, path, *, version=8):
         layer.Visible, layer.Locked = item["visible"], item["locked"]
         if item["parent"] is not None:
             layer.ParentLayerId = doc.Layers[layers[item["parent"]]].Id
+        for key, value in item["userStrings"]:
+            layer.SetUserString(key, value)
         layers.append(_add_table_entry(doc.Layers, "layer", item["name"], layer))
     materials = []
     for item in manifest["materials"]:

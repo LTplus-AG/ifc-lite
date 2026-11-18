@@ -10,4 +10,5 @@ export const mergeLayersBannerEn = {
   'mergeLayersBanner.subtitle': 'Reload model to apply the new setting.',
   'mergeLayersBanner.reloadButton': 'Reload',
   'mergeLayersBanner.dismissAriaLabel': 'Dismiss reload reminder',
+  'mergeLayersBanner.serverProcessed': 'This model was processed on the server, so load-time geometry settings do not change it.',
 } as const satisfies Record<string, TranslationValue>;

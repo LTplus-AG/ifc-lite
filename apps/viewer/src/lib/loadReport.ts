@@ -38,7 +38,7 @@ export interface ModelLoadReportFields {
   /** Format resolved for this load ('ifc' | 'glb' | 'ifcx' | a point-cloud format). */
   loadFormat?: string;
   /** Pipeline that produced this load; mirrors `captureModelLoaded`'s `load_path`. */
-  loadPath?: 'wasm' | 'cache' | 'server' | 'point-cloud' | 'landxml' | 'gaussian';
+  loadPath?: 'wasm' | 'cache' | 'server' | 'point-cloud' | 'landxml' | 'gaussian' | '3dm' | 'site-context';
   /** Tessellation tier actually used; `undefined` = engine default, or not
    *  applicable (the server path always runs full fidelity). */
   tessellationTier?: TessellationQuality;
@@ -89,6 +89,10 @@ export interface LoadReportAffectedEntity {
   csgFailures: number;
   openings: number;
   firstFailureLabel?: string;
+  /** Work-budget refusals for this product, each distinct one once (#9268):
+   *  the engine's meter name, its limit, the demand reached, the source id.
+   *  Absent when the product was not refused. */
+  budgetRefusals?: Array<{ budget: string; limit: number; reached: number; sourceId: number }>;
   /**
    * True only when the diagnostic host carried a captured `bbox` — the
    * signal that its mesh is present and can be framed in 3D. `false` means
@@ -152,6 +156,14 @@ function buildActions(model: FederatedModel, d: GeometryDiagnostics | null): str
           'incomplete in the 3D view.',
       );
     }
+    const refusals = d.totalBudgetRefusals ?? d.budgetRefusals?.length ?? 0;
+    if (refusals > 0) {
+      actions.push(
+        `${refusals} work budget refusal(s) stopped representation expansion — ` +
+          'these elements are missing or incomplete in the 3D view; inspect the affected ' +
+          'entities and simplify their mapped representations in the source model.',
+      );
+    }
     if ((d.oversizedRefDrops ?? 0) > 0) {
       actions.push(
         `${d.oversizedRefDrops} content-hash reference(s) were skipped (exceeded the hashing ` +
@@ -175,7 +187,7 @@ function buildActions(model: FederatedModel, d: GeometryDiagnostics | null): str
 
 function buildAffectedEntities(model: FederatedModel, d: GeometryDiagnostics | null): LoadReportAffectedEntity[] {
   if (!d) return [];
-  return d.worstHosts.map((h) => ({
+  const entities: LoadReportAffectedEntity[] = d.worstHosts.map((h) => ({
     productId: h.productId,
     globalId: h.productId + model.idOffset,
     ifcType: h.ifcType,
@@ -184,6 +196,30 @@ function buildAffectedEntities(model: FederatedModel, d: GeometryDiagnostics | n
     firstFailureLabel: h.firstFailureLabel,
     renderable: h.bbox !== undefined,
   }));
+  const byProduct = new Map<number, LoadReportAffectedEntity>(entities.map((entity) => [entity.productId, entity]));
+  for (const refusal of d.budgetRefusals ?? []) {
+    if (refusal.productId == null) continue;
+    // One row per product: a host that also failed CSG keeps both facts.
+    let entity = byProduct.get(refusal.productId);
+    if (!entity) {
+      entity = {
+        productId: refusal.productId,
+        globalId: refusal.productId + model.idOffset,
+        ifcType: refusal.productType ?? 'unknown',
+        csgFailures: 0,
+        openings: 0,
+        renderable: false,
+      };
+      byProduct.set(refusal.productId, entity);
+      entities.push(entity);
+    }
+    const { budget, limit, reached, sourceId } = refusal;
+    const refusals = (entity.budgetRefusals ??= []);
+    if (!refusals.some((r) => r.budget === budget && r.limit === limit && r.reached === reached && r.sourceId === sourceId)) {
+      refusals.push({ budget, limit, reached, sourceId });
+    }
+  }
+  return entities;
 }
 
 /** Build a report for one loaded model. Never throws; a model with no

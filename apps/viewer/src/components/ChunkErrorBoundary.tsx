@@ -49,6 +49,9 @@ const CHUNK_LABEL_KEYS = {
   'BCF panel': 'bcf.panel.title',
   'Validation panel': 'validationPanel.title',
   'Lens panel': 'lensPanel.title',
+  'Gantt panel': 'workspacePanels.bottom.gantt',
+  'Lists panel': 'lists.panel.title',
+  'Extensions panel': 'extensionsFlavors.extensionsPanel.heading',
   'Command palette': 'commandPalette.ariaLabel',
   'Bulk Property Editor': 'bulkPropertyEditor.title',
   'Data Connector': 'dataConnector.dialogTitle',
@@ -76,6 +79,7 @@ const CHUNK_LABEL_KEYS = {
   'Material layers': 'modelInspector.layers.title',
   'Storey manager': 'storeyManager.title',
   'Structural Analysis card': 'properties.structural.heading',
+  'Structural derivation': 'commandPalette.tool.deriveStructural.label',
   "What's New tab": 'keyboardShortcuts.tabs.whatsNew',
 } as const satisfies Record<string, TranslationKey>;
 

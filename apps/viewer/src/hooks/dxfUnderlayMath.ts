@@ -43,6 +43,12 @@ export interface DxfUnderlayRenderText {
   color: string;
   align: 'left' | 'center' | 'right';
   valign: 'baseline' | 'bottom' | 'middle' | 'top';
+  lineSpacingFactor?: number;
+  widthScale?: number;
+  /** Aligned/fit span length in metres; measuring renderers stretch to exactly this. */
+  fitWidth?: number;
+  /** Aligned text: scale height with width to reach fitWidth. */
+  fitUniform?: boolean;
 }
 
 /** One underlay pre-mapped to drawing space, ready for canvas/SVG. */
@@ -241,16 +247,30 @@ export function dxfUnderlayToDrawing(
         { x: text.position.x + text.dirX, y: text.position.y + text.dirY },
         t,
       );
+      // Glyph height follows the mapped area over the baseline scale (the local scale for a
+      // uniform map); a map that changes the aspect also fits aligned text horizontally, like convert.ts.
+      const d2 = text.dirX ** 2 + text.dirY ** 2 || 1;
+      const normal = worldToDrawing({ x: text.position.x - text.dirY, y: text.position.y + text.dirX }, t);
+      const along = Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / Math.sqrt(d2);
+      const area = Math.abs((tip.x - anchor.x) * (normal.y - anchor.y) - (tip.y - anchor.y) * (normal.x - anchor.x)) / d2;
+      const keepsAspect = along <= 1e-12 || Math.abs(along * along - area) <= 1e-9 * Math.max(1, area);
       texts.push({
         x: anchor.x,
         y: anchor.y,
         dirX: tip.x - anchor.x,
         dirY: tip.y - anchor.y,
-        height: text.height * entry.placement.scale * textMapScale,
+        height: along > 1e-12 ? text.height * area / along : text.height * entry.placement.scale * textMapScale,
         text: text.text,
         color: text.color ?? layer.color,
         align: text.align,
         valign: text.valign,
+        lineSpacingFactor: text.lineSpacingFactor,
+        // A stretched axis widens glyphs by the baseline scale over the glyph-height scale.
+        widthScale: keepsAspect || area <= 0 ? text.widthScale : (text.widthScale ?? 1) * along * along / area,
+        // The span follows the same mapped baseline as dirX/dirY (exact under any linear map).
+        fitWidth: text.fitWidth === undefined ? undefined
+          : text.fitWidth * Math.hypot(tip.x - anchor.x, tip.y - anchor.y) / (Math.hypot(text.dirX, text.dirY) || 1),
+        fitUniform: text.fitUniform && keepsAspect,
       });
     }
   }

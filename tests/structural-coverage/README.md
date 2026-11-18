@@ -5,19 +5,20 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r3.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r13.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
 anything dropped below the baseline. It needs the corpus on disk. Before
 importing packages, the scorer runs
 `pnpm turbo build --filter=@ifc-lite/parser... --filter=@ifc-lite/create... --filter=@ifc-lite/export...`
-so Turbo rebuilds or restores outputs that match the source. A failed build is
-a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
+plus the viewer’s workspace dependencies (`--filter=@ifc-lite/viewer^...`) for the
+state-module probe, so Turbo rebuilds or restores outputs that match the source.
+A failed build is a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
-wasm toolchain. The probes run in about two seconds after building.
+wasm toolchain. The toggle probe also loads the viewer’s Node test adapter.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r3.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r13.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -39,13 +40,13 @@ model, four checks, the CLI command, the docs page).
 | Level | Probe | Passes when |
 |---|---|---|
 | fixture | `probes/fixture.mjs` | a corpus file declaring the row's schema carries the entity |
-| read | `probes/read.mjs` | `extractStructuralOnDemand` returns every sampled record with each own attribute's value equal to the file's; a value the read model has no field for makes the row partial |
-| card | not written yet | the viewer properties card shows it |
-| render | not written yet | a mesh or glyph is drawn |
+| read | `probes/read.mjs` | `extractStructuralOnDemand` returns every corpus record with each own attribute's value equal to the file's, including member relationship attributes and their nested resources, physical links and reference-id arrays; a value the read model has no field for makes the row partial |
+| card | `probes/card.mjs` | `structuralCardSections` (the data the viewer's structural properties card renders) shows every record, on its own card or, for a resource, on the card of a record referencing it, with each own attribute's value equal to the file's |
+| render | `probes/render.mjs` (connections, actions, reactions), `probes/render-members.mjs` (members) | the glyph list holds a glyph for every record with a restraint or a non-zero load or reaction; the geometry module's mesh of every member reaches each vertex of its topology at the file's coordinates (read by `lib/topology.mjs`) |
 | create | `probes/create.mjs` + `create-scene.mjs` | an in-store builder authors it in a blank model of the row's schema, and the STEP export declares that schema, re-parses and carries the given values |
-| edit, remove | not written yet | in-store update and removal with sub-graph ownership |
+| edit, remove | `probes/edit.mjs`, `probes/remove.mjs` | edit/export/reparse structural values; remove exclusive subgraphs, preserve shared resources and validate references |
 | convert | `probes/convert.mjs` | it survives IFC4 -> IFC2X3 -> IFC4 (or IFC2X3 -> IFC4 -> IFC2X3) with the same values |
-| capability | `probes/capabilities.mjs` | per capability row; the link read and the docs page have probes, the rest are not written yet |
+| capability | `probes/capabilities.mjs` | per capability row; the link read, derive, analytical/physical toggle and docs page have probes |
 
 Not-applicable cells come only from `notApplicable()` in `catalogue.mjs`, by
 family or schema: only items and activities render, relationships have no card
@@ -61,10 +62,32 @@ value members, and a bare value only in a defined-type, enum or primitive slot.
 A file that fails gets no credit for the row. Not checked yet, so a convert pass
 can still overstate (tracked on #9668): aggregate shape and bounds (a
 scalar in a LIST slot), the kind of a bare value (an enum in a REAL slot), `*`
-outside derived slots, which select member a typed value is, enum values, and
-records of other entities. The registry is
+outside derived slots, which select member a typed value is, enum values
+(checked only where the source left a required slot empty), and records of
+other entities. The registry is
 generated from the same EXPRESS as the product uses, so a codegen error there
 would be shared by the oracle and the converter.
+
+Where the IFC schemas force a value or a class on the round trip, the probe
+expects that instead of the source value (cited in `probes/convert.mjs`).
+
+The derive probe compares the AxisVM roof truss against its authored analytical
+model within 1 mm (axis sine tolerance 0.001). Partial credit requires at least
+90% of reference/derived members to match axes, endpoints and physical links;
+below that floor it fails. On the reference side, AxisVM support-only points
+merge into member joints; support positions are compared in both directions,
+without comparing which degrees of freedom are restrained. Missing or extra
+connection records prevent a pass.
+
+## Limits
+
+`limits.mjs` labels the problems no product change can fix (schema, policy or
+upstream), each with a citation its `holds` re-checks on every run with the
+whole corpus. A stale or false limit is printed to stderr after the summary is
+written; the ratchet still runs, and the run exits 1. So a change that fixes a
+limited cell removes its limit too. Offline runs skip limits. A limit never
+changes a status or a point. The ledger calls a cell out of reach only when
+every one of its problems is labelled.
 
 ## Scoring and the ratchet
 
@@ -110,7 +133,29 @@ baseline files. `r1` here is a measurement revision, not a product climb round.
 
 A new in-store builder needs no new probe: add a step to `SCENE` in
 `probes/create-scene.mjs` naming the entities it emits and the values to expect.
+A builder that authors a load alone also names `appliedBy`, the activity the
+edit probe applies it from, since the extractor reads loads only through one.
 
 [R2 activity/result notes](baseline/r2-notes.md): 24 new create cells, 297.5/774 cells total; rows remain 56/119.
 
 [R3 combined measurement](baseline/r3-notes.md): main after #9737 and #9763 is 288.5/774 cells; the combined branch is 312.5/774, with the same 24 new create passes. R1 and R2 remain retained.
+
+[R4 support and load glyphs](baseline/r4-notes.md): 24 render cells measured (4 pass, 10 partial, 10 fail), 321.5/774 cells; rows remain 56/119.
+
+R5 adds 74 edit and 74 remove passes to R4, for 469.5/774 cells. R4 render coverage is retained.
+
+[R6 round-3 close](baseline/r6-notes.md): main after #9923 is 92.5/119 rows and 721/774 cells (from 56/119 and 469.5/774 at R5), with every changed cell listed.
+
+[R7 round-4 close](baseline/r7-notes.md): main at `2d09a32fce` is 104.5/119 rows and 750.5/774 cells (from 92.5/119 and 721/774 at R6), with every changed cell listed.
+
+[R8 harness correction measurement](baseline/r8-notes.md): no product changes; two read-probe corrections and the reinforcement results already on main (#10530) bring the measurement to 106/119 rows and 755.5/774 cells. R0 to R7 remain retained.
+
+[R9 mapped topology](baseline/r9-notes.md): the member render oracle follows a topology representation reached through an `IfcMappedItem`; 106/119 rows and 756/774 cells. R0 to R8 remain retained.
+
+[R10 convert carriers](baseline/r10-notes.md): structural conversion carriers (CausedBy, IfcStructuralLoadCase, SharedPlacement, varying thickness), one convert-probe correction and the point-action CausedBy fixture bring the measurement to 109/119 rows and 759.5/774 cells. R0 to R9 remain retained.
+
+[R11 derived supports](baseline/r11-notes.md): derivation guesses supports only where a lowest-level run bears, so the roof truss derives AxisVM's two heel supports; 109.5/119 rows and 760/774 cells. R0 to R10 remain retained.
+
+[R12 final round](baseline/r12-notes.md): the IFC2X3 coverage fixture gives one location per varying load, so both varying actions and their relationships convert (111/119 rows, 762/774 cells), and every remaining unmet cell is labelled by a cited limit except two reachable `Axis` cells. R0 to R11 remain retained.
+
+[R13 curve member Axis](baseline/r13-notes.md): the IFC4 -> IFC2X3 converter carries a curve member's `Axis` as `ProfileOrientation`, so the varying member converts (111.5/119 rows, 762.5/774 cells) and no reachable cell is left. R0 to R12 remain retained.

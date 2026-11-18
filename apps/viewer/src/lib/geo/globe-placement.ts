@@ -28,7 +28,7 @@
 import proj4 from 'proj4';
 import type { GeoMapping } from './geo-warp';
 import { createLatticeWarp, type ViewerBounds } from './geo-lattice';
-import { computeGridPointFactors, projectedDefinitionInMetres } from './proj4-utils';
+import { computeGridPointFactors, projectedDefinitionInMetres } from '@ifc-lite/geo/proj4';
 import type { GridCoordinateSource } from './ground-scale';
 
 export type GlobePlacementMode = 'auto' | 'anchor' | 'exact';

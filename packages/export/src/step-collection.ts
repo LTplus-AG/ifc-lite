@@ -207,7 +207,9 @@ export function collectModifications(
 
   // Process georeferencing mutations (only when applyMutations is enabled)
   if (applyMutations && options.georefMutations) {
+    const before = pass.warnings.length;
     applyGeoreferencingMutations(pass, options.georefMutations, ctx.georefContext(options.deltaOnly === true));
+    pass.georeferencingWarnings.push(...pass.warnings.slice(before));
   }
 }
 

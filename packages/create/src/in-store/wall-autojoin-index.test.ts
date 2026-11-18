@@ -14,29 +14,40 @@ import * as joins from './wall-join-edit.js';
 
 afterEach(() => vi.restoreAllMocks());
 
+/** Registry key enumerations made by the entity-name index. The parser's empty-registry guard and
+ * attribute-name witness also enumerate once per snapshot; they are not the index, so they are
+ * excluded by the frame that made the call. */
+function countIndexEnumerations(registry: ReturnType<typeof getSchemaRegistryForVersion>) {
+  const realKeys = Object.keys;
+  let count = 0;
+  const spy = vi.spyOn(Object, 'keys').mockImplementation((target: object) => {
+    if (target === registry.entities && new Error().stack?.includes('entityNameIndex')) count++;
+    return realKeys(target);
+  });
+  return { spy, count: () => count };
+}
+
 it('#9406 reading the new wall captures schema names once for all of its geometry references', async () => {
   const s = await newStorey();
   const wall = addWallToStore(s.editor, s.anchor, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2 });
   const registry = getSchemaRegistryForVersion('IFC4');
-  const names = Object.keys(registry.entities);
-  const signature = vi.spyOn(JSON, 'stringify');
+  const enumeration = countIndexEnumerations(registry);
   const snapshot = vi.spyOn(parser, 'createSchemaEntityNameSnapshot');
   expect(reads.readWallJoinTarget(s.store, s.view, wall.wallId, 1)?.wall.end).toEqual([4, 0]);
-  // #9411 validates registry key order once when a finite snapshot begins.
-  expect(signature.mock.calls.filter(([keys]) => Array.isArray(keys) && keys.length === names.length && keys[0] === names[0])).toHaveLength(1);
+  // #9411 enumerates registry key order once (it was a JSON.stringify signature until #9906) when a finite snapshot begins.
+  expect(enumeration.count()).toBe(1);
   expect(snapshot).toHaveBeenCalledTimes(1);
 });
 
-for (const count of [16, 64]) it(`#9406 cold index for ${count} unrelated walls captures one schema-key signature for the entire index`, async () => {
+for (const count of [16, 64]) it(`#9406 cold index for ${count} unrelated walls enumerates the schema keys once for the entire index`, async () => {
   const s = await newStorey();
   for (let i = 0; i < count; i++) addWallToStore(s.editor, s.anchor,
     { Start: [i * 10, 0, 0], End: [i * 10 + 4, 0, 0], Height: 3, Thickness: .2 });
   const registry = getSchemaRegistryForVersion('IFC4');
-  const names = Object.keys(registry.entities);
-  const signature = vi.spyOn(JSON, 'stringify');
+  const enumeration = countIndexEnumerations(registry);
   const snapshot = vi.spyOn(parser, 'createSchemaEntityNameSnapshot');
   const { signatures, snapshots, wall } = withWallAutojoinIndex(s.store, s.view, wallIndex => {
-    const signatures = signature.mock.calls.filter(([keys]) => Array.isArray(keys) && keys.length === names.length && keys[0] === names[0]).length;
+    const signatures = enumeration.count();
     const snapshots = snapshot.mock.calls.length;
     const wall = addOrdinaryElementInStore(s.editor, s.anchor, { kind: 'wall', params: {
       Start: [count * 10, 0, 0], End: [count * 10 + 4, 0, 0], Height: 3, Thickness: .2,

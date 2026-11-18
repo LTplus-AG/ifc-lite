@@ -22,14 +22,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEVELS, deriveCatalogue, notApplicable } from '../tests/structural-coverage/catalogue.mjs';
-import { ratchet, runProbes, score, tally, verifySummary, verifyTotals } from '../tests/structural-coverage/score.mjs';
+import { main, ratchet, runProbes, score, tally, verifySummary, verifyTotals } from '../tests/structural-coverage/score.mjs';
 import { readRow } from '../tests/structural-coverage/probes/read.mjs';
 import { checkExport } from '../tests/structural-coverage/probes/create.mjs';
 import { normalize } from '../tests/structural-coverage/lib/values.mjs';
 import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { unwritten } from '../tests/structural-coverage/probes/index.mjs';
 import { SCENE, stepsFor } from '../tests/structural-coverage/probes/create-scene.mjs';
-import { nonConforming } from '../tests/structural-coverage/probes/convert.mjs';
+import { compareFile, nonConforming, renamedNonConforming } from '../tests/structural-coverage/probes/convert.mjs';
+import { KINDS, LIMITS, markLimits } from '../tests/structural-coverage/limits.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATOR = join(ROOT, 'scripts/generate-structural-coverage-ledger.mjs');
@@ -107,6 +108,85 @@ test('runProbes: an applicable cell with no probe is an error, and a probe that 
   const cells = await runProbes(two, {}, [boom, ...covering]);
   assert.equal(cells.get('cap/docs-page').capability.status, 'error', 'error ranks above unwritten');
   assert.equal(cells.get(two[0].id).read.status, 'unwritten');
+});
+
+test('limits (#9668): label every problem or count it open, never change a score, and report a stale or false limit', () => {
+  const id = two[0].id;
+  const problems = ['a.ifc#1: lost', 'a.ifc#2: lost', 'b.ifc#3: Axis null'];
+  const limit = (extra = {}) => ({ row: id, level: 'convert', kind: 'schema', problem: /^a\.ifc#(\d+): lost$/, cite: 'no entity', holds: (f, m) => f.belowThree(Number(m[1])), ...extra });
+  // Not `ok`: check-source-text-assertions resolves every `assert.ok(...)` to a local `ok` by name.
+  const facts = { belowThree: (n) => n < 3 };
+  const fresh = (list = problems, status = 'partial') => {
+    const cells = cellsOf({ [id]: { convert: status } });
+    if (list) cells.get(id).convert.problems = list;
+    return cells;
+  };
+  const label = (limits, list = problems, f = facts, status = 'partial') => {
+    const cells = fresh(list, status);
+    return { issues: markLimits(cells, f, limits), cell: cells.get(id).convert };
+  };
+  const one = label([limit()]);
+  assert.deepEqual([one.issues, one.cell.limits], [[], { open: 1, by: [{ kind: 'schema', cite: 'no entity' }] }], 'the Axis problem stays open');
+  const policy = limit({ kind: 'policy', problem: /Axis null$/, holds: () => true });
+  assert.equal(label([limit(), policy]).cell.limits.open, 0);
+  assert.deepEqual(label([limit(), limit({ cite: 'same problems, second limit' })]).issues, [], 'two limits may label the same problem');
+  const false_ = label([limit()], problems, { belowThree: () => false });
+  assert.equal(false_.issues.length, 2, 'one issue per problem it matched, not also called stale');
+  assert.match(false_.issues.join(), /cited fact does not hold/);
+  assert.match(label([limit({ holds: () => { throw new Error('no such file'); } })]).issues.join(), /does not hold .*\(no such file\)/, 'a holds that throws is reported, not fatal');
+  assert.equal(false_.cell.limits, undefined, 'a false limit labels nothing');
+  assert.match(label([limit({ problem: /^c\.ifc/ })]).issues.join(), /labels no problem the probe reported \(partial\)/);
+  assert.match(label([limit()], [], facts, 'pass').issues.join(), /\(pass\)/, 'a cell that now passes reports its stale limit');
+  assert.match(label([limit()], null, facts, 'error').issues.join(), /\(error, no problem list\)/, 'a probe error is named, not hidden');
+  assert.match(label([limit({ row: 'IFC4/NoSuchRow' })]).issues.join(), /not a probed cell/);
+  const cells = fresh();
+  markLimits(cells, facts, [limit()]);
+  const labelled = score(two, cells);
+  assert.deepEqual([labelled.total, labelled.cells], [score(two, fresh()).total, score(two, fresh()).cells], 'a limit never changes a score');
+  assert.ok(labelled.rows[0].levels.convert.limits && !('problems' in labelled.rows[0].levels.convert), 'the summary keeps the label, not the problem list');
+});
+
+test('score.mjs: a stale limit fails the run with exit 1 and names the label; the summary is still written (#10597)', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'structural-score-'));
+  const out = join(dir, 'summary.json');
+  const stale = { row: two[0].id, level: 'convert', kind: 'schema', problem: /^never reported$/, cite: 'test', holds: () => true };
+  const error = t.mock.method(console, 'error', () => {});
+  t.mock.method(console, 'log', () => {});
+  const run = async (limits, args = []) => {
+    error.mock.resetCalls();
+    const evaluate = async () => {
+      const cells = cellsOf({});
+      return { summary: score(two, cells), limitIssues: markLimits(cells, {}, limits) };
+    };
+    const code = await main(['--quiet', '--out', out, ...args], { evaluate });
+    return { code, errors: error.mock.calls.map((c) => String(c.arguments[0])).join('\n') };
+  };
+  try {
+    const failed = await run([stale]);
+    assert.equal(failed.code, 1, failed.errors);
+    assert.match(failed.errors, /Limits out of date \(tests\/structural-coverage\/limits\.mjs\)/);
+    assert.match(failed.errors, new RegExp(`${two[0].id} convert \\(schema\\) labels no problem the probe reported`));
+    assert.equal(JSON.parse(readFileSync(out, 'utf8')).total.max, 2, 'the summary is written for inspection');
+    assert.deepEqual(await run([]), { code: 0, errors: '' }, 'without the stale label the same run exits 0');
+    // CI runs with --check: a ratchet that holds must not mask the stale label.
+    const baseline = join(dir, 'baseline.json');
+    writeFileSync(baseline, readFileSync(out, 'utf8'));
+    const checked = await run([stale], ['--check', baseline]);
+    assert.equal(checked.code, 1, checked.errors);
+    assert.match(checked.errors, /Limits out of date/);
+    assert.deepEqual(await run([], ['--check', baseline]), { code: 0, errors: '' }, 'the ratchet itself holds');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('limits (#9668): each names a catalogue row, an applicable level, a kind and a citation', () => {
+  for (const l of LIMITS) {
+    assert.ok(byId.has(l.row), l.row);
+    assert.equal(notApplicable(byId.get(l.row), l.level), null, `${l.row} ${l.level}`);
+    assert.ok(Object.hasOwn(KINDS, l.kind), l.kind);
+    assert.ok(l.problem instanceof RegExp && typeof l.holds === 'function' && l.cite.length > 20, l.row);
+  }
 });
 
 test('ratchet: fails on a drop in the total, a row, a cell, a changed row set, or an offline run', () => {
@@ -199,6 +279,117 @@ ENDSEC;END-ISO-10303-21;`);
   assert.match(held[5], /typed IFCBOOLEAN in IfcMeasure$/, "the [] suffix is stripped before the slot check");
   const cyclic = { ...registry, selects: { ...registry.selects, IfcA: ['IfcB'], IfcB: ['IfcA'] } };
   assert.throws(() => nonConforming(holders, 'IfcHolder', cyclic), /select IfcA nests in a cycle/);
+});
+
+test('convert (#9668): only the values the schemas force are excused, and only as the schemas force them', () => {
+  const step = (data) => stepFile('', '', data).step;
+  const slot = (name, type, optional) => ({ name, type, optional });
+  const action = [slot('GlobalId', 'IfcGloballyUniqueId', false), slot('DestabilizingLoad', 'IfcBoolean', true), slot('PredefinedType', 'IfcStructuralSurfaceActivityTypeEnum', false)];
+  const registry = (entities) => ({ entities, selects: {}, types: {}, enums: { IfcStructuralSurfaceActivityTypeEnum: ['CONST', 'BILINEAR', 'DISCRETE', 'ISOCONTOUR', 'USERDEFINED', 'NOTDEFINED'] } });
+  const rooted = new Map(['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'].map((t) => [t, { rooted: true }]));
+  const schemas = {
+    own: { types: rooted, registry: registry({
+      IfcStructuralSurfaceAction: { allAttributes: action, inheritanceChain: ['IfcStructuralSurfaceAction'] },
+      IfcStructuralPlanarAction: { allAttributes: action, inheritanceChain: ['IfcStructuralPlanarAction', 'IfcStructuralSurfaceAction'] },
+    }) },
+    // As IFC2X3: DestabilizingLoad is required, and there is no PredefinedType.
+    other: { types: rooted, registry: registry({
+      IfcStructuralPlanarAction: { allAttributes: [action[0], slot('DestabilizingLoad', 'BOOLEAN', false)], inheritanceChain: ['IfcStructuralPlanarAction'] },
+    }) },
+  };
+  const row = { schema: 'IFC4', entity: 'IfcStructuralSurfaceAction', rooted: true, attributes: ['GlobalId', 'DestabilizingLoad', 'PredefinedType'], own: ['DestabilizingLoad', 'PredefinedType'] };
+  const file = { path: 'f.ifc', step: step(`#1=IFCSTRUCTURALSURFACEACTION('const',$,.CONST.);
+#2=IFCSTRUCTURALSURFACEACTION('bilinear',$,.BILINEAR.);
+#3=IFCSTRUCTURALSURFACEACTION('untyped',.T.,$);
+#4=IFCSTRUCTURALSURFACEACTION('bogus',.T.,$);
+#5=IFCSTRUCTURALSURFACEACTION('star',.T.,*);
+#6=IFCSTRUCTURALSURFACEACTION('blank',$,.BILINEAR.);
+#7=IFCSTRUCTURALSURFACEACTION('filled',.T.,$);
+#8=IFCSTRUCTURALSURFACEACTION('left',.T.,$);
+#9=IFCSTRUCTURALSURFACEACTION('label',.T.,.CONST.);
+#10=IFCSTRUCTURALSURFACEACTION('typed',.T.,IFCLABEL('CONST'));
+#11=IFCSTRUCTURALSURFACEACTION('copied',.T.,.BILINEAR.);`) };
+  const there = step(`#1=IFCSTRUCTURALPLANARACTION('const',.F.);
+#2=IFCSTRUCTURALPLANARACTION('bilinear',.F.);
+#3=IFCSTRUCTURALPLANARACTION('untyped',.T.);
+#4=IFCSTRUCTURALPLANARACTION('bogus',.T.);
+#5=IFCSTRUCTURALPLANARACTION('star',.T.);
+#6=IFCSTRUCTURALPLANARACTION('blank',.F.);
+#7=IFCSTRUCTURALPLANARACTION('filled',.T.);
+#8=IFCSTRUCTURALPLANARACTION('left',.T.);
+#9=IFCSTRUCTURALPLANARACTION('label',.T.);
+#10=IFCSTRUCTURALPLANARACTION('typed',.T.);
+#11=IFCSTRUCTURALPLANARACTION('copied',.T.);`);
+  const problems = (back) => compareFile(row, file, { there, step: step(back) }, schemas).problems;
+
+  assert.deepEqual(problems(`#1=IFCSTRUCTURALPLANARACTION('const',.F.,.CONST.);
+#2=IFCSTRUCTURALSURFACEACTION('bilinear',.F.,.BILINEAR.);
+#3=IFCSTRUCTURALPLANARACTION('untyped',.T.,.CONST.);
+#4=IFCSTRUCTURALSURFACEACTION('bogus',.T.,.BILINEAR.);
+#5=IFCSTRUCTURALSURFACEACTION('star',.T.,*);
+#6=IFCSTRUCTURALSURFACEACTION('blank',$,.BILINEAR.);
+#7=IFCSTRUCTURALPLANARACTION('filled',.T.,.CONST.);
+#8=IFCSTRUCTURALSURFACEACTION('left',.T.,$);
+#9=IFCSTRUCTURALPLANARACTION('label',.T.,.CONST.);
+#10=IFCSTRUCTURALSURFACEACTION('typed',.T.,IFCLABEL('CONST'));
+#11=IFCSTRUCTURALSURFACEACTION('copied',.T.,.BILINEAR.);`), [], 'the constant subtype, the IFC2X3 fill carried back, a fill of a slot the source left invalid, and values back as written');
+
+  const found = problems(`#1=IFCSTRUCTURALPLANARACTION('const',.T.,.CONST.);
+#2=IFCSTRUCTURALPLANARACTION('bilinear',.F.,.BILINEAR.);
+#3=IFCSTRUCTURALSURFACEACTION('untyped',.T.,IFCLABEL('x'));
+#4=IFCSTRUCTURALSURFACEACTION('bogus',.T.,.BOGUS.);
+#5=IFCSTRUCTURALSURFACEACTION('star',.T.,.CONST.);
+#6=IFCSTRUCTURALSURFACEACTION('blank',$,.BILINEAR.);
+#7=IFCSTRUCTURALPLANARACTION('filled',.T.,.BILINEAR.);
+#8=IFCSTRUCTURALPLANARACTION('left',.T.,$);
+#9=IFCSTRUCTURALPLANARACTION('label',.T.,IFCLABEL('CONST'));
+#10=IFCSTRUCTURALPLANARACTION('typed',.T.,.CONST.);
+#11=IFCSTRUCTURALSURFACEACTIONVARYING('copied',.T.,.BILINEAR.);`);
+  assert.equal(found.length, 9, found.join('\n'));
+  assert.match(found[0], /#1: DestabilizingLoad true, was null \(written false in IFC2X3, which requires it\)/, 'the fill must come back as written');
+  assert.match(found[1], /#2: came back as IFCSTRUCTURALPLANARACTION/, 'only a CONST action may come back as the constant subtype');
+  assert.match(found[2], /#3: PredefinedType left empty in the source, which IFC4 requires; came back not a member of IfcStructuralSurfaceActivityTypeEnum/);
+  assert.match(found[3], /#4: PredefinedType left empty in the source, which IFC4 requires; came back not a member of IfcStructuralSurfaceActivityTypeEnum/);
+  assert.match(found[4], /#7: came back as IFCSTRUCTURALPLANARACTION/, 'an empty PredefinedType takes the constant subtype only when filled as CONST');
+  assert.match(found[5], /#8: came back as IFCSTRUCTURALPLANARACTION/);
+  assert.match(found[6], /#9: came back as IFCSTRUCTURALPLANARACTION/, 'only the CONST enum member, not a value that reads as CONST');
+  assert.match(found[7], /#10: came back as IFCSTRUCTURALPLANARACTION/, 'on the source side too');
+  assert.match(found[8], /#11: came back as IFCSTRUCTURALSURFACEACTIONVARYING/, 'a keyword the schema lacks is a class change, not a loss');
+
+  // A record converted under another class is held to the intermediate schema too.
+  assert.deepEqual(renamedNonConforming(row, file, there, schemas.other), []);
+  const invalid = renamedNonConforming(row, file, step(`#1=IFCSTRUCTURALPLANARACTION('const',$);`), schemas.other);
+  assert.deepEqual(invalid, [{ id: 1, why: 'DestabilizingLoad: required value empty' }]);
+  const unknown = renamedNonConforming(row, file, step(`#1=IFCSTRUCTURALCURVEACTION('const',.F.);`), schemas.other);
+  assert.deepEqual(unknown, [{ id: 1, why: 'no such entity' }], 'a record written under a keyword the intermediate schema lacks');
+
+  // IFC4's planar action pins PredefinedType to CONST, so a filled slot must be CONST, not any enum member.
+  const planarRow = { ...row, entity: 'IfcStructuralPlanarAction' };
+  const planarFile = { path: 'p.ifc', step: step(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,*);`) };
+  const planarThere = step(`#1=IFCSTRUCTURALPLANARACTION('star',.T.);`);
+  const planar = (back) => compareFile(planarRow, planarFile, { there: planarThere, step: step(back) }, schemas).problems;
+  assert.deepEqual(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.CONST.);`), [], 'CONST fills the invalid slot');
+  assert.ok(planar(`#1=IFCSTRUCTURALPLANARACTION('star',.T.,.BILINEAR.);`).some((why) => why.includes('ConstPredefinedType')), 'BILINEAR on the planar action is schema-invalid');
+});
+
+test('convert (#9668): an IFC4 stiffness false may come back as the zero measure IFC2X3 forces, and nothing else is excused', () => {
+  const step = (data) => stepFile('', '', data).step;
+  const slot = (name, type) => ({ name, type, optional: true });
+  // As slab_01.ifc #74: IfcBoolean in IfcModulusOfTranslationalSubgradeReactionSelect slots; a label slot is not one.
+  const attributes = [slot('Name', 'IfcLabel'), slot('X', 'IfcModulusOfTranslationalSubgradeReactionSelect'), slot('Y', 'IfcModulusOfTranslationalSubgradeReactionSelect'), slot('Z', 'IfcLabel')];
+  const registry = { entities: { IfcBoundaryEdgeCondition: { allAttributes: attributes, inheritanceChain: ['IfcBoundaryEdgeCondition'] } }, selects: {}, types: {}, enums: {} };
+  const row = { schema: 'IFC4', entity: 'IfcBoundaryEdgeCondition', rooted: false, attributes: attributes.map((a) => a.name), own: attributes.map((a) => a.name) };
+  const file = { path: 'e.ifc', step: step("#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCBOOLEAN(.F.));") };
+  const problems = (back) => compareFile(row, file, { there: step(''), step: step(back) }, { own: { types: new Map(), registry } }).problems;
+  assert.deepEqual(problems('#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(0.),IFCBOOLEAN(.F.));'), [],
+    'false and a zero stiffness are both free; IFC2X3 writes both as 0.');
+  for (const back of [
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(5.),IFCBOOLEAN(.F.));',
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE(0.),IFCBOOLEAN(.F.),IFCBOOLEAN(.F.));',
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),$,IFCBOOLEAN(.F.));',
+    // Z is no stiffness SELECT, so 0 for false there is still a change.
+    '#1=IFCBOUNDARYEDGECONDITION($,IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),0.);',
+  ]) assert.equal(problems(back).length, 1, `${back} must not hold`);
 });
 
 const stepFile = (path, sha256, data) => ({ path, sha256, step: readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n${data}\nENDSEC;END-ISO-10303-21;`) });

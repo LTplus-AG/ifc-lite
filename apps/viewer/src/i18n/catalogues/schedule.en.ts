@@ -248,6 +248,7 @@ export const scheduleEn = {
   'schedule.animation.taskType.notDefined': 'Not defined',
 
   // ── GanttPanel.tsx (import-replace confirmation banner) ─────────────
+  "schedule.panel.pendingSourceSchedule": "Gantt is showing pending edits. IFC schedule changes for this model need to be reconciled separately.",
   'schedule.panel.importReplaceWarning':
     'Importing "{fileName}" will replace the current schedule and its undo history.',
   'schedule.panel.replace': 'Replace',

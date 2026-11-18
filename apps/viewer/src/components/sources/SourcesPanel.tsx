@@ -9,6 +9,7 @@ import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { SourceProviderRow } from './SourceProviderRow';
 import { SourceFavouritesList } from './SourceFavouritesList';
+import { LocalAgentSourceRow } from './LocalAgentSourceRow';
 import { useSourceDownloadBatch } from './useSourceDownloadBatch';
 import type { SourceFavourite } from '@/lib/sources/favourites';
 import { Button } from '@/components/ui/button';
@@ -359,6 +360,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
             </SourceProviderRow>
           ))}
         </ul>
+        <LocalAgentSourceRow />
 
         {registrationFailures.length > 0 && (
           <div className="border-t px-3 py-2">
@@ -367,10 +369,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
             </div>
             <ul className="flex flex-col gap-1.5">
               {registrationFailures.map((failure) => (
-                <li
-                  key={failure.provider}
-                  className="flex items-start gap-2 text-xs text-danger"
-                >
+                <li key={failure.provider} className="flex items-start gap-2 text-xs text-danger">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>
                     <RegistrationFailureMessage provider={failure.provider} reason={failure.reason} />

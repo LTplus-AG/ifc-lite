@@ -43,7 +43,7 @@ export async function startupChunks(directory) {
 }
 
 /** Every built JS file outside `startup`, with its code, read one at a time. */
-async function* lazyChunks(directory, startup) {
+export async function* lazyChunks(directory, startup) {
   for (const entry of await readdir(directory, { withFileTypes: true, recursive: true })) {
     const file = join(entry.parentPath, entry.name);
     if (entry.isFile() && /\.m?js$/.test(entry.name) && !startup.has(file)) yield [file, await readFile(file, 'utf8')];

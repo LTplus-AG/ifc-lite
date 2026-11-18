@@ -13,7 +13,7 @@ mod caching;
 mod brep_signatures;
 mod config;
 mod content_hash;
-mod diagnostics;
+pub(crate) mod diagnostics;
 mod diagnostics_recording;
 mod diagnostics_checked;
 pub(crate) mod frame_parts;
@@ -41,7 +41,7 @@ pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 pub(crate) use diagnostics::ClassificationKind;
 pub use diagnostics::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown, ClassificationStats,
-    ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
+    BudgetRefusal, ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
     HostBbox, RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
@@ -166,6 +166,8 @@ pub struct GeometryRouter {
     /// and `process_element_with_submeshes_and_voids` first attempt to slice
     /// single-solid elements by their `IfcMaterialLayerSetUsage` buildup.
     material_layer_index: Option<Arc<MaterialLayerIndex>>,
+    /// The frame a voided host is being cut in (`transforms::cut_frame`).
+    cut_frame: transforms::cut_frame::CutFrameSlot,
     /// Boolean / CSG failures attributed by IFC product express ID. Populated
     /// by the void-subtraction path (`apply_void_context`) when the BSP
     /// kernel falls back to the un-cut host. Drainable via
@@ -256,6 +258,7 @@ impl GeometryRouter {
             length_unit_refused: false,
             config: RouterConfig::default(),
             material_layer_index: None,
+            cut_frame: transforms::cut_frame::CutFrameSlot::default(),
             csg_failures: RefCell::new(FxHashMap::default()),
             stopped_csg_failures: RefCell::new(FxHashMap::default()),
             csg_scope: CsgScopeState::default(),
@@ -602,9 +605,10 @@ impl GeometryRouter {
         self.config.rtc_offset = offset;
     }
 
-    /// Get the current RTC offset
+    /// Get the current RTC offset. Zero while a voided host is cut in its
+    /// root frame, which applies the offset afterwards (`transforms::cut_frame`).
     pub fn rtc_offset(&self) -> (f64, f64, f64) {
-        self.config.rtc_offset
+        if self.in_cut_frame() { (0.0, 0.0, 0.0) } else { self.config.rtc_offset }
     }
 
     /// Check if RTC offset is active (non-zero)

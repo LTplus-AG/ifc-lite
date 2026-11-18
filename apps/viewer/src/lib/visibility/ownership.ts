@@ -161,6 +161,11 @@ const OWNERSHIP_RECORD_FIELDS = [
   'listVisibilityOwned',
 ] as const satisfies readonly (keyof OwnedVisibilityRecords)[];
 
+/** An explicit new owner can take over even when the channel members are identical. */
+export function hasVisibilityOwnershipHandoff(state: OwnedVisibilityRecords, patch: OwnedVisibilityRecords): boolean {
+  return OWNERSHIP_RECORD_FIELDS.some(field => !!patch[field] && patch[field] !== state[field]);
+}
+
 /**
  * The record fields a channel write has just made STALE — the one shared
  * invalidation point (review of #2867).

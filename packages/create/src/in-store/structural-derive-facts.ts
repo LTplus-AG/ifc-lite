@@ -20,9 +20,11 @@ import { safeLengthUnitScale } from './length-unit-scale.js';
 import { localBodyExtent } from './resolve-host.js';
 import { createStyleEntityReader, type StyleEntity } from './style-entity-reader.js';
 import { scale } from './structural-derive-idealise.js';
-import { DERIVATION_CLASSES } from './structural-derive-plan.js';
+import { roleOf, DERIVATION_CLASSES } from './structural-derive-plan.js';
 import { readElementShape } from './structural-derive-shape.js';
-import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
+import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type OpeningFact, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
+
+import { OPENING_TYPES } from './hosted-fill-read.js';
 
 const FOOTINGS = new Set(['IfcFooting', 'IfcPile']);
 
@@ -56,26 +58,44 @@ function readLoadBearing(store: IfcDataStore, view: MutablePropertyView, id: num
   return loadBearingIn(view.getForEntity(id)) ?? loadBearingIn(extractTypePropertiesOnDemand(store, id)?.properties ?? []);
 }
 
-export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor): StructuralDerivationFacts {
-  if (store.schemaVersion === 'IFC5') throw new Error('Structural derivation: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3');
-  const view = editor.getMutationView();
-  // Nothing is written while facts are read, so one parse per record is enough:
-  // placements, profiles and storeys are shared by many elements.
+/**
+ * A live entity reader for shape facts, and the file's length-unit scale.
+ * Nothing is written while shapes are read, so one parse per record is enough:
+ * placements, profiles and storeys are shared by many elements.
+ */
+export function shapeReader(store: IfcDataStore, editor: StoreEditor, label: string): { reader: { entity(id: number): StyleEntity | null }; metres: number } {
   const live = createStyleEntityReader(store, editor);
   const cache = new Map<number, StyleEntity | null>();
-  const read = (id: number) => {
+  const entity = (id: number) => {
     if (!cache.has(id)) cache.set(id, live(id));
     return cache.get(id)!;
   };
-  const reader = { entity: read };
-  const metres = store.source.byteLength > 0 ? safeLengthUnitScale(store.source, store.entityIndex, 'readStructuralDerivationFacts') ?? 1 : 1;
+  const metres = store.source.byteLength > 0 ? safeLengthUnitScale(store.source, store.entityIndex, label) ?? 1 : 1;
+  return { reader: { entity }, metres };
+}
+
+export function readStructuralDerivationFacts(store: IfcDataStore, editor: StoreEditor): StructuralDerivationFacts {
+  if (store.schemaVersion === 'IFC5') throw new Error('Structural derivation: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3');
+  const view = editor.getMutationView();
+  const { reader, metres } = shapeReader(store, editor, 'readStructuralDerivationFacts');
+  const read = reader.entity;
   const structural = liveStructuralExtraction(store, view);
   // Containment as the session has it (created, moved and deleted elements), resolved for every element at once.
   const storeyOf = effectiveStoreyResolver(store, effectiveSpatialContext(store, view));
+  const openings = new Map<number, Set<number>>();
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCRELVOIDSELEMENT'])) {
+    const attrs = read(expressId)?.attributes;
+    const host = refId(attrs?.[4]), id = refId(attrs?.[5]);
+    if (host === null || id === null) continue;
+    const list = openings.get(host) ?? new Set<number>();
+    list.add(id);
+    openings.set(host, list);
+  }
   const elements: PhysicalElementFact[] = [];
   for (const { expressId, type: stepType } of iterateEffectiveEntityIds(store, view, expandTypes([...DERIVATION_CLASSES], store.schemaVersion))) {
     const type = normalizeIfcTypeName(stepType);
-    const name = read(expressId)?.attributes[2];
+    const entity = read(expressId);
+    const name = entity?.attributes[2];
     const fact: PhysicalElementFact = {
       expressId,
       type,
@@ -85,23 +105,42 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       idealised: false,
     };
     if (FOOTINGS.has(type)) {
-      const placementId = refId(read(expressId)?.attributes[5]);
+      const placementId = refId(entity?.attributes[5]);
       const local = localBodyExtent(store, expressId, view);
       const frame = placementId === null ? null : placementInAncestor(reader, placementId, null);
       if (local && frame) {
         const world = transformBounds(local, frame);
         fact.bounds = { min: scale(world.min, metres), max: scale(world.max, metres) };
-      } else if (refId(read(expressId)?.attributes[6]) === null) fact.shapeIssue = 'no body (it has no Representation)';
+      } else if (refId(entity?.attributes[6]) === null) fact.shapeIssue = 'no body (it has no Representation)';
       else fact.shapeIssue = local ? 'the placement is unreadable' : 'the body is unreadable';
     } else {
       fact.loadBearing = readLoadBearing(store, view, expressId);
       fact.idealised = structuralCounterparts(structural, expressId)?.side === 'analytical';
       Object.assign(fact, readElementShape(reader, expressId, metres, true));
+      if (roleOf(type) === 'surface' && openings.has(expressId)) {
+        const collected: OpeningFact[] = [];
+        for (const id of openings.get(expressId) ?? []) {
+          const opening = read(id);
+          if (!opening || !OPENING_TYPES.has(opening.type.toUpperCase())) {
+            collected.push({
+              expressId: id, name: null,
+              type: opening ? normalizeIfcTypeName(opening.type) : null,
+              shapeIssue: opening ? `unsupported voiding type ${normalizeIfcTypeName(opening.type)}` : 'missing entity',
+            });
+            continue;
+          }
+          const name = opening.attributes[2];
+          collected.push({ expressId: id, type: normalizeIfcTypeName(opening.type), name: typeof name === 'string' ? name : null, ...readElementShape(reader, id, metres, false) });
+        }
+        fact.openings = collected;
+      }
     }
     elements.push(fact);
   }
+  const memberIdByGlobalId = new Map(structural.members.map((member) => [member.globalId, member.expressId]));
   const existingAnalysisModels = structural.analysisModels.map((model) => ({
     expressId: model.expressId, name: model.name ?? null, derived: model.description === DERIVED_ANALYSIS_MODEL_DESCRIPTION,
+    memberIds: model.itemGlobalIds.flatMap((globalId) => memberIdByGlobalId.get(globalId) ?? []),
   }));
   // listStoreys sorts by elevation, lowest first.
   return { elements, defaultStoreyId: listStoreys(store, view)[0]?.id ?? null, existingAnalysisModels };

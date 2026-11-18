@@ -24,6 +24,11 @@ on:
         required: false
         default: ''
         type: string
+      labels:
+        description: Comma-separated labels the issue carries, created if the repo lacks them.
+        required: false
+        default: ''
+        type: string
       dry_run:
         description: Exercise the reporter without changing issue state.
         required: false
@@ -53,6 +58,7 @@ jobs:
           JOBS: ${{ inputs.jobs }}
           RESULT: ${{ inputs.result }}
           DETAIL: ${{ inputs.detail }}
+          LABELS: ${{ inputs.labels }}
           DRY_RUN: ${{ inputs.dry_run }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: node scripts/report-scheduled-failure.mjs

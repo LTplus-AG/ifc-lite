@@ -40,8 +40,6 @@ cache-only:README.md
 # wasm-pack flags, the nightly pin, CARGO_UNSTABLE_BUILD_STD, the .d.ts
 # post-processing and the engine-binary marker.
 scripts/build-wasm.sh
-# Sourced by build-wasm.sh with BUILD_WIDE=1 only.
-cache-only:scripts/lib/build-wasm-wide.sh
 # Builds the decode-leak probe bundle (pkg-diff-decode-test).
 cache-only:scripts/test-diff-decode-leaks.sh
 # The cached build's commands, run by both workflows (the build step itself

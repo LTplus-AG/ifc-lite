@@ -12,6 +12,7 @@
  */
 
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
+import { conformsTo, schemaRegistry } from './schema-attributes.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { ownerHistoryRef } from './_emit-helpers.js';
 
@@ -37,4 +38,13 @@ export function linkStructuralItemsToPhysicalInStore(
     null, // RelatedObjectsType
     `#${physicalElementId}`,
   ]).expressId;
+}
+
+/** IFC2X3 physical-to-analytical relationship, absent from IFC4+. */
+export function connectStructuralElementInStore(editor: StoreEditor, ownerHistoryId: number | null, RelatingElement: number, RelatedStructuralMember: number, random?: RandomSource): number {
+  if (editor.getSchemaVersion() !== 'IFC2X3') throw new Error('connectStructuralElementInStore: IfcRelConnectsStructuralElement exists only in IFC2X3');
+  if (!ownerHistoryId) throw new Error('connectStructuralElementInStore: IFC2X3 requires OwnerHistory');
+  const registry = schemaRegistry('IFC2X3', 'connectStructuralElementInStore');
+  if (!conformsTo(registry, editor.getEntityType(RelatingElement) ?? '', 'IfcElement') || !conformsTo(registry, editor.getEntityType(RelatedStructuralMember) ?? '', 'IfcStructuralMember')) throw new Error('connectStructuralElementInStore: requires an IfcElement and an IfcStructuralMember');
+  return editor.addEntity('IfcRelConnectsStructuralElement', [generateIfcGuid(random), ownerHistoryRef(ownerHistoryId), null, null, `#${RelatingElement}`, `#${RelatedStructuralMember}`]).expressId;
 }

@@ -129,6 +129,57 @@ describe('Toaster (#5603)', () => {
     container.remove();
   });
 
+  for (const persistentFirst of [true, false]) {
+    it(`#9879 same-anchor errors stay persistent with a ${persistentFirst ? 'later' : 'prior'} transient duplicate`, (t) => {
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      act(() => {
+        if (persistentFirst) {
+          toast.error('Export still failed');
+          toast.transientError('Export still failed', 1000);
+        } else {
+          toast.transientError('Export still failed', 1000);
+          toast.error('Export still failed');
+        }
+      });
+      assert.equal(toastItems().length, 1);
+      assert.match(toastItems()[0]!.textContent ?? '', /×2/);
+      act(() => t.mock.timers.tick(1000));
+      assert.equal(toastItems().length, 1, 'the transient deadline cannot dismiss a persistent failure');
+      assert.match(toastItems()[0]!.textContent ?? '', /Export still failed/);
+    });
+  }
+
+  for (const persistentFirst of [true, false]) {
+    it(`#9879 stopping a ${persistentFirst ? 'later' : 'prior'} transient duplicate preserves the same-anchor persistent error`, (t) => {
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      let stop = () => {};
+      act(() => {
+        if (persistentFirst) {
+          toast.error('Export still failed');
+          stop = toast.transientError('Export still failed', 1000);
+        } else {
+          stop = toast.transientError('Export still failed', 1000);
+          toast.error('Export still failed');
+        }
+      });
+      act(stop);
+      assert.equal(toastItems().length, 1, 'gesture exit cannot dismiss a persistent failure');
+      assert.match(toastItems()[0]!.textContent ?? '', /Export still failed/);
+      act(() => t.mock.timers.tick(1000));
+      assert.equal(toastItems().length, 1);
+      act(() => dismissButtons()[0]!.click());
+      assert.equal(toastItems().length, 0, 'explicit dismissal still clears the persistent notice');
+    });
+  }
+
+  it('#9879 stopping an exclusively transient error still dismisses it', () => {
+    let stop = () => {};
+    act(() => { stop = toast.transientError('Gesture failed', 1000); });
+    assert.equal(toastItems().length, 1);
+    act(stop);
+    assert.equal(toastItems().length, 0);
+  });
+
   it('keeps an error until it is dismissed', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     act(() => toast.error('Export failed'));

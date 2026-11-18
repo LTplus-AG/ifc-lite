@@ -22,6 +22,7 @@ import { useExtensionExporters } from '@/components/extensions/useExtensionExpor
 import { useViewerStore } from '@/store';
 import { listIonExportModels } from '../export-model-selection';
 import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
+import { MESH_DERIVED_EXPORTS, EXACT_ONLY_EXPORTS } from '@/lib/export/native-policy';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { activeModelName, downloadFile, downloadDataUrl, modelExportFilename } from '@/lib/export/download';
@@ -31,6 +32,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 import type { TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import {
   hasRetainedGeometryModel, hasRetainedShapeOnlyModel, RETAINED_EXACT_ONLY_REASON, RETAINED_SHAPE_ONLY_REASON,
 } from '@/store/retainedGeometry';
@@ -46,14 +48,12 @@ export interface ResolvedExportCommand {
 }
 
 /** 3D exports built from the loaded meshes: refused on a retained, shape-only model (#7955 M2). */
-const MESH_DERIVED_EXPORTS: ReadonlySet<string> = new Set(['glb', 'kmz', 'ion', 'usd', '3dm']);
 
 /**
  * Exports that re-mesh the FILE with the exact engine (USD, Rhino .3dm, the energy models, and Cesium ion, which uploads the
  * model's STEP for Cesium to re-mesh): for a retained model that is a different geometry from the one on screen,
  * so they are refused while any loaded model is retained, complete or not (#7955).
  */
-const EXACT_ONLY_EXPORTS: ReadonlySet<string> = new Set(['usd', '3dm', 'energy', 'ion']);
 
 /** `spatial` is the one table whose type id does not say what the file holds. */
 const CSV_SUFFIX: Record<CsvExportType, string> = {
@@ -78,6 +78,7 @@ function activeModelExportNote(modelCount: number): string {
 }
 
 export function useExportCommands(surface: ExportSurface) {
+  const { t } = useTranslation();
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const models = useViewerStore((s) => s.models);
   const hasIonModel = useMemo(() => listIonExportModels(models, ifcDataStore).length > 0, [models, ifcDataStore]);
@@ -153,17 +154,20 @@ export function useExportCommands(surface: ExportSurface) {
   const handleScreenshot = useCallback(async () => {
     try {
       const renderer = getGlobalRenderer();
-      if (!renderer) throw new Error('no 3D viewport on screen');
+      if (!renderer) {
+        toast.error(t('exportCommands.screenshot.notReady'));
+        return;
+      }
       const image = await captureViewportFrame(renderer, { read: canvas => canvas.toDataURL('image/png') });
       if (!image) throw new Error('viewport capture failed');
       downloadDataUrl(image, modelExportFilename(activeModelName(useViewerStore.getState()), 'png', '_screenshot'));
       trackExportCompleted({ format: 'png', surface });
-      toast.success('Screenshot saved');
+      toast.success(t('exportCommands.screenshot.saved'));
     } catch (err) {
       console.error('Screenshot failed:', err);
-      toast.error('Screenshot failed');
+      toast.error(t('exportCommands.screenshot.failed'));
     }
-  }, [surface]);
+  }, [surface, t]);
 
   /** Dispatch for the registry's one-click (`kind: 'action'`) commands. */
   const runExportAction = useCallback((action: 'json' | 'screenshot') => {

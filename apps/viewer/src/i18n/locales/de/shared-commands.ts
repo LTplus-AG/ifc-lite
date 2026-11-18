@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const sharedCommandsDe = {
+  "exportCommands.cityjson.label": "CityJSON",
+  "exportCommands.cityjson.menuLabel": "CityJSON exportieren",
+  "exportCommands.cityjson.tooltip": "CityJSON / CityJSONSeq exportieren",
+
   "exportCommands.ion.label": "Cesium ion",
   "exportCommands.ion.menuLabel": "Auf Cesium ion hochladen",
   "exportCommands.ion.tooltip": "Bearbeitete IFC in Ihr Cesium ion-Konto hochladen",
@@ -45,6 +49,9 @@ export const sharedCommandsDe = {
   "exportCommands.screenshot.label": "Bildschirmaufnahme",
   "exportCommands.screenshot.menuLabel": "Bildschirmaufnahme",
   "exportCommands.screenshot.tooltip": "Ansichtsfenster als PNG speichern",
+  "exportCommands.screenshot.saved": "Bildschirmaufnahme gespeichert",
+  "exportCommands.screenshot.notReady": "Öffnen Sie die 3D-Ansicht und warten Sie, bis sie vollständig geladen ist. Versuchen Sie es dann erneut.",
+  "exportCommands.screenshot.failed": "Die 3D-Ansicht konnte nicht aufgenommen werden. Versuchen Sie es nach Abschluss der Darstellung erneut.",
   "exportCommands.pdf.label": "PDF",
   "exportCommands.pdf.menuLabel": "PDF exportieren (maßstabsgetreue 3D-Ansicht)",
   "exportCommands.pdf.tooltip": "PDF exportieren (maßstabsgetreue 3D-Ansicht)",
@@ -102,6 +109,9 @@ export const sharedCommandsDe = {
   "classVisibility.annotations.description": "Text, Bemaßungen, Führungslinien",
   "classVisibility.grids.label": "Raster",
   "classVisibility.grids.description": "Tragwerksachsen",
+  "classVisibility.structuralGlyphs.label": "Lager & Lasten",
+  "classVisibility.structuralGlyphs.description": "Symbole der Tragwerksanalyse",
+  'classVisibility.structuralGlyphs.maskedHint': 'In der rein physischen Tragwerksansicht ausgeblendet',
   "classVisibility.mergeLayers.label": "Mehrschichtige Wände zusammenführen",
   "classVisibility.mergeLayers.description": "Rendern Sie Wände beim Neuladen als einen einzigen Volumenkörper",
   "classVisibility.fastGeometry.label": "Schnelle Geometrie",

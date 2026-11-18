@@ -45,7 +45,7 @@ test('multiline DXF fit encloses every rotated glyph row and alignment (#6615)',
         for (const [row,line] of text.text.split('\n').entries()) {
           const left = align === 'right' ? -line.length : align === 'center' ? -line.length / 2 : 0;
           for (const x of [left,left+line.length]) for (const glyphY of [-1,1]) {
-            const y = direction*row*1.3+glyphY;
+            const y = direction*row*(5/3)+glyphY;
             const point = {x:text.x+ux*x-uy*y,y:text.y+uy*x+ux*y};
             assert.ok(point.x >= result.bounds.min.x-1e-10 && point.x <= result.bounds.max.x+1e-10);
             assert.ok(point.y >= result.bounds.min.y-1e-10 && point.y <= result.bounds.max.y+1e-10);
@@ -55,4 +55,22 @@ test('multiline DXF fit encloses every rotated glyph row and alignment (#6615)',
       if (angle === 0) assert.equal(result.bounds.max.x-result.bounds.min.x,4,'width uses the longest row, not the total character count');
     }
   }
+});
+
+test('aligned/fit DXF text bounds use the exact fitWidth span', async () => {
+  const { drawingWithDxfBounds } = await loadDrawingBounds();
+  const text = { x: 0, y: 0, dirX: 1, dirY: 0, height: 2.5, text: 'abcd', color: '#000', align: 'left' as const,
+    valign: 'baseline' as const, fitWidth: 6 };
+  const result = drawingWithDxfBounds(drawing, [{ id: 'cad', opacity: 1, lines: [], fills: [], texts: [text] }])!;
+  assert.equal(result.bounds.max.x, 6);
+  assert.equal(result.bounds.min.x, 0);
+});
+
+test('aligned DXF text bounds leave room for narrow measured glyphs', async () => {
+  const { drawingWithDxfBounds } = await loadDrawingBounds();
+  const text = { x: 0, y: 0, dirX: 1, dirY: 0, height: 2.5, text: 'iiii', color: '#000', align: 'left' as const,
+    valign: 'baseline' as const, fitWidth: 6, fitUniform: true };
+  const result = drawingWithDxfBounds(drawing, [{ id: 'cad', opacity: 1, lines: [], fills: [], texts: [text] }])!;
+  // 6 / (4 × 0.2 em) = 7.5 high, beyond the 2.5 estimate.
+  assert.equal(result.bounds.max.y, 7.5);
 });

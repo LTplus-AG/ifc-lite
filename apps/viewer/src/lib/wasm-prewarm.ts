@@ -84,3 +84,22 @@ export function scheduleWasmPrewarm(): void {
     window.setTimeout(run, 1500);
   }
 }
+
+let fastPathScheduled = false;
+
+/**
+ * Load the small-file fast-path runtime (lib/fast-path/startFastPath.ts) at
+ * the next idle period. Only the dynamic import lives here; the runtime
+ * decides for itself whether this browser may prepare anything.
+ */
+export function scheduleFastPath(): void {
+  if (fastPathScheduled || typeof window === 'undefined') return;
+  fastPathScheduled = true;
+  const run = () => {
+    void import('./fast-path/startFastPath')
+      .then(({ startFastPath }) => { startFastPath(); })
+      .catch((err) => console.warn('[fast-path] runtime not loaded:', err));
+  };
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 4000 });
+  else window.setTimeout(run, 2000);
+}

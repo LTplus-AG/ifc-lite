@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
-import { act, lazy, useState } from 'react';
+import { act, useState } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { DeferredPanel } from './DeferredPanel';
@@ -13,13 +13,13 @@ import { resolve as translate } from '@/i18n/registry';
 import { formFactorState } from '@/test/form-factor-state';
 
 // Independent expectations: a swapped registry mapping must fail these cases.
-const titleKeys = { bcf: 'bcf.panel.title', validation: 'validationPanel.title', lens: 'lensPanel.title' } as const;
+const titleKeys = { bcf: 'bcf.panel.title', validation: 'validationPanel.title', lens: 'lensPanel.title', gantt: 'workspacePanels.bottom.gantt', lists: 'lists.panel.title', extensions: 'extensionsFlavors.extensionsPanel.heading' } as const;
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 
 // Eager-JS diet: a delayed chunk must not leave a blank or undismissible panel.
 for (const mobile of [false, true]) {
-  for (const id of ['bcf', 'validation', 'lens'] as const) {
+  for (const id of ['bcf', 'validation', 'lens', 'gantt', 'lists', 'extensions'] as const) {
     it(`${mobile ? 'mobile' : 'desktop'} ${id} shows loading, remains closable, and mounts an interactive cold chunk`, async () => {
       useViewerStore.setState({ ...formFactorState(mobile) });
       let complete!: (module: { default: typeof Feature }) => void;
@@ -28,9 +28,9 @@ for (const mobile of [false, true]) {
         const [used, setUsed] = useState(false);
         return <button onClick={() => setUsed(true)}>{used ? 'Used feature' : 'Use feature'}</button>;
       }
-      const Cold = lazy(() => pending);
+      const load = () => pending;
       let closed = 0;
-      const ui = render(<DeferredPanel id={id} onClose={() => { closed++; }}><Cold /></DeferredPanel>);
+      const ui = render(<DeferredPanel id={id} onClose={() => { closed++; }} load={load} />);
       assert.ok(ui.querySelector('output'));
       assert.ok(ui.textContent?.includes(translate(titleKeys[id])), 'pending shell retains its title on every layout');
       const close = ui.querySelector('button[aria-label="Close"]');
@@ -46,17 +46,17 @@ for (const mobile of [false, true]) {
 }
 
 for (const mobile of [false, true]) {
-  for (const id of ['bcf', 'validation', 'lens'] as const) {
+  for (const id of ['bcf', 'validation', 'lens', 'gantt', 'lists', 'extensions'] as const) {
     it(`${mobile ? 'mobile' : 'desktop'} ${id} chunk failure keeps a close control and does not poison a different deferred panel`, async () => {
       useViewerStore.setState({ ...formFactorState(mobile) });
-      const Failed = lazy(async () => { throw new Error('Failed to fetch dynamically imported module: panel.js'); });
+      const failed = async () => { throw new Error('Failed to fetch dynamically imported module: panel.js'); };
+      const healthyModule = { default: () => <p>Healthy feature</p> };
+      const healthy = Object.assign(async () => healthyModule, { peek: () => healthyModule });
       let closed = 0;
       function Host() {
         const [switched, setSwitched] = useState(false);
         return <><button onClick={() => setSwitched(true)}>Switch</button>
-          <DeferredPanel id={switched ? (id === 'lens' ? 'bcf' : 'lens') : id} onClose={() => { closed++; }}>
-            {switched ? <p>Healthy feature</p> : <Failed />}
-          </DeferredPanel></>;
+          <DeferredPanel id={switched ? (id === 'lens' ? 'bcf' : 'lens') : id} onClose={() => { closed++; }} load={switched ? healthy : failed} /></>;
       }
       const ui = render(<Host />);
       await act(async () => { await Promise.resolve(); });

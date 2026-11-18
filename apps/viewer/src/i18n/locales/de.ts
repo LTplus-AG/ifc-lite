@@ -116,6 +116,7 @@ import { propertiesDe } from './de/properties';
 import { propertyEditorDe } from './de/property-editor';
 import { pushPullAlignDe } from './de/push-pull-align';
 import { registryDe } from './de/registry';
+import { agentBridgeDe } from './de/agent-bridge';
 import { relationshipCardDe } from './de/relationship-card';
 import { remeshDe } from './de/remesh';
 import { repositionPanelDe } from './de/reposition-panel';
@@ -149,11 +150,15 @@ import { splitToolDe } from './de/split-tool';
 import { stairRailingDe } from './de/stair-railing';
 import { storeyContextDe } from './de/storey-context';
 import { storeyManagerDe } from './de/storey-manager';
+import { structuralGlyphsDe } from './de/structural-glyphs';
 import { structuralPropertiesDe } from './de/structural-properties';
 import { structuralReviewDe } from './de/structural-review';
+import { structuralDeriveDe } from './de/structural-derive';
 import { sweptDiskInspectionDe } from './de/swept-disk-inspection';
 import { tableCorrectionsDe } from './de/table-corrections';
 import { terrainImageryDe } from './de/terrain-imagery';
+import { siteContextDe } from './de/site-context';
+import { floodCheckDe } from './de/flood-check';
 import { toursDe } from './de/tours';
 import { trimExtendDe } from './de/trim-extend';
 import { validationEditorDe } from './de/validation-editor';
@@ -280,6 +285,7 @@ export default {
   ...propertyEditorDe,
   ...pushPullAlignDe,
   ...registryDe,
+  ...agentBridgeDe,
   ...relationshipCardDe,
   ...remeshDe,
   ...repositionPanelDe,
@@ -313,11 +319,15 @@ export default {
   ...stairRailingDe,
   ...storeyContextDe,
   ...storeyManagerDe,
+  ...structuralGlyphsDe,
   ...structuralPropertiesDe,
   ...structuralReviewDe,
+  ...structuralDeriveDe,
   ...sweptDiskInspectionDe,
   ...tableCorrectionsDe,
   ...terrainImageryDe,
+  ...siteContextDe,
+  ...floodCheckDe,
   ...toursDe,
   ...trimExtendDe,
   ...validationEditorDe,

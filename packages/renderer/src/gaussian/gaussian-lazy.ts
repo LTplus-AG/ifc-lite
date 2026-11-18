@@ -13,7 +13,7 @@ import type { GaussianBackendFactory } from './gaussian-backend.js';
 export const loadLumaBackend: GaussianBackendFactory = async (...args) =>
   (await import('./gaussian-luma-backend.js')).createLumaGaussianBackend(...args);
 
-type GaussianOps = typeof import('./gaussian-pack.js') & typeof import('./gaussian-placement.js');
+export type GaussianOps = typeof import('./gaussian-pack.js') & typeof import('./gaussian-placement.js');
 let ops: Promise<GaussianOps> | null = null;
 export const loadGaussianOps = (): Promise<GaussianOps> =>
   (ops ??= Promise.all([import('./gaussian-pack.js'), import('./gaussian-placement.js')]).then(([pack, placement]) => ({ ...pack, ...placement }))

@@ -80,3 +80,83 @@ it('leaves caller-owned groups below the first padded slot alone (#9060)', () =>
   assert.equal(strict.bound[1], environment, 'the main pass environment at group 1 survives');
   assert.equal(strict.bound[2], emptyBindGroup(strict.device));
 });
+
+/** A device whose error scopes settle when the test decides (#10636). */
+function scopedDevice(limit = 1 << 20) {
+  const buffers: Array<{ size: number; destroyed: number; destroy(): void }> = [];
+  const writes: Array<{ buffer: unknown; image: number[] }> = [];
+  const scopes: GPUErrorFilter[] = [];
+  const pending: Array<{ filter: GPUErrorFilter; settle(error: GPUError | null): void; fail(reason: unknown): void }> = [];
+  let throwOnCreate = false;
+  const device = { limits: { maxStorageBufferBindingSize: limit, maxBufferSize: limit },
+    createBindGroupLayout: () => ({}),
+    createBindGroup: (descriptor: GPUBindGroupDescriptor) => descriptor,
+    createBuffer: ({ size }: { size: number }) => {
+      if (throwOnCreate) throw new RangeError('createBuffer failed');
+      const buffer = { size, destroyed: 0, destroy() { this.destroyed++; } }; buffers.push(buffer); return buffer;
+    },
+    pushErrorScope: (filter: GPUErrorFilter) => { scopes.push(filter); },
+    popErrorScope: () => new Promise<GPUError | null>((settle, fail) => pending.push({ filter: scopes.pop()!, settle, fail })),
+    queue: { writeBuffer: (buffer: unknown, _offset: number, image: Uint32Array) => writes.push({ buffer, image: [...image] }) },
+  } as unknown as GPUDevice;
+  const settleAll = async (oom: GPUError | null) => {
+    for (const scope of pending.splice(0)) scope.settle(scope.filter === 'out-of-memory' ? oom : null);
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+  };
+  return { device, buffers, writes, scopes, pending, settleAll, setThrow(value: boolean) { throwOnCreate = value; } };
+}
+const idsImage = (count: number) => { const image = new Uint32Array(4 + count); image[0] = count; return image; };
+const groupBuffers = (group: GPUBindGroup) => (group as unknown as GPUBindGroupDescriptor).entries.map(e => (e.resource as GPUBufferBinding).buffer);
+
+it('keeps the validated visibility table bound until a growth settles, and never uploads into an unconfirmed one (#10636)', async () => {
+  const h = scopedDevice();
+  const table = sectionExclusions(h.device); table.retain();
+  const initial = table.visibility, group = table.bindGroup;
+  const big = idsImage(20_000);
+  assert.equal(table.writeVisibility(big), false, 'unconfirmed: dependent draws stay out');
+  assert.equal(table.writeVisibility(big), false);
+  assert.equal(h.buffers.filter(b => b.size > (initial as unknown as { size: number }).size).length, 1, 'one attempt while pending');
+  assert.equal(h.scopes.length, 0, 'both scopes popped before awaiting');
+  assert.equal(table.bindGroup, group); assert.equal(table.visibility, initial);
+  assert.ok(h.writes.every(w => w.buffer === initial || w.buffer === h.buffers[0]), 'nothing written into the candidate');
+  const pending = table.visibilityPending!;
+  await h.settleAll(null);
+  assert.equal(await pending, true); assert.equal(table.visibilityPending, null);
+  assert.notEqual(table.bindGroup, group);
+  assert.equal(groupBuffers(table.bindGroup)[1], table.visibility);
+  assert.equal((initial as unknown as { destroyed: number }).destroyed, 1);
+  assert.equal(table.writeVisibility(big), true);
+  assert.equal(h.writes.at(-1)!.buffer, table.visibility, 'the current image lands in the confirmed table');
+  table.release();
+});
+
+it('treats a rejected scope or a throwing createBuffer as a failed growth, and frees a candidate settling after release (#10636)', async () => {
+  const lost = scopedDevice();
+  const table = sectionExclusions(lost.device); table.retain();
+  const big = idsImage(20_000);
+  table.writeVisibility(big);
+  for (const scope of lost.pending.splice(0)) scope.fail(new Error('Instance dropped in popErrorScope'));
+  assert.equal(await table.visibilityPending, false);
+  assert.equal(lost.buffers.at(-1)!.destroyed, 1, 'device-lost candidate released');
+  assert.equal(table.writeVisibility(big), false); assert.equal(table.visibilityPending, null, 'not retried');
+  assert.equal(table.writeVisibility(idsImage(3)), true, 'a fitting image still works');
+  table.release();
+
+  const throwing = scopedDevice();
+  const second = sectionExclusions(throwing.device); second.retain();
+  throwing.setThrow(true);
+  assert.equal(second.writeVisibility(big), false);
+  assert.equal(throwing.scopes.length, 0, 'scopes stay balanced when createBuffer throws');
+  await throwing.settleAll(null);
+  assert.equal(second.visibilityPending, null);
+  assert.equal(second.writeVisibility(big), false, 'not retried for the same image');
+  throwing.setThrow(false);
+  const beforeRetry = throwing.buffers.length;
+  assert.equal(second.writeVisibility(idsImage(20_000)), false, 'equal contents are still rejected');
+  assert.equal(second.visibilityPending, null);
+  assert.equal(throwing.buffers.length, beforeRetry, 'a fresh array does not retry the same rejected state');
+  assert.equal(second.writeVisibility(idsImage(20_001)), false, 'changed contents may try again');
+  second.release(); // the last owner leaves while the growth is pending
+  await throwing.settleAll(null);
+  assert.equal(throwing.buffers.at(-1)!.destroyed, 1, 'a candidate confirmed after release is destroyed, not bound');
+});

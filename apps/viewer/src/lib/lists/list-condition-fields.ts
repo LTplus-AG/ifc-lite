@@ -24,7 +24,7 @@ export const ZONE_MODE_VOLUME_LABEL = 'Volume (mesh)';
 export const ZONE_MODE_BREAKDOWN_LABEL = 'Volume breakdown (mesh)';
 export const ZONE_MODES = [ZONE_MODE_NAME, ZONE_MODE_STRADDLES, ZONE_MODE_VOLUME_LABEL, ZONE_MODE_BREAKDOWN_LABEL] as const;
 
-export const GEOMETRY_AXES = ['X', 'Y', 'Z'] as const;
+export const GEOMETRY_AXES = ['X', 'Y', 'Z', 'TriangleCount'] as const;
 
 /** The operators that can match the value the Lists engine reads for this
  *  source and mode (`listConditionValueKind`): a zone volume offers

@@ -10,7 +10,7 @@
 
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
+import { DERIVATION_AXIS_PROPERTIES, DERIVATION_ELEMENT_PROPERTY, STRUCTURAL_DERIVATION_PSET, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor } from './anchor.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import { applyFrame, inverseFrame, placementInAncestor } from './host-geometry-frame.js';
@@ -82,8 +82,15 @@ export function applyStructuralDerivation(
   // Resolve every anchor and run every builder check before the first write.
   const [first] = [...plan.curveMembers, ...plan.surfaceMembers, ...plan.nodes].map((item) => placementOf(item.storeyId).anchor);
   checkPlan(plan, (storeyId, p) => placementOf(storeyId).toLocal(p));
-  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
+  const globalIdOf = (id: number) => {
+    const globalId = reader.entity(id)?.attributes[0];
+    return typeof globalId === 'string' && globalId ? globalId : null;
+  };
+  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, globalIdOf, random));
 }
+
+/** Same point; NaN matches NaN, since a non-finite point is the builder's refusal, not the plan check's. */
+const samePoint = (p: Vec3, q: Vec3) => p.every((v, k) => v === q[k] || (Number.isNaN(v) && Number.isNaN(q[k])));
 
 /**
  * The plan is plain data a caller may hold or change, so its shape is checked
@@ -91,18 +98,32 @@ export function applyStructuralDerivation(
  * thickness) throw inside the transaction and also leave nothing.
  */
 function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | null, p: Vec3) => Vec3): void {
-  const refuse = (what: string, why: string) => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
+  const refuse = (what: string, why: string): never => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
   for (const member of plan.curveMembers) {
     const what = `the curve member of element #${member.elementId}`;
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
+    if (member.startNode === member.endNode) refuse(what, 'starts and ends on one node');
     if (member.start.every((v, k) => v === member.end[k])) refuse(what, 'has no length');
+    if (member.physicalAxis && (member.physicalAxis.length !== 2 || member.physicalAxis.some((p) => p?.length !== 3 || !p.every(Number.isFinite)))) {
+      refuse(what, 'has a physical axis that is not two finite points');
+    }
+    // The planner copies node positions onto member ends; a plan changed since must keep them together.
+    if (!samePoint(member.start, plan.nodes[member.startNode].position) || !samePoint(member.end, plan.nodes[member.endNode].position)) {
+      refuse(what, 'has ends that differ from its nodes');
+    }
   }
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;
+    if (member.openings !== undefined && !Array.isArray(member.openings)) refuse(what, 'has openings that are not an array');
     try {
-      prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)));
+      prepareStructuralFace(
+        member.boundary.map(p => toLocal(member.storeyId, p)),
+        (member.openings ?? []).map(ring => (Array.isArray(ring) ? ring : []).map(p => toLocal(member.storeyId, p))),
+      );
     } catch (error) {
-      refuse(what, `has a bad boundary (${error instanceof Error ? error.message : String(error)})`);
+      const detail = error instanceof Error ? error.message : String(error);
+      const opening = /^Structural Face: opening (\d+):/.exec(detail);
+      refuse(what, `has a bad ${opening ? `opening ${opening[1]}` : 'boundary'} (${detail})`);
     }
   }
 }
@@ -112,6 +133,7 @@ function writePlan(
   plan: StructuralDerivationPlan,
   first: SpatialAnchor,
   placementOf: (storeyId: number | null) => StoreyPlacement,
+  globalIdOf: (elementId: number) => string | null,
   random?: RandomSource,
 ): StructuralDerivationApplied {
   const ownerHistoryId = first.ownerHistoryId;
@@ -146,13 +168,22 @@ function writePlan(
     });
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.startNode], random);
     connectStructuralMemberToConnectionInStore(editor, ownerHistoryId, memberId, connectionIds[member.endNode], random);
+    // A member records its element's line only with the element's GlobalId to name it by.
+    const globalId = globalIdOf(member.elementId);
+    if (member.physicalAxis && globalId) {
+      editor.addPropertySet(memberId, STRUCTURAL_DERIVATION_PSET, [
+        { name: DERIVATION_ELEMENT_PROPERTY, value: globalId, type: 'LABEL' },
+        // In the storey's axes, as the member is placed: moving the storey with its elements is then no physical change.
+        ...member.physicalAxis.flatMap((p) => toLocal(p)).map((value, i) => ({ name: DERIVATION_AXIS_PROPERTIES[i], value, type: 'REAL' as const })),
+      ]);
+    }
     memberIds.push(memberId);
     link(member.elementId, memberId);
   }
   for (const member of plan.surfaceMembers) {
     const { anchor, toLocal } = placementOf(member.storeyId);
     const { memberId } = addStructuralSurfaceMemberToStore(editor, anchor, {
-      Boundary: member.boundary.map(toLocal), Thickness: member.thickness, PredefinedType: 'SHELL',
+      Boundary: member.boundary.map(toLocal), Openings: (member.openings ?? []).map(ring => ring.map(toLocal)), Thickness: member.thickness, PredefinedType: 'SHELL',
     });
     memberIds.push(memberId);
     link(member.elementId, memberId);

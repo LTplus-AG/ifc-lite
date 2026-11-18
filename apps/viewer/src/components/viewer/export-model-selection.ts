@@ -6,12 +6,15 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { exportableModels } from '@/lib/export/capture-export';
+import { stepRecordsUnavailableReason } from '@/lib/export/step-records-reason';
 
 export interface ExportModelListItem {
   id: string;
   name: string;
   isDirty: boolean;
   schemaVersion: FederatedModel['schemaVersion'];
+  /** What backs the model's store; see `stepSkipReason` for what `'tabular'` can still write. */
+  sourceKind: IfcDataStore['sourceKind'];
   sourceSchema: FederatedModel['sourceSchema'];
 }
 
@@ -42,6 +45,7 @@ export function listExportModels(
     name: model.name,
     isDirty: dirtyModels.has(model.id),
     schemaVersion: model.schemaVersion,
+    sourceKind: model.ifcDataStore?.sourceKind,
     sourceSchema: model.sourceSchema,
   }));
   if (list.length === 0 && legacyStore) {
@@ -50,6 +54,7 @@ export function listExportModels(
       name: 'Current Model',
       isDirty: false,
       schemaVersion: legacyStore.schemaVersion,
+      sourceKind: legacyStore.sourceKind,
       sourceSchema: undefined,
     });
   }
@@ -64,8 +69,43 @@ export function listIonExportModels(
   legacyStore: IfcDataStore | null,
 ): ExportModelListItem[] {
   return listExportModels(models, new Set(), models.size === 0 ? legacyStore : null)
-    .filter(model => model.schemaVersion !== 'IFC5' && !model.sourceSchema
+    .filter(model => model.schemaVersion !== 'IFC5' && model.sourceKind !== 'tabular' && !model.sourceSchema
       && (model.id === '__legacy__' || models.get(model.id)?.ifcDataStore));
+}
+
+/**
+ * Should the dialog offer this IFC export at all?
+ *
+ * Only a merged STEP export is gated here. The merge skips a tabular model the
+ * way it skips one with no store (`buildMergeInputs`), so a `.3dm` or `.ifcx`
+ * beside IFC models does not refuse the merge of the models beside it; the
+ * merge needs ONE store it can write. `ensureModelExportReady` hydrates
+ * nothing, so an absent store here is absent at export time too, and counting
+ * it as writable would run the merge over zero inputs.
+ *
+ * A single-model export is always offered: `exportModelStep` refuses a store
+ * with no STEP records itself, naming the model (#10045, #10099), and an IFCX
+ * target reads the tables, so it can always write.
+ */
+export function canWriteIfcFromStores(
+  models: ReadonlyMap<string, FederatedModel>,
+  scope: 'single' | 'merged',
+  targetIsIfcx: boolean,
+): boolean {
+  if (targetIsIfcx || scope === 'single') return true;
+  return exportableModels(models).some((model) => stepSkipReason(model.ifcDataStore) === null);
+}
+
+/** Why a STEP export cannot write this store, or `null` when it can. */
+export type StepSkipReason = 'noRecords' | 'noData';
+
+/**
+ * What the dialog and a merged export say about a model with no STEP records.
+ * The rule itself is `stepRecordsUnavailableReason`, shared with the writer.
+ */
+export function stepSkipReason(store: IfcDataStore | null | undefined): StepSkipReason | null {
+  if (!store) return 'noData';
+  return stepRecordsUnavailableReason(store);
 }
 
 export function resolveExportModel(

@@ -11,6 +11,9 @@
  * accessible name (#5603).
  */
 export const viewerShellEn = {
+  'viewerShell.localIfcMemory.title': 'This model may exceed available memory',
+  'viewerShell.localIfcMemory.continue': 'Continue loading',
+  'viewerShell.localIfcMemory.description': 'This model may need about {estimated} GiB of memory. The browser reports at most 8 GiB, so the available memory may be higher. Continuing on a device with insufficient memory can crash this tab. Cancel to stop this load, or use a smaller model or the native CLI/server.',
   'viewerShell.star.title': 'Enjoying IFC Lite?',
   'viewerShell.star.detail': 'A GitHub star helps others discover it.',
   'viewerShell.star.action': 'Star on GitHub',
@@ -23,6 +26,13 @@ export const viewerShellEn = {
   'viewerShell.staleDeployment.notice': 'A new version of the viewer is available — reload to continue.',
   'viewerShell.staleDeployment.reopenPrompt': 'The viewer updated to a new version and reloaded. Open {files} again to continue.',
   'viewerShell.staleDeployment.reopenAction': 'Open file…',
+  // A deployment that configures the viewer at start (`lib/features/host-start.ts`)
+  // shows this instead of the viewer when its configuration cannot be loaded.
+  'viewerShell.hostConfig.errorTitle': 'The viewer could not start',
+  'viewerShell.hostConfig.errorBody': 'Its settings could not be loaded, so nothing is shown. Reload the page. If this keeps happening, tell the people who run this site.',
+  'viewerShell.hostConfig.viewerLoadTitle': 'The viewer could not be loaded',
+  'viewerShell.hostConfig.viewerLoadBody': 'Its program files could not be downloaded, so nothing is shown. Reload the page. If this keeps happening, tell the people who run this site.',
+  'viewerShell.hostConfig.errorDetail': 'Technical detail: {detail}',
   'viewerShell.chunkLabel.appearancePanel': 'Appearance panel',
   'viewerShell.chunkLabel.chartsPanel': 'Charts panel',
   'viewerShell.chunkLabel.flowPanel': 'Flow panel',

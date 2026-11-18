@@ -4,6 +4,9 @@
 
 import { readWithProgress, type DownloadOptions, type PluginContext } from '@ifc-lite/plugin-api';
 import { canonicalFieldNodeUrl } from './node-url.js';
+import { cacheIdentity } from './cache-identity.js';
+import { DaluxHttpError, DaluxPaginationError } from './http-errors.js';
+export { DaluxHttpError, DaluxPaginationError } from './http-errors.js';
 
 export interface DaluxCredentials {
   readonly baseUrl: string;
@@ -49,44 +52,24 @@ function truncate(text: string, max = MAX_ERROR_BODY_CHARS): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-/** Thrown when Dalux's bookmark pagination looks broken in a way that can't
- * be reconciled with "the listing is simply done": a `nextPage` link with no
- * bookmark, or a bookmark that repeats while the page carrying it still has
- * items on it (see {@link fetchPage}). Callers must not treat this as "no
- * more data": it means the listing is truncated and the caller should say
- * so, not report a clean success with fewer rows than actually exist
- * upstream. */
-export class DaluxPaginationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DaluxPaginationError';
-  }
-}
-
-/** Thrown for a non-2xx Dalux API response. Carries the actual HTTP status
- * so callers that need to branch on it (auth-failure detection in
- * `testConnection`, for one) match on `status` rather than on substrings of
- * the interpolated error message — a truncated upstream body can contain
- * digits that happen to look like a status code without being one. */
-export class DaluxHttpError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'DaluxHttpError';
-  }
-}
-
 export class BrowserDaluxApiClient {
   constructor(
     private readonly credentials: DaluxCredentials,
     private readonly ctx: PluginContext,
   ) {}
 
+  /** Reuse only while the current context's exact credentials still match. */
+  matchesCredentials(credentials: DaluxCredentials): boolean {
+    return this.credentials.baseUrl === credentials.baseUrl && this.credentials.apiKey === credentials.apiKey
+      && this.credentials.node === credentials.node;
+  }
+
   get baseUrl(): string {
     return this.credentials.baseUrl;
   }
+
+  /** Distinguish API keys and nodes without keeping the raw key in cache keys. */
+  readonly cacheIdentity = cacheIdentity();
 
   /**
    * Add the caller's node selector, but ONLY to URLs that go through our relay.
@@ -120,6 +103,12 @@ export class BrowserDaluxApiClient {
 
   debug(message: string, details?: Record<string, unknown>): void {
     this.ctx.log.debug(`Dalux ${message}`, details ?? {});
+  }
+
+  /** For a skip that costs the caller real data (review on #8647) — as
+   * opposed to {@link debug}, for one that doesn't. */
+  warn(message: string, details?: Record<string, unknown>): void {
+    this.ctx.log.warn(`Dalux ${message}`, details ?? {});
   }
 
   async get(
@@ -365,21 +354,16 @@ export async function fetchPage(
  * this — they call {@link fetchPage} once and return that page to the host,
  * so a large tenant or file area is never loaded eagerly.
  *
- * Bounded by `MAX_SWEEP_PAGES` (a server minting endlessly fresh bookmarks
- * can't loop forever) and tracks every bookmark seen across the whole sweep,
- * throwing if one reappears — a longer cycle than the immediate, empty-page
- * echo `fetchPage` already treats as end-of-listing on its own. Unlike that
- * immediate echo, a bookmark resurfacing several pages later means the
- * server is about to hand back content already read under an earlier
- * bookmark instead of making forward progress, which is a stuck listing, not
- * a finished one — regardless of whether the page that reveals the cycle
- * happens to have items on it.
+ * Bounded by `MAX_SWEEP_PAGES`, with visited bookmarks to reject cycles.
+ * Unlike fetchPage's immediate empty echo, revisiting any earlier bookmark
+ * is a stuck listing, even if the page contains items.
  */
 export async function fetchAllPages(
   client: BrowserDaluxApiClient,
   endpoint: string,
   params: Record<string, unknown> = {},
   signal?: AbortSignal,
+  stopAfterPage?: (items: readonly unknown[]) => boolean,
 ): Promise<unknown[]> {
   const items: unknown[] = [];
   const seenBookmarks = new Set<string>();
@@ -396,6 +380,7 @@ export async function fetchAllPages(
 
     const page = await fetchPage(client, endpoint, params, cursor, signal);
     items.push(...page.items);
+    if (stopAfterPage?.(page.items)) break;
 
     if (!page.cursor) break;
     if (seenBookmarks.has(page.cursor)) {

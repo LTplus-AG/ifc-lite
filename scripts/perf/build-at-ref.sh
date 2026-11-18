@@ -3,14 +3,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# Build one cargo example of ifc-lite-processing at a git ref, in a throwaway
-# worktree, and copy the binary out. Shared by ab.sh (base side) and
+# Build one cargo target at a git ref, in a throwaway worktree, and copy the
+# binary out. Shared by ab.sh (base side), dm-e2e-ab.mjs (the base server) and
 # instructions-replay.mjs (historical commits).
 #
 #   scripts/perf/build-at-ref.sh --ref <ref> --out <binary-path> [options]
 #
 # Options:
+#   --package <name>      cargo package (default ifc-lite-processing)
 #   --example <name>      example to build (default perf_probe)
+#   --bin <name>          build a BINARY of --package instead of an example;
+#                         mutually exclusive with --example
+#   --profile <name>      cargo profile (default profiling). Only `profiling`
+#                         is back-filled into older refs, so another profile
+#                         must already exist at --ref.
 #   --inject <src>=<rel>  copy <src> into the worktree at <rel> before building
 #                         (repeatable; e.g. a driver example the ref lacks)
 #   --patch <file>        `git apply --unidiff-zero` <file> in the worktree
@@ -30,7 +36,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 REF=""
 OUT=""
+PACKAGE="ifc-lite-processing"
 EXAMPLE="perf_probe"
+BIN=""
+PROFILE="profiling"
 INJECT=()
 PATCH=""
 TARGET_DIR=""
@@ -40,18 +49,27 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --ref) REF="${2:?--ref needs a ref}"; shift 2;;
     --out) OUT="${2:?--out needs a path}"; shift 2;;
-    --example) EXAMPLE="${2:?--example needs a name}"; shift 2;;
+    --package) PACKAGE="${2:?--package needs a name}"; shift 2;;
+    --example) EXAMPLE="${2:?--example needs a name}"; EXPLICIT_EXAMPLE=1; shift 2;;
+    --bin) BIN="${2:?--bin needs a name}"; shift 2;;
+    --profile) PROFILE="${2:?--profile needs a name}"; shift 2;;
     --inject) INJECT+=("${2:?--inject needs src=rel}"); shift 2;;
     --patch) PATCH="${2:?--patch needs a file}"; shift 2;;
     --target-dir) TARGET_DIR="${2:?--target-dir needs a directory}"; shift 2;;
     --worktree-root) WT_ROOT="${2:?--worktree-root needs a directory}"; shift 2;;
     --log) LOG="${2:?--log needs a file}"; shift 2;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0;;
+    -h|--help) sed -n '2,34p' "$0"; exit 0;;
     *) echo "build-at-ref.sh: unknown argument $1" >&2; exit 2;;
   esac
 done
 if [ -z "$REF" ] || [ -z "$OUT" ]; then
   echo "build-at-ref.sh: --ref and --out are required (see --help)" >&2
+  exit 2
+fi
+# --bin and --example name DIFFERENT cargo targets that land in different
+# directories. Taking both would silently build one and copy the other.
+if [ -n "$BIN" ] && [ "${EXPLICIT_EXAMPLE:-0}" = 1 ]; then
+  echo "build-at-ref.sh: pass --bin or --example, not both" >&2
   exit 2
 fi
 if [ -n "$LOG" ]; then
@@ -87,17 +105,38 @@ if [ -n "$PATCH" ]; then
   fi
 fi
 # Refs older than the `profiling` profile get today's definition, so every
-# ref builds with the same optimisation and symbol settings.
-if ! grep -q '^\[profile\.profiling\]' "$WT/Cargo.toml"; then
+# ref builds with the same optimisation and symbol settings. Only that profile
+# is back-filled: any other --profile must already exist at --ref, or cargo
+# fails below with its own message rather than being handed settings today's
+# tree happens to use.
+if [ "$PROFILE" = profiling ] && ! grep -q '^\[profile\.profiling\]' "$WT/Cargo.toml"; then
   printf '\n[profile.profiling]\ninherits = "release"\nstrip = false\ndebug = "line-tables-only"\npanic = "unwind"\n' >> "$WT/Cargo.toml"
 fi
+# Cargo's built-in profiles do NOT each get a directory of their own: dev and
+# test both write to target/debug, bench writes to target/release. A custom
+# profile is the only case where the directory is the profile's name, so
+# `--profile dev` with an unmapped path would build fine and then fail the copy.
+case "$PROFILE" in
+  dev|test) PROFILE_DIR=debug;;
+  bench) PROFILE_DIR=release;;
+  *) PROFILE_DIR="$PROFILE";;
+esac
+if [ -n "$BIN" ]; then
+  TARGET_ARGS=(--bin "$BIN")
+  BUILT="$TARGET_DIR/$PROFILE_DIR/$BIN"
+  WHAT="bin $BIN"
+else
+  TARGET_ARGS=(--example "$EXAMPLE")
+  BUILT="$TARGET_DIR/$PROFILE_DIR/examples/$EXAMPLE"
+  WHAT="example $EXAMPLE"
+fi
 if ! ( cd "$WT" && CARGO_TARGET_DIR="$TARGET_DIR" \
-    cargo build --profile profiling -p ifc-lite-processing --example "$EXAMPLE" >&3 2>&3 ); then
-  echo "build-at-ref.sh: building $EXAMPLE at $REF failed" >&3
+    cargo build --profile "$PROFILE" -p "$PACKAGE" "${TARGET_ARGS[@]}" >&3 2>&3 ); then
+  echo "build-at-ref.sh: building $WHAT of $PACKAGE at $REF failed" >&3
   exit 1
 fi
 mkdir -p "$(dirname "$OUT")"
 # Copy then rename: an interrupted copy must never leave a truncated binary
 # at $OUT, because callers treat an existing $OUT as a finished build.
-cp "$TARGET_DIR/profiling/examples/$EXAMPLE" "$OUT.partial.$$"
+cp "$BUILT" "$OUT.partial.$$"
 mv -f "$OUT.partial.$$" "$OUT"

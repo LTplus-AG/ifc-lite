@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const viewerShellIt = {
+  "viewerShell.localIfcMemory.title": "Questo modello potrebbe superare la memoria disponibile",
+  "viewerShell.localIfcMemory.continue": "Continua il caricamento",
+  "viewerShell.localIfcMemory.description": "Questo modello potrebbe richiedere circa {estimated} GiB di memoria. Il browser segnala al massimo 8 GiB, quindi la memoria disponibile potrebbe essere maggiore. Continuare su un dispositivo con memoria insufficiente può bloccare questa scheda. Annulla per interrompere il caricamento oppure usa un modello più piccolo o la CLI/il server nativi.",
+
   "viewerShell.star.title": "Ti piace IFC Lite?",
   "viewerShell.star.detail": "Una stella su GitHub aiuta gli altri a scoprire l’applicazione.",
   "viewerShell.star.action": "Metti una stella su GitHub",
@@ -17,6 +21,11 @@ export const viewerShellIt = {
   "viewerShell.staleDeployment.notice": "È disponibile una nuova versione del visualizzatore: ricarica per continuare.",
   "viewerShell.staleDeployment.reopenPrompt": "Il visualizzatore è stato aggiornato a una nuova versione e ricaricato. Apri di nuovo {files} per continuare.",
   "viewerShell.staleDeployment.reopenAction": "Apri file…",
+  "viewerShell.hostConfig.errorTitle": "Il visualizzatore non si è avviato",
+  "viewerShell.hostConfig.errorBody": "Non è stato possibile caricare le sue impostazioni, quindi non viene mostrato nulla. Ricarica la pagina. Se il problema si ripete, avvisa chi gestisce questo sito.",
+  "viewerShell.hostConfig.viewerLoadTitle": "Non è stato possibile caricare il visualizzatore",
+  "viewerShell.hostConfig.viewerLoadBody": "Non è stato possibile scaricare i suoi file di programma, quindi non viene mostrato nulla. Ricarica la pagina. Se il problema si ripete, avvisa chi gestisce questo sito.",
+  "viewerShell.hostConfig.errorDetail": "Dettaglio tecnico: {detail}",
   "viewerShell.chunkLabel.appearancePanel": "Pannello Aspetto",
   "viewerShell.chunkLabel.chartsPanel": "Pannello Grafici",
   "viewerShell.chunkLabel.flowPanel": "Pannello Flusso",

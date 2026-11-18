@@ -18,7 +18,9 @@ export interface StructuralLinearForceParams {
 }
 export interface StructuralPointReactionInStoreParams extends ActivityParams {
   AppliedLoad: ({ Type: 'IfcStructuralLoadSingleForce' } & StructuralSingleForceParams)
-    | ({ Type: 'IfcStructuralLoadSingleDisplacement' } & StructuralSingleDisplacementParams);
+    | ({ Type: 'IfcStructuralLoadSingleDisplacement' } & StructuralSingleDisplacementParams)
+    | ({ Type: 'IfcStructuralLoadSingleForceWarping'; WarpingMoment: number } & StructuralSingleForceParams)
+    | ({ Type: 'IfcStructuralLoadSingleDisplacementDistortion'; Distortion: number } & StructuralSingleDisplacementParams);
 }
 export interface StructuralCurveReactionInStoreParams extends ActivityParams { AppliedLoad: StructuralLinearForceParams }
 export interface StructuralSurfaceReactionInStoreParams extends ActivityParams { AppliedLoad: StructuralPlanarForceParams }
@@ -28,14 +30,22 @@ export function addStructuralPointReactionToStore(editor: StoreEditor, anchor: A
   const builder = 'addStructuralPointReactionToStore';
   assertActivitySchema(anchor, builder);
   assertAppliedLoad(builder, params.AppliedLoad);
-  const fields = params.AppliedLoad.Type === 'IfcStructuralLoadSingleForce' ? ['ForceX', 'ForceY', 'ForceZ', 'MomentX', 'MomentY', 'MomentZ']
-    : params.AppliedLoad.Type === 'IfcStructuralLoadSingleDisplacement' ? ['DisplacementX', 'DisplacementY', 'DisplacementZ', 'RotationalDisplacementRX', 'RotationalDisplacementRY', 'RotationalDisplacementRZ'] : null;
+  const loadType = params.AppliedLoad.Type;
+  const fields = (loadType === 'IfcStructuralLoadSingleForce' || loadType === 'IfcStructuralLoadSingleForceWarping') ? ['ForceX', 'ForceY', 'ForceZ', 'MomentX', 'MomentY', 'MomentZ']
+    : (loadType === 'IfcStructuralLoadSingleDisplacement' || loadType === 'IfcStructuralLoadSingleDisplacementDistortion') ? ['DisplacementX', 'DisplacementY', 'DisplacementZ', 'RotationalDisplacementRX', 'RotationalDisplacementRY', 'RotationalDisplacementRZ'] : null;
   if (!fields) throw new Error(`${builder}: unsupported AppliedLoad.Type`);
+  if (loadType === 'IfcStructuralLoadSingleForceWarping') fields.push('WarpingMoment');
+  if (loadType === 'IfcStructuralLoadSingleDisplacementDistortion') fields.push('Distortion');
   validateLoad(builder, params.AppliedLoad, fields);
   return emitActivity(anchor, params, 'IfcStructuralPointReaction', params.AppliedLoad, fields, [], {
-    load: attrs => params.AppliedLoad.Type === 'IfcStructuralLoadSingleForce'
-      ? editor.addEntity('IfcStructuralLoadSingleForce', attrs).expressId
-      : editor.addEntity('IfcStructuralLoadSingleDisplacement', attrs).expressId,
+    load: attrs => {
+      switch (loadType) {
+        case 'IfcStructuralLoadSingleForce': return editor.addEntity('IfcStructuralLoadSingleForce', attrs).expressId;
+        case 'IfcStructuralLoadSingleForceWarping': return editor.addEntity('IfcStructuralLoadSingleForceWarping', attrs).expressId;
+        case 'IfcStructuralLoadSingleDisplacement': return editor.addEntity('IfcStructuralLoadSingleDisplacement', attrs).expressId;
+        case 'IfcStructuralLoadSingleDisplacementDistortion': return editor.addEntity('IfcStructuralLoadSingleDisplacementDistortion', attrs).expressId;
+      }
+    },
     activity: attrs => editor.addEntity('IfcStructuralPointReaction', attrs).expressId,
   });
 }

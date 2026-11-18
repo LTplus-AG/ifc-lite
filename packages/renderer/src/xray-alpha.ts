@@ -270,6 +270,7 @@ export class XRayEpochTracker {
   private ghostExcept: Set<number> | null = null;
   private ghostAlpha = DEFAULT_GHOST_ALPHA;
   private selected: Set<number> = new Set();
+  private selectionVersion: number | undefined;
 
   /**
    * @param selectedExpressIds Selection exempts an entity from fading, so it
@@ -277,20 +278,27 @@ export class XRayEpochTracker {
    * X-Ray is active: outside that it changes no subset, and bumping on every
    * click would rebuild the hide/isolate sub-batches for nothing. The snapshot
    * is still refreshed, so activating X-Ray later compares against the truth.
+   * @param selectionVersion A number that changes exactly when the content of
+   * `selectedExpressIds` does (`SelectionSnapshot.getVersion`). Given, it stands
+   * in for the content comparison, which costs a lookup per selected id on
+   * every frame (#9835). A caller passes it on every call or on none.
    */
-  update(options: RenderOptions, selectedExpressIds: ReadonlySet<number> = EMPTY_SELECTION): number {
+  update(options: RenderOptions, selectedExpressIds: ReadonlySet<number> = EMPTY_SELECTION, selectionVersion?: number): number {
     const src = options.transparencyOverrides;
     const live = src != null && src.size > 0 ? src : null;
     const ghost = options.ghostExceptIds ?? null;
     const alpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
     const active = live != null || ghost != null;
-    const selectionChanged = !setContentEquals(selectedExpressIds, this.selected);
+    const selectionChanged = selectionVersion !== undefined
+      ? selectionVersion !== this.selectionVersion
+      : !setContentEquals(selectedExpressIds, this.selected);
     const changed =
       !alphaMapEquals(live, this.overrides) ||
       !setContentEquals(ghost, this.ghostExcept) ||
       alpha !== this.ghostAlpha ||
       (active && selectionChanged);
-    if (selectionChanged) this.selected = new Set(selectedExpressIds);
+    if (selectionVersion !== undefined) this.selectionVersion = selectionVersion;
+    else if (selectionChanged) this.selected = new Set(selectedExpressIds);
     if (changed) {
       this.version++;
       this.overrides = live ? new Map(live) : null;

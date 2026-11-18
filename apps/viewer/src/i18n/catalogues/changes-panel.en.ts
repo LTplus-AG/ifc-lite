@@ -17,4 +17,5 @@ export const changesPanelEn = {
   'changesPanel.revertPermission': 'Turn on Edit mode or ask for editing access before reverting.',
   'changesPanel.revertSharedRoom': 'Leave the shared room before reverting an edit. The room cannot sync this reversal yet.',
   'changesPanel.revertUnsupported': 'This edit cannot be reversed from the drawer. Use Undo when it is the newest step.',
+  'changesPanel.byAgent': 'Local agent · {field}',
 } as const;

@@ -5,7 +5,7 @@
 /** Ribbon panel browser generated from the same task groups as the rail (#5873). */
 import { BrowsePanels } from '@/icons';
 import { useTranslation } from '@/i18n';
-import { isCollabEnabled } from '@/lib/collab/config';
+import { isPanelOffered } from '@/lib/panels/availability';
 import { PANEL_GROUPS, WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useViewerStore } from '@/store';
@@ -45,11 +45,11 @@ export function PanelGroupBrowser() {
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-[70vh] w-72 overflow-y-auto">
-          {PANEL_GROUPS.map((group, index) => {
-            const panels = WORKSPACE_PANELS.filter((panel) =>
-              panel.group === group.id && (panel.id !== 'collab' || isCollabEnabled()));
-            if (panels.length === 0) return null;
-            return (
+          {PANEL_GROUPS
+            .map((group) => ({ group, panels: WORKSPACE_PANELS.filter((panel) => panel.group === group.id && isPanelOffered(panel.id)) }))
+            // A separator only between groups that render: a host may switch a whole group off.
+            .filter(({ panels }) => panels.length > 0)
+            .map(({ group, panels }, index) => (
               <DropdownMenuGroup key={group.id}>
                 {index > 0 && <DropdownMenuSeparator />}
                 <DropdownMenuLabel data-panel-group={group.id} title={t(group.descriptionKey)}>
@@ -67,8 +67,7 @@ export function PanelGroupBrowser() {
                   </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuGroup>
-            );
-          })}
+            ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </RibbonGroup>

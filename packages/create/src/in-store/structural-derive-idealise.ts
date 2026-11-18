@@ -86,13 +86,22 @@ type LineIdealisation = { start: Vec3; end: Vec3; source: 'extrusion' | 'profile
 export function idealiseLine(prism: PrismFact): LineIdealisation {
   const f = prismFrame(prism);
   if (typeof f === 'string') return { issue: f };
-  if (f.depth >= f.long) return { start: f.centre, end: add(f.centre, prism.extrusion), source: 'extrusion' };
+  if (f.depth >= f.long) {
+    const start = prism.centroid ?? f.centre;
+    return { start, end: add(start, prism.extrusion), source: 'extrusion' };
+  }
   if (f.nearRectangle && !f.oblique) {
     const mid = add(f.centre, scale(prism.extrusion, 0.5));
     const half = scale(f.u, f.long / 2);
     return { start: sub(mid, half), end: add(mid, half), source: 'profile' };
   }
   return { issue: 'the prism is longest across its profile, and the profile is not a near-rectangle' };
+}
+
+/** A curve element's analytical line: its straight Axis representation, else its prism's axis. */
+export function curveElementLine(shape: { axis?: [Vec3, Vec3]; prism?: PrismFact; shapeIssue?: string }): LineIdealisation | { start: Vec3; end: Vec3; source: 'axis' } {
+  if (shape.axis) return { start: shape.axis[0], end: shape.axis[1], source: 'axis' };
+  return shape.prism ? idealiseLine(shape.prism) : { issue: shape.shapeIssue ?? 'no extruded shape' };
 }
 
 type PlateIdealisation = { boundary: Vec3[]; thickness: number } | { issue: string };

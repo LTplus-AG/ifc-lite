@@ -17,6 +17,17 @@ const BASE = ['x', 'y', 'z', 'rot_0', 'rot_1', 'rot_2', 'rot_3',
 const SH_COUNTS = [0, 9, 24, 45] as const;
 const MAX_DECODED_BYTES = 512 * 1024 * 1024;
 
+/** Channel names of a capture of these dimensions; rejects dimensions (and a whole-capture size) past the launch limits. */
+export function gaussianDecodedChannels(count: number, shDegree: number): string[] {
+  if (!Number.isSafeInteger(count) || count < 1 || count > GAUSSIAN_LAUNCH_LIMITS.maxSceneSplats
+    || !Number.isInteger(shDegree) || shDegree < 0 || shDegree > GAUSSIAN_LAUNCH_LIMITS.maxShDegree) {
+    throw new Error('Invalid decoded Gaussian dimensions.');
+  }
+  const names = [...BASE, ...Array.from({ length: SH_COUNTS[shDegree as 0 | 1 | 2 | 3] }, (_, i) => `f_rest_${i}`)];
+  if (count * names.length * 4 > MAX_DECODED_BYTES) throw new Error('Decoded Gaussian allocation limit exceeded.');
+  return names;
+}
+
 /** #8565: reject invalid decoded data before any GPU allocation or publication.
  * Upstream preserves non-finite input; header admission alone cannot establish
  * this invariant. Keep log-scale/logit and SH values intact for upstream rendering.
@@ -27,13 +38,8 @@ export function validateGaussianDecoded(
   input: readonly { name: string; data: ArrayLike<number> }[],
   source?: { origin: readonly [number, number, number]; bounds: GaussianDecoded['centerBounds'] },
 ): GaussianDecoded {
-  if (!Number.isSafeInteger(count) || count < 1 || count > GAUSSIAN_LAUNCH_LIMITS.maxSceneSplats
-    || !Number.isInteger(shDegree) || shDegree < 0 || shDegree > GAUSSIAN_LAUNCH_LIMITS.maxShDegree) {
-    throw new Error('Invalid decoded Gaussian dimensions.');
-  }
+  const names = gaussianDecodedChannels(count, shDegree);
   const degree = shDegree as 0 | 1 | 2 | 3;
-  const names = [...BASE, ...Array.from({ length: SH_COUNTS[degree] }, (_, i) => `f_rest_${i}`)];
-  if (count * names.length * 4 > MAX_DECODED_BYTES) throw new Error('Decoded Gaussian allocation limit exceeded.');
   const byName = new Map<string, ArrayLike<number>>();
   for (const column of input) {
     if (byName.has(column.name)) throw new Error('Duplicate decoded Gaussian channel.');

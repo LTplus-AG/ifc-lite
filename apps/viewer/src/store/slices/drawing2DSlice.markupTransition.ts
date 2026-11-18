@@ -179,10 +179,16 @@ const FIELD_CLASSIFICATION = {
   annotation2DCursorPos: 'in-progress',
   polygonArea2DPoints: 'in-progress',
   polygonArea2DResults: 'committed',
+  tagAnnotations2D: 'committed',
   textAnnotations2D: 'committed',
   textAnnotation2DEditing: 'in-progress',
   cloudAnnotation2DPoints: 'in-progress',
   cloudAnnotations2D: 'committed',
+  dimension2DPoints: 'in-progress',
+  dimensions2D: 'committed',
+  // History belongs to the live markup it edits: never cached, cleared when `activeModelId` moves.
+  dimension2DUndo: 'in-progress',
+  dimension2DRedo: 'in-progress',
   selectedAnnotation2D: 'in-progress',
   dxfUnderlays: 'preserved',
 } satisfies Record<keyof Drawing2DState, 'committed' | 'in-progress' | 'preserved'>;
@@ -244,6 +250,9 @@ export function inProgressClearPatch(): Drawing2DTransitionClearPatch {
   return {
     polygonArea2DPoints: [],
     cloudAnnotation2DPoints: [],
+    dimension2DPoints: [],
+    dimension2DUndo: [],
+    dimension2DRedo: [],
     measure2DStart: null,
     measure2DCurrent: null,
     measure2DSnapPoint: null,
@@ -305,7 +314,9 @@ export function markupTransitionPatch(
       measure2DResults: state.measure2DResults,
       polygonArea2DResults: state.polygonArea2DResults,
       textAnnotations2D: state.textAnnotations2D,
+      tagAnnotations2D: state.tagAnnotations2D,
       cloudAnnotations2D: state.cloudAnnotations2D,
+      dimensions2D: state.dimensions2D,
       drawing2DDisplayOptions: state.drawing2DDisplayOptions,
     });
   }

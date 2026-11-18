@@ -34,7 +34,8 @@
  * element is skipped with the reason.
  *
  * Curve members. The Axis representation when present. Otherwise the prism
- * axis: through the centre of the profile's bounds, along the extrusion when
+ * axis: through the profile's centroid (the centre of its bounds for symmetric
+ * profiles), along the extrusion when
  * the extrusion is the prism's longest side, or along the profile's long side
  * at half depth when the profile is a near-rectangle longer than the
  * extrusion (beams drawn in elevation). Anything else is skipped.
@@ -44,8 +45,16 @@
  * the thinnest side (slabs), or the profile's centre line swept along the
  * extrusion when the profile is a near-rectangle thinner than the depth
  * (walls). Thickness is that thinnest side. Oblique extrusions and profiles
- * read only as bounds (I-shapes, circles) are skipped. Openings and profile
- * voids are not carried: the surface member covers the outer outline.
+ * read only as bounds (I-shapes, circles) are skipped. Profile voids are not
+ * carried. Physical openings are carried as inner rings
+ * on the mid-plane when their readable single extrusion is parallel or
+ * perpendicular to its normal within one degree. In-plane sweeps require one
+ * profile intersection interval; sections on both faces must match the middle
+ * within the derive tolerance. Unreadable or
+ * inexact profiles, oblique openings, recesses, zero-area rings, openings within
+ * the derive tolerance of the boundary (including doors at the base), and
+ * overlapping or touching openings are skipped with a reason in the report. A
+ * rounded rectangle is read as its rectangle (square corners).
  *
  * Joints. Axes run through section centres, so a column top stops below the
  * beam axis and a beam end stops at the column face. Before nodes are formed,
@@ -58,7 +67,9 @@
  * point lies past the other member's free end, that end moves along its own
  * axis to it as well, by the same reach rule. When it lies inside the other
  * member, that member is split there into two curve members, both linked to
- * its element, so the joint is a real node. An end already shared with other
+ * its element, so the joint is a real node; so is every other member whose
+ * axis passes through the joint inside its span (crossing beams), unless it
+ * runs parallel to the joining member. An end already shared with other
  * members only connects to an interior it already touches (within
  * `tolerance`); it is not moved. Every moved end is in the report
  * (`extendedEnds`) with the distance moved (negative when trimmed).
@@ -75,8 +86,9 @@
  *
  * Supports. A node inside a footing or pile's body bounds (grown by `tolerance`)
  * is a support linked to that footing. When no footing supports any node, the
- * nodes at the lowest level become supports and are flagged `guessed`. The
- * lowest level is the lowest node of this plan, after the joints, within
+ * lowest-level nodes `lowestLevelBearings` picks become supports and are
+ * flagged `guessed`.
+ * The lowest level is the lowest node of this plan, after the joints, within
  * `tolerance`, unless a curve member already idealised (longer than
  * `tolerance`, not LoadBearing false) is drawn lower: then the level is that
  * member's lowest end, so a partial run (lower floors derived before) never
@@ -91,6 +103,15 @@
  * idealises with IfcRelAssignsToProduct (the item in RelatedObjects): a member
  * to its element, a node to the elements whose ends meet there and to its
  * footing.
+ *
+ * Provenance. A curve member carries an `IfcLite_StructuralDerivation`
+ * property set, when the plan has its `physicalAxis` (the planner always sets
+ * it) and its element has a GlobalId, naming that GlobalId and the element's line (the
+ * rule above, before joints moved its ends) in metres in the axes of its
+ * storey, which the member's placement is relative to. The
+ * `structural-stale-item` check in `@ifc-lite/parser` compares it with the
+ * element's line now, to report members whose element moved since. Surface
+ * members and nodes get no record.
  *
  * Existing analysis models. When the file already has any
  * IfcStructuralAnalysisModel (authored or derived), the plan lists them
@@ -124,6 +145,21 @@ export interface PrismFact {
   extrusion: Vec3;
   /** False when `outline` is only the profile's bounding rectangle (I-shapes, circles, ...). */
   outlineExact: boolean;
+  /** The outer outline omits inner profile voids (a profile with voids, a hollow rectangle). */
+  profileHasVoids?: boolean;
+  /** The outline squares off rounded corners (a rounded rectangle read as its rectangle). */
+  outlineRounded?: boolean;
+  /** The profile's centroid on the base plane, when it is not the centre of the bounds (L, T, U, C sections). */
+  centroid?: Vec3;
+}
+
+export interface OpeningFact {
+  /** IFC PascalCase class; null when the referenced entity is missing. */
+  type?: string | null;
+  expressId: number;
+  name: string | null;
+  prism?: PrismFact;
+  shapeIssue?: string;
 }
 
 export interface PhysicalElementFact {
@@ -140,6 +176,7 @@ export interface PhysicalElementFact {
   /** Straight Axis representation, world metres. */
   axis?: [Vec3, Vec3];
   prism?: PrismFact;
+  openings?: OpeningFact[];
   /** Why no prism was read. */
   shapeIssue?: string;
   /** Body bounds in world metres; read for footings and piles only. */
@@ -152,6 +189,8 @@ export interface ExistingAnalysisModel {
   name: string | null;
   /** Written by an earlier derivation. */
   derived: boolean;
+  /** The structural members it groups, so a caller can show it: the group itself has no geometry. Read facts always fill it. */
+  memberIds?: number[];
 }
 
 export interface StructuralDerivationFacts {
@@ -196,6 +235,12 @@ export interface PlannedCurveMember {
   end: Vec3;
   /** Where the line came from. */
   axisSource: 'axis' | 'extrusion' | 'profile';
+  /**
+   * The element's line, before joints moved its ends; apply records it on the
+   * member. The planner always sets it. A plan built without it derives the
+   * member with no record, which the stale check then leaves out.
+   */
+  physicalAxis?: [Vec3, Vec3];
   startNode: number;
   endNode: number;
   loadBearing: MemberLoadBearing;
@@ -205,6 +250,8 @@ export interface PlannedSurfaceMember {
   elementId: number;
   storeyId: number | null;
   boundary: Vec3[];
+  /** Inner rings carried from physical openings. The planner always sets it; a plan held from before openings were carried may omit it. */
+  openings?: Vec3[][];
   thickness: number;
   loadBearing: MemberLoadBearing;
 }
@@ -244,6 +291,14 @@ export interface SkippedElement {
   detail: string;
 }
 
+export interface SkippedOpening {
+  openingId: number;
+  hostId: number;
+  name: string | null;
+  reason: 'opening-profile-has-voids' | 'unsupported-voiding-type' | 'unreadable-opening' | 'unsupported-opening-section' | 'invalid-opening-ring';
+  detail: string;
+}
+
 /** A member end moved along its own axis to meet another member. */
 export interface ExtendedEnd {
   elementId: number;
@@ -271,10 +326,12 @@ export interface StructuralDerivationReport {
     guessedSupports: number;
     assumedLoadBearing: number;
     skipped: number;
+    skippedOpenings: number;
     extendedEnds: number;
     freeEnds: number;
   };
   skipped: SkippedElement[];
+  skippedOpenings: SkippedOpening[];
   /** Node indices of every guessed support. */
   guessedSupports: number[];
   extendedEnds: ExtendedEnd[];

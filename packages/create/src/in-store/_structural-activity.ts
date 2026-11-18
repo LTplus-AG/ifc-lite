@@ -63,7 +63,7 @@ type ActivityWriter = (attributes: Parameters<StoreEditor['addEntity']>[1]) => n
 
 /** Share validation and attribute layout; builders keep literal entity writes for schema tooling. */
 export function emitActivity(anchor: ActivityAnchor, params: ActivityParams,
-  type: string, load: object, fields: readonly string[], tail: (string | boolean | null)[],
+  type: string, load: object, fields: readonly string[], tail: Parameters<StoreEditor['addEntity']>[1],
   write: { load: ActivityWriter; activity: ActivityWriter }): ActivityResult {
   const builder = `add${type.slice(3)}ToStore`;
   assertEnum(builder, 'GlobalOrLocal', params.GlobalOrLocal, ['GLOBAL_COORDS', 'LOCAL_COORDS']);

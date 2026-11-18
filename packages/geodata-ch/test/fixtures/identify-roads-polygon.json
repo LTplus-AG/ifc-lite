@@ -1,0 +1,135 @@
+{
+ "results": [
+  {
+   "type": "Feature",
+   "featureId": 47841123,
+   "bbox": [
+    2600385.0,
+    1199531.0,
+    2600456.8,
+    1199536.9
+   ],
+   "layerBodId": "ch.swisstopo.swisstlm3d-strassen",
+   "layerName": "Strassen und Wege swissTLM3D",
+   "id": 47841123,
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       2600385.0,
+       1199531.0
+      ],
+      [
+       2600408.8,
+       1199533.5
+      ],
+      [
+       2600433.9,
+       1199536.3
+      ],
+      [
+       2600442.0,
+       1199536.9
+      ],
+      [
+       2600450.2,
+       1199536.2
+      ],
+      [
+       2600456.8,
+       1199533.9
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "strassenname": "Bundesplatz",
+    "objektart": 9,
+    "belagsart": 100,
+    "verkehrsbedeutung": 999998,
+    "eigentuemer": 999997,
+    "verkehrsbeschraenkung": 100,
+    "label": 9
+   }
+  },
+  {
+   "type": "Feature",
+   "featureId": 47950408,
+   "bbox": [
+    2600455.4,
+    1199533.9,
+    2600456.8,
+    1199581.5
+   ],
+   "layerBodId": "ch.swisstopo.swisstlm3d-strassen",
+   "layerName": "Strassen und Wege swissTLM3D",
+   "id": 47950408,
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       2600455.4,
+       1199581.5
+      ],
+      [
+       2600455.9,
+       1199557.8
+      ],
+      [
+       2600456.8,
+       1199533.9
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "strassenname": "Bundesplatz",
+    "objektart": 20,
+    "belagsart": 100,
+    "verkehrsbedeutung": 999998,
+    "eigentuemer": 999997,
+    "verkehrsbeschraenkung": 100,
+    "label": 20
+   }
+  },
+  {
+   "type": "Feature",
+   "featureId": 47950409,
+   "bbox": [
+    2600420.7,
+    1199580.6,
+    2600455.4,
+    1199581.5
+   ],
+   "layerBodId": "ch.swisstopo.swisstlm3d-strassen",
+   "layerName": "Strassen und Wege swissTLM3D",
+   "id": 47950409,
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       2600420.7,
+       1199580.6
+      ],
+      [
+       2600455.4,
+       1199581.5
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "strassenname": "Bundesplatz",
+    "objektart": 9,
+    "belagsart": 100,
+    "verkehrsbedeutung": 999998,
+    "eigentuemer": 999997,
+    "verkehrsbeschraenkung": 100,
+    "label": 9
+   }
+  }
+ ]
+}

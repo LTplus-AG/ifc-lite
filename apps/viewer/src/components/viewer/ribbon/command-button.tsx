@@ -7,6 +7,7 @@ import { forwardRef, type MouseEvent } from 'react';
 import { useTranslation } from '@/i18n';
 import { surfaceCommand, type SurfaceCommandContext, type SurfaceCommandDefinition, type SurfaceCommandId } from '../surface-command-registry';
 import { runSurfaceCommand } from '../surface-command-run';
+import { isSurfaceCommandAvailable } from '../surface-command-features';
 import { RibbonContentLargeButton, RibbonContentSmallButton, type RibbonContentButtonProps } from './primitives';
 
 type RibbonCommandContext = Omit<SurfaceCommandContext, 'surface'>
@@ -85,6 +86,7 @@ function commandHandlers(
 export const RibbonCommandLargeButton = forwardRef<HTMLButtonElement, RibbonCommandButtonProps>(
   function RibbonCommandLargeButton({ commandId, icon, triggerOnly, commandContext, ...props }, ref) {
     const { command, label, tooltip } = useRibbonCommandPresentation(commandId);
+    if (!isSurfaceCommandAvailable(command)) return null;
     const handlers = commandHandlers(command, props, triggerOnly, commandContext);
     return <RibbonContentLargeButton {...props} ref={ref} data-command-id={command.id}
       data-command-trigger={triggerOnly || undefined}
@@ -96,6 +98,7 @@ export const RibbonCommandLargeButton = forwardRef<HTMLButtonElement, RibbonComm
 export const RibbonCommandSmallButton = forwardRef<HTMLButtonElement, RibbonCommandButtonProps>(
   function RibbonCommandSmallButton({ commandId, icon, triggerOnly, commandContext, ...props }, ref) {
     const { command, label, tooltip } = useRibbonCommandPresentation(commandId);
+    if (!isSurfaceCommandAvailable(command)) return null;
     const handlers = commandHandlers(command, props, triggerOnly, commandContext);
     return <RibbonContentSmallButton {...props} ref={ref} data-command-id={command.id}
       data-command-trigger={triggerOnly || undefined}

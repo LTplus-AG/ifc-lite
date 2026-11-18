@@ -31,6 +31,7 @@ import { parseArgs } from 'node:util';
 import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 import { LEVELS, deriveCatalogue, notApplicable } from './catalogue.mjs';
 import { loadCorpus } from './lib/corpus.mjs';
+import { factsOf, markLimits } from './limits.mjs';
 import { loadPackages } from './lib/packages.mjs';
 import { PROBES } from './probes/index.mjs';
 
@@ -73,7 +74,8 @@ export async function runProbes(rows, ctx, probes = PROBES) {
     for (const row of mine) {
       const r = results.get(row.id) ?? { status: 'error', reason: `${probe.name} returned no result for this row` };
       const status = r.status in RANK ? r.status : 'error';
-      const cell = { status, probe: probe.name, ...(r.reason ? { reason: clip(r.reason) } : {}), ...(r.counts ? { counts: r.counts } : {}), ...(r.evidence?.length ? { evidence: [...r.evidence].sort().slice(0, 5) } : {}) };
+      // `problems` (the full list, for markLimits) is dropped by `score`, so the summary keeps only the clipped reason.
+      const cell = { status, probe: probe.name, ...(r.reason ? { reason: clip(r.reason) } : {}), ...(r.counts ? { counts: r.counts } : {}), ...(r.evidence?.length ? { evidence: [...r.evidence].sort().slice(0, 5) } : {}), ...(r.problems ? { problems: r.problems } : {}) };
       const prev = cells.get(row.id)[probe.level];
       if (!prev || RANK[cell.status] > RANK[prev.status] || (RANK[cell.status] === RANK[prev.status] && cell.probe < prev.probe)) {
         cells.get(row.id)[probe.level] = cell;
@@ -173,7 +175,12 @@ export function score(rows, cells, meta = {}) {
     const levels = {};
     for (const level of LEVELS) {
       const rule = notApplicable(row, level);
-      levels[level] = rule ? { applicable: false, rule } : cells.get(row.id)[level];
+      if (rule) { levels[level] = { applicable: false, rule }; continue; }
+      const probed = cells.get(row.id)[level];
+      if (probed) {
+        const { problems: _full, ...cell } = probed;
+        levels[level] = cell;
+      }
     }
     const head = row.kind === 'entity'
       ? { id: row.id, kind: row.kind, schema: row.schema, entity: row.entity, family: row.family }
@@ -229,7 +236,23 @@ function print(s) {
   console.log(Object.entries(s.levels).map(([l, v]) => `${l} ${v.score}/${v.max}`).join(' · '));
 }
 
-async function main(argv) {
+/** Runs every probe over the corpus and scores it; `main`'s default, injectable so a test can drive its exits. */
+async function evaluateCorpus({ rows, tables }, { offline }) {
+  const corpus = loadCorpus(ROOT, { offline });
+  const pkgs = await loadPackages(ROOT);
+  const ctx = { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() };
+  const cells = await runProbes(rows, ctx);
+  // An offline run scores absent files as skip, so its problems are not the ones the limits name.
+  const limitIssues = corpus.absent.length ? [] : markLimits(cells, factsOf(ctx));
+  const summary = score(rows, cells, {
+    offline: corpus.absent.length > 0,
+    absent: corpus.absent.map((a) => a.path),
+    corpus: corpus.files.map((f) => ({ path: f.path, sha256: f.sha256, schema: f.fileSchema })),
+  });
+  return { summary, limitIssues };
+}
+
+export async function main(argv, { evaluate = evaluateCorpus } = {}) {
   // Strict: a valued flag without its value, or a misspelt flag, exits 2 instead of running without the ratchet.
   let values;
   try {
@@ -269,16 +292,9 @@ async function main(argv) {
     if (baseline.offline) { console.error(`score: ${rel(check)} was scored offline (${baseline.absent?.length ?? 0} corpus file(s) absent); ${OFFLINE_REMEDY}`); return 2; }
   }
   let summary;
+  let limitIssues;
   try {
-    const { rows, tables } = catalogue;
-    const corpus = loadCorpus(ROOT, { offline: values.offline === true });
-    const pkgs = await loadPackages(ROOT);
-    const cells = await runProbes(rows, { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() });
-    summary = score(rows, cells, {
-      offline: corpus.absent.length > 0,
-      absent: corpus.absent.map((a) => a.path),
-      corpus: corpus.files.map((f) => ({ path: f.path, sha256: f.sha256, schema: f.fileSchema })),
-    });
+    ({ summary, limitIssues = [] } = await evaluate(catalogue, { offline: values.offline === true }));
   } catch (e) {
     console.error(`score: ${e.message}`);
     return 2;
@@ -287,6 +303,7 @@ async function main(argv) {
   writeFileSync(out, serialize(summary));
   if (!values.quiet) print(summary);
   console.log(`Summary written to ${rel(out)}`);
+  if (limitIssues.length) console.error(`\nLimits out of date (tests/structural-coverage/limits.mjs); correct or remove them:\n  ${limitIssues.join('\n  ')}`);
   if (check) {
     const problems = ratchet(baseline, summary);
     if (problems.length) {
@@ -295,7 +312,9 @@ async function main(argv) {
     }
     console.log(`Ratchet OK against ${rel(check)}: total ${summary.total.score} >= ${baseline.total.score}, cells ${summary.cells.score} >= ${baseline.cells.score}, no row or cell dropped.`);
   }
-  return 0;
+  // Any limit issue markLimits reports fails the run, so CI rejects a change that leaves a wrong label.
+  // The summary is still written, for inspection.
+  return limitIssues.length ? 1 : 0;
 }
 
 if (isMainEntry(import.meta.url)) process.exitCode = await main(process.argv.slice(2));

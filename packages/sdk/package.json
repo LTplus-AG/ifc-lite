@@ -1,11 +1,13 @@
 {
   "name": "@ifc-lite/sdk",
-  "version": "9.6.1",
+  "version": "10.0.0",
   "description": "Scripting SDK for ifc-lite — the bim.* API for BIM automation",
   "type": "module",
   "sideEffects": [
     "./src/index.ts",
-    "./dist/index.js"
+    "./dist/index.js",
+    "./src/namespaces/store-structural.ts",
+    "./dist/namespaces/store-structural.js"
   ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,6 +21,11 @@
       "types": "./dist/review.d.ts",
       "import": "./dist/review.js",
       "default": "./dist/review.js"
+    },
+    "./georef-doctor": {
+      "types": "./dist/georef-doctor.d.ts",
+      "import": "./dist/georef-doctor.js",
+      "default": "./dist/georef-doctor.js"
     },
     "./headless": {
       "types": "./dist/headless.d.ts",
@@ -40,6 +47,8 @@
     "@ifc-lite/drawing-2d": "workspace:^",
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/geo": "workspace:^",
+    "@ifc-lite/georef-check": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
     "@ifc-lite/ids-authoring": "workspace:^",
     "@ifc-lite/lens": "workspace:^",
@@ -52,11 +61,11 @@
   "devDependencies": {
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
-    "@mergifyio/vitest": "^2026.10.11",
+    "@mergifyio/vitest": "^2026.11.8",
     "apache-arrow": "^21.2.0",
     "parquet-wasm": "^0.9.0",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

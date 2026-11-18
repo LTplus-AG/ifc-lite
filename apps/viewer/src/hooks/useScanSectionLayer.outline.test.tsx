@@ -82,7 +82,7 @@ function setup(t: TestContext): boolean {
   (globalThis as { Worker?: unknown }).Worker = SlowWorker;
   t.after(() => { (globalThis as { Worker?: unknown }).Worker = previous; });
   const renderer = new Renderer(document.createElement('canvas'));
-  renderer.getPointCloudTransform = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  renderer.getPointCloudPlacement = () => new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
   setGlobalRendererRef({ current: renderer });
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('scan'), pointCloudHandleId: 7 }), pointCloudAlignmentEnabled: false });
   return true;

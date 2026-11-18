@@ -20,6 +20,9 @@ import { listIonExportModels, resolveExportModel } from './export-model-selectio
 import { preferredExportModelId } from './export-model-default';
 import { ExportDialogShell, type ExportDialogShellActivity, type ExportDialogShellResult } from './ExportDialogShell';
 
+import { modelHasGeoreference } from '@/lib/geo/kmz-export';
+import { ExportGeorefNotice } from './ExportGeorefNotice';
+
 export interface CesiumIonExportDialogProps {
   trigger?: React.ReactNode;
   surface: ExportSurface;
@@ -33,6 +36,8 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
   const activeModelId = useViewerStore(s => s.activeModelId);
   const legacyStore = useViewerStore(s => s.ifcDataStore);
   const legacyGeometry = useViewerStore(s => s.geometryResult);
+  const georefMutations = useViewerStore(s => s.georefMutations);
+  const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [token, setToken] = useState('');
   const [assetId, setAssetId] = useState<number>();
@@ -52,6 +57,10 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
   }, []);
   const selected = resolveExportModel(models, selectedId, legacyStore, legacyGeometry);
 
+  const missingGeoref = useMemo(() => open && !!selected?.ifcDataStore && !modelHasGeoreference(
+    selected.ifcDataStore, georefMutations.get(selectedId),
+  ), [open, selected?.ifcDataStore, selectedId, georefMutations]);
+
   async function onUpload(activity: ExportDialogShellActivity): Promise<ExportDialogShellResult> {
     const abort = new AbortController();
     controller.current = abort;
@@ -66,7 +75,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
         return { success: false, message: t(RETAINED_EXACT_ONLY_REASON) };
       }
       const model = resolveExportModel(state.models, selectedId, state.ifcDataStore, state.geometryResult);
-      if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.sourceSchema) {
+      if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.ifcDataStore.sourceKind === 'tabular' || model.sourceSchema) {
         return { success: false, message: t('ionUpload.noModel') };
       }
       // Preserve the invocation's export identity through asynchronous failures.
@@ -130,8 +139,9 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
     title={t('ionUpload.title')} description={t('ionUpload.description')}
     cancelLabel={t('ionUpload.close')} exportLabel={t('ionUpload.upload')} exportingLabel={t('ionUpload.uploading')}
     successTitle={t('ionUpload.successTitle')} errorTitle={t('ionUpload.errorTitle')}
-    exportDisabled={!selected?.ifcDataStore || !token.trim()}
-    onOpenStateChange={open => { if (!open) setToken(''); else setAssetId(undefined); }}
+    open={open}
+    exportDisabled={!selected?.ifcDataStore || !token.trim() || missingGeoref}
+    onOpenStateChange={open => { setOpen(open); if (!open) setToken(''); else setAssetId(undefined); }}
     onExport={onUpload}
     footerLeading={({ isExporting }) => isExporting && <Button variant="outline" onClick={() => controller.current?.abort()}>{t('ionUpload.abort')}</Button>}
     resultDetails={assetId !== undefined && <Button asChild className="h-auto min-h-9 w-full min-w-0 whitespace-normal">
@@ -140,6 +150,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
       </a>
     </Button>}
   >{({ isExporting }) => <>
+    {missingGeoref && <ExportGeorefNotice modelId={selectedId} disabled={isExporting} onClose={() => { setToken(''); setOpen(false); }} />}
     <div className="grid gap-2">
       <Label htmlFor="ion-model">{t('ionUpload.model')}</Label>
       <Select value={selectedId} onValueChange={setSelectedId} disabled={isExporting}>

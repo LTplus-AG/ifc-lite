@@ -4,7 +4,7 @@
 
 // Synchronous roof edits reuse the runtime already loaded by startCollab.
 // A runtime import here would pull Yjs into the viewer's eager boot graph.
-type PropertyApi = Pick<typeof import('@ifc-lite/collab'), 'getPropertyValue' | 'setPropertyValue' | 'deletePropertyValue'>;
+type PropertyApi = Pick<typeof import('@ifc-lite/collab'), 'getPropertyValue' | 'setPropertyValue' | 'deletePropertyValue' | 'getQuantityValue' | 'setQuantityValue' | 'deleteQuantityValue'>;
 let api: PropertyApi | null = null;
 
 export function bindRoomPropertyApi<T extends PropertyApi>(runtime: T): T {

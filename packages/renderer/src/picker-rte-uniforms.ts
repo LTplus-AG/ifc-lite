@@ -28,7 +28,8 @@ export function writePickUniforms(
 }
 
 /**
- * Write one flat mesh's pick uniforms into dynamic slot `slot`. Returns false,
+ * Write one flat mesh's pick uniforms into dynamic slot `slot`. The batch pick
+ * pass reuses it with its draw's lane anchor as `expressId` (`clipFlags.y`). Returns false,
  * writing nothing, for a mesh outside the snapshot's camera-relative envelope:
  * the pick pass draws every visible mesh unculled, and such a mesh cannot be
  * rasterised in this frame, so the caller must skip its draw (#6128).
@@ -38,10 +39,11 @@ export function writeFlatPickUniform(
   buffer: GPUBuffer,
   scratch: Float32Array,
   clipFlags: Uint32Array,
-  mesh: Mesh,
+  mesh: Pick<Mesh, 'transform' | 'rteOrigin' | 'expressId'>,
   snapshot: RelativeToEyeSnapshot,
   clip: PickClipState | null | undefined,
   slot: number,
+  quantized?: { readonly min: readonly [number, number, number]; readonly step: number },
 ): boolean {
   scratch.fill(0);
   if (!snapshot.tryPackDrawableOrigin(
@@ -54,6 +56,8 @@ export function writeFlatPickUniform(
   packRteClipBox(clip?.clipBox, camera, scratch, 32);
   if (clip?.sectionPlane) scratch[43] = rtePlaneDistance(clip.sectionPlane.distance, clip.sectionPlane.normal, camera);
   clipFlags[1] = mesh.expressId;
+  // The batch pick pass's `quantParams` (lanes 56-59): lattice min and step.
+  if (quantized) { scratch.set(quantized.min, 56); scratch[59] = quantized.step; }
   device.queue.writeBuffer(buffer, slot * 256, scratch);
   return true;
 }

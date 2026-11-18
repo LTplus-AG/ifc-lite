@@ -16,7 +16,7 @@ import type {
   SelectDefinition,
   TypeDefinition,
 } from './express-parser.js';
-import { getAllAttributes, getInheritanceChain } from './express-parser.js';
+import { buildSchemaRegistry, concreteRelationshipTypes, encodeSchemaRegistry, SCHEMA_REGISTRY_DECODER_SOURCE } from './schema-registry-codec.js';
 
 export interface GeneratedCode {
   entities: string;       // Entity interfaces
@@ -378,7 +378,13 @@ function generateSelectTypes(schema: ExpressSchema): string {
 }
 
 /**
- * Generate schema registry with runtime metadata
+ * Generate schema registry with runtime metadata.
+ *
+ * Everything inside the template below is EMITTED TEXT. A bare backtick in it
+ * closes the literal (only `tsc` on this package catches that), and every
+ * lookup it emits must be an own-property check: registry objects are plain
+ * objects, so `in` and `obj[key]` would answer for `constructor`,
+ * `toString` and `__proto__` (#3063).
  */
 function generateSchemaRegistry(schema: ExpressSchema): string {
   let code = `/**
@@ -417,61 +423,47 @@ export interface SchemaRegistry {
   selects: Record<string, string[]>;  // name -> types
 }
 
-export const SCHEMA_REGISTRY: SchemaRegistry = {
-  name: '${schema.name}',
+/**
+ * This schema's registry in the compact form of
+ * \`packages/codegen/src/schema-registry-codec.ts\`, decoded on first use.
+ * A bundle that never asks a question of this schema only scans the string.
+ */
+const ENCODED_SCHEMA_REGISTRY = ${JSON.stringify(JSON.stringify(encodeSchemaRegistry(buildSchemaRegistry(schema))))};
 
-  entities: {
-`;
+let decodedSchemaRegistry: SchemaRegistry | undefined;
 
-  // Generate entity metadata
-  for (const entity of schema.entities) {
-    code += generateEntityMetadata(entity, schema);
+/**
+ * The registry, decoded from {@link ENCODED_SCHEMA_REGISTRY} the first time it
+ * is asked for and the same object afterwards. Code that may never need this
+ * schema should call this rather than read {@link SCHEMA_REGISTRY}, which
+ * decodes when the module loads.
+ */
+export function getSchemaRegistry(): SchemaRegistry {
+  if (decodedSchemaRegistry === undefined) {
+    decodedSchemaRegistry = decodeSchemaRegistry(JSON.parse(ENCODED_SCHEMA_REGISTRY) as EncodedSchemaRegistry);
   }
+  return decodedSchemaRegistry;
+}
 
-  code += `  },
+const eagerRegistriesEvaluated: string[] = [];
 
-  types: {
-`;
+/** The exported-constant form: returns \`get()\`, and records a marker that
+ * survives in a built bundle exactly where this constant does
+ * (\`apps/viewer/scripts/check-schema-tables-lazy.mjs\` keeps it off the
+ * viewer's startup chunks). */
+function eagerSchemaRegistry(marker: string, get: () => SchemaRegistry): SchemaRegistry {
+  eagerRegistriesEvaluated.push(marker);
+  return get();
+}
 
-  // Generate type metadata (escape single quotes in underlying types)
-  for (const type of schema.types) {
-    const escapedType = type.underlyingType.replace(/'/g, "\\'").replace(/\n/g, ' ');
-    code += `    ${type.name}: '${escapedType}',\n`;
-  }
+export const SCHEMA_REGISTRY: SchemaRegistry = /* @__PURE__ */ eagerSchemaRegistry('ifc-lite-eager-table:SCHEMA_REGISTRY:${schema.name}', getSchemaRegistry);
 
-  code += `  },
-
-  enums: {
-`;
-
-  // Generate enum metadata (escape single quotes in values)
-  for (const enumDef of schema.enums) {
-    const escapedValues = enumDef.values.map(v => `'${v.replace(/'/g, "\\'")}'`);
-    code += `    ${enumDef.name}: [${escapedValues.join(', ')}],\n`;
-  }
-
-  code += `  },
-
-  selects: {
-`;
-
-  // Generate select metadata (escape single quotes in types)
-  for (const select of schema.selects) {
-    const escapedTypes = select.types.map(t => `'${t.replace(/'/g, "\\'")}'`);
-    code += `    ${select.name}: [${escapedTypes.join(', ')}],\n`;
-  }
-
-  // Everything from here to the end of this template literal is EMITTED TEXT,
-  // not code that runs here. Two consequences that have both bitten:
-  //
-  //  - A backtick anywhere in it closes the literal and the rest becomes real
-  //    TypeScript. That is a `tsc` failure on this package, and the only thing
-  //    that catches it, so never write one in a comment below.
-  //  - The registry is a plain object literal, so `in` and `obj[key]` both
-  //    walk the prototype chain and answer for `constructor`, `toString` and
-  //    `__proto__`. Every lookup below must be an own-property check (#3063).
-  code += `  },
-};
+/**
+ * Every concrete (non-abstract) \`IfcRelationship\` subtype of this schema, as
+ * an upper-cased STEP keyword, in registry order. Generated from the registry,
+ * so a relationship gate can be built without decoding it.
+ */
+export const CONCRETE_RELATIONSHIP_TYPES: readonly string[] = ${JSON.stringify(concreteRelationshipTypes(buildSchemaRegistry(schema)))};
 
 /**
  * Get entity metadata by name (case-insensitive)
@@ -479,8 +471,9 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
 export function getEntityMetadata(typeName: string): EntityMetadata | undefined {
   // Normalize to IfcXxx format
   const normalized = normalizeTypeName(typeName);
-  if (!Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.entities, normalized)) return undefined;
-  return SCHEMA_REGISTRY.entities[normalized];
+  const entities = getSchemaRegistry().entities;
+  if (!Object.prototype.hasOwnProperty.call(entities, normalized)) return undefined;
+  return entities[normalized];
 }
 
 /**
@@ -519,7 +512,7 @@ function normalizeTypeName(name: string): string {
   if (upper.startsWith('IFC')) {
     const rest = upper.substring(3);
     // Lookup by matching uppercase keys in the registry
-    for (const key of Object.keys(SCHEMA_REGISTRY.entities)) {
+    for (const key of Object.keys(getSchemaRegistry().entities)) {
       if (key.toUpperCase() === 'IFC' + rest) return key;
     }
     // Fallback: best-effort single-word conversion
@@ -527,65 +520,8 @@ function normalizeTypeName(name: string): string {
   }
   return name;
 }
-`;
 
-  return code;
-}
-
-/**
- * Generate metadata for a single entity
- */
-function generateEntityMetadata(
-  entity: EntityDefinition,
-  schema: ExpressSchema
-): string {
-  let code = `    ${entity.name}: {\n`;
-  code += `      name: '${entity.name}',\n`;
-  code += `      isAbstract: ${entity.isAbstract},\n`;
-
-  if (entity.supertype) {
-    code += `      parent: '${entity.supertype}',\n`;
-  }
-
-  code += `      attributes: [\n`;
-  for (const attr of entity.attributes) {
-    code += `        {\n`;
-    code += `          name: '${attr.name}',\n`;
-    code += `          type: '${attr.type}',\n`;
-    code += `          optional: ${attr.optional},\n`;
-    code += `          isArray: ${attr.isArray},\n`;
-    code += `          isList: ${attr.isList},\n`;
-    code += `          isSet: ${attr.isSet},\n`;
-    if (attr.arrayBounds) {
-      code += `          arrayBounds: [${attr.arrayBounds[0]}, ${attr.arrayBounds[1]}],\n`;
-    }
-    code += `        },\n`;
-  }
-  code += `      ],\n`;
-
-  // Add all attributes (including inherited)
-  const allAttrs = getAllAttributes(entity, schema);
-  code += `      allAttributes: [\n`;
-  for (const attr of allAttrs) {
-    code += `        {\n`;
-    code += `          name: '${attr.name}',\n`;
-    code += `          type: '${attr.type}',\n`;
-    code += `          optional: ${attr.optional},\n`;
-    code += `          isArray: ${attr.isArray},\n`;
-    code += `          isList: ${attr.isList},\n`;
-    code += `          isSet: ${attr.isSet},\n`;
-    if (attr.arrayBounds) {
-      code += `          arrayBounds: [${attr.arrayBounds[0]}, ${attr.arrayBounds[1]}],\n`;
-    }
-    code += `        },\n`;
-  }
-  code += `      ],\n`;
-
-  // Add inheritance chain
-  const chain = getInheritanceChain(entity, schema);
-  code += `      inheritanceChain: [${chain.map(c => `'${c}'`).join(', ')}],\n`;
-
-  code += `    },\n`;
+${SCHEMA_REGISTRY_DECODER_SOURCE}`;
 
   return code;
 }

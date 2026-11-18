@@ -197,6 +197,7 @@ export const propertiesFr = {
   "properties.modelMetadata.notAvailable": "Indisponible",
   "properties.modelMetadata.buildingStoreys": "Étages du bâtiment",
   "properties.modelMetadata.elementsWithGeometry": "Éléments avec géométrie",
+  "properties.modelMetadata.triangles": "Nombre de triangles",
   "properties.modelMetadata.maxExpressId": "ID EXPRESS maximal",
   "properties.modelMetadata.classificationSystemsHeading": "Systèmes de classification",
   "properties.modelMetadata.classificationUnresolved": "Systèmes de classification présents, mais indisponibles dans cette source de données",

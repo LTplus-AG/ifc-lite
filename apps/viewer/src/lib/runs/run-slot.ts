@@ -25,7 +25,8 @@
  * row, with the tray's Cancel wired to the lease. A user cancel ends the row
  * `cancelled`; a superseded, torn-down or scope-dropped run removes its row
  * (`CancelReason` in `./run.ts`). Nothing else records the job, so the row
- * cannot disagree with the store.
+ * follows the settlement. A failed refresh may explicitly retain an older
+ * settled record while its own journal row reports the failure.
  *
  * Start runs with `slot.run(owner, task, { toError })`: it settles the lease
  * from how the task ends and never rejects. `begin` is the manual form for a
@@ -82,7 +83,8 @@ export interface RunLease<R, P, E> {
   progress(value: P): boolean;
   /** False also when `scopeIsCurrent` says the result describes a world that is gone. */
   succeed(result: R): boolean;
-  fail(error: E): boolean;
+  /** Fail this job's row, optionally restoring a prior settled record atomically. */
+  fail(error: E, options?: { record: Exclude<Run<R, never, never, E>, { kind: 'running' }> }): boolean;
   /** A user cancel (reason `user`). */
   cancel(): boolean;
   /** Why the lease ended without a result, or null while current or after a success or failure. */
@@ -197,10 +199,10 @@ export function createRunSlot<R, P = never, O = undefined, E = unknown>(
         binding.write({ kind: 'succeeded', runId, result });
         return true;
       },
-      fail: (error) => {
+      fail: (error, options) => {
         if (!isCurrent()) return false;
         end({ kind: 'failed', error });
-        binding.write({ kind: 'failed', runId, error });
+        binding.write(options?.record ?? { kind: 'failed', runId, error });
         return true;
       },
       cancel: () => {

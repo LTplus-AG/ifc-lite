@@ -215,6 +215,8 @@ function sourceModules(dir) {
 const REVIEWED_PURE = new Map([
   ['packages/ai/src/request-digest.ts', 'a module-local TextEncoder'],
   ['packages/create/src/in-store/wall-join-mesh.oracle.ts', 'test-only oracle (only *.test.ts import it); a normalised ray constant'],
+  ['packages/geo/src/engine-state.ts', 'createEngineState builds the default engine\'s empty caches; nothing is registered'],
+  ['packages/geo/src/precision-grid-table.ts', 'gridSpec/utm build the EPSG-to-grid table from literals; nothing is registered'],
   ['packages/ids-agent/src/sandbox/handles.ts', 'a module-local RegExp'],
   ['packages/ids-agent/src/tools/act-tools.ts', 'defineTool/objectSchema return plain objects; nothing is registered'],
   ['packages/ids-agent/src/tools/ask-user.ts', 'defineTool returns a plain object; nothing is registered'],
@@ -224,7 +226,6 @@ const REVIEWED_PURE = new Map([
   ['packages/ids-agent/src/tools/schema-tools.ts', 'defineTool returns a plain object; nothing is registered'],
   ['packages/ids-authoring/src/bsdd/mapping.ts', 'maps a literal unit list into a constant'],
   ['packages/ids-authoring/src/document/fields.ts', 'flattens a local constant'],
-  ['packages/ids-authoring/src/gate/context.ts', 'maps a local constant'],
   ['packages/ids-authoring/src/lint/precision.ts', 'filters a local constant'],
   ['packages/ids-authoring/src/ops/schema-values.ts', 'JSON Schema built by local obj()/ref() helpers'],
   ['packages/ids-authoring/src/ops/schema.ts', 'JSON Schema built by local obj()/ref()/buildDefs() helpers'],
@@ -233,7 +234,6 @@ const REVIEWED_PURE = new Map([
   ['packages/ids-authoring/src/sidecar/sidecar-schema.ts', 'JSON Schema built by a local object() helper'],
   ['packages/ifcx/src/canonical.ts', 'a module-local TextEncoder'],
   ['packages/ifcx/src/types.ts', 'type tables derived from local constants'],
-  ['packages/ifcx/src/writer-entities.ts', 'fills a module-local Map from the schema tables'],
   ['packages/source-buildagil/src/scan.ts', 'a query string built from a local constant'],
 ]);
 

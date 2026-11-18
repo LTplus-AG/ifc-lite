@@ -138,7 +138,7 @@ describe('convertStepLine refuses an unrepresentable non-rooted entity rather th
 
     it('a rooted referrer (IfcRelAssociatesMaterial) naming a withheld set id is redirected to a proxy, not left dangling', () => {
       const rel =
-        "#345=IFCRELASSOCIATESMATERIAL('guid',#45,$,$,(#228,#263,#296),#344);";
+        "#345=IFCRELASSOCIATESMATERIAL('guid',#45,$,$,(#228,#263,#296),\n  #344);";
       const withheld = new Set([344]);
       const out = convertStepLine(rel, 'IFC4', 'IFC2X3', undefined, undefined, withheld);
       expect(out).toContain('IFCPROXY');

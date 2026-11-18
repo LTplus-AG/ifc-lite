@@ -145,12 +145,16 @@ impl StructuralValues {
         let mut grouped = BTreeMap::<u32, HashSet<u32>>::new();
         let mut owner = HashMap::new();
         let mut shared = HashSet::new();
+        // A model one of whose groupings cannot be read in full is not known to share a placement.
+        let mut unread = HashSet::new();
         for rel in source.ids("IFCRELASSIGNSTOGROUP") {
             let Some(args) = source.slots(rel) else { continue; };
-            let [_, _, _, _, related, _, relating_group] = args.as_slice() else { continue; };
-            let Some(model) = reference(relating_group).filter(|&id| source.kind(id, ANALYSIS_MODEL)) else { continue; };
-            let Some(items) = references(related) else { continue; };
-            for item in items {
+            // RelatedObjects and RelatingGroup, read at any arity as the TypeScript twin does.
+            let Some(model) = args.get(6).and_then(|group| reference(group)).filter(|&id| source.kind(id, ANALYSIS_MODEL)) else { continue; };
+            let listed = args.get(4).and_then(|related| list_items(related));
+            if listed.as_ref().is_none_or(|items| items.iter().any(|item| reference(item).is_none())) { unread.insert(model); }
+            // The readable items of an unread grouping still count as grouped by this model.
+            for item in listed.iter().flatten().filter_map(|item| reference(item)) {
                 let Some(&(kind, _, _)) = source.index.get(&item) else { continue; };
                 if !ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(kind, "IfcStructuralItem") { continue; }
                 if owner.insert(item, model).is_some_and(|previous| previous != model) { shared.insert(item); }
@@ -158,7 +162,7 @@ impl StructuralValues {
             }
         }
         for (model, items) in grouped {
-            if items.iter().any(|item| shared.contains(item)) { continue; }
+            if unread.contains(&model) || items.iter().any(|item| shared.contains(item)) { continue; }
             let Some(args) = source.slots(model).filter(|args| args.len() == 9) else { continue; };
             let Some(placements) = items.iter().map(|&item| {
                 let slots = source.slots(item)?;

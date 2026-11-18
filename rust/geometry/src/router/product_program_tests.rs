@@ -146,12 +146,11 @@ fn issue_7781_product_logical_refusal_publishes_only_when_admission_is_accepted(
         "unaccepted reply owns the report"
     );
     program.accept(reply, &router).ok().unwrap();
-    assert_eq!(
-        router
-            .take_unsupported_items()
-            .get("IfcShapeRepresentation"),
-        Some(&1)
-    );
+    assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+    let refusals = router.take_budget_refusals();
+    assert_eq!(refusals.len(), 1, "#9268 accepted admission publishes its refusal");
+    assert_eq!(refusals[0].product_id, Some(40));
+
     let parts = program.drain_parts(&router, &mut decoder).unwrap();
     assert_eq!(parts.iter().map(Mesh::triangle_count).sum::<usize>(), 36);
     assert_eq!(*calls.borrow(), [10, 11, 15], "only the admitted roots mesh");

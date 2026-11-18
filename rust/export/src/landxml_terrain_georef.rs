@@ -17,14 +17,14 @@ use crate::step_map_transform::preflight;
 
 /// The target CRS a terrain's coordinates are written in.
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct Crs {
+pub(crate) struct Crs {
     pub name: String,
     pub geodetic_datum: Option<String>,
     pub vertical_datum: Option<String>,
 }
 
 /// Local (project-unit) coordinates to map metres for one context.
-pub(super) struct MapFrame {
+pub(crate) struct MapFrame {
     georef: GeoReference,
     /// Metres per map unit (`IfcProjectedCRS.MapUnit`, else the project unit).
     map_metres: f64,
@@ -40,7 +40,7 @@ impl MapFrame {
 }
 
 /// What a whole-file scan has to find once, whatever terrains are selected.
-pub(super) struct ModelFacts {
+pub(crate) struct ModelFacts {
     /// `(id, type, SourceCRS)` of every `IfcMapConversion` / `…Scaled`.
     conversions: Vec<(u32, IfcType, Option<u32>)>,
     project_metres: f64,
@@ -131,12 +131,12 @@ impl ModelFacts {
     }
 }
 
-pub(super) fn decode(decoder: &mut EntityDecoder, id: u32) -> Result<DecodedEntity, String> {
+pub(crate) fn decode(decoder: &mut EntityDecoder, id: u32) -> Result<DecodedEntity, String> {
     decoder.decode_by_id(id).map_err(|_| format!("entity #{id} does not exist"))
 }
 
 /// A non-blank IFC string attribute with its STEP escapes decoded.
-pub(super) fn text(entity: &DecodedEntity, at: impl Into<slot::SlotIx<slot::kind::Text>>) -> Option<String> {
+pub(crate) fn text(entity: &DecodedEntity, at: impl Into<slot::SlotIx<slot::kind::Text>>) -> Option<String> {
     // `string_at` is already decoded; decoding again read an escaped backslash
     // as the escape it spells (CORE-16).
     let value = entity.string_at(at)?.trim().to_string();
@@ -176,6 +176,66 @@ fn length_unit_metres(unit: &DecodedEntity) -> Result<f64, String> {
     };
     metres.filter(|metres: &f64| metres.is_finite() && *metres > 0.0)
         .ok_or_else(|| format!("length unit #{} ({}) is not one the exporter can convert to metres exactly", unit.id, unit.ifc_type.name()))
+}
+
+/// Read access for the CityJSON exporter, which takes its map frame from this
+/// resolver. Compiled only with the `cityjson` feature, so the default engine
+/// (which builds without it) links exactly the code above.
+#[cfg(feature = "cityjson")]
+impl MapFrame {
+    /// `(easting, northing, height)` in map units, from local project-unit
+    /// coordinates.
+    pub fn to_map(&self, x: f64, y: f64, z: f64) -> [f64; 3] {
+        let (e, n, h) = self.georef.local_to_map(x, y, z);
+        [e, n, h]
+    }
+
+    /// Metres per map unit.
+    pub fn map_metres(&self) -> f64 {
+        self.map_metres
+    }
+}
+
+#[cfg(feature = "cityjson")]
+impl ModelFacts {
+    /// Metres per project length unit.
+    pub fn project_metres(&self) -> f64 {
+        self.project_metres
+    }
+
+    /// The `IfcMapConversion` operations found, as `(id, SourceCRS)`.
+    pub fn conversion_sources(&self) -> impl Iterator<Item = (u32, Option<u32>)> + '_ {
+        self.conversions.iter().map(|(id, _, source)| (*id, *source))
+    }
+
+    /// Metres per map unit of the one conversion [`Self::frame`] would use for
+    /// `context` (its TargetCRS MapUnit, else the project unit), for a caller
+    /// that explains a refusal; `None` when that conversion cannot be found.
+    /// The context walk mirrors `frame`'s, which stays untouched.
+    pub fn map_unit_metres(&self, context: u32, decoder: &mut EntityDecoder) -> Option<f64> {
+        let mut matching = Vec::new();
+        let mut current = Some(context);
+        let mut seen = Vec::new();
+        while let Some(id) = current {
+            if seen.len() >= MAX_CONTEXT_DEPTH || seen.contains(&id) {
+                return None;
+            }
+            seen.push(id);
+            matching.extend(self.conversions.iter().filter(|(_, _, source)| *source == Some(id)));
+            let node = decode(decoder, id).ok()?;
+            current = match node.ifc_type {
+                IfcType::IfcGeometricRepresentationSubContext => Some(node.ref_at(slot::IfcGeometricRepresentationSubContext::PARENT_CONTEXT)?),
+                _ => None,
+            };
+        }
+        let [(conversion_id, _, _)] = matching[..] else { return None };
+        let crs_id = decode(decoder, *conversion_id).ok()?.ref_at(slot::IfcMapConversion::TARGET_CRS)?;
+        let target = decode(decoder, crs_id).ok()?;
+        match target.ref_at(slot::IfcProjectedCRS::MAP_UNIT) {
+            Some(unit) => length_unit_metres(&decode(decoder, unit).ok()?).ok(),
+            None => Some(self.project_metres),
+        }
+    }
 }
 
 #[cfg(test)]

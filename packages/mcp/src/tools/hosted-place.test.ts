@@ -185,3 +185,36 @@ describe('#9936 slab opening schema and dispatch', () => {
     expect(view.getNewEntities()).toEqual(before);
   });
 });
+
+for (const kind of ['door', 'window'] as const) {
+  it(`#9352 MCP and SDK hosted ${kind} placement preserve distinct type variants through MCP attribute readback`, async () => {
+    const { registry, call } = await session();
+    const model = registry.get('alpha')!;
+    const home = model.bim.query().byType('IfcBuildingStorey').toArray()[0].ref.expressId;
+    const wall = model.bim.store.addWall('alpha', home, { Start: [0, 20, 0], End: [8, 20, 0], Thickness: .2, Height: 3 });
+    const enumeration = kind === 'door' ? 'REVOLVING' : 'DOUBLE_PANEL_VERTICAL';
+    const field = kind === 'door' ? 'OperationType' : 'PartitioningType';
+    const typeClass = kind === 'door' ? 'IfcDoorType' : 'IfcWindowType';
+    const result = await call(kind === 'door' ? 'place_door' : 'place_window', { host_express_id: wall.expressId,
+      params: kind === 'door'
+        ? { Offset: 2, Width: .9, Height: 2.1, OperationType: enumeration }
+        : { Offset: 2, Sill: .5, Width: .9, Height: 2.1, PartitioningType: enumeration } });
+    expect(result.isError).not.toBe(true);
+    const a = { modelId: 'alpha', expressId: result.structuredContent!.expressId as number };
+    const b = kind === 'door'
+      ? model.bim.store.addHostedDoor('alpha', wall.expressId,
+        { Offset: 5, Width: .9, Height: 2.1, OperationType: enumeration.toLowerCase() })
+      : model.bim.store.addHostedWindow('alpha', wall.expressId,
+        { Offset: 5, Sill: .5, Width: .9, Height: 2.1, PartitioningType: enumeration.toLowerCase() });
+    const types = [a, b].map(ref => model.bim.query().byType(typeClass).toArray().find(type =>
+      model.bim.related(type.ref, 'IfcRelDefinesByType', 'forward').some(row => row.ref.expressId === ref.expressId))!.ref);
+    expect(types[0].expressId).not.toBe(types[1].expressId);
+    for (const [i, value] of [enumeration, 'USERDEFINED'].entries()) {
+      const data = await call('get_entity', { express_id: types[i].expressId, include: ['attributes'] });
+      expect(data.isError).not.toBe(true);
+      const attrs = data.structuredContent!.attributes as Array<{ name: string; value: unknown }>;
+      expect(String(attrs.find(row => row.name === field)?.value).replace(/\./g, '')).toBe(value);
+      if (i === 1) expect(attrs.find(row => row.name === `UserDefined${field}`)?.value).toBe(enumeration.toLowerCase());
+    }
+  });
+}

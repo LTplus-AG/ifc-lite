@@ -42,7 +42,8 @@
 //!
 //! ## How the base side is measured, and why it is the same binary
 //!
-//! `--entities rooted-postfilter` runs `extract_data_model` and then
+//! `--entities rooted-postfilter` runs the default extraction (what
+//! `extract_data_model` returns, plus the scan count) and then
 //! `DataModelEntities::apply`, which is EXACTLY what every caller did before
 //! #9582: the full metadata table built, then narrowed. #9582 did not change
 //! either of those two functions - `extract_data_model` delegates to
@@ -92,7 +93,7 @@
 
 use ifc_lite_core::hash::{fnv1a64_extend, FNV64_OFFSET};
 use ifc_lite_processing::data_model::{
-    extract_data_model, extract_data_model_with, DataModel, DataModelEntities, DataModelOptions,
+    extract_data_model_with, DataModel, DataModelEntities, DataModelExtraction, DataModelOptions,
 };
 use serde::Serialize;
 
@@ -118,10 +119,10 @@ fn fold_rows<T: Serialize>(hash: u64, name: &str, rows: &[T], scratch: &mut Vec<
 }
 
 /// FNV-1a over every table of the data model. See the module header.
-fn digest(dm: &DataModel) -> u64 {
+fn digest(dm: &DataModel, total_entities: usize) -> u64 {
     let mut scratch: Vec<u8> = Vec::new();
     let mut hash = FNV64_OFFSET;
-    hash = fnv1a64_extend(hash, &(dm.total_entities as u64).to_le_bytes());
+    hash = fnv1a64_extend(hash, &(total_entities as u64).to_le_bytes());
     hash = fold_rows(hash, "entities", &dm.entities, &mut scratch);
     hash = fold_rows(hash, "property_sets", &dm.property_sets, &mut scratch);
     hash = fold_rows(hash, "quantity_sets", &dm.quantity_sets, &mut scratch);
@@ -149,8 +150,16 @@ fn digest(dm: &DataModel) -> u64 {
 
 /// What one extraction reports. Printed as one JSON object per variant under
 /// `--json`, so a harness can diff two builds field by field.
-fn report(path: &str, bytes: usize, variant: &str, dm: &DataModel, elapsed_ms: f64, json: bool) {
-    let d = digest(dm);
+fn report(
+    path: &str,
+    bytes: usize,
+    variant: &str,
+    dm: &DataModel,
+    total_entities: usize,
+    elapsed_ms: f64,
+    json: bool,
+) {
+    let d = digest(dm, total_entities);
     if json {
         println!(
             "{}",
@@ -159,7 +168,7 @@ fn report(path: &str, bytes: usize, variant: &str, dm: &DataModel, elapsed_ms: f
                 "file_bytes": bytes,
                 "entities": variant,
                 "rows": dm.entities.len(),
-                "total_entities": dm.total_entities,
+                "total_entities": total_entities,
                 "property_sets": dm.property_sets.len(),
                 "quantity_sets": dm.quantity_sets.len(),
                 "relationships": dm.relationships.len(),
@@ -178,7 +187,7 @@ fn report(path: &str, bytes: usize, variant: &str, dm: &DataModel, elapsed_ms: f
              psets={} qsets={} rels={} spatial={}  {elapsed_ms:.0} ms  digest={d:016x}",
             bytes as f64 / 1e6,
             dm.entities.len(),
-            dm.total_entities,
+            total_entities,
             dm.property_sets.len(),
             dm.quantity_sets.len(),
             dm.relationships.len(),
@@ -243,13 +252,14 @@ fn main() {
 
     for variant in &variants {
         let started = std::time::Instant::now();
-        let dm = match variant.as_str() {
-            // The pre-#9582 path, verbatim: build every row, then drop five
-            // in six. Neither call changed in #9582, so this IS the base.
+        let DataModelExtraction { model: dm, total_entities, .. } = match variant.as_str() {
+            // The pre-#9582 path: build every row, then drop five in six.
+            // `extract_data_model` is exactly the default extraction's
+            // `.model`; this keeps the scan count beside it.
             "rooted-postfilter" => {
-                let mut dm = extract_data_model(&content);
-                DataModelEntities::Rooted.apply(&mut dm);
-                dm
+                let mut extraction = extract_data_model_with(&content, DataModelOptions::default());
+                DataModelEntities::Rooted.apply(&mut extraction.model);
+                extraction
             }
             "rooted" => extract_data_model_with(
                 &content,
@@ -261,7 +271,7 @@ fn main() {
             ),
         };
         let elapsed_ms = started.elapsed().as_secs_f64() * 1e3;
-        report(&path, bytes, variant, &dm, elapsed_ms, json);
+        report(&path, bytes, variant, &dm, total_entities, elapsed_ms, json);
         // Dropping here rather than at the end of main keeps a `--entities
         // both` run from holding two models at once; the peak is still
         // unattributable in that mode, but it is not doubled on purpose.

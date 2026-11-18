@@ -7,6 +7,7 @@
  * coordinate system info, and project information.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useMemo } from 'react';
 import { FileBox, BookMarked } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,11 +29,13 @@ import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAM
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
 import { FederationAssumptionsNotice } from './FederationAssumptionsNotice';
 import { TerrainImageryCard } from './TerrainImageryCard';
+import { SiteContextCard } from './SiteContextCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 import { useLoadWindowHold } from '@/hooks/loadWindow';
 import { isModelStreaming } from '@/lib/streaming-refresh';
+import { TriangleCountRow } from './TriangleCountRow';
 import { GaussianCaptureMetadataPanel } from './GaussianCaptureMetadataPanel';
 
 /** Model metadata. A Gaussian capture is a different component type, so
@@ -142,6 +145,8 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
   const entityCount = useMemo(() => effectiveEntityCount(dataStore, mutationView), [dataStore, mutationView, mutationVersion]);
   const maxExpressId = useMemo(() => effectiveMaxExpressId(model.maxExpressId, mutationView), [model.maxExpressId, mutationView, mutationVersion]);
 
+  // Georeferencing is model data placed by the Placement feature; a host can switch either off (`lib/features`).
+  const georefEditable = isFeatureEnabled('edit.placement') && isFeatureEnabled('edit.model');
   // Extract georeferencing info
   const georef = useMemo(() => {
     if (!dataStore) return null;
@@ -273,12 +278,14 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
             value={model.sourceSchema ? formatLocaleNumber(locale, landXmlStats.overlays) : stats ? formatLocaleNumber(locale, stats.elementsWithGeometry) : STAT_PENDING}
             copy={false}
           />
+          <TriangleCountRow modelId={model.id} />
           {!model.sourceSchema && (
             <InspectorRow label={t('properties.modelMetadata.maxExpressId')} value={formatLocaleNumber(locale, maxExpressId)} copy={false} />
           )}
         </section>
 
         {model.sourceSchema && model.landXmlDocument && <TerrainImageryCard model={model} />}
+        <SiteContextCard model={model} />
 
         {model.sourceSchema && model.landXmlDocument && <LandXmlModelSourceNavigation
           modelId={model.id}
@@ -315,7 +322,7 @@ function IfcModelMetadataPanel({ model }: { model: FederatedModel }) {
         {/* Georeferencing — kept at the bottom because it embeds a
             tall location map; placing it earlier would push the
             statistics + project metadata below the fold. */}
-        <GeoreferencingPanel georef={georef} modelId={model.id} enableEditing schemaVersion={model.schemaVersion} coordinateInfo={model.geometryResult?.coordinateInfo} geometryResult={model.geometryResult} lengthUnitScale={unitInfo?.scale} />
+        <GeoreferencingPanel georef={georef} modelId={model.id} enableEditing={georefEditable} schemaVersion={model.schemaVersion} coordinateInfo={model.geometryResult?.coordinateInfo} geometryResult={model.geometryResult} lengthUnitScale={unitInfo?.scale} />
       </ScrollArea>
     </div>
   );

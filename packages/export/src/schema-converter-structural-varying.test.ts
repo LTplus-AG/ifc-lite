@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter, exportToStep } from './step-exporter.js';
@@ -80,11 +82,12 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(result.stats.warnings.join('\n')).toContain('2 structural conversion record(s): an IFC4 curve or surface action with an IfcStructuralLoadConfiguration is written as an IFC2X3 varying action');
   });
 
-  it('reports a CausedBy that IFC4 cannot hold', async () => {
+  it('writes the CausedBy of a varying action as a Causes relationship', async () => {
     const withReaction = IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', ',.F.,#40,.PROJECTED_LENGTH.')
       .replace('#30=', "#40=IFCSTRUCTURALPOINTREACTION('2wmGMbnLPTYekiqaYJVorK',$,$,$,$,$,$,#20,.GLOBAL_COORDS.);\n#30=");
     const result = new StepExporter(await parse(withReaction)).export({ schema: 'IFC4' });
-    expect(result.stats.warnings.join('\n')).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4');
+    expect(result.stats.warnings.join('\n')).toContain("IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes'");
+    expect(records(new TextDecoder().decode(result.content), 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#40\),\$,#30\);$/)]);
   });
 
   it('reports an unknown DestabilizingLoad and refuses loads of mixed types', async () => {
@@ -131,6 +134,20 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     const out = exportToStep(await parse(IFC2X3.replace(',#11,(#21));', ',#13,(#21));')), { schema: 'IFC4' });
     expect(line(out, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
     expect(records(out, 'IFCSTRUCTURALLOADCONFIGURATION')).toEqual(['#32=IFCSTRUCTURALLOADCONFIGURATION($,(#22,#23,#24),$);']);
+  });
+
+  // The R12 fixture gives one location per load (IFC2X3 VaryingAppliedLoadLocation corresponds by index);
+  // before, one location for three loads left both actions unconverted (case B above).
+  const coverage = fileURLToPath(new URL('../../../tests/models/ifcopenshell/generated_structural_coverage_ifc2x3.ifc', import.meta.url));
+  it.skipIf(!existsSync(coverage))('converts the IFC2X3 coverage fixture varying actions both ways (pnpm fixtures if absent)', async () => {
+    const source = new TextDecoder().decode(readFileSync(coverage));
+    const ifc4 = exportToStep(await parse(source), { schema: 'IFC4' });
+    expect(records(ifc4, 'IFCSTRUCTURAL(LINEAR|PLANAR)ACTIONVARYING')).toEqual([]);
+    expect(records(ifc4, 'IFCSTRUCTURALLOADCONFIGURATION')).toHaveLength(2);
+    const back = exportToStep(await parse(ifc4), { schema: 'IFC2X3' });
+    for (const type of ['IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']) {
+      expect(records(back, type)).toEqual(records(source, type));
+    }
   });
 
   it('needs the source store, so a subset export keeps the varying action unconverted', async () => {

@@ -34,3 +34,19 @@ it('roof remesh reads effective aggregate membership and excludes deleted slabs 
   editor.removeEntity(12);
   expect(ids(expandAffectedSet(store, view, [10], 'shape'))).toEqual([10,13]);
 });
+
+const sited = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);
+#2=IFCSITE('0000000000000000000002',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
+#3=IFCWALL('0000000000000000000003',$,'Wall',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+
+it.each(['created', 'shape', 'hostsChanged'] as const)('the site a remesh carries as context is not re-meshed itself: %s (#10435)', async cause => {
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(sited).buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(ids(expandAffectedSet(store, null, [3], cause))).toEqual([3]);
+});

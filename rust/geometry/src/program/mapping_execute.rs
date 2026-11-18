@@ -26,11 +26,22 @@ pub(super) fn source_reply<T>(
 }
 
 impl MappingControl<'_> {
+    #[inline(always)]
+    fn source_reply<T>(result: SourceResult<T>, item_id: u32, budget: LogicalBudget,
+        reply: impl FnOnce(Result<T>, LogicalBudget) -> MappingValue,
+    ) -> std::result::Result<MappingReply, MappingFailure> {
+        match result {
+            Ok(value) => Ok(reply(Ok(value), budget)),
+            Err(SourceFailure::Content(error)) => Ok(reply(Err(error), budget)),
+            Err(SourceFailure::Budget(refusal)) => Err(MappingFailure::refused(item_id, refusal, budget)),
+        }
+    }
+
     pub(in crate::program) fn execute(
         &mut self,
         router: &GeometryRouter,
         decoder: &mut EntityDecoder,
-    ) -> std::result::Result<MappingReply, ProgramError> {
+    ) -> std::result::Result<MappingReply, MappingFailure> {
         self.budget.commit(); // the accepted state's first reads (#9102)
         let mut budget = self.budget.clone();
         // Steps that keep their action in place: the accept consumes it.
@@ -38,32 +49,24 @@ impl MappingControl<'_> {
             Action::Child(item, ChildControl::Item(control)) => {
                 return control
                     .execute(item.item(), router, decoder)
-                    .map(MappingValue::Child);
+                    .map(MappingValue::Child).map_err(Into::into);
             }
             Action::Child(item, ChildControl::Cache(control)) => {
                 return control
                     .execute(item.item(), router, decoder)
-                    .map(MappingValue::CacheChild);
+                    .map(MappingValue::CacheChild).map_err(Into::into);
             }
             Action::SharedItems(representation, ..) => {
-                return Ok(source_reply(
-                    GeometryRouter::shared_source_items(
-                        representation.item(),
-                        decoder,
-                        &mut budget,
-                    ),
-                    representation.item().id,
-                    budget,
-                    MappingValue::SharedItems,
-                ));
+                let item_id = representation.item().id;
+                let items = GeometryRouter::shared_source_items(representation.item(), decoder, &mut budget);
+                return Self::source_reply(items, item_id, budget, MappingValue::SharedItems);
             }
             Action::StyledItems(pending) => {
+                let item_id = pending.item_id;
                 let items = GeometryRouter::styled_source_items(
-                    &pending.representation,
-                    decoder,
-                    &mut budget,
+                    &pending.representation, decoder, &mut budget,
                 );
-                return Ok(source_reply(items, pending.item_id, budget, MappingValue::StyledItems));
+                return Self::source_reply(items, item_id, budget, MappingValue::StyledItems);
             }
             Action::Texture(item) => {
                 let item = item.item();
@@ -82,11 +85,8 @@ impl MappingControl<'_> {
                 // A root attempt pays too, including cache hits/placeholders.
                 // A refused attempt leaves its action intact until acceptance.
                 if let Err(refusal) = budget.mapped_attempt() {
-                    return Ok(MappingValue::Refused {
-                        item_id: item.item().id,
-                        refusal,
-                        budget,
-                    });
+                    let item_id = item.item().id;
+                    return Err(MappingFailure::refused(item_id, refusal, budget));
                 }
             }
             _ => {}
@@ -98,9 +98,9 @@ impl MappingControl<'_> {
                     return Ok(self.admit_retained_mapping(item, router, decoder, &mut budget));
                 }
                 let value = router.admit_mapped_occurrence(item, decoder, &mut budget);
-                source_reply(value, item.id, budget, |value, budget| MappingValue::Entered {
+                return Self::source_reply(value, item.id, budget, |value, budget| MappingValue::Entered {
                     budget, item_id: item.id, value,
-                })
+                });
             }
             Action::EnterStyled(entering) => {
                 let item = entering.item();
@@ -119,27 +119,15 @@ impl MappingControl<'_> {
                 let rep_map = self
                     .rep_map
                     .as_ref()
-                    .map(Reached::item)
+                    .map(TypeMapRoot::item)
                     .ok_or(ProgramError::StaleRequest)?;
-                if let Some(state) = &self.retained {
-                    return Ok(source_reply(
-                        Self::validate_retained_map(
-                            rep_map,
-                            decoder,
-                            &state.selection,
-                            &mut budget,
-                        ),
-                        rep_map.id,
-                        budget,
-                        MappingValue::TypeMapEntered,
-                    ));
-                }
-                source_reply(
-                    router.admit_type_map(rep_map, decoder, &mut budget),
-                    rep_map.id,
-                    budget,
-                    MappingValue::TypeMapEntered,
-                )
+                let item_id = rep_map.id;
+                let result = if let Some(state) = &self.retained {
+                    Self::validate_retained_map(rep_map, decoder, &state.selection, &mut budget)
+                } else {
+                    router.admit_type_map(rep_map, decoder, &mut budget)
+                };
+                return Self::source_reply(result, item_id, budget, MappingValue::TypeMapEntered);
             }
             Action::Origin => {
                 if self.retained.is_some() {
@@ -148,13 +136,13 @@ impl MappingControl<'_> {
                 let rep_map = self
                     .rep_map
                     .as_ref()
-                    .map(Reached::item)
+                    .map(TypeMapRoot::item)
                     .ok_or(ProgramError::StaleRequest)?;
                 MappingValue::Origin(router.type_map_origin(rep_map, decoder))
             }
             Action::TypeFinish(origin) => {
                 if self.retained.is_some() {
-                    return self.finish_retained_type_map(origin);
+                    return self.finish_retained_type_map(origin).map_err(Into::into);
                 }
                 let level = self.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
                 let parts = std::mem::take(&mut level.parts);
@@ -167,7 +155,7 @@ impl MappingControl<'_> {
             Action::Placeholder(placeholder) => self.push_placeholder(placeholder),
             other => {
                 self.action = other;
-                return Err(ProgramError::StaleRequest);
+                return Err(ProgramError::StaleRequest.into());
             }
         })
     }

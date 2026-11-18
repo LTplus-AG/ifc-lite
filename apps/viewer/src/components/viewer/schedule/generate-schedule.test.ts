@@ -133,6 +133,14 @@ describe('generateScheduleFromSpatialHierarchy — storey strategy', () => {
     assert.strictEqual(preview.finishDate, '2024-05-16T00:00:00');
   });
 
+  it('#10584 anchors a date-only generation start at midnight UTC', () => {
+    const preview = generateScheduleFromSpatialHierarchy(buildMockStore(), {
+      ...DEFAULT_OPTIONS, startDate: '2024-05-01', daysPerGroup: 1, lagDays: 0,
+    });
+    assert.equal(preview.extraction.tasks[0].taskTime?.scheduleStart, '2024-05-01T00:00:00.000Z');
+    assert.equal(preview.finishDate, '2024-05-04T00:00:00.000Z');
+  });
+
   it('laying out dates — 2-day lag', () => {
     const preview = generateScheduleFromSpatialHierarchy(buildMockStore(), {
       ...DEFAULT_OPTIONS,

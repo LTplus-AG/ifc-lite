@@ -136,6 +136,24 @@ describe('PropertiesPanel structural-only selection', () => {
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [ID_OFFSET + 20]);
   });
 
+  it('a counterpart jump leaves a structural view mode that hides the target (#10604)', async () => {
+    await loadModel(LINKED_SOURCE, 20);
+    useViewerStore.setState({ structuralViewMode: 'physical' });
+    const ui = await renderPanel();
+    const mode = () => useViewerStore.getState().structuralViewMode;
+
+    click(counterpartRow(ui, 10));
+    assert.equal(mode(), 'both', 'Physical hides the analytical member, so the jump shows both');
+
+    useViewerStore.setState({ structuralViewMode: 'analytical' });
+    click(counterpartRow(ui, 20));
+    assert.equal(mode(), 'both', 'Analytical hides the wall, so the jump shows both');
+
+    useViewerStore.setState({ structuralViewMode: 'analytical' });
+    click(counterpartRow(ui, 11));
+    assert.equal(mode(), 'analytical', 'a target the mode draws keeps the mode');
+  });
+
   it('shows the physical element of a connection (#9668)', async () => {
     await loadModel(LINKED_SOURCE, 11);
     const ui = await renderPanel();

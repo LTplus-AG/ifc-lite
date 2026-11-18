@@ -8,7 +8,7 @@ import { useViewerStore, type ViewerState } from '@/store';
 import { placementFrameFields, placementFrameKey } from '@/lib/model-placement/persistence';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { resolveProjectionOperation } from '@/lib/geo/reproject';
-import { projectedDefinitionInMetres } from '@/lib/geo/proj4-utils';
+import { projectedDefinitionInMetres } from '@ifc-lite/geo/proj4';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { planOrthophotoBackground, sampleBackgroundRow, backgroundCalibration, type BackgroundProjection } from '@/lib/terrain-imagery/background-plan';
 import { decodeDrapeTexture } from '@/lib/terrain-imagery/raster-texture';

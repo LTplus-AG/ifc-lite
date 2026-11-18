@@ -336,6 +336,11 @@ carries it. Initialize it explicitly (default asynchronous initializer or
 returned `RhinoSceneJs`. `@ifc-lite/geometry`'s `exportRhinoScene` does this for
 you and loads the payload only on the first .3dm export.
 
+The same payload carries the CityJSON 2.0 writer: `exportCityJson(content,
+optionsJson)` returns `{ text, referenceSystem, warnings, buildings, cityObjects,
+vertices }` and throws `CITYJSON_REFUSED: …` for a model without an
+`IfcBuilding`. `@ifc-lite/geometry`'s `exportCityJson` wraps it.
+
 ## Rust diff bindings
 
 The Rust diff engine is a separate `@ifc-lite/wasm/diff` payload, built from

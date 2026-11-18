@@ -39,7 +39,7 @@ function collector(
 describe('PartialBatchRequests: one canPartition gate for both splits (#9220)', () => {
   it('a partitionable transparent batch with mixed promotion splits into :promoted and :remaining', () => {
     const c = collector(true);
-    assert.strictEqual(c.requests.pushWholeSplit(batch([1, 2]), true), true);
+    assert.strictEqual(c.requests.pushSplit(batch([1, 2]), true), true);
     assert.deepStrictEqual(c.slots(), ['k:7:promoted', 'k:7:remaining']);
     assert.deepStrictEqual(c.idsOf('k:7:promoted'), [1]);
     assert.deepStrictEqual(c.idsOf('k:7:remaining'), [2]);
@@ -48,19 +48,27 @@ describe('PartialBatchRequests: one canPartition gate for both splits (#9220)', 
   it('an unpartitionable one draws whole: no request, and it still wants the split for a cold restore', () => {
     const c = collector(false);
     const b = batch([1, 2]);
-    assert.strictEqual(c.requests.pushWholeSplit(b, true), false);
+    assert.strictEqual(c.requests.pushSplit(b, true), false);
     assert.deepStrictEqual(c.slots(), []);
-    assert.strictEqual(c.requests.wantsWholeSplit(b, true), true, 'ungated: a cold batch gets its pieces back first (#9136)');
+    assert.strictEqual(c.requests.wantsSplit(b, true), true, 'ungated: a cold batch gets its pieces back first (#9136)');
   });
 
-  it('hide/isolate: an unpartitionable visible subset is ONE sub-batch, a partitionable one splits', () => {
+  it('hide/isolate alone never splits: a partly hidden batch is left to the GPU visibility test (#10264 S2)', () => {
+    for (const partitionable of [false, true]) {
+      const c = collector(partitionable, null);
+      assert.strictEqual(c.requests.pushSplit(batch([1, 2, 3], SOLID), false, new Set([1, 2])), false);
+      assert.deepStrictEqual(c.slots(), [], `partitionable=${partitionable}`);
+    }
+  });
+
+  it('a partly hidden batch with mixed promotion splits its visible ids only, when partitionable', () => {
     const off = collector(false);
-    off.requests.pushVisible(batch([1, 2, 3]), new Set([1, 2]), true);
-    assert.deepStrictEqual(off.slots(), ['k:7']);
-    assert.deepStrictEqual(off.idsOf('k:7'), [1, 2]);
+    assert.strictEqual(off.requests.pushSplit(batch([1, 2, 3]), true, new Set([1, 2])), false, 'drawn whole with the GPU test');
+    assert.deepStrictEqual(off.slots(), []);
     const on = collector(true);
-    on.requests.pushVisible(batch([1, 2, 3]), new Set([1, 2]), true);
+    assert.strictEqual(on.requests.pushSplit(batch([1, 2, 3]), true, new Set([1, 2])), true);
     assert.deepStrictEqual(on.slots(), ['k:7:promoted', 'k:7:remaining']);
+    assert.deepStrictEqual(on.idsOf('k:7:remaining'), [2], 'hidden id 3 is in neither half');
   });
 
   it('the gate is not consulted when no promotion split is wanted', () => {
@@ -70,9 +78,9 @@ describe('PartialBatchRequests: one canPartition gate for both splits (#9220)', 
       [[2, 3], true, GLASS], // none promoted
     ] as const) {
       const c = collector(true);
-      assert.strictEqual(c.requests.pushWholeSplit(batch([...ids], color), transparent), false);
-      c.requests.pushVisible(batch([...ids], color), new Set(ids), transparent);
-      assert.deepStrictEqual(c.slots(), ['k:7'], 'one plain sub-batch from pushVisible');
+      assert.strictEqual(c.requests.pushSplit(batch([...ids], color), transparent), false);
+      assert.strictEqual(c.requests.pushSplit(batch([...ids, 9], color), transparent, new Set(ids)), false);
+      assert.deepStrictEqual(c.slots(), []);
       assert.strictEqual(c.gate.calls, 0, `ids ${ids.join(',')}`);
     }
   });
@@ -80,7 +88,7 @@ describe('PartialBatchRequests: one canPartition gate for both splits (#9220)', 
   it('X-Ray alpha then promotion: the gate runs once, and each transparent group splits under its :xN slot', () => {
     const xray = new XRayAlpha({ transparencyOverrides: new Map([[3, 0.18]]) }, new Set());
     const c = collector(true, new Map([[1, RED]]), xray);
-    assert.strictEqual(c.requests.pushWholeSplit(batch([1, 2, 3]), true), true);
+    assert.strictEqual(c.requests.pushSplit(batch([1, 2, 3]), true), true);
     assert.strictEqual(c.gate.calls, 1);
     const slots = c.slots().sort();
     assert.strictEqual(slots.length, 3);
@@ -91,7 +99,7 @@ describe('PartialBatchRequests: one canPartition gate for both splits (#9220)', 
   it('X-Ray on an unpartitionable batch: neither split, drawn whole', () => {
     const xray = new XRayAlpha({ transparencyOverrides: new Map([[3, 0.18]]) }, new Set());
     const c = collector(false, new Map([[1, RED]]), xray);
-    assert.strictEqual(c.requests.pushWholeSplit(batch([1, 2, 3]), true), false);
+    assert.strictEqual(c.requests.pushSplit(batch([1, 2, 3]), true), false);
     assert.deepStrictEqual(c.slots(), []);
   });
 });

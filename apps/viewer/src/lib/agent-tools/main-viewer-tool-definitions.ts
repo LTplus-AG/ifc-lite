@@ -9,6 +9,7 @@
  * (every model tool takes `model_id`; IDS arrives inline).
  */
 
+import { VIEWER_COMMAND_SPECS } from './viewer-command-tools.js';
 import { CATALOG } from '@/components/mcp/data';
 import { createAnthropicToolDefinitions, type AnthropicInputSchema } from '@/components/mcp/playground-tool-definitions';
 import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST, mainViewerTool } from './main-viewer-dispatch.js';
@@ -20,7 +21,7 @@ export interface AgentToolDefinition {
   description: string;
   /** JSON Schema of the arguments (`type: 'object'`). */
   inputSchema: AgentInputSchema | AnthropicInputSchema;
-  /** False for the edit tools, which the bridge hides and refuses while the tab grants read-only. */
+  /** False for edits and command execution, which the bridge hides and refuses while the tab grants read-only. */
   readOnly: boolean;
 }
 
@@ -64,11 +65,13 @@ export function mainViewerToolDefinitions(): AgentToolDefinition[] {
     inputSchema: withModelId(EDIT_TOOL_SPECS[name].inputSchema),
     readOnly: false,
   }));
-  return [...readDefinitions(scopes), ...edits];
+  return [...readDefinitions(scopes), ...edits, ...Object.entries(VIEWER_COMMAND_SPECS).map(([name, spec]) => ({ name, ...spec }))];
 }
 
 function readDefinitions(scopes: Map<string, string>): AgentToolDefinition[] {
-  return createAnthropicToolDefinitions(MAIN_VIEWER_TOOL_ALLOWLIST).map((definition) => {
+  // A tool this page does not serve (`mainViewerTool`, e.g. bSDD with outside services off) is not offered.
+  const served = MAIN_VIEWER_TOOL_ALLOWLIST.filter((name) => mainViewerTool(name) !== undefined);
+  return createAnthropicToolDefinitions(served).map((definition) => {
     const tool = mainViewerTool(definition.name);
     let schema = definition.input_schema;
     if (tool && tool.needs !== 'none') schema = withModelId(schema);

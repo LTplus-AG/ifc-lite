@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useViewerStore } from '@/store';
+import { revealUnderStructuralMode } from '@/lib/visibility/structural-view';
 import { mutationDenialKey, dataMutationPermission } from '@/store/mutation-permission';
 import { effectiveQuantitySets } from './properties/effectiveSets';
 import { readOccurrenceQuantityResult } from './properties/readOccurrenceQuantityResult';
@@ -36,6 +37,7 @@ import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { displayStoreyElevationMeters } from '@/lib/geo/storey-elevation';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { PropertySetCard } from './properties/PropertySetCard';
+import { FloodExposureCard } from './properties/FloodExposureCard';
 import { EditedQuantitiesSwitch, QuantitySetCard } from './properties/QuantitySetCard';
 import { SweptDiskInspection } from './properties/SweptDiskInspection';
 import { ExtrusionInspection } from './properties/ExtrusionInspection';
@@ -56,12 +58,14 @@ import { PresentationLayersSection } from './properties/PresentationLayersSectio
 import { AssemblyBadge } from './properties/AssemblyBadge';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
+import { isFeatureEnabled } from '@/lib/features';
 import { RawStepCard } from './properties/RawStepCard';
+import { TriangleCountRow } from './properties/TriangleCountRow';
 import { EntityHeader } from './properties/EntityHeader';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
 import { EntityPositionSection } from './properties/EntityPositionSection';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
-import { attributesFromOverlayEntity } from './properties/overlayAttributes';
+import { attributesFromOverlayEntity, mergeAttributeMutations } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
 import { relationshipPopulationUnavailable } from './properties/effective-relationship-availability';
@@ -142,6 +146,8 @@ export function PropertiesPanel() {
 
   const multiSelectionCount = useViewerStore((s) => s.selectedEntitiesSet.size);
   const [find, setFind] = useState('');
+  // The bSDD tab queries buildingSMART's service, a third party (`lib/features`).
+  const bsdd = isFeatureEnabled('privacy.third-party');
 
   // Data editing is available in place, independent of the Model workspace (#9296).
   const collabRole = useViewerStore((s) => s.collabRole);
@@ -536,31 +542,10 @@ export function PropertiesPanel() {
         ? attributesFromOverlayEntity(overlayEntity)
         : [];
 
-    // Merge mutated attributes from bSDD
+    // Merge this session's attribute edits (bSDD, the attribute editor, numeric positional edits)
     let modelId = selectedEntity?.modelId;
-    const expressId = selectedEntity?.expressId;
     if (modelId === 'legacy') modelId = '__legacy__';
-    const mutationView = modelId ? mutationViews.get(modelId) : null;
-    if (mutationView && expressId) {
-      const mutatedAttrs = mutationView.getAttributeMutationsForEntity(expressId);
-      if (mutatedAttrs.length > 0) {
-        const baseNames = new Set(base.map(a => a.name));
-        const merged = [...base];
-        for (const ma of mutatedAttrs) {
-          if (baseNames.has(ma.name)) {
-            // Update existing attribute value
-            const idx = merged.findIndex(a => a.name === ma.name);
-            if (idx >= 0) merged[idx] = { name: ma.name, value: ma.value === '$' ? '' : ma.value };
-          } else {
-            // Add new attribute
-            merged.push({ name: ma.name, value: ma.value === '$' ? '' : ma.value });
-          }
-        }
-        return merged;
-      }
-    }
-
-    return base;
+    return mergeAttributeMutations(base, modelId ? mutationViews.get(modelId) : null, selectedEntity?.expressId, entityNode?.type ?? overlayEntity?.type);
   }, [entityNode, overlayEntity, selectedEntity, mutationViews, mutationVersion]);
 
   // Resolve the entity id used for parsed-store lookups. For overlay
@@ -631,18 +616,17 @@ export function PropertiesPanel() {
   // Select a related entity by express id (e.g. click an IfcZone in the
   // Relationships card to inspect its Name/attributes). Resolves in the same
   // model as the currently-selected entity. Frames geometric targets; a no-op
-  // frame for non-geometric ones like IfcZone (#1075).
+  // frame for non-geometric ones like IfcZone (#1075). A target the structural view mode hides shows both (#10604).
   const handleSelectRelatedEntity = useCallback((expressId: number) => {
     if (!selectedEntity) return;
     const globalId = toGlobalIdFromModels(models, selectedEntity.modelId, expressId);
     setSelectedEntityIds([globalId]);
     setSelectedEntity({ modelId: selectedEntity.modelId, expressId });
+    revealUnderStructuralMode(useViewerStore.getState(), selectedEntity.modelId, expressId);
     if (useViewerStore.getState().selectedEntitiesSet.size > 0) {
       useViewerStore.setState({ selectedEntitiesSet: new Set<string>() });
     }
-    if (cameraCallbacks.frameSelection) {
-      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-    }
+    if (cameraCallbacks.frameSelection) window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
   }, [selectedEntity, models, setSelectedEntity, setSelectedEntityIds, cameraCallbacks]);
 
   const handleSelectAssembly = useSelectAssembly();
@@ -1156,6 +1140,7 @@ export function PropertiesPanel() {
         globalId={entityGlobalId}
       >
         <SpatialLocationBadge spatialInfo={renderedSpatialInfo} />
+        {selectedEntityId !== null && <TriangleCountRow modelId={model?.id ?? selectedEntity?.modelId ?? 'legacy'} globalId={selectedEntityId} />}
         {selectedEntity && <PresentationLayersSection entityRef={selectedEntity} />}
         {/* Part of Assembly (#3620) */}
         <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
@@ -1167,7 +1152,7 @@ export function PropertiesPanel() {
             georefPanel={{
               georef: renderedGeoref,
               modelId: selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId),
-              enableEditing: geometryEditMode,
+              enableEditing: geometryEditMode && isFeatureEnabled('edit.placement'),
               schemaVersion: activeDataStore?.schemaVersion,
               coordinateInfo: (model?.geometryResult ?? geometryResult)?.coordinateInfo,
               geometryResult: model?.geometryResult ?? geometryResult,
@@ -1273,13 +1258,13 @@ export function PropertiesPanel() {
       )}
 
       {/* Tabs */}
-      {!editPermission.allowed && selectedEntity && (
+      {!editPermission.allowed && editPermission.reason !== 'switched-off' && selectedEntity && (
         <output className="block border-b px-3 py-2 text-xs text-muted-foreground">
           {t(mutationDenialKey(editPermission.reason))}
         </output>
       )}
       <Tabs
-        value={propertiesActiveTab}
+        value={propertiesActiveTab === 'bsdd' && !bsdd ? 'properties' : propertiesActiveTab}
         onValueChange={(v) => setPropertiesActiveTab(v as 'properties' | 'quantities' | 'bsdd' | 'raw-step')}
         className="flex-1 flex flex-col overflow-hidden"
       >
@@ -1300,14 +1285,14 @@ export function PropertiesPanel() {
             <Calculator className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.quantities')}</span>
           </TabsTrigger>
-          <TabsTrigger
+          {bsdd && <TabsTrigger
             value="bsdd"
             title={t('properties.panel.tab.bsdd')}
             className="properties-tab-trigger flex-1 min-w-0 text-xs"
           >
             <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
             <span className="panel-compact-text">{t('properties.panel.tab.bsdd')}</span>
-          </TabsTrigger>
+          </TabsTrigger>}
           <TabsTrigger
             value="raw-step"
             title={t('properties.panel.tab.rawStepTitle')}
@@ -1324,11 +1309,9 @@ export function PropertiesPanel() {
 
         <ScrollArea className="flex-1 bg-background">
           <TabsContent value="properties" className="m-0 p-0 overflow-hidden">
-            {/* Task edit card — renders when exactly one Gantt task is
-                selected. Shown above any entity properties because the
-                user's attention shifted to editing the task, not the 3D
-                element. Other tabs (quantities / relationships / bSDD)
-                still show entity content regardless. */}
+            {/* Task edit card — renders when exactly one Gantt task is selected. Shown above any
+                entity properties because the user's attention shifted to editing the task, not the
+                3D element. Other tabs (quantities / relationships / bSDD) still show entity content. */}
             {singleSelectedTaskGlobalId && (
               <div className="border-b border-border p-2">
                 <TaskEditCard taskGlobalId={singleSelectedTaskGlobalId} />
@@ -1353,6 +1336,8 @@ export function PropertiesPanel() {
                 />
               </div>
             )}
+            {/* A flood-check verdict, when this element was checked (a screening result, not in the model). */}
+            {selectedEntity && <FloodExposureCard modelId={selectedEntity.modelId} expressId={selectedEntity.expressId} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} />}
             {foundOccurrence.length === 0 && foundInherited.length === 0 && foundMaterialProperties.length === 0
               && (findQuery ? !hasAssociationHits : (renderedClassifications.length === 0 && renderedMaterialInfos.length === 0
                 && renderedMaterialProperties.length === 0 && renderedDocuments.length === 0 && !documentData.membershipUnavailable

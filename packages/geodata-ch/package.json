@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geodata-ch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Typed headless client for Swiss federal geodata (address search, parcels, swissALTI3D terrain, swissBUILDINGS3D tiles, swissTLM3D features, ÖREB) as site context in LV95",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,9 +23,9 @@
     "geotiff": "^3.0.5"
   },
   "devDependencies": {
-    "@mergifyio/vitest": "^2026.10.11",
+    "@mergifyio/vitest": "^2026.11.8",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

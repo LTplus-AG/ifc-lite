@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "packages/sdk/src/georef/doctor/plan.ts",
+  "mutation": "tests/evidence/georef-doctor-caveat-never-applied/behaviour.oracle.patch",
+  "why": "Reverse application keeps every export the tests import but drops the rule that a fix carrying a checker caveat is `review`, so the zero-offset fix of MAP_POSITION_APPLIED_TWICE becomes `ready` and is applied; the applied-twice case in packages/sdk/src/georef/doctor/caveat.test.ts goes red.",
+  "test": "packages/sdk/src/georef/doctor/caveat.test.ts"
+}

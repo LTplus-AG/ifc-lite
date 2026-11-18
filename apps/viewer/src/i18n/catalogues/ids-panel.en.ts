@@ -4,6 +4,11 @@
 
 /** IDS validation panel chrome and complete messages (#4918). */
 export const idsPanelEn = {
+  'idsPanel.targetFilter.title': 'Objects to validate',
+  'idsPanel.targetFilter.enabled': 'Filter objects before validation',
+  'idsPanel.targetFilter.nextRun': 'These filters apply to the next run in the selected model. Existing results keep their original scope.',
+  'idsPanel.targetFilter.wholeModel': 'Validate the whole selected model using the IDS applicability rules.',
+  'idsPanel.targetFilter.result': 'Filtered population: {countDisplay} candidates. This is not a whole-model validation.',
   'idsPanel.title': 'IDS Validation',
   'idsPanel.status.passed': 'Passed',
   'idsPanel.status.failed': 'Failed',

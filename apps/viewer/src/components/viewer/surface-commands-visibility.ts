@@ -8,6 +8,7 @@ import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { resetVisibilityReasons } from '@/lib/visibility/visibility-reasons';
+import { toggleStructuralGlyphs } from '@/lib/visibility/structural-view';
 import { showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import {
@@ -20,6 +21,8 @@ import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandSta
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const paletteOnly = ['palette'] as const;
+/** The structural view modes in their ribbon order. */
+const STRUCTURAL_VIEW_MODES = ['both', 'analytical', 'physical'] as const;
 
 export const VISIBILITY_SURFACE_COMMANDS = [
   {
@@ -151,11 +154,20 @@ export const VISIBILITY_SURFACE_COMMANDS = [
       s.setStructuralViewMode(mode === 'both' ? 'analytical' : mode === 'analytical' ? 'physical' : 'both');
     },
   },
+  // One command per mode, so the ribbon shows which one is on (#10604).
+  ...STRUCTURAL_VIEW_MODES.map((mode) => ({
+    id: `vis:structural-${mode}` as const, labelKey: `commandPalette.vis.structural.${mode}.label` as const,
+    ribbonLabelKey: `ribbon.view.structural.${mode}` as const, ribbonTooltipKey: `ribbon.view.structural.${mode}Tooltip` as const,
+    keywords: `structural model view mode ${mode} analytical physical show hide`,
+    category: 'Visibility' as const, icon: Eye, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().setStructuralViewMode(mode); },
+  })),
   {
     id: 'vis:structuralGlyphs', labelKey: 'commandPalette.vis.structuralGlyphs.label',
+    ribbonTooltipKey: 'ribbon.view.structuralGlyphsTooltip',
     keywords: 'structural analysis support load force moment IfcStructuralPointConnection IfcStructuralAction show hide',
-    category: 'Visibility', icon: ArrowDownToLine, surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleTypeVisibility('structuralGlyphs'); },
+    category: 'Visibility', icon: ArrowDownToLine, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: () => { toggleStructuralGlyphs(useViewerStore.getState()); },
   },
   {
     id: 'vis:reset-colors', labelKey: 'commandPalette.vis.resetColors.label',

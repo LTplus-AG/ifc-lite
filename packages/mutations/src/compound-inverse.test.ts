@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from 'vitest';
 import { MutablePropertyView } from './mutable-property-view.js';
+import { materializeOverlay } from './sparse-overlay.js';
 import { cooperativeOverlay } from './cooperative-overlay-access.js';
 import { captureCompoundInverse, type CompoundInverse } from './compound-inverse.js';
 import { recordCompoundMutation, undoRecordedMutationOperations } from './compound-recording.js';
@@ -23,7 +24,7 @@ describe('#6232 D5 touched-entry inverses', () => {
     const original = view.getMutations();
     const sizes: number[] = [];
     for (let i = 0; i < 24; i++) {
-      const before = structuredClone(cooperativeOverlay(view).capture());
+      const before = structuredClone(materializeOverlay(cooperativeOverlay(view).capture()));
       recordCompoundMutation(view, draft => draft.setProperty(entity, 'Pset_Growth', `Value${i}`, i));
       const inverse = captureCompoundInverse(before, cooperativeOverlay(view).capture());
       expect(inverse.history).toEqual([]);

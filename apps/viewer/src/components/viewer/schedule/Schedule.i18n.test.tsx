@@ -134,6 +134,7 @@ function checkCovered(englishSeen: Set<string>, afterPseudo: Set<string>, prefix
 }
 
 const NOT_RENDERED: Array<[ScheduleKey, string]> = [
+  ['schedule.panel.pendingSourceSchedule', 'covered by the mounted Gantt conflict case in GanttPanel.work-plan.test.tsx'],
   // GanttPanel's import-replace confirmation banner requires driving
   // `useScheduleFileImport`'s local `pendingImport` state through a real
   // FileReader-backed file-input change event — disproportionate DOM/async

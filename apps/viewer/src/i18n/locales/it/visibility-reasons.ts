@@ -34,6 +34,8 @@ export const visibilityReasonsIt = {
   'visibilityChips.modelHiddenSingleCount': 'Modello nascosto · {hidden} di {total} modello',
   'visibilityChips.typeVisibilityCount': 'Classi IFC nascoste · {count}',
   'visibilityChips.hostTypesCount': 'Classi nascoste dalla pagina ospitante · {count}',
+  'visibilityChips.structuralAnalyticalOnly': 'Solo analitico',
+  'visibilityChips.structuralPhysicalOnly': 'Solo fisico',
   'visibilityChips.clearAriaLabel': 'Rimuovi {reason}',
   'visibilityChips.keptTooltip': 'Mostra tutto conserva questa impostazione. Modificala nel suo controllo.',
   'visibilityChips.resetEverything': 'Ripristina tutto',

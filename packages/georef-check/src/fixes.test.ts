@@ -87,7 +87,11 @@ describe('every structured fix names a real entity instance and EXPRESS attribut
               expect(['IfcMapConversion', 'IfcProjectedCRS', 'ePSet_MapConversion', 'ePSet_ProjectedCRS'], where).toContain(change.entity);
             }
           }
-          if (fix.apply.via !== 'manual') {
+          if (fix.apply.via === 'georef.site') {
+            const { input, userSupplied } = fix.apply;
+            const nulls = (['RefLatitude', 'RefLongitude', 'RefElevation'] as const).filter((k) => input[k] === null).map((k) => `IfcSite.${k}`);
+            expect(userSupplied.sort(), where).toEqual(nulls.sort());
+          } else if (fix.apply.via !== 'manual') {
             const { input, userSupplied } = fix.apply;
             const nulls = [
               ...Object.entries(input.ProjectedCRS ?? {}).filter(([, v]) => v === null).map(([k]) => `ProjectedCRS.${k}`),
@@ -196,9 +200,18 @@ describe('how a fix is applied (finding 15)', () => {
     expect(finding.fixes[0].apply).toMatchObject({ via: 'georef.update', input: { MapConversion: { Eastings: null, Northings: null, OrthogonalHeight: null } } });
   });
 
-  it('site, rigid-operation and placement edits are manual, with the reason', async () => {
+  it('a site latitude/longitude fix is one setSite call; the values only the user knows are user-supplied', async () => {
     const site = (await diagnose('site-default-revit-boston')).findings.find((f) => f.code === 'SITE_LOCATION_DEFAULT');
-    expect(site?.fixes[0].apply).toMatchObject({ via: 'manual', reason: expect.stringMatching(/IfcSite/) });
+    expect(site?.fixes[0].apply).toEqual({
+      via: 'georef.site',
+      input: { siteId: expect.any(Number), RefLatitude: null, RefLongitude: null },
+      userSupplied: ['IfcSite.RefLatitude', 'IfcSite.RefLongitude'],
+    });
+    const swapped = (await diagnose('site-latlong-swapped')).findings[0];
+    expect(swapped.fixes[0].apply).toMatchObject({ via: 'georef.site', userSupplied: [] });
+  });
+
+  it('rigid-operation and placement edits are manual, with the reason', async () => {
     const rigid = (await diagnose('rigid-operation-without-crs')).findings[0];
     expect(rigid.fixes[0].apply).toMatchObject({ via: 'manual', reason: expect.stringMatching(/IfcRigidOperation/) });
     const placement = (await diagnose('map-coordinates-in-placements')).findings[0];

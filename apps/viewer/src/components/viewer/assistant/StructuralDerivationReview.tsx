@@ -1,57 +1,67 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { ReactNode } from 'react';
+import { Fragment } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { registerEnglish } from '@/i18n';
 import { structuralDeriveEn } from '@/i18n/catalogues/structural-derive.en';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { commitStructuralDerivation, derivationModelId, prepareStructuralDerivationReview, type StructuralDerivationReview as Review } from '@/lib/actions/structural-derive-review';
+import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { StructuralReviewControls, useStructuralReview } from './StructuralReviewFlow';
+import { StructuralConsistencyFindings } from './StructuralConsistencyFindings';
+import { ElementLink, ElementLinks, linkedText, ShowAnalyticalModelButton } from './StructuralReviewLinks';
+import { Listing } from './StructuralReviewListing';
 
 // The review's copy loads with this chunk (#6923), not at first load.
 registerEnglish(structuralDeriveEn);
 
-/** Rows a list renders; real models skip or leave unconnected hundreds of items. */
-const SHOWN = 100;
 const metres = (p: readonly number[]) => p.map((v) => v.toFixed(2)).join(', ');
 
-function Listing<T>({ summary, rows, row }: { summary: string; rows: readonly T[]; row: (item: T) => ReactNode }) {
-  const { t } = useTranslation();
-  if (rows.length === 0) return null;
-  return <details><summary>{summary}</summary>
-    <ul className="space-y-1 max-h-48 overflow-auto">{rows.slice(0, SHOWN).map((item, index) => <li key={index}>{row(item)}</li>)}</ul>
-    {rows.length > SHOWN && <p className="text-muted-foreground">{t('structuralDerive.more', { count: rows.length - SHOWN })}</p>}
-  </details>;
-}
-
 /** The plan a derivation would write: what it derives, what it skipped and why, and which supports it guessed. */
-function DerivationSummary({ review }: { review: Review }) {
+export function DerivationSummary({ review }: { review: Review }) {
   const { t } = useTranslation();
-  const { plan } = review;
-  const nodeRow = (index: number) => t('structuralDerive.nodeAt', { node: index + 1, position: metres(plan.nodes[index].position) });
-  const { counts, skipped, unconnectedEnds, extendedEnds, freeEnds } = plan.report;
-  const existing = plan.existingAnalysisModels.map((m) => `#${m.expressId}`).join(', ');
+  const { plan, modelId } = review;
+  const link = (expressId: number) => <ElementLink modelId={modelId} expressId={expressId} />;
+  const nodeRow = (index: number) => <>{t('structuralDerive.nodeAt', { node: index + 1, position: metres(plan.nodes[index].position) })}
+    {plan.nodes[index].elementIds.map((id) => <Fragment key={id}> {link(id)}</Fragment>)}</>;
+  const { counts, skipped, skippedOpenings, unconnectedEnds, extendedEnds, freeEnds } = plan.report;
   return <>
     <output className="block">{t('structuralDerive.counts', { ...counts, created: review.created })}</output>
-    {plan.refusal !== null && <p role="alert">{t('structuralDerive.existing', { ids: existing })}</p>}
+    {plan.refusal !== null && <p role="alert">{linkedText(t, 'structuralDerive.existing', {}, {
+      ids: <ElementLinks modelId={modelId} ids={plan.existingAnalysisModels.map((m) => m.expressId)} />,
+    })}</p>}
     {plan.refusal === null && review.created === 0 && <p role="alert">{t('structuralDerive.nothing')}</p>}
+    {plan.existingAnalysisModels.length > 0 && review.created === 0 && <StructuralConsistencyFindings modelId={modelId} prepared={review}
+      existing={plan.existingAnalysisModels} />}
     {counts.assumedLoadBearing > 0 && <p>{t('structuralDerive.assumed', { count: counts.assumedLoadBearing })}</p>}
     <Listing summary={t('structuralDerive.skipped', { count: skipped.length })} rows={skipped} row={(item) => <>
-      {item.type} #{item.elementId}{item.name ? ` ${item.name}` : ''}: {t(`structuralDerive.reason.${item.reason}`)} <span className="text-muted-foreground">({item.detail})</span>
+      {link(item.elementId)}: {t(`structuralDerive.reason.${item.reason}`)} <span className="text-muted-foreground">({item.detail})</span>
     </>} />
+    <Listing summary={t('structuralDerive.skippedOpenings', { count: skippedOpenings.length })} rows={skippedOpenings}
+      row={(item) => <>{linkedText(t, 'structuralDerive.skippedOpeningRow', { reason: t(`structuralDerive.reason.${item.reason}`) },
+        { opening: link(item.openingId), host: link(item.hostId) })} <span className="text-muted-foreground">({item.detail})</span></>} />
     <Listing summary={t('structuralDerive.guessed', { count: plan.report.guessedSupports.length })} rows={plan.report.guessedSupports}
       row={nodeRow} />
     <Listing summary={t('structuralDerive.moved', { count: extendedEnds.length })} rows={extendedEnds}
-      row={(move) => t('structuralDerive.movedRow', { element: move.elementId, end: t(`structuralDerive.end.${move.end}`),
-        distance: move.distance.toFixed(3), to: move.toElementId })} />
+      row={(move) => linkedText(t, 'structuralDerive.movedRow', { end: t(`structuralDerive.end.${move.end}`), distance: move.distance.toFixed(3) },
+        { element: link(move.elementId), to: link(move.toElementId) })} />
     <Listing summary={t('structuralDerive.free', { count: freeEnds.length })} rows={freeEnds}
       row={nodeRow} />
     <Listing summary={t('structuralDerive.unconnected', { count: unconnectedEnds.length })} rows={unconnectedEnds}
-      row={(end) => t('structuralDerive.endAt', { node: end.node + 1, position: metres(plan.nodes[end.node].position),
-        landsOn: t(`structuralDerive.landsOn.${end.landsOn}`), element: end.landsOnElementId })} />
+      row={(end) => linkedText(t, 'structuralDerive.endAt', { node: end.node + 1, position: metres(plan.nodes[end.node].position),
+        landsOn: t(`structuralDerive.landsOn.${end.landsOn}`) }, { element: link(end.landsOnElementId) })} />
   </>;
+}
+
+/** After Apply: show the analysis model the receipt created, its members framed. */
+function ShowDerived({ receipt }: { receipt: ModelChangeReceipt }) {
+  const created = receipt.applied.find((row) => row.op === 'structural.analysis.create');
+  // Every structural receipt row carries its written record's id; a row without one has nothing to select.
+  if (created?.expressId === undefined) return null;
+  const members = receipt.applied.flatMap((row) => row.op === 'structural.member.create' && row.expressId !== undefined ? [row.expressId] : []);
+  return <ShowAnalyticalModelButton modelId={created.modelId} analysisModelId={created.expressId} memberIds={members} />;
 }
 
 /** The structural review step for a derived analysis model: derive, review, apply as one edit. */
@@ -71,6 +81,7 @@ export function StructuralDerivationReview({ origin }: { origin: string }) {
       applyCount={review?.derived ?? 0} canApply={(review?.created ?? 0) > 0}
       commit={(current) => commitStructuralDerivation(useViewerStore, current, origin)}
       details={review && <DerivationSummary review={review} />} />
+    {flow.receipt && <ShowDerived receipt={flow.receipt} />}
   </section>;
 }
 

@@ -49,7 +49,7 @@ import {
 } from '@ifc-lite/parser';
 import { getEntitiesIfc2x3, getEntitiesIfc4Express, getEntitiesIfc4x3, type IfcEntityInfo } from '@ifc-lite/data';
 import { ifc4Registry } from './ifc4-registry.js';
-import { escapeStepString, resolveExpressBase } from './step-serialization.js';
+import { escapeStepString, resolveExpressBase, TextEditValue } from './step-serialization.js';
 
 /** Union of every bundled schema, later schemas winning — mirrors the fallback
  *  inside `getAttributeNamesAcrossSchemas` so the two agree on indices. */
@@ -258,6 +258,7 @@ export function serializeEnumToken(value: string): string {
  * the `$` token itself, not the empty string.
  */
 export function serializeStringSlot(value: string): string {
+  if ((value as unknown) instanceof TextEditValue) return `'${escapeStepString(value.toString())}'`;
   if (value === '$' || value === '*') return value;
   return `'${escapeStepString(value)}'`;
 }

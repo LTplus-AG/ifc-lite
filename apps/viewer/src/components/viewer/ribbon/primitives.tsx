@@ -160,12 +160,16 @@ export const RibbonContentSmallButton = forwardRef<HTMLButtonElement, RibbonCont
     { icon: Icon, contentLabel: label, contentSource, contentId, active, activeClassName, tooltip, shortcut, hasMenu, badge, className, onClick, ...rest },
     ref,
   ) {
+    const descriptionId = useId();
+    // As the large button: a caller-supplied name keeps the tooltip as a description.
+    const description = rest['aria-label'] ? tooltip : undefined;
     return (
       <RibbonTooltip label={label} shortcut={shortcut} tooltip={tooltip}>
         <button
           ref={ref}
           type="button"
           aria-label={tooltip ?? label}
+          aria-describedby={description ? descriptionId : undefined}
           aria-pressed={active === undefined ? undefined : active}
           onClick={(e) => ribbonActivate(e, rest['aria-disabled'], onClick)}
           className={cn(
@@ -185,6 +189,7 @@ export const RibbonContentSmallButton = forwardRef<HTMLButtonElement, RibbonCont
           <span className="truncate">{label}</span>
           {hasMenu && <ChevronDown className="ml-auto h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden="true" />}
           {badge}
+          {description && <span id={descriptionId} className="sr-only">{description}</span>}
         </button>
       </RibbonTooltip>
     );

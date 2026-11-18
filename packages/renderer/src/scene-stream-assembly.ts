@@ -84,6 +84,13 @@ export class StreamAssembly {
   /** A fragment's uploaded vertex bytes while a capture is armed, until `record` takes them. */
   private readonly kept = new WeakMap<BatchedMesh, ArrayBuffer | Float32Array>();
 
+  visitMeshes(visit: (mesh?: MeshData, bytes?: ArrayBuffer | Float32Array, salts?: Uint8Array) => void): void {
+    for (const run of this.runs.values()) {
+      for (const mesh of run.meshes) visit(mesh);
+      visit(undefined, run.bytes, run.salts);
+    }
+  }
+
   streamTopology(): TopologyMemo {
     return (this.topology ??= new TopologyMemo());
   }

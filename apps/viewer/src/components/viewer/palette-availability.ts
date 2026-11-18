@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { isSurfaceCommandAvailable } from './surface-command-features';
+import { surfaceCommand } from './surface-command-registry';
 import { hasStructuralData, structuralGlyphsVisible } from '@/lib/visibility/structural-view';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { errorReportDestinationBlock } from '@/lib/error-reports/destination';
@@ -36,6 +38,8 @@ const available: PaletteAvailability = { status: 'available' };
 const HOST_OPENERS = new Map<string, 'openBulkProperties' | 'openImportData' | 'openStructuralDerivation'>([
   ['author:bulk-properties', 'openBulkProperties'], ['author:import-data', 'openImportData'], ['model:derive-structural', 'openStructuralDerivation'],
 ]);
+/** Commands with nothing to act on until a model carries analytical products. */
+const STRUCTURAL_DATA_COMMANDS = new Set(['vis:structural-view', 'vis:structural-both', 'vis:structural-analytical', 'vis:structural-physical', 'vis:structuralGlyphs']);
 const blocked = (reasonKey: TranslationKey): PaletteAvailability => ({ status: 'disabled', reasonKey });
 const cameraActions = {
   'view:zoom-in': 'zoomIn', 'view:zoom-out': 'zoomOut',
@@ -53,6 +57,7 @@ const modelTools = new Set(['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'
 
 export function paletteAvailability(command: SurfaceCommandDefinition, context: SurfaceCommandContext,
   s: ViewerState = useViewerStore.getState(), flags?: SurfaceCommandState): PaletteAvailability {
+  if (!isSurfaceCommandAvailable(command)) return blocked('commandPalette.availability.feature');
   const canEditInSession = s.collabRole === null || s.collabRole === 'editor' || s.collabRole === 'admin';
   const state = { ...flags, canEditInSession, cesiumAvailable: s.cesiumAvailable };
   // Identify the registry's existing role restriction without changing that predicate.
@@ -117,7 +122,11 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
 
   // A latched mode stays reachable, so the user can cycle back after removing the last analytical product.
-  if (id === 'vis:structural-view' && (s.structuralViewMode ?? 'both') === 'both' && !hasStructuralData(s)) return blocked('commandPalette.availability.structural');
+  if (STRUCTURAL_DATA_COMMANDS.has(id) && (s.structuralViewMode ?? 'both') === 'both' && !hasStructuralData(s)) {
+    // Point at Derive only where it would run for this model (#10604).
+    const derive = paletteAvailability(surfaceCommand('model:derive-structural', 'palette'), context, s, flags);
+    return blocked(derive.status === 'available' ? 'commandPalette.availability.structuralDerivable' : 'commandPalette.availability.structural');
+  }
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
   const opener = HOST_OPENERS.get(id);
   if (opener) {
@@ -229,6 +238,8 @@ export function paletteToggleState(id: string, s: ViewerState): TranslationKey |
     'view:move-georef': s.cesiumPlacementEditMode,
     'tool:edit-mode': s.editEnabled, 'pref:tooltips': s.hoverTooltipsEnabled,
     'pref:hover-outline': s.hoverHighlightEnabled, 'pref:colorful': s.theme === 'colorful',
+    'vis:structural-both': (s.structuralViewMode ?? 'both') === 'both',
+    'vis:structural-analytical': s.structuralViewMode === 'analytical', 'vis:structural-physical': s.structuralViewMode === 'physical',
     'view:stacked': s.levelDisplayMode === 'stacked',
     'view:exploded': s.levelDisplayMode === 'exploded', 'view:solo': s.levelDisplayMode === 'solo',
     'schedule:toggle-animation': s.animationEnabled, 'view:world': s.cesiumEnabled,

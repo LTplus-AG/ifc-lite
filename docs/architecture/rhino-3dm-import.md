@@ -736,14 +736,44 @@ transparency rule [test].
   and one box hidden on its own; a group hidden on its own with one part also
   on an off layer; parts that need different actions plus one that needs
   both; a hidden mesh next to a curve] (#10214).
-- Showing a parent layer row does not show a child layer that starts hidden
-  because the parent was off. A `.3dm` layer row is an `IfcSpatialZone` row,
-  and its eye acts on the zone and what it holds directly, as for IFC; a
-  cascade that matched Rhino would show only child layers whose own
-  `layers[i].visible` is set, and in them only objects whose `hiddenByObject`
-  is not, which needs a per-row channel the shared tree code does not have.
-  For the same reason showing a layer row also shows an object on it that
-  Rhino hides on its own. Deferred (#10214).
+- A layer row's eye acts on its subtree as Rhino does. Every row and object
+  has an own state, as a Rhino layer and object do. Hiding a row hides every
+  row and object under it. Showing it brings back each child row and object
+  whose own state is on, under rows that come back. A row's own state starts
+  off when its own layer, or a transparent layer between it and its parent
+  row, is off; an object's starts off when it is hidden on its own
+  (`hiddenByObject`) or such a layer is off. Toggling a row or object from the
+  tree sets its own state, so a later toggle of its parent respects it. The
+  adapter states the rows and starting states in the payload's
+  `containerVisibility`, which the load puts on the model; the tree reads it
+  for a model that has one, and every other model's rows act on what they
+  hold directly, as for IFC. A row offers Show while anything that comes back
+  with it is hidden, and reads as hidden once nothing that comes back is
+  drawn. A row that stands for an object comes back without that object when
+  the object is hidden on its own or an off layer on its own path, other than
+  the row's layer and those above it, hides it. That object is a member of no
+  row, so turning such a layer's row on does not show it, nor does the row's
+  own eye, being the layer's, unless nothing else comes back; then the eye
+  acts on that row alone, so it is never a Hide that does nothing. An object
+  shown that way does not change its own state (it may be off for its own flag
+  or for an off sublayer, which the tree cannot tell apart), so once it is
+  hidden again a later Show of its parent does not bring it back. Showing a
+  row whose parent row is off still draws it, since no row's eye in the
+  viewer waits for its parent.
+  Not covered: a storey row merged across models, which acts on direct
+  members; a merged object whose parts sit on different layers, whose own
+  state follows its first part's layer; a stamped project layer nested under
+  a layer that is off, whose root row does not see that layer; Isolate, which still takes a row's direct members; the
+  file root and stamped site and building rows, which have no eye once a
+  second model is loaded; and hiding from anywhere but the layer tree's own
+  rows (the viewport, a class or group row), which does not change an own
+  state. A child layer's own state is its saved `visible` flag: openNURBS
+  writes a layer's persistent visibility there (`ON_Layer::Write`), so a
+  sub-layer Rhino turned off with its parent is saved as on [crafted test: an off layer with a sub-layer that is on, one
+  that is off and an object hidden on its own; a stamped storey whose class
+  sublayer is off; a stamped storey whose own object is hidden; a merged
+  object hidden for two causes; a stamped storey object on an off sublayer, and
+  on an off layer that has its own row] (#10214).
 - Layers are reordered parent first, keeping file order among siblings. A
   layer whose parent is missing becomes a root; so does a layer in a parent
   cycle, with a warning. An object whose layer index is outside the table
@@ -1193,10 +1223,9 @@ One issue, stacked PRs, each under about 1,500 lines:
    file's provenance (above); an `IfcSpace` of an ifc-lite export comes back as
    a node under its storey, but the elements the IFC contained in that space
    come back on the storey, because the export puts them on the storey's class
-   layer and the space is not a layer; and a container row's eye toggle acts on
-   the objects it holds directly, as every other container row in the viewer
-   does, so turning off a parent layer does not turn off a child layer's
-   objects.
+   layer and the space is not a layer; and a layer row's eye acts on its
+   subtree as Rhino does (#10214), unlike every other container row in the
+   viewer, which acts on the objects it holds directly.
 4. **E2E and acceptance:** the overlay spec, screenshots, and a guide section.
    **Done.** Deviations: the guide is a page of its own,
    [Rhino .3dm](../guide/rhino-3dm.md), rather than a section inside an

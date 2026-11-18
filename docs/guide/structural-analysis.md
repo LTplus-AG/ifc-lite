@@ -19,6 +19,13 @@ Counterpart rows let you select the linked physical or analytical object.
 The card is read-only. The ledger's card probes are still unwritten; a readable
 record does not imply full card coverage.
 
+IFC4 and IFC4X3 surface reinforcement results are available in the parser read
+model as `reinforcementAreas`, including standalone records, and in the SDK as
+`bim.structural.data().reinforcementAreas`. Their two ordered
+reinforcement lists and optional shear ratio retain the file's values. A result
+referenced by a load configuration also appears on the owning activity's card;
+it can be inspected directly by its model-local express id.
+
 Supports and loads appear as clickable glyphs when their geometry and values
 can be resolved. Use **Supports & loads** in the command palette to toggle them.
 All load groups are shown together; there is no load-case selector. Reaction
@@ -80,6 +87,24 @@ measures, then Apply. Derivation creates linked analytical records from beams,
 columns, members, slabs and walls, with supports from footings. It is a geometric
 starting point that needs engineering review.
 
+Surface members carry readable through-openings as inner face bounds. Their
+extrusion must be parallel or perpendicular to the plate normal within one
+degree. A normal extrusion projects its profile onto the analytical mid-plane;
+an in-plane extrusion sweeps the single interval cut through its profile. The
+sections on both plate faces must match the mid-plane section within the derive
+tolerance, so the opening spans the full thickness. Openings
+within the derive tolerance of the outer boundary (such as doors at a wall base),
+oblique openings, recesses, unreadable profiles and overlapping or touching
+openings are skipped with reasons in `plan.report.skippedOpenings` (opening id, host id and reason),
+counted separately in `report.counts.skippedOpenings`; `report.skipped` and
+`report.counts.skipped` describe physical elements only. Both IfcOpeningElement
+and IfcOpeningStandardCase are accepted. Through checks use the derive tolerance
+in metres and sample the actual plate faces, including slightly oblique slabs.
+Profile voids are not carried.
+The loaded-model surface builder also accepts `Openings: Point3D[][]` alongside
+`Boundary`; each ring must be simple, coplanar and strictly inside the boundary,
+with no overlap or contact between rings.
+
 ```bash
 ifc-lite derive-structural model.ifc --dry-run --json
 ifc-lite derive-structural model.ifc --out analytical.ifc
@@ -98,6 +123,13 @@ element's line now and reports `structural-stale-item` when the element moved
 more than `staleTolerance` (default 1 mm), including a move along its own
 axis. Members derived before this record existed, and
 surface members and nodes, are not checked.
+`structuralConsistencyReport(store, { physicalAxes })` returns the same issues
+plus `coverage`: the number of linked curve members, and each one the
+axis-drift or movement rule skipped, with the reason per rule
+(`edge-unreadable`, `axis-unusable`, `element-without-axis`,
+`no-derivation-record`, `derivation-record-unreadable`,
+`recorded-element-unlinked`, `linked-element-identity-unreadable`).
+`ifc-lite validate` reports them as `structural-unchecked-member`.
 
 ## Convert and known limits
 
@@ -126,6 +158,30 @@ type the IFC2X3 action admits. An IFC4 action also needs a `PredefinedType` of
 (surface): values linear between their locations. Other actions keep their
 previous handling.
 Both need an unedited full export.
+
+Four other values move between an attribute and a relationship or property set:
+
+- An IFC2X3 action's `CausedBy` becomes an `IfcRelAssignsToProduct` named
+  `Causes` from the action to the reaction, as IFC4 holds it. The downgrade
+  keeps that relationship and fills `CausedBy` when it names one point reaction.
+- An IFC4 `IfcStructuralLoadCase` becomes an `IfcStructuralLoadGroup` with an
+  `IFC4 IfcStructuralLoadCase` property set holding `SelfWeightCoefficients`.
+  The upgrade turns a `LOAD_CASE` group carrying it back into the load case.
+- The upgrade writes `IfcStructuralAnalysisModel.SharedPlacement` when the
+  grouped structural items use one placement, or equal copies of one, and places
+  each item on a copy by that placement. It fills this even where the IFC4
+  source left it empty.
+- An IFC2X3 varying surface member with three thicknesses gets
+  `Pset_StructuralSurfaceMemberVaryingThickness` (`Thickness1` to
+  `Thickness3`) when its location is the one aspect of the member's
+  representation and each of that aspect's representations holds one point,
+  which is where the downgrade finds it again. Otherwise both are reported lost,
+  also when the member already has a matching property set. The downgrade
+  reads an IFC4 member's property set with that one point aspect as its
+  location, unless the set gives `Location` properties: their order cannot be
+  checked against the aspect, so the thicknesses are reported and not written.
+
+These also need an unedited full export.
 
 The viewer's read and review surfaces do not provide a structural schema
 conversion editor. Conversion is not lossless for all records. The ledger

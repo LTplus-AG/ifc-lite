@@ -30,6 +30,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       id: `auto:${t.name}`, label: t.name, keywords: `script run ${t.description}`,
       runtimeSource: 'script-template',
       category: 'Automation', icon: Play,
+      checkAvailability: () => isPanelAvailable('script') ? { status: 'available' }
+        : { status: 'disabled', reasonKey: 'commandPalette.availability.feature' },
       action: () => { const s = useViewerStore.getState(); s.setListPanelVisible(false); s.setScriptPanelVisible(true); s.setScriptEditorContent(t.code); p.execute(t.code); },
     });
   }
@@ -43,6 +45,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       ...withKey('commandPalette.tour.label', { title: tour.title }),
       keywords: `tour walkthrough learn guide tutorial onboarding ${tour.description}`,
       category: 'Learn',
+      checkAvailability: () => isTourAvailable(tour) ? { status: 'available' }
+        : { status: 'disabled', reasonKey: 'commandPalette.availability.feature' },
       icon: GraduationCap,
       detail: `${tour.minutes} min`,
       detailKey: 'commandPalette.tour.minutes',

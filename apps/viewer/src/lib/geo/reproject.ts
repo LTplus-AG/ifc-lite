@@ -3,390 +3,33 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Coordinate reprojection utilities.
+ * Model reprojection for the viewer: where a loaded model's geometry sits in
+ * its projected CRS, and from there on a WGS84 map.
  *
- * Converts projected coordinates (e.g. UTM eastings/northings) from an
- * IfcMapConversion + IfcProjectedCRS pair into WGS84 longitude/latitude
- * so they can be displayed on a web map.
- *
- * proj4 definitions are resolved from:
- *   1. The bundled EPSG index (@ifc-lite/data) — covers all 7000+ codes
- *   2. Programmatically constructed (UTM zones, well-known codes)
- *   3. Fetched from epsg.io at runtime as last resort
+ * CRS resolution and point reprojection are `@ifc-lite/geo`; this module adds
+ * what needs the render frame (`CoordinateInfo`) and re-exports the engine
+ * entry points under the viewer's long-standing import path.
  */
 
-import proj4 from 'proj4';
+import { isFeatureEnabled } from '../features/index.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { lookupEpsgByCode } from '@ifc-lite/data';
+import { coordinatesToLatLon, isGeographicProj4, resolveProjection, type LatLon } from '@ifc-lite/geo/proj4';
+import './crs-network';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { ifcToViewerAxes } from './coordinate-frame';
-import { wellKnownCrsCode } from './well-known-crs';
-import { isGeographicProj4, projectedDefinitionInMetres, utmProj4String } from './proj4-utils';
 import { resolveMapAxisDirection } from './map-axis-direction';
-import { isWithinWktDefinitionExtent, resolveWktProjection, withWktExtent } from './wkt-projection';
 
 export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
-import { PRECISION_GRIDS, resolvePrecisionDef } from './precision-grids';
-
-export interface LatLon {
-  lat: number;
-  lon: number;
-}
-
-// Cache resolved projection definitions (from any source).
-const projDefCache = new Map<string, string | null>();
-// Definitions that were made usable by injecting a Bursa-Wolf approximation
-// after their exact browser grid was unavailable. Map display may opt into
-// these; federation placement must name that compromise explicitly.
-const approximateProjectionCodes = new Set<string>();
-// A browser cannot make a horizontal datum operation from a required grid when
-// it has neither that grid nor a documented replacement.  Keep the display
-// definition separately, but never let placement silently use it.
-const refusedProjectionCodes = new Set<string>();
-const approxDatumWarningCache = new Set<string>();
-// Track datums where the bundled proj4 lacked any datum-shift parameters and we
-// couldn't supply a fallback — surfaced via diagnostics, warned once per datum.
-const unknownDatumWarningCache = new Set<string>();
-
-/**
- * Extract EPSG numeric code from a CRS name like "EPSG:32632" or "EPSG 2056".
- */
-function extractEpsgCode(crs: ProjectedCRS): string | null {
-  const match = crs.name?.match(/EPSG[:\s]*(\d+)/i);
-  return match ? match[1] : null;
-}
-
-/**
- * Well-known CRS names that IFC authoring tools set without an EPSG: prefix.
- * Maps normalised name → EPSG code. Keys are lowercased before lookup.
- *
- * Authoring tools across regions emit different local conventions for the same
- * national grid; covering the common ones lets ifc-lite resolve a projection
- * for files that omit the "EPSG:" prefix entirely.
- */
-
-/**
- * Datum-keyed +towgs84 approximations for CRSs whose canonical definition
- * relies on browser-unavailable grid files (NTv2, NADCON, etc.). Each entry
- * is the published Bursa-Wolf 7-parameter set for that specific datum, in
- * the Position Vector convention proj4 expects, with rotations in arc-seconds.
- *
- * Keys are lowercased datum names as they appear in EpsgIndexEntry.datum. A
- * lookup miss is intentional — it forces sanitizeProj4 to emit a diagnostic
- * rather than silently substitute parameters for the wrong region (an earlier
- * version of this table was keyed by ellipsoid alone, which caused every
- * Bessel-1841 CRS — RD/NL, Hermannskogel/AT, S-JTSK/CZ — to inherit Germany's
- * DHDN shift). Accuracy is typically ~1-5 m, sufficient for map display.
- */
-const DATUM_TOWGS84: Record<string, string> = {
-  // United Kingdom — OSGB36 (Airy 1830). The bundled EPSG index (packages/data)
-  // reports this datum as the bare "OSGB36" for EPSG:27700 — keep both forms
-  // keyed since IFC files and EPSG metadata are inconsistent about which one
-  // they emit.
-  'osgb 1936': '+towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489',
-  'osgb36': '+towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489',
-  // North America — NAD27 (Clarke 1866)
-  'north american datum 1927': '+towgs84=-8,160,176,0,0,0,0',
-  'nad27': '+towgs84=-8,160,176,0,0,0,0',
-  // NAD83 ≈ WGS84 to within ~1 m; identity is the standard browser approximation.
-  'north american datum 1983': '+towgs84=0,0,0,0,0,0,0',
-  'nad83': '+towgs84=0,0,0,0,0,0,0',
-  // Germany — DHDN (Bessel 1841)
-  'deutsches hauptdreiecksnetz': '+towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7',
-  'dhdn': '+towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7',
-  // Netherlands — Amersfoort (Bessel 1841). The bundled EPSG:28992 already
-  // ships with the higher-precision Kadaster +towgs84, so this fires only
-  // when a derived/compound CRS lacks it (e.g. some compound RD/NAP cases).
-  // The compound EPSG:7415 (RD + NAP height) reports its datum as "RD" rather
-  // than "Amersfoort", and its bundled proj4 carries no +towgs84 at all, so it
-  // needs the same shift under that key for the offline (no precision-grid)
-  // fallback to land in the Netherlands instead of ~117 m off.
-  'amersfoort': '+towgs84=565.4171,50.3319,465.5524,1.9342,-1.6677,9.1019,4.0725',
-  'rd': '+towgs84=565.4171,50.3319,465.5524,1.9342,-1.6677,9.1019,4.0725',
-  // Austria — MGI (Bessel 1841)
-  'militar-geographische institut': '+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232',
-  'mgi': '+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232',
-  // Czech Republic — S-JTSK (Bessel 1841). EPSG:2065 (Ferro Krovak) — the
-  // exact code #1357 was filed against, and the only S-JTSK code with no
-  // precision-grid coverage (see precision-grids.ts) so this fallback is its
-  // ONLY datum shift — reports its datum as "S-JTSK (Ferro)" in the bundled
-  // EPSG index, not the bare "S-JTSK" below. Without this key the lookup
-  // silently missed (no warning either, since there's no +nadgrids to trigger
-  // one) and EPSG:2065 got zero datum shift.
-  'system of the unified trigonometrical cadastral network': '+towgs84=570.8,85.7,462.8,4.998,1.587,5.261,3.56',
-  's-jtsk': '+towgs84=570.8,85.7,462.8,4.998,1.587,5.261,3.56',
-  's-jtsk (ferro)': '+towgs84=570.8,85.7,462.8,4.998,1.587,5.261,3.56',
-  // New Zealand — NZGD49 (International 1924)
-  'new zealand geodetic datum 1949': '+towgs84=59.47,-5.04,187.44,0.47,-0.1,1.024,-4.5993',
-  'nzgd49': '+towgs84=59.47,-5.04,187.44,0.47,-0.1,1.024,-4.5993',
-  // Australia — AGD84 (Australian National Spheroid)
-  'australian geodetic datum 1984': '+towgs84=-117.763,-51.51,139.061,0.292,0.443,0.277,-0.191',
-  'agd84': '+towgs84=-117.763,-51.51,139.061,0.292,0.443,0.277,-0.191',
-};
-
-/**
- * Strip +nadgrids=... from a proj4 string and add a +towgs84 approximation
- * keyed by the datum name from the bundled EPSG index. Grid files cannot be
- * loaded in the browser; +towgs84 is the standard fallback.
- *
- * Skipped (returns input verbatim) when:
- *   - No +nadgrids reference (or it's the no-op `@null`)
- *   - A +towgs84 is already present (proj4 will honour it)
- */
-export function sanitizeProj4(def: string, code?: string | null, datumName?: string | null): string {
-  const stripNadgrids = (s: string) => s.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim();
-  const hasNadgrids = def.includes('+nadgrids') && !def.includes('+nadgrids=@null');
-  const hasTowgs84 = /\+towgs84=/.test(def);
-
-  // An embedded Helmert is an explicit approximation only when it replaces a
-  // required grid.  The old code stripped the grid and then represented this
-  // result as an ordinary definition, allowing federation to claim exact CRS
-  // placement while silently losing metres of accuracy.
-  if (hasTowgs84) {
-    if (hasNadgrids && code) approximateProjectionCodes.add(code);
-    return hasNadgrids ? stripNadgrids(def) : def;
-  }
-
-  const datumKey = datumName?.trim().toLowerCase() ?? '';
-  const towgs84 = datumKey ? DATUM_TOWGS84[datumKey] : undefined;
-
-  if (!towgs84) {
-    // No known fallback shift. For a grid-referencing def, warn + strip the
-    // unusable reference. For a plain def we leave it untouched (its datum may
-    // already be WGS84-aligned, or simply unknown to us).
-    if (hasNadgrids && datumKey && !unknownDatumWarningCache.has(datumKey)) {
-      unknownDatumWarningCache.add(datumKey);
-      console.warn(
-        `[reproject] EPSG:${code ?? '?'} ("${datumName}") needs browser-unavailable `
-        + 'datum grids and has no known +towgs84 fallback for its datum. '
-        + 'Positions will be aligned to the source CRS but may be tens of metres '
-        + 'off relative to WGS84/basemaps. Consider adding the datum to '
-        + 'DATUM_TOWGS84 in apps/viewer/src/lib/geo/reproject.ts.',
-      );
-    }
-    if (hasNadgrids && code) refusedProjectionCodes.add(code);
-    return hasNadgrids ? stripNadgrids(def) : def;
-  }
-
-  // We have a +towgs84 for this datum and the def carries none. Apply it. This
-  // covers a +nadgrids grid we can't load (strip + approximate) AND a bundled
-  // def that simply omits the shift for an offset datum — e.g. Ferro Krovak
-  // (EPSG:2065) / S-JTSK, where without it proj4 performs no datum shift at
-  // all and the model lands hundreds of metres off the basemap. (#1357)
-  if (code && !approxDatumWarningCache.has(code)) {
-    approxDatumWarningCache.add(code);
-    console.warn(
-      `[reproject] EPSG:${code} ("${datumName}") uses an approximate +towgs84 `
-      + 'datum shift (browser-unavailable precision grid). '
-      + 'Expect metre-level XY differences for some locations.',
-    );
-  }
-
-  if (code) approximateProjectionCodes.add(code);
-  return `${hasNadgrids ? stripNadgrids(def) : def.replace(/\s+/g, ' ').trim()} ${towgs84}`;
-}
-
-/**
- * Fetch a proj4 definition string from epsg.io (last-resort fallback).
- */
-async function fetchProj4Def(epsgCode: string): Promise<string | null> {
-  try {
-    const resp = await fetch(`https://epsg.io/${epsgCode}.proj4`);
-    if (!resp.ok) return null;
-    const text = (await resp.text()).trim();
-    if (!text || text.startsWith('<') || text.startsWith('{') || !text.includes('+')) {
-      return null;
-    }
-    return text;
-  } catch {
-    return null;
-  }
-}
-
-/** Skip blank or invalid zone metadata before trying the next source. */
-function utmDefinitionFromMetadata(crs: ProjectedCRS): string | null {
-  const candidates = [crs.mapZone, ...[crs.name, crs.description, crs.mapProjection]
-    .map(value => value?.match(/UTM\s+zone\s+(\d{1,2}[NS])/i)?.[1])];
-  for (const zone of candidates) {
-    const definition = zone ? utmProj4String(zone) : null;
-    if (definition) return definition;
-  }
-  return null;
-}
-
-/**
- * Resolve a proj4 definition for the given ProjectedCRS.
- *
- * An `IfcWellKnownText` definition is authoritative over the name (which may
- * then be a placeholder such as "WKT"): an EPSG identifier it names resolves
- * through the order below, otherwise the WKT itself is the definition. A WKT
- * that cannot be read falls back to the name.
- *
- * Resolution order:
- *   1. Cache hit
- *   2. Precision grid (NTv2/GeoTIFF) for codes where +towgs84 is too coarse
- *      (RD/NL, OSGB/UK, BD72/BE) — fetched once from cdn.proj.org, gives
- *      sub-decimeter accuracy. Falls through to (3) if the fetch fails.
- *   3. Bundled EPSG index (7000+ codes with proj4 strings)
- *   4. UTM zone heuristic (from CRS metadata — mapZone, name, description, mapProjection)
- *   5. Fetch from epsg.io (network fallback)
- */
-export async function resolveProjection(crs: ProjectedCRS): Promise<string | null> {
-  if (crs.wellKnownText) {
-    const wkt = resolveWktProjection(crs.wellKnownText);
-    if (wkt?.kind === 'definition') return wkt.definition;
-    const named: ProjectedCRS = { ...crs, wellKnownText: undefined };
-    const definition = await resolveProjection(wkt?.kind === 'epsg' ? { ...named, name: `EPSG:${wkt.code}` } : named);
-    if (!definition || wkt?.kind !== 'epsg') return definition;
-    // The WKT's own datum shift and declared extent still apply to the registry projection.
-    return withWktExtent(crs.wellKnownText, wkt.towgs84
-      ? `${definition.replace(/\s\+(?:towgs84|nadgrids)=\S+/g, '')} +towgs84=${wkt.towgs84}`
-      : definition);
-  }
-  const explicitCode = extractEpsgCode(crs);
-  const aliasCode = explicitCode ? undefined : wellKnownCrsCode(crs.name ?? '');
-  // A datum-only geographic label may accompany an explicit UTM zone. Keep
-  // that metadata interpretation local; caching it under EPSG:4326 would
-  // corrupt subsequent geographic resolutions and make results load-order dependent.
-  if (aliasCode && ['4326', '4269', '4267', '4258'].includes(aliasCode)) {
-    const utm = utmDefinitionFromMetadata(crs);
-    if (utm) {
-      // Retain the declared datum rather than changing NAD27/NAD83/ETRS89
-      // coordinates into WGS84 UTM. Cache only the native geographic CRS.
-      const geographic = await resolveProjection({ id: crs.id, name: `EPSG:${aliasCode}` });
-      if (!geographic || !isGeographicProj4(geographic)) return null;
-      const zoneParameters = utm.match(/\+zone=\d+(?: \+south)?/)?.[0];
-      if (!zoneParameters) return null;
-      return projectedDefinitionInMetres(geographic.replace(/\+proj=longlat\b/, `+proj=utm ${zoneParameters}`));
-    }
-  }
-  const code = explicitCode ?? aliasCode ?? null;
-
-  // 1. Check cache
-  // A cached approximate/refused fallback is not terminal for a CRS with a
-  // precision grid: a later online attempt may populate the grid cache. Exact
-  // cached definitions remain fast and deterministic.
-  if (code && projDefCache.has(code)
-    && (!PRECISION_GRIDS[code] || (!approximateProjectionCodes.has(code) && !refusedProjectionCodes.has(code)))) {
-    return projDefCache.get(code) ?? null;
-  }
-
-  // 2. Precision grid (NTv2/GeoTIFF). For Bessel-based national grids
-  // (RD/NL, BD72/BE, OSGB/UK), the +towgs84 approximation that the bundled
-  // entries carry is off by 80-200 m. proj4js can consume PROJ's GeoTIFF
-  // datum-shift grids — load and register, then use a +nadgrids-based
-  // proj4 string for sub-decimeter accuracy.
-  if (code && PRECISION_GRIDS[code]) {
-    try {
-      const precisionDef = await resolvePrecisionDef(code);
-      if (precisionDef) {
-        approximateProjectionCodes.delete(code);
-        refusedProjectionCodes.delete(code);
-        projDefCache.set(code, precisionDef);
-        return precisionDef;
-      }
-      // A listed precision grid is a required operation for placement. Its
-      // bundled Helmert may still be useful for a map preview, but is never an
-      // exact cached result and `resolveProjectionId` must refuse it by default.
-      approximateProjectionCodes.add(code);
-    } catch (error) {
-      approximateProjectionCodes.add(code);
-      console.warn(`[reproject] precision grid resolution failed for EPSG:${code}, falling back`, error);
-    }
-  }
-
-  // 3. Bundled EPSG index (primary source — all 7000+ codes)
-  if (code) {
-    try {
-      const entry = await lookupEpsgByCode(code);
-      if (entry?.proj4) {
-        const sanitized = sanitizeProj4(entry.proj4, code, entry.datum);
-        projDefCache.set(code, sanitized);
-        return sanitized;
-      }
-    } catch {
-      // EPSG index not loaded yet, continue to fallbacks
-    }
-  }
-
-  // 4. UTM zone heuristic — check mapZone, name, description, AND mapProjection
-  const utm = utmDefinitionFromMetadata(crs);
-  if (utm) {
-    if (code) projDefCache.set(code, utm);
-    return utm;
-  }
-
-  // 5. Network fallback — fetch from epsg.io
-  if (code) {
-    const raw = await fetchProj4Def(code);
-    // We don't have a bundled EpsgIndexEntry here (otherwise we'd have hit
-    // step 2), so fall back to parsing the datum name out of the proj4
-    // string itself when possible. `+datum=` is rare in modern proj4 output;
-    // the typical hint is `+ellps=` which we already accept as a weak signal
-    // inside DATUM_TOWGS84 keys above.
-    // Only positive-cache a successful result, so a transient network
-    // failure (offline/CDN hiccup/timeout) can be retried later instead of
-    // permanently poisoning this EPSG code for the rest of the session.
-    const fetched = raw ? sanitizeProj4(raw, code, null) : null;
-    if (fetched) projDefCache.set(code, fetched);
-    return fetched;
-  }
-
-  return null;
-}
-
-/**
- * Resolve an adapter-supplied canonical CRS identifier.  Federation uses this
- * entry point rather than reconstructing an IFC-shaped `ProjectedCRS`: only
- * an explicit `EPSG:<code>` identifier is accepted here, so a display label
- * can never turn into a placement decision by accident.
- */
-export interface ResolveProjectionIdOptions {
-  /** Permit a documented browser approximation when its exact datum grid is unavailable. */
-  allowApproximate?: boolean;
-}
-
-export type ProjectionOperation =
-  | { kind: 'exact'; definition: string; provenance: 'cached-grid' | 'bundled' | 'network' }
-  | { kind: 'approximate'; definition: string; provenance: 'helmert-fallback' }
-  | { kind: 'refused'; reason: 'required-grid-unavailable' | 'approximation-not-authorized' | 'unresolvable' };
-
-/**
- * Resolve a placement operation with its accuracy provenance.  Unlike map
- * display, federation has no safe implicit approximation: callers must opt in
- * to the documented Helmert fallback, and a grid with no fallback is refused.
- */
-export async function resolveProjectionOperation(
-  id: string,
-  options: ResolveProjectionIdOptions = {},
-): Promise<ProjectionOperation> {
-  if (!/^EPSG:\d+$/i.test(id.trim())) return { kind: 'refused', reason: 'unresolvable' };
-  const canonical = id.trim().toUpperCase();
-  const code = canonical.slice('EPSG:'.length);
-  const definition = await resolveProjection({ id: 0, name: canonical });
-  if (!definition) return { kind: 'refused', reason: 'unresolvable' };
-  if (refusedProjectionCodes.has(code)) return { kind: 'refused', reason: 'required-grid-unavailable' };
-  if (approximateProjectionCodes.has(code)) {
-    return options.allowApproximate
-      ? { kind: 'approximate', definition, provenance: 'helmert-fallback' }
-      : { kind: 'refused', reason: 'approximation-not-authorized' };
-  }
-  return {
-    kind: 'exact',
-    definition,
-    provenance: definition.includes('+nadgrids=') ? 'cached-grid' : 'bundled',
-  };
-}
-
-export async function resolveProjectionId(
-  id: string,
-  options: ResolveProjectionIdOptions = {},
-): Promise<string | null> {
-  const operation = await resolveProjectionOperation(id, options);
-  return operation.kind === 'refused' ? null : operation.definition;
-}
+export {
+  reprojectFromLatLon,
+  reprojectPointToLatLon,
+  resolveProjection,
+  resolveProjectionId,
+  resolveProjectionOperation,
+  type LatLon,
+} from '@ifc-lite/geo/proj4';
 
 /**
  * Compute the model center in the projected CRS (easting, northing).
@@ -436,25 +79,6 @@ function computeProjectedCenter(
   return { easting, northing };
 }
 
-/** Geographic input and WGS84 output use finite longitude/latitude degrees. */
-function validLatLon(lon: number, lat: number): boolean {
-  return Number.isFinite(lon) && Number.isFinite(lat)
-    && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90;
-}
-
-/** Inputs are degrees for geographic CRSs, metres for projected CRSs. */
-function coordinatesToLatLon(definition: string, x: number, y: number): LatLon | null {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  if (isGeographicProj4(definition) && !validLatLon(x, y)) return null;
-  try {
-    const [lon, lat] = proj4(projectedDefinitionInMetres(definition), 'WGS84', [x, y]);
-    return validLatLon(lon, lat) && isWithinWktDefinitionExtent(definition, lon, lat) ? { lat, lon } : null;
-  } catch (error) {
-    console.warn('[reproject] coordinate transformation failed', error);
-    return null;
-  }
-}
-
 /**
  * Reproject the model center from the projected CRS to WGS84 lat/lon.
  *
@@ -489,60 +113,6 @@ export async function reprojectToLatLon(
   const { easting, northing } = center;
 
   return coordinatesToLatLon(projDef, easting, northing);
-}
-
-/**
- * Reproject an explicit projected point (eastings/northings in the CRS map
- * unit) to WGS84 lat/lon. Unlike {@link reprojectToLatLon}, which derives the
- * model centre, this takes coordinates already resolved in the map CRS — e.g.
- * a picked point's E/N from the measure geo readout (issue #1657).
- *
- * @param eastings        Easting in the CRS map unit.
- * @param northings       Northing in the CRS map unit.
- * @param crs             IfcProjectedCRS (EPSG code, mapUnitScale).
- * @param lengthUnitScale IFC project length unit to metres (fallback when
- *                        crs.mapUnitScale is absent).
- */
-export async function reprojectPointToLatLon(
-  eastings: number,
-  northings: number,
-  crs: ProjectedCRS,
-  lengthUnitScale = 1,
-): Promise<LatLon | null> {
-  const projDef = await resolveProjection(crs);
-  if (!projDef) return null;
-
-  // Geographic coordinates remain degrees; projected coordinates enter proj4 in metres.
-  const mapScale = isGeographicProj4(projDef)
-    ? 1 : resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
-  return coordinatesToLatLon(projDef, eastings * mapScale, northings * mapScale);
-}
-
-/**
- * Reverse-project a WGS84 point to the declared origin's map-unit coordinates.
- * This is the inverse of reprojectPointToLatLon, independent of mesh placement
- * (#6677). Geometry-aware inverse placement lives in the shared spatial reference.
- */
-export async function reprojectFromLatLon(
-  latLon: LatLon,
-  crs: ProjectedCRS,
-  lengthUnitScale = 1,
-): Promise<{ easting: number; northing: number } | null> {
-  const projDef = await resolveProjection(crs);
-  if (!projDef) return null;
-
-  if (!validLatLon(latLon.lon, latLon.lat)) return null;
-  try {
-    const [projE, projN] = proj4('WGS84', projectedDefinitionInMetres(projDef), [latLon.lon, latLon.lat]);
-    if (!Number.isFinite(projE) || !Number.isFinite(projN)) return null;
-
-    const mapScale = isGeographicProj4(projDef)
-      ? 1 : resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
-    return { easting: projE / mapScale, northing: projN / mapScale };
-  } catch (error) {
-    console.warn('[reproject] inverse coordinate transformation failed', error);
-    return null;
-  }
 }
 
 /**
@@ -633,6 +203,7 @@ export async function computeFootprintGeoJSON(
  * Returns height in metres above sea level, or null on failure.
  */
 export async function queryTerrainElevation(latLon: LatLon): Promise<number | null> {
+  if (!isFeatureEnabled('privacy.third-party')) return null;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {

@@ -102,6 +102,13 @@ export interface ProjectedCRS {
    */
   mapUnitScale?: number;
   /**
+   * Whether `mapUnit` was read from the file. `false` when MapUnit is set but
+   * could not be resolved (an unknown unit class, prefix or name), in which
+   * case `mapUnit`/`mapUnitScale` hold the METRE/1 default; absent when
+   * MapUnit is absent. Never carry a unit forward unless this is `true`.
+   */
+  mapUnitResolved?: boolean;
+  /**
    * `IfcWellKnownText.WellKnownText` attached to this CRS (WKT1 or WKT2,
    * ISO 19125-1 / ISO 19162). When present it is the authoritative definition;
    * `name` may then be a placeholder (WHERE NameOrWKT).

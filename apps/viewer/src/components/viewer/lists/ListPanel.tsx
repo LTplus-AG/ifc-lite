@@ -22,12 +22,11 @@ import {
   exportListDefinition,
 } from '@/lib/lists';
 import type { ListDefinition, ListGrouping } from '@/lib/lists';
-import { runListFederated } from '@/lib/lists/run-list';
-import { captureListRunModels, carryListRun, listResultGrouping, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
+import { executeNativeList } from '@/lib/lists/execute-native-list';
+import { carryListRun, listResultGrouping, listRunDefinition } from '@/lib/lists/run-provenance';
 import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
-import { analysisStampOf, captureAnalysisStamp, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
+import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useAssistantAction } from '@/components/viewer/assistant/AssistantAction';
-import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { useListProviders } from './useListProviders';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
@@ -75,6 +74,7 @@ export function ListPanel() {
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
   const listRunRef = React.useRef<AbortController | null>(null);
+  const refreshedFor = React.useRef('');
 
   // Providers + declared units per model, shared with document table blocks (#5142).
   const { pairs: modelProviderPairs, providers: allProviders, stores: allStores, modelUnits, hasData } = useListProviders();
@@ -94,22 +94,18 @@ export function ListPanel() {
 
     setListExecuting(true);
     setListError(null);
-    setActiveListId(definition.id);
     setEditingList(definition);
 
     // Use requestAnimationFrame to avoid blocking UI during execution
     requestAnimationFrame(() => { void (async () => {
       try {
         if (controller.signal.aborted) return;
-        const state = useViewerStore.getState();
-        // Stamped at run start, so an edit landing mid-run leaves the result stale (#6833).
-        const stamp = captureAnalysisStamp();
-        const runModels = captureListRunModels(definition, modelProviderPairs, state, t('lists.resultChrome.loadedModel'));
-        const result = await runListFederated(definition, modelProviderPairs, state, {
-          evaluatorModels: evaluatorModelsFromState(state), signal: controller.signal,
+        const result = await executeNativeList(definition, {
+          pairs: modelProviderPairs, signal: controller.signal, legacyName: t('lists.resultChrome.loadedModel'),
         });
         if (controller.signal.aborted) return;
-        setListResult(recordListRun(result, definition, stamp, runModels));
+        setActiveListId(definition.id);
+        setListResult(result);
         setView('results');
         outcome = 'completed';
       } catch (err) {
@@ -124,6 +120,9 @@ export function ListPanel() {
       } finally {
         if (job !== null) finishActivity(job, controller.signal.aborted ? 'cancelled' : outcome, detail ? { detail } : {});
         if (listRunRef.current === controller) {
+          // A provider swap (for example remeshing) cancels an unfinished run.
+          // It has not refreshed this state yet; allow the stale result to retry.
+          if (refresh && controller.signal.aborted) refreshedFor.current = '';
           listRunRef.current = null;
           setListExecuting(false);
         }
@@ -137,7 +136,6 @@ export function ListPanel() {
   const stale = useAnalysisStaleness(analysisStampOf(listResult));
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
-  const refreshedFor = React.useRef('');
   React.useEffect(() => {
     const definition = listResult ? listRunDefinition(listResult) : null;
     const state = `${mutationVersion}:${geometryContentVersion}`;
@@ -185,7 +183,10 @@ export function ListPanel() {
   }, [deleteListDefinition]);
 
   const handleEditFromResults = useCallback(() => {
-    if (editingList) {
+    const result = useViewerStore.getState().listResult;
+    const definition = (result ? listRunDefinition(result) : null) ?? editingList;
+    if (definition) {
+      setEditingList(definition);
       setView('builder');
     }
   }, [editingList]);
@@ -194,14 +195,14 @@ export function ListPanel() {
   // executed definition (so Settings reflects it), persist if it's saved, and
   // re-derive groups/summary over the current rows for a consistent result.
   const handleGroupingFromTable = useCallback((grouping: ListGrouping | undefined) => {
-    const def = editingList;
+    const current = useViewerStore.getState().listResult;
+    const def = (current ? listRunDefinition(current) : null) ?? editingList;
     if (!def) return;
     const next: ListDefinition = { ...def, grouping };
     setEditingList(next);
     if (listDefinitions.some((d) => d.id === def.id)) {
       updateListDefinition(def.id, { grouping });
     }
-    const current = useViewerStore.getState().listResult;
     if (current) {
       const summ = summariseListRows(next, current.rows);
       setListResult(carryListRun(current, { ...current, groups: summ.groups, summary: summ.summary }, next));

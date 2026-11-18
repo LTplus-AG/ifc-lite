@@ -406,6 +406,10 @@ ifc-lite export model.ifc --format 3dm --out model.3dm
 # OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
 ifc-lite export model.ifc --format usd --out model.usda
 
+# CityJSON 2.0 (.city.json) or CityJSONSeq (.city.jsonl) — buildings for city models / GIS,
+# in the model's EPSG CRS when its IfcMapConversion resolves (whole model)
+ifc-lite export model.ifc --format cityjson --out model.city.json
+
 # Limit results
 ifc-lite export model.ifc --format csv --type IfcWall --limit 50
 
@@ -417,7 +421,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `3dm`, `hbjson`, or `dfjson` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `3dm`, `hbjson`, `dfjson`, `cityjson`, or `cityjsonseq` |
 | `--type <T>` | Filter entities by type |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
 | `--storey <name>` | Filter to elements in a storey |
@@ -427,8 +431,13 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--name <str>` | Model name for geometry exports |
 | `--limit <N>` | Limit result count |
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
+| `--scale <step>` | `cityjson`/`cityjsonseq`: vertex grid in output units (default `0.001`, millimetres) |
+| `--blocks-only` | `cityjson`/`cityjsonseq`: buildings as LoD0/LoD1 only; rooms and elements keep their attributes but no geometry |
 | `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
 | `--out <file>` | Write to file instead of stdout |
+
+The CityJSON mapping, LoD claims and georeferencing rules are in the
+[exporting guide](exporting.md#cityjson-export).
 
 #### Rhino export options
 
@@ -919,7 +928,18 @@ ifc-lite mutate model.ifc --type IfcWall --where "Pset_WallCommon.IsExternal=tru
 
 ### `derive-structural` - Derive a structural analysis model
 
-Derive an `IfcStructuralAnalysisModel` from the physical model in the same file: beams, columns and members become curve members on their axis, slabs and walls become surface members on their mid-plane, member ends within the tolerance share a node, and footings or piles carry supports. Axes run through section centres, so a beam stops at a column face and a column top stops below the beam axis: a free member end moves along its own axis (never sideways) to meet another member's axis when that is within the joint reach, and a member met in its interior is split there. The report lists every moved end with the distance, and every end left free. When no footing carries a node, the nodes at the lowest level of the whole load-bearing structure become supports and the report flags them as guessed. A file that already has an analysis model is refused unless `--analysis-model-exists add`. Every member and node is linked to its physical element with `IfcRelAssignsToProduct`. Elements that already have a structural counterpart are skipped, so running it again writes nothing. Elements it cannot idealise (tessellated bodies, curved sweeps, non-rectangular walls) are skipped and listed with the reason. Works on IFC2X3, IFC4 and IFC4X3.
+Derive an `IfcStructuralAnalysisModel` from the physical model in the same file: beams, columns and members become curve members on their axis, slabs and walls become surface members on their mid-plane, member ends within the tolerance share a node, and footings or piles carry supports. Axes run through section centres, so a beam stops at a column face and a column top stops below the beam axis: a free member end moves along its own axis (never sideways) to meet another member's axis when that is within the joint reach, and a member met in its interior is split there. The report lists every moved end with the distance, and every end left free. When no footing carries a node, supports are guessed and the report flags them (rule below). A file that already has an analysis model is refused unless `--analysis-model-exists add`. Every member and node is linked to its physical element with `IfcRelAssignsToProduct`. Elements that already have a structural counterpart are skipped, so running it again writes nothing. Elements it cannot idealise (tessellated bodies, curved sweeps, non-rectangular walls) are skipped and listed with the reason. Works on IFC2X3, IFC4 and IFC4X3.
+
+Guessed supports:
+
+- They go at the lowest level of the whole load-bearing structure.
+- Flat members at that level join into runs; a lowest-level node with no flat member is a run of its own.
+- A bearing point is a node of a run where:
+  - a load-bearing member drawn down to the level rises;
+  - a load-bearing curve member already linked to a structural item rises from the level at the node, or just past it on the line of a flat member ending there, within the joint reach; or
+  - a load-bearing wall or slab, or a footing, reaches the flat member's underside there from below (one the beam frames into counts).
+- A run with at least two bearing points apart, not all on one line unless the run is, is supported only at them, so its overhangs stay cantilevers. Any other run is supported at every node.
+- A member drawn starting more than the tolerance above the lowest level, such as a post or a column drawn from a deep run's top face, rests on the run and does not by itself make its node a bearing point. Check guessed supports where columns stand on ground beams.
 
 ```bash
 ifc-lite derive-structural model.ifc --out analytical.ifc
@@ -1197,6 +1217,9 @@ Checks:
   - `structural-unlinked-item`: a structural member or connection with no physical element assigned. Members and connections are each checked only when the file links at least one of that kind.
   - `structural-class-mismatch`: a curve member assigned to a slab or wall, or a surface member assigned to a beam, column or member (`target` names the physical element).
   - `structural-unconnected-member`: a structural member with no `IfcRelConnectsStructuralMember`. Checked only when the file connects at least one member.
+  - `structural-axis-drift`: a curve member whose end lies more than 0.05 m off the axis of the physical element it is assigned to (`target`, with `distance` in metres).
+  - `structural-stale-item`: a derived curve member whose physical element's line moved more than 1 mm since derivation (`target`, `distance`).
+  - `structural-unchecked-member`: a linked curve member the axis-drift or movement rule did not compare, with the reason per rule: its edge could not be read, its derivation record is absent or unreadable, its element has no readable axis, the axis data cannot produce a usable measurement, the recorded element is no longer linked, or a linked element has no readable GlobalId. One `info` summary issue first (`Movement or axis drift was not checked on N of M linked curve member(s)`), then one issue per member, detailed up to the first 50, after which a single rollup issue reports the remaining count and the total. A member whose only gap is an absent derivation record is `info`; the rest are warnings. Without this, no `structural-axis-drift` or `structural-stale-item` finding does not mean those members were checked.
 
 Returns exit code 0 (valid) or 1 (errors found).
 
@@ -1907,7 +1930,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `query` | Query entities by type/properties/quantities |
 | `structural` | Read analysis models, members, connections, loads, reactions and physical links |
 | `props` | All properties for a single entity |
-| `export` | Export data / geometry / energy model |
+| `export` | Export data / geometry / energy / city model |
 | `schedule` | Tabular schedule of one class (csv/json/md/html) |
 | `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
 | `extract-entities` | Isolate entities into a small, viewable standalone IFC |
@@ -1930,6 +1953,8 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
 | `derive-structural` | Derive a linked structural analysis model from beams, columns, slabs, walls |
 | `storey` | Author storeys; geometry follows ("storey --help" for actions) |
+| `georef` | Read, write, check and fix georeferencing ("georef --help") |
+| `site-context` | Swiss terrain, parcel + neighbouring buildings around a georeferenced model as one GLB ("site-context --help") |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |
 | `analyze` | Query + visualize analysis results |

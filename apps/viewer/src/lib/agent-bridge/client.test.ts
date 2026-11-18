@@ -13,6 +13,7 @@ import {
   BRIDGE_LIMITS, BRIDGE_PROTOCOL_VERSION, BridgeCloseCode, parseTabMessage, validateToolDescriptors,
   type BridgeHelloMessage, type BridgeResultMessage, type BridgeToolDescriptor, type BridgeUpdateMessage,
 } from '@ifc-lite/mcp/bridge-protocol';
+import { VIEWER_COMMAND_SPECS } from '@/lib/agent-tools/viewer-command-tools';
 import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
 import { BridgeClient, type BridgeClientOptions, type WebSocketLike } from './client';
 import type { AgentBridgeActivity, AgentBridgeStatus } from './state';
@@ -124,7 +125,7 @@ function blockingDispatch() {
 afterEach(() => { FakeSocket.last = null; });
 
 describe('local agent bridge client: handshake (#9523)', () => {
-  it('connects to 127.0.0.1 only when asked, and its hello is read-only with the 27 read tools and 3 edit tools', () => {
+  it('connects to 127.0.0.1 only when asked, and its hello is read-only with model and palette command tools', () => {
     const h = harness();
     assert.equal(FakeSocket.count, 0, 'constructing a client opens nothing');
     h.client.connect();
@@ -136,9 +137,9 @@ describe('local agent bridge client: handshake (#9523)', () => {
     assert.equal(hello.protocol, BRIDGE_PROTOCOL_VERSION);
     assert.equal(hello.permission, 'read-only');
     assert.equal(hello.pairingCode, 'ABCDEFGHJKMNPQRSTVWX', 'the code is sent in canonical form');
-    assert.deepEqual(hello.tools.map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS].sort());
-    assert.equal(hello.tools.length, 30);
-    assert.deepEqual(hello.tools.filter((tool) => !tool.readOnly).map((tool) => tool.name), [...MAIN_VIEWER_EDIT_TOOLS],
+    assert.deepEqual(hello.tools.map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST, ...MAIN_VIEWER_EDIT_TOOLS, ...Object.keys(VIEWER_COMMAND_SPECS)].sort());
+    assert.equal(hello.tools.length, mainViewerBridgeTools().length);
+    assert.deepEqual(hello.tools.filter((tool) => !tool.readOnly).map((tool) => tool.name), [...MAIN_VIEWER_EDIT_TOOLS, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => !spec.readOnly).map(([name]) => name)],
       'only the edit tools are labelled as changing the model');
     const checked = validateToolDescriptors(hello.tools);
     assert.ok(checked.ok, `the bridge accepts the tool list as sent: ${checked.ok ? '' : checked.error}`);
@@ -182,7 +183,7 @@ describe('the real tool definitions pass the bridge\'s own hello validator (#952
     const hello = JSON.stringify({ type: 'hello', protocol: BRIDGE_PROTOCOL_VERSION, pairingCode: 'ABCDEFGHJKMNPQRSTVWX', permission: 'read-only', tools, client: { name: 'ifc-lite viewer', version: 'test' } });
     const parsed = parseTabMessage(hello);
     assert.ok(parsed.ok, `the bridge would refuse the hello: ${parsed.ok ? '' : parsed.error}`);
-    assert.equal(parsed.value.type === 'hello' && parsed.value.tools.length, 30);
+    assert.equal(parsed.value.type === 'hello' && parsed.value.tools.length, mainViewerBridgeTools().length);
     assert.ok(new TextEncoder().encode(hello).byteLength < BRIDGE_LIMITS.maxUnpairedBytes / 4);
   });
 });

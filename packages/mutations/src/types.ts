@@ -303,6 +303,8 @@ export interface MutationEntityByIdIndex {
  * Minimal `IfcDataStore` shape consumed by `StoreEditor`.
  */
 export interface MutationStoreShape {
+  /** Bounded reads from a resident or paged source; never requires materialization. */
+  source?: { readonly byteLength: number; slice(start: number, end: number): Uint8Array } | null;
   /** IFC schema identifier of the loaded model, when the source provides it. */
   schemaVersion?: string;
   entityIndex: {

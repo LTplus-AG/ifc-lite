@@ -8,6 +8,7 @@ import { IFCX_LENGTH_UNIT_SCALE, createSyntheticDataStore, type IfcDataStore, ty
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
+import type { ContainerVisibilityPlan } from '../../lib/container-visibility.js';
 import { calculateMeshBounds, createCoordinateInfo, expandBoundsForPointClouds, normalizeColor } from '../../utils/localParsingUtils.js';
 import { buildTabularDataStore } from './tabularDataStore.js';
 
@@ -43,6 +44,8 @@ export interface ViewerModelPayload {
    * format setting it would have to call the same helper.
    */
   hiddenExpressIds?: number[];
+  /** How the source's container rows hide and show their subtree; the `.3dm` branch puts it on the model after `finalizeModel`. */
+  containerVisibility?: ContainerVisibilityPlan;
 }
 
 export interface ParseIfcxOptions {

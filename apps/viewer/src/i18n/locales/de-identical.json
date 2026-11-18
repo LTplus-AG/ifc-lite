@@ -1946,5 +1946,25 @@
   "agentBridge.panel.editChange": {
     "value": "{entity} · {field}: {before} → {after}",
     "reason": "Placeholders and symbols only (middle dot, colon, arrow); no English prose."
+  },
+  "siteContext.section.radius": {
+    "value": "Radius",
+    "reason": "Same-spelling German label or established UI term (Radius); reviewed against its feature meaning."
+  },
+  "siteContext.section.radiusValue": {
+    "value": "{radius} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "exportCommands.cityjson.label": {
+    "value": "CityJSON",
+    "reason": "Canonical interoperable file format name and extension."
+  },
+  "cityJsonExport.document": {
+    "value": "CityJSON (.city.json)",
+    "reason": "Canonical interoperable file format name and extension."
+  },
+  "cityJsonExport.sequence": {
+    "value": "CityJSONSeq (.city.jsonl)",
+    "reason": "Canonical interoperable file format name and extension."
   }
 }

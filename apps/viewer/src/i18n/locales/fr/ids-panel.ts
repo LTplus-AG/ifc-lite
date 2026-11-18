@@ -5,6 +5,11 @@
 import type { Catalogue } from '../../registry';
 
 export const idsPanelFr = {
+  "idsPanel.targetFilter.title": "Objets à valider",
+  "idsPanel.targetFilter.enabled": "Filtrer les objets avant validation",
+  "idsPanel.targetFilter.nextRun": "Ces filtres s’appliquent à la prochaine validation du modèle sélectionné. Les résultats existants conservent leur périmètre initial.",
+  "idsPanel.targetFilter.wholeModel": "Valider l’ensemble du modèle sélectionné selon les règles d’applicabilité IDS.",
+  "idsPanel.targetFilter.result": "Population filtrée : {countDisplay} candidats. Cette validation ne couvre pas l’ensemble du modèle.",
   'idsPanel.title': 'Validation IDS',
   'idsPanel.status.passed': 'Conforme',
   'idsPanel.status.failed': 'Non conforme',

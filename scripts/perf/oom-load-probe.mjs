@@ -49,7 +49,8 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, sampleCpuGeometry, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { CPU_GEOMETRY_PROBE, DIALOG_MARKS, NOTICES, PAGE_PROBE } from './oom-load-probe-page.mjs';
 import { installSourceTracker, trackerSummary } from './oom-load-probe-tracker.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
@@ -93,59 +94,13 @@ const scopeProp = (unit, prop) => {
   try { return execFileSync('systemctl', ['--user', 'show', `${unit}.scope`, '-p', prop, '--value'], { encoding: 'utf8' }).trim(); } catch { return null; }
 };
 
-/**
- * Init script: stamp (wall clock) every dialog, alert, status or toast each time its text
- * changes (a reused element with new text is a new event; no first-match-wins), and the
- * viewer store's load error the moment it is set (a subscription, not the 2 s poll).
- */
-const DIALOG_MARKS = () => {
-  const marks = (globalThis.__oomProbeDialogs = []), lastText = new WeakMap();
-  const SEL = '[role=dialog],[role=alertdialog],[role=alert],[role=status],[data-sonner-toast]';
-  const scan = () => {
-    for (const el of document.querySelectorAll(SEL)) {
-      const text = el.innerText?.trim();
-      if (text && lastText.get(el) !== text) {
-        lastText.set(el, text);
-        const kind = /dialog/.test(el.getAttribute('role') ?? '') ? 'dialog' : 'notice';
-        marks.push({ t: Date.now(), kind, text: text.slice(0, 4000) });
-      }
-    }
-  };
-  new MutationObserver(scan).observe(document, { subtree: true, childList: true, characterData: true });
-  const hook = setInterval(() => {
-    const store = globalThis.__ifc_lite_viewer_store__;
-    if (!store?.subscribe) return;
-    clearInterval(hook);
-    let prev = store.getState().error ?? null;
-    store.subscribe((st) => {
-      const err = st.error ?? null;
-      if (err && err !== prev) marks.push({ t: Date.now(), kind: 'store-error', text: String(err).slice(0, 4000) });
-      prev = err;
-    });
-  }, 25);
-};
-
-/** In page: what the load has reached. */
-const PAGE_PROBE = () => {
-  const s = globalThis.__ifc_lite_viewer_store__?.getState();
-  const models = [...(s?.models?.values?.() ?? [])];
-  let tris = 0;
-  for (const g of (models.length ? models.map((m) => m.geometryResult) : [s?.geometryResult])) tris += g?.totalTriangles ?? 0;
-  const l = (globalThis.__IFC_LITE_LOAD_TRACE__?.loads?.() ?? []).at(-1);
-  return { loading: s?.loading ?? null, error: s?.error ?? null, progress: s?.progress ?? null, tris,
-    modelStates: models.map((m) => m.loadState ?? null),
-    jsHeapMiB: performance.memory ? performance.memory.usedJSHeapSize / 2 ** 20 : null,
-    openSpans: l ? l.spans.filter((sp) => sp.end === null).slice(0, 8).map((sp) => sp.name) : [] };
-};
+/** Sample the walk every this many 2 s polls (it walks every mesh, so not every poll). */
+const CPU_GEOMETRY_EVERY = 5;
 
 /** Chrome process type of `pid` from its command line ('renderer', 'gpu-process', 'utility', 'browser'). */
 function processType(pid) {
   try { return /--type=([a-z-]+)/.exec(readFileSync(`/proc/${pid}/cmdline`, 'utf8'))?.[1] ?? 'browser'; } catch { return null; }
 }
-
-/** In page: text of dialogs, alerts and toasts (not the whole page). */
-const NOTICES = () => [...document.querySelectorAll('[role=dialog],[role=alertdialog],[role=alert],[role=status],[data-sonner-toast]')]
-  .map((e) => e.innerText.trim().slice(0, 4000)).filter(Boolean);
 
 const scopeStop = (unit) => {
   // The scope ends on its own when Chrome exits; stop only a leftover one, then clear a failed record.
@@ -173,6 +128,7 @@ export async function runProbe(opts) {
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
   let last = null, context, sampler, cg = null, verdictReady = false, pickAt = null, dialogs = [], trackerReport = null;
+  let lastPssMiB = null, polls = 0;
   const netEvents = [], storeErrors = [];
   const watchOrigin = opts.watchUrl ? new URL(opts.watchUrl).origin : null;
   try {
@@ -249,6 +205,7 @@ export async function runProbe(opts) {
       }
       types = now;
       peak.pssMiB = Math.max(peak.pssMiB, m.pssMiB);
+      lastPssMiB = m.pssMiB;
       if (cur !== null) peak.cgroupMiB = Math.max(peak.cgroupMiB, cur / MiB);
       log({ t: (Date.now() - t0) / 1000, pssMiB: Math.round(m.pssMiB), cgroupMiB: cur === null ? null : Math.round(cur / MiB), oomKill: kills });
     }, 500);
@@ -266,6 +223,12 @@ export async function runProbe(opts) {
         if (done || obs.pageCrashed || obs.pageClosed || obs.browserGone) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
+        if (st && ++polls % CPU_GEOMETRY_EVERY === 0) {
+          const measurement = await sampleCpuGeometry(() => page.evaluate(CPU_GEOMETRY_PROBE), st.tris, 15000);
+          log({ t: (Date.now() - t0) / 1000, cpuGeometryMeasurement: measurement.status,
+            ...(measurement.held ? { cpuGeometryHeld: measurement.held } : { diagnosticError: measurement.error }),
+            pssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) });
+        }
         if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; storeErrors.push({ t: Date.now(), text: obs.storeError }); return; }
         if (obs.decision === 'none') {
           // CSS role selectors, not getByRole: when another layer (e.g. a privacy banner) is open the
@@ -304,6 +267,19 @@ export async function runProbe(opts) {
       dialogs = await withTimeout(page.evaluate(() => globalThis.__oomProbeDialogs ?? []).catch(() => []), 5000, () => []);
       trackerReport = await withTimeout(page.evaluate(() => globalThis.__oomProbeTracker?.report() ?? null).catch(() => null), 5000, () => null);
       if (obs.interactive) last = { ...(await withTimeout(page.evaluate(PAGE_PROBE).catch(() => last), 5000, () => last)), interactive: true };
+      if (obs.interactive) {
+        // Settled figure next to summed process memory: a few sampler ticks after interactive so PSS reflects it.
+        await new Promise((r) => setTimeout(r, 3000));
+        const measurement = await sampleCpuGeometry(() => page.evaluate(CPU_GEOMETRY_PROBE), last?.tris ?? 0, 30000);
+        result.cpuGeometryMeasurement = measurement.status;
+        if (measurement.error) result.cpuGeometryError = measurement.error;
+        log({ t: (Date.now() - t0) / 1000, settled: true, cpuGeometryMeasurement: measurement.status, diagnosticError: measurement.error });
+        const held = measurement.held;
+        if (held) {
+          result.cpuGeometryHeld = { ...held, settledPssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) };
+          log({ t: (Date.now() - t0) / 1000, settled: true, cpuGeometryHeld: result.cpuGeometryHeld });
+        }
+      }
       await page.screenshot({ path: join(outDir, 'end.png'), timeout: 10000 }).catch(() => {});
     }
   } finally {

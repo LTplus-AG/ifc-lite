@@ -1,5 +1,0 @@
----
-"@ifc-lite/viewer": minor
----
-
-A host can open a server-processed model and name the processing server at runtime. `apps/viewer/src/lib/processed-model.ts` exports `openProcessedModel({ sha256, bytes, name }, { serverUrl? })`, callable before or after the viewer mounts, plus `setProcessingServerUrl` / `getProcessingServerUrl`. The `serverUrl` option applies only to that request and its Retry. Without it, the load asks the global server as it stands when it runs. Only an explicit `setProcessingServerUrl` changes the global server; its runtime URL replaces `VITE_IFC_SERVER_URL` for every server request, uploads of locally opened IFC files included; whether those uploads happen at all remains the build's `VITE_USE_SERVER` decision. The `?processed=` URL entry now files the same request. A host request wins over `?processed=` and `?model=` in the page URL, also when it was filed before the viewer mounted. A host request also refuses a collaboration link (`?room=`), cancelling a join still in progress before it can hydrate or seed the host's model; a room already joined stays.

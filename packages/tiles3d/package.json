@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/tiles3d",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Headless OGC 3D Tiles reader: region queries over tilesets, b3dm/glb decoding (incl. Draco) into per-feature ECEF meshes with attributes",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,13 +21,13 @@
     "smoke:live": "pnpm build && node scripts/live-smoke.mjs"
   },
   "dependencies": {
-    "draco3d": "1.5.7"
+    "draco3d": "1.5.9"
   },
   "devDependencies": {
-    "@mergifyio/vitest": "^2026.10.11",
-    "@types/node": "^26.6.4",
+    "@mergifyio/vitest": "^2026.11.8",
+    "@types/node": "^26.6.6",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

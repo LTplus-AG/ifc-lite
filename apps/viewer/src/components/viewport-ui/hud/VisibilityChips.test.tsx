@@ -169,3 +169,18 @@ for (const modelCount of [1, 3]) {
     });
   });
 }
+
+it('#10604 the structural chip names the mode that is on and × returns to both', async () => {
+  seedModels(1);
+  for (const [mode, label] of [['analytical', 'Analytical only'], ['physical', 'Physical only']] as const) {
+    act(() => useViewerStore.setState({ structuralViewMode: mode }));
+    await mount();
+    const chip = chips().find((node) => node.dataset.visibilityReason === 'structuralViewMode');
+    assert.equal(chip?.textContent?.trim(), label, `${mode} mode`);
+    const dismiss = chip?.querySelector(`button[aria-label="Clear ${label}"]`);
+    assert.ok(dismiss, 'the × names the mode it clears');
+    click(dismiss);
+    assert.equal(state().structuralViewMode, 'both');
+    cleanup();
+  }
+});

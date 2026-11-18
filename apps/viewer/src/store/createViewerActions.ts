@@ -24,7 +24,7 @@ import { readCurrentSymbolicParseCensus, type SymbolicParseCensus } from './symb
 export interface ViewerActions {
   /** Passive private perf observer; refuses incomplete parses without starting work. */
   readSymbolicParseOutcomes: () => SymbolicParseCensus;
-  resetViewerState: () => void;
+  resetViewerState: (options?: { preserveLoading?: boolean }) => void;
   /**
    * Open one right-side analysis panel and close the others, so the chosen
    * panel is always the topmost/active one. The right panel renders a single
@@ -69,7 +69,7 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
   readSymbolicParseOutcomes: () => readCurrentSymbolicParseCensus(args[1]()),
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
-  resetViewerState: () => {
+  resetViewerState: (options) => {
     clearLoadReport();
     invalidateVisibleBasketCache();
     const [set, get] = args;
@@ -98,7 +98,7 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
     // wraps. It keys on PRESENCE (`'isolatedEntities' in patch`), and both
     // channels sit in `NEVER_DROPPED` so the filter cannot remove them, so it
     // fires on EVERY reset as the hand-written payload did. Keep that exemption.
-    set(viewerTeardown({ kind: 'session-reset' }, get()));
+    set({ ...viewerTeardown({ kind: 'session-reset' }, get()), ...(options?.preserveLoading ? { loading: get().loading, loadingFileName: get().loadingFileName } : {}) });
     // Undrained GPU-instancing shards belong to the outgoing scene; they live
     // outside the store (`instancedShardQueue`), so dropping them is a side effect.
     discardInstancedShards();

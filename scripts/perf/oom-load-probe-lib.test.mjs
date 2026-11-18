@@ -581,3 +581,34 @@ test('TAB_ALIVE_INVARIANT: no kill accounting makes an alive, interactive tab ki
     }
   }
 });
+
+test('#10264 S0 cpuGeometrySummary: MiB per holder, bytes per triangle, null without the hook', () => {
+  const summary = lib().cpuGeometrySummary;
+  assert.equal(typeof summary, 'function', 'cpuGeometrySummary must exist');
+  assert.equal(summary(null, 10), null);
+  assert.equal(summary(undefined, 10), null);
+  const MiB = 2 ** 20;
+  const s = summary({ totalBytes: 84 * MiB, buffers: 3, sharedBytes: 84 * MiB, walkMs: 12.4,
+    byKind: { positions: 36 * MiB, normals: 36 * MiB, indices: 12 * MiB, other: 0 },
+    owners: { 'store.models': { reachableBytes: 84 * MiB, exclusiveBytes: 0 }, 'scene.buckets': { reachableBytes: 84 * MiB, exclusiveBytes: 0 } } }, MiB);
+  assert.equal(s.totalMiB, 84);
+  assert.equal(s.bytesPerTriangle, 84);
+  assert.deepEqual(s.owners['scene.buckets'], { reachableMiB: 84, exclusiveMiB: 0 });
+  assert.equal(s.byKindMiB.normals, 36);
+  assert.equal(s.walkMs, 12);
+  assert.equal(summary({ totalBytes: 0, owners: {} }, 0).bytesPerTriangle, null);
+});
+
+
+test('#10506 CPU geometry sampling distinguishes missing, failed and timed-out hooks', async () => {
+  const { sampleCpuGeometry } = lib();
+  assert.deepEqual(await sampleCpuGeometry(() => null, 0, 100), { status: 'unavailable' });
+  assert.deepEqual(await sampleCpuGeometry(() => { throw new Error('broken walk'); }, 0, 100), { status: 'error', error: 'broken walk' });
+  assert.deepEqual(await sampleCpuGeometry(() => Promise.reject(new Error('rejected walk')), 0, 100), { status: 'error', error: 'rejected walk' });
+  assert.deepEqual(await sampleCpuGeometry(() => new Promise(() => {}), 0, 5), { status: 'timeout' });
+  assert.equal((await sampleCpuGeometry(() => ({}), 0, 100)).status, 'error');
+  const measured = await sampleCpuGeometry(() => ({ totalBytes: 84, buffers: 3, owners: {}, triangles: 1 }), 100, 100);
+  assert.equal(measured.status, 'available');
+  assert.equal(measured.held.totalBytes, 84);
+  assert.equal(measured.held.bytesPerTriangle, 84);
+});

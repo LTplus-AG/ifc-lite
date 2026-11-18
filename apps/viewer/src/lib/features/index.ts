@@ -16,6 +16,9 @@
  * shown. A tool, panel or command that is off is not offered, cannot be
  * opened by any path, and its shortcuts are not registered; a panel that is
  * off is never rendered, so its lazy chunk is not requested.
+ * Editing switched off is refused where edit mode is entered and where a
+ * change is committed; extensions switched off are not started; third-party
+ * services switched off are not contacted.
  *
  * PRESENTATION, NOT PROTECTION. Nothing here stops a person with the
  * browser's developer tools from reaching code that shipped in the bundle.

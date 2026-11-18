@@ -20,7 +20,7 @@
 import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Download, Upload, Sparkles, ArrowUpDown } from 'lucide-react';
-import { discoverDataSources } from '@ifc-lite/lens';
+import { currentNativeLensRuleId, discoverNativeLensData, isolateNativeLensRule, releaseNativeLensRuleIsolation, switchNativeLens } from '@/lib/lens/native-controls';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -29,15 +29,12 @@ import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useLensDiscovery } from '@/hooks/useLensDiscovery';
-import { createLensDataProvider } from '@/lib/lens';
 import { LensEditor } from './LensEditor';
 import { cloneLensRules } from './lens-editor-utils';
 import { TYPE_LABEL_KEYS } from './lens-editor-labels';
 import { AutoColorEditor } from './AutoColorEditor';
 export { AutoColorEditor } from './AutoColorEditor';
 import { exportLensFile, importLensFile } from './lens-import';
-import { ruleIsolationOwnsChannel } from './lens-visibility-ownership';
-import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import type { Lens, AutoColorLegendEntry } from '@/store/slices/lensSlice';
 import { useTranslation } from '@/i18n';
 import { useLensEditorRequest } from './useArtifactEditorRequest';
@@ -232,15 +229,9 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const duplicateLens = useViewerStore((s) => s.duplicateLens);
   const importLenses = useViewerStore((s) => s.importLenses);
   const exportLenses = useViewerStore((s) => s.exportLenses);
-  const isolateEntities = useViewerStore((s) => s.isolateEntities);
-  const clearIsolation = useViewerStore((s) => s.clearIsolation);
-  // Viewport's aggregation resolver (#2531): rule isolation runs a rule's
-  // matches through it so a geometry-less assembly isolates as its parts.
-  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   // Rule-isolation ownership lives in the STORE (not component state/refs) so
   // a panel unmount/remount cannot strand an isolation it can no longer release.
-  const lensRuleIsolation = useViewerStore((s) => s.lensRuleIsolation);
-  const setLensRuleIsolation = useViewerStore((s) => s.setLensRuleIsolation);
+  const isolatedRuleId = useViewerStore(currentNativeLensRuleId);
   // Footer count only: useLens pushes colours via pendingColorUpdates, so no effect keys off this and `.size` is safe (#5206).
   const lensColorMapSize = useViewerStore((s) => s.lensColorMap.size);
   const lensHiddenCount = useViewerStore((s) => s.lensHiddenIds.size); // footer count only
@@ -248,7 +239,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const lensAutoColorLegend = useViewerStore((s) => s.lensAutoColorLegend);
   // Discovered data from loaded models (classes = instant, rest = lazy)
   const discoveredLensData = useViewerStore((s) => s.discoveredLensData);
-  const mergeDiscoveredData = useViewerStore((s) => s.mergeDiscoveredData);
 
   // Track which categories are currently being discovered (prevent double-fire)
   const discoveringRef = useRef(new Set<string>());
@@ -288,13 +278,11 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
     // Run discovery async to not block the UI
     setTimeout(() => {
-      const { models, ifcDataStore, mutationViews, resolveGlobalIdFromModels } = useViewerStore.getState();
+      const { models, ifcDataStore } = useViewerStore.getState();
       if (models.size === 0 && !ifcDataStore) return;
-      const provider = createLensDataProvider(models, ifcDataStore, mutationViews, resolveGlobalIdFromModels);
-      const result = discoverDataSources(provider, toDiscover);
-      mergeDiscoveredData(result);
+      discoverNativeLensData(toDiscover);
     }, 0);
-  }, [mergeDiscoveredData]);
+  }, []);
 
   // Editor state: null = not editing, Lens object = editing/creating
   const [editingLens, setEditingLens] = useState<Lens | null>(null);
@@ -302,7 +290,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Rule isolation applied by the lens (persisted in the store so it survives
   // panel remounts). Only the ruleId is needed for the card highlight.
-  const isolatedRuleId = lensRuleIsolation?.ruleId ?? null;
 
   /**
    * Release the lens's rule isolation. Clears the shared isolation channel
@@ -310,109 +297,18 @@ export function LensPanel({ onClose }: LensPanelProps) {
    * the rule click applied) — if the user or the basket has isolated something
    * else since, their isolation is left alone and only the stale claim drops.
    */
-  const releaseRuleIsolation = useCallback(() => {
-    const state = useViewerStore.getState();
-    const isolation = state.lensRuleIsolation;
-    if (!isolation) return;
-    if (ruleIsolationOwnsChannel(state.isolatedEntities, isolation.entityIds)) {
-      clearIsolation();
-    }
-    setLensRuleIsolation(null);
-  }, [clearIsolation, setLensRuleIsolation]);
+  const releaseRuleIsolation = releaseNativeLensRuleIsolation;
 
   const handleToggle = useCallback((id: string) => {
     // Release any rule-isolation this lens applied (both when turning it off
     // and when switching to another lens). The sync effect below restores the
     // lens-owned hidden ids — so no showAll(), which would nuke the user's
     // own visibility.
-    releaseRuleIsolation();
-    if (activeLensId === id) {
-      setActiveLens(null);
-    } else {
-      setActiveLens(id);
-    }
-  }, [activeLensId, setActiveLens, releaseRuleIsolation]);
+    switchNativeLens(activeLensId === id ? null : id);
+  }, [activeLensId]);
 
   /** Click a rule/value row in the active lens to isolate matching entities */
-  const handleIsolateRule = useCallback((ruleId: string) => {
-    // Toggle off if clicking the already-isolated rule
-    if (useViewerStore.getState().lensRuleIsolation?.ruleId === ruleId) {
-      releaseRuleIsolation();
-      return;
-    }
-
-    // Look up entities matched by this specific rule/value
-    const matchingIds = useViewerStore.getState().lensRuleEntityIds.get(ruleId);
-    if (!matchingIds || matchingIds.length === 0) return;
-
-    // A geometry-less assembly (IfcElementAssembly, an IfcStair used as a
-    // container, ...) owns no mesh: its geometry hangs off the
-    // IfcRelAggregates parts, and the renderer resolves `isolatedEntities`
-    // against mesh ids directly (viewportUtils' buildRenderOptions ->
-    // `isolatedIds`). Isolating the bare matched id therefore blanks the view.
-    // Resolve through the Viewport channel #2531 added (`resolveHighlightIds`,
-    // backed by expandToGeometryBearingIds), exactly as SearchModal.text.tsx's
-    // commit and SearchModal.filter.tsx's "Isolate in 3D" (#2660) do: a
-    // geometry-bearing id passes through untouched and deduplicated, a
-    // geometry-less one is replaced by its geometry-bearing parts.
-    //
-    // Resolved ids are APPENDED to the raw matches, never substituted (#2680),
-    // via `resolvePresentationIds`. The resolver bounds-checks against the
-    // type-visibility FILTERED mesh list -- TYPE_VISIBILITY_SEMANTIC_DEFAULTS
-    // starts `spaces`/`spatialZones`/`openings`/`virtualElements` OFF -- so a
-    // rule matching walls AND spaces resolves the walls, returns non-empty,
-    // and the spaces would silently drop under replace semantics; carrying an
-    // id that owns no mesh is free, it just never matches the whitelist.
-    //
-    // An empty resolve keeps the raw ids rather than isolating nothing: `[]`
-    // is also what a set hidden by a type toggle, or one whose meshes have
-    // not streamed in yet, answers, and isolating an empty set hides the
-    // ENTIRE model. See `resolvePresentationIds` for why the three cases cannot
-    // be told apart here.
-    //
-    // #2660's second fallback -- walking IfcRelAggregates when the resolver
-    // is empty because the parts are HIDDEN types -- is deliberately not
-    // replicated here: `expandFilterRowsThroughAggregation` consumes
-    // filter-result rows, not a lens rule's globalIds, and only pays off next
-    // to a type-visibility gate the lens panel doesn't have. Adding one is a
-    // feature, not this fix.
-    const isolationIds = resolvePresentationIds(cameraCallbacks.resolveHighlightIds, matchingIds);
-
-    // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts, `isolateEntities`): if
-    // the channel already holds exactly these ids it CLEARS instead of
-    // isolating. Switching from rule A to a rule B that lands on the SAME set
-    // would therefore un-isolate the model while the record below claims B
-    // owns an isolation that no longer exists -- and the next release, finding
-    // an empty channel, would disown it silently.
-    //
-    // This is PRE-EXISTING and the resolution above does not widen it: two
-    // rules whose criteria differ but whose matches coincide ("walls with a
-    // fire rating of 60" and "walls on level 2" over a model where those are
-    // the same walls) always collided this way, and appending the raw matches
-    // unconditionally keeps every other pair distinguishable -- an
-    // assembly-matching rule yields {assembly, ...parts} while a
-    // parts-matching rule yields {...parts}, sets that differ by the
-    // assembly's own id and cannot collapse onto each other.
-    //
-    // Release the channel first so the isolate call below always takes its
-    // isolate branch -- same
-    // `ruleIsolationOwnsChannel` set-equality predicate the teardown path uses,
-    // so both ends agree on when the channel holds a given set, and the
-    // re-isolate re-runs the un-hide the toggle branch would have skipped.
-    // Clicking the SAME rule again still un-isolates: that path returned above.
-    if (ruleIsolationOwnsChannel(useViewerStore.getState().isolatedEntities, isolationIds)) {
-      clearIsolation();
-    }
-    isolateEntities(isolationIds);
-    // Record ownership: rule id + the exact ids pushed into the channel, so a
-    // later release can verify the channel still holds what the lens applied.
-    // These MUST be the ids just isolated, not the raw matches: releaseRuleIsolation
-    // compares this record set-wise against the channel
-    // (ruleIsolationOwnsChannel), so recording the raw matches while pushing
-    // the expanded ones makes the lens disown its own isolation and the
-    // un-isolate click leaves the model stuck isolated.
-    setLensRuleIsolation({ ruleId, entityIds: [...isolationIds] });
-  }, [cameraCallbacks, clearIsolation, isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
+  const handleIsolateRule = isolateNativeLensRule;
 
   const handleNewLens = useCallback(() => {
     setCreatingAutoColor(false);

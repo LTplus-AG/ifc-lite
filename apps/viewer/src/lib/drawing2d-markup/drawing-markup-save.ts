@@ -68,7 +68,7 @@ import { mutationPermission, type MutationDenialReason } from '@/store/mutation-
 import { firstEffectiveStoreyId } from '@/lib/first-effective-storey';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
 import { removeEmbeddedDrawingMarkup } from './drawing-markup-embedded-sweep.js';
-import { absorbedEmbeddedMarkupFor } from './drawing-markup-absorbed.js';
+import { absorbEmbeddedMarkup, absorbedEmbeddedMarkupFor, embeddedMarkupIdentity } from './drawing-markup-absorbed.js';
 import { findInvalidDimension, type DimensionSaveParams } from './dimension-markup-save.js';
 
 /**
@@ -338,6 +338,17 @@ export function saveDrawingMarkupToModel(
   if (!result) {
     if (previousRemoved > 0) useViewerStore.getState().markModelsDirty([modelId]);
     return { ...EMPTY_COUNTS, previousRemoved, refusal: previousRemoved > 0 ? null : 'nothing-to-save' };
+  }
+  const live = useViewerStore.getState();
+  if (live.activeModelId === modelId) {
+    const measures = new Set(live.measure2DResults.map(item => item.id));
+    const dimensions = new Set(live.dimensions2D.map(item => item.id));
+    const owned = [
+      ...result.measures.filter((_, index) => measures.has(input.measure2DResults[index].id)),
+      ...result.dimensions.filter((_, index) => dimensions.has(input.dimensions2D[index].id)),
+    ];
+    if (owned.length) absorbEmbeddedMarkup(modelId, owned.map(({ annotationId }) =>
+      embeddedMarkupIdentity(annotationId, view.getNewEntity(annotationId)?.attributes[0])));
   }
   useViewerStore.getState().markModelsDirty([modelId]);
 

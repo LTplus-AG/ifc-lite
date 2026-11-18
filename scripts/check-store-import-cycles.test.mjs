@@ -72,4 +72,8 @@ describe('viewer store import-cycle guard', () => {
     assert.deepEqual(result.newOffenders, []);
     assert.deepEqual(result.staleRows, []);
   });
+
+  it('has no actual store-entry import-cycle offenders', () => {
+    assert.deepEqual(findStoreImportCycles().offenders, []);
+  });
 });

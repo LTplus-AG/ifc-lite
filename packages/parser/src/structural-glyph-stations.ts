@@ -177,60 +177,88 @@ function scanlinePoint(poly: Flat, holes: readonly Flat[]): readonly [number, nu
   return best;
 }
 
-/** A face in its own plane: the frame and the polygon's 2D coordinates in it. Null for a zero-area face. */
-function flatten(polygon: readonly Vec3[], innerBounds: readonly Vec3[][] = []): { frame: Frame; flat: Flat; holes: Flat[] } | null {
+/** One region of a face in the face's plane. */
+type FlatRegion = { flat: Flat; holes: Flat[] };
+
+/** A face in its own plane: the frame, the main region's 2D coordinates in it, and any further regions. Null for a zero-area face. */
+function flatten(polygon: readonly Vec3[], innerBounds: readonly Vec3[][] = [], regions: readonly { polygon: Vec3[]; innerBounds: Vec3[][] }[] = []):
+  { frame: Frame; flat: Flat; holes: Flat[]; more: FlatRegion[] } | null {
   const frame = shapeFrame({ kind: 'face', polygon: [...polygon] }, null);
   if (!frame) return null;
   const project = (loop: readonly Vec3[]): Flat => loop.map((p) => [dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)] as const);
-  return { frame, flat: project(polygon), holes: innerBounds.map(project) };
+  return { frame, flat: project(polygon), holes: innerBounds.map(project),
+    more: regions.map((region) => ({ flat: project(region.polygon), holes: region.innerBounds.map(project) })) };
 }
+
+type FlatFace = NonNullable<ReturnType<typeof flatten>>;
+/** Whether a point is on any region of a face. */
+const onAnyRegion = (p: readonly [number, number], face: FlatFace) =>
+  onFace(p, face.flat, face.holes) || face.more.some((region) => onFace(p, region.flat, region.holes));
 
 /**
  * A point on a face: its vertex average when that lies on it, else a scanline
- * point (a notched face). The vertex average for a zero-area face.
+ * point (a notched face). The vertex average for a zero-area face. A face of
+ * several regions averages all their vertices, and falls back to its main region.
  */
 function faceCentre(polygon: readonly Vec3[], face = flatten(polygon)): Vec3 {
   if (!face) return centroid(polygon);
-  const { frame, flat, holes } = face;
-  const c = [flat.reduce((s, p) => s + p[0], 0) / flat.length, flat.reduce((s, p) => s + p[1], 0) / flat.length] as const;
-  return pointIn(frame, ...(onFace(c, flat, holes) ? c : interiorPoint(flat, holes)));
+  const { frame, flat, holes, more } = face;
+  const all = [flat, ...more.map((region) => region.flat)].flat();
+  const c = [all.reduce((s, p) => s + p[0], 0) / all.length, all.reduce((s, p) => s + p[1], 0) / all.length] as const;
+  return pointIn(frame, ...(onAnyRegion(c, face) ? c : interiorPoint(flat, holes)));
 }
 
 /**
  * A sparse lattice of points inside a face: up to 3 x 3 over its bounding box
- * in its own plane, keeping those inside the polygon. One point on the face
+ * in its own plane, keeping those inside a region. One point on the face
  * when none falls inside (a thin sliver or a notched face).
  */
-function faceStations(polygon: readonly Vec3[], innerBounds?: Vec3[][]): Vec3[] {
-  const face = flatten(polygon, innerBounds);
+function faceStations(polygon: readonly Vec3[], innerBounds?: Vec3[][], regions?: { polygon: Vec3[]; innerBounds: Vec3[][] }[]): Vec3[] {
+  const face = flatten(polygon, innerBounds, regions);
   if (!face) return [centroid(polygon)];
-  const { frame, flat, holes } = face;
-  const us = flat.map((p) => p[0]);
-  const vs = flat.map((p) => p[1]);
+  const { frame, flat, more } = face;
+  const all = [flat, ...more.map((region) => region.flat)].flat();
+  const us = all.map((p) => p[0]);
+  const vs = all.map((p) => p[1]);
   const [u0, u1, v0, v1] = [Math.min(...us), Math.max(...us), Math.min(...vs), Math.max(...vs)];
   const out: Vec3[] = [];
   for (const fu of FACE_LATTICE) {
     for (const fv of FACE_LATTICE) {
       const u = u0 + (u1 - u0) * fu;
       const v = v0 + (v1 - v0) * fv;
-      if (onFace([u, v], flat, holes)) out.push(pointIn(frame, u, v));
+      if (onAnyRegion([u, v], face)) out.push(pointIn(frame, u, v));
     }
   }
+  // A region the lattice missed (regions far apart) still gets a station of its own, a few at most.
+  const missed = [{ flat, holes: face.holes }, ...more].filter((region) =>
+    !out.some((p) => onFace([dot(sub(p, frame.origin), frame.x), dot(sub(p, frame.origin), frame.y)], region.flat, region.holes)));
+  for (const region of missed.slice(0, MISSED_REGION_STATIONS)) {
+    if (out.length > 0 || more.length > 0) out.push(pointIn(frame, ...faceRegionCentre(region)));
+  }
   return out.length ? out : [faceCentre(polygon, face)];
+}
+
+/** At most this many extra stations, one per region the face lattice missed. */
+const MISSED_REGION_STATIONS = 9;
+
+/** A point on one region: its vertex average when that lies on it, else a scanline point. */
+function faceRegionCentre({ flat, holes }: FlatRegion): readonly [number, number] {
+  const c = [flat.reduce((sum, p) => sum + p[0], 0) / flat.length, flat.reduce((sum, p) => sum + p[1], 0) / flat.length] as const;
+  return onFace(c, flat, holes) ? c : interiorPoint(flat, holes);
 }
 
 /** Where a shape anchors a single marker: the vertex, the edge midpoint, or a point on the face. */
 export function shapeCentre(shape: ItemShape): Vec3 {
   if (shape.kind === 'vertex') return shape.point;
   if (shape.kind === 'edge') return lerp(shape.start, shape.end, 0.5);
-  return faceCentre(shape.polygon, flatten(shape.polygon, shape.innerBounds));
+  return faceCentre(shape.polygon, flatten(shape.polygon, shape.innerBounds, shape.regions));
 }
 
 /** Every station of a shape: one vertex, five points along an edge, or the face lattice. */
 export function shapeStations(shape: ItemShape): Vec3[] {
   if (shape.kind === 'vertex') return [shape.point];
   if (shape.kind === 'edge') return EDGE_STATIONS.map((t) => lerp(shape.start, shape.end, t));
-  return faceStations(shape.polygon, shape.innerBounds);
+  return faceStations(shape.polygon, shape.innerBounds, shape.regions);
 }
 
 /** A point at (u, v) in a frame's x and y axes (metres). */
@@ -253,10 +281,10 @@ export function onShape(shape: ItemShape, p: Vec3): boolean {
     const t = Math.max(0, Math.min(1, dot(sub(p, shape.start), d) / (dot(d, d) || 1)));
     return length(sub(p, lerp(shape.start, shape.end, t))) <= ON_SHAPE_TOLERANCE;
   }
-  const face = flatten(shape.polygon, shape.innerBounds);
+  const face = flatten(shape.polygon, shape.innerBounds, shape.regions);
   if (!face) return false;
   const r = sub(p, face.frame.origin);
   const uv = [dot(r, face.frame.x), dot(r, face.frame.y)] as const;
   return Math.abs(dot(r, face.frame.z)) <= ON_SHAPE_TOLERANCE
-    && (onFace(uv, face.flat, face.holes) || clearance(uv, face.flat) <= ON_SHAPE_TOLERANCE);
+    && (onAnyRegion(uv, face) || [face.flat, ...face.more.map((region) => region.flat)].some((ring) => clearance(uv, ring) <= ON_SHAPE_TOLERANCE));
 }

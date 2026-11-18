@@ -11,7 +11,8 @@
  * Every member record must draw: the analytical model is its members. Where a
  * member sits is read from the file by an oracle that shares no code with the
  * product (`lib/topology.mjs`); a member the file gives no topology
- * representation cannot be placed by anyone and counts as not drawn.
+ * representation cannot be placed by anyone and counts as not drawn, as does
+ * one whose placement or mapped topology the oracle cannot follow.
  */
 
 import { cached } from '../lib/packages.mjs';
@@ -47,6 +48,7 @@ function memberMeshes(ctx, file) {
 /** Why one member record is not drawn at the file's coordinates, or null when it is. */
 function memberMiss(step, rec, drawn, scale = lengthScale(step)) {
   const points = topologyPoints(step, rec.id, scale);
+  if (!points) return 'the oracle cannot follow its placement or mapped topology';
   if (!points.length) return 'the file gives it no topology representation';
   const meshes = drawn.byId.get(rec.id);
   if (!meshes?.length) return 'no mesh';

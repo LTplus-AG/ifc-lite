@@ -34,10 +34,8 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { evaluateFilterGroupsFederated } from '@ifc-lite/rules';
+import { evaluateViewerFilter } from '@/lib/search/evaluate-viewer-filter';
 import { totalRuleCount } from '@ifc-lite/rules';
-import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
-import { filterCandidates } from '@/lib/search/filter-candidates';
 import { downloadResult } from '@/lib/search/result-export';
 import {
   collectFilterResultGlobalIds,
@@ -53,8 +51,6 @@ import { RuleSummary } from './SearchModal.filter.ruleSummary';
 
 /** Rows per virtualizer page — tuned for the result table row height. */
 const RESULT_ROW_HEIGHT = 28;
-const FILTER_CHUNK_SIZE = 20_000;
-const DEFAULT_LIMIT = 5_000;
 
 export function SearchModalFilter() {
   const { t } = useTranslation();
@@ -140,42 +136,12 @@ export function SearchModalFilter() {
     setLimitHit(null);
     setProgress({ scanned: 0, total: 0 });
 
-    const start = performance.now();
     try {
-      // Tag sets are read here, once — the run's membership is a snapshot (#4215).
-      const modelArgs = evaluatorModelsFromState(useViewerStore.getState()).filter((m) => m.store);
-
-      const candidatesByModel = filterCandidates(modelArgs, searchIndexes, searchQuery, searchFilter.capturedScope);
-
-      const limit = searchFilter.limit > 0 ? searchFilter.limit : DEFAULT_LIMIT;
-      const matched = await evaluateFilterGroupsFederated(
-        modelArgs,
-        searchFilter.groups,
-        {
-          limit,
-          definedModelTagIds: definedModelTagIdsOf(useViewerStore.getState()),
-          chunkSize: FILTER_CHUNK_SIZE,
-          candidateExpressIdsByModel: candidatesByModel,
-          signal: controller.signal,
-          onProgress: (scanned, total) => setProgress({ scanned, total }),
-        },
-      );
-
-      const multi = modelArgs.length > 1;
-      const columns = multi
-        ? ['express_id', 'global_id', 'name', 'type', 'model_id']
-        : ['express_id', 'global_id', 'name', 'type'];
-      const rows: unknown[][] = matched.map((m) =>
-        multi
-          ? [m.expressId, m.globalId, m.name, m.ifcType, m.modelId]
-          : [m.expressId, m.globalId, m.name, m.ifcType],
-      );
-      setSearchFilterResult({
-        columns,
-        rows,
-        runMs: Math.round(performance.now() - start),
+      const evaluated = await evaluateViewerFilter(useViewerStore.getState(), searchFilter, searchQuery, {
+        signal: controller.signal, onProgress: (scanned, total) => setProgress({ scanned, total }),
       });
-      if (matched.length >= limit) setLimitHit(limit);
+      setSearchFilterResult(evaluated.result);
+      if (evaluated.limitHit !== null) setLimitHit(evaluated.limitHit);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setSearchFilterError(err instanceof Error ? err.message : String(err));

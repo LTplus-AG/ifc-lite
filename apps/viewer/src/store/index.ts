@@ -17,6 +17,7 @@ import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
 import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
+import { peekViewerStore, registerViewerStore, type ViewerStoreApi } from './viewerStoreHandle.js';
 export { customPlaneCenter } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
@@ -54,6 +55,8 @@ import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
 import { createGlobePlacementSlice, type GlobePlacementSlice } from './slices/globePlacementSlice.js';
 import { createSolarSlice, type SolarSlice } from './slices/solarSlice.js';
+import { createSiteContextSlice, type SiteContextSlice } from './slices/siteContextSlice.js';
+import { createFloodCheckSlice, type FloodCheckSlice } from './slices/floodCheckSlice.js';
 import { createEnvironmentSlice, type EnvironmentSlice } from './slices/environmentSlice.js';
 import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.js';
 import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
@@ -178,7 +181,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice & GlobePlacementSlice &
-  SolarSlice &
+  SolarSlice & SiteContextSlice & FloodCheckSlice &
   EnvironmentSlice &
   ScheduleSlice &
   PlaybackSlice &
@@ -244,6 +247,8 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createCesiumSlice(...args),
   ...createGlobePlacementSlice(...args),
   ...createSolarSlice(...args),
+  ...createSiteContextSlice(...args),
+  ...createFloodCheckSlice(...args),
   ...createEnvironmentSlice(...args),
   ...createScheduleSlice(...args),
   ...createPlaybackSlice(...args),
@@ -267,16 +272,11 @@ const createViewerStore = () => create<ViewerState>()(withStoreChurnCounters(wit
   ...createViewerActions(...args),
 })))));
 
-const STORE_SINGLETON_KEY = '__ifc_lite_viewer_store__';
-const globalStoreRegistry = globalThis as typeof globalThis & {
-  [STORE_SINGLETON_KEY]?: ReturnType<typeof createViewerStore>;
-};
-
-export function getViewerStoreApi() {
-  const existing = globalStoreRegistry[STORE_SINGLETON_KEY];
+export function getViewerStoreApi(): ViewerStoreApi {
+  const existing = peekViewerStore();
   if (existing) return existing;
   const store = createViewerStore();
-  globalStoreRegistry[STORE_SINGLETON_KEY] = store;
+  registerViewerStore(store);
   registerSidebarExclusivity(store);
   registerHierarchyLeftSync(store);
   registerDrawingInspectorSheetSync(store);

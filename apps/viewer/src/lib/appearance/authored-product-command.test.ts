@@ -187,7 +187,8 @@ for (const federated of [false, true]) test(`native multicolour PDF owner is one
     assert.equal(roomSource.toSourceIds(null), null, 'no isolation remains no isolation');
     const roomExport = await new StepExporter(roomSource.dataStore, roomSource.mutationView).exportAsync({
       schema: 'IFC4', applyMutations: true, includeGeometry: true,
-      georefMutations: { projectedCRS: { name: 'Room export CRS' } },
+      // The exporter refuses a CRS without a position; the store gives every CRS it creates one (setGeorefFields completes it).
+      georefMutations: { projectedCRS: { name: 'Room export CRS' }, mapConversion: { eastings: 0, northings: 0, orthogonalHeight: 0 } },
     });
     const roomBytes = typeof roomExport.content === 'string'
       ? new TextEncoder().encode(roomExport.content)

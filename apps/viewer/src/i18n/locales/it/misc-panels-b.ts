@@ -149,6 +149,7 @@ export const miscPanelsBIt = {
   'loadReportPanel.selectAndFrameTitle': 'Seleziona e inquadra questa entità',
   'loadReportPanel.entitySummary':
     '#{productId} {ifcType} — errori: {csgFailures}, aperture: {openings}',
+  'loadReportPanel.budgetRefusal': '{budget}: limite {limit}, raggiunto {reached}; sorgente #{sourceId}',
   'loadReportPanel.tierSuffix': ' · livello {tier}',
   'loadReportPanel.fastModeSuffix': ' · modalità rapida',
   'loadReportPanel.affectedEntitiesLabel': 'Entità interessate',

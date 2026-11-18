@@ -174,3 +174,17 @@ describe('geometry (World Coordinate) column/condition (#3671)', () => {
     expect(result.rows.map(r => r.entityId)).toEqual([2]);
   });
 });
+
+// An unavailable mesh must remain blank, and counts must not acquire length units.
+it('filters numeric triangle counts while preserving zero and missing geometry (#10370)', () => {
+  const provider = createProvider(new Map());
+  provider.getTriangleCount = id => id === 1 ? 12 : id === 2 ? 0 : null;
+  const column = { id: 'triangles', source: 'geometry' as const, propertyName: 'TriangleCount' };
+  const result = executeList(walls([column]), provider);
+  expect(result.rows.map(row => row.values[0])).toEqual([12, 0, null]);
+  expect(result.columns[0].quantityType).toBeUndefined();
+  const selected = executeList(walls([column], [{ source: 'geometry', propertyName: 'TriangleCount', operator: 'gt', value: 5 }]), provider);
+  expect(selected.rows.map(row => row.entityId)).toEqual([1]);
+  const unsupported = executeList(walls([column]), createProvider(new Map()));
+  expect(unsupported.rows.every(row => row.values[0] === null)).toBe(true);
+});

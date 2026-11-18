@@ -6,7 +6,7 @@
  * spread, verdicts, noise floors, stage ranking and the markdown tables. Failed samples stay in the counts. */
 
 import { identityLaneFor, laneIdentityVerdict, reopenOutputVerdict } from './load-scoreboard-identity.mjs';
-import { armProtocolOf, bothMarksCell, bothMarksSection, cpuTimeSection, thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
+import { armProtocolOf, armQuietSection, bothMarksCell, bothMarksSection, cpuTimeSection, thermalSection, watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 export { watchdogRows, webglPickRows } from './load-scoreboard-report-sections.mjs';
 import { aaNoiseFloor, expectedCacheTier, laneSummary, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 import { FRAME_KEY, METADATA_FRAME_KEY, frameMarkVerdict, isReopenLane, metadataMarkVerdict, primaryKey, withFrameMarks, withMetadataMarks } from './load-scoreboard-frame-mark.mjs';
@@ -329,23 +329,6 @@ export function laneStageRanking(summary, lane, set = 'tuning') {
   return rankShares(perFixture);
 }
 
-/** Per fixture x lane x side: how many quiet-shell arms had less real quiet than the arm asked for. */
-export function armQuietRows(samples) {
-  const groups = new Map();
-  for (const r of samples) {
-    const sh = r.shell;
-    if (!sh || typeof sh.armedEarly !== 'boolean') continue;
-    const key = `${r.fixture}|${r.lane}|${r.side}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(sh);
-  }
-  return [...groups].map(([key, list]) => {
-    const [fixture, lane, side] = key.split('|');
-    const q = list.map((x) => x.quietAtArmMs).filter(Number.isFinite);
-    return `| ${fixture} | ${lane} | ${side} | ${list.length} | ${list.filter((x) => x.armedEarly).length} | ${list.filter((x) => x.armInsideLongTask).length} | ${q.length ? Math.min(...q).toFixed(0) : '—'} |`;
-  });
-}
-
 export function renderMarkdown(summary, plan, host, samples = []) {
   const out = [`# Load scoreboard: ${summary.name}`, ''];
   out.push(`Kind: ${summary.kind}. Timed evidence: ${host?.timedEvidence ? 'yes (exclusive benchmark admission)' : 'NO (not exclusive; dry run)'}.`);
@@ -394,12 +377,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push('', '## Readiness components (base side medians, n>=3; ms from the clock origin of each lane, as stated above; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
       `| fixture | set | lane | ${READINESS.map(([, l]) => l).join(' | ')} | binding (count) |`, `|---|---|---|${READINESS.map(() => '---:|').join('')}---|`, ...readinessRows);
   }
-  const armRows = armQuietRows(samples);
-  if (armRows.length) {
-    out.push('', '## Arm quiet check (real main-thread quiet before each quiet-shell arm, read from every long-task entry after the open)', '',
-      '| fixture | lane | side | arms | under 1 s quiet | inside a long task | min quiet ms |', '|---|---|---|---:|---:|---:|---:|', ...armRows);
-  }
-  out.push(...bothMarksSection(summary.fixtures));
+  out.push(...armQuietSection(samples), ...bothMarksSection(summary.fixtures));
   const wdRows = watchdogRows(samples);
   if (wdRows.length) {
     out.push('', '## Host watchdog overlap (samples during a periodic host job pass; measurement only, cells not voided)', '',

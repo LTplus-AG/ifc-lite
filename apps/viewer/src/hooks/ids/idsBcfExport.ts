@@ -27,6 +27,9 @@ import { completeIdsBcfViewpoints } from './idsBcfViewpoints';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 
 export interface RunIdsBcfExportParams {
+  /** Host-owned artifact sink; browser callers retain the native download default. */
+  emit?: (blob: Blob, filename: string) => void | Promise<void>;
+  signal?: AbortSignal;
   report: ValidationReport;
   settings: IDSBCFExportSettings;
   models: Map<string, FederatedModel>;
@@ -56,7 +59,10 @@ export async function runIdsBcfExport({
   setBcfExportProgress,
   setBcfProject,
   setBcfPanelVisible,
+  emit = downloadBlob,
+  signal,
 }: RunIdsBcfExportParams): Promise<void> {
+  signal?.throwIfAborted();
   const {
     topicGrouping,
     includePassingEntities,
@@ -139,11 +145,13 @@ export async function runIdsBcfExport({
   // Entity bounds (and so the framing cameras) are in the render frame; BCF is world (#4806).
   projectViewpointsToWorld(bcfProject, bcfWorldOffset(models, legacyGeometryResult));
 
+  signal?.throwIfAborted();
   // Phase 4: Write BCF and download
   setBcfExportProgress({ phase: 'writing', current: 1, total: 2, message: 'Writing BCF file...' });
 
   const blob = await writeBCF(bcfProject);
-  downloadBlob(blob, bcfExportFilename(`ids-report-${new Date().toISOString().split('T')[0]}`));
+  signal?.throwIfAborted();
+  await emit(blob, bcfExportFilename(`ids-report-${new Date().toISOString().split('T')[0]}`));
   trackExportCompleted({ format: 'bcfzip', surface: 'ids_panel' });
 
   // Phase 5: Load into BCF panel if requested

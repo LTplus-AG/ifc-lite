@@ -17,6 +17,11 @@ export function structuralGlyphsVisible(visibility: Pick<TypeVisibility, 'struct
   return visibility.structuralGlyphs && mode !== 'physical';
 }
 
+/** The supports & loads layer is wanted but Physical hides it. */
+export function structuralGlyphsMasked(visibility: Pick<TypeVisibility, 'structuralGlyphs'>, mode: StructuralViewMode): boolean {
+  return visibility.structuralGlyphs && mode === 'physical';
+}
+
 /** Flip the drawn supports & loads layer, not just the preference: Physical
  *  masks the glyphs, so turning them on there also leaves Physical (#10604). */
 export function toggleStructuralGlyphs(state: Pick<ViewerState, 'typeVisibility' | 'structuralViewMode' | 'toggleTypeVisibility' | 'setStructuralViewMode'>): void {

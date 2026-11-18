@@ -16,7 +16,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useState, useCallback, useLayoutEffect, cloneElement, isValidElement, type MouseEvent, type ReactNode } from 'react';
 import { Download, Check, AlertCircle } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
-import { zip, strToU8 } from 'fflate';
+import { zipArtifacts } from '@/lib/export/artifact-bundle';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -30,7 +30,6 @@ import {
   collectChangedModels,
   totalChangeCount,
   buildChangedArtifacts,
-  type ArtifactFile,
   type ChangedModelsResult,
 } from '@/lib/export/model-changes';
 import { defaultBuildArtifactsDeps, unrepresentedPsetsNote } from '@/lib/export/changed-model-export';
@@ -60,17 +59,6 @@ function formatDate(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-/** Bundle produced files into a zip off the main thread (fflate async `zip`). */
-function zipArtifacts(files: ArtifactFile[]): Promise<Uint8Array> {
-  const entries: Record<string, Uint8Array> = {};
-  for (const f of files) {
-    entries[`${f.base}.${f.ext}`] = typeof f.content === 'string' ? strToU8(f.content) : f.content;
-  }
-  return new Promise((resolve, reject) => {
-    zip(entries, { level: 6 }, (err, data) => (err ? reject(err) : resolve(data)));
-  });
 }
 
 /**

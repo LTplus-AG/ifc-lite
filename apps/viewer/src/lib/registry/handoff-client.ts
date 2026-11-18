@@ -19,10 +19,11 @@ export async function pullHandoff(source: ArtifactSource, session: ResourceSessi
   const { client, reference } = connection(session, source.registry, source.repository, 'pull');
   if (!/^sha256:[a-f0-9]{64}$/.test(source.digest)) throw new RegistryError('Choose an exact published version.');
   const ref = reference(`@${source.digest}`), manifest = await client.manifest(ref, { signal });
-  if (!('layers' in manifest.value)) throw new RegistryError('Choose a version containing an IFC source file.');
-  const layers = manifest.value.layers.filter(layer => layer.mediaType === 'application/x-step');
-  if (layers.length !== 1) throw new RegistryError('Choose a version containing exactly one IFC source file.');
-  const layer = layers[0], bytes = await client.blob(ref, layer, { signal, maxBytes: MAX_IFC_BYTES });
+  if (!('layers' in manifest.value) || manifest.value.artifactType !== IFC_ARTIFACT_TYPE ||
+      manifest.value.layers.length !== 1 || manifest.value.layers[0].mediaType !== 'application/x-step') {
+    throw new RegistryError('Choose a version containing a supported IFC package.');
+  }
+  const layer = manifest.value.layers[0], bytes = await client.blob(ref, layer, { signal, maxBytes: MAX_IFC_BYTES });
   return { bytes: new Uint8Array(bytes), filename: layer.annotations?.['org.opencontainers.image.title']?.split(/[\\/]/).pop() || 'model.ifc', digest: manifest.digest };
 }
 export async function pushHandoff(registry: string, repository: string, tag: string, bytes: Uint8Array<ArrayBuffer>, filename: string, session: ResourceSession, signal?: AbortSignal): Promise<ArtifactSource> {

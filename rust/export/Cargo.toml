@@ -11,6 +11,9 @@ description = "Domain-format exporters for ifc-lite (HBJSON, OBJ, glTF/GLB, CSV,
 [dependencies]
 ifc-lite-core = { workspace = true }
 ifc-lite-geometry = { workspace = true }
+# 2D polygon union of per-element footprint outlines (CityJSON LoD0/LoD1),
+# shared with `ifc-lite-geometry`. Only with the `cityjson` feature.
+i_overlay = { workspace = true, optional = true }
 geometry-predicates.workspace = true
 ifc-lite-processing = { workspace = true }
 rustc-hash.workspace = true
@@ -36,8 +39,14 @@ zip = { workspace = true, optional = true }
 [features]
 # Standalone/native builds retain textured GLB export. The default WASM engine
 # depends through the workspace with defaults off, avoiding the PNG encoder.
-default = ["gltf-textures"]
+default = ["gltf-textures", "cityjson"]
 gltf-textures = ["dep:png"]
+# The CityJSON 2.0 writer (`try_export_cityjson`). Default-on for native builds
+# and tests; the default engine wasm depends with defaults off and so never
+# compiles it (its mere presence in the crate changed the engine's inlining and
+# grew the viewer download), while the separate export payload
+# (rust/rhino-wasm, `@ifc-lite/wasm/rhino`) enables it.
+cityjson = ["dep:i_overlay"]
 parquet-bos = ["dep:arrow", "dep:parquet", "dep:zip"]
 # Surfaces the processing crate's faceted-brep phase timing (Instant-gated, native
 # only) so `--example glb_export_profile` can attribute per-part brep wall time.

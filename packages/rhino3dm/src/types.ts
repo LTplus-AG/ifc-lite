@@ -33,6 +33,8 @@ export interface RhinoSettings {
 }
 export interface RhinoLayer {
   name: string; parent: number | null; color: RhinoColor; visible: boolean; locked: boolean;
+  /** Layer user text: IFC identity on a layer that stands for the project or a spatial element, else empty. */
+  userStrings: RhinoUserStrings;
 }
 export interface RhinoMaterial { name: string; diffuse: RhinoVector3; transparency: number }
 export interface RhinoGroup { name: string }

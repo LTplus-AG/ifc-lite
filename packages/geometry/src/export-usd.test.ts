@@ -29,6 +29,7 @@ const wasmMocks = vi.hoisted(() => {
 });
 
 vi.mock('@ifc-lite/wasm', () => ({
+  ENGINE_BINARY_URL: null,
   default: wasmMocks.init,
   IfcAPI: wasmMocks.MockIfcAPI,
 }));

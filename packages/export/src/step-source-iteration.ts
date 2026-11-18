@@ -56,7 +56,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { narrowNonRelPositionalRefLists } from './nonrel-positional-ref-narrowing.js';
 import { STYLE_RESCUE_TYPES } from './style-closure.js';
-import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
+import { getNonRelRefListTypes } from './nonrel-ref-list-types.js';
 import { styleEntityWithheldWarning } from './step-export-types.js';
 import { applySourceLineMutationsReported } from './step-attribute-mutations.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -139,6 +139,8 @@ export function writeSourceEntityLines(
   // Export original entities from source buffer, SKIPPING modified property sets
   if (!options.deltaOnly && ctx.dataStore.source) {
     const source = ctx.dataStore.source;
+    // Structural conversion adds records: load configurations, 'Causes' relationships, property sets.
+    if (pass.converting) pass.enums.structural.ids = ctx.propertySetContext().allocateExpressId;
 
     // Extract existing entities from source. The effective index has already
     // dropped everything the overlay tombstoned, so there is no separate
@@ -284,7 +286,7 @@ export function writeSourceEntityLines(
           continue;
         }
         nextEntityText = filtered;
-      } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(effectiveRelType)) {
+      } else if (mayNameOmittedRefs && getNonRelRefListTypes().has(effectiveRelType)) {
         // `IfcCostItem.CostValues`, `IfcPropertySet.HasProperties`,
         // `IfcElementQuantity.Quantities`, … (`nonrel-ref-list-types.ts`,
         // derived from the schema registries — #5181): direct LIST/SET
@@ -345,6 +347,8 @@ export function writeSourceEntityLines(
         pass.entities.push(nextEntityText);
       }
     }
+    // IFC2X3 requires an OwnerHistory on the rooted records added there.
+    pass.entities.push(...pass.enums.structural.added().map((line) => (pass.schema === 'IFC2X3' ? pass.slotFill.apply(line) : line)));
   }
 }
 

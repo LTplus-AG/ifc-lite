@@ -11,6 +11,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
+import { isTourAvailable } from '@/lib/tours/tour-availability';
 import { isTourCompleted } from '@/lib/tours/storage';
 import { startTour } from '@/lib/tours/controller';
 import type { TourId } from '@/lib/tours/types';
@@ -29,7 +30,7 @@ export function LearnTab({ onClose }: { onClose: () => void }) {
         {t('tours.learnTab.description')}
       </p>
       <div className="divide-y divide-border rounded-md border">
-        {TOUR_REGISTRY.map((tour) => {
+        {TOUR_REGISTRY.filter(isTourAvailable).map((tour) => {
           const done = isTourCompleted(tour.id, tour.version);
           return (
             <div key={tour.id} className="flex items-center gap-3 px-3 py-2.5">

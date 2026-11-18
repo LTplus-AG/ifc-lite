@@ -10,6 +10,18 @@ import type { TranslationValue } from '../types';
  * the storey chip and the plan's storey picker. Unit symbols stay literal.
  */
 export const storeyManagerEn = {
+  "storeyManager.insert.after": "After insertion",
+  "storeyManager.insert.before": "Current",
+  "storeyManager.copy.back": "Back to storeys",
+  "storeyManager.notice.columnNotResized": {"one": "{count} attached column moves but keeps its height: its body or attachment cannot be refitted", "other": "{count} attached columns move but keep their height: their bodies or attachments cannot be refitted"},
+  "storeyManager.notice.columnAttachmentUnresolved": {"one": "{count} column keeps its height: its recorded top target cannot be followed", "other": "{count} columns keep their height: their recorded top targets cannot be followed"},
+  "storeyManager.notice.beamNotResized": {"one": "{count} attached beam moves but keeps its height: its body or attachment cannot be refitted", "other": "{count} attached beams move but keep their height: their bodies or attachments cannot be refitted"},
+  "storeyManager.notice.beamAttachmentUnresolved": {"one": "{count} beam keeps its height: its recorded top target cannot be followed", "other": "{count} beams keep their height: their recorded top targets cannot be followed"},
+  "storeyManager.notice.memberNotResized": {"one": "{count} attached member moves but keeps its height: its body or attachment cannot be refitted", "other": "{count} attached members move but keep their height: their bodies or attachments cannot be refitted"},
+  "storeyManager.notice.memberAttachmentUnresolved": {"one": "{count} member keeps its height: its recorded top target cannot be followed", "other": "{count} members keep their height: their recorded top targets cannot be followed"},
+  "storeyManager.notice.curtainWallNotResized": {"one": "{count} attached curtain wall moves but keeps its height: its body or attachment cannot be refitted", "other": "{count} attached curtain walls move but keep their height: their bodies or attachments cannot be refitted"},
+  "storeyManager.notice.curtainWallAttachmentUnresolved": {"one": "{count} curtain wall keeps its height: its recorded top target cannot be followed", "other": "{count} curtain walls keep their height: their recorded top targets cannot be followed"},
+  "storeyManager.notice.elementNotResized": {"one": "{count} attached element moves but keeps its height: its body or attachment cannot be refitted", "other": "{count} attached elements move but keep their height: their bodies or attachments cannot be refitted"},
   'storeyManager.title': 'Storeys',
   'storeyManager.subtitle': '{model} · {count} storeys',
   'storeyManager.open': 'Manage storeys…',
@@ -69,7 +81,7 @@ export const storeyManagerEn = {
   'storeyManager.delete': 'Delete {storey}',
   'storeyManager.deleted': '{storey} deleted',
   'storeyManager.undo': 'Undo',
-  'storeyManager.undoStale': 'Not undone: later edits came after this deletion. Undo them first from the toolbar.',
+  "storeyManager.undoStale": "Not undone: later edits came after this edit. Undo them first from the toolbar.",
   'storeyManager.delete.title': { one: '{storey} holds {count} element', other: '{storey} holds {count} elements' },
   'storeyManager.delete.moveTo': 'Move them to',
   'storeyManager.delete.move': 'Move and delete',
@@ -114,5 +126,5 @@ export const storeyManagerEn = {
   "storeyManager.copy.newElements": {"one": "{count} new element", "other": "{count} new elements"},
   "storeyManager.copy.undoStale": "Not undone: later edits came after this copy. Undo them first from the toolbar.",
   "storeyManager.insert.move": "{storey} moves from {from} to {to} m",
-  "storeyManager.impact.wallTops": {"one": "Updates {count} wall top", "other": "Updates {count} wall tops"},
+  "storeyManager.impact.wallTops": {"one": "updates {count} wall top", "other": "updates {count} wall tops"},
 } as const satisfies Record<string, TranslationValue>;

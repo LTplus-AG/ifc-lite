@@ -27,6 +27,7 @@ import type { shellChromeEn as ShellChromeEnType } from '@/i18n/catalogues/shell
 import { propertiesPanelEn } from '@/i18n/catalogues/properties-panel.en';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
+import { formFactorState } from '@/test/form-factor-state';
 
 // Guarded dynamic import (#4918 revert-oracle): a plain static import would
 // fail the whole FILE's load if this catalogue is reverted/deleted (zero
@@ -85,7 +86,7 @@ function setSearch(search: string): void {
 }
 
 const RESET = {
-  isMobile: false,
+  ...formFactorState(false),
   leftPanelCollapsed: true,
   rightPanelCollapsed: true,
   models: new Map<string, FederatedModel>(),

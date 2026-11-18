@@ -8,6 +8,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import type { FilterGroup } from '@ifc-lite/rules';
 import type {
   IDSAuditReport,
   IDSDocument,
@@ -75,7 +76,11 @@ export type IDSIsolateMode = 'failed' | 'passed' | 'involved' | null;
  */
 export type IDSFocusMode = 'highlight' | 'isolate' | 'ghost';
 
+export interface IdsTargetFilter { groups: FilterGroup[]; activeGroup: number }
+
 export interface IDSSliceState {
+  /** Null validates the whole selected model; a filter narrows candidates for the next run. */
+  idsTargetFilter: IdsTargetFilter | null;
   /** Loaded IDS document */
   idsDocument: IDSDocument | null;
   /**
@@ -101,10 +106,6 @@ export interface IDSSliceState {
   idsPanelVisible: boolean;
   /** Loading state */
   idsLoading: boolean;
-  /** Bumped by the session reset, which keeps `models` and so is invisible to
-   *  the federation identity; an in-flight IDS/rule-set run observes it and
-   *  ends itself (A1, `hooks/validation/validationRunGuard.ts`). */
-  validationRunGeneration: number;
   /** Validation progress */
   idsProgress: ValidationProgress | null;
   /** Error message: a caught-exception string, or a catalogued resolver error. */
@@ -147,6 +148,7 @@ export interface IDSSliceState {
 }
 
 export interface IDSSlice extends IDSSliceState {
+  setIdsTargetFilter: (update: (previous: IdsTargetFilter | null) => IdsTargetFilter | null) => void;
   // Document actions
   setIdsDocument: (document: IDSDocument | null) => void;
   clearIdsDocument: () => void;
@@ -227,6 +229,8 @@ function endIdsRowFocus(get: () => IDSSlice): void {
 
 export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, get) => ({
   // Initial state
+  idsTargetFilter: null,
+  setIdsTargetFilter: update => set(state => ({ idsTargetFilter: update(state.idsTargetFilter) })),
   idsDocument: null,
   idsAuditReport: null,
   idsAuditing: false,
@@ -236,7 +240,6 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   idsActiveEntityId: null,
   idsPanelVisible: false,
   idsLoading: false,
-  validationRunGeneration: 0,
   idsProgress: null,
   idsError: null,
   idsLocale: 'en',

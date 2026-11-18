@@ -36,6 +36,9 @@ function readbackFixture(path: PickPath) {
   const rectReadback = deferred<Set<number>>();
   const submissions: Array<{ width: number; height: number }> = [];
   const picker = {
+    // The released-geometry branch below is the CPU box route only when the
+    // batch pick pass (#10264 S1) is unavailable, which this fixture pins.
+    canPickLanes: () => false,
     pick: (_x: number, _y: number, width: number, height: number) => {
       submissions.push({ width, height });
       return pointReadback.promise;

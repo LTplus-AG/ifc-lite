@@ -1,0 +1,72 @@
+{
+  "name": "@ifc-lite/geo",
+  "version": "0.1.0",
+  "description": "Headless CRS engine for IFC-Lite: resolve a CRS, reproject to and from WGS84, grid convergence and scale factors, EGM96 undulation",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./proj4": {
+      "types": "./dist/proj4.d.ts",
+      "import": "./dist/proj4.js",
+      "default": "./dist/proj4.js"
+    },
+    "./wkt": {
+      "types": "./dist/wkt.d.ts",
+      "import": "./dist/wkt.js",
+      "default": "./dist/wkt.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@ifc-lite/data": "workspace:^",
+    "geotiff": "^3.0.5",
+    "proj4": "^2.23.0",
+    "wkt-parser": "^1.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/geo"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "gis",
+    "crs",
+    "epsg",
+    "proj4",
+    "reprojection",
+    "georeferencing"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

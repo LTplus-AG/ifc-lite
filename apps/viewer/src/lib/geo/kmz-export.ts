@@ -21,10 +21,22 @@ import { buildKmz, type KmzAltitudeMode, type KmzProcessor } from './kmz-exporte
 import { suggestAbsoluteAltitudeForKmz } from './kmz-altitude-hint';
 import { totalYupOffset } from './coordinate-frame';
 
-/** True if the data store carries usable georeferencing (so a KMZ export can run). */
-export function modelHasGeoreference(dataStore: IfcDataStore | null | undefined): boolean {
-  if (!dataStore) return false;
-  return extractGeoreferencingOnDemand(dataStore)?.hasGeoreference === true;
+/** The same merged presence check used by export, including unsaved session edits. */
+export function modelHasGeoreference(dataStore: IfcDataStore | null | undefined, mutations?: GeorefMutationData): boolean {
+  return resolveKmzGeoreference(dataStore, mutations) !== null;
+}
+
+function resolveKmzGeoreference(dataStore: IfcDataStore | null | undefined, mutations?: GeorefMutationData) {
+  if (!dataStore) return null;
+  const info = extractGeoreferencingOnDemand(dataStore);
+  const scale = extractLengthUnitScale(dataStore.source, dataStore.entityIndex) ?? 1;
+  // Presence is decided AFTER merging: unsaved additions can be the only georeference (#1427).
+  const conversion = mergeMapConversion(info?.mapConversion, mutations?.mapConversion);
+  const crs = mergeProjectedCRS(info?.projectedCRS, mutations?.projectedCRS, scale);
+  if (!conversion || !crs) return null;
+  // IFC2x3 ePSet MapUnit defaults to project length units, rather than metres.
+  crs.mapUnitScale = resolveEpsetMapUnitScale(info?.source, crs.mapUnitScale, scale);
+  return { conversion, crs, scale };
 }
 
 export interface BuildKmzInput {
@@ -123,6 +135,22 @@ export function resolveKmzHeading(
 }
 
 /**
+ * KMZ absolute altitude through the same guard as the position and heading:
+ * a #9480 unit-slipped site raises the height the World view uses, and a KMZ
+ * read off the authored OrthogonalHeight would sit that far below it.
+ */
+export function resolveKmzAltitude(
+  conversion: MapConversion,
+  crs: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
+  lengthUnitScale: number,
+  coordinateInfo: CoordinateInfo | undefined,
+): number {
+  const mapScale = resolveMapUnitToMetreScale(crs?.mapUnitScale, lengthUnitScale);
+  const effective = effectiveMapConversionForGeometry(conversion, mapScale, coordinateInfo);
+  return computeKmzAltitude(effective.orthogonalHeight, crs, lengthUnitScale, coordinateInfo);
+}
+
+/**
  * A georeference that has ALREADY been merged with pending edits — what a panel
  * holding `mergedConversion`/`mergedCRS` props has in hand, and what
  * {@link buildKmzForModel} produces after extracting from the data store.
@@ -196,7 +224,7 @@ export async function buildKmzForResolvedGeoref(
   const heading = resolveKmzHeading(conversion, crs, lengthUnitScale, coordinateInfo);
   const opts = {
     latLon,
-    altitude: computeKmzAltitude(conversion.orthogonalHeight, crs, lengthUnitScale, coordinateInfo),
+    altitude: resolveKmzAltitude(conversion, crs, lengthUnitScale, coordinateInfo),
     xAxisAbscissa: heading.xAxisAbscissa,
     xAxisOrdinate: heading.xAxisOrdinate,
     meshes,
@@ -223,22 +251,9 @@ export async function buildKmzForModel(
   // report "no geometry" for a model that exports fine — the same
   // flat-list-is-not-the-model mistake this function was fixed for (#2577).
   // `buildKmzForResolvedGeoref` makes that call against the COMPLETE set.
-  const info = extractGeoreferencingOnDemand(input.dataStore);
-  const scale = extractLengthUnitScale(input.dataStore.source, input.dataStore.entityIndex) ?? 1;
-  // Apply pending georef edits BEFORE deciding the model is unreferenced: a model
-  // whose only georeference comes from unsaved edits (mutations) has no extracted
-  // `hasGeoreference`, but the merged conversion/CRS still place it. The merged
-  // result is the source of truth — gate on it, not on the on-disk info (#1427).
-  const conversion = mergeMapConversion(info?.mapConversion, input.mutations?.mapConversion);
-  const crs = mergeProjectedCRS(info?.projectedCRS, input.mutations?.projectedCRS, scale);
-  if (!conversion || !crs) return 'not-georeferenced';
-  // Same ePset MapUnit correction `getEffectiveGeoreference` applies (see
-  // `kmzSuggestsAbsoluteAltitude` above) -- without it, a millimetre IFC2x3
-  // project whose only georeference is `ePset_MapConversion` (no explicit
-  // MapUnit) exports every eastings/northings/orthogonalHeight value scaled
-  // by 1 instead of 0.001: the reprojected pin lands ~1000x away from the
-  // model, and `computeKmzAltitude`'s altitude is 1000x too high.
-  crs.mapUnitScale = resolveEpsetMapUnitScale(info?.source, crs.mapUnitScale, scale);
+  const resolved = resolveKmzGeoreference(input.dataStore, input.mutations);
+  if (!resolved) return 'not-georeferenced';
+  const { conversion, crs, scale } = resolved;
   return buildKmzForResolvedGeoref({
     conversion,
     crs,

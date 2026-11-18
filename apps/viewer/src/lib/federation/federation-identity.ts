@@ -10,8 +10,8 @@
  * Moved out of `lib/clash/federation-identity.ts`, where it was first written
  * for clash (that file keeps the defect story and the clash-only parts: the
  * per-result identity and per-ref checks). IDS and rule-set validation use
- * the same token through `hooks/validation/validationRunGuard.ts` (A1,
- * implicit-state audit) — one definition, so the three cannot drift.
+ * the same token through `hooks/analysisRunGuard.ts` (A1/A2, implicit-state
+ * audit), which clash and flow arm too — one definition, so they cannot drift.
  *
  * What the token is (the entity table, not the store wrapper) and what it
  * deliberately ignores (models added mid-run, models with no store, geometry
@@ -84,8 +84,8 @@ export function recordGatheredModel(
  * key, and a collab peer edit (`setIfcDataStore` with a re-derived store)
  * swaps one value. `resetViewerState` (session reset) does NOT empty it — it
  * keeps `models` and only nulls the top-level `ifcDataStore` — so a caller
- * that must also end on a session reset needs a second signal (validation
- * uses `validationRunGeneration`, `hooks/validation/validationRunGuard.ts`).
+ * that must also end on a session reset needs a second signal
+ * (`analysisRunGeneration`, `hooks/analysisRunGuard.ts`).
  *
  * An EMPTY captured identity returns `true` — vacuously current. It cannot
  * arise from a real clash run (`run()` and `runDuplicates()` both bail with "No

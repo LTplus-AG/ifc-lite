@@ -132,11 +132,14 @@ nav:
     - Quick Start: guide/quickstart.md
     - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
+    - Configuring a Deployment: guide/viewer-deployment-config.md
+    - SpaceMouse via the 3Dconnexion Driver: guide/spacemouse-driver.md
     - Cloud Sources: guide/cloud-sources.md
     - Model Registry (Experimental): guide/local-registry.md
     - InfluxDB Time Series (Experimental): guide/influxdb.md
     - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md
+    - Structural Analysis: guide/structural-analysis.md
     - MCP for AI Agents: guide/mcp.md
     - 3D Viewer & Analysis: guide/viewer-api.md
     - Server Guide: guide/server.md
@@ -152,7 +155,10 @@ nav:
     - Images and PDF Appearance: guide/appearance.md
     - Exporting Data: guide/exporting.md
     - Multi-Model Federation: guide/federation.md
+    - Georeferencing: guide/georeferencing.md
     - LandXML: guide/landxml.md
+    - Site Context (Switzerland): guide/site-context.md
+    - Rhino .3dm: guide/rhino-3dm.md
     - Gaussian Splat Captures: guide/gaussian-captures.md
     - BCF Collaboration: guide/bcf.md
     - IDS Validation: guide/ids.md
@@ -236,6 +242,7 @@ nav:
     - Privacy: guide/privacy.md
   - Architecture:
     - Overview: architecture/overview.md
+    - Viewer Automation (Proposed): architecture/viewer-automation-plan.md
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
@@ -243,13 +250,16 @@ nav:
     - Retained Chained Clips: architecture/retained-m5-clips.md
     - Retained Bounded and Boxed Halfspaces: architecture/retained-halfspaces.md
     - Retained Viewer Memory: architecture/retained-viewer-memory.md
+    - Viewer CPU Geometry After Upload: architecture/viewer-cpu-geometry.md
     - Coverage Ledger: architecture/coverage-ledger.md
     - Modelling Parity Ledger: architecture/modelling-parity-ledger.md
+    - Structural Coverage Ledger: architecture/structural-coverage-ledger.md
     - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
     - LandXML → IFC Mapping: architecture/landxml-to-ifc-mapping.md
     - Speckle → IFC Mapping: architecture/speckle-mapping.md
     - IFC → Rhino .3dm Export: architecture/rhino-3dm-export.md
+    - Rhino .3dm Import: architecture/rhino-3dm-import.md
     - Rendering Pipeline: architecture/rendering-pipeline.md
     - Relative-to-Eye Rendering: architecture/renderer-relative-to-eye.md
     - Coordinate Handling: architecture/coordinate-handling.md
@@ -260,6 +270,7 @@ nav:
     - Element Splitting: architecture/element-splitting.md
     - Spatial Zone Emission: architecture/spatial-zone-emission.md
     - Mesh Determinism: architecture/mesh-determinism.md
+    - Native Result Cache: architecture/native-result-cache.md
     - CSG Threading: architecture/csg-threading-design.md
     - N-ary Union Repair: architecture/nary-union-repair.md
     - WASM Wide Arithmetic: architecture/wasm-wide-arithmetic.md
@@ -314,5 +325,7 @@ nav:
   - Contributing:
     - Development Setup: contributing/setup.md
     - Testing: contributing/testing.md
+    - CI Cache Measurements: contributing/ci-cache-measurements.md
     - Collaboration Testing: contributing/collaboration-testing.md
     - Release Process: contributing/release.md
+    - Contributor License Agreement: contributing/cla.md

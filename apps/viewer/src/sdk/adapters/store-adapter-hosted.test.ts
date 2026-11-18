@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -23,6 +23,7 @@ import { pathForGuid, registerEntityPath, registerStoreSlot } from '@/lib/collab
 import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
 import { createStoreAdapter } from './store-adapter.js';
 import { readWallJoinRels, readWallJoinTarget } from '@ifc-lite/create';
+import { toast } from '@/components/ui/toast';
 
 const SAMPLE = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
 const WALL = 1222;
@@ -149,12 +150,148 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
     assert.equal(useViewerStore.getState().canUndo(MODEL), false);
   });
 
+  it('#9409 viewer classifications use the slim factory and undo the whole association graph', async () => {
+    await seed();
+    const adapter = createStoreAdapter(useViewerStore);
+    const wall = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3 });
+    assert.ok(adapter.addClassification, 'viewer exposes classification creation');
+    assert.ok(adapter.assignClassification, 'viewer exposes classification assignment');
+    adapter.addClassification(MODEL, { System: 'Example', Identification: 'Walls', objects: [wall.expressId] });
+    const graph = ['IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE', 'IFCRELASSOCIATESCLASSIFICATION'];
+    for (const cls of graph) assert.equal(live(cls), 1, cls);
+    for (const cls of graph) assert.ok(published.some(row => row.ifcType.toUpperCase() === cls), `${cls} reaches the room`);
+    useViewerStore.getState().undo(MODEL);
+    for (const cls of graph) assert.equal(live(cls), 0, `${cls} removed by one Undo`);
+    assert.equal(live('IFCWALL'), 1, 'earlier wall creation is preserved');
+    useViewerStore.getState().redo(MODEL);
+    for (const cls of graph) assert.equal(live(cls), 1, `${cls} restored by Redo`);
+    await settleRemesh();
+  });
+
+  for (const shared of [false, true]) it(`#9409 viewer mirror remeshes a hosted graph and supports Undo/Redo (shared=${shared})`, async () => {
+    await seed();
+    if (!shared) useViewerStore.setState({ collabRoomId: null, collabRoomModels: new Map() });
+    const adapter = createStoreAdapter(useViewerStore);
+    const wall = adapter.addWall(MODEL, 42, { Start: [2, 5, 0], End: [6, 5, 0], Thickness: .2, Height: 3 });
+    const door = adapter.addHostedDoor(MODEL, wall.expressId, { Offset: 1, Width: .9, Height: 2.1, OperationType: 'SINGLE_SWING_LEFT' });
+    await settleRemesh();
+    assert.ok(adapter.mirrorElements, 'viewer exposes mirror through its history adapter');
+    const from = mesher.requests.length;
+    const result = adapter.mirrorElements(MODEL, [wall.expressId], { axis: [[0, 0], [0, 10]] });
+    assert.deepEqual(result, [wall]);
+    await settleRemesh();
+    const targets = new Set(mesher.requests.slice(from).flatMap(request => [...request.targets]));
+    for (const id of [wall.expressId, door.expressId]) assert.ok(targets.has(id), `mirrored #${id} is remeshed`);
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    const operation = () => {
+      const effective = resolveEffectiveEntityRecord(view.getNewEntity(door.expressId)!, {
+        retype: view.getEntityTypeMutation(door.expressId)?.newType,
+        named: view.getAttributeMutationsForEntity(door.expressId).map(({ name, value }) => [name, value] as const),
+        positional: view.getPositionalMutationsForEntity(door.expressId) ?? [],
+      }, 'IFC4');
+      return effective.attributes[effective.names.indexOf('OperationType')];
+    };
+    assert.equal(operation(), '.SINGLE_SWING_RIGHT.');
+    useViewerStore.getState().undo(MODEL);
+    assert.equal(operation(), '.SINGLE_SWING_LEFT.');
+    assert.equal(live('IFCMAPPEDITEM'), 0, 'one Undo restores original geometry');
+    useViewerStore.getState().redo(MODEL);
+    assert.equal(operation(), '.SINGLE_SWING_RIGHT.');
+    assert.ok(live('IFCMAPPEDITEM') > 0);
+    await settleRemesh();
+  });
+
+  it('#9406 returns and surfaces skipped implicit-join notices while preserving the added wall', async (t) => {
+    // Observe the existing notice channel while still calling the real toast.
+    const notices = t.mock.method(toast, 'info');
+    const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
+    const host = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3 });
+    assert.equal(notices.mock.callCount(), 0, 'ordinary creation has no notice');
+    adapter.addHostedDoor(MODEL, host.expressId, { Offset: 1, Width: .9, Height: 2.1 });
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    const opening = view.getNewEntities().find(entity => entity.type.toUpperCase() === 'IFCOPENINGELEMENT');
+    assert.ok(opening);
+    new StoreEditor(dataStore, view).setPositionalAttribute(opening.expressId, 6, null);
+    const beforeHost = readWallJoinTarget(dataStore, view, host.expressId, 1);
+    const beforeJoins = readWallJoinRels(dataStore, view);
+    const wall = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [4, 8, 0], Thickness: .2, Height: 3 });
+    assert.match(wall.notices?.join('\n') ?? '', /skipped.*join.*unreadable opening geometry/i);
+    assert.deepEqual(notices.mock.calls.map(call => call.arguments), [[wall.notices!.join('\n')]],
+      'the viewer surfaces the returned notice through its real toast channel');
+    assert.ok(view.getNewEntity(wall.expressId), 'the wall is added despite the refused implicit join');
+    assert.deepEqual(readWallJoinRels(dataStore, view), beforeJoins);
+    assert.deepEqual(readWallJoinTarget(dataStore, view, host.expressId, 1), beforeHost);
+    const beforeExplicit = view.getMutations();
+    assert.throws(() => adapter.joinWalls(MODEL, host.expressId, wall.expressId), /unreadable opening geometry/);
+    assert.deepEqual(view.getMutations(), beforeExplicit, 'explicit joining still refuses atomically');
+    await settleRemesh();
+  });
+
+  for (const shared of [false, true]) it(`#9406 implicit joins book and remesh both walls in one undo step (shared=${shared})`, async (t) => {
+    const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
+    if (!shared) useViewerStore.setState({ collabRoomId: null, collabRoomModels: new Map() });
+    const a = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3 }).expressId;
+    await settleRemesh();
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    const before = readWallJoinTarget(dataStore, view, a, 1)!;
+    const record = useViewerStore.getState().recordAuthoredElement;
+    const booked = t.mock.fn(record);
+    useViewerStore.setState({ recordAuthoredElement: booked });
+    t.after(() => useViewerStore.setState({ recordAuthoredElement: record }));
+    const from = mesher.requests.length;
+    const b = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [4, 8, 0], Thickness: .2, Height: 3 }).expressId;
+    await settleRemesh();
+    assert.equal(readWallJoinRels(dataStore, view).length, 1);
+    const targets = new Set(mesher.requests.slice(from).flatMap(r => [...r.targets]));
+    for (const id of [a, b]) assert.ok(targets.has(id), `changed wall #${id} is re-meshed by the addWall commit`);
+    assert.deepEqual(new Set(booked.mock.calls.map(c => c.arguments[2])), new Set([a, b]), 'both walls reach authored bookkeeping');
+    const joinedProfile = readWallJoinTarget(dataStore, view, a, 1)!.profileId;
+    assert.notEqual(joinedProfile, before.profileId);
+    const undoFrom = mesher.requests.length;
+    useViewerStore.getState().undo(MODEL);
+    await settleRemesh();
+    assert.equal(view.getNewEntity(b), null, 'one undo removes the new wall');
+    assert.ok(view.getNewEntity(a), 'the earlier wall remains');
+    assert.equal(readWallJoinTarget(dataStore, view, a, 1)?.profileId, before.profileId);
+    assert.ok(view.getNewEntity(before.profileId), 'undo restores the neighbour profile forgotten by the join');
+    assert.equal(readWallJoinRels(dataStore, view).length, 0);
+    assert.ok(mesher.requests.slice(undoFrom).some(r => [...r.targets].includes(a)), 'undo re-meshes the restored neighbour');
+    const redoFrom = mesher.requests.length;
+    useViewerStore.getState().redo(MODEL);
+    await settleRemesh();
+    assert.equal(readWallJoinRels(dataStore, view).length, 1);
+    assert.equal(readWallJoinTarget(dataStore, view, a, 1)?.profileId, joinedProfile);
+    const redone = new Set(mesher.requests.slice(redoFrom).flatMap(r => [...r.targets]));
+    for (const id of [a, b]) assert.ok(redone.has(id), `redo re-meshes changed wall #${id}`);
+  });
+
+  it('#9406 an implicit join at each end books and remeshes every changed neighbour', async (t) => {
+    const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
+    const wall = (Start: [number, number, number], End: [number, number, number]) =>
+      adapter.addWall(MODEL, 42, { Start, End, Thickness: .2, Height: 3 }).expressId;
+    const a = wall([0, 5, 0], [4, 5, 0]), b = wall([4, 8, 0], [0, 8, 0]);
+    await settleRemesh();
+    const record = useViewerStore.getState().recordAuthoredElement, booked = t.mock.fn(record);
+    useViewerStore.setState({ recordAuthoredElement: booked });
+    t.after(() => useViewerStore.setState({ recordAuthoredElement: record }));
+    const from = mesher.requests.length, c = wall([4, 5, 0], [4, 8, 0]);
+    await settleRemesh();
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    assert.equal(readWallJoinRels(dataStore, view).length, 2);
+    const targets = new Set(mesher.requests.slice(from).flatMap(r => [...r.targets]));
+    assert.deepEqual(targets, new Set([a, b, c]));
+    assert.deepEqual(new Set(booked.mock.calls.map(call => call.arguments[2])), targets);
+  });
+
   it('#6232 joins through the SDK core, re-meshes both walls and restores forgotten profiles in one undo', async () => {
     const dataStore = await seed();
     const adapter = createStoreAdapter(useViewerStore);
     const a = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: 0.2, Height: 3 }).expressId;
-    const b = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [4, 8, 0], Thickness: 0.2, Height: 3 }).expressId;
+    // #9296: keep a small gap so creation does not auto-join. This test owns
+    // the explicit join and must be able to undo it back to separate walls.
+    const b = adapter.addWall(MODEL, 42, { Start: [4, 5.2, 0], End: [4, 8, 0], Thickness: 0.2, Height: 3 }).expressId;
     const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    assert.equal(readWallJoinRels(dataStore, view).length, 0, 'the explicit join starts with separate walls');
     const before = readWallJoinTarget(dataStore, view, a, 1)!;
     adapter.joinWalls(MODEL, a, b, { Name: 'SDK corner' });
     assert.equal(readWallJoinRels(dataStore, view).length, 1);
@@ -171,9 +308,12 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
   it('#6232 refuses near-face cuts and unknown opening references through the shared join guard', async () => {
     const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
     const a = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: 0.2, Height: 3 }).expressId;
-    const b = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [5, 6, 0], Thickness: 0.4, Height: 3 }).expressId;
+    // #9296: the explicit near-face refusal needs an opening in an unjoined
+    // host. The axes still meet within join tolerance, but endpoints differ.
+    const b = adapter.addWall(MODEL, 42, { Start: [4.05, 5.05, 0], End: [5, 6, 0], Thickness: 0.4, Height: 3 }).expressId;
     adapter.addHostedWindow(MODEL, a, { Offset: 3.9, Sill: 1, Width: 0.1, Height: 1 });
     const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    assert.equal(readWallJoinRels(dataStore, view).length, 0, 'opening placement precedes the explicit join');
     const before = view.getMutations(), undo = useViewerStore.getState().undoStacks.get(MODEL);
     assert.throws(() => adapter.joinWalls(MODEL, a, b, { priority: 'b' }), /would not fit between the joined end faces/);
     assert.deepEqual(view.getMutations(), before);

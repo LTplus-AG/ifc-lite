@@ -38,13 +38,13 @@
  *    (or no record) is a fixed height.
  *
  * A record that names nothing it can follow (a deleted storey's GlobalId, a
- * Revit level renamed or shared by two storeys, a roof, which is not
- * supported until pitched roofs land) is not guessed at: `topAttachmentProblem`
+ * Revit level renamed or shared by two storeys, an unreadable target) is not guessed at: `topAttachmentProblem`
  * reports it and the plan lists it as a notice.
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { RelationshipType } from '@ifc-lite/data';
 import { storeyNeighbour, type StoreyInventory } from './storey-model.js';
 
 export const STOREY_ATTACHMENT_PSET = 'IfcLite_StoreyAttachment';
@@ -60,14 +60,7 @@ const REVIT_TOP = 'Top Constraint';
 const REVIT_LEVEL = /^\s*up to level\s*:\s*(.+?)\s*$/i;
 
 /** Element classes a top may attach to, with how their underside is read (`storey-attachment-target.ts`). */
-const SLAB_TYPES = new Set(['IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE']);
-/**
- * Classes a top may name but cannot follow yet. Attach-to-roof needs the
- * pitched roof's underside along the element (round 3 of #9296): add its
- * reader beside the slab's in `storey-attachment-target.ts` and move the
- * class into `SLAB_TYPES`' role there.
- */
-const PENDING_TARGET_TYPES = new Map([['IFCROOF', 'a roof (attaching to a roof is not supported yet)']]);
+const UNDERSIDE_TYPES = new Set(['IFCROOF', 'IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE']);
 
 export type TopBinding = 'relative' | 'explicit';
 
@@ -90,20 +83,40 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-/** The storey that contains `elementId` (through IfcRelContainedInSpatialStructure), or null. */
+/** The current spatial ancestry, then source hierarchy where no relationship was supplied. */
 export function homeStoreyOf(inventory: StoreyInventory, elementId: number): number | null {
-  const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
-  const rel = (inventory.incoming.get(elementId) ?? []).find((candidate) => candidate.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
-  return rel && storeyIds.has(rel.parent) ? rel.parent : null;
+  const storeyIds = new Set(inventory.storeys.map(storey => storey.expressId));
+  const direct = (inventory.incomingOf?.(elementId) ?? inventory.incoming.get(elementId) ?? [])
+    .find(relation => relation.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+  const queue = direct ? [direct.parent] : [elementId], visited = new Set(queue);
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const id = queue[cursor];
+    if (storeyIds.has(id)) return id;
+    for (const relation of inventory.incomingOf?.(id) ?? inventory.incoming.get(id) ?? []) {
+      if (!visited.has(relation.parent)) { visited.add(relation.parent); queue.push(relation.parent); }
+    }
+  }
+  // Never revive an authored product or a source relationship removed by an
+  // edit. The fallback is for a file whose parsed tree supplies the home alone.
+  // @raw-entity-enumeration-ok Source membership distinguishes parsed products from authored products before using the parsed-only fallback.
+  const source = inventory.store.entityIndex.byId.has(elementId);
+  const originalParents = [RelationshipType.ContainsElements, RelationshipType.Aggregates, RelationshipType.Nests]
+    .some(type => inventory.store.relationships.inverse.getEdges(elementId, type).length > 0);
+  // @raw-entity-enumeration-ok Parsed-only home is used only without original spatial edges; live ancestry and removed-edge refusal are handled above.
+  const home = inventory.store.spatialHierarchy?.elementToStorey.get(elementId);
+  return source && !originalParents && home !== undefined && storeyIds.has(home) ? home : null;
 }
 
 /** Live slabs and pending targets by GlobalId, read once per inventory. */
 const targetIndexes = new WeakMap<StoreyInventory, Map<string, { id: number; type: string }>>();
+const targetHints = new WeakMap<StoreyInventory, ReadonlyMap<number, number>>();
+/** @internal Validated plan candidates avoid rebuilding the whole slab GUID index. */
+export function hintTopAttachmentTargets(inventory: StoreyInventory, hints: ReadonlyMap<number, number>): void { targetHints.set(inventory, hints); }
 function targetByGlobalId(inventory: StoreyInventory, globalId: string): { id: number; type: string } | null {
   let index = targetIndexes.get(inventory);
   if (!index) {
     index = new Map();
-    for (const type of [...SLAB_TYPES, ...PENDING_TARGET_TYPES.keys()]) {
+    for (const type of UNDERSIDE_TYPES) {
       for (const id of inventory.reader.ids(type)) {
         const guid = inventory.reader.entity(id)?.attributes[0];
         if (typeof guid === 'string') index.set(guid, { id, type });
@@ -136,13 +149,16 @@ export function readTopAttachment(inventory: StoreyInventory, elementId: number)
       const binding = recordedBinding(inventory, elementId) ?? (next?.expressId === storey.expressId ? 'relative' : 'explicit');
       return { targetStoreyId: storey.expressId, kind: 'storey', binding, source: 'ifclite' };
     }
-    const element = targetByGlobalId(inventory, own);
-    if (element && SLAB_TYPES.has(element.type)) {
+    const targetHint = targetHints.get(inventory)?.get(elementId);
+    const hinted = targetHint === undefined ? null : inventory.reader.entity(targetHint);
+    const element = hinted?.attributes[0] === own && UNDERSIDE_TYPES.has(hinted.type.toUpperCase())
+      ? { id: targetHint!, type: hinted.type.toUpperCase() } : targetByGlobalId(inventory, own);
+    if (element && UNDERSIDE_TYPES.has(element.type)) {
       const holder = homeStoreyOf(inventory, element.id);
       // A slab no storey holds cannot be followed through a storey edit.
       return holder === null ? null : { targetStoreyId: holder, kind: 'element', targetElementId: element.id, binding: 'explicit', source: 'ifclite' };
     }
-    // A GlobalId naming no live storey or slab (it was deleted) leaves the element fixed.
+    // A GlobalId naming no live storey, slab or roof (it was deleted) leaves the element fixed.
     return null;
   }
   const revit = text(view.getPropertyValue(elementId, REVIT_PSET, REVIT_TOP));
@@ -164,11 +180,10 @@ export function topAttachmentProblem(inventory: StoreyInventory, elementId: numb
     if (own === FIXED_HEIGHT || own === NEXT_STOREY_ABOVE) return null;
     if (inventory.storeys.some((storey) => storey.GlobalId === own)) return null;
     const element = targetByGlobalId(inventory, own);
-    if (element && SLAB_TYPES.has(element.type)) {
-      return homeStoreyOf(inventory, element.id) === null ? `its top is attached to slab #${element.id}, which no storey contains` : null;
+    if (element && UNDERSIDE_TYPES.has(element.type)) {
+      return homeStoreyOf(inventory, element.id) === null ? `its top is attached to element #${element.id}, which no storey contains` : null;
     }
-    if (element) return `its top is attached to ${PENDING_TARGET_TYPES.get(element.type) ?? `#${element.id}`}`;
-    return `its top is attached to a storey or slab that no longer exists (${own})`;
+    return `its top is attached to a storey, slab or roof that no longer exists (${own})`;
   }
   const level = REVIT_LEVEL.exec(text(view.getPropertyValue(elementId, REVIT_PSET, REVIT_TOP)) ?? '')?.[1];
   if (!level) return null;
@@ -180,7 +195,7 @@ export function topAttachmentProblem(inventory: StoreyInventory, elementId: numb
 }
 
 /**
- * Record an element as attached to `target` (a storey or slab GlobalId, or
+ * Record an element as attached to `target` (a storey, slab or roof GlobalId, or
  * `NextStoreyAbove`). `binding` says how a storey target is meant; omitted,
  * any recorded binding is left as it is (a re-bind keeps its kind).
  */

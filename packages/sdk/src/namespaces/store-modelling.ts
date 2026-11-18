@@ -5,7 +5,7 @@
 /** Loaded-model modelling methods of bim.store (#6232 D5). */
 import type {
   AlignMode, ElementTransformInput, ElementSplitRequest, ElementTrimExtendParams,
-  CopyTransform, CopyArrayParams,
+  CopyTransform, CopyArrayParams, MirrorElementsParams, ClassificationInStoreParams,
   HostedElementEdit, CurtainWallInStoreParams, GridInStoreParams, GridColumnBinding, ColumnInStoreParams, ProfiledColumnInStoreParams,
   HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
   MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams, WallJoinApplyOptions,
@@ -18,6 +18,24 @@ import type { PhysicalSizePatch } from '../store-physical-types.js';
 
 export class StoreModellingNamespace {
   constructor(protected backend: BimBackend) {}
+
+  mirrorElements(modelId: string, ids: readonly number[], params: MirrorElementsParams): EntityRef[] {
+    const method = this.backend.store.mirrorElements;
+    if (!method) throw new Error('bim.store.mirrorElements: unavailable on this backend');
+    return method.call(this.backend.store, modelId, ids, params);
+  }
+
+  addClassification(modelId: string, params: ClassificationInStoreParams): EntityRef {
+    const method = this.backend.store.addClassification;
+    if (!method) throw new Error('bim.store.addClassification: unavailable on this backend');
+    return method.call(this.backend.store, modelId, params);
+  }
+
+  assignClassification(modelId: string, classificationId: number, objects: readonly number[]): EntityRef {
+    const method = this.backend.store.assignClassification;
+    if (!method) throw new Error('bim.store.assignClassification: unavailable on this backend');
+    return method.call(this.backend.store, modelId, classificationId, objects);
+  }
 
   async roomCommand(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult> {
     const method = this.backend.store.roomCommand;

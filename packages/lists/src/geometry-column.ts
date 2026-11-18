@@ -42,6 +42,7 @@ export function getWorldCoordinateValue(
   axis: string,
   provider: ListDataProvider,
 ): CellValue {
+  if (axis.trim().toUpperCase() === 'TRIANGLECOUNT') return provider.getTriangleCount?.(entityId) ?? null;
   const pos = provider.getWorldPosition?.(entityId);
   if (!pos) return null;
   switch (axis.trim().toUpperCase()) {
@@ -62,6 +63,6 @@ export function extractGeometryColumnValue(
   meta: { quantityType?: number },
 ): CellValue {
   const val = getWorldCoordinateValue(entityId, axis, provider);
-  if (val !== null && meta.quantityType === undefined) meta.quantityType = WORLD_COORDINATE_QUANTITY_TYPE;
+  if (axis.trim().toUpperCase() !== 'TRIANGLECOUNT' && val !== null && meta.quantityType === undefined) meta.quantityType = WORLD_COORDINATE_QUANTITY_TYPE;
   return val;
 }

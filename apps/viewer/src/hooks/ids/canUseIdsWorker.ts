@@ -29,6 +29,7 @@ export function canUseIdsWorker(dataStore: IfcDataStore): boolean {
   return (
     idsWorkerSupported()
     && !isIfcxDataStore(dataStore)
+    && dataStore.sourceKind !== 'tabular'
     && !!dataStore.source
     && dataStore.source.byteLength > 0
   );

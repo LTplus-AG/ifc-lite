@@ -78,13 +78,25 @@ test('#9324 malformed products cannot contribute counts or relationships', () =>
 });
 
 test('#9324 repeated pairs cannot stand in for all four joined corners', () => {
-  const walls = "#1=IFCWALL('a');#2=IFCWALL('b');#3=IFCWALL('c');#4=IFCWALL('d');";
+  // #9919: the positive loop needs real exported axes, not just endpoint labels.
+  const corners = [[0,0],[5,0],[5,4],[0,4],[0,0]];
+  const walls = [1,2,3,4].map((id,i) => {
+    const n = 100+i*10, [x,y] = corners[i], [ex,ey] = corners[i+1];
+    return `#${id}=IFCWALL('w${id}',$,$,$,$,$,#${n},$,$);
+#${n}=IFCPRODUCTDEFINITIONSHAPE($,$,(#${n+1}));
+#${n+1}=IFCSHAPEREPRESENTATION($,'Axis','Curve2D',(#${n+2}));
+#${n+2}=IFCPOLYLINE((#${n+3},#${n+4}));
+#${n+3}=IFCCARTESIANPOINT((${x},${y}));
+#${n+4}=IFCCARTESIANPOINT((${ex},${ey}));`;
+  }).join('\n');
   const link = (id,a,b,start,end) => `#${id}=IFCRELCONNECTSPATHELEMENTS('r',$,$,$,$,#${a},#${b},(),(),.${end}.,.${start}.);`;
   const repeated = readStep('DATA;'+walls+link(5,1,2,'ATSTART','ATSTART')+link(6,1,2,'ATSTART','ATEND')+link(7,1,2,'ATEND','ATSTART')+link(8,1,2,'ATEND','ATEND')+'ENDSEC;');
   assert.equal(uniqueWallJoins(repeated),4);
   assert.equal(wallEndpointsJoined(repeated),false);
   const ring = readStep('DATA;'+walls+[1,2,3,4].map((id,i)=>link(5+i,id,id%4+1,'ATEND','ATSTART')).join('')+'ENDSEC;');
   assert.equal(wallEndpointsJoined(ring),true);
+  const labelsOnly = readStep('DATA;'+[1,2,3,4].map(id=>`#${id}=IFCWALL('w${id}');`).join('')+[1,2,3,4].map((id,i)=>link(5+i,id,id%4+1,'ATEND','ATSTART')).join('')+'ENDSEC;');
+  assert.equal(wallEndpointsJoined(labelsOnly),false,'endpoint labels cannot replace missing axes');
 });
 
 test('#9324 containment in a building, not a storey, counts as uncontained',()=>{
@@ -93,4 +105,84 @@ test('#9324 containment in a building, not a storey, counts as uncontained',()=>
   assert.equal(uncontainedInStoreys(inBuilding,inBuilding.of('IFCWALL')),1);
   const inStorey=readStep(head+"#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#3),#2);ENDSEC;");
   assert.equal(uncontainedInStoreys(inStorey,inStorey.of('IFCWALL')),0);
+});
+
+// #9296 U1: the UI roof verdict must inspect the exported roof's geometry.
+test('#9296 roof geometry accepts a real pitched plate, rejects labels, slabs and unrelated meshes', async () => {
+  const { roofGeometry } = await import('../../tests/modelling-parity/ui/lib/oracles.mjs');
+  assert.equal(typeof roofGeometry, 'function');
+  const footprint = [[0,0],[10,0],[10,8],[0,8]], tilt = 10 * Math.PI / 180;
+  const expected = {footprint, slopes: [tilt,0,0,0], thickness: .25};
+  const shape = (height) => {
+    const pts = new Float64Array(24);
+    for (let i = 0; i < 8; i++) {
+      const x = i & 1, y = (i >> 1) & 1, z = (i >> 2) & 1;
+      pts.set([10*x,8*y,height(y,z)],i*3);
+    }
+    const quads = [[0,2,3,1],[4,5,7,6],[0,1,5,4],[2,6,7,3],[0,4,6,2],[1,3,7,5]];
+    return [{pts,idx:Uint32Array.from(quads.flatMap(([a,b,c,d])=>[a,b,c,a,c,d]))}];
+  };
+  const roof = readStep("DATA;#1=IFCROOF('r',$,$,$,$,$,$,$,.HIP_ROOF.);ENDSEC;");
+  const plate = shape((y,z)=>8*y*Math.tan(tilt)+z*.25/Math.cos(tilt));
+  assert.equal(roofGeometry(roof,new Map([[1,{parts:plate}]]),expected),true);
+  for (const parts of [shape((_y,z)=>z*.25),shape((_y,z)=>z*(.25+8*Math.tan(tilt)))]) {
+    assert.notEqual(roofGeometry(roof,new Map([[1,{parts}]]),expected),true,'a roof label cannot certify a slab or full-height prism');
+  }
+  assert.notEqual(roofGeometry(roof,new Map([[2,{parts:plate}]]),expected),true,'another element cannot supply the roof mesh');
+  assert.notEqual(roofGeometry(readStep("DATA;#2=IFCWALL('w');ENDSEC;"),new Map([[2,{parts:plate}]]),expected),true);
+});
+
+// #9296 / #9357: decomposition changes entity counts, never the number of roofs.
+function roofAssemblyStep({ count = 1, loose = false, empty = false } = {}) {
+  const records = [];
+  for (let n = 0; n < count; n++) {
+    const root = 1 + n * 10;
+    records.push(`#${root}=IFCROOF('r${root}',$,$,$,$,$,$,$,.HIP_ROOF.);`);
+    const parts = empty ? [] : [1,2,3,4].map(i => root + i);
+    for (const id of parts) records.push(`#${id}=IFCSLAB('s${id}',$,$,$,$,$,$,$,.ROOF.);`);
+    records.push(`#${root + 5}=IFCRELAGGREGATES('a${root}',$,$,$,#${root},(${parts.map(id => `#${id}`).join(',')}));`);
+  }
+  if (loose) records.push("#99=IFCSLAB('loose',$,$,$,$,$,$,$,.ROOF.);");
+  return readStep(`DATA;${records.join('\n')}ENDSEC;`);
+}
+
+const roofExpected = { footprint: [[0,0],[10,0],[10,8],[0,8]], slopes: [Math.PI/18,0,0,0], thickness: .25 };
+// Four closed adjacent pitched strips: the sampled surface and volume are known
+// analytically. No parent mesh is supplied; all geometry belongs to the slabs.
+function roofStripMeshes() {
+  return new Map([2,3,4,5].map((id, strip) => {
+    const pts = new Float64Array(24);
+    for (let i = 0; i < 8; i++) {
+      const x = 2.5 * (strip + (i & 1)), y = 8 * ((i >> 1) & 1), z = (i >> 2) & 1;
+      pts.set([x,y,y*Math.tan(Math.PI/18)+z*.25/Math.cos(Math.PI/18)],i*3);
+    }
+    const faces = [[0,2,3,1],[4,5,7,6],[0,1,5,4],[2,6,7,3],[0,4,6,2],[1,3,7,5]];
+    return [id,{parts:[{pts,idx:Uint32Array.from(faces.flatMap(([a,b,c,d])=>[a,b,c,a,c,d]))}]}];
+  }));
+}
+
+test('#9296 one roof assembly with four parts counts as one and meshes its parts', async () => {
+  const { roofAssemblies, roofGeometry } = await import('../../tests/modelling-parity/ui/lib/oracles.mjs');
+  const step = roofAssemblyStep();
+  assert.equal(roofGeometry(step,roofStripMeshes(),roofExpected),true);
+  assert.deepEqual(roofAssemblies(step).map(r => [r.root.id,r.parts.map(p => p.id)]),[[1,[2,3,4,5]]]);
+  const missing = roofStripMeshes(); missing.delete(3);
+  assert.notEqual(roofGeometry(step,missing,roofExpected),true,'missing panel geometry cannot pass');
+});
+
+test('#9296 two separate roof assemblies still count as two', async () => {
+  const { roofGeometry } = await import('../../tests/modelling-parity/ui/lib/oracles.mjs');
+  assert.equal(roofGeometry(roofAssemblyStep({count:2}),roofStripMeshes(),roofExpected),'expected one roof, found 2');
+});
+
+test('#9296 a loose roof slab is not hidden by an assembly', async () => {
+  const { roofGeometry } = await import('../../tests/modelling-parity/ui/lib/oracles.mjs');
+  assert.equal(roofGeometry(roofAssemblyStep({loose:true}),roofStripMeshes(),roofExpected),'expected one roof, found 2');
+});
+
+test('#9296 an empty roof assembly counts once but cannot borrow unrelated geometry', async () => {
+  const { roofAssemblies, roofGeometry } = await import('../../tests/modelling-parity/ui/lib/oracles.mjs');
+  const step = roofAssemblyStep({empty:true});
+  assert.deepEqual(roofAssemblies(step).map(r => [r.root.id,r.parts]),[[1,[]]]);
+  assert.equal(roofGeometry(step,roofStripMeshes(),roofExpected),'the roof has no geometry');
 });

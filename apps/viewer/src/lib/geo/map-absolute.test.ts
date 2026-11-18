@@ -278,3 +278,45 @@ describe('effectiveMapConversionForGeometry — site anchor in map units (#9480)
     assert.strictEqual(effective.northings, 0);
   });
 });
+
+describe('effectiveMapConversionForGeometry — site height under the #9480 slip', () => {
+  const conversion = makeConversion({ eastings: 311988.181, northings: 5996148.565, orthogonalHeight: 2, xAxisAbscissa: 0, xAxisOrdinate: 1, scale: undefined });
+  const siteE = 311988.18054 * 0.001;
+  const siteN = 5996148.56499 * 0.001;
+  const withSite = (site?: { x: number; y: number; z: number }): CoordinateInfo => ({
+    ...coordinateInfoNearAnchor(siteE, siteN, 30), lengthUnitScale: 0.001, ...(site ? { siteOrigin: site } : {}),
+  });
+
+  it('raises OrthogonalHeight by the slipped part of the site Z', () => {
+    const effective = effectiveMapConversionForGeometry(conversion, 1, withSite({ x: siteE, y: siteN, z: 0.014 }));
+    // 14 mm read as metres: the site sits 14 m up, not 0.014 m.
+    assert.ok(Math.abs(effective.orthogonalHeight - (2 + 0.014 * 999)) < 1e-9, `height ${effective.orthogonalHeight}`);
+    assert.deepEqual(
+      matchMapAbsoluteGeometry(conversion, 1, withSite({ x: siteE, y: siteN, z: 0.014 })),
+      { kind: 'unitMismatchedAnchor', anchorUnitRatio: 0.001, siteHeightShiftMetres: 0.014 * 999 },
+    );
+  });
+
+  it('expresses the shift in map units', () => {
+    // A millimetre file in a foot CRS: the site Z 14 means 14 ft (4.267 m),
+    // read as 0.014 m, so the shift is 0.014 x (304.8 - 1) m, in feet.
+    const effective = effectiveMapConversionForGeometry(conversion, 0.3048, withSite({ x: siteE, y: siteN, z: 0.014 }));
+    const ratio = 0.001 / 0.3048;
+    assert.ok(Math.abs(effective.orthogonalHeight - (2 + 0.014 * (1 / ratio - 1) / 0.3048)) < 1e-9, `height ${effective.orthogonalHeight}`);
+    assert.ok(Math.abs(2 * 0.3048 + 0.014 + (effective.orthogonalHeight - 2) * 0.3048 - (2 * 0.3048 + 14 * 0.3048)) < 1e-9);
+  });
+
+  it('leaves the height authored without a published site origin', () => {
+    assert.strictEqual(effectiveMapConversionForGeometry(conversion, 1, withSite()).orthogonalHeight, 2);
+  });
+
+  it('leaves the height authored when the site is not the slipped anchor', () => {
+    const elsewhere = { x: siteE + 1000, y: siteN, z: 0.014 };
+    assert.strictEqual(effectiveMapConversionForGeometry(conversion, 1, withSite(elsewhere)).orthogonalHeight, 2);
+  });
+
+  it('never touches the #2526 height, site origin or not', () => {
+    const info = { ...coordinateInfoAtAnchor(311988.18054, 5996148.56499), lengthUnitScale: 0.001, siteOrigin: { x: 311988.18054, y: 5996148.56499, z: 14 } };
+    assert.strictEqual(effectiveMapConversionForGeometry(conversion, 1, info).orthogonalHeight, 2);
+  });
+});

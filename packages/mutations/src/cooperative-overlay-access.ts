@@ -11,9 +11,10 @@ interface OverlayAccess {
   readonly modelId: string;
   transact<T>(edit: (draft: MutablePropertyView) => T, record: boolean): { result: T; inverse?: CompoundInverse; written: string[] };
   capture(): OverlaySnapshot;
+  rebuild(snapshot: OverlaySnapshot): OverlaySnapshot;
   matches(snapshot: OverlaySnapshot): boolean;
   draft(snapshot: OverlaySnapshot): MutablePropertyView;
-  publish(snapshot: OverlaySnapshot): void;
+  publish(snapshot: OverlaySnapshot, changedIds?: ReadonlySet<number> | null): void;
 }
 const access = new WeakMap<MutablePropertyView, OverlayAccess>();
 /** Package-private capability; no mutable graph is exposed by the public handle. */

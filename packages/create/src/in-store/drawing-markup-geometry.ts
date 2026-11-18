@@ -43,12 +43,20 @@ export function emitMarkupPolyline(
 }
 
 /**
- * Emit an `IfcAxis2Placement2D` at a 2D point (no rotation) — the `Placement`
- * a text literal needs.
+ * Emit an `IfcAxis2Placement2D` at a 2D point — the `Placement` a text
+ * literal needs. `direction` (the baseline, any non-zero length) becomes the
+ * `RefDirection`; omitted, the placement has no rotation.
  */
-export function emitMarkupPoint2DPlacement(editor: StoreEditor, point: readonly [number, number]): number {
+export function emitMarkupPoint2DPlacement(
+  editor: StoreEditor,
+  point: readonly [number, number],
+  direction?: readonly [number, number],
+): number {
   const originPt = editor.addEntity('IfcCartesianPoint', [[point[0], point[1]]]).expressId;
-  return editor.addEntity('IfcAxis2Placement2D', [`#${originPt}`, null]).expressId;
+  const refDirection = direction
+    ? `#${editor.addEntity('IfcDirection', [[direction[0], direction[1]]]).expressId}`
+    : null;
+  return editor.addEntity('IfcAxis2Placement2D', [`#${originPt}`, refDirection]).expressId;
 }
 
 /**
@@ -87,19 +95,21 @@ export function emitMarkupSubContext(
 
 /**
  * Emit an `Annotation` `IfcShapeRepresentation` + `IfcProductDefinitionShape`
- * wrapping one representation item, for `IfcAnnotation.Representation`.
+ * wrapping one or more representation items, in order, for
+ * `IfcAnnotation.Representation`.
  */
 export function emitMarkupRepresentation(
   editor: StoreEditor,
   contextId: number,
   representationType: string,
-  itemId: number,
+  itemIds: number | readonly number[],
 ): { shapeRepId: number; productShapeId: number } {
+  const items = (typeof itemIds === 'number' ? [itemIds] : itemIds).map((id) => `#${id}`);
   const shapeRepId = editor.addEntity('IfcShapeRepresentation', [
     `#${contextId}`,
     'Annotation',
     representationType,
-    [`#${itemId}`],
+    items,
   ]).expressId;
   const productShapeId = editor.addEntity('IfcProductDefinitionShape', [
     null,

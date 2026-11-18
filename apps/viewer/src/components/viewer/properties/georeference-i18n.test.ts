@@ -29,7 +29,7 @@ import type { DoubleGeoreference } from '@/lib/geo/double-georeference';
 
 const LOCALE = 'ar-SA-x-georef-plural-test';
 
-function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport' | 'anchorUnitRatio'>>): DoubleGeoreference {
+function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport' | 'anchorUnitRatio' | 'siteHeightShiftMetres'>>): DoubleGeoreference {
   return {
     worldCenter: { x: 0, y: 0 },
     offset: { easting: 0, northing: 0 },
@@ -39,6 +39,7 @@ function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'f
     scaleForExport: null,
     factorsForExport: [],
     anchorUnitRatio: null,
+    siteHeightShiftMetres: null,
     ...overrides,
   };
 }
@@ -110,6 +111,9 @@ describe('georeference-i18n site anchor in map units (#9480)', () => {
     assert.doesNotMatch(raw, /set Eastings/);
     assert.match(localizedSiteAnchorUnitNote(resolve, 'en', slipped) ?? '', /a factor of 1,000\)/);
     assert.strictEqual(localizedSiteAnchorUnitNote(resolve, 'en', found({})), null);
+    assert.match(localizedSiteAnchorUnitNote(resolve, 'en', slipped) ?? '', /height in that placement is not corrected/);
+    const lifted = found({ anchorUnitRatio: 0.001, siteHeightShiftMetres: 13.986 });
+    assert.match(localizedSiteAnchorUnitNote(resolve, 'en', lifted) ?? '', /Its height is corrected the same way\.$/);
     assert.match(localizedRawValuesNote(resolve, 'en', found({})), /set Eastings and Northings to 0/);
   });
 });

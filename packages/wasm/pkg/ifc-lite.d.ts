@@ -3018,3 +3018,6 @@ export function initSync(module: { module: SyncInitInput } | SyncInitInput): Ini
  * @returns {Promise<InitOutput>}
  */
 export default function __wbg_init (module_or_path?: { module_or_path: InitInput | Promise<InitInput> } | InitInput | Promise<InitInput>): Promise<InitOutput>;
+
+/** The binary this glue was generated for when it is not the default `pkg/ifc-lite_bg.wasm` (the geometry-core bundle); `null` for the full engine. */
+export const ENGINE_BINARY_URL: URL | null;

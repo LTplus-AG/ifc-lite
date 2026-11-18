@@ -28,7 +28,7 @@ export default function RegistryLaunchRoute({ sourceProviders, enabled = import.
     queueMicrotask(() => {
       if (disposed || !enabled) return;
       const opening = callback ? finishHandoff(href, controller.signal).then(({ handoff, session }) => {
-        if (!disposed) { useHandoffWorkspace.setState({ handoff, sourceSession: session, loadedModelId: undefined }); setReady(true); }
+        if (!disposed) { useHandoffWorkspace.setState({ handoff, sourceSession: session, loadedModelId: undefined, pendingPublication: undefined, saved: undefined }); setReady(true); }
       }) : prepareHandoff(href, controller.signal).then(url => { controller.signal.throwIfAborted(); window.location.assign(url); });
       void opening.catch((failure: unknown) => { if (!disposed) setError(failure instanceof Error ? failure.message : translate.current('registry.failed')); })
         .finally(() => { clearTimeout(timer); if (!disposed) setBusy(false); });

@@ -56,7 +56,7 @@ export function trimExtendElementInStore(store: IfcDataStore, editor: StoreEdito
     })() : { p0: chain!.startCoordinates, dir: chain!.axisDirection, length: chain!.depth };
     let boundary: ReachBoundary, boundaryWall = null;
     if ('wallId' in params.boundary) {
-      if (isWall && (String(store.schemaVersion ?? 'IFC4').toUpperCase() === 'IFC5' || !store.source || store.source.byteLength === 0))
+      if (isWall && (String(store.schemaVersion ?? 'IFC4').toUpperCase() === 'IFC5' || store.sourceKind === 'tabular' || !store.source || store.source.byteLength === 0))
         throw new Error('Wall joins are authored in IFC2X3, IFC4 and IFC4X3 models only');
       const boundaryId = params.boundary.wallId;
       if (boundaryId === id || effectiveStoreyId(store, view, boundaryId) !== storeyId) throw new Error('Boundary wall must be distinct and in the same live storey');

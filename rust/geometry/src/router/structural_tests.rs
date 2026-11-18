@@ -99,6 +99,24 @@ fn signed_xy_area(mesh: &crate::Mesh) -> f64 {
         .sum()
 }
 
+/// Whether some triangle of the mesh contains the point (x, y) of the xy plane.
+fn covers(mesh: &crate::Mesh, x: f64, y: f64) -> bool {
+    mesh.indices.chunks_exact(3).any(|triangle| {
+        let point = |index: u32| {
+            let base = index as usize * 3;
+            [mesh.positions[base] as f64, mesh.positions[base + 1] as f64]
+        };
+        let [a, b, c] = [point(triangle[0]), point(triangle[1]), point(triangle[2])];
+        // A collapsed triangle covers nothing (all three side values would be zero for every point).
+        if ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])).abs() < 1e-12 {
+            return false;
+        }
+        let side = |p: [f64; 2], q: [f64; 2]| (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+        let (s1, s2, s3) = (side(a, b), side(b, c), side(c, a));
+        (s1 >= -1e-9 && s2 >= -1e-9 && s3 >= -1e-9) || (s1 <= 1e-9 && s2 <= 1e-9 && s3 <= 1e-9)
+    })
+}
+
 fn curved_member(orientation: bool) -> String {
     let oriented = if orientation {
         "#9=IFCORIENTEDEDGE(*,*,#8,.T.);"
@@ -287,7 +305,9 @@ fn structural_surface_rebases_raw_coordinates_before_f32_conversion() {
         "#15=IFCFACESURFACE((#6),#14,.T.);",
         "#15=IFCADVANCEDFACE((#6),#14,.T.,.F.);",
     );
-    for source in [face_surface, advanced_face] {
+    // A bare IfcFace (GeometryGym) on a structural member rebases too (#9668).
+    let bare_face = face_surface.replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    for source in [face_surface, advanced_face, bare_face] {
         let mut decoder = EntityDecoder::new(&source);
         let entity = decoder.decode_by_id(18).unwrap();
         let mut router = GeometryRouter::new();
@@ -675,4 +695,168 @@ fn oriented_edge_cycle_fails_loudly_instead_of_recursing() {
 
     let error = router.process_element(&entity, &mut decoder).unwrap_err();
     assert!(error.to_string().contains("cycle"), "{error}");
+}
+
+fn meshed(source: &str, id: u32) -> crate::Mesh {
+    let mut decoder = EntityDecoder::new(source);
+    let entity = decoder.decode_by_id(id).unwrap();
+    GeometryRouter::new().process_element(&entity, &mut decoder).unwrap()
+}
+
+#[test]
+fn axisvm_undefined_topology_type_in_a_bare_product_representation_meshes_issue_9668() {
+    // AxisVM (IFC2X3) types every member topology 'Undefined' and puts a curve
+    // member's in the (then non-abstract) IfcProductRepresentation.
+    let source = member("(0.,0.,0.)", "(10.,0.,0.)", "Undefined").replace("IFCPRODUCTDEFINITIONSHAPE", "IFCPRODUCTREPRESENTATION");
+    let (start, end) = midpoints(&meshed(&source, 8));
+    assert!(start[0].abs() < 1e-6 && (end[0] - 10.0).abs() < 1e-6, "{start:?} {end:?}");
+    let surface = surface_member(true, false).replace("'Face'", "'Undefined'");
+    assert!((signed_xy_area(&meshed(&surface, 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn bare_face_and_curve_bounded_plane_surface_members_mesh_issue_9668() {
+    // GeometryGym writes a bare IfcFace; AxisVM an IfcCurveBoundedPlane over an IfcPlane.
+    let bare = surface_member(true, false).replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    assert!((signed_xy_area(&meshed(&bare, 18)) - 100.0).abs() < 1e-5);
+    let bounded = surface_member(true, false).replace("#14=IFCPLANE(#13);", "#14=IFCCURVEBOUNDEDPLANE(#19,$,());#19=IFCPLANE(#13);");
+    assert!((signed_xy_area(&meshed(&bounded, 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn disjoint_outer_bounds_are_regions_not_holes_issue_9668() {
+    // AxisVM writes a slab as one face of many outer-bound triangles: two
+    // 10x10 halves of the square must mesh as 100, not as one minus the other.
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#1,#3,#4));#21=IFCFACEOUTERBOUND(#20,.T.);",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    assert!((signed_xy_area(&meshed(&source, 18)) - 100.0).abs() < 1e-5);
+}
+
+/// `surface_member` items on an ordinary product: an IfcBuildingElementProxy
+/// whose Body representation holds the face.
+fn proxy_with(face_source: &str) -> String {
+    face_source
+        .replace("IFCTOPOLOGYREPRESENTATION($,'Reference','Face',", "IFCSHAPEREPRESENTATION($,'Body',$,")
+        .replace(
+            "#18=IFCSTRUCTURALSURFACEMEMBER('0000000000000000000000',$,'Surface',$,$,$,#17,.SHELL.,0.2);",
+            "#18=IFCBUILDINGELEMENTPROXY('0000000000000000000000',$,'Proxy',$,$,$,#17,$,$);",
+        )
+}
+
+#[test]
+fn bare_face_on_another_product_stays_unsupported_issue_9668() {
+    // A bare IfcFace has no processor outside a structural member (main: an error).
+    let bare = proxy_with(&surface_member(true, false).replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));"));
+    let mut decoder = EntityDecoder::new(&bare);
+    let proxy = decoder.decode_by_id(18).unwrap();
+    assert_eq!(proxy.ifc_type, IfcType::IfcBuildingElementProxy);
+    let error = GeometryRouter::new().process_element(&proxy, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("Unsupported representation type"), "{error}");
+}
+
+#[test]
+fn curve_bounded_plane_face_on_another_product_stays_empty_issue_9668() {
+    // Main meshes nothing for a face surface on an IfcCurveBoundedPlane.
+    let bounded = proxy_with(&surface_member(true, false).replace("#14=IFCPLANE(#13);", "#14=IFCCURVEBOUNDEDPLANE(#19,$,());#19=IFCPLANE(#13);"));
+    assert!(meshed(&bounded, 18).is_empty());
+}
+
+#[test]
+fn disjoint_outer_bounds_on_another_product_are_regions_issue_9945() {
+    // The generic pipeline reads the same face the same way: two disjoint
+    // outer-bound triangles of a square are two regions, 100, where main kept the
+    // last as the ring and made the first a hole (one triangle, 50).
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#1,#3,#4));#21=IFCFACEOUTERBOUND(#20,.T.);",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    assert!((signed_xy_area(&meshed(&proxy_with(&source), 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn a_tile_across_a_slot_of_a_concave_loop_is_a_region_issue_9945() {
+    // A 10 x 10 square with a thin slot cut in from the top (x 3 to 3.2, down to y 2), and a thin triangle whose
+    // vertices and edge midpoints are all in the square but whose long edge (0,0)-(10,9) crosses the slot.
+    // The triangle is a region of its own, not the square's opening, so the part of it inside the slot is drawn.
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#31,#32,#33,#34,#35,#36,#37,#38));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#31,#40,#41));#21=IFCFACEOUTERBOUND(#20,.T.);\
+         #31=IFCCARTESIANPOINT((0.,0.,0.));#32=IFCCARTESIANPOINT((10.,0.,0.));#33=IFCCARTESIANPOINT((10.,10.,0.));\
+         #34=IFCCARTESIANPOINT((3.2,10.,0.));#35=IFCCARTESIANPOINT((3.2,2.,0.));#36=IFCCARTESIANPOINT((3.,2.,0.));\
+         #37=IFCCARTESIANPOINT((3.,10.,0.));#38=IFCCARTESIANPOINT((0.,10.,0.));\
+         #40=IFCCARTESIANPOINT((10.,9.,0.));#41=IFCCARTESIANPOINT((10.,0.5,0.));",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    let mesh = meshed(&proxy_with(&source), 18);
+    assert!(covers(&mesh, 3.1, 2.4), "the triangle is a region: its part inside the slot is meshed");
+    // (8, 9) is in the square but outside the thin triangle, so only the square covers it.
+    assert!(covers(&mesh, 8.0, 9.0), "the square is meshed");
+}
+
+#[test]
+fn an_opening_that_touches_the_outer_loop_is_still_an_opening_issue_9945() {
+    // A 10 x 10 square and a triangle (base 4, height 3, area 6) with one vertex on the square's bottom edge.
+    // Touching is no crossing, so the triangle is the square's opening: 100 - 6 = 94, not two regions (106).
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#31,#32,#33));#21=IFCFACEOUTERBOUND(#20,.T.);\
+         #31=IFCCARTESIANPOINT((5.,0.,0.));#32=IFCCARTESIANPOINT((7.,3.,0.));#33=IFCCARTESIANPOINT((3.,3.,0.));",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    let mesh = meshed(&proxy_with(&source), 18);
+    assert!((signed_xy_area(&mesh) - 94.0).abs() < 1e-5);
+    assert!(!covers(&mesh, 5.0, 2.0), "the triangle's interior is the opening, empty");
+    assert!(covers(&mesh, 1.0, 5.0), "the square around it is meshed");
+}
+
+#[test]
+fn an_opening_tagged_as_an_outer_bound_is_an_opening_on_every_product_issue_9945() {
+    // A 2 x 2 loop tagged IfcFaceOuterBound inside the 10 x 10 loop is that loop's
+    // opening: 100 - 4 = 96, on a proxy and on a structural member alike. Main
+    // meshed only the small square on a proxy (4), and the member counted the
+    // overlap twice (104).
+    let face = surface_member(true, true).replace("#12=IFCFACEBOUND(#11,.T.);", "#12=IFCFACEOUTERBOUND(#11,.T.);");
+    for mesh in [meshed(&proxy_with(&face), 18), meshed(&face, 18)] {
+        assert!((signed_xy_area(&mesh) - 96.0).abs() < 1e-5);
+        // Area alone cannot tell an opening from a filled hole (a covering square plus a reverse-wound inner one also sums
+        // to 96): the opening's centre (5, 5) must be empty while the ring around it is meshed.
+        assert!(!covers(&mesh, 5.0, 5.0), "the opening is empty");
+        assert!(covers(&mesh, 2.0, 2.0) && covers(&mesh, 8.0, 8.0), "the ring around it is meshed");
+    }
+}
+
+#[test]
+fn member_face_is_refused_with_the_length_unit_like_every_item_issue_9668() {
+    // A refused length unit refuses every item (#7678); a structural member's
+    // face, even one the member-face rule would mesh, is no exception.
+    let face_surface = surface_member(true, false);
+    let bare = face_surface.replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));");
+    for source in [face_surface, bare] {
+        let mut decoder = EntityDecoder::new(&source);
+        let member = decoder.decode_by_id(18).unwrap();
+        let mut router = GeometryRouter::new();
+        router.refuse_length_unit();
+        assert!(router.process_element(&member, &mut decoder).is_err());
+    }
+}
+
+#[test]
+fn bare_face_of_a_member_votes_the_file_rtc_issue_9668() {
+    // Detected through the live file detector, not a manual offset.
+    let wrap = |data: &str| format!("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n{data}\nENDSEC;END-ISO-10303-21;");
+    let large = surface_member(true, false)
+        .replace("#15=IFCFACESURFACE((#6),#14,.T.);", "#15=IFCFACE((#6));")
+        .replace("(0.,0.,0.)", "(5000000.,5000000.,0.)")
+        .replace("(10.,0.,0.)", "(5000000.125,5000000.,0.)")
+        .replace("(10.,10.,0.)", "(5000000.125,5000000.125,0.)")
+        .replace("(0.,10.,0.)", "(5000000.,5000000.125,0.)");
+    let detect = |data: &str| {
+        let content = wrap(data);
+        let mut decoder = EntityDecoder::with_index(&content, ifc_lite_core::build_entity_index(&content));
+        let router = GeometryRouter::with_units(&content, &mut decoder);
+        router.detect_rtc_offset_for_file(content.as_bytes(), &mut decoder)
+    };
+    assert!(matches!(detect(&large), Some(ifc_lite_core::RtcVerdict::Large { .. })), "{:?}", detect(&large));
+    // The same bare face on another product is not read, as on main.
+    assert!(!matches!(detect(&proxy_with(&large)), Some(ifc_lite_core::RtcVerdict::Large { .. })));
 }

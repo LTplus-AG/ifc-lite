@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { VisibleResultState } from './effective-empty';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { IfcTypeEnum, type SpatialNode } from '@ifc-lite/data';
@@ -13,7 +14,7 @@ import { fixtureModel } from '@/test/store-fixture';
 interface VisibilityModule {
   computeVisibilityIsolation(state: ViewerState): Set<number> | null;
   isVisibleResultEmpty(
-    state: Pick<ViewerState, 'models' | 'geometryResult' | 'hiddenEntities'>,
+    state: VisibleResultState,
     geometry: {
       meshes: ReadonlyArray<{ expressId: number; entityIds?: Uint32Array }> | null;
       pointClouds: ReadonlyArray<{ chunk: { pointCount: number } }>;
@@ -100,7 +101,7 @@ describe('effective empty visibility (#5879)', () => {
       useViewerStore.setState({ models, hiddenEntities: new Set() });
       const state = useViewerStore.getState();
       assert.equal(subject.isVisibleResultEmpty(state, { meshes: [], pointClouds: [], isolatedIds: null }), true);
-      assert.equal(subject.isVisibleResultEmpty({ models: new Map(), geometryResult: null, hiddenEntities: new Set() },
+      assert.equal(subject.isVisibleResultEmpty({ ...useViewerStore.getState(), models: new Map(), geometryResult: null, hiddenEntities: new Set() },
         { meshes: [], pointClouds: [], isolatedIds: null }), false);
     });
   }
@@ -111,13 +112,13 @@ describe('effective empty visibility (#5879)', () => {
       ...entry.geometryResult!, meshes: [], totalTriangles: 2,
       instancedGeometryHashes: new Map([[101, 1n]]),
     };
-    const state = { models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
+    const state = { ...useViewerStore.getState(), models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
     assert.equal(subject.isVisibleResultEmpty(state, { meshes: [], pointClouds: [], isolatedIds: null }), false);
   });
 
   it('reports a loaded model when every mesh type is filtered out', () => {
     const entry = model('m', 0);
-    const state = { models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
+    const state = { ...useViewerStore.getState(), models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
     assert.equal(subject.isVisibleResultEmpty(state, { meshes: [], pointClouds: [], isolatedIds: null }), true);
   });
 
@@ -130,14 +131,14 @@ describe('effective empty visibility (#5879)', () => {
         bbox: { min: [0, 0, 0], max: [0, 0, 0] },
       } }],
     };
-    const state = { models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
+    const state = { ...useViewerStore.getState(), models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
     assert.equal(subject.isVisibleResultEmpty(state, { meshes: [], pointClouds: [], isolatedIds: null }), false);
   });
 
   it('avoids a false notice for unenumerated GPU shards but accepts a proven empty intersection', () => {
     const entry = model('m', 0);
     entry.geometryResult = { ...entry.geometryResult!, meshes: [] };
-    const state = { models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
+    const state = { ...useViewerStore.getState(), models: new Map([['m', entry]]), geometryResult: null, hiddenEntities: new Set<number>() };
     assert.equal(subject.isVisibleResultEmpty(state, {
       meshes: [], pointClouds: [], isolatedIds: null, hasUnenumeratedInstances: true,
     }), false);

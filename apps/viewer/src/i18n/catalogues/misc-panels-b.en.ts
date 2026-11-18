@@ -177,6 +177,10 @@ export const miscPanelsBEn = {
   'shareDialog.guestName': 'Guest',
   'shareDialog.roomCreationFailed':
     'No session was created. Close and reopen this dialog to try again.',
+  'shareDialog.shareSkipped.noRecords':
+    'Left out of the shared session, no IFC records to share from: {models}.',
+  'shareDialog.shareSkipped.allRefused':
+    'Nothing here can be shared, no IFC records to share from: {models}.',
   'shareDialog.linkCreationFailed': 'Link creation failed. Check the connection and try again.',
   'shareDialog.joinedViaInvite':
     'You joined via an invite - sharing it forwards the same access. Only the session admin can mint new links.',
@@ -213,6 +217,8 @@ export const miscPanelsBEn = {
   'loadReportPanel.selectAndFrameTitle': 'Select and frame this entity',
   'loadReportPanel.entitySummary':
     '#{productId} {ifcType} — {csgFailures} failure(s), {openings} opening(s)',
+  // #9268: one work-budget refusal under its product; {budget} is the engine's meter name.
+  'loadReportPanel.budgetRefusal': '{budget}: limit {limit}, reached {reached}; source #{sourceId}',
   'loadReportPanel.tierSuffix': ' · tier {tier}',
   'loadReportPanel.fastModeSuffix': ' · fast mode',
   'loadReportPanel.affectedEntitiesLabel': 'Affected entities',

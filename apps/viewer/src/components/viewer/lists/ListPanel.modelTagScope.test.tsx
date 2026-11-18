@@ -34,7 +34,7 @@ function buildStore(name: string): IfcDataStore {
     entityCount: 1,
     parseTime: 0,
     source: new Uint8Array(0),
-    entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map([['IFCWALL', [42]]]) },
+    entityIndex: { byId: new Map(), byType: new Map([['IFCWALL', [42]]]) },
     strings,
     entities: builder.build(),
     properties: undefined,

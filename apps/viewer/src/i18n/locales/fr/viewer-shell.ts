@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const viewerShellFr = {
+  "viewerShell.localIfcMemory.title": "Ce modèle peut dépasser la mémoire disponible",
+  "viewerShell.localIfcMemory.continue": "Poursuivre le chargement",
+  "viewerShell.localIfcMemory.description": "Ce modèle peut nécessiter environ {estimated} Gio de mémoire. Le navigateur signale au maximum 8 Gio ; la mémoire disponible peut donc être supérieure. Continuer sur un appareil disposant de trop peu de mémoire peut faire planter cet onglet. Annulez pour arrêter ce chargement, ou utilisez un modèle plus petit ou l’interface en ligne de commande/le serveur natif.",
+
   "viewerShell.star.title": "Vous appréciez IFC Lite ?",
   "viewerShell.star.detail": "Une étoile sur GitHub aide à faire connaître l’application.",
   "viewerShell.star.action": "Ajouter une étoile sur GitHub",
@@ -17,6 +21,11 @@ export const viewerShellFr = {
   "viewerShell.staleDeployment.notice": "Une nouvelle version de la visionneuse est disponible : rechargez pour continuer.",
   "viewerShell.staleDeployment.reopenPrompt": "La visionneuse a été mise à jour vers une nouvelle version et rechargée. Ouvrez à nouveau {files} pour continuer.",
   "viewerShell.staleDeployment.reopenAction": "Ouvrir un fichier…",
+  "viewerShell.hostConfig.errorTitle": "La visionneuse n'a pas pu démarrer",
+  "viewerShell.hostConfig.errorBody": "Ses paramètres n'ont pas pu être chargés, rien n'est donc affiché. Rechargez la page. Si le problème persiste, prévenez les responsables de ce site.",
+  "viewerShell.hostConfig.viewerLoadTitle": "La visionneuse n'a pas pu être chargée",
+  "viewerShell.hostConfig.viewerLoadBody": "Ses fichiers de programme n'ont pas pu être téléchargés, rien n'est donc affiché. Rechargez la page. Si le problème persiste, prévenez les responsables de ce site.",
+  "viewerShell.hostConfig.errorDetail": "Détail technique : {detail}",
   "viewerShell.chunkLabel.appearancePanel": "Panneau Apparence",
   "viewerShell.chunkLabel.chartsPanel": "Panneau Graphiques",
   "viewerShell.chunkLabel.flowPanel": "Panneau Flow",

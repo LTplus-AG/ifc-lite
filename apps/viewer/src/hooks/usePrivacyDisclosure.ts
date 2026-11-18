@@ -14,6 +14,7 @@
  * gets stored locally before the miner / memory loops start.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useEffect } from 'react';
 import { toast } from '@/components/ui/toast';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -26,7 +27,7 @@ export function usePrivacyDisclosure(): void {
   const host = useOptionalExtensionHost();
   const { t } = useTranslation();
   useEffect(() => {
-    if (!host) return;
+    if (!isFeatureEnabled('privacy.notice') || !host) return;
     if (typeof window === 'undefined') return;
     try {
       if (window.localStorage.getItem(STORAGE_KEY)) return;

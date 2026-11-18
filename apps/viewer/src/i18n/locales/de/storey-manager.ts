@@ -5,6 +5,17 @@
 import type { Catalogue } from '../../registry';
 
 export const storeyManagerDe = {
+  "storeyManager.insert.before": "Aktuell",
+  "storeyManager.insert.after": "Nach dem Einfügen",
+  "storeyManager.notice.columnNotResized": {"one": "{count} Stütze: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können", "other": "{count} Stützen: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können"},
+  "storeyManager.notice.columnAttachmentUnresolved": {"one": "{count} Stütze: Die Höhe bleibt erhalten, da das gespeicherte obere Ziel nicht aufgelöst werden kann", "other": "{count} Stützen: Die Höhe bleibt erhalten, da das gespeicherte obere Ziel nicht aufgelöst werden kann"},
+  "storeyManager.notice.beamNotResized": {"one": "{count} Träger: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können", "other": "{count} Träger: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können"},
+  "storeyManager.notice.beamAttachmentUnresolved": {"one": "{count} Träger: Die Höhe bleibt erhalten, da das gespeicherte obere Ziel nicht aufgelöst werden kann", "other": "{count} Träger: Die Höhe bleibt erhalten, da das gespeicherte obere Ziel nicht aufgelöst werden kann"},
+  "storeyManager.notice.memberNotResized": {"one": "{count} Stab: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können", "other": "{count} Stäbe: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können"},
+  "storeyManager.notice.memberAttachmentUnresolved": {"one": "{count} Stab: Die Höhe bleibt erhalten, da das gespeicherte obere Ziel nicht aufgelöst werden kann", "other": "{count} Stäbe: Die Höhe bleibt erhalten, da das gespeicherte obere Ziel nicht aufgelöst werden kann"},
+  "storeyManager.notice.curtainWallNotResized": {"one": "{count} Vorhangfassade: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können", "other": "{count} Vorhangfassaden: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können"},
+  "storeyManager.notice.curtainWallAttachmentUnresolved": {"one": "{count} Vorhangfassade: Die Höhe bleibt erhalten, da das gespeicherte obere Ziel nicht aufgelöst werden kann", "other": "{count} Vorhangfassaden: Die Höhe bleibt erhalten, da das gespeicherte obere Ziel nicht aufgelöst werden kann"},
+  "storeyManager.notice.elementNotResized": {"one": "{count} Element: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können", "other": "{count} Elemente: Die Höhe bleibt beim Verschieben erhalten, da Körper oder Anbindung nicht angepasst werden können"},
   "storeyManager.title": "Geschosse",
   "storeyManager.subtitle": "{model} · {count} Geschosse",
   "storeyManager.open": "Geschosse verwalten…",
@@ -103,7 +114,7 @@ export const storeyManagerDe = {
   "storeyManager.delete": "{storey} löschen",
   "storeyManager.deleted": "{storey} gelöscht",
   "storeyManager.undo": "Rückgängig",
-  "storeyManager.undoStale": "Nicht rückgängig gemacht: Nach dieser Löschung kamen weitere Änderungen. Machen Sie diese zuerst in der Werkzeugleiste rückgängig.",
+  "storeyManager.undoStale": "Nicht rückgängig gemacht: Nach dieser Änderung gab es weitere Bearbeitungen. Mache sie zuerst über die Werkzeugleiste rückgängig.",
   "storeyManager.delete.title": {
     "one": "{storey} enthält {count} Element",
     "other": "{storey} enthält {count} Elemente"
@@ -124,6 +135,7 @@ export const storeyManagerDe = {
   "storeyManager.readOnly": "Geschosse können angezeigt, aber nicht bearbeitet werden: {reason}",
   "storeyManager.error": "Geschosse können nicht gelesen werden: {reason}",
   "storeyManager.drawOn": "Hier zeichnen",
+  "storeyManager.copy.back": "Zurück zu den Geschossen",
   "storeyManager.copy.title": "Auf Geschosse kopieren…",
   "storeyManager.copy.empty": "Zuerst Elemente zum Kopieren auswählen",
   "storeyManager.copy.all": "Alle Geschosse auswählen",
@@ -136,8 +148,8 @@ export const storeyManagerDe = {
   "storeyManager.copy.done": {"one": "{count} Element auf {targets} kopiert", "other": "{count} Elemente auf {targets} kopiert"},
   "storeyManager.copy.stale": "Das Modell wurde geändert. Kopien erneut vorbereiten.",
   "storeyManager.wallTarget": "Bis {storey} ({elevation} m)",
-  'storeyManager.copy.from': 'Von Geschoss',
-  'storeyManager.copy.to': 'Bis Geschoss',
+  "storeyManager.copy.from": "Von Geschoss",
+  "storeyManager.copy.to": "Bis Geschoss",
   "storeyManager.copy.readOnly": "Kopieren ist nicht möglich: {reason}",
   "storeyManager.copy.working": "Kopieren…",
   "storeyManager.wallNextMissing": "Nächstes Geschoss darüber (noch keines vorhanden)",
@@ -154,5 +166,5 @@ export const storeyManagerDe = {
   "storeyManager.copy.newElements": {"one": "{count} neues Element", "other": "{count} neue Elemente"},
   "storeyManager.copy.undoStale": "Nicht rückgängig gemacht: Nach dieser Kopie wurden weitere Änderungen vorgenommen. Machen Sie diese zuerst über die Werkzeugleiste rückgängig.",
   "storeyManager.insert.move": "{storey} wird von {from} auf {to} m verschoben",
-  "storeyManager.impact.wallTops": {"one": "Aktualisiert {count} Wandoberkante", "other": "Aktualisiert {count} Wandoberkanten"},
+  "storeyManager.impact.wallTops": {"one": "aktualisiert {count} Wandoberkante", "other": "aktualisiert {count} Wandoberkanten"},
 } satisfies Catalogue;

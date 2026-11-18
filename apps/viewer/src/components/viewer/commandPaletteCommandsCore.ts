@@ -4,8 +4,9 @@
 
 /** Runtime recent-file provider. Static definitions are projected once by the composer. */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { paletteAvailability } from './palette-availability';
-import { surfaceCommand } from './surface-commands';
+import { surfaceCommand } from './surface-command-registry';
 import { resolve as t } from '@/i18n/registry';
 import { toast } from '@/components/ui/toast';
 import { Clock } from 'lucide-react';
@@ -19,7 +20,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
     { ...p.surfaceContext, surface: 'palette' });
 
   // ── File ──
-  for (const rf of p.recentFiles) {
+  for (const rf of isFeatureEnabled('files.local') ? p.recentFiles : []) {
     const fileName = rf.name;
     c.push({
       id: `file:recent:${fileName}`, label: fileName,

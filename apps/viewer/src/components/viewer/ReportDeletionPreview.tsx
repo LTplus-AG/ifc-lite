@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { reportChartDependencies, type ChartDependencyPreview, type ReportSource } from '@/lib/reports/chart-dependencies';
@@ -28,7 +30,9 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
   const active = useRef({ alive: true });
   const action = useRef(source.kind === 'compare' ? useViewerStore.getState().deleteSavedComparison : useViewerStore.getState().deleteSavedClashReport);
   const [acknowledged, setAcknowledged] = useState<ChartDependencyPreview | null>(null);
-  const [busy, setBusy] = useState(false);
+  // C-9: a synchronous lease, so a double-clicked Confirm runs one removal pass.
+  const flight = useAsyncRun();
+  const busy = flight.busy;
   const [pendingDeletion, setPendingDeletion] = useState(false);
   const ownGuard = useRef<(() => boolean | Promise<boolean>) | null>(null);
   const [durableDocuments, setDurableDocuments] = useState<DurableDocuments>({ entries: [], phase: 'loading' });
@@ -55,21 +59,31 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     });
     return () => { owner.alive = false; window.removeEventListener('storage', changedStorage); };
   }, [source.kind, source.id]);
-  const remove = async () => {
-    if (busy) return;
+  const remove = () => flight.start(async () => {
     // #7252: another tab can commit a Document after this preview hydrated.
     // Refresh through the existing validated native library before approval.
-    const durable = await readDurableDocuments();
-    setDurableDocuments(durable);
-    const latest = useViewerStore.getState();
-    const target = source.kind === 'compare' ? latest.savedComparisons.find(row => row.id === source.id) : latest.savedClashReports.find(row => row.id === source.id);
-    const next = reportChartDependencies(latest, source, durable);
-    const removeAction = source.kind === 'compare' ? latest.deleteSavedComparison : latest.deleteSavedClashReport;
-    if (busy || removeAction !== action.current || target !== captured.current || !acknowledged || next.signature !== acknowledged.signature || next.documentPhase === 'loading') {
+    // Inside a try: useAsyncRun does not rethrow, so a throw here would only
+    // reach the console; it fails the removal the way a storage failure does.
+    let prepared;
+    try {
+      const durable = await readDurableDocuments();
+      setDurableDocuments(durable);
+      const latest = useViewerStore.getState();
+      prepared = {
+        target: source.kind === 'compare' ? latest.savedComparisons.find(row => row.id === source.id) : latest.savedClashReports.find(row => row.id === source.id),
+        next: reportChartDependencies(latest, source, durable),
+        removeAction: source.kind === 'compare' ? latest.deleteSavedComparison : latest.deleteSavedClashReport,
+      };
+    } catch (error) {
+      console.warn('[Report deletion] Preparing the removal failed', error);
+      storageFailed();
+      return;
+    }
+    const { target, next, removeAction } = prepared;
+    if (removeAction !== action.current || target !== captured.current || !acknowledged || next.signature !== acknowledged.signature || next.documentPhase === 'loading') {
       refreshRead(value => value + 1); return;
     }
     const owner = active.current;
-    setBusy(true);
     let staged = false;
     let guardRejected = false;
     const beforeWrite = async () => {
@@ -87,11 +101,20 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
       return true;
     };
     ownGuard.current = beforeWrite;
-    const ok = await removeAction(source.id, beforeWrite);
-    if (active.current === owner && owner.alive) setPendingDeletion(staged && !ok && !guardRejected);
-    if (!ok && !guardRejected) storageFailed();
-    if (active.current === owner && owner.alive) { setBusy(false); if (ok) onDeleted?.(); }
-  };
+    let ok = false;
+    try { ok = await removeAction(source.id, beforeWrite); }
+    catch (error) { console.warn('[Report deletion] Removal failed', error); }
+    try {
+      if (active.current === owner && owner.alive) setPendingDeletion(staged && !ok && !guardRejected);
+      if (!ok && !guardRejected) storageFailed();
+      if (ok && active.current === owner && owner.alive) onDeleted?.();
+    } catch (error) {
+      // The host's callbacks threw; useAsyncRun does not rethrow, so say it
+      // here, by what actually happened to the report.
+      console.error('[Report deletion] Finishing the removal failed', error);
+      toast.error(t(ok ? 'comparePanel.saved.dependencies.finishFailed' : 'comparePanel.saved.dependencies.removeFailed'));
+    }
+  });
   const cancel = () => {
     // Revoke approval before any asynchronous recovery or unmount callback.
     active.current.alive = false;

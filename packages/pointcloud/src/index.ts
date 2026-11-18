@@ -62,7 +62,7 @@ export {
   type WktBoundingBox,
   type WktCrsIdentifiers,
   type WktSpatialMetadata,
-} from './spatial-wkt.js';
+} from '@ifc-lite/geo/wkt';
 export { AsciiPointsStreamingSource } from './streaming/ascii-points-source.js';
 export {
   decodeAsciiPoints,

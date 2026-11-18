@@ -21,6 +21,7 @@
 import { create } from 'zustand';
 import type { TranslationKey } from '@/i18n';
 import { isAnalysisPanel, isWorkspacePanelId, type AnalysisPanelId } from '@/lib/panels/registry';
+import { isAbortError } from '@/lib/runs/abort';
 
 export type ActivityKind = 'load' | 'check' | 'export' | 'ai' | 'flow';
 export type ActivityOutcome = 'running' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'interrupted';
@@ -199,16 +200,6 @@ export async function recordActivity<T>(input: BeginActivity, run: () => Promise
     else finishActivity(id, 'failed', { detail: error instanceof Error ? error.message : String(error) });
     throw error;
   }
-}
-
-/**
- * A cancellation thrown by the job's own runner: anything named `AbortError`
- * (a DOMException from `signal.throwIfAborted()` or `fetch`, Node's
- * AbortError, an abort reason object). A user cancel, not a failure.
- */
-function isAbortError(error: unknown): boolean {
-  if (error === null || (typeof error !== 'object' && typeof error !== 'function')) return false;
-  return 'name' in error && error.name === 'AbortError';
 }
 
 /** Drop a job whose outcome its host reports elsewhere. */

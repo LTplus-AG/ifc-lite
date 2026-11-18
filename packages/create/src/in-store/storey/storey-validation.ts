@@ -12,6 +12,11 @@
 /** Storeys closer than this (metres) are refused as zero spacing. */
 export const MIN_STOREY_SPACING = 0.001;
 
+/** The planner's common tolerance, including indexed attachment boundaries. */
+export function storeyDeltasDiffer(own: number, target: number): boolean {
+  return Math.abs(target - own) >= 1e-9;
+}
+
 export type StoreyRefusalCode =
   | 'notFound'
   | 'invalidValue'
@@ -40,6 +45,8 @@ export interface StoreyRefusal {
 
 /** A non-blocking note: something the edit leaves as it is, and why. */
 export interface StoreyNotice {
+  /** Kind-specific text for an attachment notice; omitted by older callers. */
+  readonly elementType?: 'IfcWall' | 'IfcColumn' | 'IfcBeam' | 'IfcMember' | 'IfcCurtainWall';
   readonly code: string;
   readonly message: string;
   readonly elementIds: readonly number[];

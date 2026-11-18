@@ -79,7 +79,7 @@ describe('detection overlay (#6894)', () => {
   it('a run ends when its scan or target model is removed, and survives other removals', (t) => {
     if (!ensureWasm(t)) return;
     const r = run(null);
-    const state = { ...useViewerStore.getState(), scanDetectionRun: r, scanDetectionStatus: 'done' as const };
+    const state = { ...useViewerStore.getState(), scanDetectionRun: r, scanDetectionJob: { kind: 'succeeded' as const, runId: 1, result: r } };
     const removed = (modelId: string) => viewerTeardown({ kind: 'model-removed', modelId, isStale: () => false, nextActiveModelId: null }, state);
     assert.equal(removed('scan').scanDetectionRun, null);
     assert.equal(removed('ifc').scanDetectionRun, null);

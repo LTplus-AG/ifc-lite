@@ -21,6 +21,7 @@
  */
 
 import {
+  mirrorElementsInStore, addClassificationInStore, assignClassificationInStore,
   copyBatchInStore, copyToStoreysInStore, copiesOfSelection, arrayCopyTransforms, applyNewElementTop,
   editHostedElementInStore,
   addCurtainWallToStore,
@@ -40,6 +41,7 @@ import {
   resolveAuthoringAnchor,
   resolveBodyContextId,
   applyLayerThicknessInStore,
+  followTypeLayersOnRetypeInStore,
   typeOccurrencesInStore,
   type ElementTypeInStoreParams,
   type MaterialInStoreParams,
@@ -96,6 +98,18 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
   };
 
   return {
+    mirrorElements(modelId, ids, params) {
+      const model = resolve(modelId);
+      return mirrorElementsInStore(model.store, model.editor, ids, params).map(id => ref(model.modelId, id));
+    },
+    addClassification(modelId, params) {
+      const model = resolve(modelId);
+      return ref(model.modelId, addClassificationInStore(model.store, model.editor, params));
+    },
+    assignClassification(modelId, classificationId, objects) {
+      const model = resolve(modelId);
+      return ref(model.modelId, assignClassificationInStore(model.store, model.editor, classificationId, objects));
+    },
     ...createPhysicalStoreBackend(resolve),
     ...createRoofStoreBackend(resolve),
     copyElements(modelId, expressIds, transforms) {
@@ -202,6 +216,8 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
     assignType(modelId: string, typeExpressId: number, objectExpressIds: number[]): EntityRef {
       const { model, anchor } = authoring(modelId);
       requireKinds(model, 'assignType', [[[typeExpressId], ['IfcTypeObject']], [objectExpressIds, ['IfcObject']]]);
+      // An occurrence drawn with its old type follows the new type's layers, not the old type's (#9296).
+      followTypeLayersOnRetypeInStore(editTarget(model), typeExpressId, objectExpressIds);
       const existing = readRelatedLists(model.store, 'IfcRelDefinesByType', model.mutationView);
       const rel = assignTypeInStore(model.editor, anchor, typeExpressId, objectExpressIds, existing).relId;
       // A layered type drives the thickness of what it types, in the same record (one undo step).

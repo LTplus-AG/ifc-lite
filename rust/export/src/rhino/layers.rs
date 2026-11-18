@@ -10,6 +10,7 @@ use ifc_lite_processing::default_color_for_type;
 
 use super::names::{bracket_safe, clean_name, NameSet};
 use super::source::ModelInfo;
+use super::user_text::layer_text;
 use super::wire::RhinoLayer;
 use crate::scene_input::is_space;
 
@@ -61,7 +62,7 @@ impl Table {
         let base = with_id.clone().unwrap_or_else(|| name.to_string());
         let candidates = std::iter::once(name.to_string()).chain(with_id).chain((2..).map(|n| format!("{base} ({n})")));
         let unique = self.names.entry(parent).or_default().claim(candidates);
-        self.layers.push(RhinoLayer { name: unique, parent, color, visible, locked });
+        self.layers.push(RhinoLayer { name: unique, parent, color, visible, locked, user_strings: Vec::new() });
         self.layers.len() - 1
     }
 }
@@ -98,8 +99,10 @@ pub(super) fn build_layers<'a>(
             b.spatial_tree(info, &tree, pid);
         }
     } else if b.by_anchor.keys().any(|a| matches!(a, Anchor::Root | Anchor::Presentation(_))) {
-        let name = info.project.map(|p| info.node_name(p)).unwrap_or_else(|| "Project".to_string());
-        let root = b.anchor_layer(None, Anchor::Root, &name, info.project);
+        let root = match info.project {
+            Some(project) => b.entity_layer(info, None, Anchor::Root, project),
+            None => b.anchor_layer(None, Anchor::Root, "Project", None),
+        };
         let presentations: Vec<Option<&str>> =
             b.by_anchor.keys().filter_map(|a| if let Anchor::Presentation(name) = a { Some(*name) } else { None }).collect();
         for name in presentations {
@@ -133,6 +136,14 @@ impl<'a> Builder<'a> {
         layer
     }
 
+    /// The grey anchor layer that stands for IFC entity `id` (the project or
+    /// a spatial node), stamped with its identity ([`layer_text`]).
+    fn entity_layer(&mut self, info: &ModelInfo, parent: Option<usize>, anchor: Anchor<'a>, id: u32) -> usize {
+        let layer = self.anchor_layer(parent, anchor, &info.node_name(id), Some(id));
+        self.table.layers[layer].user_strings = layer_text(info, id);
+        layer
+    }
+
     /// The anchor's class sublayers, under `parent`.
     fn class_layers(&mut self, anchor: Anchor<'a>, parent: usize) {
         let classes = self.by_anchor.get(&anchor).cloned().unwrap_or_default();
@@ -160,7 +171,7 @@ impl<'a> Builder<'a> {
                     if !seen.insert(id) {
                         continue;
                     }
-                    let layer = self.anchor_layer(parent, Anchor::Spatial(id), &info.node_name(id), Some(id));
+                    let layer = self.entity_layer(info, parent, Anchor::Spatial(id), id);
                     // Popped after every child's subtree, which are pushed reversed so they pop in order.
                     stack.push(Step::Classes(id, layer));
                     let kids = tree.get(&id).map(Vec::as_slice).unwrap_or(&[]);

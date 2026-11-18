@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "12.2.0",
+  "version": "12.3.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -40,6 +40,7 @@
     "test:diff-decode-leaks": "bash scripts/test-diff-decode-leaks.sh",
     "test:snap-edges": "node scripts/test-snap-edges.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
+    "check:store-import-cycles": "node scripts/check-store-import-cycles.mjs",
     "check:ci-path-coverage": "node scripts/check-ci-path-coverage.mjs",
     "check:ci-aggregate-coverage": "node scripts/check-ci-aggregate-coverage.mjs",
     "check:workflow-report-paths": "node scripts/check-workflow-report-paths.mjs",
@@ -123,27 +124,29 @@
     "check:bim-globals": "pnpm turbo build --filter=@ifc-lite/sandbox && node scripts/generate-bim-globals.mjs --check",
     "verify:epsg": "pnpm --filter @ifc-lite/data verify:epsg",
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
+    "generate:epsg-extents": "tsx scripts/generate-epsg-extents.ts",
     "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates",
     "check:codegen-sync": "node scripts/check-codegen-sync.mjs",
     "check:generated": "node scripts/check-generated.mjs",
     "test:packed": "node scripts/check-packed-workflows.mjs",
-    "docs:api": "node scripts/docs/build-api-reference.mjs"
+    "docs:api": "node scripts/docs/build-api-reference.mjs",
+    "viewer:operations:update": "node scripts/check-viewer-operations.mjs --update"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
+    "@axe-core/playwright": "4.13.0",
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
     "@changesets/parse": "1.0.0",
-    "@mergifyio/playwright": "^2026.10.11",
-    "@playwright/test": "^1.64.1",
-    "@posthog/cli": "0.18.12",
-    "@types/node": "^26.6.4",
-    "@vercel/functions": "3.10.4",
+    "@mergifyio/playwright": "^2026.11.8",
+    "@playwright/test": "^1.65.1",
+    "@posthog/cli": "0.20.0",
+    "@types/node": "^26.6.6",
+    "@vercel/functions": "3.11.3",
     "gltf-validator": "2.0.0-dev.3.10",
-    "knip": "^6.43.0",
-    "oxlint": "^1.90.0",
+    "knip": "^6.45.1",
+    "oxlint": "^1.93.0",
     "tsx": "^4.23.15",
-    "turbo": "^2.11.10",
+    "turbo": "^2.11.11",
     "typedoc": "^0.28.20",
     "typescript": "^6.0.3",
     "yaml": "^2.9.1"
@@ -153,7 +156,7 @@
     "pnpm": ">=10.0.0"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.2.0"
+    "@neondatabase/serverless": "^1.2.1"
   },
   "pnpm": {
     "overrides": {
@@ -201,7 +204,6 @@
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",
       "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
       "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
-      "wkt-parser@1.5.6": "patches/wkt-parser@1.5.6.patch",
       "typedoc@0.28.20": "patches/typedoc@0.28.20.patch",
       "@luma.gl/splats@9.4.2": "patches/@luma.gl__splats@9.4.2.patch"
     }

@@ -25,7 +25,7 @@ export const commandsEn = {
   // Editing
   'commands.edit.undo': 'Undo last model move or active-model authoring change',
   'commands.edit.redo': 'Redo last undone change',
-  'commands.edit.toggleEditMode': 'Enter or leave the Model workspace (unlocks property + geometry edits)',
+  'commands.edit.toggleEditMode': 'Enter or leave the Model workspace (draw and edit geometry)',
   'commands.edit.rotate': 'Rotate selected entity +15° / −15° about Z (requires edit mode)',
   'commands.edit.duplicate': 'Duplicate the selected entity (+X; add Shift for +Z, Alt for +Y)',
   'commands.edit.copyGlobalId': 'Copy GlobalId',
@@ -113,6 +113,9 @@ export const commandsEn = {
   // UI
   'commands.ui.commandPalette': 'Command palette',
   'commands.ui.openPanel': 'Open a panel from the rail ({sidePanels}; {bottomPanels} open at the bottom)',
+  'commands.ui.openPanelSideOnly': 'Open a panel from the rail ({sidePanels})',
+  /** One panel in the Alt+digit row: its key's digit and its title. */
+  'commands.ui.openPanelEntry': '{digit} {panel}',
   'commands.ui.toggleSidebar': 'Toggle sidebar (expand ⇄ collapse to icons)',
   'commands.ui.closeAllPanels': 'Close all panels (keeps visibility)',
   'commands.ui.closeOverlay': 'Close the open menu or dialog',

@@ -4,10 +4,11 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { startServer, closeAll } from '../../../../../packages/oci/test/fake-registry.js';
+import { startServer, closeAll, send } from '../../../../../packages/oci/test/fake-registry.js';
 import { pushRegistry } from '../../../../../packages/oci/test/push-registry.js';
-import { handoffContext, readHandoff, HANDOFF_PROTOCOL } from './handoff-contract';
-import { resourceSession } from './handoff-auth';
+import { handoffContext, readHandoff, registryConnections, HANDOFF_PROTOCOL } from './handoff-contract';
+import { exchangeRegistryToken, resourceSession } from './handoff-auth';
+import { confirmPublication } from './handoff-publication';
 import { pullHandoff, pushHandoff } from './handoff-client';
 
 afterEach(closeAll);
@@ -46,4 +47,64 @@ test('push and pull use OCI and isolate source/destination tokens at the actual 
   const other={...session,registry:'https://other.example.test'};
   await assert.rejects(pullHandoff(saved,other),/Sign in/);
   assert.equal(server.requests.length,afterExisting,'a token for another registry never reaches this server');
+});
+
+test('exchange scopes the registry token and a failed confirmation retries the same uploaded version', async () => {
+  const sourceRepository = 'project/model', stagingRepository = 'project/uploads/slot';
+  const fixture = pushRegistry({ repository: stagingRepository, accept: value => value === 'Bearer registry-only' });
+  const registry = await startServer(fixture.handler);
+  const source = { registry: registry.origin, repository: sourceRepository, digest: 'sha256:' + 'a'.repeat(64) };
+  const handoff = { protocol: HANDOFF_PROTOCOL, source, intent: 'edit' as const, destination: { registry: registry.origin, repository: stagingRepository } };
+  const scope = `repository:${stagingRepository}:pull repository:${stagingRepository}:push`;
+  const tokenType = 'urn:ietf:params:oauth:token-type:access_token';
+  const receipts: unknown[] = [];
+  let nextStatus = 409;
+  const provider = await startServer(async (req, res) => {
+    assert.equal(req.method, 'POST');
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks).toString();
+    if (req.url === '/exchange') {
+      assert.equal(req.headers.authorization, undefined);
+      assert.deepEqual(Object.fromEntries(new URLSearchParams(body)), {
+        grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+        client_id: 'ifc-lite',
+        resource: registry.origin,
+        scope,
+        subject_token: 'login-only',
+        subject_token_type: tokenType,
+        requested_token_type: tokenType,
+      });
+      return send(res, { body: JSON.stringify({ access_token: 'registry-only', token_type: 'Bearer', expires_in: 300, issued_token_type: tokenType, scope }) });
+    }
+    assert.equal(req.url, '/publications');
+    assert.equal(req.headers.authorization, 'Bearer login-only');
+    const payload = JSON.parse(body);
+    receipts.push(payload);
+    const status = nextStatus;
+    nextStatus = 201;
+    return send(res, { status, body: status === 201 ? JSON.stringify({ ...source, digest: payload.uploaded.digest }) : '' });
+  });
+  const settings = {
+    endpoint: provider.origin + '/exchange',
+    authorization_resource: provider.origin + '/files',
+    read_scope: 'read',
+    write_scope: 'read write',
+    publication_endpoint: provider.origin + '/publications',
+  };
+  const configured = { ...connection, registry: registry.origin, token_exchange: settings };
+  const [trusted] = registryConnections(JSON.stringify([configured]));
+  assert.throws(() => registryConnections(JSON.stringify([{ ...configured, token_exchange: { ...settings, publication_endpoint: 'https://other.example.test/publications' } }])), /resource origin/);
+
+  const signal = new AbortController().signal;
+  const session = await exchangeRegistryToken(trusted, 'login-only', scope, signal);
+  const bytes = new TextEncoder().encode('ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;');
+  const uploaded = await pushHandoff(registry.origin, stagingRepository, 'save-1', bytes, 'edited.ifc', session, signal);
+  const registryRequestCount = registry.requests.length;
+  await assert.rejects(confirmPublication(trusted, handoff, uploaded, 'login-only', signal), /newer version/);
+  assert.deepEqual(await confirmPublication(trusted, handoff, uploaded, 'login-only', signal), { ...source, digest: uploaded.digest });
+  assert.deepEqual(receipts, [{ source, uploaded }, { source, uploaded }]);
+  assert.equal(registry.requests.length, registryRequestCount);
+  const credentials = registry.requests.flatMap(request => request.authorization ? [request.authorization] : []);
+  assert(credentials.length > 0 && credentials.every(value => value === 'Bearer registry-only'));
 });

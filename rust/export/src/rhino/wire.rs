@@ -41,12 +41,16 @@ pub struct EarthAnchor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RhinoLayer {
     pub name: String,
     pub parent: Option<usize>,
     pub color: [u8; 4],
     pub visible: bool,
     pub locked: bool,
+    /// Layer user text: the IFC identity of a layer that stands for the
+    /// project or a spatial structure element; empty for every other layer.
+    pub user_strings: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

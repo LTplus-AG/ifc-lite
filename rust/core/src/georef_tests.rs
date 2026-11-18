@@ -686,3 +686,44 @@ fn model_true_north_absent_or_degenerate_is_none() {
     let vertical = context_file("#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,#4);");
     assert_eq!(model_true_north(vertical.as_bytes(), &mut EntityDecoder::new(vertical.as_bytes())), None);
 }
+
+/// TrueNorth goes through the counted `IfcDirection` leaf rule (#9416
+/// review): a malformed direction, another type, or a non-reference in the
+/// slot is a counted refusal, never a north read from its first two values.
+#[test]
+fn model_true_north_refuses_a_malformed_direction() {
+    for (label, leaf, north) in [
+        ("non-numeric third ratio", "#20=IFCDIRECTION((1.,0.,'x'));", "#20"),
+        ("too many ratios", "#20=IFCDIRECTION((1.,0.,0.,0.));", "#20"),
+        ("not a direction", "#20=IFCCARTESIANPOINT((1.,0.));", "#20"),
+        ("non-reference slot", "", "'x'"),
+    ] {
+        let file = context_file(&format!("{leaf}\n#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,{north});"));
+        let mut decoder = EntityDecoder::new(file.as_bytes());
+        assert_eq!(model_true_north(file.as_bytes(), &mut decoder), None, "{label}");
+        assert_eq!(decoder.refused_records(), 1, "{label}");
+    }
+}
+
+/// `IfcProjectedCRS.MapUnit` may be an `IfcConversionBasedUnitWithOffset`
+/// (an `IfcConversionBasedUnit` subtype). With a zero offset it is a plain
+/// ratio and reads like its supertype; it used to fall to the METRE/1.0
+/// default, a silent 3.28x error for a foot. A non-zero offset is not a
+/// length scale and keeps the default (TS parity, #10382 review).
+#[test]
+fn map_unit_conversion_based_unit_with_offset_reads_its_factor() {
+    let read = |offset: &str| {
+        let content = format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Test'),'2;1');\nFILE_NAME('t.ifc','2026-01-01',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));\n#5=IFCAXIS2PLACEMENT3D(#4,$,$);\n#6=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n#7=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#8=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#7);\n#9=IFCCONVERSIONBASEDUNITWITHOFFSET(#6,.LENGTHUNIT.,'FOOT',#8,{offset});\n#10=IFCPROJECTEDCRS('EPSG:2236',$,$,$,$,$,#9);\n#11=IFCMAPCONVERSION(#2,#10,600000.,200000.,10.,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n"
+        );
+        let mut decoder = EntityDecoder::new(&content);
+        let types = vec![(11u32, IfcType::IfcMapConversion), (10, IfcType::IfcProjectedCRS)];
+        GeoRefExtractor::extract(&mut decoder, &types).expect("decode ok").expect("georef")
+    };
+    let zero = read("0.");
+    assert_eq!(zero.map_unit.as_deref(), Some("FOOT"));
+    assert!((zero.map_unit_scale.unwrap() - 0.3048).abs() < 1e-12);
+    let offset = read("5.");
+    assert_eq!(offset.map_unit.as_deref(), Some("METRE"));
+    assert_eq!(offset.map_unit_scale, Some(1.0));
+}

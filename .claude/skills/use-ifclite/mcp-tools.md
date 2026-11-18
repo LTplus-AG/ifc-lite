@@ -54,7 +54,7 @@ cut to `max_group_members` (default 20) per side, with `baseCount` / `headCount`
 reporting the whole size. Any mutation you have queued but not saved is part of
 the answer, and `contentDiff.pendingMutations` says how many.
 
-**Discovery & metadata** — `schema_describe`, `units`, `georeferencing`,
+**Discovery & metadata** — `schema_describe`, `units`, `georeferencing`, `georeferencing_check`,
 `classifications_list`, `materials_list`, `spatial_hierarchy`,
 `containment_chain`, `relationships`.
 
@@ -72,10 +72,14 @@ the answer, and `contentDiff.pendingMutations` says how many.
 
 **Mutations** (hidden under `--read-only`) — `entity_create`, `entity_delete`,
 `entity_set_attribute`, `entity_set_property`, `entity_delete_property`,
+`georeferencing_write` (set/update/remove IfcMapConversion + IfcProjectedCRS, or `site`
+for IfcSite RefLatitude/RefLongitude; refuses rather than guess a CRS, unit or scale),
+`georeferencing_fix` (applies the `ready` fixes of `georeferencing_check`; pass values
+only the user gave in `values`, never invented ones),
 `mutation_batch`, `mutation_diff`, `mutation_undo`.
 
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
-`export_glb`, `export_pdf_report`.
+`export_glb`, `export_3dm`, `export_pdf_report`.
 
 **BCF** — `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`,
 `bcf_topic_list`, `bcf_viewpoint_create`, `bcf_export`.

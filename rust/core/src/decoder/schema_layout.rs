@@ -17,7 +17,9 @@ use crate::slot::{SchemaSlot, Slot};
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, OnceLock};
 
-/// Source-scoped, lazily built `IfcGridAxis` id -> owning `IfcGrid` id map.
+/// Source-scoped, lazily built `IfcGridAxis` id -> owning `IfcGrid` id map,
+/// and the source's `IfcSite` placement ids
+/// ([`EntityDecoder::is_site_placement`]).
 ///
 /// Opaque and shareable: every decoder over one source may hold the same
 /// `Arc<GridAxisIndex>` ([`EntityDecoder::set_grid_axis_index`]), so the one
@@ -25,7 +27,10 @@ use std::sync::{Arc, OnceLock};
 /// per-element decoder. The columnar and dense entity indexes carry one and
 /// install it with themselves.
 #[derive(Debug, Default)]
-pub struct GridAxisIndex(OnceLock<FxHashMap<u32, u32>>);
+pub struct GridAxisIndex {
+    axis_owners: OnceLock<FxHashMap<u32, u32>>,
+    pub(super) site_placements: OnceLock<Vec<u32>>,
+}
 
 impl EntityDecoder<'_> {
     /// The EXPRESS schema this source declares in its `FILE_SCHEMA` header,
@@ -88,7 +93,7 @@ impl EntityDecoder<'_> {
             .filter_map(|name| self.attribute_index("IfcGrid", name))
             .collect();
         self.grid_axis_index
-            .0
+            .axis_owners
             .get_or_init(|| self.build_grid_axis_owners(&slots))
             .get(&axis_id)
             .copied()
@@ -183,7 +188,7 @@ mod tests {
         assert_eq!(first.grid_of_axis(1), Some(9));
         drop(first);
         assert!(
-            index.grid_axis_index.0.get().is_some(),
+            index.grid_axis_index.axis_owners.get().is_some(),
             "built once per source, not per decoder"
         );
         let mut second = EntityDecoder::with_arc_columnar_index(&content, index);
@@ -197,7 +202,7 @@ mod tests {
         let mut first = EntityDecoder::new(&content);
         first.set_grid_axis_index(shared.clone());
         assert_eq!(first.grid_of_axis(1), Some(9));
-        assert!(shared.0.get().is_some());
+        assert!(shared.axis_owners.get().is_some());
         // A second decoder over the same source reads the shared map; prove it
         // by handing it a source with no grid at all.
         let empty = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\n";

@@ -33,6 +33,8 @@ interface BcfFromChangeProps {
   onCaptureSnapshot?: () => void;
   /** True while a snapshot capture is in flight. */
   capturingSnapshot?: boolean;
+  /** True while a submit is creating the topic. */
+  submitting?: boolean;
 }
 
 export function BcfFromChange({
@@ -48,6 +50,7 @@ export function BcfFromChange({
   snapshot,
   onCaptureSnapshot,
   capturingSnapshot,
+  submitting,
 }: BcfFromChangeProps) {
   const { t } = useTranslation();
   const prefill = useMemo(() => bcfTextFromChange(row, detail), [row, detail]);
@@ -79,6 +82,7 @@ export function BcfFromChange({
           snapshot={snapshot}
           onCaptureSnapshot={onCaptureSnapshot}
           capturingSnapshot={capturingSnapshot}
+          submitting={submitting}
         />
       </div>
     );

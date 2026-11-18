@@ -62,6 +62,8 @@ export interface BCFCreateTopicFormProps {
   onCaptureSnapshot?: () => void;
   /** True while a snapshot capture is in flight (shows a spinner, disables recapture). */
   capturingSnapshot?: boolean;
+  /** True while the parent is still handling a submit; the submit button is disabled (C-2). */
+  submitting?: boolean;
 }
 
 // ============================================================================
@@ -80,6 +82,7 @@ export function BCFCreateTopicForm({
   snapshot,
   onCaptureSnapshot,
   capturingSnapshot = false,
+  submitting = false,
 }: BCFCreateTopicFormProps) {
   const { t } = useTranslation();
   // Callers (BCFPanel) may pass a translated override for editing; the
@@ -288,7 +291,7 @@ export function BCFCreateTopicForm({
         <Button variant="outline" type="button" onClick={onCancel}>
           {t('bcf.shared.cancel')}
         </Button>
-        <Button type="submit" disabled={!title.trim()}>
+        <Button type="submit" disabled={submitting || !title.trim()}>
           {effectiveSubmitLabel}
         </Button>
       </div>

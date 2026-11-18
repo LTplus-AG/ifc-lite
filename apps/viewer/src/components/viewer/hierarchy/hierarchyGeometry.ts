@@ -5,12 +5,12 @@
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { collectMeshedIds } from '@/lib/object-count';
+import { sharedMeshedIds } from '@/lib/object-count';
 
 /**
  * Build the global-id set used by hierarchy geometry filters.
  *
- * Delegates to {@link collectMeshedIds} — the single "which ids have
+ * Delegates to {@link sharedMeshedIds} (`collectMeshedIds`) — the single "which ids have
  * geometry" rule — rather than re-deriving it from `meshes` alone, which
  * used to drop every GPU-instanced-only entity (present only in
  * `instancedGeometryHashes`/`Aabbs`/`Volumes`) from the hierarchy trees while
@@ -23,15 +23,20 @@ import { collectMeshedIds } from '@/lib/object-count';
 export function buildGeometricIdSet(
   models: Map<string, FederatedModel>,
   legacyGeometry: GeometryResult | null | undefined,
-): Set<number> {
+): ReadonlySet<number> {
   if (models.size > 0) {
+    // One model: its shared meshed-id set as is (read-only), not a second scan (NEW-4).
+    if (models.size === 1) {
+      const only = models.values().next().value!.geometryResult;
+      return only ? sharedMeshedIds(only) : new Set<number>();
+    }
     const ids = new Set<number>();
     for (const model of models.values()) {
-      for (const id of collectMeshedIds(model.geometryResult)) ids.add(id);
+      if (model.geometryResult) for (const id of sharedMeshedIds(model.geometryResult)) ids.add(id);
     }
     return ids;
   }
-  return collectMeshedIds(legacyGeometry);
+  return legacyGeometry ? sharedMeshedIds(legacyGeometry) : new Set<number>();
 }
 
 /** Models whose geometry result exists, including completed zero-mesh models. */

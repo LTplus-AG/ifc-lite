@@ -322,6 +322,7 @@ export const TYPE_VISIBILITY_STORAGE_KEYS = {
   site:            'ifc-lite-ifc-site-visible',
   ifcAnnotations:  'ifc-lite-ifc-annotations-visible',
   ifcGrid:         'ifc-lite-ifc-grid-visible',
+  structuralGlyphs: 'ifc-lite-structural-glyphs-visible',
 } as const;
 
 /** Legacy alias — kept until external callers migrate. */
@@ -356,6 +357,7 @@ export const TYPE_VISIBILITY_SEMANTIC_DEFAULTS: TypeVisibility = {
   site: true,
   ifcAnnotations: true,
   ifcGrid: true,
+  structuralGlyphs: true,
 };
 
 /**
@@ -385,6 +387,7 @@ export function getPersistedTypeVisibility(): TypeVisibility {
       TYPE_VISIBILITY_STORAGE_KEYS.ifcGrid,
       readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.ifcGrid),
     ),
+    structuralGlyphs: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.structuralGlyphs, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.structuralGlyphs),
   };
 }
 

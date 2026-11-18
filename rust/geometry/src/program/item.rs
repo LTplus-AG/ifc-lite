@@ -62,13 +62,23 @@ pub(super) struct ItemResult {
 pub(super) struct ItemControl {
     pub(super) retained: Option<RetainedSelection>,
     offset: (f64, f64, f64),
+    /// `GeometryRouter::member_face_selected` for this item, decided by the
+    /// product walk: the item takes `StructuralMemberFaceProcessor` (#9668).
+    /// Callers must not set it any other way; nothing here re-checks it.
+    member_face: bool,
     step: Option<ItemStep>,
 }
 
 impl ItemControl {
     pub(super) fn new(offset: (f64, f64, f64)) -> Self {
         let reports = ConstructionReports::default();
-        Self { retained: None, offset, step: Some(ItemStep::Source { phase: ItemPhase::LowerRtc, reports }) }
+        Self { retained: None, offset, member_face: false, step: Some(ItemStep::Source { phase: ItemPhase::LowerRtc, reports }) }
+    }
+
+    /// See the `member_face` field.
+    pub(super) fn member_face(mut self, member_face: bool) -> Self {
+        self.member_face = member_face;
+        self
     }
 
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -94,7 +104,7 @@ impl ItemControl {
             ItemStep::Source { phase, reports } => {
                 if let Some(selection) = &self.retained {
                     selection.execute(item, router, decoder)
-                } else { execute_source(item, self.offset, phase, reports, router, decoder) }
+                } else { execute_source(item, self.offset, self.member_face, phase, reports, router, decoder) }
             }
             ItemStep::Ready(ready) => ItemStep::Complete(ready.execute()),
             ItemStep::Boolean { machine, reports } => execute_boolean(item, machine, reports, router, decoder),
@@ -148,12 +158,18 @@ enum Lowered {
 fn execute_source(
     item: &DecodedEntity,
     offset: (f64, f64, f64),
+    member_face: bool,
     phase: ItemPhase,
     prior: ConstructionReports,
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
 ) -> ItemStep {
-    let Some(processor) = router.processor_for(&item.ifc_type) else {
+    let selected: Option<&dyn crate::router::GeometryProcessor> = if member_face {
+        Some(&crate::processors::StructuralMemberFaceProcessor)
+    } else {
+        router.processor_for(&item.ifc_type).map(|processor| processor.as_ref())
+    };
+    let Some(processor) = selected else {
         // No processor is registered for this type. Every `GeometryCategory`
         // with a real implementation is caught by the lookup; `MappedItem`
         // never reaches here (the gateway intercepts it first). So landing

@@ -30,8 +30,12 @@ export interface NormalizedGaussianAttributes {
 
 const SH_DC = 0.28209479177387814;
 
-/** Normalize once at the render boundary; this does not confer rendering readiness. */
-export function normalizeGaussianAttributes(source: GaussianAttributeSource): NormalizedGaussianAttributes {
+/**
+ * Normalize once at the render boundary; this does not confer rendering readiness.
+ * `into`, when it has the same count and SH degree, is overwritten and returned
+ * instead of allocating (#9018: a streamed capture reuses one chunk's arrays).
+ */
+export function normalizeGaussianAttributes(source: GaussianAttributeSource, into?: NormalizedGaussianAttributes): NormalizedGaussianAttributes {
   const { count, shDegree, columns } = source;
   if (!Number.isSafeInteger(count) || count < 0 || ![0, 1, 2, 3].includes(shDegree)) {
     throw new Error('Invalid Gaussian count or SH degree');
@@ -50,7 +54,11 @@ export function normalizeGaussianAttributes(source: GaussianAttributeSource): No
   for (const name of Object.keys(columns)) {
     if (name.startsWith('f_rest_') && !names.includes(name)) throw new Error(`Gaussian SH degree disagrees with ${name}`);
   }
-  const result: NormalizedGaussianAttributes = {
+  const reusable = into && into.count === count && into.sphericalHarmonicsDegree === shDegree
+    && into.positions.length === count * 3 && into.scales.length === count * 3 && into.rotations.length === count * 4
+    && into.colors.length === count * 4 && into.opacities.length === count && into.sphericalHarmonics.length === count * basisCount * 3;
+  // Every element is written below, so a reused target carries nothing over.
+  const result: NormalizedGaussianAttributes = reusable ? into : {
     count, positions: new Float32Array(count * 3), scales: new Float32Array(count * 3),
     rotations: new Float32Array(count * 4), colors: new Float32Array(count * 4),
     opacities: new Float32Array(count), sphericalHarmonics: new Float32Array(count * basisCount * 3),

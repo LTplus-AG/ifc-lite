@@ -5,6 +5,13 @@
 import { create } from 'zustand';
 import type { ArtifactSource, OciHandoff } from './handoff-contract';
 import type { ResourceSession } from './handoff-auth';
-interface HandoffWorkspace { handoff?: OciHandoff; sourceSession?: ResourceSession; loadedModelId?: string; saved?: ArtifactSource; destinationSession?: ResourceSession }
+interface HandoffWorkspace {
+  handoff?: OciHandoff;
+  sourceSession?: ResourceSession;
+  loadedModelId?: string;
+  saved?: ArtifactSource;
+  pendingPublication?: { handoff: OciHandoff; artifact: ArtifactSource };
+  destinationSession?: ResourceSession;
+}
 /** Tokens and opened content remain in this tab's memory. */
 export const useHandoffWorkspace = create<HandoffWorkspace>(() => ({}));

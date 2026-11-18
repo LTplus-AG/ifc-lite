@@ -21,32 +21,32 @@
  * draws it. Anything else is fixed unless the caller asks.
  */
 
+import { ROOF_ATTACHMENT } from '../edit/wall-base-solid.js';
+import { PropertyValueType } from '@ifc-lite/data';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { placementInAncestor, refId } from '../host-geometry-frame.js';
+import { storeyFloorWorld } from './storey-floor-frame.js';
+import { scaleWallQuantities, snapshotWallQuantities, wallQuantityBaseline, wallGeometry } from './wall-height-quantities.js';
 import { getModelLengthUnitScale } from '../edit/length-unit-scale.js';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import { effectiveStoreyElevation } from '../room-storey-elevation.js';
 import { attachedKind, attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT } from './storey-attached.js';
 import { clearTopAttachment, homeStoreyOf, writeTopAttachment, NEXT_STOREY_ABOVE } from './storey-attachment.js';
+import { clearWallRoofClip, clipWallToRoof, roofUndersideWorld } from '../wall-roof-clip.js';
 import { slabUndersideWorld } from './storey-attachment-target.js';
-import { scaleWallQuantities, wallGeometry } from './storey-level-write.js';
-import { readStoreyInventory, storeyNeighbour, type StoreyInventory, type StoreyRecord } from './storey-model.js';
+import { readStoreyInventory, storeyNeighbour, type StoreyInventory } from './storey-model.js';
 
 export type TopConstraint =
   | { readonly kind: 'storeyAbove' }
   | { readonly kind: 'storey'; readonly storeyId: number }
   | { readonly kind: 'slab'; readonly slabId: number }
+  | { readonly kind: 'roof'; readonly roofId: number }
   | { readonly kind: 'fixed' };
 
 /** An element's top lands on a storey when the two agree to this, metres. */
 const LANDS = 0.001;
 const SLAB_TYPES = new Set(['IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE']);
-
-function floorWorld(inventory: StoreyInventory, storey: StoreyRecord): number {
-  const frame = storey.placementId === null ? null : placementInAncestor(inventory.reader, storey.placementId, null);
-  return frame ? frame.o[2] * inventory.scale : storey.elevation;
-}
 
 /** World Z of the element's top, metres, or null when its body or placement cannot be read. */
 function topWorld(inventory: StoreyInventory, editor: StoreEditor, elementId: number): { from: number; world: number } | null {
@@ -62,7 +62,7 @@ function topWorld(inventory: StoreyInventory, editor: StoreEditor, elementId: nu
 export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor, elementId: number, constraint: TopConstraint): { remesh: number[] } {
   return editor.runAtomic((draft) => {
     const view = draft.getMutationView();
-    const inventory = readStoreyInventory(store, view);
+    const inventory = readStoreyInventory(store, view, { lazyRelationships: true });
     const kind = attachedKind(inventory.reader.entity(elementId)?.type);
     if (!kind) throw new Error(`#${elementId} is not a wall, column, beam, member or curtain wall, so its top cannot be attached`);
     if (constraint.kind === 'fixed') {
@@ -72,14 +72,18 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
     const homeId = homeStoreyOf(inventory, elementId);
     const home = inventory.storeys.find((storey) => storey.expressId === homeId);
     if (!home) throw new Error(`#${elementId} is on no storey, so its top cannot follow one`);
+    const wasClipped = kind === 'wall' && view.getPropertyValue(elementId, ROOF_ATTACHMENT, 'Clipped') === true;
     let reach: number;
-    if (constraint.kind === 'slab') {
-      const type = inventory.reader.entity(constraint.slabId)?.type.toUpperCase();
-      if (!type || !SLAB_TYPES.has(type)) throw new Error(`#${constraint.slabId} is not a slab`);
-      if (homeStoreyOf(inventory, constraint.slabId) === null) throw new Error(`The slab #${constraint.slabId} is on no storey, so it cannot be followed`);
-      const underside = slabUndersideWorld({ dataStore: store, view, editor: draft }, constraint.slabId);
-      if (underside === null) throw new Error(`The slab #${constraint.slabId} is not a flat extrusion, so its underside cannot be read`);
-      writeTopAttachment(view, elementId, String(inventory.reader.entity(constraint.slabId)?.attributes[0]), 'explicit');
+    if (constraint.kind === 'slab' || constraint.kind === 'roof') {
+      const id = constraint.kind === 'slab' ? constraint.slabId : constraint.roofId;
+      if (constraint.kind === 'roof' && kind !== 'wall') throw new Error('Only wall tops can attach to a roof');
+      const type = inventory.reader.entity(id)?.type.toUpperCase();
+      if (!type || !(constraint.kind === 'roof' ? type === 'IFCROOF' : SLAB_TYPES.has(type))) throw new Error(`#${id} is not a ${constraint.kind}`);
+      if (homeStoreyOf(inventory, id) === null) throw new Error(`The slab #${id} is on no storey, so it cannot be followed`);
+      const target = { dataStore: store, view, editor: draft };
+      const underside = constraint.kind === 'roof' ? roofUndersideWorld(target, id) ?? slabUndersideWorld(target, id) : slabUndersideWorld(target, id);
+      if (underside === null) throw new Error(`The slab #${id} is not a flat extrusion, so its underside cannot be read`);
+      writeTopAttachment(view, elementId, String(inventory.reader.entity(id)?.attributes[0]), 'explicit');
       reach = underside;
     } else {
       const storey = constraint.kind === 'storeyAbove'
@@ -90,23 +94,42 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
       }
       if (!storey) {
         writeTopAttachment(view, elementId, NEXT_STOREY_ABOVE, 'relative');
-        return { remesh: [] };
+        if (!wasClipped) return { remesh: [] };
+        // A pending level still replaces the old roof cut. Keep the current
+        // envelope height, then use the same planar/quantity path below.
+        const current = topWorld(inventory, draft, elementId);
+        if (!current) throw new Error(`#${elementId} has a body this editor cannot resize, so its top cannot be fitted`);
+        reach = current.world;
+      } else {
+        writeTopAttachment(view, elementId, storey.GlobalId, constraint.kind === 'storeyAbove' ? 'relative' : 'explicit');
+        // Storey floors in world Z: the target's floor frame where it has one.
+        reach = storeyFloorWorld(inventory, storey);
       }
-      writeTopAttachment(view, elementId, storey.GlobalId, constraint.kind === 'storeyAbove' ? 'relative' : 'explicit');
-      // Storey floors in world Z: the target's floor frame where it has one.
-      reach = floorWorld(inventory, storey);
     }
     const top = topWorld(inventory, draft, elementId);
     if (!top) throw new Error(`#${elementId} has a body this editor cannot resize, so its top cannot be fitted`);
     const to = top.from + reach - top.world;
     if (kind !== 'linear' && to < MIN_ATTACHED_EXTENT) throw new Error(`#${elementId} would end ${to.toFixed(3)} m tall: what it is attached to is not above its base`);
-    if (Math.abs(to - top.from) < 1e-9) return { remesh: [] };
+    if (Math.abs(to - top.from) < 1e-9 && constraint.kind !== 'roof' && !wasClipped) return { remesh: [] };
     const target = { dataStore: store, view, editor: draft };
-    const geometry = kind === 'wall' ? wallGeometry(store, view, draft, elementId) : undefined;
-    const outcome = writeAttachedTop(target, elementId, kind, top.from, to);
+    const roofQuantities = kind === 'wall' && (constraint.kind === 'roof' || wasClipped) ? {
+      geometry: wallGeometry(store, view, draft, elementId), quantities: snapshotWallQuantities(store, view, elementId),
+    } : null;
+    const quantityFrom = roofQuantities ? wallQuantityBaseline(store, view, elementId, top.from, roofQuantities.quantities) : top.from;
+    if (wasClipped && constraint.kind !== 'roof') clearWallRoofClip(target, elementId);
+    const outcome = writeAttachedTop(target, elementId, kind, top.from, to, roofQuantities ? { deferWallQuantities: true } : undefined);
     if (!outcome.ok) throw new Error(`#${elementId} cannot reach what it is attached to: ${outcome.reason}`);
-    if (kind === 'wall') scaleWallQuantities(store, view, elementId, to / top.from, geometry);
-    return { remesh: outcome.remesh };
+    if (constraint.kind === 'roof' && roofQuantities) {
+      clipWallToRoof(target, elementId, constraint.roofId);
+      if (view.getPropertyValue(elementId, ROOF_ATTACHMENT, 'Clipped') === true) {
+        view.setProperty(elementId, ROOF_ATTACHMENT, 'PrismQuantityHeight', quantityFrom, PropertyValueType.Real);
+      }
+    }
+    if (roofQuantities) {
+      const prism = roofQuantities.geometry ? { ...roofQuantities.geometry, height: quantityFrom } : undefined;
+      scaleWallQuantities(store, view, elementId, to / quantityFrom, prism, roofQuantities.quantities);
+    }
+    return { remesh: constraint.kind === 'roof' || wasClipped ? [...new Set([elementId, ...outcome.remesh])] : outcome.remesh };
   });
 }
 

@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const sharedCommandsRu = {
+  "exportCommands.cityjson.label": "CityJSON",
+  "exportCommands.cityjson.menuLabel": "Экспорт CityJSON",
+  "exportCommands.cityjson.tooltip": "Экспорт CityJSON / CityJSONSeq",
+
   "exportCommands.ion.label": "Cesium ion",
   "exportCommands.ion.menuLabel": "Загрузить в Cesium ion",
   "exportCommands.ion.tooltip": "Загрузить отредактированный IFC в свой аккаунт Cesium ion",
@@ -23,6 +27,9 @@ export const sharedCommandsRu = {
   "exportCommands.usd.label": "USD",
   "exportCommands.usd.menuLabel": "Экспортировать USD (OpenUSD)",
   "exportCommands.usd.tooltip": "Экспортировать USD (OpenUSD .usda)",
+  "exportCommands.rhino.label": "Rhino (.3dm)",
+  "exportCommands.rhino.menuLabel": "Экспортировать Rhino (.3dm)",
+  "exportCommands.rhino.tooltip": "Экспортировать Rhino (.3dm)",
   "exportCommands.energy.label": "Энергия",
   "exportCommands.energy.menuLabel": "Энергетическая модель (HBJSON / DFJSON)",
   "exportCommands.energy.tooltip": "Экспортировать энергетическую модель (HBJSON / DFJSON)",
@@ -42,6 +49,9 @@ export const sharedCommandsRu = {
   "exportCommands.screenshot.label": "Скриншот",
   "exportCommands.screenshot.menuLabel": "Скриншот",
   "exportCommands.screenshot.tooltip": "Сохранить область просмотра в формате PNG",
+  "exportCommands.screenshot.saved": "Скриншот сохранён",
+  "exportCommands.screenshot.notReady": "Откройте 3D-вид и дождитесь его полной загрузки, затем повторите попытку.",
+  "exportCommands.screenshot.failed": "Не удалось сделать снимок 3D-вида. Повторите попытку после завершения отрисовки.",
   "exportCommands.pdf.label": "PDF",
   "exportCommands.pdf.menuLabel": "Экспортировать PDF (3D-вид в масштабе)",
   "exportCommands.pdf.tooltip": "Экспортировать PDF (3D-вид в масштабе)",
@@ -99,6 +109,9 @@ export const sharedCommandsRu = {
   "classVisibility.annotations.description": "Текст, размеры, выноски",
   "classVisibility.grids.label": "Координационные оси",
   "classVisibility.grids.description": "Конструктивные оси",
+  "classVisibility.structuralGlyphs.label": "Опоры и нагрузки",
+  "classVisibility.structuralGlyphs.description": "Символы расчётной модели",
+  'classVisibility.structuralGlyphs.maskedHint': 'Скрыты в виде только физической модели',
   "classVisibility.mergeLayers.label": "Объединение многослойных стен",
   "classVisibility.mergeLayers.description": "Отображать стены одним телом · при перезагрузке",
   "classVisibility.fastGeometry.label": "Быстрая геометрия",

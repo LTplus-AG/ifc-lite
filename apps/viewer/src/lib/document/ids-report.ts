@@ -156,7 +156,7 @@ function snapshotFromReport(report: ValidationReport, id: string): IdsReportBloc
   if (report.source.kind === 'rules') {
     const checks = report.specificationResults.map((result) => ruleCheck(report, result));
     return {
-      kind: 'ids-report', id, sourceKind: 'rules', sourceName: report.source.ruleSet.name, generatedAt,
+      kind: 'ids-report', id, ...(report.targetScope ? { targetScope: { ...report.targetScope } } : {}), sourceKind: 'rules', sourceName: report.source.ruleSet.name, generatedAt,
       summary: totals,
       checks,
     };
@@ -172,7 +172,7 @@ function snapshotFromReport(report: ValidationReport, id: string): IdsReportBloc
     rules: rulesForCheck(report, result, result.specification.requirements),
     ...(result.error !== undefined ? { error: result.error } : {}),
   }));
-  return { kind: 'ids-report', id, sourceKind: 'ids', sourceName: report.source.document.info.title, generatedAt, summary: totals, checks };
+  return { kind: 'ids-report', id, ...(report.targetScope ? { targetScope: { ...report.targetScope } } : {}), sourceKind: 'ids', sourceName: report.source.document.info.title, generatedAt, summary: totals, checks };
 }
 
 /** Refresh and saved-source replacement keep the destination's identity and presentation (#6678). */

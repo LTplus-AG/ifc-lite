@@ -317,7 +317,7 @@ fn orient_and_trim_edge_polyline(
 /// face and concatenates the results. Used to recover boundary coverage when we
 /// need angular extents (e.g. for surfaces of revolution). A bound that does
 /// not resolve, or an edge loop refused by [`extract_edge_loop_points`],
-/// refuses the face (D14), the rule [`super::bounds::extract_face_bounds`]
+/// refuses the face (D14), the rule [`super::bounds::face_regions`]
 /// applies; non-edge loops add no points, as before.
 pub(super) fn extract_edge_loop_points_for_bounds(
     face: &DecodedEntity,

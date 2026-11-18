@@ -49,7 +49,7 @@ export interface PropertySetCardProps {
 }
 
 export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, projectUnitsAvailable = true, unitDisplayOverrides, searchQuery, sectionScope = 'default' }: PropertySetCardProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   // Check if any property in this set is mutated
   const hasMutations = pset.properties.some(p => p.isMutated);
   const isNewPset = pset.isNewPset;
@@ -107,7 +107,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
       <CollapsibleContent>
         <div className={INSPECTOR_ROWS}>
           {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }, index: number) => {
-            const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {}, projectUnitsAvailable);
+            const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {}, projectUnitsAvailable, locale);
             const attachment = pset.name === 'IfcLite_StoreyAttachment' && modelId && entityId !== undefined
               ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, prop.value, t, prop.name) : null;
             if (attachment) { display.value = attachment.text; display.full = attachment.text; }

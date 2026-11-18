@@ -38,12 +38,13 @@
  * without also changing what a test double is allowed to omit.
  */
 
+import { createdRowsSnapshot } from './effective-index-created-rows.js';
 import type { IfcAttributeValue } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { convertStepLineFlattening } from './schema-style-flatten.js';
 import { STYLE_RESCUE_TYPES } from './style-closure.js';
-import { NONREL_REF_LIST_TYPES } from './nonrel-ref-list-types.js';
+import { getNonRelRefListTypes } from './nonrel-ref-list-types.js';
 import { narrowNonRelPositionalRefLists } from './nonrel-positional-ref-narrowing.js';
 import { styleEntityWithheldWarning } from './step-export-types.js';
 import { retypeArgTokens } from './retype.js';
@@ -107,7 +108,7 @@ export function writeOverlayCreatedEntities(
     ? ctx.mutationView.getEntityTypeMutation.bind(ctx.mutationView)
     : null;
   const toConvert: string[] = [];
-  for (const entity of ctx.mutationView.readNewEntities?.() ?? ctx.mutationView.getNewEntities()) {
+  for (const entity of createdRowsSnapshot(pass.effective, ctx.mutationView)) {
     if (pass.skipRelationshipIds.has(entity.expressId) || pass.skipPropertySetIds.has(entity.expressId)) continue;
     // A retyped overlay entity keeps its AUTHORED type on `entity.type`
     // (the overlay typeMutation is the source of truth for the effective
@@ -227,7 +228,7 @@ export function writeOverlayCreatedEntities(
         pass.warnings.push(styleEntityWithheldWarning(entity.expressId, upperType));
         continue;
       }
-    } else if (mayNameOmittedRefs && NONREL_REF_LIST_TYPES.has(upperType)) {
+    } else if (mayNameOmittedRefs && getNonRelRefListTypes().has(upperType)) {
       line = narrowNonRelPositionalRefLists(line, isOmittedFromOutput, upperType, pass.sourceSchema);
     }
     // Converted after the loop: a created style assignment may follow the styled item naming it.
@@ -253,7 +254,7 @@ export function writeOverlayCreatedEntities(
  * Rust writer refuses the same logs with the same message.
  */
 function refuseCreatedIdsReusingSourceIds(view: MutablePropertyView, isSourceRecord: (id: number) => boolean): void {
-  const created = (view.readNewEntities?.() ?? view.getNewEntities()).map((entity) => entity.expressId);
+  const created = Array.from(view.readNewEntityKinds?.() ?? view.readNewEntities?.() ?? view.getNewEntities(), entity => entity.expressId);
   const history = typeof view.getMutations === 'function' ? view.getMutations() : [];
   for (const mutation of history) {
     const id = mutation.entityId;

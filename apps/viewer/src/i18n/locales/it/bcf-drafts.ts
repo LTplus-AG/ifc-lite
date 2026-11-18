@@ -90,6 +90,7 @@ export const bcfDraftsIt = {
   'bcfDrafts.reconcile.apply': 'Applica',
   'bcfDrafts.reconcile.applyTo': 'Applica la proposta a {title}',
   'bcfDrafts.reconcile.stale': 'Il lotto è cambiato dopo il confronto; confronta di nuovo.',
+  'bcfDrafts.reconcile.failed': 'Non è stato possibile applicare la modifica; il lotto è invariato. {message}',
   'bcfDrafts.reconcile.unplaced': {
     one: '{count} nuova corrispondenza di gruppo potrebbe appartenere a più topic divisi.',
     many: '{count} nuove corrispondenze di gruppo potrebbero appartenere a più topic divisi.',

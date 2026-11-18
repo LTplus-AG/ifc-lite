@@ -1,7 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { propertyKey, quantityKey, type Mutation, type EffectiveChange, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 
 /** #7251: virtual and edited source sets have effective values that raw
  * relationship sharing cannot carry. Use the same overlay API after memberships,
@@ -12,17 +13,39 @@ const MAX_EFFECTIVE_METADATA_WRITES = 10000;
 
 /** Atomic split/copy batches share one draft editor; the budget therefore covers
  * the complete operation, including assembly parts and repeated source copies. */
-export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreEditor, source: number, targets: number[]): void {
+export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreEditor, source: number, targets: number[], store: IfcDataStore): void {
   if (!view.hasChanges(source)) return;
   // Older structural implementations may ignore the new optional entity ID.
   const changes = view.getEffectiveChanges(source).filter(row => row.entityId === source);
   const propertyNames = new Set(changes.filter(row => row.kind === 'pset-added' || row.kind === 'property').map(row => row.setName));
   const quantityNames = new Set(changes.filter(row => row.kind === 'qset-added' || row.kind === 'quantity').map(row => row.setName));
-  const properties = view.getForEntity(source).filter(set => propertyNames.has(set.name));
-  const quantities = view.getQuantitiesForEntity(source).filter(set => quantityNames.has(set.name));
-  const writes = targets.length * (properties.reduce((sum, set) => sum + 1 + set.properties.length
-    + set.properties.filter(property => property.dataType !== undefined).length, 0)
-    + quantities.reduce((sum, set) => sum + 1 + set.quantities.length, 0));
+  // Whole-set additions group their members in the change list. A prior copy
+  // can still carry DELETE overrides against its saved definitions (#9352).
+  // Read those definitions, then consult current overrides rather than history.
+  for (const set of extractPropertiesOnDemand(store, view.resolveBaseEntityId(source), view, source)) {
+    if (!propertyNames.has(set.name)) continue;
+    for (const member of set.properties) if (view.getPropertyMutation(source, set.name, member.name)?.operation === 'DELETE'
+      && !changes.some(row => row.kind === 'property' && row.setName === set.name && row.name === member.name)) {
+      changes.push({ entityId: source, kind: 'property', setName: set.name, name: member.name, deleted: true });
+    }
+  }
+  for (const set of extractQuantitiesOnDemand(store, view.resolveBaseEntityId(source), view)) {
+    if (!quantityNames.has(set.name)) continue;
+    for (const member of set.quantities) if (view.getQuantityMutation(source, set.name, member.name)?.operation === 'DELETE'
+      && !changes.some(row => row.kind === 'quantity' && row.setName === set.name && row.name === member.name)) {
+      changes.push({ entityId: source, kind: 'quantity', setName: set.name, name: member.name, deleted: true });
+    }
+  }
+  const deletedProperties = new Set<string>();
+  for (const change of changes) if (change.kind === 'property' && change.deleted && change.setName !== undefined && change.name !== undefined) {
+    deletedProperties.add(propertyKey(source, change.setName, change.name));
+  }
+  const properties = namedMembers(view.getForEntity(source).filter(set => propertyNames.has(set.name)), set => set.properties);
+  const quantities = namedMembers(view.getQuantitiesForEntity(source).filter(set => quantityNames.has(set.name)), set => set.quantities).filter(set => set.members.length > 0);
+  const writes = targets.length * (properties.reduce((sum, set) => sum + 1 + set.members.length
+    + set.members.filter(property => property.dataType !== undefined).length, 0)
+    + quantities.reduce((sum, set) => sum + 1 + set.members.length, 0)
+    + changes.filter(change => change.deleted).length);
   const total = (writesByEditor.get(editor) ?? 0) + writes;
   if (total > MAX_EFFECTIVE_METADATA_WRITES) throw new Error('Effective metadata cloning exceeds 10000 writes in one operation; no metadata is silently omitted');
   writesByEditor.set(editor, total);
@@ -31,18 +54,69 @@ export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreE
     const existingQuantities = new Set(view.getQuantitiesForEntity(target).map(set => set.name));
     for (const set of properties) {
       if (existingProperties.has(set.name)) continue;
-      view.createPropertySet(target, set.name, set.properties.map(property => ({ name: property.name, value: property.value, type: property.type, unit: property.unit })));
+      const mutation = view.createPropertySet(target, set.name, set.members.map(property => ({ name: property.name, value: property.value, type: property.type, unit: property.unit })));
+      retainDeletedMembers(view, mutation, changes);
       // The constructor preserves empty/null members; typed values also retain
       // their native declared data type through the normal mutation writer.
-      for (const property of set.properties) if (property.dataType !== undefined) {
+      for (const property of set.members) if (property.dataType !== undefined && !deletedProperties.has(propertyKey(source, set.name, property.name))) {
         view.setProperty(target, set.name, property.name, property.value, property.type, property.unit, false, property.dataType);
       }
       existingProperties.add(set.name);
     }
+    for (const change of changes) {
+      if (!change.deleted || change.setName === undefined) continue;
+      if (change.kind === 'property' && !properties.some(set => set.name === change.setName)) retainDeletedSet(view, view.deletePropertySet(target, change.setName));
+      if (change.kind === 'quantity' && !quantities.some(set => set.name === change.setName)) retainDeletedSet(view, view.deleteQuantitySet(target, change.setName));
+    }
     for (const set of quantities) {
       if (existingQuantities.has(set.name)) continue;
-      view.createQuantitySet(target, set.name, set.quantities.map(quantity => ({ name: quantity.name, value: quantity.value, quantityType: quantity.type, unit: quantity.unit })));
+      const mutation = view.createQuantitySet(target, set.name, set.members.map(quantity => ({ name: quantity.name, value: quantity.value, quantityType: quantity.type, unit: quantity.unit })));
+      retainDeletedMembers(view, mutation, changes);
       existingQuantities.add(set.name);
     }
   }
+}
+
+/** Named mutations claim the first owning instance of each member. Keep that
+ * priority in the overlay while export retains the distinct saved definitions. */
+function namedMembers<S extends { name: string }, M extends { name: string }>(
+  sets: readonly S[], members: (set: S) => readonly M[],
+): { name: string; members: M[] }[] {
+  const groups = new Map<string, { name: string; members: M[]; names: Set<string> }>();
+  for (const set of sets) {
+    const group = groups.get(set.name) ?? { name: set.name, members: [], names: new Set<string>() };
+    for (const member of members(set)) if (!group.names.has(member.name)) {
+      group.names.add(member.name); group.members.push(member);
+    }
+    groups.set(set.name, group);
+  }
+  return [...groups.values()];
+}
+
+/** A whole-set snapshot journals deleted members too, so Undo/Redo and export
+ * cannot resurrect a saved member absent from the effective source (#9296). */
+function retainDeletedMembers(view: MutablePropertyView, mutation: Mutation, changes: readonly EffectiveChange[]): void {
+  const after = mutation.setOverlay?.after;
+  if (!after) return;
+  const deleted = changes.filter(change => change.deleted && change.setName === after.setName && change.name !== undefined
+    && change.kind === (after.kind === 'property' ? 'property' : 'quantity'));
+  if (!deleted.length) return;
+  if (after.kind === 'property') for (const change of deleted) {
+    after.entries = after.entries.filter(([key]) => key !== propertyKey(after.entityId, after.setName, change.name!));
+    after.entries.push([propertyKey(after.entityId, after.setName, change.name!), { operation: 'DELETE' }]);
+  }
+  else for (const change of deleted) {
+    after.entries = after.entries.filter(([key]) => key !== quantityKey(after.entityId, after.setName, change.name!));
+    after.entries.push([quantityKey(after.entityId, after.setName, change.name!), { operation: 'DELETE' }]);
+  }
+  view.restoreSetOverlay(after);
+}
+
+/** The target's saved definitions are reached through new relationships, so its
+ * ordinary source-id extractor cannot see the set that this mask must hide. */
+function retainDeletedSet(view: MutablePropertyView, mutation: Mutation): void {
+  const after = mutation.setOverlay?.after;
+  if (!after) throw new Error('Metadata deletion must journal its set overlay');
+  after.masked = true;
+  view.restoreSetOverlay(after);
 }

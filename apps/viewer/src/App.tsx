@@ -18,7 +18,7 @@ import { Toaster } from './components/ui/toast';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from './components/StaleDeploymentNotice';
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { Analytics } from '@vercel/analytics/react';
+import { HostingAnalytics } from './components/HostingAnalytics';
 
 // The /mcp marketing surface pulls in three.js (HeroScene / PlaygroundViewer)
 // and its own component tree — none of which the main `/` viewer route needs.
@@ -37,6 +37,7 @@ const McpPlayground = lazy(() =>
 const RteGpuWitness = lazy(() =>
   import('./e2e/RteGpuWitness').then((m) => ({ default: m.RteGpuWitness })),
 );
+
 const RegistryLaunchRoute = lazy(() => import('./components/sources/RegistryLaunchRoute'));
 
 // Neutral full-viewport placeholder while a lazy MCP route chunk loads. Both
@@ -72,10 +73,14 @@ export function App({ sourceProviders }: AppProps = {}) {
   const normalizedPath = pathname.length > 1 && pathname.endsWith('/')
     ? pathname.slice(0, -1)
     : pathname;
-  if (normalizedPath === '/open-artifact' || normalizedPath === '/open-artifact/callback') {
-    return <ChunkErrorBoundary key="registry-launch" label="Registry model">
-      <Suspense fallback={<RouteFallback />}><RegistryLaunchRoute sourceProviders={sourceProviders} /></Suspense>
-    </ChunkErrorBoundary>;
+  if (pathname === '/open-artifact' || pathname === '/open-artifact/callback') {
+    return (
+      <ChunkErrorBoundary key="open-artifact" label="Registry model">
+        <Suspense fallback={<RouteFallback />}>
+          <RegistryLaunchRoute sourceProviders={sourceProviders} />
+        </Suspense>
+      </ChunkErrorBoundary>
+    );
   }
   if (normalizedPath === '/rte-gpu-witness') {
     return (
@@ -101,7 +106,7 @@ export function App({ sourceProviders }: AppProps = {}) {
         </ChunkErrorBoundary>
         <Toaster />
         <StaleDeploymentNotice />
-        <Analytics />
+        <HostingAnalytics />
       </>
     );
   }
@@ -115,7 +120,7 @@ export function App({ sourceProviders }: AppProps = {}) {
         </ChunkErrorBoundary>
         <Toaster />
         <StaleDeploymentNotice />
-        <Analytics />
+        <HostingAnalytics />
       </>
     );
   }

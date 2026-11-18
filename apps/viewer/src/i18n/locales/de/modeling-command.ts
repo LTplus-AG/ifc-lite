@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandDe = {
+  "modelingCommand.roof.shape": "Form",
+  "modelingCommand.roof.hip": "Walmdach",
+  "modelingCommand.roof.gable": "Satteldach",
+  "modelingCommand.roof.mono": "Pultdach",
+  "modelingCommand.roof.flat": "Flachdach",
+  "modelingCommand.roof.pitch": "Neigung",
+  "modelingCommand.roof.overhang": "Überstand",
+  "modelingCommand.roof.edge": "Kante",
+  "modelingCommand.roof.edgeSlope": "Kantenneigung",
   "modelingCommand.closeAria": "Befehl verlassen",
   "modelingCommand.aim.tag": "Auf Arbeitsebene",
   "modelingCommand.snap.increment": "Schrittmaß {step} · Alt zum Aussetzen",
@@ -27,6 +36,11 @@ export const modelingCommandDe = {
   "modelingCommand.wall.alignRight": "Rechts",
   "modelingCommand.wall.top": "Wandoberkante",
   "modelingCommand.wall.topStoreyAbove": "Bis Geschoss darüber",
+  "modelingCommand.wall.repickTop": "Andere Decke oder anderes Dach wählen…",
+  "modelingCommand.wall.topElement": "Bis Decke oder Dach…",
+  "modelingCommand.wall.pickTop": "Decke oder Dach anklicken · Esc bricht ab",
+  "modelingCommand.wall.topOffset": "Versatz oben (m)",
+  "modelingCommand.wall.baseOffset": "Versatz unten (m)",
   "modelingCommand.wall.topFixed": "Feste Höhe",
   "modelingCommand.field.width": "Breite",
   "modelingCommand.field.depth": "Tiefe",

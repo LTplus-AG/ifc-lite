@@ -32,7 +32,9 @@ const device = {
   limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
   createBuffer: (desc: GPUBufferDescriptor) => ({ size: desc.size, destroy() {} }),
   createBindGroup: () => ({}),
-  queue: { writeBuffer: () => {} },
+  // Finalize assembles a streamed bucket's batch from its fragments on the GPU.
+  createCommandEncoder: () => ({ copyBufferToBuffer() {}, finish: () => ({}) }),
+  queue: { writeBuffer: () => {}, submit() {} },
 } as unknown as GPUDevice;
 
 const pipeline = {
@@ -60,23 +62,26 @@ function stream(scene: Scene, meshes: MeshData[]): void {
 }
 
 /**
- * Indices one frame draws: a batch whose ids are all visible is drawn whole,
- * a partly visible one through the partial batches the render loop requests
- * (real slot keys and partition gate).
+ * What survives of a partly visible batch: the pieces it holds of `ids`. The
+ * render loop draws such a batch whole and the GPU discards the rest (#10264
+ * S2), or an X-Ray / promotion split cuts this same subset from its pieces;
+ * either way these are its visible pieces, which the scene's piece
+ * bookkeeping names.
  */
-function drawnIndices(scene: Scene, visible: ReadonlySet<number>, overrides: RGBAOverrideMap | null = null): number {
-  const requests = new PartialBatchRequests(overrides, new XRayAlpha({}, new Set()), (batch) => scene.canPartitionBatch(batch));
+function visiblePart(scene: Scene, batch: BatchedMesh, ids: Set<number>): BatchedMesh | undefined {
+  assert.ok(scene.canPartitionBatch(batch), `batch ${batch.id} knows its pieces`);
+  const part = scene.getOrCreatePartialBatch(`${batch.colorKey}:${batch.id}:visible`, batch.colorKey, ids, device, pipeline);
+  if (part) assert.strictEqual(Boolean(part.quantized), Boolean(batch.quantized), `${batch.id} keeps its source's quantization`);
+  return part;
+}
+
+/** Indices one frame shows: whole batches, and the visible pieces of partly visible ones. */
+function drawnIndices(scene: Scene, visible: ReadonlySet<number>): number {
   let drawn = 0;
   for (const batch of scene.getBatchedMeshes()) {
     const ids = new Set(batch.expressIds.filter((id) => visible.has(id)));
     if (ids.size === new Set(batch.expressIds).size) drawn += batch.indexCount;
-    else if (ids.size > 0) requests.pushVisible(batch, ids, batch.color[3] < 1);
-  }
-  for (const { sourceBatch, sourceBatchKey, colorKey, visibleIds } of requests.items) {
-    const partial = scene.getOrCreatePartialBatch(sourceBatchKey, colorKey, visibleIds, device, pipeline);
-    if (!partial) continue;
-    assert.strictEqual(Boolean(partial.quantized), Boolean(sourceBatch.quantized), `${sourceBatchKey} keeps its source's quantization`);
-    drawn += partial.indexCount;
+    else if (ids.size > 0) drawn += visiblePart(scene, batch, ids)?.indexCount ?? 0;
   }
   return drawn;
 }
@@ -87,10 +92,10 @@ function expectedIndices(meshes: MeshData[], visible: ReadonlySet<number>): numb
 }
 
 /** For each visibility set, the frame draws exactly the visible meshes, once. */
-function assertDrawnOnce(scene: Scene, meshes: MeshData[], cases: Record<string, number[]>, overrides: RGBAOverrideMap | null = null): void {
+function assertDrawnOnce(scene: Scene, meshes: MeshData[], cases: Record<string, number[]>): void {
   for (const [label, ids] of Object.entries(cases)) {
     const visible = new Set(ids);
-    assert.strictEqual(drawnIndices(scene, visible, overrides), expectedIndices(meshes, visible), label);
+    assert.strictEqual(drawnIndices(scene, visible), expectedIndices(meshes, visible), label);
   }
 }
 
@@ -167,7 +172,7 @@ describe('Scene partial batches of streaming fragments draw an entity once (#908
     assertDrawnOnce(scene, meshes, { 'isolate T': [T], 'hide U': [T, V, W], 'hide U and V': [T, W] });
     // A lens colour on W splits the fragment holding it by promotion (#9254), still drawing each mesh once.
     const lens: RGBAOverrideMap = new Map([[W, [1, 0, 0, 1]]]);
-    assertDrawnOnce(scene, meshes, { 'hide U and V, W promoted': [T, W] }, lens);
+    assertRoutes(scene, meshes, { 'hide U and V, W promoted': [T, W] }, lens);
   });
 
   for (const modelIndex of [0, 1]) {
@@ -196,10 +201,11 @@ describe('Scene partial batches of streaming fragments draw an entity once (#908
 });
 
 /**
- * One frame as the render loop classifies it (index.ts): a partly visible
- * batch through `pushAlphaSplit`, else `pushVisible`; a fully visible one
- * through `pushWholeSplit`, else drawn whole. Indices are tallied by the route
- * each drawn (sub-)batch takes: pipeline and resolved X-Ray alpha.
+ * One frame as the render loop classifies it (renderer.ts): every visible
+ * batch through `pushSplit` (with its visible ids when partly hidden), else
+ * drawn whole, a partly hidden one showing only its visible pieces and routed
+ * by them. Indices are tallied by the route each drawn (sub-)batch takes:
+ * pipeline and resolved X-Ray alpha.
  */
 function routedIndices(scene: Scene, visible: ReadonlySet<number> | null, overrides: RGBAOverrideMap | null, xray: XRayAlpha): Map<string, number> {
   const routes = new Map<string, number>();
@@ -213,9 +219,10 @@ function routedIndices(scene: Scene, visible: ReadonlySet<number> | null, overri
     const transparent = xray.forBatch(batch, batch.color[3]) < 0.99;
     const ids = new Set(batch.expressIds.filter((id) => visible?.has(id) ?? true));
     if (ids.size === 0) continue;
-    if (ids.size < new Set(batch.expressIds).size) {
-      if (!requests.pushAlphaSplit(batch, ids)) requests.pushVisible(batch, ids, transparent);
-    } else if (!requests.pushWholeSplit(batch, transparent)) draw(batch);
+    const partly = ids.size < new Set(batch.expressIds).size;
+    if (requests.pushSplit(batch, partly ? xray.forBatch({ expressIds: [...ids], color: batch.color }, batch.color[3]) < 0.99 : transparent, partly ? ids : null)) continue;
+    const part = partly ? visiblePart(scene, batch, ids) : batch;
+    if (part) draw(part);
   }
   for (const { sourceBatchKey, colorKey, visibleIds } of requests.items) {
     const partial = scene.getOrCreatePartialBatch(sourceBatchKey, colorKey, visibleIds, device, pipeline);

@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandRu = {
+  "modelingCommand.roof.shape": "Форма",
+  "modelingCommand.roof.hip": "Вальмовая",
+  "modelingCommand.roof.gable": "Двускатная",
+  "modelingCommand.roof.mono": "Односкатная",
+  "modelingCommand.roof.flat": "Плоская",
+  "modelingCommand.roof.pitch": "Уклон",
+  "modelingCommand.roof.overhang": "Свес",
+  "modelingCommand.roof.edge": "Ребро",
+  "modelingCommand.roof.edgeSlope": "Уклон ребра",
   "modelingCommand.closeAria": "Выйти из команды",
   "modelingCommand.aim.tag": "На рабочей плоскости",
   "modelingCommand.snap.increment": "Шаг {step} · Alt для отключения",
@@ -27,6 +36,11 @@ export const modelingCommandRu = {
   "modelingCommand.wall.alignRight": "Справа",
   "modelingCommand.wall.top": "Верх стены",
   "modelingCommand.wall.topStoreyAbove": "До этажа выше",
+  "modelingCommand.wall.repickTop": "Выбрать другое перекрытие или крышу…",
+  "modelingCommand.wall.topElement": "До перекрытия или крыши…",
+  "modelingCommand.wall.pickTop": "Нажмите на перекрытие или крышу · Esc — отмена",
+  "modelingCommand.wall.topOffset": "Смещение верха (м)",
+  "modelingCommand.wall.baseOffset": "Смещение основания (м)",
   "modelingCommand.wall.topFixed": "Фиксированная высота",
   "modelingCommand.field.width": "Ширина",
   "modelingCommand.field.depth": "Глубина",

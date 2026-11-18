@@ -23,9 +23,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import { RaycastEngine } from './raycast-engine.js';
+import { BVH } from './bvh.js';
 import { Camera } from './camera.js';
 import { Scene, type TexturedMesh } from './scene.js';
 import type { Mesh, BatchedMesh, PickOptions } from './types.js';
+import type { RenderPipeline } from './pipeline.js';
 import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
@@ -215,8 +217,8 @@ function addRegularQuad(scene: Scene, quad: MeshData): void {
   const mesh: Mesh = {
     expressId: quad.expressId,
     modelIndex: quad.modelIndex,
-    vertexBuffer: {} as GPUBuffer,
-    indexBuffer: {} as GPUBuffer,
+    vertexBuffer: { destroy() {} } as GPUBuffer,
+    indexBuffer: { destroy() {} } as GPUBuffer,
     indexCount: quad.indices.length,
     transform: { m: new Float32Array(16) },
     color: quad.color,
@@ -445,7 +447,9 @@ describe('RaycastEngine.raycastScene', () => {
 
     const newRight = fragment(10, 170, 0);
     const newLeft = fragment(-10, 171, 6);
-    (scene as unknown as { meshDataMap: Map<number, MeshData[]> }).meshDataMap.set(7, [newRight, newLeft]);
+    scene.removeMeshesForEntities(new Set([7]));
+    addRegularMesh(scene, newRight);
+    addRegularMesh(scene, newLeft);
     const hit = engine.raycastScene(200, 350)?.intersection;
     assert.deepEqual(hit && { geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex,
       x: Math.round(hit.point.x) }, { geometryItemId: 171, sourceTriangleIndex: 2, x: -10 },
@@ -778,5 +782,158 @@ describe('textured scene raycasts (#4407)', () => {
     const hit = engine.raycastScene(400, 300)?.intersection;
     assert.ok(hit);
     assert.ok(Math.abs(hit.point.z - 10) < 1e-4, 'modelIndex must scope the visible owner');
+  });
+});
+
+describe('RaycastEngine flat index (#9504)', () => {
+  // More than the 100-piece BVH threshold, with only the target under the ray.
+  function largeScene(): Scene {
+    const scene = new Scene();
+    addRegularMesh(scene, makeQuad({ expressId: 7, translate: [-10, 0, 0] }));
+    for (let i = 0; i < 120; i++) {
+      addRegularMesh(scene, makeQuad({ expressId: 100 + i, translate: [1_000 + i * 20, 0, 0] }));
+    }
+    return scene;
+  }
+  const aim = (engine: RaycastEngine, options?: PickOptions) => engine.raycastScene(200, 350, options)?.intersection.expressId;
+
+  it('builds one BVH across repeated rays and hide/isolate changes', (t) => {
+    const build = t.mock.method(BVH.prototype, 'build');
+    const engine = engineFor(largeScene(), orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(aim(engine), 7);
+    assert.equal(aim(engine), 7);
+    assert.equal(aim(engine, { hiddenIds: new Set([7]) }), undefined, 'a hidden entity cannot be hit');
+    assert.equal(aim(engine, { isolatedIds: new Set([100]) }), undefined, 'isolating another entity hides this one');
+    assert.equal(aim(engine, { isolatedIds: new Set([7]) }), 7);
+    assert.equal(build.mock.callCount(), 1, 'visibility filters each ray and must not rebuild the tree');
+  });
+
+  it('reports warm only while the next ray rebuilds nothing', (t) => {
+    const build = t.mock.method(BVH.prototype, 'build');
+    const scene = largeScene();
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(engine.isCacheWarm(), false, 'nothing is built before the first ray');
+    aim(engine);
+    assert.equal(engine.isCacheWarm(), true);
+
+    addRegularMesh(scene, makeQuad({ expressId: 8, translate: [-10, 0, 20] }));
+    assert.equal(engine.isCacheWarm(), false, 'added geometry must read as stale');
+    assert.equal(aim(engine), 8, 'the added nearer quad must be pickable');
+    assert.equal(engine.isCacheWarm(), true);
+    assert.equal(build.mock.callCount(), 2);
+
+    engine.invalidateBVHCache();
+    assert.equal(engine.isCacheWarm(), false);
+    assert.equal(aim(engine), 8);
+    assert.equal(build.mock.callCount(), 3);
+  });
+
+  it('keeps the BVH when a revision bump leaves the same pieces', (t) => {
+    const build = t.mock.method(BVH.prototype, 'build');
+    const scene = largeScene();
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    aim(engine);
+    (scene as unknown as { pickGeometryRevision: number }).pickGeometryRevision++;
+    assert.equal(aim(engine), 7);
+    assert.equal(build.mock.callCount(), 1);
+  });
+
+  it('sees replaced pieces when only the pick revision moved', () => {
+    const scene = largeScene();
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(aim(engine), 7);
+    const internals = scene as unknown as { meshDataMap: Map<number, MeshData[]>; pickGeometryRevision: number };
+    internals.meshDataMap.set(7, []);
+    internals.pickGeometryRevision++;
+    assert.equal(engine.isCacheWarm(), false, 'the draw lists are unchanged, so only the revision can tell');
+    assert.equal(aim(engine), undefined, 'the removed piece must no longer be hit');
+  });
+
+  it('re-collects on every ray for an adapter without a pick revision', () => {
+    const scene = largeScene();
+    const adapter = Object.create(scene, { getPickGeometryRevision: { value: undefined } }) as Scene;
+    const engine = engineFor(adapter, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(aim(engine), 7);
+    assert.equal(engine.isCacheWarm(), false, 'freshness is unknown without a revision');
+    (scene as unknown as { meshDataMap: Map<number, MeshData[]> }).meshDataMap.set(7, []);
+    assert.equal(aim(engine), undefined, 'the replaced pieces must be seen without a revision');
+  });
+
+  // #9512: memory-release invariants require checking retained allocations,
+  // not just the next query (which would lazily rebuild and mask retention).
+  function heldIndex(engine: RaycastEngine) {
+    return (engine as unknown as { flatIndex: {
+      flat: unknown; bvhPieces: unknown; bvh: {
+        meshAABBs: unknown; order: unknown; nodeBounds: unknown; nodeLinks: unknown;
+      };
+    } }).flatIndex;
+  }
+  function assertReleased(engine: RaycastEngine) {
+    const index = heldIndex(engine);
+    assert.equal(index.flat, null);
+    assert.equal(index.bvhPieces, null);
+    for (const key of ['meshAABBs', 'order', 'nodeBounds', 'nodeLinks'] as const) {
+      assert.equal(index.bvh[key], null, `released ${key} must not remain reachable`);
+    }
+  }
+
+  it('explicit geometry release immediately drops warmed pieces and BVH buffers (#9512)', () => {
+    const scene = largeScene();
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(aim(engine), 7);
+    assert.ok(heldIndex(engine).bvh.nodeBounds, 'setup: a large index is allocated');
+    scene.releaseGeometryData();
+    assert.equal(scene.isGeometryDataReleased(), true);
+    assertReleased(engine);
+    assert.equal(aim(engine), undefined, 'released geometry cannot be picked');
+  });
+
+  it('discarded engines unsubscribe and release allocations without disabling active engines (#9512)', () => {
+    const scene = largeScene();
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const discarded = Array.from({ length: 3 }, () => engineFor(scene, camera));
+    const active = engineFor(scene, camera);
+    for (const engine of [...discarded, active]) assert.equal(aim(engine), 7);
+    const listeners = (scene as unknown as { hostEvictionListeners: Set<() => void> }).hostEvictionListeners;
+    assert.equal(listeners.size, 4, 'setup: four engines hold subscriptions');
+    for (const engine of discarded) { engine.dispose(); engine.dispose(); assertReleased(engine); }
+    assert.equal(listeners.size, 1, 'only the live engine remains subscribed');
+    assert.equal(aim(active), 7);
+    scene.releaseGeometryData();
+    assertReleased(active);
+    active.dispose();
+    assert.equal(listeners.size, 0);
+  });
+
+  // #9512 review: cold eviction keeps the pick revision (#8998) and the draw
+  // lists, so nothing the index checks moves; it must still let go of the
+  // evicted typed arrays, which is the whole point of the host budget.
+  it('releases pieces the host budget evicts', () => {
+    const scene = new Scene();
+    const device = {
+      limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
+      createBuffer: ({ size }: GPUBufferDescriptor) => ({ size, destroy() {} }),
+      createBindGroup: () => ({}),
+      queue: { writeBuffer() {} },
+    } as unknown as GPUDevice;
+    const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
+    const quad = makeQuad({ expressId: 7 });
+    const quads = [quad, ...Array.from({ length: 120 }, (_, i) => makeQuad({ expressId: 100 + i, translate: [1_000 + i * 20, 0, 0] }))];
+    scene.appendToBatches(quads, device, pipeline);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
+    assert.equal(engine.isCacheWarm(), true);
+    const revision = scene.getPickGeometryRevision();
+
+    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [quad] });
+    scene.setGpuResidencyBudget(1); scene.setHostResidencyBudget(1);
+    for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
+    for (let i = 0; i < 240; i++) scene.enforceGpuBudget();
+    assert.equal(scene.getMeshDataPieces(7), undefined, 'setup: the bucket went cold');
+    assert.equal(scene.getPickGeometryRevision(), revision, 'setup: eviction keeps the pick revision');
+
+    assertReleased(engine);
+    assert.equal(engine.isCacheWarm(), false, 'the index still holds the evicted pieces');
+    assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
   });
 });

@@ -21,7 +21,7 @@ export function roofMutationTracking(store: StoreApi): Required<RoofStoreBackend
       if (!outcome.ok) throw new Error(`bim.store.editRoof: ${outcome.reason}`);
       const state = store.getState(), stack = state.undoStacks.get(normalized) ?? [];
       const last = stack.length > undoBefore ? stack.at(-1) : undefined;
-      remeshAfterCommit(store.getState, normalized, last ? state.mutationBatchTags.get(last.id) ?? null : null, [ref.expressId], 'shape');
+      remeshAfterCommit(store.getState, normalized, last ? state.mutationBatchTags.get(last.id) ?? null : null, outcome.remesh, 'shape');
       return { modelId: normalized, expressId: ref.expressId };
     },
   };

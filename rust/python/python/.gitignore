@@ -1,0 +1,3 @@
+# maturin develop installs the native extension beside the Python sources.
+*.so
+*.pyd

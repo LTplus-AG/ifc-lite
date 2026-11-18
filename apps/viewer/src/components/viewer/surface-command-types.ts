@@ -30,14 +30,20 @@ export interface SurfaceCommandContext {
   openActivity?: () => void;
   refreshModels?: () => Promise<void>;
   openShareDialog?: () => void;
+  startBlank?: () => void;
+  loadRecovery?: import('@/hooks/loadRecoveryActions').LoadRecoveryBinding;
   /** The context menu owns the current entity and supplies its target-specific action. */
   contextAction?: () => void;
   /** Explicit focus return target for the selected-entity destination. */
   entityActionsLauncher?: () => HTMLElement | null;
+  addSectionPlane?: (kind: import('./tools/SectionAddMenu').AddKind) => boolean;
+  sectionAddUnavailable?: (kind: import('./tools/SectionAddMenu').AddKind) => TranslationKey | undefined;
   toolHostIsCurrent?: () => boolean;
   openBulkProperties?: (launcher?: HTMLElement | null) => void;
   openImportData?: (launcher?: HTMLElement | null) => void;
   openClassFilter?: (launcher?: HTMLElement | null) => void;
+  /** The structural derivation's review dialog (#9668). */
+  openStructuralDerivation?: (launcher?: HTMLElement | null) => void;
 }
 
 export interface SurfaceCommandState {
@@ -59,6 +65,8 @@ export interface SurfaceCommandDefinition {
   searchLabel?: string;
   keywords: string;
   keywordsKey?: TranslationKey;
+  /** Visible child path for a destination, using the existing palette detail presentation. */
+  detailKey?: TranslationKey;
   category: Command['category'];
   icon: Command['icon'];
   /** State-dependent mobile text/icon live here, alongside the action. */

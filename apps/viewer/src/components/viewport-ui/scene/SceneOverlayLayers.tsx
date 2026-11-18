@@ -26,7 +26,11 @@ export function SceneOverlayLayers({ children, rootRef }: SceneOverlayLayersProp
   return (
     <SceneLayersContext.Provider value={{ svg, dom }}>
       <div ref={rootRef} className="pointer-events-none absolute inset-0 z-(--z-scene)" data-scene-overlay-root>
-        <svg ref={setSvg} className="absolute inset-0 h-full w-full overflow-visible" aria-hidden="true">
+        {/* SVG hosts interactive groups; an HTML fieldset cannot contain SVG paths. */}
+        {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+        {/* SVG hosts interactive groups; an HTML fieldset cannot contain SVG paths. */}
+        {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+        <svg ref={setSvg} className="absolute inset-0 h-full w-full overflow-visible" role="group">
           <OverlayDefs />
         </svg>
         <div ref={setDom} className="pointer-events-none absolute inset-0" />

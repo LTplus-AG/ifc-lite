@@ -15,7 +15,7 @@
 import { getReference } from './attribute-helpers.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
+import { getAttributeNamesForSchema, normalizeIfcTypeName } from './ifc-schema.js';
 
 /**
  * Unwrap a STEP typed value. `EntityExtractor` returns `IFCFORCEMEASURE(-100.)`
@@ -81,22 +81,40 @@ export function asNumberList(value: unknown): number[] | undefined {
 }
 
 /**
- * Resolve an attribute's STEP position from the generated registry by its
- * EXPRESS name, rather than writing the index literally. A type whose registry
- * entry does not carry the name answers -1, and {@link readAttr} reports the
- * attribute as absent instead of reading whatever sits at a guessed offset.
+ * Resolve an attribute's STEP position from the file's own schema by its
+ * EXPRESS name, rather than writing the index literally. IFC2X3 and IFC4
+ * order and name some structural attributes differently (IFC2X3
+ * `IfcStructuralLinearActionVarying`, `LinearStiffnessX`), so the IFC4 pin
+ * would misread them. A type whose schema does not carry the name answers -1,
+ * and {@link readAttr} reports the attribute as absent instead of reading
+ * whatever sits at a guessed offset.
  */
-export function attrIndex(type: string, attrName: string): number {
-  return getAttributeNames(type).indexOf(attrName);
+export function attrIndex(type: string, attrName: string, schema: string | undefined): number {
+  return attributeNamesFor(type, schema).indexOf(attrName);
 }
 
-export function readAttr(type: string, attrs: unknown[], attrName: string): unknown {
-  const i = attrIndex(type, attrName);
+// `getAttributeNamesForSchema` scans the registry per call (~15 µs); a 4,000
+// relation model reads ~50k attributes, so memoise per (schema, type).
+const attributeNamesCache = new Map<string, readonly string[]>();
+
+/** {@link getAttributeNamesForSchema}, memoised. The registries are static. */
+export function attributeNamesFor(type: string, schema: string | undefined): readonly string[] {
+  const key = `${schema ?? ''}|${type}`;
+  let names = attributeNamesCache.get(key);
+  if (!names) {
+    names = getAttributeNamesForSchema(type, schema);
+    attributeNamesCache.set(key, names);
+  }
+  return names;
+}
+
+export function readAttr(type: string, attrs: unknown[], attrName: string, schema: string | undefined): unknown {
+  const i = attrIndex(type, attrName, schema);
   return i >= 0 ? attrs[i] : undefined;
 }
 
 /** Push `value` onto `key`'s list without duplicating it. */
-export function addUnique(map: Map<number, string[]>, key: number, value: string): void {
+export function addUnique<T>(map: Map<number, T[]>, key: number, value: T): void {
   let list = map.get(key);
   if (!list) {
     list = [];

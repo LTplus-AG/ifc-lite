@@ -9,6 +9,8 @@ import { connectionFor, HANDOFF_CALLBACK, handoffContext, readHandoff, registryC
 
 export interface ResourceSession { accessToken: string; expiresAt: number; registry: string; scope: string }
 interface Metadata { authorization_endpoint: string; token_endpoint: string }
+interface AuthorizationRequest { scope: string; resource: string }
+export interface DestinationAuthorization { session: ResourceSession; publicationToken?: string }
 interface Pending { handoff: OciHandoff; registry: string; issuer: string; clientId: string; redirectUri: string; state: string; verifier: string; scope: string; created: number }
 const PENDING = 'ifc-lite:oci-handoff:pkce';
 export const PUSH_CALLBACK = '/oauth/registry/callback';
@@ -41,12 +43,17 @@ export async function authorizationMetadata(connection: RegistryConnection, sign
   webAddress(value.authorization_endpoint); webAddress(value.token_endpoint);
   return { authorization_endpoint: value.authorization_endpoint, token_endpoint: value.token_endpoint };
 }
-export function resourceSession(value: unknown, registry: string, requestedScope: string): ResourceSession {
+function bearerGrant(value: unknown): { token: string; expiresAt: number; scope?: string } {
   if (!value || typeof value !== 'object' || !('access_token' in value) || typeof value.access_token !== 'string' || !value.access_token ||
     !('token_type' in value) || typeof value.token_type !== 'string' || value.token_type.toLowerCase() !== 'bearer' ||
     !('expires_in' in value) || typeof value.expires_in !== 'number' || !Number.isSafeInteger(value.expires_in) || value.expires_in <= 0 ||
     ('scope' in value && typeof value.scope !== 'string')) throw new RegistryError('The authorization server returned an invalid access token response.');
-  const scope = 'scope' in value && typeof value.scope === 'string' ? value.scope : requestedScope;
+  return { token: value.access_token, expiresAt: Date.now() + value.expires_in * 1000,
+    scope: 'scope' in value && typeof value.scope === 'string' ? value.scope : undefined };
+}
+export function resourceSession(value: unknown, registry: string, requestedScope: string): ResourceSession {
+  const grant = bearerGrant(value);
+  const scope = grant.scope ?? requestedScope;
   const actions = (scopes: string) => new Set(scopes.split(/\s+/).filter(Boolean).flatMap(s => {
     const match = /^repository:([^:]+):([a-z,]+)$/.exec(s);
     if (!match || match[2].split(',').some(a => a !== 'pull' && a !== 'push')) throw new RegistryError('The authorization server returned unsupported permissions.');
@@ -54,18 +61,57 @@ export function resourceSession(value: unknown, registry: string, requestedScope
   }));
   const requested = actions(requestedScope), granted = actions(scope);
   if (!granted.size || [...granted].some(a => !requested.has(a))) throw new RegistryError('The returned access exceeds the requested folders and actions.');
-  return { registry, scope, accessToken: value.access_token, expiresAt: Date.now() + value.expires_in * 1000 };
+  return { registry, scope, accessToken: grant.token, expiresAt: grant.expiresAt };
 }
 export function resourceAllows(session: ResourceSession, repository: string, action: 'pull' | 'push'): boolean {
   return session.expiresAt > Date.now() + 5000 && session.scope.split(/\s+/).some(s => {
     const [type, name, actions] = s.split(':'); return type === 'repository' && name === repository && actions.split(',').includes(action);
   });
 }
-async function redeem(connection: RegistryConnection, tokenEndpoint: string, redirectUri: string, code: string, verifier: string, scope: string, signal: AbortSignal): Promise<ResourceSession> {
-  const reply = await json(await fetch(tokenEndpoint, { method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store', signal,
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-    body: new URLSearchParams({ grant_type: 'authorization_code', client_id: connection.client_id, redirect_uri: redirectUri, code, code_verifier: verifier, resource: connection.registry }) }));
-  return resourceSession(reply, connection.registry, scope);
+const accessTokenType = 'urn:ietf:params:oauth:token-type:access_token';
+
+function authorizationRequest(connection: RegistryConnection, repositoryScope: string, write: boolean): AuthorizationRequest {
+  const exchange = connection.token_exchange;
+  return exchange
+    ? { scope: write ? exchange.write_scope : exchange.read_scope, resource: exchange.authorization_resource }
+    : { scope: repositoryScope, resource: connection.registry };
+}
+function postToken(endpoint: string, body: URLSearchParams, signal: AbortSignal) {
+  return fetch(endpoint, { method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store', signal,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body }).then(json);
+}
+
+/** Exchange an OAuth access token for the exact registry repository actions requested. */
+export async function exchangeRegistryToken(connection: RegistryConnection, subjectToken: string, scope: string, signal: AbortSignal): Promise<ResourceSession> {
+  const exchange = connection.token_exchange;
+  if (!exchange) throw new RegistryError('No token exchange endpoint is configured for this file store.');
+  const response = await postToken(exchange.endpoint, new URLSearchParams({
+    grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+    client_id: connection.client_id,
+    resource: connection.registry,
+    scope,
+    subject_token: subjectToken,
+    subject_token_type: accessTokenType,
+    requested_token_type: accessTokenType,
+  }), signal);
+  if (!response || typeof response !== 'object' || !('issued_token_type' in response) || response.issued_token_type !== accessTokenType) {
+    throw new RegistryError('The token exchange did not issue registry access.');
+  }
+  return resourceSession(response, connection.registry, scope);
+}
+async function redeem(
+  connection: RegistryConnection, tokenEndpoint: string, redirectUri: string,
+  code: string, verifier: string, scope: string, write: boolean, signal: AbortSignal,
+): Promise<DestinationAuthorization> {
+  const authorization = authorizationRequest(connection, scope, write);
+  const reply = await postToken(tokenEndpoint, new URLSearchParams({
+    grant_type: 'authorization_code', client_id: connection.client_id, redirect_uri: redirectUri,
+    code, code_verifier: verifier, resource: authorization.resource,
+  }), signal);
+  if (!connection.token_exchange) return { session: resourceSession(reply, connection.registry, scope) };
+  const grant = bearerGrant(reply);
+  const session = await exchangeRegistryToken(connection, grant.token, scope, signal);
+  return { session, publicationToken: write && connection.token_exchange.publication_endpoint ? grant.token : undefined };
 }
 export async function prepareHandoff(href: string, signal: AbortSignal, connections = registryConnections()): Promise<string> {
   sessionStorage.removeItem(PENDING);
@@ -73,8 +119,9 @@ export async function prepareHandoff(href: string, signal: AbortSignal, connecti
   const metadata = await authorizationMetadata(connection, signal);
   const redirectUri = new URL(HANDOFF_CALLBACK, window.location.origin).href;
   const scope = `repository:${handoff.source.repository}:pull`;
+  const authorization = authorizationRequest(connection, scope, false);
   const request = await createAuthorizationRequest({ authorizationEndpoint: metadata.authorization_endpoint, clientId: connection.client_id,
-    redirectUri, scope, extraParams: { resource: connection.registry } });
+    redirectUri, scope: authorization.scope, extraParams: { resource: authorization.resource } });
   signal.throwIfAborted();
   const pending: Pending = { handoff, registry: connection.registry, issuer: connection.authorization_server, clientId: connection.client_id,
     redirectUri, scope, state: request.state, verifier: request.codeVerifier, created: Date.now() };
@@ -95,27 +142,30 @@ export async function finishHandoff(href: string, signal: AbortSignal, connectio
   if (callback.searchParams.getAll('iss').length !== 1 || callback.searchParams.get('iss') !== p.issuer) throw new RegistryError('The authorization response came from another issuer.');
   const code = validateRegistryCallback(href, p.redirectUri, p.state);
   const metadata = await authorizationMetadata(connection, signal);
-  const session = await redeem(connection, metadata.token_endpoint, p.redirectUri, code, p.verifier, p.scope, signal);
+  const { session } = await redeem(connection, metadata.token_endpoint, p.redirectUri, code, p.verifier, p.scope, false, signal);
   if (!resourceAllows(session, handoff.source.repository, 'pull')) throw new RegistryError('This account cannot open the selected folder.', 403);
   return { handoff, session };
 }
 /** Each push destination obtains its own resource-bound token; source tokens are never reused. */
-export async function authorizeDestination(connection: RegistryConnection, repository: string, signal: AbortSignal): Promise<ResourceSession> {
+export async function authorizeDestination(connection: RegistryConnection, repository: string, signal: AbortSignal): Promise<DestinationAuthorization> {
   repositoryName(repository);
   const popup = window.open('about:blank', 'ifc-lite-oci-push', 'width=520,height=720');
   if (!popup) throw new RegistryError('Allow the sign-in popup and try Push to again.');
   try {
     const metadata = await authorizationMetadata(connection, signal);
     const redirectUri = new URL(PUSH_CALLBACK, window.location.origin).href, scope = `repository:${repository}:pull repository:${repository}:push`;
-    const request = await createAuthorizationRequest({ authorizationEndpoint: metadata.authorization_endpoint, clientId: connection.client_id, redirectUri, scope, extraParams: { resource: connection.registry } });
+    const authorization = authorizationRequest(connection, scope, true);
+    const request = await createAuthorizationRequest({ authorizationEndpoint: metadata.authorization_endpoint, clientId: connection.client_id,
+      redirectUri, scope: authorization.scope, extraParams: { resource: authorization.resource } });
     signal.throwIfAborted();
     const waiting = waitForOAuthCallback({ expectedState: request.state, timeoutMs: TIMEOUT, timeoutMessage: 'Sign-in timed out. Try Push to again.', signal });
     popup.location.href = request.url;
     const href = await waiting, callback = new URL(href);
     if (callback.searchParams.getAll('iss').length !== 1 || callback.searchParams.get('iss') !== connection.authorization_server) throw new RegistryError('The authorization response came from another issuer.');
     const code = validateRegistryCallback(href, redirectUri, request.state);
-    const session = await redeem(connection, metadata.token_endpoint, redirectUri, code, request.codeVerifier, scope, signal);
+    const result = await redeem(connection, metadata.token_endpoint, redirectUri, code, request.codeVerifier, scope, true, signal);
+    const { session } = result;
     if (!resourceAllows(session, repository, 'pull') || !resourceAllows(session, repository, 'push')) throw new RegistryError('Ask the owner for permission to view and publish in this folder.', 403);
-    return session;
+    return result;
   } finally { popup.close(); }
 }

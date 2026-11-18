@@ -224,3 +224,38 @@ describe('buildLoadReportJSON', () => {
     assert.ok(typeof json.generatedAt === 'string');
   });
 });
+
+// #9268: a budget-only load has missing geometry, even without CSG/unsupported drops.
+it('issue 9268 budget-only report is actionable and identifies unrenderable products', () => {
+  const refusal = { budget: 'walk Items members', limit: 4, reached: 5, sourceId: 170,
+    productId: 100, productType: 'IfcWall', GlobalId: 'wall-guid' };
+  const report = buildLoadReport(model({ idOffset: 1_000_000,
+    diagnostics: diag({ totalBudgetRefusals: 20, budgetRefusals: [refusal, refusal] }) }));
+  assert.equal(report.isClean, false);
+  assert.equal(report.actions.length, 1);
+  assert.match(report.actions[0], /20 work budget refusal.*missing or incomplete/);
+  assert.deepEqual(report.affectedEntities, [{ productId: 100, globalId: 1_000_100,
+    ifcType: 'IfcWall', csgFailures: 0, openings: 0, renderable: false,
+    budgetRefusals: [{ budget: 'walk Items members', limit: 4, reached: 5, sourceId: 170 }] }]);
+  const unknown = buildLoadReport(model({ diagnostics: diag({ totalBudgetRefusals: 1 }) }));
+  assert.equal(unknown.isClean, false, 'count alone must never read as clean');
+  assert.deepEqual(unknown.affectedEntities, []);
+});
+
+// #9268 review: a host that failed CSG and was also refused by a budget keeps both facts.
+it('issue 9268 keeps a budget refusal on the CSG row of the same product', () => {
+  const refusal = (sourceId: number) => ({ budget: 'logical mapped attempts', limit: 3, reached: 4, sourceId,
+    productId: 42, productType: 'IfcWall', GlobalId: null });
+  const report = buildLoadReport(model({ diagnostics: diag({
+    worstHosts: [{ productId: 42, ifcType: 'IfcWall', openings: 2, csgFailures: 1, firstFailureLabel: 'KernelError' }],
+    // A repeat collapses; source #8 is a distinct refusal from #80.
+    totalBudgetRefusals: 3, budgetRefusals: [refusal(80), refusal(80), refusal(8)] }) }));
+  assert.equal(report.affectedEntities.length, 1, 'one row per product');
+  const [row] = report.affectedEntities;
+  assert.equal(row.csgFailures, 1);
+  assert.equal(row.firstFailureLabel, 'KernelError', 'the CSG fact keeps its own field');
+  assert.deepEqual(row.budgetRefusals, [
+    { budget: 'logical mapped attempts', limit: 3, reached: 4, sourceId: 80 },
+    { budget: 'logical mapped attempts', limit: 3, reached: 4, sourceId: 8 },
+  ]);
+});

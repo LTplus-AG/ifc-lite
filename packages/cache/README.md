@@ -98,6 +98,8 @@ The cache keys models by the xxHash64 of the source IFC, and `reader.validate(ca
 
 ## Format versioning
 
+The byte-level layout, the reader's compatibility rules and the conformance criterion for another writer are specified in [`SPEC.md`](./SPEC.md).
+
 The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh geometry-class byte added in v5) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse.
 
 Version 19 preserves explicitly supplied canonical `MeshData.appearanceSource` provenance. Fresh canonical meshes store an identity marker; fragmented or expanded meshes reference a geometry-header source-index pool, shared across spatial chunks, plus their corner mapping. Restored metadata points to the restored mesh indices, preserving the topology identity fence required by appearance preview. Invalid identities, source lengths, pool references and corner ranges fail cache reading/writing instead of enabling an unsafe preview. Unmarked meshes remain unmarked; old records never acquire inferred canonical identity.

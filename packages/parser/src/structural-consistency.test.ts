@@ -1,0 +1,472 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Physical vs structural analysis model consistency (#9668). Fixture
+ * expectations are the ids an independent ifcopenshell pass reports for the
+ * same rules, not values derived from the module under test.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { IfcParser } from './index.js';
+import { extractStructuralOnDemand } from './structural-extractor.js';
+import { checkStructuralConsistency, DEFAULT_AXIS_DRIFT_TOLERANCE, DEFAULT_STALE_TOLERANCE, type PhysicalElementFact, type StructuralConsistencyIssue, type StructuralLine } from './structural-consistency.js';
+import { structuralConsistencyFacts, structuralConsistencyIssues, structuralConsistencyReport } from './structural-consistency-facts.js';
+import type { StructuralConnectionInfo, StructuralExtraction, StructuralMemberInfo } from './structural-types.js';
+
+/** The findings alone, for the tests that read no coverage. */
+const issuesOf = (...args: Parameters<typeof checkStructuralConsistency>) => checkStructuralConsistency(...args).issues;
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+async function parse(bytes: Uint8Array) {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return new IfcParser().parseColumnar(buffer);
+}
+
+const member = (expressId: number, type: string, physicalElementIds: number[] = []): StructuralMemberInfo => ({
+  expressId, globalId: `M${expressId}`, type, physicalElementIds,
+  connectionGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [],
+});
+const connection = (expressId: number, physicalElementIds: number[] = []): StructuralConnectionInfo => ({
+  expressId, globalId: `C${expressId}`, type: 'IfcStructuralPointConnection', physicalElementIds,
+  memberGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [],
+});
+const model = (members: StructuralMemberInfo[], connections: StructuralConnectionInfo[] = [], hasAnalysisModel = true): StructuralExtraction => ({
+  analysisModels: hasAnalysisModel ? [{ expressId: 900, globalId: 'A', loadGroupGlobalIds: [], resultGroupGlobalIds: [], itemGlobalIds: [] }] : [],
+  members, connections, activities: [], loadGroups: [], resultGroups: [], hasStructural: true, loadsTruncated: false,
+});
+const fact = (expressId: number, type: string, loadBearing?: boolean): PhysicalElementFact =>
+  ({ expressId, globalId: `P${expressId}`, type, ...(loadBearing === undefined ? {} : { loadBearing }) });
+const ids = (issues: StructuralConsistencyIssue[], rule: string) =>
+  issues.filter((issue) => issue.rule === rule).map((issue) => issue.target === undefined ? issue.entityId : [issue.entityId, issue.target]);
+
+describe('structural-unlinked-element', () => {
+  const elements = [fact(1, 'IfcBeam', true), fact(2, 'IfcColumn', false), fact(3, 'IfcWallStandardCase'), fact(4, 'IfcDoor', true), fact(5, 'IfcFooting', true)];
+
+  it('reports load-bearing elements with no structural item, and names the element', () => {
+    const issues = issuesOf(model([member(10, 'IfcStructuralCurveMember', [5])]), elements);
+    expect(ids(issues, 'structural-unlinked-element')).toEqual([1, 3]);
+    const beam = issues.find((issue) => issue.entityId === 1)!;
+    expect(beam).toMatchObject({ severity: 'warning', globalId: 'P1' });
+    expect(beam.message).toContain('LoadBearing is true');
+    expect(issues.find((issue) => issue.entityId === 3)!.message).toContain('LoadBearing is not stated as true or false');
+  });
+
+  it('includes piles', () => {
+    const issues = issuesOf(model([member(10, 'IfcStructuralCurveMember')]), [fact(1, 'IfcPile', true), fact(2, 'IfcPile', false)]);
+    expect(ids(issues, 'structural-unlinked-element')).toEqual([1]);
+  });
+
+  it('leaves the GlobalId out of the message when the entity has none', () => {
+    const issues = issuesOf(model([member(10, 'IfcStructuralCurveMember')]), [{ expressId: 7, globalId: '', type: 'IfcBeam' }]);
+    expect(issues[0].message).toMatch(/^#7 IfcBeam is load bearing/);
+  });
+
+  it('treats an unset LoadBearing as not load bearing when asked to', () => {
+    const issues = issuesOf(model([member(10, 'IfcStructuralCurveMember', [5])]), elements, { unsetLoadBearing: false });
+    expect(ids(issues, 'structural-unlinked-element')).toEqual([1]);
+  });
+
+  it('does not run in a file with no analytical model', () => {
+    expect(issuesOf(model([], [], false), elements)).toEqual([]);
+  });
+
+  it('runs on structural members alone, without an IfcStructuralAnalysisModel', () => {
+    expect(ids(issuesOf(model([member(10, 'IfcStructuralCurveMember')], [], false), elements), 'structural-unlinked-element')).toEqual([1, 3, 5]);
+  });
+
+  it('counts a link from a connection as a counterpart', () => {
+    const issues = issuesOf(model([member(10, 'IfcStructuralCurveMember', [5])], [connection(20, [1, 3])]), elements);
+    expect(ids(issues, 'structural-unlinked-element')).toEqual([]);
+  });
+});
+
+describe('structural-unlinked-item', () => {
+  it('reports unlinked members once the file links any member', () => {
+    const issues = issuesOf(model([member(10, 'IfcStructuralCurveMember', [1]), member(11, 'IfcStructuralSurfaceMember')]), [fact(1, 'IfcBeam')]);
+    expect(ids(issues, 'structural-unlinked-item')).toEqual([11]);
+    expect(issues.find((issue) => issue.entityId === 11)).toMatchObject({ globalId: 'M11', severity: 'warning' });
+  });
+
+  it('checks connections only when the file links a connection', () => {
+    const elements = [fact(1, 'IfcBeam'), fact(2, 'IfcFooting')];
+    const unlinkedConnections = model([member(10, 'IfcStructuralCurveMember', [1])], [connection(20), connection(21)]);
+    expect(ids(issuesOf(unlinkedConnections, elements), 'structural-unlinked-item')).toEqual([]);
+    const oneLinked = model([member(10, 'IfcStructuralCurveMember', [1])], [connection(20, [2]), connection(21)]);
+    expect(ids(issuesOf(oneLinked, elements), 'structural-unlinked-item')).toEqual([21]);
+  });
+
+  it('reports nothing for a purely analytical file', () => {
+    expect(issuesOf(model([member(10, 'IfcStructuralCurveMember')], [connection(20)]), [])).toEqual([]);
+  });
+});
+
+describe('structural-class-mismatch', () => {
+  const elements = [fact(1, 'IfcSlab'), fact(2, 'IfcBeam'), fact(3, 'IfcColumn'), fact(4, 'IfcWallStandardCase'), fact(5, 'IfcFooting'), fact(6, 'IfcPlate')];
+
+  it('names both entities for a curve member on a slab and a surface member on a column', () => {
+    const issues = issuesOf(model([
+      member(10, 'IfcStructuralCurveMember', [1, 2]),
+      member(11, 'IfcStructuralSurfaceMember', [3, 4]),
+    ]), elements);
+    expect(ids(issues, 'structural-class-mismatch')).toEqual([[10, 1], [11, 3]]);
+    expect(issues.find((issue) => issue.entityId === 10)).toMatchObject({ globalId: 'M10', target: 1, targetGlobalId: 'P1' });
+  });
+
+  it('includes the IFC2X3 varying members and the physical subtypes', () => {
+    const issues = issuesOf(model([
+      member(10, 'IfcStructuralCurveMemberVarying', [4, 6]),
+      member(11, 'IfcStructuralSurfaceMemberVarying', [2]),
+    ]), elements);
+    expect(ids(issues, 'structural-class-mismatch')).toEqual([[10, 4], [11, 2]]);
+  });
+
+  it('accepts a curve member on a beam, footing or plate and a surface member on a slab or wall', () => {
+    const issues = issuesOf(model([
+      member(10, 'IfcStructuralCurveMember', [2, 5, 6]),
+      member(11, 'IfcStructuralSurfaceMember', [1, 4]),
+    ]), elements);
+    expect(ids(issues, 'structural-class-mismatch')).toEqual([]);
+  });
+});
+
+describe('structural-unconnected-member', () => {
+  const connected = (expressId: number, type = 'IfcStructuralCurveMember') =>
+    ({ ...member(expressId, type), connectionGlobalIds: ['C1'], IfcRelConnectsStructuralMember: [{ expressId: 100 + expressId, type: 'IfcRelConnectsStructuralMember', RelatedStructuralConnection: 20 }] });
+
+  it('reports every member with no connection once any member is connected', () => {
+    const issues = issuesOf(model([connected(10), member(11, 'IfcStructuralCurveMember'), member(12, 'IfcStructuralSurfaceMember')]), []);
+    expect(ids(issues, 'structural-unconnected-member')).toEqual([11, 12]);
+    expect(issues.find((issue) => issue.entityId === 11)).toMatchObject({ severity: 'warning', globalId: 'M11' });
+  });
+
+  it('counts a relationship whose connection has no GlobalId as a connection', () => {
+    const related = { ...member(11, 'IfcStructuralCurveMember'), IfcRelConnectsStructuralMember: [{ expressId: 50, type: 'IfcRelConnectsStructuralMember', RelatedStructuralConnection: 20 }] };
+    expect(ids(issuesOf(model([connected(10), related]), []), 'structural-unconnected-member')).toEqual([]);
+  });
+
+  it('does not run in a file that connects no member', () => {
+    expect(ids(issuesOf(model([member(10, 'IfcStructuralCurveMember'), member(11, 'IfcStructuralSurfaceMember')]), []), 'structural-unconnected-member')).toEqual([]);
+  });
+});
+
+describe('structural-axis-drift', () => {
+  const elements = [fact(1, 'IfcBeam', true)];
+  const along: StructuralLine = [[0, 0, 3], [6, 0, 3]];
+  const lines = (line: StructuralLine, axis: StructuralLine | null = along) =>
+    ({ memberLines: new Map([[10, line]]), physicalAxes: new Map(axis ? [[1, axis]] : []) });
+  const linked = model([member(10, 'IfcStructuralCurveMember', [1])]);
+  const drift = (issues: StructuralConsistencyIssue[]) => issues.filter((issue) => issue.rule === 'structural-axis-drift');
+
+  it('reports a member off its element\'s axis with the distance of its farther end', () => {
+    const issues = drift(issuesOf(linked, elements, {}, lines([[0, 0.1, 3], [6, 0.3, 3.4]])));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ entityId: 10, globalId: 'M10', target: 1, targetGlobalId: 'P1' });
+    expect(issues[0].distance).toBeCloseTo(0.5, 9);
+    expect(issues[0].message).toContain('0.500 m');
+  });
+
+  it('ignores ends moved along the axis, as the derivation does at joints', () => {
+    expect(drift(issuesOf(linked, elements, {}, lines([[-0.2, 0, 3], [5.5, 0, 3]])))).toEqual([]);
+  });
+
+  it('reports only past the tolerance, default 0.05 m', () => {
+    expect(DEFAULT_AXIS_DRIFT_TOLERANCE).toBe(0.05);
+    const within = lines([[0, 0.049, 3], [6, 0, 3]]);
+    expect(drift(issuesOf(linked, elements, {}, within))).toEqual([]);
+    expect(drift(issuesOf(linked, elements, {}, lines([[0, 0.051, 3], [6, 0, 3]])))).toHaveLength(1);
+    expect(drift(issuesOf(linked, elements, { axisDriftTolerance: 0.01 }, within))).toHaveLength(1);
+    expect(() => issuesOf(linked, elements, { axisDriftTolerance: Number.NaN }, within)).toThrow(/axisDriftTolerance/);
+  });
+
+  it('lets no wild coordinate widen the drift allowance past 1 micrometre', () => {
+    // A garbage z of 1e14 m would allow 0.36 m uncapped; 2 micrometres of drift must still be reported.
+    const wild = lines([[0, 0.050002, 1e14], [6, 0, 1e14]], [[0, 0, 1e14], [6, 0, 1e14]]);
+    expect(drift(issuesOf(linked, elements, {}, wild))).toHaveLength(1);
+  });
+
+  describe('does not report an end exactly at the tolerance', () => {
+    const oblique = [0.6, 0.8, 0] as const;
+    const WEB_MERCATOR_ANGLE = 0.33590935980955805;
+    const cases = [
+      ['along X at the origin', [0, 0, 0], [1, 0, 0]],
+      ['at 45 degrees', [0, 0, 0], [Math.SQRT1_2, Math.SQRT1_2, 0]],
+      ['at LV95 coordinates', [2600000, 1200000, 400], oblique],
+      // From a 20000-end random search: a fixed 1 nm allowance misreports it (2.6e-9 m of rounding).
+      ['at Web Mercator coordinates', [19492896, 17103716, 400], [Math.cos(WEB_MERCATOR_ANGLE), Math.sin(WEB_MERCATOR_ANGLE), 0]],
+    ] as const;
+    for (const [name, origin, axis] of cases) {
+      it(name, () => {
+        // `at(k, off)`: k metres along the axis from `origin`, then `off` metres square to it in plan.
+        const at = (k: number, off: number) => [origin[0] + k * axis[0] - off * axis[1], origin[1] + k * axis[1] + off * axis[0], origin[2]] as const;
+        const endAtTolerance = lines([at(0, 0), at(5, 0.05)], [at(0, 0), at(5, 0)]);
+        expect(drift(issuesOf(linked, elements, {}, endAtTolerance))).toEqual([]);
+        expect(drift(issuesOf(linked, elements, { axisDriftTolerance: 0.0499 }, endAtTolerance))).toHaveLength(1);
+      });
+    }
+
+    // Members up to 41 axis lengths long, so the 1 micrometre cap binds for some ends.
+    it('over a seeded sweep of 2000 oblique ends at map-scale origins', () => {
+      let seed = 1;
+      const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      let reportedAtTolerance = 0;
+      let missedPastTolerance = 0;
+      for (let i = 0; i < 2000; i++) {
+        const origin = [Math.round(1e6 + random() * 1.9e7), Math.round(1e6 + random() * 1.9e7), 400];
+        const angle = random() * 2 * Math.PI;
+        const at = (k: number, off: number) =>
+          [origin[0] + k * Math.cos(angle) - off * Math.sin(angle), origin[1] + k * Math.sin(angle) + off * Math.cos(angle), 400] as const;
+        const length = 5 + 200 * random();
+        if (drift(issuesOf(linked, elements, {}, lines([at(0, 0), at(length, 0.05)], [at(0, 0), at(5, 0)]))).length) reportedAtTolerance++;
+        // 10 micrometres past the tolerance is drift: the allowance never hides it.
+        if (!drift(issuesOf(linked, elements, {}, lines([at(0, 0), at(length, 0.05001)], [at(0, 0), at(5, 0)]))).length) missedPastTolerance++;
+      }
+      expect({ reportedAtTolerance, missedPastTolerance }).toEqual({ reportedAtTolerance: 0, missedPastTolerance: 0 });
+    });
+  });
+
+  it('needs both lines, a link and the element', () => {
+    const off: StructuralLine = [[0, 1, 3], [6, 1, 3]];
+    expect(drift(issuesOf(linked, elements, {}, lines(off, null)))).toEqual([]);
+    expect(drift(issuesOf(linked, elements))).toEqual([]);
+    expect(drift(issuesOf(model([member(10, 'IfcStructuralCurveMember')]), elements, {}, lines(off)))).toEqual([]);
+    expect(drift(issuesOf(linked, [], {}, lines(off)))).toEqual([]);
+    expect(drift(issuesOf(linked, elements, {}, lines(off, [[1, 1, 1], [1, 1, 1]])))).toEqual([]);
+    expect(drift(issuesOf(linked, elements, {}, lines([[0, Number.NaN, 3], [6, 1, 3]])))).toEqual([]);
+  });
+});
+
+describe('structural-stale-item', () => {
+  const elements = [fact(1, 'IfcBeam', true), fact(2, 'IfcBeam', true)];
+  const then: StructuralLine = [[0, 0, 3], [6, 0, 3]];
+  const linked = model([member(10, 'IfcStructuralCurveMember', [1]), member(11, 'IfcStructuralCurveMember', [2])]);
+  /** Element 1's line now; member 10 recorded `then` for P1, member 11 recorded element 2's unchanged line. */
+  const geometry = (now: StructuralLine | null, record: { elementGlobalId: string; axis: StructuralLine } = { elementGlobalId: 'P1', axis: then }) => ({
+    memberLines: new Map<number, StructuralLine>(),
+    physicalAxes: new Map<number, StructuralLine>([...(now ? [[1, now] as const] : []), [2, [[0, 5, 3], [6, 5, 3]]]]),
+    derivationRecords: new Map([[10, record], [11, { elementGlobalId: 'P2', axis: [[0, 5, 3], [6, 5, 3]] as StructuralLine }]]),
+  });
+  const stale = (issues: StructuralConsistencyIssue[]) => issues.filter((issue) => issue.rule === 'structural-stale-item');
+
+  it('reports a member whose element moved along its own axis, which axis drift cannot see', () => {
+    const issues = issuesOf(linked, elements, {}, geometry([[0.3, 0, 3], [6.3, 0, 3]]));
+    expect(stale(issues)).toHaveLength(1);
+    expect(stale(issues)[0]).toMatchObject({ entityId: 10, globalId: 'M10', target: 1, targetGlobalId: 'P1' });
+    expect(stale(issues)[0].distance).toBeCloseTo(0.3, 9);
+    expect(stale(issues)[0].message).toContain('0.300 m');
+  });
+
+  it('reports a sideways move by its farther end, and a line reversed in place', () => {
+    const [issue] = stale(issuesOf(linked, elements, {}, geometry([[0, 0.1, 3], [6, 0.4, 3]])));
+    expect(issue.distance).toBeCloseTo(0.4, 9);
+    const [reversed] = stale(issuesOf(linked, elements, {}, geometry([[6, 0, 3], [0, 0, 3]])));
+    expect(reversed.distance).toBeCloseTo(6, 9);
+  });
+
+  it('reports only past the tolerance, default 1 mm', () => {
+    expect(DEFAULT_STALE_TOLERANCE).toBe(0.001);
+    const within = geometry([[0.0009, 0, 3], [6.0009, 0, 3]]);
+    expect(stale(issuesOf(linked, elements, {}, within))).toEqual([]);
+    expect(stale(issuesOf(linked, elements, {}, geometry([[0.0011, 0, 3], [6, 0, 3]])))).toHaveLength(1);
+    expect(stale(issuesOf(linked, elements, { staleTolerance: 0.0005 }, within))).toHaveLength(1);
+    expect(() => issuesOf(linked, elements, { staleTolerance: -1 }, within)).toThrow(/staleTolerance/);
+  });
+
+  it('needs a record, the recorded element still linked, and its line now', () => {
+    const moved: StructuralLine = [[0, 1, 3], [6, 1, 3]];
+    expect(stale(issuesOf(linked, elements, {}, { ...geometry(moved), derivationRecords: undefined }))).toEqual([]);
+    expect(stale(issuesOf(linked, elements, {}, geometry(moved, { elementGlobalId: 'P9', axis: then })))).toEqual([]);
+    expect(stale(issuesOf(model([member(10, 'IfcStructuralCurveMember')]), elements, {}, geometry(moved)))).toEqual([]);
+    expect(stale(issuesOf(linked, elements, {}, geometry(null)))).toEqual([]);
+    expect(stale(issuesOf(linked, elements))).toEqual([]);
+    expect(stale(issuesOf(linked, elements, {}, geometry([[0, Number.NaN, 3], [6, 1, 3]])))).toEqual([]);
+  });
+});
+
+describe('geometry rule coverage', () => {
+  // Member 10 is linked to beams 1 and 2; both have an axis, an edge and a record unless a case takes one away.
+  const elements = [fact(1, 'IfcBeam', true), fact(2, 'IfcBeam', true)];
+  const axis: StructuralLine = [[0, 0, 3], [6, 0, 3]];
+  const linked = model([member(10, 'IfcStructuralCurveMember', [1, 2]), member(11, 'IfcStructuralCurveMember'), member(12, 'IfcStructuralSurfaceMember', [1])]);
+  const geometry = ({ axes = [1, 2], edge = true, record = 'P1' as string | null } = {}) => ({
+    physicalAxes: new Map(axes.map((id) => [id, axis] as const)),
+    memberLines: new Map<number, StructuralLine>(edge ? [[10, axis]] : []),
+    derivationRecords: new Map(record ? [[10, { elementGlobalId: record, axis }]] : []),
+  });
+  const skipped = (reasons: { axisDrift?: string; stale?: string }) =>
+    ({ linked: 1, skipped: [{ memberId: 10, globalId: 'M10', type: 'IfcStructuralCurveMember', elementIds: [1, 2], ...reasons }] });
+
+  it('lists nothing when both rules compared every linked curve member; unlinked and surface members do not count', () => {
+    expect(checkStructuralConsistency(linked, elements, {}, geometry()).coverage).toEqual({ linked: 1, skipped: [] });
+  });
+
+  it('edge-unreadable: axis drift skips a member whose own edge was not read; movement still compares it', () => {
+    expect(checkStructuralConsistency(linked, elements, {}, geometry({ edge: false })).coverage).toEqual(skipped({ axisDrift: 'edge-unreadable' }));
+  });
+
+  it('no-derivation-record: movement skips a member without a record; axis drift still compares it', () => {
+    expect(checkStructuralConsistency(linked, elements, {}, geometry({ record: null })).coverage).toEqual(skipped({ stale: 'no-derivation-record' }));
+  });
+
+  it('element-without-axis: movement skips a member whose recorded element has no axis; axis drift still compares it', () => {
+    expect(checkStructuralConsistency(linked, elements, {}, geometry({ axes: [2] })).coverage).toEqual(skipped({ stale: 'element-without-axis' }));
+  });
+
+  it('recorded-element-unlinked: movement skips a member whose record names an element no longer linked to it', () => {
+    expect(checkStructuralConsistency(linked, elements, {}, geometry({ record: 'P9' })).coverage).toEqual(skipped({ stale: 'recorded-element-unlinked' }));
+    const beams = [fact(2, 'IfcBeam', true)];
+    const globalId = (id: number) => id === 1 ? 'P1' : undefined;
+    expect(checkStructuralConsistency(linked, beams, {}, geometry({ record: 'P9' }), globalId).coverage).toEqual(skipped({ stale: 'recorded-element-unlinked' }));
+    expect(checkStructuralConsistency(linked, beams, {}, geometry({ record: 'P1' }), globalId).coverage).toEqual(skipped({ stale: 'element-without-axis' }));
+    expect(checkStructuralConsistency(linked, beams, {}, geometry({ record: 'P1' })).coverage).toEqual(skipped({ stale: 'linked-element-identity-unreadable' }));
+  });
+
+  it('#10673 reports degenerate drift axes unless another axis yields a measurement', () => {
+    const facts = geometry();
+    facts.physicalAxes.set(1, [axis[0], axis[0]]);
+    expect(checkStructuralConsistency(linked, elements, {}, facts).coverage).toEqual({ linked: 1, skipped: [] });
+    facts.physicalAxes.delete(2);
+    expect(checkStructuralConsistency(linked, elements, {}, facts).coverage).toEqual(skipped({ axisDrift: 'axis-unusable' }));
+  });
+
+  it('#10673 reports non-finite movement even when a second axis allows drift to be checked', () => {
+    const facts = geometry();
+    facts.physicalAxes.set(1, [[Number.NaN, 0, 3], axis[1]]);
+    expect(checkStructuralConsistency(linked, elements, {}, facts).coverage).toEqual(skipped({ stale: 'axis-unusable' }));
+  });
+
+  it('element-without-axis: both rules skip a member none of whose elements has an axis, and every member without geometry', () => {
+    const neither = skipped({ axisDrift: 'element-without-axis', stale: 'element-without-axis' });
+    expect(checkStructuralConsistency(linked, elements, {}, geometry({ axes: [] })).coverage).toEqual(neither);
+    expect(checkStructuralConsistency(linked, elements).coverage).toEqual(neither);
+  });
+});
+
+const IFC4X3 = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4X3_ADD2'));ENDSEC;DATA;
+#9=IFCPROJECT('0Project0000000000000a',$,'Project',$,$,$,$,$,$);
+#1=IFCBEAM('2Beam000000000000000001',$,'Beam',$,$,$,$,$,$);
+#2=IFCCOLUMN('2Colu000000000000000001',$,'Column',$,$,$,$,$,$);
+#3=IFCWALL('2Wall000000000000000001',$,'Wall',$,$,$,$,$,$);
+#4=IFCSLAB('2Slab000000000000000001',$,'Slab',$,$,$,$,$,$);
+#5=IFCMEMBER('2Memb000000000000000001',$,'Brace',$,$,$,$,$,$);
+#6=IFCFOOTING('2Foot000000000000000001',$,'Footing',$,$,$,$,$,$);
+#8=IFCPILE('2Pile000000000000000001',$,'Pile',$,$,$,$,$,.BORED.,$);
+#40=IFCPROPERTYSET('2Pset000000000000000008',$,'Pset_PileCommon',$,(#20));
+#41=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000009',$,$,$,(#8),#40);
+#10=IFCSTRUCTURALCURVEMEMBER('2Curv000000000000000001',$,'On wall',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
+#11=IFCSTRUCTURALCURVEMEMBER('2Curv000000000000000002',$,'Unlinked',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
+#12=IFCSTRUCTURALPOINTCONNECTION('2Node000000000000000001',$,'Node',$,$,$,$,$,$);
+#13=IFCRELASSIGNSTOPRODUCT('2Rel0000000000000000001',$,$,$,(#10),$,#3);
+#20=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$);
+#21=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.F.),$);
+#22=IFCPROPERTYSET('2Pset000000000000000001',$,'Pset_BeamCommon',$,(#20));
+#23=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000002',$,$,$,(#1),#22);
+#24=IFCPROPERTYSET('2Pset000000000000000002',$,'PSet_ColumnCommon',$,(#21));
+#25=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000003',$,$,$,(#2),#24);
+#26=IFCPROPERTYSET('2Pset000000000000000003',$,'Pset_MemberCommon',$,(#20));
+#27=IFCMEMBERTYPE('2Type000000000000000001',$,'Brace type',$,$,(#26),$,$,$,.BRACE.);
+#28=IFCRELDEFINESBYTYPE('2Rel0000000000000000004',$,$,$,(#5),#27);
+#29=IFCPROPERTYSET('2Pset000000000000000004',$,'Pset_FootingCommon',$,(#21));
+#30=IFCFOOTINGTYPE('2Type000000000000000002',$,'Footing type',$,$,(#29),$,$,$,.PAD_FOOTING.);
+#31=IFCRELDEFINESBYTYPE('2Rel0000000000000000005',$,$,$,(#6),#30);
+#32=IFCPROPERTYSET('2Pset000000000000000005',$,'Pset_FootingCommon',$,(#20));
+#33=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000006',$,$,$,(#6),#32);
+#34=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCLOGICAL(.U.),$);
+#35=IFCPROPERTYSET('2Pset000000000000000006',$,'PSet_SlabCommon',$,(#34));
+#36=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000007',$,$,$,(#4),#35);
+#37=IFCPROPERTYSET('2Pset000000000000000007',$,'Pset_SlabCommon',$,(#21));
+#38=IFCSLABTYPE('2Type000000000000000003',$,'Slab type',$,$,(#37),$,$,$,.FLOOR.);
+#39=IFCRELDEFINESBYTYPE('2Rel0000000000000000008',$,$,$,(#4),#38);
+ENDSEC;END-ISO-10303-21;`;
+
+describe('structuralConsistencyFacts on an IFC4X3 file', () => {
+  it('#10673 distinguishes an unreadable placement with a complete record from an absent record', async () => {
+    const step = IFC4X3
+      .replace("'On wall',$,$,$,$,.RIGID_JOINED_MEMBER.", "'On wall',$,$,#42,$,.RIGID_JOINED_MEMBER.")
+      .replace('ENDSEC;END-ISO-10303-21;', `
+#42=IFCLOCALPLACEMENT(#43,#44);
+#43=IFCLOCALPLACEMENT(#43,#44);
+#44=IFCAXIS2PLACEMENT3D(#45,$,$);
+#45=IFCCARTESIANPOINT((0.,0.,0.));
+#46=IFCPROPERTYSINGLEVALUE('PhysicalElement',$,IFCLABEL('2Wall000000000000000001'),$);
+#47=IFCPROPERTYSINGLEVALUE('PhysicalAxisStartX',$,IFCREAL(0.),$);
+#48=IFCPROPERTYSINGLEVALUE('PhysicalAxisStartY',$,IFCREAL(0.),$);
+#49=IFCPROPERTYSINGLEVALUE('PhysicalAxisStartZ',$,IFCREAL(0.),$);
+#50=IFCPROPERTYSINGLEVALUE('PhysicalAxisEndX',$,IFCREAL(4.),$);
+#51=IFCPROPERTYSINGLEVALUE('PhysicalAxisEndY',$,IFCREAL(0.),$);
+#52=IFCPROPERTYSINGLEVALUE('PhysicalAxisEndZ',$,IFCREAL(0.),$);
+#53=IFCPROPERTYSET('2Pset000000000000000010',$,'IfcLite_StructuralDerivation',$,(#46,#47,#48,#49,#50,#51,#52));
+#54=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000010',$,$,$,(#10),#53);
+ENDSEC;END-ISO-10303-21;`);
+    const physicalAxes = new Map<number, StructuralLine>([[3, [[0, 0, 0], [4, 0, 0]]]]);
+    const store = await parse(new TextEncoder().encode(step));
+    const absent = await parse(new TextEncoder().encode(step.replace(/^#54=.*$/m, '')));
+    const readable = await parse(new TextEncoder().encode(step.replace('#43=IFCLOCALPLACEMENT(#43,#44);', '#43=IFCLOCALPLACEMENT($,#44);')));
+    expect(structuralConsistencyReport(store, { physicalAxes }).coverage.skipped).toEqual([
+      expect.objectContaining({ memberId: 10, stale: 'derivation-record-unreadable' }),
+    ]);
+    expect(structuralConsistencyReport(absent, { physicalAxes }).coverage.skipped).toEqual([
+      expect.objectContaining({ memberId: 10, stale: 'no-derivation-record' }),
+    ]);
+    const movedAxes = new Map<number, StructuralLine>([[3, [[1, 0, 0], [5, 0, 0]]]]);
+    expect(structuralConsistencyReport(readable, { physicalAxes: movedAxes }).issues).toContainEqual(
+      expect.objectContaining({ rule: 'structural-stale-item', entityId: 10, target: 3, distance: 1 }),
+    );
+  });
+
+  it('reads LoadBearing from the occurrence over its type, in any pset-name case, with UNKNOWN as unstated, and runs all three rules', async () => {
+    const store = await parse(new TextEncoder().encode(IFC4X3));
+    expect(store.schemaVersion).toBe('IFC4X3');
+    const structural = extractStructuralOnDemand(store);
+    const facts = structuralConsistencyFacts(store, structural);
+    expect(facts.map((f) => [f.expressId, f.type, f.loadBearing])).toEqual([
+      [1, 'IfcBeam', true], [2, 'IfcColumn', false], [3, 'IfcWall', undefined],
+      [4, 'IfcSlab', undefined], [5, 'IfcMember', true], [6, 'IfcFooting', true], [8, 'IfcPile', true],
+    ]);
+    expect(facts[0].globalId).toBe('2Beam000000000000000001');
+
+    const issues = issuesOf(structural, facts);
+    expect(ids(issues, 'structural-unlinked-element')).toEqual([1, 4, 5, 6, 8]);
+    expect(ids(issues, 'structural-unlinked-item')).toEqual([11]);
+    expect(ids(issues, 'structural-class-mismatch')).toEqual([[10, 3]]);
+    expect(issues.find((issue) => issue.rule === 'structural-class-mismatch' && issue.entityId === 10))
+      .toMatchObject({ globalId: '2Curv000000000000000001', targetGlobalId: '2Wall000000000000000001' });
+  });
+});
+
+// Ids from the ifcopenshell pass over the same files (IfcRelAssignsToProduct
+// both ways, plus IfcRelConnectsStructuralElement in IFC2X3).
+const FIXTURES = [
+  { path: 'ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc', schema: 'IFC4', element: [49, 1500, 2222, 2837, 3327, 3441], item: [] },
+  { path: 'ifcopenshell/generated_structural_coverage_ifc2x3.ifc', schema: 'IFC2X3', element: [], item: [32, 34, 45] },
+  { path: 'structural/ifc_structuralanalysisview/roof_truss--Axis-Struc.ifc', schema: 'IFC2X3', element: [], item: [] },
+  { path: 'structural/ifc_structuralanalysisview/house_basement_floor--Axis-Struc.ifc', schema: 'IFC2X3', element: [], item: [] },
+  { path: 'buildingsmart/Building-Structural.ifc', schema: 'IFC4', element: [], item: [] },
+];
+
+describe('structural consistency on real files', () => {
+  it('lists the fixtures in the committed manifest so CI fetches them', () => {
+    const manifest = JSON.parse(readFileSync(resolve(REPO_ROOT, 'tests/models/manifest.json'), 'utf8')) as { files?: { path?: string }[] };
+    const paths = (manifest.files ?? []).map((file) => file.path);
+    for (const fixture of FIXTURES) expect(paths).toContain(fixture.path);
+  });
+
+  for (const fixture of FIXTURES) {
+    it(`${fixture.schema}: ${fixture.path.split('/').pop()}`, async (ctx) => {
+      const file = resolve(REPO_ROOT, 'tests/models', fixture.path);
+      if (!existsSync(file)) ctx.skip(`${fixture.path} missing — run \`pnpm fixtures\` to fetch it`);
+      const store = await parse(readFileSync(file));
+      expect(store.schemaVersion).toBe(fixture.schema);
+      const issues = structuralConsistencyIssues(store);
+      expect(ids(issues, 'structural-unlinked-element')).toEqual(fixture.element);
+      expect(ids(issues, 'structural-unlinked-item')).toEqual(fixture.item);
+      expect(ids(issues, 'structural-class-mismatch')).toEqual([]);
+    });
+  }
+});

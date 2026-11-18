@@ -11,8 +11,7 @@
 
 import type { StructuralBackendMethods } from './structural-types.js';
 // Re-exported below via `export *`; imported by name because `BimBackend` uses it here.
-import type { ScheduleBackendMethods } from './schedule-types.js';
-import type { CostBackendMethods } from './cost-types.js';
+import type { ScheduleBackendMethods } from './schedule-types.js'; import type { CostBackendMethods } from './cost-types.js';
 import type { SpacesBackendMethods, StyleBackendMethods } from './backend-extension-types.js';
 import type { StoreAuthoringBackendMethods } from './store-authoring-types.js'; import type { TopConstraintParams } from './store-top-types.js';
 import type {
@@ -572,7 +571,7 @@ export interface StoreBackendMethods extends StoreAuthoringBackendMethods {
    * model on export.
    */
   addColumn(modelId: string, storeyExpressId: number, params: AddColumnInStoreParams | ProfiledColumnInStoreParams): EntityRef;
-  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef;
+  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef & { notices?: string[] };
   addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef;
   addBeam(modelId: string, storeyExpressId: number, params: AddBeamInStoreParams | ProfiledBeamInStoreParams): EntityRef;
   addDoor(modelId: string, storeyExpressId: number, params: AddDoorInStoreParams): EntityRef;
@@ -679,8 +678,9 @@ export interface BimBackend {
   readonly structural?: StructuralBackendMethods;
   /** Space derivation — present only on local backends with store access. */
   readonly spaces?: SpacesBackendMethods;
-  /** Persistent colouring — present only on local backends with store access. */
+  /** Persistent colouring and georeferencing read/write — present only on local backends with store access. */
   readonly style?: StyleBackendMethods;
+  readonly georef?: import('./georef/types.js').GeoreferencingBackendMethods;
 
   /** Subscribe to viewer events */
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void;

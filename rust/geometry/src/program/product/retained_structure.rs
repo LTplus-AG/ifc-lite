@@ -39,7 +39,11 @@ pub(super) fn validated_product_shape(
     let shape = decoder
         .decode_by_id(id)
         .map_err(|error| core_error(FailureSite::ProductShape, id, error))?;
-    if shape.ifc_type != IfcType::IfcProductDefinitionShape {
+    // Same admission as `representation::product_shape`: a bare IFC2X3
+    // IfcProductRepresentation only on a structural member (#9668).
+    let bare_structural = shape.ifc_type == IfcType::IfcProductRepresentation
+        && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember);
+    if shape.ifc_type != IfcType::IfcProductDefinitionShape && !bare_structural {
         return Err(shape_error(
             shape.id,
             ShapeError::NotAProductDefinitionShape(shape.ifc_type),
@@ -89,6 +93,7 @@ pub(super) fn validated_product_shape(
                 return Err(StructureError::Budget {
                     entity: rep.id,
                     allowance,
+                    reached: u64::from(roots.items).saturating_add(charge.cost as u64),
                 });
             }
             roots.items += charge.cost as u32;
@@ -181,6 +186,7 @@ pub(super) enum StructureError {
     Budget {
         entity: u32,
         allowance: u32,
+        reached: u64,
     },
     Stop(crate::resource::ProgramStop),
     Origin {
@@ -198,9 +204,7 @@ impl From<crate::resource::ProgramStop> for StructureError {
 impl StructureError {
     pub(super) fn into_common(self, selection: &RetainedSelection) -> Error {
         match self {
-            Self::Budget { entity, allowance } => crate::representation::WalkRefusal::Budget {
-                max_levels: allowance,
-            }
+            Self::Budget { entity, allowance, reached } => crate::representation::WalkRefusal::work_budget(allowance, "walk Items members", reached)
             .into_error(entity),
             Self::Stop(stop) => Error::ProgramStopped(stop),
             Self::Origin {

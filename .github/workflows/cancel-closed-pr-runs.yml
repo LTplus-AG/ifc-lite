@@ -23,7 +23,8 @@ jobs:
   cancel:
     if: github.event.pull_request.state == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Room for the short waits on `pending` runs below.
+    timeout-minutes: 10
     steps:
       - name: Cancel unfinished runs of the closed branch
         env:
@@ -43,13 +44,27 @@ jobs:
           ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
             --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .name != \"$WORKFLOW\") | .id")
           failed=0
+          # Oldest first: a newer run can be `pending` behind an older one in the
+          # same concurrency group, and becomes cancellable once that one is.
+          ids=$(sort -n <<<"$ids")
           for id in $ids; do
-            gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; continue; }
-            # A run can finish between the listing and here; only one still going is a failure.
-            status=$(gh api "repos/$REPO/actions/runs/$id" --jq .status || echo unknown)
-            if [ "$status" != "completed" ]; then
-              echo "::warning::could not cancel run $id (status $status)"
-              failed=1
-            fi
+            for attempt in 1 2 3; do
+              gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; status=cancelled; break; }
+              # A run can finish between the listing and here; only one still going is a failure.
+              status=$(gh api "repos/$REPO/actions/runs/$id" --jq .status || echo unknown)
+              # GitHub refuses to cancel a run that is `pending` in a concurrency
+              # group (run 42921918644). Give it a few seconds to start or go. Retry
+              # for any unfinished status: the group's holder can finish between the
+              # refusal and the read, so the run reads `queued` but is cancellable.
+              if [ "$status" = completed ] || [ "$attempt" -eq 3 ]; then break; fi
+              sleep 10
+            done
+            case "$status" in
+              cancelled|completed) ;;
+              # Still waiting for its group. It reports to nobody, and leaving it
+              # costs a runner slot later, not a verdict.
+              pending) echo "::notice::run $id is still pending and cannot be cancelled; leaving it" ;;
+              *) echo "::warning::could not cancel run $id (status $status)"; failed=1 ;;
+            esac
           done
           exit "$failed"

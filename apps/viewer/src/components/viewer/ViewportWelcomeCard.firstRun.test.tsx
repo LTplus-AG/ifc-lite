@@ -14,7 +14,6 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { viewportLightingEn } from '@/i18n/catalogues/viewport-lighting.en';
-import { MODEL_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard.js';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader.js';
 
@@ -91,11 +90,27 @@ describe('welcome card actions (#5840)', () => {
     assert.equal(buttonWithText(card, DEMO_LABEL ?? '')?.disabled, true);
   });
 
-  it('names model files, not ".ifc", and lists every supported format', () => {
+  it('names model files, not ".ifc", and lists every format a drop opens, by family', () => {
     const open = viewportLightingEn['viewportLighting.container.emptyState.openButton.open'] as string;
     assert.doesNotMatch(open, /\.ifc\b/, 'the picker accepts more than .ifc');
     const card = renderCard(() => Promise.resolve());
-    const text = card.textContent ?? '';
-    for (const ext of MODEL_FILE_EXTENSIONS) assert.ok(text.includes(ext), `${ext} is listed on the card`);
+    const list = card.querySelector('dl[data-welcome-formats]');
+    assert.ok(list, 'the formats render as a definition list');
+    const rows = [...list.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    // `.xml` alone does not say which XML, so that row names the format.
+    assert.deepEqual(rows, [
+      ['IFC', '.ifc .ifcx .ifczip'],
+      ['glTF', '.glb .gltf'],
+      ['Rhino', '.3dm'],
+      ['Point clouds', '.las .laz .ply .pcd .e57 .pts .xyz'],
+      ['Terrain', 'LandXML (.xml)'],
+      ['Underlays', '.dxf'],
+      ['Splats', '.splat'],
+    ]);
+  });
+
+  it('offers no format list without WebGPU, where a drop cannot open anything', () => {
+    const card = renderCard(() => Promise.resolve(), false);
+    assert.equal(card.querySelector('[data-welcome-formats]'), null);
   });
 });

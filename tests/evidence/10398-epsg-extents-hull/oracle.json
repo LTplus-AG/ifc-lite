@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "key": "packages/data/src/epsg-extents.ts",
+  "mutation": "tests/evidence/10398-epsg-extents-hull/hull.oracle.patch",
+  "why": "Reverse application keeps every export the tests import but makes the multi-usage bounding hull take the smallest east edge instead of the largest, so a CRS with several usage boxes reports a hull that no longer covers them all and the existing hull assertions in epsg-extents.test.ts go red."
+}

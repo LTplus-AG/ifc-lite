@@ -12,8 +12,33 @@
  * World is Y-up (the viewer converts IFC Z-up during mesh parsing).
  */
 
+import { WHEEL_NOTCH_MIN_PX, wheelDeltaPx } from '@/lib/navigation/wheel-input.js';
+
 export interface Vec3 { x: number; y: number; z: number }
-export interface FlyPose { position: Vec3; target: Vec3 }
+/**
+ * `up` is the camera's up vector. It only matters when the camera looks
+ * straight down or up (a top/bottom preset or plan viewpoint, #9501): the look
+ * direction then has no heading of its own, and `up` says which way the screen
+ * faces. Without it the heading falls back to looking along -Z.
+ */
+export interface FlyPose { position: Vec3; target: Vec3; up?: Vec3 }
+
+/**
+ * The horizontal heading of a look direction (unit, x/z), or for a look
+ * straight down/up the heading the screen implies: screen-up when looking
+ * down (raising the view faces it), its opposite when looking up. Null for a
+ * look with no usable heading at all.
+ */
+export function flyHeading(look: Vec3, up?: Vec3): { x: number; z: number } {
+  const horiz = Math.hypot(look.x, look.z);
+  if (horiz > 1e-9 * Math.hypot(look.x, look.y, look.z) && horiz > 0) return { x: look.x / horiz, z: look.z / horiz };
+  const uh = up && isFiniteVec(up) ? Math.hypot(up.x, up.z) : 0;
+  if (up && uh > 1e-6) {
+    const sign = look.y <= 0 ? 1 : -1;
+    return { x: (sign * up.x) / uh, z: (sign * up.z) / uh };
+  }
+  return { x: 0, z: -1 };
+}
 
 /** Radians of look rotation per pixel of mouse travel. */
 export const FLY_LOOK_SENSITIVITY = 0.004;
@@ -46,10 +71,6 @@ export const FLY_PRECISION_FACTOR = 1 / 3;
  * deltas that add up to the same.
  */
 const WHEEL_STEP_PX = 100;
-/** A single event at least this large is one discrete notch: exactly one step. */
-const WHEEL_NOTCH_MIN_PX = 40;
-/** Pixels per line for `deltaMode === 1` (Firefox reports line deltas for a wheel). */
-const WHEEL_LINE_PX = 33;
 
 const isFiniteVec = (v: Vec3): boolean =>
   Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
@@ -72,7 +93,10 @@ export function flyLook(pose: FlyPose, dx: number, dy: number, sensitivity = FLY
   const dist = Math.hypot(lx, ly, lz);
   if (dist < 1e-9) return null;
 
-  const yaw = Math.atan2(lx, lz) - dx * sensitivity;
+  // On the pole (#9501) the heading comes from the screen orientation, so the
+  // first look keeps what was at the top of the screen at the top.
+  const heading = flyHeading({ x: lx, y: ly, z: lz }, pose.up);
+  const yaw = Math.atan2(heading.x, heading.z) - dx * sensitivity;
   const pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, Math.asin(ly / dist) - dy * sensitivity));
   const cp = Math.cos(pitch);
   return {
@@ -82,6 +106,9 @@ export function flyLook(pose: FlyPose, dx: number, dy: number, sensitivity = FLY
       y: pose.position.y + Math.sin(pitch) * dist,
       z: pose.position.z + Math.cos(yaw) * cp * dist,
     },
+    // The pitch is clamped off the pole, where world Y up draws the heading
+    // at the top of the screen.
+    up: { x: 0, y: 1, z: 0 },
   };
 }
 
@@ -98,10 +125,12 @@ export function flyDirection(pose: FlyPose, input: FlyInput): Vec3 {
   const ly = pose.target.y - pose.position.y;
   const lz = pose.target.z - pose.position.z;
   const len = Math.hypot(lx, ly, lz);
-  const horiz = Math.hypot(lx, lz);
-  if (!(len > 1e-9) || !(horiz > 1e-9)) return { x: 0, y: input.up, z: 0 };
+  if (!(len > 1e-9)) return { x: 0, y: input.up, z: 0 };
   const fx = lx / len, fy = ly / len, fz = lz / len;
-  const rx = -lz / horiz, rz = lx / horiz;
+  // Right is horizontal, off the heading: straight down or up (#9501) it is
+  // the screen's right, from `up`.
+  const heading = flyHeading({ x: lx, y: ly, z: lz }, pose.up);
+  const rx = -heading.z, rz = heading.x;
   const v = {
     x: fx * input.forward + rx * input.right,
     y: fy * input.forward + input.up,
@@ -144,7 +173,8 @@ export function createWheelStepper(): (deltaY: number, deltaMode: number) => num
   let acc = 0;
   return (deltaY, deltaMode) => {
     if (!Number.isFinite(deltaY) || deltaY === 0) return 0;
-    const px = deltaMode === 0 ? deltaY : deltaY * WHEEL_LINE_PX;
+    // A single notch-sized event is exactly one step (#9507 shares the unit and the notch size).
+    const px = wheelDeltaPx(deltaY, deltaMode);
     if (Math.abs(px) >= WHEEL_NOTCH_MIN_PX) {
       acc = 0;
       return px < 0 ? 1 : -1;

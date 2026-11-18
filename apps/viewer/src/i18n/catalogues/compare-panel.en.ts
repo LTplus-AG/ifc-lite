@@ -42,6 +42,8 @@ export const comparePanelEn = {
   'comparePanel.saved.dependencies.storagePending': 'Deletion is pending because browser storage is unavailable or full. Keep restores the current saved report.',
   'comparePanel.saved.dependencies.sourceChanged': 'This report changed or was replaced. Cancel and open deletion again.',
   'comparePanel.saved.dependencies.changed': 'Chart references changed. Review the updated list before confirming deletion.',
+  'comparePanel.saved.dependencies.finishFailed': 'The report was removed, but this view could not update. Close and reopen it.',
+  'comparePanel.saved.dependencies.removeFailed': 'The report could not be removed. Close and reopen this view, then try again.',
   'comparePanel.saved.dependencies.review': 'Review updated references',
   'comparePanel.saved.title': 'Saved comparisons',
   'comparePanel.saved.name': 'Comparison name',

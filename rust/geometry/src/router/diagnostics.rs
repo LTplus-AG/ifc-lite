@@ -143,7 +143,8 @@ pub struct WorstHost {
 ///   just a rename, hence the bump.
 /// - 3: added `total_unsupported_items` / `unsupported_items_by_type` (previously uncounted drops).
 /// - 4: total_unsupported_items / unsupported_items_by_type also count openings whose id does not decode or whose body fails/meshes empty (ROUTER-37, #8385).
-pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 4;
+/// - 5: work-budget refusals carry budget, demand and product/source identity separately from unsupported items.
+pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 5;
 
 /// Aggregate CSG / opening diagnostics for one geometry pass — the public
 /// diagnostics contract. Built by [`aggregate_diagnostics`] from drained router
@@ -200,6 +201,11 @@ pub struct GeometryDiagnostics {
     /// [`Self::total_unsupported_items`] broken down by IFC type, count-desc.
     #[serde(default)]
     pub unsupported_items_by_type: Vec<ReasonCount>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub budget_refusals: Vec<BudgetRefusal>,
+    /// Complete count; budget_refusals contains at most sixteen details.
+    #[serde(default)]
+    pub total_budget_refusals: u64,
 }
 
 impl Default for GeometryDiagnostics {
@@ -217,6 +223,8 @@ impl Default for GeometryDiagnostics {
             oversized_ref_drops: 0,
             total_unsupported_items: 0,
             unsupported_items_by_type: Vec::new(),
+            budget_refusals: Vec::new(),
+            total_budget_refusals: 0,
         }
     }
 }
@@ -224,7 +232,7 @@ impl Default for GeometryDiagnostics {
 impl GeometryDiagnostics {
     /// Whether any CSG failure, silent no-op, or dropped item was recorded.
     pub fn has_issues(&self) -> bool {
-        self.total_csg_failures > 0 || self.silent_no_ops > 0 || self.total_unsupported_items > 0
+        self.total_budget_refusals > 0 || !self.budget_refusals.is_empty() || self.total_csg_failures > 0 || self.silent_no_ops > 0 || self.total_unsupported_items > 0
     }
 
     /// Whether nothing diagnostic-worthy happened this pass — no openings
@@ -232,7 +240,8 @@ impl GeometryDiagnostics {
     /// skip attaching an all-zero object so a consumer can gate on presence
     /// (`if event.diagnostics`) as well as on counts.
     pub fn is_empty(&self) -> bool {
-        self.total_csg_failures == 0
+        self.total_budget_refusals == 0 && self.budget_refusals.is_empty()
+            && self.total_csg_failures == 0
             && self.hosts_with_openings == 0
             && self.classification.total == 0
             && self.silent_no_ops == 0
@@ -246,6 +255,13 @@ impl GeometryDiagnostics {
 /// the wasm/viewer path and a future native path can produce the same contract.
 /// The caller owns draining: the router accessors are destructive (`mem::take`),
 /// so drain once and pass the results here — do not double-`take`.
+/// `budget_refusals` is [`GeometryRouter::take_budget_refusal_report`]'s
+/// (total, details). It is required, so a caller cannot build diagnostics
+/// without deciding what refusals to pass; like the other inputs, take it
+/// once (a second take, or an earlier `take_budget_refusals`, finds it empty).
+///
+/// [`GeometryRouter::take_budget_refusal_report`]: crate::GeometryRouter::take_budget_refusal_report
+#[allow(clippy::too_many_arguments)] // one argument per drained router collector
 pub fn aggregate_diagnostics(
     classification: ClassificationStats,
     csg_failures: &FxHashMap<u32, Vec<BoolFailure>>,
@@ -254,7 +270,9 @@ pub fn aggregate_diagnostics(
     worst_hosts_limit: usize,
     oversized_ref_drops: u64,
     unsupported_items: &FxHashMap<String, u64>,
+    budget_refusals: (u64, Vec<BudgetRefusal>),
 ) -> GeometryDiagnostics {
+    let (total_budget_refusals, budget_refusals) = budget_refusals;
     let total_csg_failures = csg_failures.values().map(Vec::len).sum::<usize>() as u64;
     let products_with_failures = count_attributed_products(csg_failures);
     let hosts_with_openings = host_diags.len() as u64;
@@ -344,9 +362,14 @@ pub fn aggregate_diagnostics(
         oversized_ref_drops,
         total_unsupported_items,
         unsupported_items_by_type,
+        budget_refusals,
+        total_budget_refusals,
     }
 }
 
+mod budget;
+pub use budget::BudgetRefusal;
+pub(crate) use budget::BudgetProductIdentity;
 mod attribution;
 mod processor_failures;
 mod unsupported_items;

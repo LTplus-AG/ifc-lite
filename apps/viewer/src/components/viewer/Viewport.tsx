@@ -16,6 +16,7 @@ import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geomet
 import { useViewerStore, resolveEntityRef, type CameraViewpoint } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
+import { rotateAboutVertical } from '@/lib/viewpoint-rotate-vertical';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
 import { isTextEntryElement } from '@/lib/keyboard-event';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
@@ -46,6 +47,7 @@ import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../u
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
+import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { installViewportDebugHooks, clearViewportDebugHooks } from '@/lib/viewport-debug-hooks';
 import { COLORFUL_CANVAS_GRADIENT } from '@/lib/viewport-ui/overlay-theme';
@@ -83,6 +85,8 @@ import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
 import type { MeasureCameraState } from './measureCameraState';
 import { observeViewportCanvas } from './viewportCanvasObserver';
+import { useViewportCursor } from './useViewportCursor.js';
+import { deferSelectionFrameWhileHeld } from './heldSelection.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -270,13 +274,11 @@ export function Viewport({
     pendingMeshRemovals,
     pendingMeshTranslations,
     pendingMeshRotations,
-    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals, pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
-    clearInstancedShards,
   } = useColorUpdateState();
 
   // IFC data state
@@ -544,29 +546,7 @@ export function Viewport({
     }
   }, [activeTool, isInitialized]);
 
-  // Set the cursor when the tool changes. Leaving Measure resets its gesture
-  // in the store (setActiveTool → resetMeasureGesture), and the mouse controls
-  // cancel the queued measure raycast on that reset (#8786).
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Leaving the section tool disarms face-pick so it doesn't ambush the
-    // user on re-entry to a different tool (issue #243).
-    if (activeTool !== 'section' && sectionPickMode) {
-      setSectionPickMode(false);
-    }
-
-    // Set cursor based on active tool. Section + pick-armed gets a
-    // crosshair to telegraph "click a face".
-    if (activeTool === 'measure' || activeTool === 'annotate') {
-      canvas.style.cursor = 'crosshair';
-    } else if (activeTool === 'section' && sectionPickMode) {
-      canvas.style.cursor = 'crosshair';
-    } else {
-      canvas.style.cursor = 'default';
-    }
-  }, [activeTool, sectionPickMode, setSectionPickMode]);
+  useViewportCursor(canvasRef, activeTool, sectionPickMode, setSectionPickMode);
 
   // Helper: calculate scale bar value (world-space size for 96px scale bar)
   const calculateScale = () => {
@@ -629,6 +609,7 @@ export function Viewport({
     // Register refs for BCF hook access (snapshot capture, camera control)
     setGlobalCanvasRef(canvasRef);
     setGlobalRendererRef(rendererRef);
+    const unregisterAgentViewport = registerAgentViewportHost({ canvas, renderer, getPickOptions });
 
     renderer.init().then(() => {
       if (aborted) return;
@@ -709,25 +690,12 @@ export function Viewport({
         calculateScale();
       };
       const animateHorizontalRotation = (angle: number) => {
-        const position = camera.getPosition();
-        const target = camera.getTarget();
-        const offsetX = position.x - target.x;
-        const offsetZ = position.z - target.z;
-        const cosine = Math.cos(angle);
-        const sine = Math.sin(angle);
         const projectionMode = camera.getProjectionMode();
-
         // Keep CameraControls' spherical-orbit convention, then use the
         // shared viewpoint path so the ViewCube's animator interpolates it.
         applyViewpoint(
           {
-            position: {
-              x: target.x + offsetX * cosine + offsetZ * sine,
-              y: position.y,
-              z: target.z - offsetX * sine + offsetZ * cosine,
-            },
-            target,
-            up: camera.getUp(),
+            ...rotateAboutVertical({ position: camera.getPosition(), target: camera.getTarget(), up: camera.getUp() }, angle),
             fov: camera.getFOV(),
             projectionMode,
             orthoSize: projectionMode === 'orthographic' ? camera.getOrthoSize() : undefined,
@@ -928,6 +896,7 @@ export function Viewport({
           return bounds;
         },
         frameSelection: (durationMs = 300) => {
+          if (deferSelectionFrameWhileHeld(durationMs)) return false;
           const bounds = useViewerStore.getState().cameraCallbacks.selectionBounds?.();
           if (!bounds) return false;
           return frameSelectionBounds(camera, renderer, bounds.min, bounds.max, durationMs, calculateScale);
@@ -1123,6 +1092,7 @@ export function Viewport({
 
     return () => {
       aborted = true;
+      unregisterAgentViewport();
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -1402,7 +1372,6 @@ export function Viewport({
     pendingMeshRemovals,
     pendingMeshTranslations,
     pendingMeshRotations,
-    pendingInstancedShards,
     currentLevelY,
     modelIdToIndex,
     modelIdToOffset,
@@ -1412,7 +1381,6 @@ export function Viewport({
     clearPendingMeshRemovals, pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
-    clearInstancedShards,
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,

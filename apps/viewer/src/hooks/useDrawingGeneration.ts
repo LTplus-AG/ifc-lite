@@ -39,7 +39,8 @@ import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
 import { saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
-import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { isMeshTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { useRetypedClasses } from './useViewerSelectors.js';
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import { useDrawingRtcContext } from './useDrawingRtcContext.js';
@@ -47,6 +48,8 @@ import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
 import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canvas-snapshot';
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
+import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fills';
+import { isGeometryHeld } from '@/lib/pick-gating';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -127,7 +130,7 @@ interface UseDrawingGenerationParams {
   activeTool: string;
   drawing: Drawing2D | null;
   // Store actions
-  setDrawing: (d: Drawing2D | null) => void;
+  setDrawing: (d: Drawing2D | null, generatedAt?: UseDrawingGenerationParams['sectionPlane']) => void;
   setDrawingStatus: (s: 'idle' | 'generating' | 'ready' | 'error') => void;
   setDrawingProgress: (p: number, phase: string) => void;
   setDrawingError: (e: string | null) => void;
@@ -157,10 +160,9 @@ export function useDrawingGeneration({
   setDrawingProgress,
   setDrawingError,
 }: UseDrawingGenerationParams): UseDrawingGenerationResult {
-
-  // The legacy primary path can publish only `loading: false` when it finishes
-  // without exact RTC metadata. Subscribe to all provenance publication
-  // channels so pending → standalone/explicit retriggers the drawing.
+  const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  const retypedClasses = useRetypedClasses();
+  // Subscribe to all provenance channels so pending → standalone/explicit retriggers the drawing.
   const { context: drawingRtcContext, key: drawingRtcContextKey } =
     useDrawingRtcContext(ifcDataStore);
 
@@ -194,7 +196,7 @@ export function useDrawingGeneration({
     elementToStorey: ReadonlyMap<number, number>;
   }>());
 
-  const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => {
+  const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => { if (isGeometryHeld(useViewerStore.getState())) return;
     if (!geometryResult?.meshes || geometryResult.meshes.length === 0) {
       // Clear the drawing when no geometry is available (e.g., all models hidden)
       setDrawing(null);
@@ -507,17 +509,12 @@ export function useDrawingGeneration({
       // Filter meshes by visibility (respect 3D hiding/isolation)
       let meshesToProcess = modelMeshes;
 
-      // Class-level Visibility toggles (issue #2060). These are a GLOBAL
-      // filter, not a 3D-only one: `ViewportContainer` applies `isTypeVisible`
-      // to the mesh list it hands the renderer, but the drawing derives its own
-      // list from `geometryResult.meshes` and only ever filtered
-      // hiding/isolation. So a hidden IfcSpace / IfcOpeningElement was still
-      // cut — its fill and outline showed in the 2D Section view, and via the
-      // 3D section overlay (which uploads `drawing.cutPolygons` /
-      // `drawing.lines` verbatim, see `useRenderUpdates.ts`) in the 3D view
-      // too. Same shared mapping as the viewport, Cesium, basket and GLB
-      // export, so all six toggles stay in lockstep.
-      meshesToProcess = meshesToProcess.filter((mesh) => isTypeVisible(mesh.ifcType, typeVisibility));
+      // Class-level Visibility toggles (issue #2060) are a GLOBAL filter, not a
+      // 3D-only one. The drawing derives its own list from `geometryResult.meshes`,
+      // so without this a hidden IfcSpace / IfcOpeningElement was still cut, in the
+      // 2D Section view and in the 3D section overlay (`useRenderUpdates.ts`). Same
+      // shared mapping as the viewport, basket and GLB export, retypes included (#10119).
+      meshesToProcess = meshesToProcess.filter((mesh) => isMeshTypeVisible(mesh, typeVisibility, structuralViewMode, retypedClasses));
 
       // Filter out hidden entities (using combined multi-model set)
       if (combinedHiddenIds.size > 0) {
@@ -576,7 +573,7 @@ export function useDrawingGeneration({
         // cut by express id; without this, a profile sharing that same
         // express id would still be free to project it back in.
         projectionProfiles = projectionProfiles.filter((p) => isModelViewExpressId(p.expressId));
-        projectionProfiles = projectionProfiles.filter((p) => isTypeVisible(p.ifcType, typeVisibility));
+        projectionProfiles = projectionProfiles.filter((p) => isMeshTypeVisible(p, typeVisibility, structuralViewMode, retypedClasses));
         if (combinedHiddenIds.size > 0) {
           projectionProfiles = projectionProfiles.filter((p) => !combinedHiddenIds.has(p.expressId));
         }
@@ -600,7 +597,7 @@ export function useDrawingGeneration({
           ? createMeshOutlineProvider(meshOutline2dFn)
           : undefined;
 
-      const result = await generator.generate(
+      const result = drawingWithMaterialLayerFills(await generator.generate(
         meshesToProcess,
         config,
         {
@@ -615,8 +612,7 @@ export function useDrawingGeneration({
           onProgress: progressCallback,
         },
         projectionOn ? projectionProfiles : undefined,
-      );
-
+      )); // layers of one element fill per material (#9296)
       if (!isCurrent()) return;
 
       let completedDrawing = result;
@@ -874,7 +870,7 @@ export function useDrawingGeneration({
 
         completedDrawing = hybridDrawing;
       }
-      setDrawing(completedDrawing); markActiveDrawingGenerationCompleted(completedDrawing);
+      setDrawing(completedDrawing, sectionPlane); markActiveDrawingGenerationCompleted(completedDrawing);
 
       // Remember the SectionConfig that produced this view so the markup
       // persistence bridge (issue #4153) can save it alongside the results —
@@ -897,7 +893,7 @@ export function useDrawingGeneration({
     ifcDataStore,
     sectionPlane,
     displayOptions,
-    typeVisibility,
+    typeVisibility, structuralViewMode, retypedClasses,
     combinedHiddenIds,
     combinedIsolatedIds,
     computedIsolatedIds,
@@ -997,8 +993,8 @@ export function useDrawingGeneration({
     const plane = JSON.stringify([sectionPlane.axis, sectionPlane.position, sectionPlane.flipped,
       sectionPlane.custom]);
     const inputs = [geometryResult, geometryResult?.meshes.length, ifcDataStore,
-      displayOptions, typeVisibility, combinedHiddenIds, combinedIsolatedIds,
-      computedIsolatedIds, models, drawingRtcContextKey];
+      displayOptions, typeVisibility, structuralViewMode, retypedClasses, combinedHiddenIds, combinedIsolatedIds,
+      computedIsolatedIds, models, drawingRtcContextKey, isGeometryHeld(useViewerStore.getState())];
     const changed = inputs.some((value, index) => value !== previousInputs.current[index]);
     const planeChanged = plane !== previousPlane.current;
     const activated = drawingActive && !wasActive.current;
@@ -1007,7 +1003,7 @@ export function useDrawingGeneration({
     previousInputs.current = inputs;
     previousPlane.current = plane;
     wasActive.current = drawingActive; wasPanelVisible.current = panelVisible;
-    if (!drawingActive) { if (deactivated) queue.cancel(); return; }
+    if (!drawingActive || isGeometryHeld(useViewerStore.getState())) { if (deactivated || isGeometryHeld(useViewerStore.getState())) queue.cancel(); return; }
     if (!geometryResult?.meshes.length) {
       queue.cancel();
       if (drawing) { setDrawing(null); setDrawingStatus('idle'); }

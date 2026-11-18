@@ -65,11 +65,7 @@ const OUT_REL = 'packages/data/src/ifc-schema/ifc4-express-corrections.ts';
 const { SCHEMA_REGISTRY: IFC4 } = await import(
   pathToFileURL(join(ROOT, 'packages/parser/src/generated/schema-registry.ts')).href
 );
-const table = parseEntityTable(readFileSync(join(ROOT, SRC_REL), 'utf8'));
-if (table.size === 0) {
-  console.error(`generate-ifc4-express-corrections: parsed ZERO rows from ${SRC_REL}; refusing to write.`);
-  process.exit(1);
-}
+const table = parseEntityTable(readFileSync(join(ROOT, SRC_REL), 'utf8'), `generate-ifc4-express-corrections: ${SRC_REL}`);
 
 const undeclared = [];
 const overrides = [];

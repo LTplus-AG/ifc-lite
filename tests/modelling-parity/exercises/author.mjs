@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { publishExpectedState } from './output.mjs';
 import { buildFzk } from './fzk.mjs';
 import { writeFileSync, appendFileSync } from 'node:fs';
 
@@ -107,7 +108,7 @@ export async function author(bim) {
       for(let i=1;i<actual.length;i++) if(Math.abs(actual[i].elevation-(i*h+(tall?6:3.3)-h))>1e-6) throw new Error(`Storey ${i}: ${actual[i].elevation}`);
     });
   }
-  for(const schema of ['IFC4','IFC2X3']) step(`export-${schema}`,'psets-classification-valid-ifc4',()=>writeFileSync(`${out}/${schema}.ifc`,bim.export.ifc(null,{schema})));
+  const exports=['IFC4','IFC2X3'].map(schema => step(`export-${schema}`,'psets-classification-valid-ifc4',()=> { writeFileSync(`${out}/${schema}.ifc`,bim.export.ifc(null,{schema})); return true; }));
   sample();
-  writeFileSync(`${out}/expected.state`,JSON.stringify({expected,openings,shafts,copyPlans,spaceIds,movedWall,quantityIds,levels:levels(),elements,peakHeap:peak,actions,ms:performance.now()-start}));
+  publishExpectedState(out,{expected,openings,shafts,copyPlans,spaceIds,movedWall,quantityIds,levels:levels(),elements,peakHeap:peak,actions,ms:performance.now()-start},exports);
 }

@@ -77,5 +77,10 @@ export const registryEn = {
   'registry.push.folder': 'Folder',
   'registry.push.explain': 'Choose where to save a new version. Sign in to approve access to that destination.',
   'registry.push.saved': 'Your new version was saved.',
+  'registry.push.managedExplain': 'Save a new version of the file you opened.',
+  'registry.push.saveVersion': 'Save new version',
+  'registry.push.finishSave': 'Finish saving uploaded version',
+  'registry.push.openForEdit': 'Open the original file for editing from its file store to save a version there.',
+  'registry.push.modelChanged': 'The active model changed. Select the model you want to save and try again.',
   'registry.handoff.explain': 'Opening the sign-in page to authorize access to the selected folder.',
 } as const;

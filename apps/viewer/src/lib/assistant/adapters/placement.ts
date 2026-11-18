@@ -71,6 +71,7 @@ function modelRow(s: ViewerState, modelId: string) {
       detected: true, residualMetres: double.residual, offsetMetres: double.offset,
       overridesAuthoredRotation: double.overridesAuthoredRotation,
       siteAnchorUnitRatio: double.anchorUnitRatio,
+      siteHeightShiftMetres: double.siteHeightShiftMetres,
       displacementMetres: Number.isFinite(double.displacement) ? double.displacement : null,
     } : { detected: false },
   });

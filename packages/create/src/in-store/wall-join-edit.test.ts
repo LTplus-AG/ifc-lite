@@ -9,7 +9,7 @@
  * walls and leaves every join current.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { addWallToStore, type WallInStoreParams } from './wall.js';
 import { joinWallsInStore, reshapeWallsInStore } from './wall-join-edit.js';
 import { readWallJoinRels, readWallJoinTarget } from './wall-join-read.js';
@@ -215,4 +215,56 @@ describe('reshapeWallsInStore', () => {
     expect(() => reshapeWallsInStore(s.editor, s.store, s.joinAnchor, [{ wallId: s.ids[0], end: [0, 0] }])).toThrow(/no length/);
     expect(s.editor.getNewEntities().length).toBe(before);
   });
+});
+
+
+it('#8452 selected wall joins do not read unrelated path relationship payloads', async () => {
+  const s = await room();
+  const [a, b, c, d] = s.ids;
+  const selected = joinWallsInStore(s.editor, s.store, s.joinAnchor, a, b).relId;
+  const unrelated = new Set<number>();
+  for (let i = 0; i < 200; i++) {
+    unrelated.add(s.editor.addEntity('IfcRelConnectsPathElements', [
+      `unrelated-${i}`, null, null, null, null, `#${c}`, `#${d}`, [], [], '.ATSTART.', '.ATEND.',
+    ]).expressId);
+  }
+  const view = s.editor.getMutationView(), read = view.readNewEntity.bind(view);
+  let payloadReads = 0;
+  const spy = vi.spyOn(view, 'readNewEntity').mockImplementation(id => {
+    if (unrelated.has(id)) payloadReads++;
+    return read(id);
+  });
+  try {
+    expect(readWallJoinRels(s.store, view, new Set([a])).map(rel => rel.relId)).toEqual([selected]);
+    expect(payloadReads).toBe(0);
+  } finally { spy.mockRestore(); }
+});
+
+it('#8452 selected relationship reads preserve creation order after endpoint retargeting', async () => {
+  const s = await room();
+  const [a, b, c, d] = s.ids;
+  const first = joinWallsInStore(s.editor, s.store, s.joinAnchor, a, b, { Name: 'first' }).relId;
+  const later = s.editor.addEntity('IfcRelConnectsPathElements', [
+    '0000000000000000000042', null, 'later', null, null, `#${c}`, `#${d}`, [], [], '.ATSTART.', '.ATEND.',
+  ]).expressId;
+  s.editor.setPositionalAttribute(later, 5, `#${a}`);
+  s.editor.setPositionalAttribute(later, 6, `#${b}`);
+  expect(readWallJoinRels(s.store, s.view, new Set([a])).map(rel => rel.relId)).toEqual([first, later]);
+});
+
+it('#8452 opening candidates avoid unrelated void payloads and preserve malformed-host refusals', async () => {
+  const s = await room();
+  const { addHostedElementInStore, readHostOpeningExtents } = await import('./hosted-element.js');
+  addHostedElementInStore(s.store, s.editor, s.ids[0], { kind: 'opening', params: { Offset: 2, Sill: 1, Width: 0.5, Height: 1 } });
+  const unrelated = new Set<number>();
+  for (let i = 0; i < 1000; i++) unrelated.add(s.editor.addEntity('IfcRelVoidsElement', [null, null, null, null, '#999999', `#${800000 + i}`]).expressId);
+  const spy = vi.spyOn(s.view, 'readNewEntity');
+  expect(readHostOpeningExtents(s.store, s.ids[0], s.view).cuts).toHaveLength(1);
+  expect(spy.mock.calls.filter(([id]) => unrelated.has(id))).toHaveLength(0);
+  spy.mockRestore();
+  const invalid = [...unrelated][0];
+  s.editor.setPositionalAttribute(invalid, 4, null);
+  expect(readHostOpeningExtents(s.store, s.ids[0], s.view).unreadable).toContain(invalid);
+  s.editor.setPositionalAttribute(invalid, 4, '#999999');
+  expect(readHostOpeningExtents(s.store, s.ids[0], s.view).unreadable).toEqual([]);
 });

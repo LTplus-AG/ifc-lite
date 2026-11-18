@@ -54,7 +54,11 @@ export function localizedSiteAnchorUnitNote(t: Translate, locale: string, found:
   const ratio = found.anchorUnitRatio;
   if (ratio === null) return null;
   const factor = ratio < 1 ? 1 / ratio : ratio;
-  return t('properties.georef.siteAnchorUnitNote', {
+  const unit = t('properties.georef.siteAnchorUnitNote', {
     ratio: formatLocaleNumber(locale, factor, { maximumFractionDigits: 4 }),
   });
+  const height = found.siteHeightShiftMetres !== null
+    ? t('properties.georef.siteAnchorHeightCorrected')
+    : t('properties.georef.siteAnchorHeightUncorrected');
+  return `${unit} ${height}`;
 }

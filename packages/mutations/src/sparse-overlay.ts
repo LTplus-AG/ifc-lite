@@ -4,6 +4,7 @@
 
 /** Detached synchronous drafts: copy values on first read, publish only changed
  * entries. Neither transaction setup nor an append visits the session prefix. */
+import { forkHistory, finishHistory, materializeHistory } from './indexed-mutation-history.js';
 import { NewEntityMap } from './new-entity-map.js';
 import { withoutEntityExposure } from './entity-read-barrier.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
@@ -18,14 +19,17 @@ const materializers = new WeakMap<object, () => object>();
 /** Snapshots may still be requested explicitly inside an incremental draft. */
 export function materializeOverlay(state: OverlaySnapshot): OverlaySnapshot {
   return Object.fromEntries(Object.entries(state).map(([key, value]) =>
-    [key, value && typeof value === 'object' ? materializers.get(value)?.() ?? value : value])) as OverlaySnapshot;
+    [key, key === 'mutationHistory' ? materializeHistory(value as OverlaySnapshot['mutationHistory']) : value && typeof value === 'object' ? materializers.get(value)?.() ?? value : value])) as OverlaySnapshot;
 }
 
-function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): Change } {
+function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): Change; dispose(): void } {
   const reads = new Map<K, V>(), removed = new Set<K>(), inserted = new Set<K>();
-  const localEntities = base instanceof NewEntityMap ? new NewEntityMap() : null;
+  const baseEntities = base instanceof NewEntityMap ? base : null;
+  const localEntities = baseEntities ? new NewEntityMap() : null;
+  let retired = false;
   let ordering: Map<number, number> | undefined;
-  const positionOf = (id: number): number => ordering?.get(id) ?? (base instanceof NewEntityMap ? base.positionOf(id) : Infinity);
+  const positionOf = (id: number): number => ordering?.get(id) ?? (base instanceof NewEntityMap
+    ? inserted.has(id as K) ? base.creationOrderEnd() + localEntities!.positionOf(id) : base.positionOf(id) : Infinity);
   let size = base.size;
   const has = (key: K) => inserted.has(key) || (!removed.has(key) && base.has(key));
   const get = (key: K): V | undefined => {
@@ -47,12 +51,26 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     for (const key of rawKeys()) if (!ordering.has(key as number)) yield key;
   }
   const restoreOrder = (ids: readonly number[]) => { ordering = new Map(ids.map((id, i) => [id, i])); };
+  // Read-only borrowers see an unmodified row in place. They never receive a
+  // mutable alias (borrows are frozen copies), so the row needs no private copy
+  // and no comparison when the transaction finishes.
+  const peek = (key: K): V | undefined => !has(key) ? undefined : reads.has(key) ? reads.get(key)
+    : base instanceof NewEntityMap ? base.peek(key as number) as V | undefined : base.get(key);
+  function* peekValues(): MapIterator<V> { for (const key of keys()) yield peek(key)!; }
   function* entries(): MapIterator<[K, V]> { for (const key of keys()) yield [key, get(key)!]; }
   function* values(): MapIterator<V> { for (const key of keys()) yield get(key)!; }
   const target = base instanceof NewEntityMap ? new NewEntityMap() : new Map<K, V>();
   const value = new Proxy(target, { get(_target, name) {
+    // Temporary maps have weak exposure callbacks whose targets survive until
+    // the current JS job ends. Release their indexes at scope completion.
+    // A caller retaining the draft can still use its private rows afterwards.
+    if (retired) {
+      retired = false;
+      for (const [key, row] of reads) localEntities?.set(key as number, row as NewEntity);
+    }
     if (name === 'size') return size;
     if (name === 'positionOf' && localEntities) return positionOf;
+    if (name === 'creationOrderEnd' && base instanceof NewEntityMap) return () => base.creationOrderEnd() + localEntities!.creationOrderEnd();
     if (name === 'restoreOrder' && localEntities) return restoreOrder;
     if (name === 'restoreBefore' && localEntities) return (before: ReadonlyMap<number, number | null>) => {
       if (before.size) restoreOrder(restoreEntityOrder(keys() as Iterable<number>, before));
@@ -68,8 +86,20 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
       while (next !== null && !has(next as K)) next = base.successorOf(next);
       return next ?? (inserted.values().next().value as number | undefined) ?? null;
     };
+    if (name === 'referenceSlotIds' && localEntities) return function* (type: string, slot: number, target: number | null) {
+      const seen = new Set<number>();
+      for (const id of baseEntities!.referenceSlotIds(type, slot, target)) {
+        if (removed.has(id as K) || reads.has(id as K)) continue;
+        seen.add(id); yield id;
+      }
+      for (const id of localEntities!.referenceSlotIds(type, slot, target)) {
+        if (!seen.has(id) && has(id as K)) yield id;
+      }
+    };
     if (name === 'watchAttributeExposure' && localEntities) return (listener: (id: number) => void) => localEntities.watchAttributeExposure(listener);
     if (name === 'get') return get;
+    if (name === 'peek' && localEntities) return peek;
+    if (name === 'peekValues' && localEntities) return peekValues;
     if (name === 'has') return has;
     if (name === 'set') return (key: K, next: V) => {
       if (!has(key)) { size++; inserted.add(key); }
@@ -86,21 +116,27 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     if (name === 'forEach') return (fn: (v: V, k: K, map: T) => void, self?: unknown) => {
       for (const [k, v] of entries()) fn.call(self, v, k, value);
     };
-    if ((name === 'ofType' || name === 'referencing') && base instanceof NewEntityMap) return function* (query: string | number): IterableIterator<NewEntity> {
+    if ((name === 'ofType' || name === 'referencing' || name === 'peekOfType' || name === 'peekReferencing') && base instanceof NewEntityMap) return function* (query: string | number): IterableIterator<NewEntity> {
+      const borrow = name === 'peekOfType' || name === 'peekReferencing';
+      const kind = name === 'ofType' || name === 'peekOfType' ? 'ofType' : 'referencing';
       const matches = function* () {
-        if (name === 'referencing') localEntities!.refreshReferences();
+        if (kind === 'referencing') localEntities!.refreshReferences();
         const seen = new Set<number>();
-        const candidates = name === 'ofType' ? base.ofType(String(query)) : base.referencing(Number(query));
+        const candidates = kind === 'ofType'
+          ? borrow ? base.peekOfType(String(query)) : base.ofType(String(query))
+          : borrow ? base.peekReferencing(Number(query)) : base.referencing(Number(query));
         for (const entity of candidates) {
           const key = entity.expressId as K;
           if (removed.has(key)) continue;
+          // An untouched row still matches by the base index that found it.
+          if (borrow && !reads.has(key)) { seen.add(entity.expressId); yield entity; continue; }
           const next = get(key) as NewEntity;
           // A replaced entry is checked in the private draft bucket below.
-          if (name === 'ofType' ? next.type.toUpperCase() !== String(query).toUpperCase()
+          if (kind === 'ofType' ? next.type.toUpperCase() !== String(query).toUpperCase()
             : !localEntities!.referencesId(next.expressId, Number(query))) continue;
           seen.add(next.expressId); yield next;
         }
-        const local = name === 'ofType' ? localEntities!.ofType(String(query)) : localEntities!.referencing(Number(query));
+        const local = kind === 'ofType' ? localEntities!.ofType(String(query)) : localEntities!.referencing(Number(query));
         for (const entity of local) if (!seen.has(entity.expressId) && has(entity.expressId as K)) yield entity;
       };
       yield* ordering ? [...matches()].sort((a, b) => positionOf(a.expressId) - positionOf(b.expressId)) : matches();
@@ -108,7 +144,7 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     return Reflect.get(_target, name, _target);
   } }) as T;
   materializers.set(value, () => new Map(entries()));
-  return { value, changes() {
+  return { value, dispose() { localEntities?.clear(); retired = true; }, changes() {
     const before = new Map<K, V>(), after = new Map<K, V>();
     const candidates = [...new Set([...reads.keys(), ...removed])];
     // Inverse replay re-inserts forgotten records. Preserve their original
@@ -154,53 +190,21 @@ function sparseSet<T>(base: Set<T>): { value: Set<T>; changes(): Change } {
 /** A native array facade with a private sparse prefix and append-only tail.
  * Array methods still work normally; only methods that ask for the prefix pay
  * to visit it (delete/undo), never ordinary history appends. */
-function sparseHistory(base: OverlaySnapshot['mutationHistory']) {
-  const rows = new Map<number, OverlaySnapshot['mutationHistory'][number]>();
-  let length = base.length;
-  const get = (i: number) => {
-    if (!rows.has(i) && i < base.length) rows.set(i, structuredClone(base[i]));
-    return rows.get(i);
-  };
-  const index = (key: PropertyKey) => typeof key === 'string' && /^(0|[1-9]\d*)$/.test(key) ? Number(key) : null;
-  const value = new Proxy([] as OverlaySnapshot['mutationHistory'], {
-    get(target, key, receiver) {
-      if (key === 'length') return length;
-      const i = index(key);
-      return i === null ? Reflect.get(target, key, receiver) : i < length ? get(i) : undefined;
-    },
-    has(target, key) { const i = index(key); return i === null ? Reflect.has(target, key) : i < length; },
-    ownKeys() { return [...Array.from({ length }, (_, i) => String(i)), 'length']; },
-    getOwnPropertyDescriptor(target, key) {
-      const i = index(key);
-      return i === null ? Reflect.getOwnPropertyDescriptor(target, key)
-        : i < length ? { configurable: true, enumerable: true, writable: true, value: get(i) } : undefined;
-    },
-    set(_target, key, next) {
-      if (key === 'length') { length = Number(next); for (const i of rows.keys()) if (i >= length) rows.delete(i); return true; }
-      const i = index(key);
-      if (i === null) return Reflect.set(_target, key, next);
-      rows.set(i, next); length = Math.max(length, i + 1); return true;
-    },
-    deleteProperty(_target, key) { const i = index(key); if (i !== null) rows.delete(i); return true; },
-  });
-  materializers.set(value, () => Array.from(value));
-  return { value, rows, get };
-}
 
 export function sparseOverlay(original: OverlaySnapshot) {
   const state = { ...original };
-  const fields: Array<{ key: keyof OverlaySnapshot; changes(): Change }> = [];
+  const fields: Array<{ key: keyof OverlaySnapshot; changes(): Change; dispose?(): void }> = [];
   for (const key of Object.keys(original) as Array<keyof OverlaySnapshot>) {
     const base = original[key];
     const draft = base instanceof Map ? sparseMap(base as Map<unknown, unknown>) : base instanceof Set ? sparseSet(base as Set<unknown>) : null;
     if (draft) {
       Object.assign(state, { [key]: draft.value });
-      fields.push({ key, changes: draft.changes });
+      fields.push({ key, changes: draft.changes, ...('dispose' in draft ? { dispose: draft.dispose } : {}) });
     }
   }
-  const history = sparseHistory(original.mutationHistory);
-  state.mutationHistory = history.value;
-  return { state, finish(after: OverlaySnapshot, record: boolean) {
+  const history = forkHistory(original.mutationHistory);
+  state.mutationHistory = history;
+  return { state, dispose() { for (const field of fields) field.dispose?.(); }, finish(after: OverlaySnapshot, record: boolean) {
     const changes = fields.map(field => ({ ...field, ...field.changes() }));
     const beforeSmall = { ...original, mutationHistory: [] } as OverlaySnapshot;
     const afterSmall = { ...after, mutationHistory: [] } as OverlaySnapshot;
@@ -223,29 +227,41 @@ export function sparseOverlay(original: OverlaySnapshot) {
       }
     }
     const nextHistory = after.mutationHistory;
-    const appendOnly = nextHistory === history.value && nextHistory.length >= original.mutationHistory.length
-      && [...history.rows].every(([i, row]) => i >= original.mutationHistory.length || sameOverlayValue(row, original.mutationHistory[i]));
-    let written: string[] = [];
-    if (appendOnly) {
-      written = nextHistory.slice(original.mutationHistory.length).map(m => m.id);
-      if (inverse) inverse.historyLength = original.mutationHistory.length;
-    } else if (record) {
+    const journal = finishHistory(original.mutationHistory, nextHistory);
+    let written: string[];
+    let tail: OverlaySnapshot['mutationHistory'] | undefined;
+    if (journal) {
+      written = journal.written;
+      if (inverse) { inverse.historyLength = original.mutationHistory.length; inverse.history = journal.history; }
+    } else {
+      // Undo/import explicitly replace the journal: comparing/materializing it
+      // is proportional to the history that operation requested.
       const old = new Set(original.mutationHistory.map(m => m.id));
       written = nextHistory.filter(m => !old.has(m.id)).map(m => m.id);
-      const historyInverse = captureCompoundInverse({ ...beforeSmall, mutationHistory: original.mutationHistory }, { ...beforeSmall, mutationHistory: Array.from(nextHistory) });
-      inverse!.historyLength = historyInverse.historyLength;
-      inverse!.history = historyInverse.history;
+      if (inverse) {
+        const captured = captureCompoundInverse({ ...beforeSmall, mutationHistory: original.mutationHistory }, { ...beforeSmall, mutationHistory: Array.from(nextHistory) });
+        inverse.historyLength = captured.historyLength; inverse.history = captured.history;
+      }
+      tail = structuredClone(Array.from(nextHistory));
     }
-    // Clone all output BEFORE any publication. A failed clone is atomic too.
-    const tail = appendOnly ? structuredClone(nextHistory.slice(original.mutationHistory.length)) : structuredClone(Array.from(nextHistory));
     const publication = { ...original, nextAllocatedId: after.nextAllocatedId };
     const replacements = changes.filter(c => after[c.key] !== state[c.key]).map(c => [c.key, structuredClone(after[c.key])] as const);
-    return { inverse, written, changed: after.nextAllocatedId !== original.nextAllocatedId || changes.some(c => !sameOverlayValue(c.before, c.after)) || !appendOnly || tail.length > 0,
+    // The same sparse differences used for publication invalidate ID-only
+    // read inventories, including edits through a draft's mutable arrays.
+    const changedIds = replacements.length ? null : new Set<number>();
+    if (changedIds) for (const change of changes) {
+      for (const rows of [change.before, change.after]) if (rows instanceof Map || rows instanceof Set) {
+        for (const key of rows.keys()) {
+          const id = typeof key === 'number' ? key : typeof key === 'string' ? Number(/^[0-9]+(?=:)/.exec(key)?.[0]) : NaN;
+          if (Number.isSafeInteger(id) && id > 0) changedIds.add(id);
+        }
+      }
+    }
+    return { inverse, written, changedIds, changed: after.nextAllocatedId !== original.nextAllocatedId || changes.some(c => !sameOverlayValue(c.before, c.after)) || (journal ? journal.changed : true),
       publish() {
         for (const change of changes) if (after[change.key] === state[change.key]) change.apply();
         for (const [key, value] of replacements) Object.assign(publication, { [key]: value });
-        if (appendOnly) for (const row of tail) original.mutationHistory.push(row);
-        else publication.mutationHistory = tail;
+        publication.mutationHistory = journal ? journal.publish() : tail!;
         return publication;
       } };
   } };

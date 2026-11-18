@@ -23,6 +23,8 @@ test.use({ trace: 'off' });
 const SKIP = 'SKIP: no staged SMLib engine; this is NOT parity evidence';
 interface ViewerGlobals {
   __ifc_lite_viewer_store__: { getState(): ViewerState; subscribe(listener: (state: ViewerState) => void): () => void };
+  /** GPU-instancing shards are not store state (#9628): each enqueue's wire bytes. */
+  __ifc_lite_instanced_shards__: { subscribe(listener: (event: { shards?: ReadonlyArray<{ modelId: string; bytes: ArrayBuffer }> }) => void): () => void };
   __retainedCancel?: {
     clickMs: number; clickEpochMs: number; before: { meshIds: number[]; published: number }; error?: string;
     /** Page clock when the viewer called `terminate()` on the retained host Worker. */
@@ -323,8 +325,8 @@ test.describe('retained viewer acceptance', () => {
     await page.evaluate(() => {
       const globals = globalThis as typeof globalThis & ViewerGlobals;
       const seen = new Set<ArrayBuffer>();
-      globals.__ifc_lite_viewer_store__.subscribe(state => {
-        for (const { bytes } of state.pendingInstancedShards ?? []) {
+      globals.__ifc_lite_instanced_shards__.subscribe(event => {
+        for (const { bytes } of event.shards ?? []) {
           if (seen.has(bytes)) continue;
           seen.add(bytes);
           const header = new DataView(bytes);
@@ -368,8 +370,8 @@ test.describe('retained viewer acceptance', () => {
       const globals = globalThis as typeof globalThis & ViewerGlobals;
       const seen = new Set<ArrayBuffer>(), caseIds = new Set([311,321,331,341,351,361,371,381,391]);
       globals.__m11Fi = { shards: 0, occurrenceIds: [] };
-      globals.__ifc_lite_viewer_store__.subscribe(state => {
-        for (const { bytes } of state.pendingInstancedShards ?? []) {
+      globals.__ifc_lite_instanced_shards__.subscribe(event => {
+        for (const { bytes } of event.shards ?? []) {
           if (seen.has(bytes)) continue;
           seen.add(bytes);
           const wire = new DataView(bytes), templates = wire.getUint32(8, true);
@@ -399,8 +401,8 @@ test.describe('retained viewer acceptance', () => {
       const seen = new Set<ArrayBuffer>();
       globals.__m11I = { draws: 0, shards: [] };
       (globals as typeof globals & { __m11Colours?: Record<number, number[]> }).__m11Colours = {};
-      globals.__ifc_lite_viewer_store__.subscribe(state => {
-        for (const { bytes } of state.pendingInstancedShards ?? []) {
+      globals.__ifc_lite_instanced_shards__.subscribe(event => {
+        for (const { bytes } of event.shards ?? []) {
           if (seen.has(bytes)) continue;
           seen.add(bytes);
           // Header u32s: magic, version, templates, instances, ..., stride at +28 (a v1 shard has none: 88).
@@ -770,8 +772,8 @@ test.describe('retained viewer acceptance', () => {
         const globals = globalThis as typeof globalThis & ViewerGlobals & { __m11Finish?: Record<number, { metallic?: number; roughness?: number }>; __m11Shards?: number };
         const done = new Set<ArrayBuffer>();
         globals.__m11Finish = {}; globals.__m11Shards = 0;
-        globals.__ifc_lite_viewer_store__.subscribe(state => {
-          for (const { bytes } of state.pendingInstancedShards ?? []) {
+        globals.__ifc_lite_instanced_shards__.subscribe(event => {
+          for (const { bytes } of event.shards ?? []) {
             if (done.has(bytes)) continue;
             done.add(bytes);
             globals.__m11Shards!++;
@@ -863,8 +865,8 @@ test.describe('retained viewer acceptance', () => {
       const globals = globalThis as typeof globalThis & ViewerGlobals & { __expColours?: Record<number, number[]> };
       const seen = new Set<ArrayBuffer>();
       globals.__expColours = {};
-      globals.__ifc_lite_viewer_store__.subscribe(state => {
-        for (const { bytes } of state.pendingInstancedShards ?? []) {
+      globals.__ifc_lite_instanced_shards__.subscribe(event => {
+        for (const { bytes } of event.shards ?? []) {
           if (seen.has(bytes)) continue;
           seen.add(bytes);
           const wire = new DataView(bytes), templates = wire.getUint32(8, true), instances = wire.getUint32(12, true);

@@ -20,6 +20,7 @@
  * model load must survive a device loss.
  */
 
+import { markModelLoadEnded } from './modelLoadEnd.js';
 import { getViewerStoreApi } from '@/store';
 import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { beginActivity, discardActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
@@ -80,6 +81,11 @@ export async function handOffToRetry(
   await retry();
 }
 
+type LoadProgress = ReturnType<typeof selectActiveLoadProgress>;
+
+/** The terminal progress of a load that ran to its end (#1570: picking reads `percent < 100`). */
+export const LOAD_COMPLETE: NonNullable<LoadProgress> = { phase: 'Complete', percent: 100 };
+
 /**
  * End the shared load UI for a path that holds no canceller of its own: a
  * raster drape or a retained refusal (both return before a canceller is
@@ -89,20 +95,51 @@ export async function handOffToRetry(
  * end. `error` and its Retry are never cleared here: none of these paths
  * reported one, so whatever is shown belongs to another load.
  */
-export function settleUnownedLoadUi(): void {
+export function settleUnownedLoadUi(progress: LoadProgress = null): void {
   const state = getViewerStoreApi().getState();
   if (selectLoadCanceller(state) !== null) return;
   state.setLoading(false);
   state.setGeometryStreamingActive(false);
-  state.setProgress(null);
+  state.setProgress(progress);
   state.setGeometryProgress(null);
   state.setMetadataProgress(null);
   state.setLoadingFileName(null);
 }
 
+/**
+ * End one load's share of the shared load UI (L2). Every load end, completed
+ * or failed, releases its Cancel first; the spinner, streaming flag and
+ * progress then end only once no other load or stream still holds the Cancel,
+ * so a load that finishes first never ends the UI of one still running.
+ */
+/** With `modelId`, this settle also marks that model's load as ended (modelLoadEnd.ts, read by the load window). */
+export function settleOwnedLoadUi(release: () => void, progress: LoadProgress = null, modelId?: string): void {
+  release();
+  settleUnownedLoadUi(progress);
+  if (modelId !== undefined) markModelLoadEnded(modelId); // also releases the model's restore hold (geometry-restore-gate subscribes)
+}
+
 // Hook instances are independent; a replacement primary invalidates every
 // unfinished load, while concurrent federated additions remain independent.
 const pendingLoads = new Map<() => void, () => void>();
+const pendingAdmissions = new Set<() => void>();
+
+/** Work waiting to start a load, keyed to the newer load starts that supersede it. */
+const supersessionWatches = new Map<AbortController, 'primary' | 'any'>();
+
+/**
+ * A signal that aborts when a newer load starts (L6, L9): with `'primary'`
+ * only a load that replaces the scene, with `'any'` every load the user
+ * starts. Work that waits before its own load begins (a queued federated add,
+ * a URL autoload's fetch, a reload resume, a cache revalidation) checks it
+ * before loading. `stop` ends the watch; call it before starting that load,
+ * or once the work ends.
+ */
+export function watchLoadSupersession(scope: 'primary' | 'any'): { signal: AbortSignal; stop(): void } {
+  const controller = new AbortController();
+  supersessionWatches.set(controller, scope);
+  return { signal: controller.signal, stop: () => { supersessionWatches.delete(controller); } };
+}
 
 /**
  * Publish a canceller for the load that `supersede` belongs to. Returns the
@@ -114,11 +151,13 @@ export function installModelLoadCanceller(
   supersede: () => void,
   ownedStream: () => (() => void) | null = () => null,
   activity?: LoadActivity,
-): () => void {
+  replacementCommitted: () => boolean = () => true,
+  deferPrimarySupersession = false,
+): (() => void) & { commit(): void } {
   const store = getViewerStoreApi();
-  if (kind === 'primary') {
-    for (const abandon of [...pendingLoads.keys()]) abandon();
-  }
+  const supersededLoads = new Set(pendingLoads.keys());
+  const supersededWatches = new Set(supersessionWatches.keys());
+  let committed = false;
   let released = false;
   let abandoned = false;
   let cancelRequested = false;
@@ -135,6 +174,8 @@ export function installModelLoadCanceller(
       finishActivity(jobId, outcome, { ...(detail ? { detail } : {}), ...(detailKey ? { detailKey } : {}) });
     }
     pendingLoads.delete(abandon);
+    pendingAdmissions.delete(abandon);
+    supersededLoads.clear(); supersededWatches.clear();
     if (store.getState().activeLoadCanceller === cancel) {
       store.getState().setActiveLoadCanceller([...pendingLoads.values()].at(-1) ?? null);
     }
@@ -157,30 +198,49 @@ export function installModelLoadCanceller(
     cancelRequested = true;
     // A retained run keeps its published products; its stream then completes the load.
     if (activity?.interrupt) { activity.interrupt(); return; }
-    const ownsUi = store.getState().activeLoadCanceller === cancel;
     // Keep the native cancellation counter for other load observers.
     store.getState().noteLoadCancelled();
-    abandon();
+    // A primary's scene is the one every pending federated add is joining
+    // (installing the primary abandoned all earlier loads), so its Cancel
+    // ends them too; a federated Cancel ends only its own load (L5).
+    if (kind === 'primary') {
+      const owned = [...pendingLoads.keys()].filter(pending => committed || pending === abandon || !supersededLoads.has(pending));
+      for (const pending of owned) pending();
+    } else abandon();
     const state = store.getState();
     // Stop this load's point-cloud stream too. A federated add may overlap
     // another load, so only cancel its own stream handle in that case.
-    const cancelStream = kind === 'primary' ? state.activeStreamCanceller : ownedStream();
+    const cancelStream = kind === 'primary' && committed ? state.activeStreamCanceller : ownedStream();
     if (cancelStream && state.activeStreamCanceller === cancelStream) {
       cancelStream();
       state.setActiveStreamCanceller(null);
     }
-    if (!ownsUi || pendingLoads.size > 0) return;
-    if (kind === 'primary') {
+    if (kind === 'primary' && replacementCommitted()) {
       // The same reset a primary load starts with (useIfcLoader.loadFile).
       state.resetViewerState();
       state.clearAllModels();
       state.clearLayerStack();
     } else {
-      // A federated add has not registered its model yet. Clear only load UI;
-      // the prior scene, selection and model map belong to the user.
+      // A federated add has not registered its model yet. Clear only load UI
+      // (once no other load holds it); the prior scene, selection and model
+      // map belong to the user.
       settleUnownedLoadUi();
     }
   };
+  const commit = () => {
+    if (committed || released) return;
+    committed = true;
+    pendingAdmissions.delete(abandon);
+    for (const [watch, scope] of [...supersessionWatches]) {
+      if ((scope === 'primary' && kind !== 'primary') || (deferPrimarySupersession && !supersededWatches.has(watch))) continue;
+      supersessionWatches.delete(watch); watch.abort();
+    }
+    if (kind === 'primary') for (const previous of [...supersededLoads]) previous();
+  };
+  if (kind === 'primary' && deferPrimarySupersession) {
+    for (const previous of [...pendingAdmissions]) previous();
+    pendingAdmissions.add(abandon);
+  } else commit();
   if (activity) {
     jobId = beginActivity({ kind: 'load', title: 'activityTray.job.load', panel: 'loadReport', subject: activity.subject, cancel });
     stopProgress = store.subscribe((state) => {
@@ -193,5 +253,5 @@ export function installModelLoadCanceller(
   }
   pendingLoads.set(abandon, cancel);
   store.getState().setActiveLoadCanceller(cancel);
-  return release;
+  return Object.assign(release, { commit });
 }

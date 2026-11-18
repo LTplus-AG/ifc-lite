@@ -126,6 +126,12 @@ export interface DoubleGeoreference {
    * 0.001 for a millimetre file in a metre CRS. Null for the #2526 signature.
    */
   anchorUnitRatio: number | null;
+  /**
+   * #9480 only: metres the slipped site Z adds to the placement height, or
+   * null when it cannot be recovered (no published `siteOrigin`, or the site
+   * is not the slipped anchor) and the elevation is left as authored.
+   */
+  siteHeightShiftMetres: number | null;
 }
 
 /**
@@ -161,6 +167,7 @@ export function detectDoubleGeoreference(
   const { ifcX: rawX, ifcY: rawY } = computeModelCenterInIfcMeters(coordinateInfo);
   const match = matchMapAbsoluteGeometry(conversion, mapScale, coordinateInfo);
   const anchorUnitRatio = match?.kind === 'unitMismatchedAnchor' ? match.anchorUnitRatio : null;
+  const siteHeightShiftMetres = match?.kind === 'unitMismatchedAnchor' ? match.siteHeightShiftMetres ?? null : null;
   // Where ifc-lite puts the centre in the map: the neutralised conversion is a
   // pure translation (zero for #2526), so this is the world centre moved by it.
   const ifcX = rawX + neutralised.eastings * mapScale;
@@ -209,6 +216,7 @@ export function detectDoubleGeoreference(
     scaleForExport: scaleIsUnit ? null : lengthScale / mapUnitScale,
     factorsForExport,
     anchorUnitRatio,
+    siteHeightShiftMetres,
   };
 }
 

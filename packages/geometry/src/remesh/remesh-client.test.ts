@@ -18,9 +18,7 @@ const CONFIG: RemeshConfig = { mergeLayers: false, tessellationQuality: null, sk
 class ScriptedWorker {
   readonly posted: Array<{ message: RemeshWorkerInbound; transfer: Transferable[] }> = [];
   terminated = false;
-  onmessage: ((event: MessageEvent<RemeshWorkerOutbound>) => void) | null = null;
-  onerror: ((event: ErrorEvent) => void) | null = null;
-  onmessageerror: (() => void) | null = null;
+  private readonly listeners = new Map<string, Set<(event: unknown) => void>>();
 
   /** When set, the next postMessage throws it (e.g. a DataCloneError). */
   refusePost: Error | null = null;
@@ -34,8 +32,24 @@ class ScriptedWorker {
     this.terminated = true;
     this.terminateCalls += 1;
   }
+  addEventListener(type: string, listener: (event: unknown) => void): void {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type)?.add(listener);
+  }
+  removeEventListener(type: string, listener: (event: unknown) => void): void {
+    this.listeners.get(type)?.delete(listener);
+  }
+  private emit(type: string, event: unknown): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
   reply(message: RemeshWorkerOutbound): void {
-    this.onmessage?.({ data: message } as MessageEvent<RemeshWorkerOutbound>);
+    this.emit('message', { data: message });
+  }
+  crash(message: string): void {
+    this.emit('error', { message });
+  }
+  unreadable(): void {
+    this.emit('messageerror', {});
   }
   requestIds(): number[] {
     return this.posted.flatMap(({ message }) => (message.type === 'remesh' ? [message.requestId] : []));
@@ -125,14 +139,14 @@ describe('RemeshClient (#6232)', () => {
     const { client, worker } = await started();
     const one = client.remesh(request());
     const two = client.remesh(request());
-    worker.onerror?.({ message: 'boom' } as ErrorEvent);
+    worker.crash('boom');
     await expect(one).rejects.toThrow(/boom/);
     await expect(two).rejects.toThrow(/boom/);
   });
 
   it('stays dead after a worker crash: later requests reject at once instead of hanging', async () => {
     const { client, worker } = await started();
-    worker.onerror?.({ message: 'boom' } as ErrorEvent);
+    worker.crash('boom');
     expect(client.alive).toBe(false);
     expect(worker.terminated).toBe(true);
     const posted = worker.posted.length;
@@ -178,7 +192,7 @@ describe('RemeshClient (#6232)', () => {
   it('P5: an unreadable message during start rejects create() and terminates the worker', async () => {
     const worker = new ScriptedWorker();
     const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker });
-    worker.onmessageerror?.();
+    worker.unreadable();
     await expect(pending).rejects.toThrow(/could not be read/);
     expect(worker.terminated).toBe(true);
   });
@@ -300,8 +314,8 @@ describe('RemeshClient (#6232)', () => {
       vi.advanceTimersByTime(1_000);
       // The start handlers stay attached after the deadline: a late error,
       // unreadable message or init-error must hit the dead latch, not re-run it.
-      worker.onerror?.({ message: 'late crash' } as ErrorEvent);
-      worker.onmessageerror?.();
+      worker.crash('late crash');
+      worker.unreadable();
       worker.reply({ type: 'init-error', message: 'late init-error' });
       await outcome;
       expect(settled).toHaveBeenCalledTimes(1);

@@ -3,6 +3,8 @@
 # Mark generated files to exclude from language statistics
 packages/codegen/generated/** linguist-generated=true
 packages/parser/src/generated/** linguist-generated=true
+# Byte-checked by scripts/check-viewer-operations.mjs: keep LF on every platform
+apps/viewer/src/lib/agent-tools/operations/generated/** -text linguist-generated=true
 # Mark schema files as vendored (not our code)
 packages/codegen/schemas/** linguist-vendored=true
 # Exclude dist/build output
@@ -31,6 +33,7 @@ apps/viewer/public/samples/**/*.IFC -filter -diff -merge text
 # The vendored LandXML 1.2 XSD is kept byte for byte as published (CRLF and
 # all) so its SHA-256 still matches upstream; see the README beside it.
 apps/viewer/src/lib/export/__fixtures__/landxml-1.2/LandXML-1.2.xsd -text linguist-vendored=true
+packages/cli/src/commands/__fixtures__/cityjson-2.0.2/*.json linguist-vendored=true
 # Verbatim live AI evaluation streams: collapsed on GitHub, no textual diff locally (summaries stay diffable)
 # Digest-pinned generated artifact: keep exact bytes on every platform
 packages/ifcx/src/generated/** -text linguist-generated=true
@@ -40,3 +43,5 @@ licenses/retained/texts/** -text -whitespace linguist-vendored=true
 licenses/retained/THIRD_PARTY_NOTICES.txt -text -whitespace linguist-generated=true
 packages/*/THIRD_PARTY_NOTICES.txt -text -whitespace linguist-generated=true
 licenses/retained/manifest.json linguist-generated=true
+# Recorded 3D Tiles fixtures (open data, see packages/tiles3d/fixtures/README.md).
+packages/tiles3d/fixtures/**/*.b3dm binary

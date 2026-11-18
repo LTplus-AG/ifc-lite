@@ -13,6 +13,8 @@ import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import type { CommandContext, CommandSignal, ModelingCommand } from './types.js';
 
 export interface CommandKeyActions {
+  /** A reopen's geometry restore holds input (user decision 2026-11-14): command steps by key are ignored. From the runtime's own store, so this module imports no store (it is reachable from the store's slices). */
+  isHeld: () => boolean;
   isActive(): boolean;
   commit(): boolean;
   cancel(): boolean;
@@ -26,15 +28,17 @@ export interface CommandKeyActions {
 export function bindCommandKeys(command: ModelingCommand, actions: CommandKeyActions): () => void {
   const active = actions.isActive;
   const disposers = [
-    registerKeyboardCommand('command.commit', () => actions.commit(), { active }),
+    registerKeyboardCommand('command.commit', () => actions.isHeld() ? true : actions.commit(), { active }),
     registerKeyboardCommand('command.cancel', () => actions.cancel(), { active }),
-    registerKeyboardCommand('command.undoPoint', () => actions.undoPoint(), { active }),
-    registerKeyboardCommand('command.nextField', () => actions.nextField(), { active }),
-    registerKeyboardCommand('command.typeValue', (event) => actions.typeValue(event.key), { active }),
+    registerKeyboardCommand('command.undoPoint', () => actions.isHeld() ? true : actions.undoPoint(), { active }),
+    registerKeyboardCommand('command.nextField', () => actions.isHeld() ? true : actions.nextField(), { active }),
+    // Digits type into the running command before Model's 1/2/3 layout keys;
+    // with no field to edit it returns false and the layout key still runs.
+    registerKeyboardCommand('command.typeValue', (event) => actions.typeValue(event.key), { active, priority: 1 }),
     registerKeyboardCommand('command.toggleSnap', () => actions.toggleSnap(), { active }),
     ...(command.keys ?? []).map((key) => registerKeyboardCommand(
       key.commandKey,
-      () => actions.runKey(key.run),
+      () => actions.isHeld() ? true : actions.runKey(key.run),
       { active },
     )),
   ];

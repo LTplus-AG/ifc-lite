@@ -2,7 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-# Advisory HTTP interoperability checks run outside the required viewer shards.
+# Advisory: external registry code runs only on disposable GitHub-hosted
+# runners, outside the required viewer shards and merge-queue aggregate.
 name: Registry integration
 
 on:
@@ -10,10 +11,11 @@ on:
     paths:
       - 'apps/viewer/src/lib/registry/**'
       - 'apps/viewer/src/components/sources/Registry*'
-      - 'apps/viewer/src/components/sources/Oci*'
+      - 'apps/viewer/src/components/sources/OciPushTo*'
       - 'apps/viewer/src/components/sources/SourcesPanel.tsx'
       - 'apps/viewer/src/i18n/catalogues/registry.en.ts'
       - 'apps/viewer/src/test/registry-*.ts'
+      - 'apps/viewer/registry-proxy.ts'
       - 'apps/viewer/vite.config.ts'
       - 'apps/viewer/public/samples/hello-wall.ifc'
       - '.github/actions/setup-oci-registries/**'
@@ -42,7 +44,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -73,7 +75,33 @@ jobs:
       - name: Build viewer workspace dependencies
         run: pnpm build --filter='@ifc-lite/viewer^...'
 
-      - name: Test OCI handoff and edited IFC publication
+      - name: Setup registry Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
+        with:
+          toolchain: 1.98.1
+      - name: Build pinned Subsoil registry
+        run: |
+          set -euo pipefail
+          source_dir="$(mktemp -d "$RUNNER_TEMP/subsoil-source.XXXXXX")"
+          git -C "$source_dir" init
+          git -C "$source_dir" remote add origin https://github.com/zahmadsaleem/subsoil.git
+          git -C "$source_dir" fetch --depth=1 origin 117c7788fbd839a855f4c324248b930e1b232f02
+          git -C "$source_dir" checkout --detach FETCH_HEAD
+          cargo +1.98.1 build --locked --bin subsoil --manifest-path "$source_dir/Cargo.toml" --target-dir "$RUNNER_TEMP/subsoil-target"
+      - name: Setup independent ORAS retrieval
+        id: registry-tools
+        uses: ./.github/actions/setup-oci-registries
+      - name: Test edited IFC publication and independent retrieval
         env:
-          TEST_PATTERN: 'lib/registry/.*test|components/sources/Oci.*test|components/sources/SourcesPanel.*test'
-        run: pnpm test --filter=@ifc-lite/viewer
+          OCI_REGISTRY_BINARY: ${{ runner.temp }}/subsoil-target/debug/subsoil
+          ORAS_BINARY: ${{ steps.registry-tools.outputs.oras-path }}
+          TEST_PATTERN: 'lib/registry/.*test|components/sources/Registry.*test'
+        run: |
+          test -x "$OCI_REGISTRY_BINARY"
+          test -x "$ORAS_BINARY"
+          pnpm test --filter=@ifc-lite/viewer --only
+
+      - name: Test OCI handoff and managed publication
+        env:
+          TEST_PATTERN: 'lib/registry/handoff.*test|components/sources/OciPushTo.*test'
+        run: pnpm test --filter=@ifc-lite/viewer --only

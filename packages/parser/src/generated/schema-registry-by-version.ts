@@ -36,19 +36,22 @@
  * byte-identical answer.
  */
 
-import { SCHEMA_REGISTRY as SCHEMA_REGISTRY_IFC4, type SchemaRegistry } from './schema-registry.js';
-import { SCHEMA_REGISTRY as SCHEMA_REGISTRY_IFC4X3 } from './ifc4x3/schema-registry.js';
-import { SCHEMA_REGISTRY as SCHEMA_REGISTRY_IFC2X3 } from './ifc2x3/schema-registry.js';
+import { getSchemaRegistry as getSchemaRegistryIfc4, type SchemaRegistry } from './schema-registry.js';
+import { getSchemaRegistry as getSchemaRegistryIfc4x3 } from './ifc4x3/schema-registry.js';
+import { getSchemaRegistry as getSchemaRegistryIfc2x3 } from './ifc2x3/schema-registry.js';
 
 export type { SchemaRegistry };
 
 /** The schema versions a codegen-generated runtime registry exists for. */
 export type SchemaVersionWithRegistry = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
-const REGISTRIES_BY_VERSION: Record<SchemaVersionWithRegistry, SchemaRegistry> = {
-  IFC2X3: SCHEMA_REGISTRY_IFC2X3,
-  IFC4: SCHEMA_REGISTRY_IFC4,
-  IFC4X3: SCHEMA_REGISTRY_IFC4X3,
+// Getters, not the registries: each generated registry is decoded the first
+// time it is asked for, so a parse of an IFC4 file never decodes IFC2X3 or
+// IFC4X3 unless something asks about them.
+const REGISTRIES_BY_VERSION: Record<SchemaVersionWithRegistry, () => SchemaRegistry> = {
+  IFC2X3: getSchemaRegistryIfc2x3,
+  IFC4: getSchemaRegistryIfc4,
+  IFC4X3: getSchemaRegistryIfc4x3,
 };
 
 /**
@@ -67,14 +70,14 @@ const REGISTRIES_BY_VERSION: Record<SchemaVersionWithRegistry, SchemaRegistry> =
  * membership themselves before calling.
  */
 export function getSchemaRegistryForVersion(version: SchemaVersionWithRegistry): SchemaRegistry {
-  const registry = REGISTRIES_BY_VERSION[version];
-  if (registry === undefined) {
+  const getRegistry = Object.prototype.hasOwnProperty.call(REGISTRIES_BY_VERSION, version) ? REGISTRIES_BY_VERSION[version] : undefined;
+  if (getRegistry === undefined) {
     throw new Error(
       `getSchemaRegistryForVersion(${JSON.stringify(version)}): no codegen-generated registry exists for ` +
         `this schema version. Supported versions: ${Object.keys(REGISTRIES_BY_VERSION).join(', ')}.`,
     );
   }
-  return assertNonEmptyRegistry(registry, version);
+  return assertNonEmptyRegistry(getRegistry(), version);
 }
 
 /**

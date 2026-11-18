@@ -27,12 +27,8 @@
  * for those.
  */
 
-import { IfcParser, type IfcDataStore, extractLengthUnitScale, extractProjectUnits } from '@ifc-lite/parser';
-import { QuantityType } from '@ifc-lite/data';
-import { formatQuantityUnit } from '@/lib/units/display';
-import { lensMaterialNames } from '@ifc-lite/rules';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import {
-  BsddNamespace,
   createBimContext,
   type BimContext,
   type EntityRef,
@@ -55,8 +51,6 @@ import {
   type BCFProject,
   type BCFTopic,
 } from '@ifc-lite/bcf';
-import { parseIDS, validateIDS, type IDSDocument, type IFCDataAccessor } from '@ifc-lite/ids';
-import { createDataAccessor as createIdsDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { GeometryProcessor, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import { renderFrameWorldOffset } from '@ifc-lite/geometry/world-frame';
 import type { UseTranslationResult } from '@/i18n/useTranslation';
@@ -88,9 +82,17 @@ import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
 import { bcfExportFilename, sanitizeFilename } from '../../lib/export/download';
 import { playgroundCostTools } from './playground-cost';
-import { effectiveEntities, effectiveEntityCount, effectiveGlobalIdLookup, effectiveTypeCounts } from './playground-effective';
-import { playgroundContainmentChain, playgroundSpatialHierarchy } from './playground-spatial';
+import { effectiveTypeCounts } from '@/lib/agent-tools/effective';
+import { explainIds, validateIdsAgainst } from '@/lib/agent-tools/ids-tools';
+import { readTools } from '@/lib/agent-tools/read-tools';
+import { measureTools } from '@/lib/agent-tools/measure-tools';
+import { bsddTools } from '@/lib/agent-tools/bsdd-tools';
+import { formatBytes, resolveRef as resolveModelRef } from '@/lib/agent-tools/refs';
+import type { AgentTool } from '@/lib/agent-tools/types';
+import { playgroundModelHandle, runOnPlaygroundModel } from './playground-tool-host';
 import { playgroundGeometrySource } from './playground-geometry-source';
+import { assertDispatchActive, cancelledDispatch } from '@/lib/agent-tools/cancellation';
+import { isAbortError } from '@/lib/runs/abort';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -162,6 +164,8 @@ export interface ToolDispatchResult {
 
 /** Optional context surfaces the dispatcher can use beyond the model. */
 export interface DispatchContext {
+  /** Conversation cancellation; completed mutations still return their real result. */
+  signal?: AbortSignal;
   /** Refresh local model summaries after a successful entity mutation. */
   onModelChanged?: () => void;
   /** Inline 3D viewer controller. When absent, viewer_* tools fail with
@@ -352,15 +356,6 @@ function formatColorTuple(c: ColorTuple): string {
   return `#${r}${g}${b}`;
 }
 
-/**
- * Browser-safe bSDD client routed through this site's `/api/bsdd/*` proxy.
- * The default BsddNamespace hits `api.bsdd.buildingsmart.org` directly,
- * which fails CORS in browsers. Vite (dev) and Vercel (prod) both rewrite
- * `/api/bsdd/*` to that host already, so we share the SDK's namespace
- * implementation but swap the base URL.
- */
-const PROXIED_BSDD = new BsddNamespace({ apiBase: '/api/bsdd' });
-
 // ── Clash detection (in-browser meshing → TS clash engine) ─────────────────
 // Mirrors `packages/mcp/src/tools/clash.ts`: the whole model is meshed once
 // (headless WASM pipeline, same as the inline viewer) and cached by model id,
@@ -429,7 +424,7 @@ function setCachedMeshes(key: string, meshed: ClashMeshes): void {
 /** Mesh the whole model once (in-browser, same path as PlaygroundViewer) and
  *  cache it. Throws UNSUPPORTED_OPERATION when the model carries no drawable
  *  geometry — clash needs tessellated solids, not quantity sets. */
-async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
+async function meshForClash(m: LoadedPlaygroundModel, signal?: AbortSignal): Promise<ClashMeshes> {
   const key = meshCacheKey(m);
   const pending = m.backend.getMutationView()?.hasPendingChanges() ?? false;
   const cached = pending ? undefined : getCachedMeshes(key);
@@ -442,12 +437,15 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
   const processor = new GeometryProcessor({ preferNative: false });
   try {
     await processor.init();
+    assertDispatchActive(signal);
     const source = await playgroundGeometrySource(m);
+    assertDispatchActive(signal);
     // @raw-entity-enumeration-ok the mesher takes the index parsed from source.bytes, which already includes pending edits.
     const result = await processor.process(
       source.bytes,
       source.store.entityIndex.byId as unknown as Map<number, unknown>,
     );
+    assertDispatchActive(signal);
     const meshes = result.meshes ?? [];
     if (meshes.length === 0) {
       throw new ToolExecutionError({
@@ -478,11 +476,11 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
 const lastClashResult = new Map<string, { result: ClashResult; coordinateInfo: CoordinateInfo | undefined }>();
 
 /** Run a rule set against a model's meshes, returning (and caching) the result. */
-async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[]): Promise<ClashResult> {
-  const { meshes, coordinateInfo, store } = await meshForClash(m);
+async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[], signal?: AbortSignal): Promise<ClashResult> {
+  const { meshes, coordinateInfo, store } = await meshForClash(m, signal);
   const { elements, exclusions } = elementsFromStep({ store, meshes, modelId: m.id });
   const engine = createClashEngine({ backend: 'ts' });
-  const result = await engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS });
+  const result = await engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS, signal });
   lastClashResult.set(meshCacheKey(m), { result, coordinateInfo });
   return result;
 }
@@ -529,266 +527,22 @@ export function topClashRows(clashes: Clash[], cap: number): {
     : null;
   return { rows, truncated };
 }
-const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
-  // ── Discovery ───────────────────────────────────────────────────────────
-  async model_info(m) {
-    const typeCounts = effectiveTypeCounts(m);
-    const count = [...typeCounts.values()].reduce((total, n) => total + n, 0);
-    const top = [...typeCounts]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
-      .map(([type, count]) => ({ type, count }));
-    const summary = `Model '${m.name}' (${m.store.schemaVersion}): ${count.toLocaleString()} entities, ${formatBytes(m.fileSize)}`;
-    return {
-      text: summary,
-      structured: {
-        id: m.id,
-        name: m.name,
-        schema: m.store.schemaVersion,
-        entityCount: count,
-        fileSize: m.fileSize,
-        typeCountsTop20: top,
-      },
-    };
-  },
+/** The shared read tools (`@/lib/agent-tools`), run against the model the call was made on. */
+function fromCore(tools: Record<string, AgentTool>): Record<string, ToolImpl> {
+  return Object.fromEntries(Object.entries(tools).map(([name, tool]) => [
+    name,
+    (model: LoadedPlaygroundModel, args: Record<string, unknown>, ctx: DispatchContext) => runOnPlaygroundModel(tool, model, args, ctx),
+  ]));
+}
 
-  async model_list(m) {
-    const count = effectiveEntityCount(m);
-    return {
-      text: `1 model loaded: ${m.name} (${count.toLocaleString()} entities).`,
-      structured: { models: [{ id: m.id, name: m.name, entityCount: count, schema: m.store.schemaVersion }] },
-    };
-  },
-
-  async schema_describe(_m, args) {
-    const type = String(args.type ?? '');
-    if (!type) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`type` is required.' });
-    }
-    return {
-      text: `Schema description for ${type} is best read from /mcp#schema_describe — the full reflection table requires the @ifc-lite/data introspection map (server-side only in v1).`,
-      structured: { type, note: 'In-browser schema reflection is in v0.3.' },
-    };
-  },
-
-  // ── Query ───────────────────────────────────────────────────────────────
-  async query_entities(m, args) {
-    const type = args.type as string | undefined;
-    const limit = Math.min(Number(args.limit ?? 50), 200);
-    const offset = Number(args.offset ?? 0);
-    let q = m.bim.query();
-    if (type) q = q.byType(type);
-    const all = q.toArray();
-    const page = all.slice(offset, offset + limit);
-    const head = `Found ${all.length.toLocaleString()} matching entit${all.length === 1 ? 'y' : 'ies'}${page.length < all.length ? ` (showing ${page.length})` : ''}.`;
-    const lines = page.slice(0, 25).map((e) => {
-      const name = e.name ? ` '${e.name}'` : '';
-      const gid = e.globalId ? ` GlobalId=${e.globalId}` : '';
-      return `  • ${e.type ?? '?'} #${e.ref.expressId}${name}${gid}`;
-    });
-    return {
-      text: [head, ...lines].join('\n'),
-      structured: {
-        count: all.length,
-        truncated: page.length < all.length,
-        entities: page.map((e) => ({
-          expressId: e.ref.expressId,
-          modelId: e.ref.modelId,
-          globalId: e.globalId,
-          name: e.name,
-          type: e.type,
-          description: e.description,
-          objectType: e.objectType,
-        })),
-      },
-    };
-  },
-
-  async count_entities(m, args) {
-    const groupBy = (args.group_by as string | undefined) ?? 'type';
-    const typeFilter = args.type as string | undefined; // narrows the universe first, like the Node MCP server
-    const universe = () => (typeFilter ? m.bim.query().byType(typeFilter) : m.bim.query()).toArray();
-    const counts = new Map<string, number>();
-    if (groupBy === 'type') {
-      // BIM products only (#3765): `entityIndex.byType` is every raw STEP record.
-      for (const e of universe()) {
-        const key = e.type || '(unknown)';
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
-    } else if (groupBy === 'storey') {
-      for (const e of universe()) {
-        const storey = m.bim.storey(e.ref);
-        const key = firstNonBlank(storey?.name) ?? '(no storey)';
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
-    } else if (groupBy === 'material') {
-      for (const e of universe()) {
-        const mat = m.bim.materials(e.ref);
-        const key = lensMaterialNames(mat)[0] ?? '(no material)';
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
-    }
-    const groups = Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([key, count]) => ({ key, count }));
-    return {
-      text: `Counted ${groups.length} group(s) by ${groupBy}.\n${groups.slice(0, 25).map((g) => `  • ${g.key} — ${g.count}`).join('\n')}`,
-      structured: { groupBy, groups },
-    };
-  },
-
-  async get_entity(m, args) {
-    const ref = resolveRef(m, args);
-    const data = m.bim.entity(ref);
-    if (!data) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.ENTITY_NOT_FOUND,
-        message: `No entity at ${refStr(ref)} in this model.`,
-      });
-    }
-    return {
-      text: `${data.type} '${firstNonBlank(data.name) ?? '(unnamed)'}' (#${data.ref.expressId})`,
-      structured: data,
-    };
-  },
-
-  async get_entities_bulk(m, args) {
-    const gids = (args.global_ids as string[] | undefined) ?? [];
-    const out: unknown[] = [];
-    for (const gid of gids.slice(0, 200)) {
-      try {
-        const ref = resolveRef(m, { global_id: gid });
-        out.push(m.bim.entity(ref));
-      } catch {
-        out.push(null);
-      }
-    }
-    return { text: `Resolved ${out.filter(Boolean).length}/${gids.length} entities.`, structured: { entities: out } };
-  },
-
-  async spatial_hierarchy(m) {
-    const hierarchy = playgroundSpatialHierarchy(m);
-    return {
-      text: `Spatial hierarchy for '${m.name}'${hierarchy.truncated ? ' (truncated)' : ''}.`,
-      structured: hierarchy,
-    };
-  },
-
-  async containment_chain(m, args) {
-    const ref = resolveRef(m, args);
-    const chain = playgroundContainmentChain(m, ref);
-    return { text: `${chain.path.length}-step containment path${chain.truncated ? ' (truncated)' : ''}.`, structured: chain };
-  },
-
-  async relationships(m, args) {
-    const ref = resolveRef(m, args);
-    const data = m.bim.relationships(ref);
-    return { text: `Relationships`, structured: data };
-  },
-
-  async properties_unique(m, args) {
-    const type = String(args.type ?? '');
-    const psetName = String(args.pset ?? '');
-    const propName = String(args.property ?? '');
-    if (!type || !psetName || !propName) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.INVALID_INPUT,
-        message: 'type, pset and property are all required.',
-      });
-    }
-    const counts = new Map<string, number>();
-    let total = 0;
-    for (const e of m.bim.query().byType(type).toArray()) {
-      const v = m.bim.property(e.ref, psetName, propName);
-      const key = v == null ? '(missing)' : String(v);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-      total++;
-    }
-    const values = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
-    const head = `${values.length} unique value(s) for ${type}.${psetName}.${propName} across ${total} entit${total === 1 ? 'y' : 'ies'}:`;
-    return { text: [head, ...values.slice(0, 30).map((v) => `  • ${v.value} — ${v.count}`)].join('\n'), structured: { values, total } };
-  },
-
-  async materials_list(m) {
-    const counts = new Map<string, number>();
-    for (const e of m.bim.query().toArray()) {
-      const mat = m.bim.materials(e.ref);
-      if (!mat) continue;
-      const key = lensMaterialNames(mat)[0] ?? '(unnamed)';
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    const list = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
-    return {
-      text: `${list.length} distinct material(s) in use:\n${list.slice(0, 30).map((m) => `  • ${m.name} — ${m.count}`).join('\n')}`,
-      structured: { materials: list },
-    };
-  },
-
-  async classifications_list(m) {
-    const counts = new Map<string, number>();
-    for (const e of m.bim.query().toArray()) {
-      for (const c of m.bim.classifications(e.ref)) {
-        const key = `${c.system ?? '?'}:${c.identification ?? c.name ?? '?'}`;
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
-    }
-    const list = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count }));
-    return {
-      text: `${list.length} distinct classification reference(s):\n${list.slice(0, 30).map((c) => `  • ${c.key} — ${c.count}`).join('\n')}`,
-      structured: { classifications: list },
-    };
-  },
-
-  async georeferencing(m) {
-    const counts = [...effectiveEntities(m, ['IFCMAPCONVERSION'])];
-    return {
-      text: counts.length === 0 ? 'Model has no IfcMapConversion (no georeferencing).' : `${counts.length} IfcMapConversion entity (georeferenced).`,
-      structured: { hasGeoreference: counts.length > 0 },
-    };
-  },
-
-  async units(m) {
-    const scale = m.store.source && m.store.entityIndex
-      ? extractLengthUnitScale(m.store.source, m.store.entityIndex)
-      : 1.0;
-    return {
-      text: `Length unit scale: ${scale} (lengths × ${scale} → metres). Schema: ${m.store.schemaVersion}.`,
-      structured: { lengthUnitScale: scale, schema: m.store.schemaVersion },
-    };
-  },
-
-  // ── Geometry (read from quantity sets) ──────────────────────────────────
-  async geometry_bbox(m, args) {
-    const ref = resolveRef(m, args);
-    const qsets = m.bim.quantities(ref);
-    return { text: 'Bounding-box derived from quantity sets when available; full WASM geometry is v0.2.', structured: { quantitySets: qsets } };
-  },
-  async geometry_volume(m, args) {
-    const ref = resolveRef(m, args);
-    const qsets = m.bim.quantities(ref);
-    let vol: number | null = null;
-    for (const q of qsets) for (const x of q.quantities) if (/Volume/i.test(x.name) && typeof x.value === 'number') { vol = x.value; break; }
-    // Label with the file's declared VOLUMEUNIT (issue #1573) rather than
-    // assuming m³ — the quantity value is stored in whatever unit the
-    // project declares.
-    const unit = m.store.source.length > 0
-      ? formatQuantityUnit(QuantityType.Volume, extractProjectUnits(m.store.source, m.store.entityIndex))
-      : 'm³';
-    return { text: vol == null ? 'No Volume quantity present.' : `Volume = ${vol.toFixed(3)} ${unit}.`, structured: { volume: vol, unit } };
-  },
-  async geometry_area(m, args) {
-    const ref = resolveRef(m, args);
-    const qsets = m.bim.quantities(ref);
-    let area: number | null = null;
-    for (const q of qsets) for (const x of q.quantities) if (/Area/i.test(x.name) && typeof x.value === 'number') { area = x.value; break; }
-    const unit = m.store.source.length > 0
-      ? formatQuantityUnit(QuantityType.Area, extractProjectUnits(m.store.source, m.store.entityIndex))
-      : 'm²';
-    return { text: area == null ? 'No Area quantity present.' : `Area = ${area.toFixed(3)} ${unit}.`, structured: { area, unit } };
-  },
+const IMPLS: Record<string, ToolImpl> = {
+  ...fromCore(readTools),
+  ...fromCore(measureTools),
+  ...fromCore(bsddTools),
+  ...playgroundCostTools,
 
   // ── Clash detection ───────────────────────────────────────────────────────
-  async clash_check(m, args) {
+  async clash_check(m, args, ctx) {
     const a = (args.a as string | undefined) ?? '*';
     const b = args.b as string | undefined;
     const mode = (args.mode as ClashMode | undefined) ?? 'hard';
@@ -808,7 +562,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       ...(clearance != null ? { clearance } : {}),
     };
 
-    const result = await runClashRules(m, [rule]);
+    const result = await runClashRules(m, [rule], ctx.signal);
     const { rows, truncated } = topClashRows(result.clashes, CLASH_DISPLAY_CAP);
     const capNote = truncated
       ? ` Showing top ${truncated.shown} by penetration depth; ${truncated.dropped} more not shown.`
@@ -825,12 +579,12 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       },
     };
   },
-  async clash_matrix(m, args) {
+  async clash_matrix(m, args, ctx) {
     const mode = (args.mode as ClashMode | undefined) ?? 'hard';
     const clearance = args.clearance as number | undefined;
     const rules = disciplineMatrixRules(mode, clearance);
 
-    const result = await runClashRules(m, rules);
+    const result = await runClashRules(m, rules, ctx.signal);
     const { rows, truncated } = topClashRows(result.clashes, CLASH_DISPLAY_CAP);
     const capNote = truncated
       ? ` Sampling top ${truncated.shown} by penetration depth; ${truncated.dropped} more not shown.`
@@ -851,7 +605,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       },
     };
   },
-  async clash_bcf_export(m, args) {
+  async clash_bcf_export(m, args, ctx) {
     const groupBy = (args.group_by as GroupOptions['by'] | undefined) ?? 'cluster';
     const epsilon = args.cluster_epsilon as number | undefined;
     const status = args.status as string | undefined;
@@ -860,7 +614,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     // Reuse the last clash run for this model; if there is none, run a default
     // all-vs-all hard self-clash so the tool works standalone (and caches it).
     const result = lastClashResult.get(meshCacheKey(m))?.result
-      ?? await runClashRules(m, [{ id: 'clash_check', name: 'all elements (self-clash)', a: '*', mode: 'hard' }]);
+      ?? await runClashRules(m, [{ id: 'clash_check', name: 'all elements (self-clash)', a: '*', mode: 'hard' }], ctx.signal);
     // The frame of the run above, recorded next to its result.
     const coordinateInfo = lastClashResult.get(meshCacheKey(m))?.coordinateInfo;
     if (result.summary.total === 0) {
@@ -912,61 +666,6 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     };
   },
 
-  // ── Validation ──────────────────────────────────────────────────────────
-  async model_audit(m) {
-    let issues = 0;
-    const products = m.bim.query().toArray();
-    let missingGid = 0, missingName = 0;
-    for (const e of products) {
-      if (!e.globalId) missingGid++;
-      if (!e.name) missingName++;
-    }
-    issues = missingGid + (missingName > products.length / 2 ? 1 : 0);
-    const score = Math.max(0, 100 - issues * 5);
-    return {
-      text: `Audit score: ${score}/100${issues > 0 ? ` (${issues} issue${issues === 1 ? '' : 's'}).` : '. Clean.'}`,
-      structured: { overall: score, issues: { missingGlobalIds: missingGid, missingNamesRatio: missingName / Math.max(1, products.length) } },
-    };
-  },
-
-  // ── bSDD (network — proxied through /api/bsdd to dodge CORS) ───────────
-  async bsdd_search(_m, args) {
-    const query = String(args.query ?? '').trim();
-    if (!query) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`query` is required.' });
-    try {
-      const results = await PROXIED_BSDD.search(query);
-      const head = `bSDD search '${query}' — ${results.length} result(s)${results.length > 25 ? ', showing first 25' : ''}:`;
-      const lines = results.slice(0, 25).map((r) => `• ${r.code || r.name} — ${r.name ?? ''}\n  ${r.uri}`);
-      return { text: [head, ...lines].join('\n'), structured: { query, count: results.length, results: results.slice(0, 25) } };
-    } catch (err) {
-      throw rethrowBsdd(err, 'search');
-    }
-  },
-  async bsdd_class(_m, args) {
-    const ifcType = String(args.ifc_type ?? '');
-    if (!ifcType) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`ifc_type` is required.' });
-    try {
-      const info = await PROXIED_BSDD.fetchClassInfo(ifcType);
-      if (!info) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `bSDD has no class for '${ifcType}'.` });
-      const psetGroups = new Map<string, string[]>();
-      for (const p of info.classProperties) {
-        const k = p.propertySet ?? '(no Pset)';
-        const list = psetGroups.get(k) ?? [];
-        list.push(`${p.name}${p.dataType ? ` (${p.dataType})` : ''}`);
-        psetGroups.set(k, list);
-      }
-      const head = `bSDD class ${info.code} — ${info.classProperties.length} properties across ${psetGroups.size} Psets:`;
-      const lines: string[] = [head];
-      for (const [pset, props] of psetGroups) {
-        lines.push(`• ${pset} (${props.length}):`);
-        for (const p of props.slice(0, 10)) lines.push(`    - ${p}`);
-        if (props.length > 10) lines.push(`    - … +${props.length - 10} more`);
-      }
-      return { text: lines.join('\n'), structured: info as unknown as Record<string, unknown> };
-    } catch (err) {
-      throw rethrowBsdd(err, 'class lookup');
-    }
-  },
   // ── Mutation (queues edits on the in-memory store, persists via model_save) ─
   async entity_set_property(m, args) {
     const ref = resolveRef(m, args);
@@ -1148,31 +847,13 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   // ── IDS (parses + validates against the loaded model) ─────────────────
-  async ids_validate(m, args) {
+  async ids_validate(m, args, ctx) {
     const xml = resolveIdsXml(args);
     if (!xml) throw new ToolExecutionError({
       code: ToolErrorCode.INVALID_INPUT,
       message: 'Provide IDS via `ids_path` (filename of an attached upload) or `ids_xml` (raw XML). Tell the user to drag a .ids file onto the chat input if they haven\'t attached one yet.',
     });
-    let doc: IDSDocument;
-    try {
-      doc = parseIDS(xml);
-    } catch (err) {
-      throw new ToolExecutionError({ code: ToolErrorCode.PARSE_FAILED, message: err instanceof Error ? err.message : String(err) });
-    }
-    const accessor = makeIdsAccessor(m);
-    const report = await validateIDS(doc, accessor, {
-      modelId: m.id,
-      schemaVersion: m.store.schemaVersion,
-      entityCount: effectiveEntityCount(m),
-    });
-    const head = `IDS '${doc.info?.title ?? 'untitled'}' · ${report.summary.passedSpecifications}/${report.summary.totalSpecifications} specs passed (${report.summary.overallPassRate.toFixed(0)}%).`;
-    const lines = report.specificationResults.map((s) => {
-      const ok = s.status === 'pass';
-      const skipped = s.status === 'not_applicable';
-      const tag = skipped ? '·' : ok ? '✓' : '✗';
-      return `${tag} ${s.specification.name ?? '(unnamed)'} — ${s.passedCount} pass / ${s.failedCount} fail · ${s.passRate.toFixed(0)}%`;
-    });
+    const { doc, report, output } = await validateIdsAgainst(playgroundModelHandle(m), xml, ctx);
     // Stage a downloadable JSON report so the user can save / share it.
     const reportBlob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
     const reportSlug = (doc.info?.title ?? 'spec').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
@@ -1183,8 +864,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       description: `${report.summary.passedSpecifications}/${report.summary.totalSpecifications} specs passed`,
     });
     return {
-      text: [head, ...lines].join('\n'),
-      structured: report as unknown as Record<string, unknown>,
+      ...output,
       download: { fileId: reportFile.id, filename: reportFilename, mimeType: 'application/json', size: reportBlob.size, label: 'Get IDS report' },
     };
   },
@@ -1194,15 +874,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       code: ToolErrorCode.INVALID_INPUT,
       message: 'Provide IDS via `ids_path` (filename of an attached upload) or `ids_xml` (raw XML).',
     });
-    let doc: IDSDocument;
-    try {
-      doc = parseIDS(xml);
-    } catch (err) {
-      throw new ToolExecutionError({ code: ToolErrorCode.PARSE_FAILED, message: err instanceof Error ? err.message : String(err) });
-    }
-    const head = `IDS '${doc.info?.title ?? 'untitled'}' · ${doc.specifications.length} specification(s).`;
-    const lines = doc.specifications.map((s, i) => `${i + 1}. ${s.name ?? '(unnamed)'} — applies to ${s.applicability.facets.length} facet(s); requires ${s.requirements.length} clause(s).`);
-    return { text: [head, ...lines].join('\n'), structured: doc as unknown as Record<string, unknown> };
+    return explainIds(xml);
   },
 
   // ── Export (CSV / JSON / IFC — staged for download) ───────────────────
@@ -1280,8 +952,8 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     const { left, right } = resolveDiffModels(m, args, ctx);
     const types1 = new Map<string, number>();
     const types2 = new Map<string, number>();
-    for (const [type, count] of effectiveTypeCounts(left)) types1.set(type, count);
-    for (const [type, count] of effectiveTypeCounts(right)) types2.set(type, count);
+    for (const [type, count] of effectiveTypeCounts(playgroundModelHandle(left))) types1.set(type, count);
+    for (const [type, count] of effectiveTypeCounts(playgroundModelHandle(right))) types2.set(type, count);
     const diffs: Array<{ type: string; left: number; right: number; delta: number }> = [];
     for (const t of new Set([...types1.keys(), ...types2.keys()])) {
       const a = types1.get(t) ?? 0;
@@ -1555,45 +1227,6 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     return { text: lines.join('\n'), structured: { selection: enriched } };
   },
 
-  async bsdd_property_sets(_m, args) {
-    const ifcType = String(args.ifc_type ?? '');
-    if (!ifcType) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`ifc_type` is required.' });
-    try {
-      const psets = await PROXIED_BSDD.getPropertySets(ifcType);
-      const groups = Array.from(psets.entries()).map(([name, props]) => ({ name, properties: props }));
-      const head = `bSDD property sets for ${ifcType} — ${groups.length} Pset(s):`;
-      const lines = [head, ...groups.map((g) => `• ${g.name} (${g.properties.length} properties)`)];
-      return { text: lines.join('\n'), structured: { ifcType, propertySets: groups } };
-    } catch (err) {
-      throw rethrowBsdd(err, 'property-set lookup');
-    }
-  },
-
-  async bsdd_match(m, args) {
-    // Find related bSDD classes for an entity by IFC type. Mirrors the
-    // stdio MCP path: pull the entity's IFC type, then ask bSDD for related
-    // dictionary classes.
-    let expressId: number | null = null;
-    if (typeof args.express_id === 'number') expressId = args.express_id;
-    else if (typeof args.global_id === 'string') {
-      const ref = resolveRef(m, args);
-      expressId = ref.expressId;
-    }
-    if (expressId == null) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide express_id or global_id.' });
-    }
-    const ifcType = m.store.entities.getTypeName(expressId) ?? 'Unknown';
-    try {
-      const candidates = await PROXIED_BSDD.searchRelatedClasses(ifcType);
-      const head = `bSDD candidates for ${ifcType} (#${expressId}) — ${candidates.length} match(es):`;
-      const lines = [head, ...candidates.slice(0, 10).map((c) => `• ${c.code} — ${c.name} (${c.dictionaryUri})`)];
-      if (candidates.length > 10) lines.push(`  … +${candidates.length - 10} more`);
-      return { text: lines.join('\n'), structured: { ifcType, expressId, candidates } };
-    } catch (err) {
-      throw rethrowBsdd(err, 'related-class search');
-    }
-  },
-
   // ── Discovery (extras) ─────────────────────────────────────────────────
   async model_unload(m, args) {
     // The playground v1 design is single-model. We accept the call and
@@ -1642,6 +1275,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
         break;
       }
       try {
+        assertDispatchActive(ctx.signal);
         const out = await impl(m, op.args ?? {}, ctx);
         results.push({ tool: op.tool, ok: true, text: out.text });
       } catch (err) {
@@ -1678,18 +1312,26 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     // Use the multi-subscriber API so we don't replace whichever handler
     // the panel registered (which would silently kill live selection
     // updates everywhere else after the first wait_for_selection call).
-    const hits: import('./playground-viewer-types').SelectionHit[] = await new Promise((resolve) => {
+    const hits: import('./playground-viewer-types').SelectionHit[] = await new Promise((resolve, reject) => {
       let unsubscribe: (() => void) | null = null;
-      const timer = window.setTimeout(() => {
-        unsubscribe?.();
-        resolve([]);
-      }, timeoutMs);
-      unsubscribe = v.subscribeSelection((sel) => {
-        if (sel.length === 0) return; // ignore deselects
+      let settled = false;
+      const finish = (selection: import('./playground-viewer-types').SelectionHit[], error?: unknown) => {
+        if (settled) return;
+        settled = true;
         window.clearTimeout(timer);
+        ctx.signal?.removeEventListener('abort', abort);
         unsubscribe?.();
-        resolve(sel);
+        if (error) reject(error); else resolve(selection);
+      };
+      const abort = () => finish([], cancelledDispatch());
+      const timer = window.setTimeout(() => finish([]), timeoutMs);
+      unsubscribe = v.subscribeSelection(sel => {
+        if (sel.length === 0) return; // ignore deselects
+        finish(sel);
       });
+      if (settled) unsubscribe(); // A controller may synchronously emit its selection.
+      else if (ctx.signal?.aborted) abort();
+      else ctx.signal?.addEventListener('abort', abort, { once: true });
     });
     const waitedMs = Date.now() - t0;
     if (hits.length === 0) {
@@ -1708,31 +1350,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
 // ── helpers ────────────────────────────────────────────────────────────────
 
 function resolveRef(m: LoadedPlaygroundModel, args: Record<string, unknown>): EntityRef {
-  if (typeof args.express_id === 'number') {
-    return { modelId: m.id, expressId: args.express_id };
-  }
-  if (typeof args.global_id === 'string') {
-    const id = effectiveGlobalIdLookup(m, args.global_id);
-    if (id !== undefined) return { modelId: m.id, expressId: id };
-    throw new ToolExecutionError({
-      code: ToolErrorCode.ENTITY_NOT_FOUND,
-      message: `No entity with GlobalId '${args.global_id}' in this model.`,
-    });
-  }
-  throw new ToolExecutionError({
-    code: ToolErrorCode.INVALID_INPUT,
-    message: 'Provide either global_id or express_id.',
-  });
-}
-
-function refStr(ref: EntityRef): string {
-  return `#${ref.expressId} (model=${ref.modelId})`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
-  return bytes + ' B';
+  return resolveModelRef(playgroundModelHandle(m), args);
 }
 
 /**
@@ -1819,17 +1437,6 @@ function resolveDiffModels(
   return { left, right };
 }
 
-/**
- * The IDS validator's data accessor: the shared `@ifc-lite/ids/bridge` one,
- * over this model's store and pending mutation overlay, exactly as the
- * viewer's IDS panel, the CLI and the stdio MCP build it. A hand-built copy
- * here drifted: it invented property dataTypes from the JS value kind
- * (#5304) and reimplemented material flattening (see the materials test).
- */
-function makeIdsAccessor(m: LoadedPlaygroundModel): IFCDataAccessor {
-  return createIdsDataAccessor(m.store, m.id, m.backend.getMutationView());
-}
-
 /** Tiny RFC4122-ish v4 UUID. Browsers ship crypto.randomUUID but TypeScript
  *  lib.dom doesn't always type it; fall back to a Math.random implementation
  *  for ancient browsers. */
@@ -1839,37 +1446,6 @@ function cryptoRandomUuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
     const r = (Math.random() * 16) | 0;
     return (ch === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-  });
-}
-
-interface BsddHttpErrorLike {
-  name: string;
-  status: number;
-  retryAfterSeconds?: number;
-  url: string;
-  statusText: string;
-}
-function rethrowBsdd(err: unknown, label: string): ToolExecutionError {
-  if (err && typeof err === 'object' && (err as { name?: string }).name === 'BsddHttpError') {
-    const e = err as BsddHttpErrorLike;
-    if (e.status === 429) {
-      return new ToolExecutionError({
-        code: ToolErrorCode.RATE_LIMITED,
-        message: `bSDD rate-limited the ${label} request (HTTP 429).`,
-        details: { url: e.url, status: e.status, retryAfterSeconds: e.retryAfterSeconds },
-        hint: e.retryAfterSeconds != null ? `Retry after ${e.retryAfterSeconds}s.` : 'Avoid back-to-back bSDD calls.',
-      });
-    }
-    return new ToolExecutionError({
-      code: ToolErrorCode.EXTERNAL_SERVICE_FAILED,
-      message: `bSDD ${label} failed: HTTP ${e.status} ${e.statusText}.`,
-      details: { url: e.url, status: e.status },
-    });
-  }
-  if (err instanceof ToolExecutionError) return err;
-  return new ToolExecutionError({
-    code: ToolErrorCode.INTERNAL_ERROR,
-    message: err instanceof Error ? err.message : String(err),
   });
 }
 
@@ -1936,13 +1512,15 @@ export async function dispatch(
     };
   }
   try {
+    assertDispatchActive(ctx.signal);
     const out = await impl(model, args, ctx);
     if (MODEL_MUTATION_TOOLS.has(toolName)) {
       lastClashResult.delete(meshCacheKey(model));
       ctx.onModelChanged?.();
     }
     return { text: out.text, textKey: out.textKey, structured: out.structured, isError: false, download: out.download };
-  } catch (err) {
+  } catch (caught) {
+    const err = isAbortError(caught) ? cancelledDispatch() : caught;
     if (err instanceof ToolExecutionError) {
       const webglUnavailable = err.details?.webglUnavailable === true;
       return {

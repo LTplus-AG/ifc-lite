@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { DXF_TEXT_LINE_HEIGHT_FACTOR } from '@/lib/drawing/dxf-text-layout';
+import { dxfTextLineOffset } from '@/lib/drawing/dxf-text-layout';
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { DXFUnderlayOptions } from '@ifc-lite/drawing-2d';
 import type { jsPDF } from 'jspdf';
+import { pdfRotatedTextStart } from './pdf-text-placement';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -38,12 +39,15 @@ export function mappedDxfUnderlayOptions(data: readonly DxfUnderlayRenderData[],
         // Mapping a unit baseline tip carries placement/georeference scale.
         // Height already carries that scale, so line spacing uses a unit vector.
         const dirX = text.dirX / directionLength, dirY = text.dirY / directionLength;
-        return text.text.split('\n').map((line, i) => ({
-          position: { x: text.x - stackDirection * dirY * i * text.height * DXF_TEXT_LINE_HEIGHT_FACTOR,
-            y: text.y + stackDirection * dirX * i * text.height * DXF_TEXT_LINE_HEIGHT_FACTOR },
+        const lines = text.text.split('\n');
+        return lines.map((line, i) => {
+          const offset = stackDirection * dxfTextLineOffset(i, lines.length, text.valign, text.height, text.lineSpacingFactor);
+          return { position: { x: text.x - dirY * offset, y: text.y + dirX * offset },
           text: line, height: text.height, dirX, dirY,
-          color: text.color, align: text.align, valign: text.valign,
-        }));
+          color: text.color, align: text.align, valign: text.valign, widthScale: text.widthScale,
+          // Only single-line text carries a span; the line keeps the same mapped length.
+          fitWidth: lines.length === 1 ? text.fitWidth : undefined, fitUniform: text.fitUniform };
+        });
       }),
     }],
   } }));
@@ -55,6 +59,9 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
   for (const data of underlays) {
     if (data.opacity <= 0) continue;
     doc.saveGraphicsState();
+    // PDF Tz persists across text objects until the graphics state is restored,
+    // so track it and reset it before an unstretched label follows a stretched one.
+    let tz = 1;
     try {
       doc.setGState(doc.GState({ opacity: data.opacity, 'stroke-opacity': data.opacity }));
       for (const fill of data.fills) {
@@ -81,10 +88,28 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
       for (const text of data.texts) {
         if (!Number.isFinite(text.height) || text.height <= 0 || !text.text.trim()) continue;
         const anchor = mapPoint(text.x, text.y), tip = mapPoint(text.x + text.dirX, text.y + text.dirY);
-        const angle = -Math.atan2(tip.y - anchor.y, tip.x - anchor.x) * 180 / Math.PI;
-        doc.setTextColor(text.color); doc.setFontSize(text.height * metresToMm * 72 / 25.4);
-        doc.text(text.text, anchor.x, anchor.y, { angle, align: text.align, lineHeightFactor: DXF_TEXT_LINE_HEIGHT_FACTOR,
-          baseline: text.valign === 'middle' ? 'middle' : text.valign === 'top' ? 'top' : text.valign === 'bottom' ? 'bottom' : 'alphabetic' });
+        const rad = Math.atan2(tip.y - anchor.y, tip.x - anchor.x), sizeMm = text.height * metresToMm;
+        doc.setTextColor(text.color); doc.setFontSize(sizeMm * 72 / 25.4);
+        // jsPDF's align/baseline shift along the page axes, so each line's
+        // baseline start is placed along/across the rotated baseline here,
+        // stacking lines about the block's attachment like the canvas renderer.
+        const lines = text.text.split('\n');
+        lines.forEach((line, i) => {
+          if (!line) return;
+          // Aligned/fit text stretches horizontally (PDF Tz); justification uses the stretched width.
+          // With an exact span (fitWidth), stretch by the measured width so the line spans it exactly.
+          const measured = doc.getTextWidth(line);
+          const fitMm = lines.length === 1 && text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && Number.isFinite(measured) && measured > 0
+            ? text.fitWidth * metresToMm : 0;
+          const fit = fitMm ? fitMm / measured : text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
+          // Aligned text reaches the span by font size (height and width together), not Tz.
+          const uniform = fitMm && text.fitUniform ? fit : 1, stretch = uniform !== 1 ? 1 : fit;
+          if (uniform !== 1) doc.setFontSize(sizeMm * uniform * 72 / 25.4);
+          const start = pdfRotatedTextStart(anchor, rad, fitMm || measured * stretch, sizeMm * uniform, text.align, text.valign,
+            dxfTextLineOffset(i, lines.length, text.valign, sizeMm, text.lineSpacingFactor));
+          doc.text(line, start.x, start.y, { angle: -rad * 180 / Math.PI, ...(stretch !== tz && { horizontalScale: stretch }) });
+          tz = stretch;
+        });
       }
     } finally { doc.restoreGraphicsState(); }
   }
@@ -144,12 +169,23 @@ export function buildDxfUnderlaySvg(
       const fontSize = text.height * fontScale;
       if (fontSize <= 0) continue;
       const anchorAttr = text.align === 'center' ? 'middle' : text.align === 'right' ? 'end' : 'start';
-      // Multiline MTEXT stacks with tspans, matching the canvas layout.
-      const content = text.text
-        .split('\n')
-        .map((line, i) => `<tspan x="${anchor.x.toFixed(4)}" dy="${i === 0 ? 0 : (fontSize * DXF_TEXT_LINE_HEIGHT_FACTOR).toFixed(4)}">${escapeXml(line)}</tspan>`)
+      // Multiline MTEXT stacks with absolutely placed tspans (in the rotated
+      // frame), matching the canvas layout; `dy` would skip empty lines.
+      const lines = text.text.split('\n');
+      const content = lines
+        .map((line, i) => `<tspan x="${anchor.x.toFixed(4)}" y="${(anchor.y
+          + dxfTextLineOffset(i, lines.length, text.valign, fontSize, text.lineSpacingFactor)).toFixed(4)}">${escapeXml(line)}</tspan>`)
         .join('');
-      svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})">${content}</text>\n`;
+      // Aligned/fit/width-factor text stretches along the baseline about the anchor.
+      // Aligned/fit text carries its exact span: the browser measures the glyphs (textLength).
+      const fitLength = text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && lines.length === 1
+        ? text.fitWidth * fontScale : 0;
+      // SVG cannot measure here: textLength makes the span exact, but Aligned text keeps
+      // its estimated height rather than scaling both axes like the canvas and PDF.
+      const fitAttr = fitLength ? ` textLength="${fitLength.toFixed(4)}" lengthAdjust="spacingAndGlyphs"` : '';
+      const stretch = fitLength ? '' : text.widthScale && text.widthScale !== 1
+        ? ` translate(${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)}) scale(${text.widthScale.toFixed(4)} 1) translate(${(-anchor.x).toFixed(4)} ${(-anchor.y).toFixed(4)})` : '';
+      svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}"${fitAttr} transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})${stretch}">${content}</text>\n`;
     }
 
     svg += '    </g>\n';

@@ -27,13 +27,17 @@ import { relayoutCurtainWallHeight, readCurtainWallParts } from '../curtain-wall
 import { resolveLinearElementChain } from '../edit/linear-element-edit.js';
 import { getModelLengthUnitScale } from '../edit/length-unit-scale.js';
 import type { EditTarget } from '../edit/target.js';
-import { setElementSizeInStore } from '../element-size-edit.js';
+import { planLinearSizeInStore } from '../element-size-edit.js';
+import type { PositionalUpdate } from '../edit/hosted-opening-refit.js';
 import { axis3d, placementInAncestor, pointOf, refId, type Vec3 } from '../host-geometry-frame.js';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import { setWallSectionInStore } from '../wall-section-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
-import { readPlacementLeaf, worldLiftInParent, writeShiftedPlacement } from './storey-placement.js';
+import { readPlacementLeaf, worldLiftInParent, writeShiftedPlacement, type PlacementLeaf } from './storey-placement.js';
 import { placementWorldZ } from './storey-grid.js';
+import { readTopAttachment, topAttachmentProblem } from './storey-attachment.js';
+import type { StoreyInventory } from './storey-model.js';
+import { scaleWallQuantities, snapshotWallQuantities, wallQuantityBaseline, wallGeometry } from './wall-height-quantities.js';
 
 export type AttachedKind = 'wall' | 'column' | 'linear' | 'curtainWall';
 
@@ -49,6 +53,13 @@ export const MIN_ATTACHED_EXTENT = 0.01;
 
 export function attachedKind(type: string | undefined): AttachedKind | null {
   return type ? KINDS[type.toUpperCase()] ?? null : null;
+}
+
+/** Classify a top dependency without reading its geometry. The inventory and
+ * detailed planner share the same binding and unresolved-record semantics. */
+export function attachedTopDependency(inventory: StoreyInventory, id: number) {
+  const attachment = readTopAttachment(inventory, id);
+  return { attachment, problem: attachment ? null : topAttachmentProblem(inventory, id) };
 }
 
 export type AttachedOutcome = { readonly ok: true; readonly remesh: number[] } | { readonly ok: false; readonly reason: string };
@@ -93,6 +104,33 @@ function linearEnds(target: EditTarget, id: number) {
   return { chain, start, end, scale };
 }
 
+type LinearTopFit = { kind: 'level' }
+  | { kind: 'vertical'; length: number; fixed: 'start' | 'end' }
+  | { kind: 'sloped'; length: number; from: Vec3; axis: Vec3 };
+
+/** Geometry shared by read-only deletion previews and the top writer. */
+function linearTopFit({ chain, start, end }: NonNullable<ReturnType<typeof linearEnds>>, change: number): LinearTopFit | string {
+  const a = chain.axisDirection;
+  if (Math.abs(a[2]) > 1 - 1e-9) {
+    const length = chain.depth + change;
+    return length >= MIN_ATTACHED_EXTENT ? { kind: 'vertical', length, fixed: a[2] > 0 ? 'start' : 'end' }
+      : `It would end ${length.toFixed(3)} m long`;
+  }
+  if (Math.abs(a[2]) < 1e-9) return { kind: 'level' };
+  const startIsTop = start[2] > end[2];
+  const top: Vec3 = startIsTop ? [start[0], start[1], start[2] + change] : [end[0], end[1], end[2] + change];
+  const from = startIsTop ? top : start, to = startIsTop ? end : top;
+  const delta: Vec3 = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+  const length = Math.hypot(...delta);
+  if (!(length >= MIN_ATTACHED_EXTENT) || Math.sign(delta[2]) !== Math.sign(end[2] - start[2])) return 'Its top would pass its foot';
+  return { kind: 'sloped', length, from, axis: delta.map(v => v / length) as Vec3 };
+}
+
+export function linearTopRefusal(target: EditTarget, id: number, from: number, to: number): string | null {
+  const plan = planLinearTop(target, id, to - from);
+  return plan.ok ? null : plan.reason;
+}
+
 /** The element's `top` (see the module comment), metres; null when its body cannot be read. */
 export function readAttachedTop(target: EditTarget, id: number, kind: AttachedKind): number | null {
   if (kind === 'wall') {
@@ -121,7 +159,7 @@ export function levelTopFaceAbove(target: EditTarget, id: number, kind: Attached
   const ref = leaf?.refDirection ? pointOf(reader, leaf.refDirection, 'IFCDIRECTION') : null;
   const z = ends.chain.axisDirection;
   // The section's X is the RefDirection made square to the axis; its Y is Axis × X.
-  const raw: Vec3 = ref ?? [1, 0, 0];
+  const raw: Vec3 = ref ?? (Math.abs(z[0]) > 1 - 1e-9 ? [0, 1, 0] : [1, 0, 0]);
   const along = raw[0] * z[0] + raw[1] * z[1] + raw[2] * z[2];
   const xr: Vec3 = [raw[0] - along * z[0], raw[1] - along * z[1], raw[2] - along * z[2]];
   const length = Math.hypot(...xr);
@@ -161,8 +199,20 @@ export function attachedTopEditsBody(target: EditTarget, id: number, kind: Attac
 }
 
 /** Move the element's top from `from` to `to` (metres, its `top` measure). Caller owns the atomic transaction. */
-export function writeAttachedTop(target: EditTarget, id: number, kind: AttachedKind, from: number, to: number): AttachedOutcome {
-  if (kind === 'wall') return setWallSectionInStore(target, id, { height: to });
+export function writeAttachedTop(target: EditTarget, id: number, kind: AttachedKind, from: number, to: number, options?: { readonly deferWallQuantities?: boolean }): AttachedOutcome {
+  if (kind === 'wall') {
+    // Roof callers finish clipping before deciding whether prism quantities apply.
+    if (options?.deferWallQuantities) return setWallSectionInStore(target, id, { height: to });
+    const geometry = wallGeometry(target.dataStore, target.view, target.editor, id);
+    const quantities = snapshotWallQuantities(target.dataStore, target.view, id);
+    const quantityFrom = wallQuantityBaseline(target.dataStore, target.view, id, from, quantities);
+    const outcome = setWallSectionInStore(target, id, { height: to });
+    if (outcome.ok) {
+      const prism = geometry ? { ...geometry, height: quantityFrom } : undefined;
+      scaleWallQuantities(target.dataStore, target.view, id, to / quantityFrom, prism, quantities);
+    }
+    return outcome;
+  }
   if (kind === 'curtainWall') return relayoutCurtainWallHeight(target, id, to);
   if (kind === 'column') return setColumnHeight(target, id, to);
   return liftLinearTop(target, id, to - from);
@@ -179,55 +229,65 @@ function setColumnHeight(target: EditTarget, id: number, height: number): Attach
   return { ok: true, remesh: [id] };
 }
 
-/** Raise a beam's or member's top end by `change` metres; see the module comment. */
-function liftLinearTop(target: EditTarget, id: number, change: number): AttachedOutcome {
+type LinearTopPlan = { ok: false; reason: string } | { ok: true; kind: 'none' }
+  | { ok: true; kind: 'size'; updates: readonly PositionalUpdate[] }
+  | { ok: true; kind: 'lift'; leaf: PlacementLeaf; lift: Vec3 }
+  | { ok: true; kind: 'turn'; leaf: PlacementLeaf; solidId: number; length: number; from: number[]; axis: Vec3; refRef: number | null };
+
+/** Complete read-only plan used by both deletion previews and the top writer. */
+function planLinearTop(target: EditTarget, id: number, change: number): LinearTopPlan {
   const ends = linearEnds(target, id);
   if (!ends) return { ok: false, reason: 'This element is not a straight extrusion, so its top cannot follow' };
-  const { chain, start, end, scale } = ends;
-  const a = chain.axisDirection;
-  if (Math.abs(change) < 1e-12) return { ok: true, remesh: [] };
-  if (Math.abs(a[2]) > 1 - 1e-9) {
+  const { chain, scale } = ends;
+  if (Math.abs(change) < 1e-12) return { ok: true, kind: 'none' };
+  const fit = linearTopFit(ends, change);
+  if (typeof fit === 'string') return { ok: false, reason: fit };
+  if (fit.kind === 'vertical') {
     // Vertical: the upper end moves, the lower stays.
-    const length = chain.depth + change;
-    if (!(length >= MIN_ATTACHED_EXTENT)) return { ok: false, reason: `It would end ${length.toFixed(3)} m long` };
-    return setElementSizeInStore(target, id, { kind: 'linear', length, fixed: a[2] > 0 ? 'start' : 'end' });
+    const size = planLinearSizeInStore(target, id, { kind: 'linear', length: fit.length, fixed: fit.fixed });
+    return size.ok ? { ok: true, kind: 'size', updates: size.updates } : size;
   }
   const reader = new AnchorEntityReader(target.dataStore, target.view);
   const placementId = refId(reader.entity(id)?.attributes[5]);
   const leaf = placementId === null ? null : readPlacementLeaf(reader, placementId);
   if (!leaf) return { ok: false, reason: 'Its placement cannot be read' };
-  const level = Math.abs(a[2]) < 1e-9;
+  const level = fit.kind === 'level';
   // A level lift writes only the placement; a turn writes the solid's depth too.
   const ownership = editOwnershipRefusal(target.dataStore, target.view, level ? [leaf.placementId] : [leaf.placementId, chain.extrudedSolidId],
     expandAffectedSet(target.dataStore, target.view, [id], 'hostsChanged'));
   if (ownership) return { ok: false, reason: ownership };
-  if (level) {
+  if (fit.kind === 'level') {
     // Level: the whole element follows, so it stays at the same depth under the storey.
     const lift = worldLiftInParent(reader, leaf.parentId, change / scale);
     if (!lift) return { ok: false, reason: 'Its placement cannot be read' };
-    writeShiftedPlacement(target.editor, leaf, lift);
-    return { ok: true, remesh: [id] };
+    return { ok: true, kind: 'lift', leaf, lift };
   }
   // Sloped: the foot stays, the top end rises; the profile's X (horizontal, across the run) is unchanged.
-  const startIsTop = start[2] > end[2];
-  const top: Vec3 = startIsTop ? [start[0], start[1], start[2] + change] : [end[0], end[1], end[2] + change];
-  const from = startIsTop ? top : start, to = startIsTop ? end : top;
-  const delta: Vec3 = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
-  const length = Math.hypot(...delta);
-  if (!(length >= MIN_ATTACHED_EXTENT) || Math.sign(delta[2]) !== Math.sign(end[2] - start[2])) {
-    return { ok: false, reason: 'Its top would pass its foot' };
-  }
-  const axis = delta.map((v) => v / length) as Vec3;
+  const { from, axis, length } = fit;
   const ref = leaf.refDirection === null ? null : pointOf(reader, leaf.refDirection, 'IFCDIRECTION');
   if (ref && Math.abs(ref[0] * axis[0] + ref[1] * axis[1] + ref[2] * axis[2]) > 1e-6 * Math.hypot(...ref)) {
     return { ok: false, reason: 'Its section is not set square to the slope, so it cannot be turned' };
   }
   const native = (metres: number) => Math.round(metres / scale * 1e9) / 1e9;
-  target.editor.setPositionalAttribute(chain.extrudedSolidId, 3, native(length));
-  const point = target.editor.addEntity('IfcCartesianPoint', [from.map(native)]).expressId;
-  const direction = target.editor.addEntity('IfcDirection', [axis]).expressId;
-  const refRef = refId(leaf.refDirection);
-  const placement = target.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, `#${direction}`, refRef === null ? null : `#${refRef}`]).expressId;
-  target.editor.setPositionalAttribute(leaf.placementId, 1, `#${placement}`);
+  return { ok: true, kind: 'turn', leaf, solidId: chain.extrudedSolidId, length: native(length), from: from.map(native), axis, refRef: refId(leaf.refDirection) };
+}
+
+/** Raise a beam's or member's top end by `change` metres; see the module comment. */
+function liftLinearTop(target: EditTarget, id: number, change: number): AttachedOutcome {
+  const plan = planLinearTop(target, id, change);
+  if (!plan.ok) return plan;
+  if (plan.kind === 'none') return { ok: true, remesh: [] };
+  if (plan.kind === 'size') {
+    for (const update of plan.updates) target.editor.setPositionalAttribute(update.entityId, update.index, update.value);
+    return { ok: true, remesh: plan.updates.length > 0 ? [id] : [] };
+  }
+  if (plan.kind === 'lift') writeShiftedPlacement(target.editor, plan.leaf, plan.lift);
+  else {
+    target.editor.setPositionalAttribute(plan.solidId, 3, plan.length);
+    const point = target.editor.addEntity('IfcCartesianPoint', [plan.from]).expressId;
+    const direction = target.editor.addEntity('IfcDirection', [plan.axis]).expressId;
+    const placement = target.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, `#${direction}`, plan.refRef === null ? null : `#${plan.refRef}`]).expressId;
+    target.editor.setPositionalAttribute(plan.leaf.placementId, 1, `#${placement}`);
+  }
   return { ok: true, remesh: [id] };
 }

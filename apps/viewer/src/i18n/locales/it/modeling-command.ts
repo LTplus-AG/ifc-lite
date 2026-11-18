@@ -5,8 +5,22 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandIt = {
+  "modelingCommand.roof.shape": "Forma",
+  "modelingCommand.roof.hip": "Padiglione",
+  "modelingCommand.roof.gable": "Due falde",
+  "modelingCommand.roof.mono": "Una falda",
+  "modelingCommand.roof.flat": "Piano",
+  "modelingCommand.roof.pitch": "Pendenza",
+  "modelingCommand.roof.overhang": "Sporto",
+  "modelingCommand.roof.edge": "Bordo",
+  "modelingCommand.roof.edgeSlope": "Pendenza del bordo",
   "modelingCommand.wall.top": "Sommità muro",
   "modelingCommand.wall.topStoreyAbove": "Fino al piano superiore",
+  "modelingCommand.wall.repickTop": "Scegli un altro solaio o tetto…",
+  "modelingCommand.wall.topElement": "Fino a solaio o tetto…",
+  "modelingCommand.wall.pickTop": "Fai clic su un solaio o tetto · Esc annulla",
+  "modelingCommand.wall.topOffset": "Scostamento superiore (m)",
+  "modelingCommand.wall.baseOffset": "Scostamento inferiore (m)",
   "modelingCommand.wall.topFixed": "Altezza fissa",
   "modelingCommand.closeAria": "Esci dal comando",
   "modelingCommand.aim.tag": "Sul piano di lavoro",

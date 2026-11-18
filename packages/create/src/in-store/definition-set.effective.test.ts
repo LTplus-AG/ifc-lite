@@ -15,10 +15,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { IfcParser, extractQuantitiesOnDemand, extractPropertiesOnDemand, propertyDefinitionRefsOfValue, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { resolveDuplicateSource } from './resolve-source.js';
 import { duplicateInStore } from './duplicate.js';
+import { StepExporter } from '@ifc-lite/export';
+import { QuantityType } from '@ifc-lite/data';
+import { copyBatchInStore } from './copy-batch.js';
+import { AnchorEntityReader } from './resolve-anchor.js';
+import { asRef, refList } from './style-entity-reader.js';
 import { cloneElementMetadata } from './edit/metadata-clone.js';
 
 const IFC = `ISO-10303-21;
@@ -80,8 +85,8 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-async function session() {
-  const store: IfcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true });
+async function session(source = IFC) {
+  const store: IfcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
   const view = new MutablePropertyView(store.properties ?? null, 'm');
   const editor = new StoreEditor(store, view);
   return { store, view, editor };
@@ -160,4 +165,107 @@ describe('Metadata clone over RelatingPropertyDefinition spellings (#7681)', () 
     const { store, view, editor } = await pieceHasOwnPsetA();
     expect(cloneElementMetadata(store, view, editor, 51, [54]).relationshipsTouched).toBe(1);
   });
+});
+
+
+function populatedSecondDefinition(quantity: boolean): string {
+  let source = IFC.replace("'Pset_A',$,());", "'Pset_A',$,(#96));")
+    .replace("'Qto_B',$,$,());", "'Qto_B',$,$,(#97));")
+    .replace('ENDSEC;\nEND-ISO', "#96=IFCPROPERTYSINGLEVALUE('Code',$,IFCLABEL('kept'),$);\n#97=IFCQUANTITYLENGTH('Length',$,$,5.,$);\nENDSEC;\nEND-ISO");
+  if (!quantity) source = source.replace(/^#83=.*$/m, "#83=IFCPROPERTYSET('0PSET00000000000000083',$,'Pset_B',$,(#97));")
+    .replace("#97=IFCQUANTITYLENGTH('Length',$,$,5.,$);", "#97=IFCPROPERTYSINGLEVALUE('Code',$,IFCLABEL('old'),$);");
+  return source;
+}
+
+for (const quantity of [false, true]) it(`#9296 a copied edited ${quantity ? 'quantity' : 'property'} in the second definition keeps its current value`, async () => {
+  const source = populatedSecondDefinition(quantity);
+  const { store, view, editor } = await session(source);
+  view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
+  view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+  if (quantity) view.setQuantity(51, 'Qto_B', 'Length', 23, QuantityType.Length);
+  else view.setProperty(51, 'Pset_B', 'Code', 'effective');
+  const copy = copyBatchInStore(store, editor, [51], [{ offset: [0, 2, 0] }])[0].copyId;
+  const bytes = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+  const reader = new AnchorEntityReader(reopened, null);
+  const definitions = [...reader.ids('IFCRELDEFINESBYPROPERTIES')].flatMap(id => {
+    const rel = reader.entity(id)!;
+    return refList(rel.attributes[4]).includes(copy) ? propertyDefinitionRefsOfValue(rel.attributes[5], asRef).map(id => reader.entity(id)?.attributes[2]) : [];
+  });
+  expect(definitions.filter(name => name === (quantity ? 'Qto_B' : 'Pset_B'))).toHaveLength(1);
+  if (quantity) expect(extractQuantitiesOnDemand(reopened, copy).find(set => set.name === 'Qto_B')?.quantities[0].value).toBe(23);
+  else expect(extractPropertiesOnDemand(reopened, copy).find(set => set.name === 'Pset_B')?.properties[0].value).toBe('effective');
+});
+
+for (const directSavedOwner of [false, true]) it(`#9296 editing Pset_B on #51 then copying keeps every IfcRoot GlobalId unique (direct saved owner: ${directSavedOwner})`, async () => {
+  let source = populatedSecondDefinition(false);
+  if (directSavedOwner) source = source.replace('(#52),IFCPROPERTYSETDEFINITIONSET((#82,#83))', '(#52),#83');
+  const { store, view, editor } = await session(source);
+  view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
+  view.setProperty(51, 'Pset_B', 'Code', 'effective');
+  const copy = copyBatchInStore(store, editor, [51], [{ offset: [0, 2, 0] }])[0].copyId;
+  const exported = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const reopened = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  const reader = new AnchorEntityReader(reopened, null);
+  // Also exercise #83 retained by an untouched direct owner. Regenerated
+  // source and copy sets need distinct identities whether #83 survives or not.
+  const savedGlobalId = '0PSET00000000000000083';
+  if (directSavedOwner) expect(reader.entity(83)?.attributes[0]).toBe(savedGlobalId);
+  const copied = extractPropertiesOnDemand(reopened, copy).find(set => set.name === 'Pset_B');
+  expect(copied?.properties.find(member => member.name === 'Code')?.value).toBe('effective');
+  expect(copied?.globalId).not.toBe(savedGlobalId);
+  const roots = [...iterateEffectiveEntityIds(reopened, null)].flatMap(({ expressId }) => {
+    const entity = reader.entity(expressId)!;
+    const index = entity.names.indexOf('GlobalId');
+    return index < 0 ? [] : [{ expressId, globalId: entity.attributes[index] }];
+  });
+  expect(roots.map(root => root.expressId)).toEqual(expect.arrayContaining(directSavedOwner ? [51, 83, copy] : [51, copy]));
+  expect(roots.every(root => typeof root.globalId === 'string' && root.globalId.length > 0)).toBe(true);
+  expect(new Set(roots.map(root => root.globalId)).size).toBe(roots.length);
+});
+
+for (const quantity of [false, true]) for (const operation of ['shared', 'second', 'delete', 'delete-last'] as const) it(`#9296 same-named ${quantity ? 'quantity' : 'property'} definitions retain ${operation} edits on copy and undo`, async () => {
+  const name = quantity ? 'Qto_Same' : 'Pset_Same';
+  const secondName = operation === 'delete-last' ? name + 'Sibling' : name;
+  const definitions = quantity
+    ? `#82=IFCELEMENTQUANTITY('0QTO000000000000000082',$,'${name}',$,$,(#96));
+#83=IFCELEMENTQUANTITY('0QTO000000000000000083',$,'${secondName}',$,$,(#97));
+#96=IFCQUANTITYLENGTH('Length',$,$,5.,$);
+#97=IFCQUANTITYLENGTH('${operation === 'second' ? 'Second' : 'Length'}',$,$,11.,$);`
+    : `#82=IFCPROPERTYSET('0PSET00000000000000082',$,'${name}',$,(#96));
+#83=IFCPROPERTYSET('0PSET00000000000000083',$,'${secondName}',$,(#97));
+#96=IFCPROPERTYSINGLEVALUE('Code',$,IFCLABEL('first'),$);
+#97=IFCPROPERTYSINGLEVALUE('${operation === 'second' ? 'Second' : 'Code'}',$,IFCLABEL('second'),$);`;
+  const source = IFC.replace(/^#82=.*\n#83=.*$/m, definitions)
+    .replace('(#51),(#82,#83)', '(#51),#82')
+    .replace('ENDSEC;\nEND-ISO', "#198=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000198',$,$,$,(#51),#83);\nENDSEC;\nEND-ISO");
+  const { store, view } = await session(source);
+  view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
+  view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+  const member = operation === 'second' ? 'Second' : quantity ? 'Length' : 'Code';
+  if (operation === 'delete' || operation === 'delete-last') {
+    if (quantity) view.deleteQuantity(51, name, member); else view.deleteProperty(51, name, member);
+  } else if (quantity) view.setQuantity(51, name, member, 23, QuantityType.Length);
+  else view.setProperty(51, name, member, 'edited');
+  const history = view.getMutationCount();
+  const copy = recordCompoundMutation(view, draft => copyBatchInStore(store, new StoreEditor(store, draft),
+    [51], [{ offset: [0, 2, 0] }])[0].copyId);
+  const output = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const reopened = await new IfcParser().parseColumnar(output.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  for (const target of [copy, 51]) {
+    const sets = quantity ? extractQuantitiesOnDemand(reopened, target) : extractPropertiesOnDemand(reopened, target);
+    expect(sets.filter(set => set.name === name), `each populated definition survives for ${target} (copy ${copy})`).toHaveLength(operation === 'delete-last' ? 0 : operation === 'delete' ? 1 : 2);
+    const values = quantity
+      ? extractQuantitiesOnDemand(reopened, target).filter(set => set.name === name).flatMap(set => set.quantities.map(member => member.value))
+      : extractPropertiesOnDemand(reopened, target).filter(set => set.name === name).flatMap(set => set.properties.map(member => member.value));
+    if (operation === 'delete-last') expect(sets.filter(set => set.name === secondName)).toHaveLength(1);
+    const expected = operation === 'delete-last' ? [] : operation === 'delete' ? quantity ? [11] : ['second']
+      : operation === 'second' ? quantity ? [5, 23] : ['first', 'edited'] : quantity ? [23, 11] : ['edited', 'second'];
+    expect(values).toEqual(expected);
+  }
+  undoRecordedMutationOperations(view, 1, () => { throw new Error('The copy must be one compound'); });
+  expect(view.getMutationCount()).toBe(history);
+  const undone = await new IfcParser().parseColumnar(new StepExporter(store, view)
+    .export({schema:'IFC4',applyMutations:true}).content.slice().buffer as ArrayBuffer,{disableWorkerScan:true});
+  expect(undone.entities.getTypeName(copy)).toBe('Unknown');
 });

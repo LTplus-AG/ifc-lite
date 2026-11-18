@@ -54,12 +54,17 @@ fn scene(bytes: &[u8], opts: &RhinoSceneOptions) -> RhinoScene {
     build_rhino_scene(bytes, opts).unwrap_or_else(|e| panic!("scene: {e}"))
 }
 
+/// The value of `key` in a user-string list.
+fn pair<'s>(pairs: &'s [(String, String)], key: &str) -> Option<&'s str> {
+    pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+}
+
 fn user<'s>(o: &'s RhinoObject, key: &str) -> Option<&'s str> {
-    o.user_strings.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    pair(&o.user_strings, key)
 }
 
 fn doc<'s>(s: &'s RhinoScene, key: &str) -> Option<&'s str> {
-    s.document_strings.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    pair(&s.document_strings, key)
 }
 
 fn express_id(o: &RhinoObject) -> u32 {
@@ -117,6 +122,9 @@ fn assert_wire_invariants(key: &str, s: &RhinoScene) {
         }
         assert!(siblings.insert((l.parent, l.name.as_str())), "{key}: sibling layer name '{}' repeats", l.name);
         assert!(!l.name.is_empty() && !l.name.contains("::"), "{key}: layer name '{}'", l.name);
+        assert!(l.user_strings.iter().all(|(_, v)| !v.is_empty()), "{key}: empty layer user text on '{}'", l.name);
+        let keys: HashSet<&str> = l.user_strings.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(keys.len(), l.user_strings.len(), "{key}: repeated layer user-text key on '{}'", l.name);
     }
     for m in &s.meshes {
         let vcount = m.positions.len() / 3;
@@ -179,6 +187,10 @@ fn assert_encoding_round_trips(key: &str, s: &RhinoScene) {
             }
             None => assert!(wire["normals"].is_null(), "{key}"),
         }
+    }
+    for (l, wire) in s.layers.iter().zip(v["layers"].as_array().unwrap()) {
+        let got: Vec<(String, String)> = serde_json::from_value(wire["userStrings"].clone()).expect("layer userStrings");
+        assert_eq!(got, l.user_strings, "{key}: layer '{}'", l.name);
     }
     let first = &v["objects"][0];
     assert!(first["kind"] == "mesh" || first["kind"] == "instance", "{key}: {first}");
@@ -590,6 +602,75 @@ fn spatial_layers_follow_the_tree_and_sanitise_names() {
     let no_spaces = scene(&layered_model(), &RhinoSceneOptions { include_spaces: false, ..RhinoSceneOptions::default() });
     assert!(no_spaces.objects.iter().all(|o| o.name != "Room"));
     assert!(no_spaces.layers.iter().all(|l| l.name != "IfcSpace"));
+}
+
+/// Import decision D3 (`docs/architecture/rhino-3dm-export.md`, "Layer user
+/// text"): a layer that stands for the project or a spatial structure
+/// element carries its GlobalId and class, a storey also its elevation in
+/// metres, so a reader can rebuild the spatial tree. No other layer is
+/// stamped.
+#[test]
+fn spatial_layers_carry_their_ifc_identity() {
+    let s = scene(&layered_model(), &RhinoSceneOptions::default());
+    let stamps = |path: &str| -> Vec<(&str, &str)> {
+        let i = (0..s.layers.len()).find(|&i| layer_path(&s, i) == path).unwrap_or_else(|| panic!("{path}"));
+        s.layers[i].user_strings.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
+    };
+    let project_id = doc(&s, "IFC::ProjectGlobalId").expect("project GlobalId");
+    assert_eq!(stamps("Proj"), [("IFC::GlobalId", project_id), ("IFC::Class", "IfcProject")]);
+    assert_eq!(stamps("Proj/Site"), [("IFC::GlobalId", "0site000000000000000001"), ("IFC::Class", "IfcSite")]);
+    assert_eq!(stamps("Proj/Site/Building"), [("IFC::GlobalId", "0bldg000000000000000001"), ("IFC::Class", "IfcBuilding")]);
+    // The storey's own GlobalId, not the sanitised or deduplicated layer name, identifies it.
+    let storey = |guid: &'static str, elevation: &'static str| {
+        vec![("IFC::GlobalId", guid), ("IFC::Class", "IfcBuildingStorey"), ("IFC::Elevation", elevation)]
+    };
+    assert_eq!(stamps("Proj/Site/Building/Level:0"), storey("0storey000000000000002", "-3"));
+    assert_eq!(stamps("Proj/Site/Building/Level 2"), storey("0storey000000000000003", "3"));
+    let twin = s.layers.iter().find(|l| l.name.starts_with("Twin #")).expect("the renamed twin");
+    assert_eq!(pair(&twin.user_strings, "IFC::GlobalId"), Some("0storey000000000000005"));
+    // A storey's contained element names the same GlobalId as its container.
+    let wall = s.objects.iter().find(|o| o.name == "Lower wall").unwrap();
+    assert_eq!(user(wall, "IFC::ContainerGlobalId"), Some("0storey000000000000002"));
+
+    // Project, site, building and the six storeys; no class sublayer, and not `Unassigned`.
+    let stamped: Vec<&str> = s.layers.iter().filter(|l| !l.user_strings.is_empty()).map(|l| pair(&l.user_strings, "IFC::Class").unwrap()).collect();
+    assert_eq!(stamped, [["IfcProject", "IfcSite", "IfcBuilding"].as_slice(), ["IfcBuildingStorey"; 6].as_slice()].concat());
+
+    // The class and presentation schemes have no spatial layers; only their project root is stamped.
+    for layer_scheme in [RhinoLayerScheme::Class, RhinoLayerScheme::Presentation] {
+        let s = scene(&layered_model(), &RhinoSceneOptions { layer_scheme, ..RhinoSceneOptions::default() });
+        let stamped: Vec<(&str, Option<&str>)> =
+            s.layers.iter().filter(|l| !l.user_strings.is_empty()).map(|l| (l.name.as_str(), pair(&l.user_strings, "IFC::Class"))).collect();
+        assert_eq!(stamped, [("Proj", Some("IfcProject"))], "{layer_scheme:?}");
+    }
+}
+
+/// `IFC::Elevation` (spec "Layer user text") is metres whatever the file and
+/// output units are, rounded to the nanometre, and omitted when it cannot be
+/// a number.
+#[test]
+fn storey_layers_carry_their_elevation_in_metres() {
+    let one_storey = |unit: &str, elevation: f64, wall: [f64; 3]| {
+        let mut f = Ifc::new(unit, None, Site::default());
+        let storey = f.storey("0storey000000000000001", Some("Level 1"), None, elevation);
+        // Placed in the building, so the wall's coordinates stay finite at any storey elevation.
+        f.wall("0wall00000000000000001", "W", (storey.0, f.building_ref().1), [0.0; 3], wall);
+        f.finish("storey.ifc")
+    };
+    let elevation_of = |bytes: &[u8]| {
+        let s = scene(bytes, &RhinoSceneOptions::default());
+        let storey = s.layers.iter().find(|l| pair(&l.user_strings, "IFC::Class") == Some("IfcBuildingStorey")).expect("storey layer");
+        pair(&storey.user_strings, "IFC::Elevation").map(str::to_string)
+    };
+    // 3300 mm is 3.3000000000000003 m in f64.
+    assert_eq!(elevation_of(&one_storey(MILLIMETRE, 3300.0, [4000.0, 200.0, 3000.0])).as_deref(), Some("3.3"));
+    assert_eq!(elevation_of(&one_storey(FOOT, 10.0, WALL_SIZE)).as_deref(), Some("3.048"));
+    // Rounding 1e300 m to the nanometre overflows: no stamp, never `inf`.
+    assert_eq!(elevation_of(&one_storey(METRE, 1e300, WALL_SIZE)), None);
+    // A refused length unit (a zero conversion factor) never reaches a layer: the geometry
+    // pass refuses the whole file, so no file-unit number is labelled metres.
+    let refused = String::from_utf8(one_storey(FOOT, 10.0, WALL_SIZE)).unwrap().replace("IFCLENGTHMEASURE(0.3048)", "IFCLENGTHMEASURE(0.)").replace("'FOOT'", "'SURVEY_LINK'");
+    assert!(matches!(build_rhino_scene(refused.as_bytes(), &RhinoSceneOptions::default()), Err(ExportError::NoRenderGeometry)));
 }
 
 /// A spatial chain far deeper than a recursive walk survives on a 2 MiB test

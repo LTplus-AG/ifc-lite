@@ -1,5 +1,19 @@
 # @ifc-lite/server-client
 
+## 6.0.0
+
+### Major Changes
+
+- [#9538](https://github.com/LTplus-AG/ifc-lite/pull/9538) [`1ef56b3`](https://github.com/LTplus-AG/ifc-lite/commit/1ef56b371fb233ef3fb61cdd2bb5cca8a36f8a49) Thanks [@louistrue](https://github.com/louistrue)! - Allow cancellation of cached data polling and distinguish missing or pending entries from HTTP, transport, and decode failures.
+  
+  Breaking: fetchDataModel now rejects HTTP failures and exhausted transport failures instead of resolving to null. Catch these failures when properties are optional; null now means only a missing or still-pending cache entry. fetchSymbolic follows the same contract.
+  
+  Viewer geometry completes, finalizes and emits load telemetry without waiting for optional properties. Property fetching runs under the loaded model's lifetime, independently of the load attempt's metadata signal; model removal/replacement, failed models, session teardown and newer primary loads abort it. The store-owned poll survives unmounts and remounts of the component that started the load and appears in the activity tray. Late responses cannot overwrite another model. Stale server attempts still never fall through to local WASM processing.
+
+### Minor Changes
+
+- [#10140](https://github.com/LTplus-AG/ifc-lite/pull/10140) [`c966f1f`](https://github.com/LTplus-AG/ifc-lite/commit/c966f1f4a93c3f32d53160e14b27ab9a02733bda) Thanks [@louistrue](https://github.com/louistrue)! - Open a model the processing server has already processed, without the IFC in the browser. `parseParquet` and `parseParquetStream` accept a `ProcessedModelRef` (`{ sha256, bytes? }`, `bytes` optional) in place of a file: nothing is hashed or uploaded, and a miss rejects with `IfcServerError` 404 instead of uploading. `normalizeProcessedModelHash` / `assertProcessedModelHash` are the one check: the hash is case-insensitive and sent lowercase. The viewer takes the same reference as the `processedModel` load option and from the URL, `?processed=<sha256>&bytes=<n>&name=<file name>`; that load reads no source bytes, writes no local cache, always uses the exact kernel and has no WASM fallback; a failure names its cause (not stored yet, no access, no server configured, browser unsupported, server busy or unreachable) and offers Retry only for a transient one; a model of unknown size (no `bytes`, or not a positive integer; `processedModelSize` reads it) streams; and the model carries `processedModel` instead of a `sourceFile`, so reload, STEP export, positioned download and error-report attachments do not act on an empty file. `VITE_IFC_SERVER_URL` may now be a same-origin path such as `/ifc`, which the reachability check used to reject.
+
 ## 5.1.1
 
 ### Patch Changes

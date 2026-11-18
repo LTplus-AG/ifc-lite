@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
 import { collectPackageVersions } from './vite-package-versions';
-import { legacyManualChunk, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
+import { bundleAnalysis } from './vite-bundle-analysis';
+import { legacyManualChunk, preloadHelperChunkGroup, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
 import react from '@vitejs/plugin-react';
@@ -17,6 +19,7 @@ import path from 'path';
 import fs from 'fs';
 import { cesiumStaticAssets } from './vite-plugins/cesium-assets';
 import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
+import { viewerHostConfig } from './vite-plugins/viewer-host-config';
 // Same allowlist the production relay uses, so dev and prod cannot disagree
 // about which Dalux node a request reaches (#2792).
 import { daluxRelayRoute } from './vite-plugins/dalux-relay';
@@ -192,7 +195,7 @@ const appVersion = viewerPkg.version || rootPkg.version;
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev').slice(0, 12);
 
 export default defineConfig(({ mode }) => {
-  const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL', 'VITE_REGISTRY_ENABLED', 'VITE_REGISTRY_CONNECTIONS', 'VITE_REGISTRY_ADDRESS']), ...process.env };
+  const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL', 'VITE_REGISTRY_ENABLED', 'IFC_REGISTRY_TARGET']), ...process.env };
   // #7955: `on` (retained preview: the retained module is eager), `lazy`
   // (production opt-in: only a choice and dynamic imports are eager) or off.
   const retainedMode = env.VITE_RETAINED_GEOMETRY === 'on' || env.VITE_RETAINED_GEOMETRY === 'lazy' ? env.VITE_RETAINED_GEOMETRY : 'off';
@@ -204,6 +207,7 @@ export default defineConfig(({ mode }) => {
   } as const;
   return {
   plugins: [
+    ...(process.env.VITE_BUNDLE_ANALYSIS === '1' ? [bundleAnalysis()] : []),
     retainedEngine(retained),
     react(),
     Icons({
@@ -234,6 +238,8 @@ export default defineConfig(({ mode }) => {
     // at app start is wrapped again.
     cesiumStaticAssets(),
     oauthCallbackRoutes(),
+    // features.json beside index.html, and the hosted entry when a config URL is set.
+    viewerHostConfig(),
     // Dalux's API sends no CORS headers, so it must go through a same-origin
     // relay. Dev runs the SAME handler production does (#2792), rather than a
     // second proxy config that can drift from it.
@@ -250,7 +256,7 @@ export default defineConfig(({ mode }) => {
   ],
   define: {
     ...(env.VITE_REGISTRY_ENABLED === 'true' ? {
-      'import.meta.env.VITE_REGISTRY_ADDRESS': JSON.stringify(env.VITE_REGISTRY_ADDRESS || 'http://localhost:5001'),
+      'import.meta.env.VITE_REGISTRY_ADDRESS': JSON.stringify(env.IFC_REGISTRY_TARGET || 'http://127.0.0.1:5000'),
     } : {}),
     __APP_VERSION__: JSON.stringify(appVersion),
     __BUILD_SHA__: JSON.stringify(buildSha),
@@ -274,6 +280,7 @@ export default defineConfig(({ mode }) => {
       allow: ['../..'],
     },
     proxy: {
+      ...(env.VITE_REGISTRY_ENABLED === 'true' ? registryProxy(env.IFC_REGISTRY_TARGET || 'http://127.0.0.1:5000') : {}),
       '/api/autodesk': { target: 'http://127.0.0.1:3002', changeOrigin: false },
       '/api/chat': {
         // Single API source of truth lives at repo-root `api/chat.ts`.
@@ -339,6 +346,7 @@ export default defineConfig(({ mode }) => {
             },
             tslibChunkGroup,
             quickjsRuntimeChunkGroup,
+            preloadHelperChunkGroup,
             {
               name: legacyManualChunk,
               priority: 0,
@@ -356,6 +364,11 @@ export default defineConfig(({ mode }) => {
       'quickjs-emscripten',
       '@jitl/quickjs-wasmfile-release-asyncify',
       'esbuild-wasm',
+      // Pre-bundling missed it at startup and found it on the first model load,
+      // then reloaded the page mid-session (dev only; validation-colors e2e).
+      // Excluded, not included: the browser entry is one ESM file whose wasm the
+      // worker locates by URL, as with the emscripten builds above.
+      'rhino3dm',
       // maplibre-gl v6 resolves its worker as a SIBLING FILE of its own module:
       //
       //   new URL(`./maplibre-gl-worker.mjs`, import.meta.url)

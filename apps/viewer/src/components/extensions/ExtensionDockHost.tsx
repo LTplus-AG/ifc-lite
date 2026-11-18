@@ -21,21 +21,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   parseWhen,
   evaluateWhen,
-  validateWidget,
   type DockContribution,
   type SlotContribution,
   type WhenContext,
 } from '@ifc-lite/extensions';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
-import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useViewerStore } from '@/store';
-import { WidgetRenderer, type WidgetRendererContext } from './widget/WidgetRenderer';
-import { WidgetErrorBoundary } from './widget/WidgetErrorBoundary';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { toast } from '@/components/ui/toast';
-import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { cn } from '@/lib/utils';
+import { ExtensionDockBody } from './ExtensionDockBody';
 import { useTranslation } from '@/i18n';
 
 interface ExtensionDockHostProps {
@@ -77,7 +72,9 @@ export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
   const active = visible.find((v) => tabId(v) === activeId) ?? visible[0];
 
   return (
-    <Tabs value={tabId(active)} onValueChange={setActiveId} className={cn('flex flex-col h-full border-t bg-background', className)} role="region" aria-label={t('extensionsFlavors.extensionDockHost.dockAriaLabel', { slot })}>
+    // Radix Tabs owns this root; keep the dock's existing labelled region.
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+    <Tabs role="region" value={tabId(active)} onValueChange={setActiveId} className={cn('flex flex-col h-full border-t bg-background', className)} aria-label={t('extensionsFlavors.extensionDockHost.dockAriaLabel', { slot })}>
       <TabsList className="flex h-auto items-center justify-start gap-0 rounded-none border-b bg-transparent p-0 overflow-x-auto" aria-label={t('extensionsFlavors.extensionDockHost.dockAriaLabel', { slot })}>
         {visible.map((c) => {
           return (
@@ -100,7 +97,7 @@ export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
             tab's component instance and its state. See
             `WidgetErrorBoundary`'s doc comment for why an unkeyed reuse
             here masks every later widget behind a stale crash. */}
-          <DockBody key={`${active.extensionId}:${active.payload.id}`} contribution={active} />
+          <ExtensionDockBody key={`${active.extensionId}:${active.payload.id}`} contribution={active} />
         </ScrollArea>
       </TabsContent>
     </Tabs>
@@ -119,112 +116,4 @@ function useFiltered(
       return evaluateWhen(parsed.value, whenContext);
     });
   }, [contributions, whenContext]);
-}
-
-function DockBody({ contribution }: { contribution: SlotContribution<DockContribution> }) {
-  const { t } = useTranslation();
-  const host = useExtensionHost();
-  const [widget, setWidget] = useState<unknown>();
-  const [error, setError] = useState<string | undefined>();
-  // A dock widget's buttons may invoke only its OWN extension's commands.
-  //
-  // This is a deliberate behaviour restriction. Before it, `invokeCommand`
-  // took a bare id and ran the first enabled extension declaring it, so a
-  // widget could reach any installed extension's command by naming the
-  // string. That is exactly the ambient authority
-  // `docs/architecture/ai-customization/02-security.md` §3.3 rules out:
-  // "if an extension can acquire authority by naming a string, capability
-  // grants become a polite suggestion".
-  //
-  // Cross-extension invocation is not being removed from the design, it is
-  // being put behind the grant that already describes it. The catalogue
-  // (`packages/extensions/src/capability/catalogue.ts`) defines
-  // `command.invoke:<id-pattern>`, "Invoke other extensions' commands
-  // matching the listed id pattern". Nothing in this tree enforces it:
-  // `packages/extensions/src/host/permissions.ts` records it as "handled by
-  // host dispatcher; no sandbox flag" and the dispatcher has no such check,
-  // no code reads a `command`-scope capability, and no manifest in the repo
-  // (fixtures, canaries, examples, docs samples) requests one. The roadmap
-  // still lists inter-extension communication as an open question
-  // (`07-roadmap.md` §5, item 2). Denying by default until the grant is enforced
-  // is the reading that matches the spec; widening it later is a capability
-  // check at this call site, not a redesign.
-  const ctx: WidgetRendererContext = useMemo(
-    () => ({
-      state: {},
-      invokeCommand: (commandId: string) => {
-        host.runCommand(commandId, contribution.extensionId).catch((err) => {
-          console.warn('[ExtensionDockHost] command failed:', err);
-          toast.error(describeRunCommandError(commandId, err));
-        });
-      },
-    }),
-    [host, contribution.extensionId],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const bundle = host.loader.getBundle(contribution.extensionId);
-        if (!bundle) {
-          if (!cancelled) setError(`Bundle for ${contribution.extensionId} not loaded.`);
-          return;
-        }
-        const file = bundle.files.get(contribution.payload.widget);
-        if (!file) {
-          if (!cancelled) setError(`Widget "${contribution.payload.widget}" not found in bundle.`);
-          return;
-        }
-        const text = file.text ?? new TextDecoder().decode(file.bytes);
-        const json = JSON.parse(text);
-        // Validate the shape before handing it to the renderer so we
-        // surface a clean structured error instead of a deep crash.
-        const validated = validateWidget(json, contribution.payload.widget);
-        if (!validated.ok) {
-          const first = validated.errors[0];
-          if (!cancelled) setError(`Widget ${first?.path || ''} ${first?.message ?? 'failed validation'}`);
-          return;
-        }
-        if (!cancelled) setWidget(validated.value);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [host, contribution]);
-
-  if (error) {
-    return (
-      <div className="p-3 text-xs text-danger">
-        {error}
-      </div>
-    );
-  }
-  if (!widget) {
-    return (
-      <div className="p-3 text-xs text-muted-foreground">
-        {t('extensionsFlavors.extensionDockHost.loadingWidget')}
-      </div>
-    );
-  }
-  return (
-    <div className="p-3">
-      <WidgetErrorBoundary
-        // Keyed on the same identity shown in the fallback label: the
-        // boundary never clears `state.error` itself (see its doc
-        // comment), so a `key` change is what forces React to discard
-        // a crashed instance and mount a fresh one for a new widget.
-        key={`${contribution.extensionId}/${contribution.payload.widget}`}
-        label={`${contribution.extensionId}/${contribution.payload.widget}`}
-      >
-        <WidgetRenderer
-          node={widget as Parameters<typeof WidgetRenderer>[0]['node']}
-          ctx={ctx}
-        />
-      </WidgetErrorBoundary>
-    </div>
-  );
 }

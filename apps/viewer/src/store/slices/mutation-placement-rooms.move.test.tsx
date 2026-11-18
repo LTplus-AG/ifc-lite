@@ -19,6 +19,7 @@ import { requestRemesh, setRemeshClientFactory } from '@/lib/remesh/remesh-servi
 import { resolvePlacementChain } from '@/lib/placement-edit';
 import { modelEditTarget } from './mutation-modelling-records';
 import { moveWithGeneratedRooms } from './mutation-placement-rooms';
+import { setTopConstraintInStore } from '../../../../../packages/create/src/in-store/storey/storey-top-constraint.js';
 
 async function reopenedRooms() {
   await seedModelingSession();
@@ -119,3 +120,37 @@ for (const mode of ['helper', 'position', 'translate', 'drag'] as const) {
     }
   });
 }
+
+it('#9296 a slab-attached room wall updates its generated rooms in the same undo step', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { wall, rooms, areas } = await reopenedRooms();
+  const api = new IfcAPI();
+  try {
+    setRemeshClientFactory(async () => ({
+      alive: true, dispose: () => {}, setConfig: () => {},
+      styleWire: async bytes => styleWireOnApi(api, bytes),
+      remesh: async request => remeshOnApi(api, request),
+    }));
+    const slab = useViewerStore.getState().addSlab(MODEL_ID, STOREY,
+      { Position: [-1, -1, 3.3], Width: 12, Depth: 10, Thickness: .3, ExtrudedDirection: [0, 0, -1] });
+    assert.ok('expressId' in slab);
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    setTopConstraintInStore(target.dataStore, target.editor, wall, { kind: 'slab', slabId: slab.expressId });
+    const before = areas(), priorHistory = useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
+    const move = useViewerStore.getState().translateEntity(MODEL_ID, wall, [1, 0, 0]);
+    assert.ok(move.ok, move.ok ? '' : move.reason);
+    await advance(30);
+    assert.notDeepEqual(areas(), before, 'the rooms follow the attached wall');
+    const written = useViewerStore.getState().undoStacks.get(MODEL_ID)!.slice(priorHistory);
+    const tags = new Set(written.map(m => useViewerStore.getState().mutationBatchTags.get(m.id)));
+    assert.equal(tags.size, 1, 'wall and rooms are one undo step');
+    assert.equal(typeof [...tags][0], 'string', 'the shared batch tag is defined');
+    assert.ok(rooms.length > 0);
+    act(() => useViewerStore.getState().undo(MODEL_ID));
+    await advance(30);
+    assert.deepEqual(areas(), before, 'one undo restores the wall and both rooms');
+  } finally {
+    setRemeshClientFactory(null);
+    api.free();
+  }
+});

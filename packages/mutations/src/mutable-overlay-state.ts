@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { overlayChanged } from './overlay-change-tracker.js';
+import { indexedHistory } from './indexed-mutation-history.js';
 import { materializeOverlay } from './sparse-overlay.js';
 import { withoutEntityExposure } from './entity-read-barrier.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
@@ -11,8 +13,6 @@ import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyMutation, QuantityMutation, AttributeMutation,
   EntityTypeMutation, Mutation, SetOverlaySnapshot } from './types.js';
 import { quantityKey } from './types.js';
-
-
 /**
  * Everything `deleteEntity` purges out of the live overlay maps for a
  * forgotten-created entity, captured so `restoreNewEntity` can put it all
@@ -31,9 +31,10 @@ export interface ForgottenEntityOverlay {
   /** This entity's own records, removed from the append-only `mutationHistory`. */
   historyEntries: Mutation[];
 }
-
 /** Internal mutable overlay state; source tables and extractors are never copied. */
 export class MutableOverlayState {
+  protected propertyTargets: Map<string, readonly [string, string]> = new Map();
+  protected quantityTargets: Map<string, readonly [string, string]> = new Map();
   protected propertyMutations: Map<string, PropertyMutation> = new Map();
   protected quantityMutations: Map<string, QuantityMutation> = new Map();
   /**
@@ -68,28 +69,9 @@ export class MutableOverlayState {
    * `restoreNewEntity` (the undo-of-delete counterpart) clears the id back out.
    */
   protected forgottenCreatedEntities: Set<number> = new Set();
-  /**
-   * Snapshot of a forgotten-created entity's overlay rows, stashed by
-   * `deleteEntity` and restored by `restoreNewEntity`.
-   *
-   * `deleteEntity` on an overlay-created entity does more than drop it from
-   * `newEntities` — it also PURGES every other overlay entry the entity left
-   * behind (property/quantity/attribute/positional/type mutations, its
-   * `newPsets`/`newQsets` entries, and its own `mutationHistory` records).
-   * Without that purge, an entity that was created, edited, then deleted
-   * before export left a dangling reference: `StepExporter` derives its
-   * property/quantity work list from `getMutations()` (the append-only
-   * history) and reads `getForEntity()` / `getQuantitiesForEntity()` straight
-   * off `newPsets` / `newQsets` — neither of which the review-side
-   * `forgottenCreatedEntities` filter in `effective-changes.ts` touches. The
-   * review dialog looked clean while the exported file still contained an
-   * `IFCPROPERTYSET` + `IFCRELDEFINESBYPROPERTIES` pointing at an expressId
-   * that was never actually created (maintainer finding on #1967).
-   *
-   * The purged data is captured here, not discarded, because `restoreNewEntity`
-   * (undo of the delete) must bring it all back — rows AND count AND what the
-   * exporter would see — not just re-add the bare `NewEntity` record.
-   */
+  /** Rows purged when a creation is forgotten; undo-of-delete restores them
+   * with their original journal. Omitting the purge leaves dangling exported
+   * psets/relationships; omitting the stash loses edits on undo (#1967). */
   protected forgottenEntityOverlay: Map<number, ForgottenEntityOverlay> = new Map();
   /**
    * Overlay-entity → source-entity aliases for property/quantity reads.
@@ -109,21 +91,44 @@ export class MutableOverlayState {
    * the caller chose to add.
    */
   protected entityAliases: Map<number, number> = new Map();
-  protected nextAllocatedId: number = 0;
+  private allocatedId = 0;
+  protected sourceWatermark = 0;
+  protected minNextExpressId: () => number = () => 1;
+  private onNextExpressIdChange?: () => void;
+  private allocatorNotificationDepth = 0;
+  protected get nextAllocatedId(): number { return this.allocatedId; }
+  protected set nextAllocatedId(id: number) {
+    if (id === this.allocatedId) return;
+    this.allocatedId = id;
+    if (this.allocatorNotificationDepth === 0) this.onNextExpressIdChange?.();
+  }
+
+  /** Supply an external ownership floor without coupling mutations to a registry.
+   * The floor is read again on clear, because published ownership is permanent. */
+  configureExpressIdAllocator(minNextExpressId: () => number, onChange?: () => void): void {
+    this.minNextExpressId = minNextExpressId;
+    this.onNextExpressIdChange = onChange;
+    this.nextAllocatedId = Math.max(this.nextAllocatedId, this.sourceWatermark, minNextExpressId() - 1);
+  }
+
+  protected resetExpressIdAllocator(): void {
+    this.nextAllocatedId = Math.max(this.sourceWatermark, this.minNextExpressId() - 1);
+  }
 
   /** Seed the express-ID allocator above the parsed source. This changes no
    * IFC content; transactions validate the allocator separately from revision. */
   setExpressIdWatermark(maxExistingId: number): void {
+    this.sourceWatermark = Math.max(this.sourceWatermark, maxExistingId);
     if (maxExistingId > this.nextAllocatedId) {
       this.nextAllocatedId = maxExistingId;
     }
   }
-
   /** Snapshot candidate ids for effective attribute reads. Includes named,
    * positional and type overrides even when written without journal records;
    * callers apply their normal live-entity and attribute-layout checks. */
   getAttributeOverrideEntityIds(createdTypes?: readonly string[], referencedId?: number): number[] {
     if (createdTypes || referencedId !== undefined) {
+      if (this.overriddenEntities.size === 0 && this.overriddenSourceIds.size === 0) return [];
       const rows = referencedId === undefined
         ? createdTypes!.flatMap(type => [...this.overriddenEntities.ofType(type)])
         : [...this.overriddenEntities.referencing(referencedId)].filter(row => !createdTypes || createdTypes.some(type => type.toUpperCase() === row.type.toUpperCase()));
@@ -141,7 +146,9 @@ export class MutableOverlayState {
   getAttributeOverrideReferenceCandidates(id: number): number[] {
     return Array.from(this.overriddenEntities.referencing(id), row => row.expressId);
   }
-  protected mutationHistory: Mutation[] = [];
+  private journal: Mutation[] = indexedHistory([]);
+  protected get mutationHistory(): Mutation[] { return this.journal; }
+  protected set mutationHistory(rows: Mutation[]) { this.journal = indexedHistory(rows); }
 
   private mutationRevision = 0;
 
@@ -152,13 +159,12 @@ export class MutableOverlayState {
    */
   getMutationRevision(): number { return this.mutationRevision; }
 
-  /** Read the current quantity override, including explicit unit removal.
-   * Unlike the append-only journal, this also reflects skipHistory and Undo. */
+  /** Current quantity override, including skipHistory and Undo. */
   getQuantityMutation(entityId: number, qsetName: string, quantityName: string): Readonly<QuantityMutation> | undefined {
     return this.quantityMutations.get(quantityKey(entityId, qsetName, quantityName));
   }
 
-  protected markOverlayChanged(): void { this.mutationRevision++; }
+  protected markOverlayChanged(entityId?: number): void { this.mutationRevision++; overlayChanged(this, entityId); }
 
   /** Narrow creations by effective class; source rows remain conservative
    * candidates because this overlay does not own the immutable source index. */
@@ -182,7 +188,7 @@ export class MutableOverlayState {
 
   protected setAttributeMutation(entityId: number, key: string, mutation: AttributeMutation): void {
     this.attributeMutations.set(key, mutation);
-    this.markOverlayChanged();
+    this.markOverlayChanged(entityId);
     let bucket = this.attributeKeysByEntity.get(entityId);
     if (!bucket) {
       bucket = new Set();
@@ -195,7 +201,7 @@ export class MutableOverlayState {
   protected deleteAttributeMutation(entityId: number, key: string): boolean {
     const removed = this.attributeMutations.delete(key);
     if (removed) {
-      this.markOverlayChanged();
+      this.markOverlayChanged(entityId);
       const bucket = this.attributeKeysByEntity.get(entityId);
       if (bucket) {
         bucket.delete(key);
@@ -206,9 +212,10 @@ export class MutableOverlayState {
     return removed;
   }
 
-  protected setPropertyMutation(entityId: number, key: string, mutation: PropertyMutation): void {
+  protected setPropertyMutation(entityId: number, key: string, mutation: PropertyMutation, target?: readonly [string, string]): void {
+    if (target) this.propertyTargets.set(key, target);
     this.propertyMutations.set(key, mutation);
-    this.markOverlayChanged();
+    this.markOverlayChanged(entityId);
     let bucket = this.propertyKeysByEntity.get(entityId);
     if (!bucket) {
       bucket = new Set();
@@ -220,7 +227,7 @@ export class MutableOverlayState {
   protected deletePropertyMutation(entityId: number, key: string): boolean {
     const removed = this.propertyMutations.delete(key);
     if (removed) {
-      this.markOverlayChanged();
+      this.markOverlayChanged(entityId);
       const bucket = this.propertyKeysByEntity.get(entityId);
       if (bucket) {
         bucket.delete(key);
@@ -230,9 +237,10 @@ export class MutableOverlayState {
     return removed;
   }
 
-  protected setQuantityMutation(entityId: number, key: string, mutation: QuantityMutation): void {
+  protected setQuantityMutation(entityId: number, key: string, mutation: QuantityMutation, target?: readonly [string, string]): void {
+    if (target) this.quantityTargets.set(key, target);
     this.quantityMutations.set(key, mutation);
-    this.markOverlayChanged();
+    this.markOverlayChanged(entityId);
     let bucket = this.quantityKeysByEntity.get(entityId);
     if (!bucket) {
       bucket = new Set();
@@ -244,7 +252,7 @@ export class MutableOverlayState {
   protected deleteQuantityMutation(entityId: number, key: string): boolean {
     const removed = this.quantityMutations.delete(key);
     if (removed) {
-      this.markOverlayChanged();
+      this.markOverlayChanged(entityId);
       const bucket = this.quantityKeysByEntity.get(entityId);
       if (bucket) {
         bucket.delete(key);
@@ -283,8 +291,8 @@ export class MutableOverlayState {
    */
   restoreSetOverlay(snapshot: SetOverlaySnapshot): void {
     const copy = structuredClone(snapshot);
-    this.markOverlayChanged();
     const { entityId, setName } = copy;
+    this.markOverlayChanged(entityId);
     const prefix = `${entityId}:${setName}:`;
     const maskKey = `${entityId}:${setName}`;
     const [masks, sets] = copy.kind === 'property'
@@ -301,12 +309,12 @@ export class MutableOverlayState {
       for (const key of this.propertyKeysByEntity.get(entityId) ?? []) {
         if (key.startsWith(prefix)) this.deletePropertyMutation(entityId, key);
       }
-      for (const [key, row] of copy.entries) this.setPropertyMutation(entityId, key, row);
+      for (const [key, row] of copy.entries) this.setPropertyMutation(entityId, key, row, [setName, key.slice(prefix.length)]);
     } else {
       for (const key of this.quantityKeysByEntity.get(entityId) ?? []) {
         if (key.startsWith(prefix)) this.deleteQuantityMutation(entityId, key);
       }
-      for (const [key, row] of copy.entries) this.setQuantityMutation(entityId, key, row);
+      for (const [key, row] of copy.entries) this.setQuantityMutation(entityId, key, row, [setName, key.slice(prefix.length)]);
     }
   }
 
@@ -315,7 +323,7 @@ export class MutableOverlayState {
    * mutation it produced, for undo / redo (#5965). `before` is taken first.
    */
   protected stampSetOverlay(mutation: Mutation, before: SetOverlaySnapshot): void {
-    this.markOverlayChanged();
+    this.markOverlayChanged(mutation.entityId);
     mutation.setOverlay = { before, after: this.captureSetOverlay(before.kind, before.entityId, before.setName) };
   }
 
@@ -332,6 +340,8 @@ export class MutableOverlayState {
   /** Borrowed only for synchronous comparison; never returned to callers. */
   protected overlayState() {
     return {
+      propertyTargets: this.propertyTargets,
+      quantityTargets: this.quantityTargets,
       propertyMutations: this.propertyMutations,
       quantityMutations: this.quantityMutations,
       propertyKeysByEntity: this.propertyKeysByEntity,
@@ -360,15 +370,28 @@ export class MutableOverlayState {
     return withoutEntityExposure(() => structuredClone(materializeOverlay(this.overlayState())));
   }
 
-  protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>, revision?: number): void {
-    Object.assign(this, state);
-    // Detached initialization preserves read fingerprints. Live publications
-    // still advance the token, including rollback and Undo/Redo.
-    if (revision === undefined) this.markOverlayChanged();
-    else this.mutationRevision = revision;
-    // A cloned snapshot carries a plain Map: rebuild the class index (#5413).
-    this.newEntities = NewEntityMap.from(this.newEntities);
-    this.overriddenEntities = NewEntityMap.from(this.overriddenEntities);
+  protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>, revision?: number, changedIds?: ReadonlySet<number> | null): void {
+    this.withDeferredAllocatorNotification(() => {
+      Object.assign(this, state);
+      // Detached initialization preserves read fingerprints; live restoration advances revision.
+      if (revision === undefined) {
+        this.mutationRevision++;
+        for (const id of changedIds ?? [undefined]) overlayChanged(this, id);
+      } else this.mutationRevision = revision;
+      // Cloned snapshots carry plain Maps: restore indexes before notifying readers (#10139).
+      this.newEntities = NewEntityMap.from(this.newEntities);
+      this.overriddenEntities = NewEntityMap.from(this.overriddenEntities);
+    });
+  }
+
+  /** Allocator observers may read records, indexes, history and revision synchronously. */
+  protected withDeferredAllocatorNotification<T>(action: () => T): T {
+    const previousId = this.nextAllocatedId;
+    this.allocatorNotificationDepth++;
+    try { return action(); }
+    finally {
+      if (--this.allocatorNotificationDepth === 0 && this.nextAllocatedId !== previousId) this.onNextExpressIdChange?.();
+    }
   }
 
   protected matchesOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): boolean {

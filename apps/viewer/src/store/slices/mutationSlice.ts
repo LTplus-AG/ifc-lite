@@ -7,7 +7,9 @@
  */
 
 import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
-import { mirrorNewRoofDefinition } from './mutation-roof.js';
+import { createRoofIn } from './mutation-roof-create.js';
+import { modelEditTarget, readModelEditTarget } from './mutation-modelling-records.js';
+import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
@@ -39,6 +41,7 @@ import {
   type WindowInStoreParams,
 } from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import { positionCompletion } from '@/lib/geo/complete-position.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { unionEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -50,7 +53,6 @@ import { authoredDataStore } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 import { effectiveStoreyId } from '@/lib/effective-storey';
 import { copyElements, copySources, withHostedFillings } from '@/lib/commands/modeling/copy-elements';
-import { newMutationBatchId } from './mutation-batch-tags.js';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { remeshGridPlacementAfterCommit } from './mutation-grid-remesh';
 import { presentEntityRotation, rotateImplicitRefEntity } from './mutation-rotate-entity.js';
@@ -59,8 +61,9 @@ export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
-import { pruneMutationHistory } from './mutation-history-prune.js';
+import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
+import { hasPendingWorkOutsideView } from './pending-outside-view.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
@@ -82,9 +85,9 @@ import { splitLinear, splitWall } from './mutation-split.js';
 import { splitSlab } from './mutation-split-slab.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { withMutationBatchTags } from './mutation-batch-tags.js';
-import { canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
-import { syncTypeOverride } from './mutation-history-apply.js';
+import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
+import { canMutateData, canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
+import { clearViewAndTypeOverrides, syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
 import { dropFromChangeSets, newChangeSet, parseChangeSetFile, recordHistory } from './mutation-history-record.js';
 import { positionalMutations } from './mutation-positional-batch.js';
@@ -269,7 +272,9 @@ export interface MutationSlice extends CostUndoMethods {
   setGeorefFields: (
     modelId: string,
     entity: 'projectedCRS' | 'mapConversion',
-    fields: Array<{ field: string; value: string | number; oldValue?: string | number }>
+    fields: Array<{ field: string; value: string | number; oldValue?: string | number }>,
+    /** One undo step with other writes made under the same id (the EPSG pick writes the CRS and its conversion). */
+    batch?: string,
   ) => void;
   /** Get merged georef mutations for a model */
   getGeorefMutations: (modelId: string) => GeorefMutationData | undefined;
@@ -279,8 +284,9 @@ export interface MutationSlice extends CostUndoMethods {
   getMutationView: (modelId: string) => MutablePropertyView | null;
   /** Register a mutation view for a model */
   registerMutationView: (modelId: string, view: MutablePropertyView) => void;
-  /** Clear mutation view for a model */
-  clearMutationView: (modelId: string) => void;
+  /** Clear one model or a batch of models in one store commit. */
+  /** Drop the views and their history. `keepGeoref` keeps georeference edits (outside the view) unsaved and undoable. */
+  clearMutationView: (modelId: string | readonly string[], options?: { keepGeoref?: boolean }) => void;
 
   // Actions - Property Mutations
   /** Set a property value */
@@ -818,6 +824,18 @@ function resolveEditReadContext(
   return { view, editor, dataStore, scale: getModelLengthUnitScale(dataStore) };
 }
 
+/**
+ * The view a WRITE goes through: the registered one, else created and
+ * registered now, as `modelEditTarget` does for every modelling command.
+ * These actions used to find a view only because markup restore registered
+ * one for every active model; since #9621 skips sources without markup, a
+ * blank model's first wall found none and was reverted (#9848). Read paths
+ * keep `mutationViews.get`: inspection must not register edit state (#8947).
+ */
+function writeView(get: () => ViewerState, modelId: string): MutablePropertyView | null {
+  const state = get();
+  return state.mutationViews.get(modelId) ?? modelEditTarget(state, modelId)?.view ?? null;
+}
 
 /**
  * Shared dispatcher for the wall/slab/beam in-store builders. Mirrors the
@@ -839,7 +857,7 @@ function runInStoreElementBuilder(
   const dataStore = model?.ifcDataStore;
   if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
 
-  const view = state.mutationViews.get(modelId);
+  const view = writeView(get, modelId);
   if (!view) return { error: 'Model has no editable mutation view yet' };
 
   const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -893,7 +911,6 @@ function recordAuthoredElementIn(
   options: { historyRecorded?: boolean } = {},
 ): void {
   const ifcType = authoredIfcType(element);
-  if (element.kind === 'roof') mirrorNewRoofDefinition(get(), modelId, entityId, view);
 
   // Make the authored element a first-class citizen immediately: register it in
   // the spatial hierarchy so it appears in the spatial tree under its storey and
@@ -991,7 +1008,7 @@ export const createMutationSlice: StateCreator<
     get().setGeorefFields(modelId, entity, [{ field, value, oldValue }]);
   },
 
-  setGeorefFields: (modelId, entity, fields) => {
+  setGeorefFields: (modelId, entity, fields, batch) => {
     if (fields.length === 0) return;
     if (!canMutate(get(), modelId)) return;
     set((state) => {
@@ -1001,22 +1018,37 @@ export const createMutationSlice: StateCreator<
       for (const entry of fields) {
         entityMuts[entry.field] = entry.value;
       }
-      newGeorefMuts.set(modelId, { ...modelMuts, [entity]: entityMuts });
+      // An edit that leaves the map position incomplete completes it here, in the same undo step (see complete-position.ts).
+      type Written = { entity: 'projectedCRS' | 'mapConversion'; field: string; value: string | number; oldValue?: string | number };
+      const written: Written[] = fields.map((f) => ({ entity, ...f }));
+      const pending = { ...modelMuts, [entity]: entityMuts } as GeorefMutationData;
+      const completion = positionCompletion(state.models.get(modelId)?.ifcDataStore, pending, state.mutationViews.get(modelId));
+      const conversionMuts = { ...(entity === 'mapConversion' ? entityMuts : modelMuts.mapConversion) } as Record<string, unknown>;
+      for (const done of completion) {
+        conversionMuts[done.field] = done.value;
+        written.push({ entity: 'mapConversion', field: done.field, value: done.value });
+      }
+      newGeorefMuts.set(modelId, { ...modelMuts, [entity]: entityMuts, ...(completion.length ? { mapConversion: conversionMuts as Partial<MapConversion> } : {}) });
 
       // Track undo
-      const nextMutations: Mutation[] = fields.map(entry => ({
-        id: `mut_georef_${entity}_${entry.field}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      const nextMutations: Mutation[] = written.map(entry => ({
+        id: `mut_georef_${entry.entity}_${entry.field}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         type: 'UPDATE_ATTRIBUTE',
         timestamp: Date.now(),
         modelId,
         entityId: 0, // georef entities don't map to a specific element
-        attributeName: `georef.${entity}.${entry.field}`,
+        attributeName: `georef.${entry.entity}.${entry.field}`,
         oldValue: entry.oldValue,
         newValue: entry.value,
         propName: entry.field,
-        psetName: entity,
+        psetName: entry.entity,
       }));
-      return { georefMutations: newGeorefMuts, ...recordHistory(state, modelId, nextMutations) };
+      // An edit and its completion are one undo step (and one row in the Changes panel).
+      const batchId = batch ?? (nextMutations.length > 1 ? newMutationBatchId() : null);
+      return {
+        georefMutations: newGeorefMuts, ...recordHistory(state, modelId, nextMutations),
+        ...(batchId ? { mutationBatchTags: withMutationBatchTags(state.mutationBatchTags, nextMutations.map((m) => m.id), batchId) } : {}),
+      };
     });
   },
 
@@ -1037,32 +1069,38 @@ export const createMutationSlice: StateCreator<
     });
   },
 
-  clearMutationView: (modelId) => {
-    set((state) => {
-      const newViews = new Map(state.mutationViews);
-      newViews.delete(modelId);
-      const newEditors = new Map(state.storeEditors);
-      newEditors.delete(modelId);
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.delete(modelId);
-      const newRemoved = pruneStashByModel(state.removedNewEntities, modelId);
-      const newRemovedMeshes = pruneStashByModel(state.removedMeshes, modelId);
-      const history = pruneMutationHistory(
-        modelId,
-        state.undoStacks,
-        state.redoStacks,
-        state.mutationBatchTags,
-        state.mutationMeshTranslations,
-      );
-      return {
-        ...dropFromChangeSets(state, state.undoStacks.get(modelId) ?? []),
-        mutationViews: newViews,
-        storeEditors: newEditors,
-        dirtyModels: newDirty,
-        removedNewEntities: newRemoved,
-        removedMeshes: newRemovedMeshes,
-        ...history,
-      };
+  clearMutationView: (modelIds, options) => {
+    set((initial) => {
+      const mutationViews = new Map(initial.mutationViews), storeEditors = new Map(initial.storeEditors);
+      const dirtyModels = new Set(initial.dirtyModels);
+      let removedNewEntities = initial.removedNewEntities, removedMeshes = initial.removedMeshes;
+      let history = { undoStacks: initial.undoStacks, redoStacks: initial.redoStacks,
+        mutationBatchTags: initial.mutationBatchTags, mutationMeshTranslations: initial.mutationMeshTranslations };
+      const discarded: Mutation[] = [];
+      for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
+        const undo = history.undoStacks.get(modelId) ?? [], redo = history.redoStacks.get(modelId) ?? [];
+        const keepGeoref = options?.keepGeoref === true && [...undo, ...redo].some(isGeorefMutation);
+        // What still makes the model unsaved without its view: a pending georeference
+        // value, or the schedule it owns (generated tasks or edits).
+        const stillUnsaved = options?.keepGeoref === true && hasPendingWorkOutsideView(initial, modelId);
+        mutationViews.delete(modelId);
+        storeEditors.delete(modelId);
+        if (!stillUnsaved) dirtyModels.delete(modelId);
+        removedNewEntities = pruneStashByModel(removedNewEntities, modelId);
+        removedMeshes = pruneStashByModel(removedMeshes, modelId);
+        for (const mutation of undo) if (!(keepGeoref && isGeorefMutation(mutation))) discarded.push(mutation);
+        if (keepGeoref) {
+          // Drops only the view's entries and their tags; georef entries keep theirs.
+          const { collabGeometryNotice: _notice, ...kept } = invalidateHistoryPatch(history.undoStacks, history.redoStacks,
+            history.mutationBatchTags, history.mutationMeshTranslations, modelId, (m) => !isGeorefMutation(m));
+          history = { ...history, ...kept };
+        } else {
+          history = pruneMutationHistory(modelId, history.undoStacks, history.redoStacks,
+            history.mutationBatchTags, history.mutationMeshTranslations);
+        }
+      }
+      return { mutationViews, storeEditors, dirtyModels, removedNewEntities, removedMeshes, ...history,
+        ...dropFromChangeSets(initial, discarded) };
     });
   },
 
@@ -1070,7 +1108,7 @@ export const createMutationSlice: StateCreator<
   setProperty: (modelId, entityId, psetName, propName, value, valueType = PropertyValueType.String, dataType) => {
     // Apply the shared edit-mode, role, and model gate before touching the
     // overlay, undo/redo, dirty state, or collaboration mirror (#5901).
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1095,7 +1133,7 @@ export const createMutationSlice: StateCreator<
 
   deleteProperty: (modelId, entityId, psetName, propName) => {
     // Shared mutation gate before the local commit — see setProperty.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1115,7 +1153,7 @@ export const createMutationSlice: StateCreator<
     // Shared mutation gate before the local commit — see setProperty. (Pset
     // creation isn't mirrored yet, which is all the more reason a read-only
     // role must not accumulate local-only psets in a shared session.)
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1131,7 +1169,7 @@ export const createMutationSlice: StateCreator<
     // pset is no less of a write than creating one, and this arm was the one
     // `createPropertySet` and `deleteProperty` were both given the gate and
     // this one was not.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1156,7 +1194,7 @@ export const createMutationSlice: StateCreator<
     // is a separate, larger gap — see the tests below and the PR discussion.
     // Gating here at least stops an unauthorised writer, and stops the local
     // state diverging further than it already does.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1169,7 +1207,7 @@ export const createMutationSlice: StateCreator<
 
   createQuantitySet: (modelId, entityId, qsetName, quantities) => {
     // See setQuantity above — same omission, same reason.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1183,7 +1221,7 @@ export const createMutationSlice: StateCreator<
   // Attribute Mutations
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
     // Shared mutation gate before the local commit — see setProperty.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1202,7 +1240,7 @@ export const createMutationSlice: StateCreator<
   setEntityType: (modelId, entityId, newType, predefinedType) => {
     // Shared mutation gate before the local commit — see setProperty. Reclassing an
     // entity is an attribute write like any other, and `setAttribute` is gated.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1231,7 +1269,7 @@ export const createMutationSlice: StateCreator<
     // rawest write in the slice (a direct STEP slot overwrite); every named
     // mutation above it is gated, so leaving this one open gated nothing.
     if (!canMutate(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return null;
 
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1260,7 +1298,7 @@ export const createMutationSlice: StateCreator<
 
   setPositionalAttributesBatch: (modelId, updates, continuing) => {
     // Same gate as setPositionalAttribute; one store update for the whole batch.
-    if (updates.length === 0 || !canMutate(get(), modelId) || !get().mutationViews.get(modelId)) return null;
+    if (updates.length === 0 || !canMutate(get(), modelId) || !writeView(get, modelId)) return null;
     const editor = getOrCreateStoreEditor(get, set, modelId);
     return editor ? recordMutationBatch(set, modelId, positionalMutations(editor, modelId, updates), continuing) : null;
   },
@@ -1279,7 +1317,7 @@ export const createMutationSlice: StateCreator<
     // Read the existing placement chain WITHOUT committing the edit
     // yet — we'll route the actual write through `setPositionalAttribute`
     // below so undo/redo + dirty-tracking come for free.
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1304,6 +1342,13 @@ export const createMutationSlice: StateCreator<
     const [x, y, z] = chain.coordinates;
     const [nx, ny, nz] = pointToNative(dataStore, delta);
     const nativeNext: [number, number, number] = [x + nx, y + ny, z + nz];
+    const attached = moveAttachedTargetIn(api, modelId, expressId, nativeNext, batchId);
+    if (attached) {
+      if (!attached.ok) return attached;
+      // Same canonical placement as the plain move below; the remesh publishes the refit geometry.
+      get().mirrorPlacementEdit(modelId, expressId, delta);
+      return { ok: true, newCoordinates: pointToMetres(dataStore, attached.newCoordinates) };
+    }
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
     const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, nativeNext, batchId);
@@ -1350,7 +1395,7 @@ export const createMutationSlice: StateCreator<
   setEntityPosition: (modelId, expressId, position) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1385,6 +1430,12 @@ export const createMutationSlice: StateCreator<
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;
     const dz = position[2] - oldZ;
+    const attached = moveAttachedTargetIn(api, modelId, expressId, pointToNative(dataStore, position));
+    if (attached) {
+      if (!attached.ok) return attached;
+      if (dx !== 0 || dy !== 0 || dz !== 0) get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
+      return { ok: true, newCoordinates: position };
+    }
     const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, pointToNative(dataStore, position));
     const mutation = updated?.mutation
       ?? get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
@@ -1415,7 +1466,7 @@ export const createMutationSlice: StateCreator<
       if (updated.result.ok) presentEntityRotation(get, modelId, expressId, deltaYaw, updated.mutation, updated.batch);
       return updated.result;
     }
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (view && dataStore) {
       const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1505,7 +1556,7 @@ export const createMutationSlice: StateCreator<
   resizeWall: (modelId, expressId, newStart, newEnd, batchId) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
@@ -1582,7 +1633,7 @@ export const createMutationSlice: StateCreator<
 
   removeEntity: (modelId, expressId, opts) => {
     if (!canMutate(get(), modelId)) return false;
-    const view = get().mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return false;
     const editor = getOrCreateStoreEditor(get, set, modelId);
     if (!editor) return false;
@@ -1638,9 +1689,7 @@ export const createMutationSlice: StateCreator<
     get, set, modelId, storeyExpressId, { kind: 'space', params },
   ),
 
-  addRoof: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, { kind: 'roof', params },
-  ),
+  addRoof: (modelId, storeyExpressId, params) => createRoofIn(api, modelId, storeyExpressId, params),
 
   addPlate: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'plate', params },
@@ -1666,13 +1715,10 @@ export const createMutationSlice: StateCreator<
     const model = state.models.get(modelId);
     const dataStore = model?.ifcDataStore;
     if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
-    const view = state.mutationViews.get(modelId);
-    if (!view) return { error: 'Model has no editable mutation view yet' };
-
-    // For dryRun the editor isn't strictly needed — we still create
-    // one (cheap) so the helper signature can stay uniform.
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { error: 'Failed to create store editor' };
+    // A dry run is inspection: it reads through an unregistered view (#8947).
+    const target = options?.dryRun ? readModelEditTarget(state, modelId) : modelEditTarget(state, modelId);
+    if (!target) return { error: 'Model has no editable mutation view yet' };
+    const { view, editor } = target;
 
     let result: GenerateSpacesResult;
     try {
@@ -1721,7 +1767,7 @@ export const createMutationSlice: StateCreator<
     const dataStore = model?.ifcDataStore;
     if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
 
-    const view = state.mutationViews.get(modelId);
+    const view = writeView(get, modelId);
     if (!view) return { error: 'Model has no editable mutation view yet' };
 
     const sources = copySources(state, modelId, [sourceExpressId]);
@@ -1915,10 +1961,7 @@ export const createMutationSlice: StateCreator<
 
   // Reset
   clearMutations: (modelId) => {
-    const view = get().mutationViews.get(modelId);
-    if (view) {
-      view.clear();
-    }
+    clearViewAndTypeOverrides(get, modelId);
 
     // Also discard pending schedule edits owned by this model. Done via
     // the schedule slice's own action so its invariants (range, playback,
@@ -1965,9 +2008,7 @@ export const createMutationSlice: StateCreator<
   },
 
   clearAllMutations: () => {
-    for (const view of get().mutationViews.values()) {
-      view.clear();
-    }
+    for (const modelId of get().mutationViews.keys()) clearViewAndTypeOverrides(get, modelId);
 
     // Schedule slice handles its own state transitions.
     const cross = get() as unknown as { clearGeneratedSchedule?: () => number };

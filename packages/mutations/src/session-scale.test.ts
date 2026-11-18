@@ -38,7 +38,11 @@ describe('session-scale authoring #8452', () => {
     view.runAtomic(outer => {
       outer.runAtomic(inner => inner.createEntity('IfcWall', []));
       expect([...outer.getNewEntitiesOfType('IFCWALL')].map(e => e.expressId)).toEqual([a.expressId, 3]);
-      expect(() => outer.runAtomic(inner => { inner.deleteEntity(a.expressId); throw new Error('stop'); })).toThrow('stop');
+      expect(() => outer.runAtomic(inner => {
+        inner.deleteEntity(a.expressId);
+        expect(inner.getNewEntityCreationOrder(a.expressId)).toBeNull();
+        throw new Error('stop');
+      })).toThrow('stop');
     });
     expect(view.getNewEntities().map(e => e.expressId)).toEqual([a.expressId, b.expressId, 3]);
     expect([...view.getNewEntitiesOfType('IfcWall')].map(e => e.expressId)).toEqual([a.expressId, 3]);
@@ -206,4 +210,161 @@ it('reference queries follow in-place draft attributes and retained array aliase
     expect(structuredClone(row).attributes[4]).toEqual(['#43']);
   });
   expect([...view.getNewEntitiesReferencing(43)].map(e => e.expressId)).toEqual([relation.expressId]);
+});
+
+it('read-only borrows are frozen copies, so a write through one cannot bypass the index #8452', () => {
+  const view = new MutablePropertyView(null, 'borrow-write');
+  const relation = view.createEntity('IfcRelAggregates', ['guid', null, null, null, '#1', ['#2']]);
+  const [row] = view.readNewEntities();
+  const related = row!.attributes[5] as string[];
+  // A borrowed alias used to be the stored array itself: the edit landed in the
+  // overlay while the reference buckets still named #2.
+  expect(() => { related[0] = '#42'; }).toThrow(TypeError);
+  expect(() => { (row!.attributes as unknown[])[4] = '#42'; }).toThrow(TypeError);
+  expect(view.getNewEntity(relation.expressId)?.attributes[5]).toEqual(['#2']);
+  expect([...view.getNewEntitiesReferencing(42)]).toEqual([]);
+  expect(view.readNewEntity(relation.expressId)?.attributes).toEqual(['guid', null, null, null, '#1', ['#2']]);
+});
+
+it('a transaction scan of the session neither copies nor compares unmodified rows #8452', () => {
+  const view = new MutablePropertyView(null, 'draft-scan');
+  for (let i = 0; i < 3000; i++) view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  const clones = vi.spyOn(globalThis, 'structuredClone');
+  try {
+    view.runAtomic(draft => {
+      expect(draft.readNewEntities()).toHaveLength(3000);
+      expect([...draft.readNewEntitiesOfType('IfcCartesianPoint')]).toHaveLength(3000);
+      expect(draft.readNewEntity(7)?.attributes).toEqual([[6, 0, 0]]);
+      draft.createEntity('IfcCartesianPoint', [[1, 2, 3]]);
+    });
+    // Each unmodified row read through the draft used to be cloned into it,
+    // then compared again when the transaction finished.
+    expect(clones.mock.calls.length).toBeLessThan(20);
+  } finally { clones.mockRestore(); }
+  expect(view.getNewEntityCount()).toBe(3001);
+  expect(view.hasNewEntity(3001)).toBe(true);
+});
+
+it('borrows inside a transaction see draft edits, deletions and inserts #8452', () => {
+  const view = new MutablePropertyView(null, 'draft-borrow');
+  const a = view.createEntity('IfcWall', ['a', null, 'A']), b = view.createEntity('IfcWall', ['b', null, 'B']);
+  view.runAtomic(draft => {
+    draft.getNewEntity(a.expressId)!.attributes[2] = 'A2';
+    draft.deleteEntity(b.expressId);
+    const c = draft.createEntity('IfcWall', ['c', null, 'C']);
+    expect(draft.readNewEntities().map(row => row.attributes[2])).toEqual(['A2', 'C']);
+    expect([...draft.readNewEntitiesOfType('IFCWALL')].map(row => row.expressId)).toEqual([a.expressId, c.expressId]);
+    expect(draft.readNewEntity(b.expressId)).toBeNull();
+  });
+  expect(view.readNewEntities().map(row => row.attributes[2])).toEqual(['A2', 'C']);
+});
+
+it('the express-id watermark scans a store once, not once per editor, and rescans on growth #8452', () => {
+  const byId = new Map<number, unknown>([[10, {}], [20, {}]]);
+  const keys = vi.spyOn(byId, 'keys');
+  const store = { entityIndex: { byId } } as unknown as ConstructorParameters<typeof StoreEditor>[0];
+  for (let i = 0; i < 25; i++) new StoreEditor(store, new MutablePropertyView(null, `w${i}`));
+  expect(keys).toHaveBeenCalledTimes(1);
+  byId.set(30, {});
+  const view = new MutablePropertyView(null, 'grown');
+  const editor = new StoreEditor(store, view);
+  expect(keys).toHaveBeenCalledTimes(2);
+  expect(editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId).toBe(31);
+  // Same size, different ids: the allocation guard still forces a rescan.
+  byId.delete(10); byId.set(32, {});
+  const sameSize = new MutablePropertyView(null, 'same-size');
+  sameSize.setExpressIdWatermark(31);
+  expect(new StoreEditor(store, sameSize).addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId).toBe(33);
+});
+
+it('#8452 nested ID-only readers do not materialize unrelated parent-draft payloads', () => {
+  const view = new MutablePropertyView(null, 'nested-kind-inventory');
+  let payloadReads = 0;
+  for (let i = 0; i < 200; i++) {
+    const attributes = [[i, 0, 0]];
+    const row = view.createEntity('IfcCartesianPoint', attributes);
+    Object.defineProperty(row, 'attributes', { configurable: true, enumerable: true,
+      get() { payloadReads++; return attributes; },
+    });
+  }
+  view.runAtomic(outer => outer.runAtomic(inner => {
+    expect([...inner.readNewEntityKinds()]).toHaveLength(200);
+    const added = inner.createEntity('IfcCartesianPoint', [[201, 0, 0]]).expressId;
+    expect(inner.getNewEntityCreationOrder(added)).not.toBeNull();
+    expect(inner.getNewEntityCreationOrder(added)!).toBeGreaterThan(inner.getNewEntityCreationOrder(1)!);
+  }));
+  expect(payloadReads).toBe(0);
+  expect(view.getNewEntityCount()).toBe(201);
+});
+
+it.each([0, 40])('#8452 reference-slot queries track growth, unresolved hosts, drafts and aliases (%i unrelated)', unrelated => {
+  const v = new MutablePropertyView(null, 'slots');
+  const rel = v.createEntity('IfcRelVoidsElement', [null, null, null, null, '#40', '#50']);
+  const grow = (count: number) => { for (let i = 0; i < count; i++) v.createEntity('IfcRelVoidsElement', [null, null, null, null, '#999', '#1000']); };
+  grow(unrelated);
+  const ids = (target: number | null) => v.getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, target);
+  expect(ids(40)).toEqual([rel.expressId]);
+  grow(40); // Cross the small-bucket boundary, or maintain an existing projection.
+  expect(ids(40)).toEqual([rel.expressId]);
+  const attributes = rel.attributes;
+  attributes[4] = '$';
+  expect(ids(null)).toEqual([rel.expressId]);
+  expect(ids(40)).toEqual([]);
+  v.runAtomic(outer => outer.runAtomic(inner => {
+    inner.setPositionalAttribute(rel.expressId, 4, '#60');
+    // Raw creations remain separate from positional overrides, as with reference candidates.
+    expect(inner.getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, null)).toEqual([rel.expressId]);
+    inner.deleteEntity(rel.expressId);
+    expect(inner.getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, null)).toEqual([]);
+  }));
+  expect(ids(null)).toEqual([]);
+});
+
+it('#10420 warmed 33-row slot projections follow repeated retained-array edits', () => {
+  const view = new MutablePropertyView(null, 'retained-slot-projection');
+  const rows = Array.from({ length: 33 }, () => view.createEntity('IfcRelVoidsElement', [null, null, null, null, '#40', '#50']));
+  const attributes = view.getNewEntity(rows[0].expressId)!.attributes;
+  const ids = (target: number) => view.getNewEntityReferenceSlotIds('IFCRELVOIDSELEMENT', 4, target);
+  expect(ids(40)).toEqual(rows.map(row => row.expressId));
+  attributes[4] = '#60';
+  expect(ids(40)).toEqual(rows.slice(1).map(row => row.expressId));
+  expect(ids(60)).toEqual([rows[0].expressId]);
+  // The same retained array can change again without another getter.
+  attributes[4] = '#70';
+  expect(ids(60)).toEqual([]);
+  expect(ids(70)).toEqual([rows[0].expressId]);
+});
+
+it('#8452 reference queries track an already exposed row adopted by another map', () => {
+  const first = new NewEntityMap();
+  const row = { expressId: 1, type: 'IfcRelVoidsElement', attributes: [null, null, null, null, '#40', '#50'] };
+  first.set(1, row);
+  const alias = row.attributes;
+  const second = new NewEntityMap([[1, row]]);
+  alias[4] = '#60';
+  expect([...second.referenceSlotIds(row.type, 4, 40)]).toEqual([]);
+  expect([...second.referenceSlotIds(row.type, 4, 60)]).toEqual([1]);
+  expect([...second.referencing(40)]).toEqual([]);
+  expect([...second.referencing(60)].map(e => e.expressId)).toEqual([1]);
+});
+
+it.each([false, true])('#8452 retained drafts preserve private aliases and reference queries after completion (abort=%s)', abort => {
+  const view = new MutablePropertyView(null, 'retired');
+  const row = view.createEntity('IfcRelVoidsElement', [null, null, null, null, '#40', '#50']);
+  let retained!: MutablePropertyView;
+  let alias!: unknown[];
+  const edit = () => view.runAtomic(draft => {
+    retained = draft;
+    alias = draft.getNewEntity(row.expressId)!.attributes;
+    alias[4] = '#60';
+    if (abort) throw new Error('abort');
+  });
+  if (abort) expect(edit).toThrow('abort'); else edit();
+  // Rebuild a retired index, then mutate the previously returned array again.
+  expect(retained.getNewEntityReferenceSlotIds(row.type, 4, 60)).toEqual([row.expressId]);
+  alias[4] = '#70';
+  expect(retained.getNewEntityReferenceSlotIds(row.type, 4, 60)).toEqual([]);
+  expect([...retained.getNewEntitiesReferencing(70)].map(e => e.expressId)).toEqual([row.expressId]);
+  expect(view.getNewEntityReferenceSlotIds(row.type, 4, abort ? 40 : 60)).toEqual([row.expressId]);
+  expect([...view.getNewEntitiesReferencing(70)]).toEqual([]);
 });

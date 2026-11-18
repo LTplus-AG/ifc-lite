@@ -6,10 +6,9 @@ import {
   type IfcDataStore,
   EntityExtractor,
   extractClassificationsOnDemand,
+  getSchemaRegistryForVersion,
 } from '@ifc-lite/parser';
 import { isProperSubtypeOfAny, type HierarchyRegistry } from '@ifc-lite/codegen/schema-hierarchy';
-import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
-import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 import { iterateEffectiveEntities } from '@ifc-lite/data';
 import type { ClassificationInfo } from '../types.js';
 import { typedAuthoredValue, type EntityVisibilityView } from './entity-visibility.js';
@@ -197,10 +196,18 @@ function appendExternalReferenceClassifications(
  * store built from the OTHER schema is queried against it (a server-parsed
  * store's `EntityRef.type` names an entity, not a schema version).
  */
-const HIERARCHY_REGISTRIES: readonly HierarchyRegistry[] = [
-  IFC4_SCHEMA.SCHEMA_REGISTRY,
-  IFC4X3_SCHEMA.SCHEMA_REGISTRY,
-];
+//
+// The parser's registries, not `@ifc-lite/codegen/ifc4` / `/ifc4x3`: they are
+// byte-identical copies of the same generation (`scripts/check-codegen-sync.mjs`),
+// and reading the codegen copies put a second decode of each into every
+// bundle that loads this module, at load time. Built on first use.
+let hierarchyRegistries: readonly HierarchyRegistry[] | undefined;
+function getHierarchyRegistries(): readonly HierarchyRegistry[] {
+  if (hierarchyRegistries === undefined) {
+    hierarchyRegistries = [getSchemaRegistryForVersion('IFC4'), getSchemaRegistryForVersion('IFC4X3')];
+  }
+  return hierarchyRegistries;
+}
 
 /**
  * Could an entity of this upper-cased type name be a `RelatedResourceObjects`
@@ -242,8 +249,8 @@ const HIERARCHY_REGISTRIES: readonly HierarchyRegistry[] = [
  */
 export function isNonRootedClassifiableResourceType(upperType: string): boolean {
   return (
-    isProperSubtypeOfAny(HIERARCHY_REGISTRIES, upperType, 'IfcMaterialDefinition') ||
-    isProperSubtypeOfAny(HIERARCHY_REGISTRIES, upperType, 'IfcProfileDef')
+    isProperSubtypeOfAny(getHierarchyRegistries(), upperType, 'IfcMaterialDefinition') ||
+    isProperSubtypeOfAny(getHierarchyRegistries(), upperType, 'IfcProfileDef')
   );
 }
 

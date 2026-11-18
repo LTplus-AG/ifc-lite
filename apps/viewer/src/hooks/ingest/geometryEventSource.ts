@@ -15,10 +15,15 @@
  * passed inline before.
  */
 
-import { DEFAULT_HUNG_JOB_TIMEOUT_MS, type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent } from '@ifc-lite/geometry';
+import { fastGeometryEvents, type FastGeometryRun } from './fastPath.js';
+// The loader's other pre-geometry seams, re-exported so it imports one module for all of them.
+export { claimFastGeometry } from './fastPath.js';
+export { runPickStart } from './pickStart.js';
+export { ADAPTIVE_SYNC_THRESHOLD_BYTES } from './adaptiveGeometryOptions.js';
+import { type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { getGeomWorkerOverride } from '../../store/constants.js';
-import { getDynamicBatchConfig } from '../../utils/ifcConfig.js';
+import { adaptiveGeometryOptions } from './adaptiveGeometryOptions.js';
 import type { CachePlan } from '../cacheTier.js';
 
 type AdaptiveOptions = NonNullable<Parameters<GeometryProcessor['processAdaptive']>[1]>;
@@ -39,20 +44,23 @@ export interface GeometryEventRequest {
   modelId: string;
   /** The load's activity; a retained run installs `interrupt` so Cancel keeps what it published. */
   activity: { interrupt?: () => void; fail(message: string): string };
+  /** A small-file fast-path run started at the pick (fastPath.ts); its events replace the pool's. */
+  fastRun?: FastGeometryRun | null;
 }
 
 /** The kernel one load runs on, decided before any work. */
 export interface GeometryKernelLoad {
   readonly kind: 'exact' | 'retained';
-  /** Set when the request is out of the kernel's scope; the refusal is already reported. */
-  readonly refused?: Promise<void>;
+  /** Set when the request is out of the kernel's scope; resolves to the refusal message it reported, `null` for a quiet stop. */
+  readonly refused?: Promise<string | null>;
   /** Whether the exact geometry server may serve this load. */
   readonly serverEnabled: boolean;
   /** The cache plan this load may use: retained loads never read or write exact geometry. */
   cachePlan(plan: CachePlan): CachePlan;
   /**
    * Once the format and unwrapped size are known: true when this load must stop
-   * here. The refusal is reported and the model record marked; the caller returns.
+   * here. The refusal is reported and the model record marked; the caller ends
+   * its load UI and returns.
    */
   refuseSource(format: string, byteLength: number, request: Pick<GeometryEventRequest, 'modelId' | 'activity'>): boolean;
   /** The kernel's own event stream; absent for exact, which streams through `processAdaptive`. */
@@ -78,20 +86,29 @@ export function beginGeometryKernel(
   file: File,
   target: { kind: 'primary' | 'federated' },
   retry: () => void,
+  /**
+   * Required, so no caller hands the retained engine an empty file by default. `hasSourceBytes`
+   * is false for a processed model: the server's exact geometry is all there is. Such a load is
+   * exact whatever the setting, and never waits for, fetches or arms the retained engine.
+   */
+  source: { hasSourceBytes: boolean },
 ): GeometryKernelLoad {
+  if (!source.hasSourceBytes) return EXACT_GEOMETRY_KERNEL;
   // `retainedKernel` is `null` in the default viewer (the alias maps to off.ts).
   return retainedKernel?.begin(file, target, retry) ?? EXACT_GEOMETRY_KERNEL;
 }
 
 export function openGeometryEvents(kernel: GeometryKernelLoad, request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent> {
   if (kernel.events) return kernel.events(request);
-  return request.processor.processAdaptive(request.view, {
+  if (request.fastRun) return fastGeometryEvents(request.fastRun, () => adaptiveEvents(request), request.signal);
+  return adaptiveEvents(request);
+}
+
+function adaptiveEvents(request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent> {
+  return request.processor.processAdaptive(request.view, adaptiveGeometryOptions({
+    fileSizeMB: request.fileSizeMB,
     signal: request.signal,
-    hungJobTimeoutMs: DEFAULT_HUNG_JOB_TIMEOUT_MS, // the loader reads skippedHungElements
     stallPhaseHandle: request.stallPhaseHandle,
-    sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
-    // Dynamic batches: small first, then large.
-    batchSize: getDynamicBatchConfig(request.fileSizeMB),
     existingSab: request.existingSab,
     // Federated adds share the anchor's RTC origin so all models sit in
     // one coordinate space (pixel-perfect alignment, no post-shift).
@@ -107,5 +124,5 @@ export function openGeometryEvents(kernel: GeometryKernelLoad, request: Geometry
     // is unaffected by the count (disjoint deterministic element slices).
     workerCountOverride: getGeomWorkerOverride(),
     trace: request.trace,
-  });
+  }));
 }

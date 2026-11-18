@@ -5,6 +5,9 @@
 import type { Catalogue } from '../../registry';
 
 export const modelInspectorDe = {
+  "modelInspector.multipleModels": "Wähle Elemente aus einem Modell, um sie gemeinsam zu bearbeiten.",
+  'modelInspector.unavailable': 'Nicht verfügbares Element',
+  'modelInspector.multiple': '{count} ausgewählte Elemente',
   "modelInspector.panel.title": "Modellinspektor",
   "modelInspector.close": "Schließen Sie den Modellinspektor",
   "modelInspector.empty.noSession": "Zum Bearbeiten den Modellarbeitsbereich öffnen",
@@ -71,5 +74,9 @@ export const modelInspectorDe = {
   "modelInspector.layers.defaultsHint": "Neue Bauteile erhalten diese Schichten.",
   "modelInspector.layers.needName": "Benennen Sie jedes neue Material",
   "modelInspector.layers.needLayer": "Geben Sie jeder Schicht eine Dicke größer als Null",
+  "modelInspector.layers.typeScope": {"one": "Ändert {countDisplay} Element dieses Typs, mit seinen Anschlüssen und erzeugten Räumen.", "other": "Ändert {countDisplay} Elemente dieses Typs, mit ihren Anschlüssen und erzeugten Räumen."},
+  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} verwendet einen anderen Schichtaufbau oder ein anderes Material und behält es.", "other": "{countDisplay} verwenden einen anderen Schichtaufbau oder ein anderes Material und behalten es."},
+  "modelInspector.layers.notFollowed": {"one": "{countDisplay} Element hat seinen bisherigen Körper behalten:", "other": "{countDisplay} Elemente haben ihren bisherigen Körper behalten:"},
+  "modelInspector.layers.keptBody": "{name}: {reason}",
   "modelInspector.hosting.title": "Einbau",
 } satisfies Catalogue;

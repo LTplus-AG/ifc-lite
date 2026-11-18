@@ -14,6 +14,7 @@
  * transport.
  */
 
+import { requestTimeoutMs } from './request-timeout.js';
 import { reserveRequest, settleRequest, type RootBudget } from './budget.js';
 import type { RequestProvenance, UsageReceipt } from './receipt.js';
 import { logicalInputDigest, textDigest } from './request-digest.js';
@@ -153,7 +154,7 @@ export async function runModelRequest<Message, Route extends string>(
   if (!grant) return { kind: 'refused', reason: 'budget-exhausted' };
 
   // Match setTimeout's effective Node/browser range, including invalid/overflow delays.
-  const timeoutMs = Number.isFinite(request.timeoutMs) && request.timeoutMs >= 1 && request.timeoutMs <= 2_147_483_647 ? Math.trunc(request.timeoutMs) : 1;
+  const timeoutMs = requestTimeoutMs(request.timeoutMs);
 
   startedAt = Date.now();
   id = `req-${startedAt}-${receiptSequence}`;

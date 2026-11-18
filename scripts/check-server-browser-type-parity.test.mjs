@@ -527,13 +527,34 @@ test('checkConcept() reports no failures when both sides agree exactly', () => {
 test('RELATIONSHIPS UNDER-READ: RED when a 4th `*_REL_TYPES` Set appears on the TS side alongside the recognized three', () => {
   const ts = replaceOnce(
     real.TS_REL_INDEXES,
-    'export const HIERARCHY_REL_TYPES: ReadonlySet<string> = new Set(',
-    "export const PORT_REL_TYPES = new Set([\n    'IFCRELCONNECTSPORTS',\n]);\nexport const HIERARCHY_REL_TYPES: ReadonlySet<string> = new Set(",
+    'function buildHierarchyRelTypes(): ReadonlySet<string> {',
+    "export const PORT_REL_TYPES = new Set([\n    'IFCRELCONNECTSPORTS',\n]);\nfunction buildHierarchyRelTypes(): ReadonlySet<string> {",
   );
   const { status, out } = runOn({ TS_REL_INDEXES: ts });
   assert.equal(status, 1, out);
   assert.match(out, /tsRelationshipTypes: found a binding `PORT_REL_TYPES`/);
   assert.match(out, /extractor may be under-reading; update it/);
+});
+
+// The hierarchy gate is built on first use (`buildHierarchyRelTypes`, read
+// like the literal form). A 4th set written the same lazy way must be as
+// visible to the guard as a 4th constant.
+test('RELATIONSHIPS UNDER-READ: RED when a 4th lazily built `build*RelTypes` set appears alongside the recognized builders', () => {
+  const ts = replaceOnce(
+    real.TS_REL_INDEXES,
+    'function buildHierarchyRelTypes(): ReadonlySet<string> {',
+    "function buildPortRelTypes(): ReadonlySet<string> {\n    return new Set(['IFCRELCONNECTSPORTS']);\n}\nfunction buildHierarchyRelTypes(): ReadonlySet<string> {",
+  );
+  const { status, out } = runOn({ TS_REL_INDEXES: ts });
+  assert.equal(status, 1, out);
+  assert.match(out, /tsRelationshipTypes: found a binding `buildPortRelTypes`/);
+});
+
+test('RELATIONSHIPS UNDER-READ: RED when the hierarchy gate builder is renamed and so no longer read', () => {
+  const ts = replaceOnce(real.TS_REL_INDEXES, 'function buildHierarchyRelTypes(): ReadonlySet<string> {', 'function buildHierarchyRelTypesV2(): ReadonlySet<string> {');
+  const { status, out } = runOn({ TS_REL_INDEXES: ts });
+  assert.equal(status, 1, out);
+  assert.match(out, /tsRelationshipTypes: found a binding `buildHierarchyRelTypesV2`|could not find a .*HIERARCHY_REL_TYPES/);
 });
 
 test('RELATIONSHIPS UNDER-READ: an unrelated `*_TYPES` Set (not `*_REL_TYPES`) does not false-positive on the TS side', { skip: NEEDS_PARSER_DIST }, () => {

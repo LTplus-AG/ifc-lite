@@ -12,10 +12,55 @@ import type { MutationStoreShape } from './types.js';
  * table, which is the only membership record for stores without a byte
  * index (IFCX imports, reconstructed collab rooms — #5008).
  */
+interface WatermarkKey {
+  byId: unknown; byIdSize: number;
+  deferred: unknown; deferredSize: number;
+  table: unknown; tableLength: number;
+  max: number;
+}
+const watermarks = new WeakMap<object, WatermarkKey>();
+
+function watermarkKey(store: MutationStoreShape, max: number): WatermarkKey {
+  // @raw-entity-enumeration-ok index identities and sizes only; no ids are read
+  const byId = store.entityIndex?.byId, deferred = store.deferredEntityIndex, table = store.entities?.expressId;
+  return { byId, byIdSize: byId?.size ?? 0, deferred, deferredSize: deferred?.size ?? 0, table, tableLength: table?.length ?? 0, max };
+}
+
+/**
+ * The same answer, computed once per store rather than once per editor
+ * (#8452): every transaction and preview builds an editor, and on a large
+ * model each scan visited every source id. Source indexes only grow
+ * (hydration and federation add ids; tombstones never remove one), so an
+ * index with the same identity and size has the same maximum. Any change of
+ * identity or size rescans. A store that grew without either changing is
+ * still caught: `StoreEditor.addEntity` checks the next id against the source
+ * before allocating and then forces {@link rescanHighestExpressId}.
+ */
 export function highestExistingExpressId(store: MutationStoreShape): number {
+  const cached = watermarks.get(store);
+  if (cached) {
+    const key = watermarkKey(store, cached.max);
+    if (key.byId === cached.byId && key.byIdSize === cached.byIdSize && key.deferred === cached.deferred
+      && key.deferredSize === cached.deferredSize && key.table === cached.table && key.tableLength === cached.tableLength) return cached.max;
+  }
+  return rescanHighestExpressId(store);
+}
+
+/** Scan every source index and replace the per-store cached maximum. */
+export function rescanHighestExpressId(store: MutationStoreShape): number {
+  const max = scanHighestExpressId(store);
+  watermarks.set(store, watermarkKey(store, max));
+  return max;
+}
+
+function scanHighestExpressId(store: MutationStoreShape): number {
   let max = 0;
+  // Indexless stores (IFCX, collab tables) own their table rows, read below.
   // @raw-entity-enumeration-ok allocator watermark must include tombstoned source IDs so a new entity never reuses one
-  for (const id of store.entityIndex.byId.keys()) {
+  const index = store.entityIndex?.byId;
+  const compactMax = index && 'maxExpressId' in index ? index.maxExpressId : undefined;
+  if (typeof compactMax === 'number') max = compactMax;
+  else if (index) for (const id of index.keys()) {
     if (id > max) max = id;
   }
   const deferred = store.deferredEntityIndex;
@@ -25,7 +70,11 @@ export function highestExistingExpressId(store: MutationStoreShape): number {
     }
   }
   const table = store.entities?.expressId;
-  if (table) {
+  // Compact stores derive table rows from the same primary refs (columnar-parser)
+  // or fill table + compact index together (viewer/serverEntityTable). Deferred
+  // property atoms are separate and checked above. Only map/indexless stores
+  // (e.g. IFCX/collab) can have table-only IDs.
+  if (table && typeof compactMax !== 'number') {
     for (let i = 0; i < table.length; i++) {
       const id = table[i];
       if (id !== undefined && id > max) max = id;

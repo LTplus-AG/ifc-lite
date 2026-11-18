@@ -7,7 +7,7 @@
  * (`store/teardown.ts`). Split out beside the slice for the reason
  * `modelSlice.teardown.ts` documents.
  *
- * `clearPendingColorUpdates` / `clearInstancedShards` / `resetMeshColors` stay
+ * `clearPendingColorUpdates` / `resetMeshColors` stay
  * exactly as they are: they are the slice's own narrower actions with their own
  * callers and their own semantics (`resetMeshColors` RESTORES colours through
  * `pendingMeshColorUpdates` before clearing the backup, which is not what a
@@ -26,7 +26,6 @@ export const dataTeardown = defineSliceTeardown(
     'pendingColorUpdates',
     'pendingMeshColorUpdates',
     'meshColorBackup',
-    'pendingInstancedShards',
   ],
   {
     'session-reset': (_scope, state) => ({
@@ -46,9 +45,8 @@ export const dataTeardown = defineSliceTeardown(
       // surviving a swap made RESET_COLORS paint the old model's colours onto
       // the new one; first-write-wins made every later reset wrong too.
       meshColorBackup: null,
-      // Drop any undrained GPU-instancing shards from the previous model so
-      // they can't be uploaded into the new scene under a rapid model switch.
-      pendingInstancedShards: null,
+      // Undrained GPU-instancing shards are not store state; the entry point
+      // discards them (`discardInstancedShards`, a side effect).
       // `ifcDataStore` / `geometryResult` are deliberately absent: a session
       // reset is a file LOAD, and the loader writes both straight after. They
       // follow the active model on the two federation arms below.

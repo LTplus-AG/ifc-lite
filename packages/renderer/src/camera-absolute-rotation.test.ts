@@ -116,14 +116,33 @@ describe('Camera.setRotation (absolute orientation)', () => {
     assert.ok(Math.abs(camera.getRotation().azimuth - 270) < 1e-6);
   });
 
-  it('clamps elevation just off the poles so the view matrix cannot degenerate', () => {
+  it('lands exactly on the pole at ±90°, azimuth carried by a horizontal up (#9501)', () => {
+    // An orthographic plan tilted by the old MIN_PHI clamp drew 0.6 degrees of
+    // every vertical member's walls beside its section.
+    for (const elevation of [90, -90] as const) {
+      for (const azimuth of [0, 90, 135, 270]) {
+        const camera = new Camera();
+        camera.setTarget(1, 2, 3);
+        camera.setPosition(1, 2, 13);
+        camera.setRotation(azimuth, elevation);
+        const p = camera.getPosition();
+        assert.deepStrictEqual([p.x, p.z], [1, 3], `${azimuth}/${elevation}: position is on the vertical through the target`);
+        assert.ok(Math.abs(p.y - (2 + Math.sign(elevation) * 10)) < 1e-9, 'orbit radius kept');
+        const got = camera.getRotation();
+        assert.strictEqual(got.elevation, elevation);
+        assert.ok(Math.abs(got.azimuth - azimuth) < 1e-9, `${elevation}: azimuth ${got.azimuth} for ${azimuth}`);
+        const vp = camera.getViewProjMatrix().m;
+        assert.ok(Array.from(vp).every(Number.isFinite), 'the view matrix stays finite');
+      }
+    }
+  });
+
+  it('clamps an elevation short of the pole to the orbit margin', () => {
     const camera = new Camera();
-    // ±90° is the spherical singularity: `cross(forward, up)` collapses and the
-    // model flips. MIN_PHI is the same margin `orbit` clamps to.
     const maxElevation = 90 - (CC.MIN_PHI * 180) / Math.PI;
-    camera.setRotation(0, 90);
+    camera.setRotation(0, 89.9);
     assert.ok(Math.abs(camera.getRotation().elevation - maxElevation) < 1e-6);
-    camera.setRotation(0, -90);
+    camera.setRotation(0, -89.9);
     assert.ok(Math.abs(camera.getRotation().elevation + maxElevation) < 1e-6);
   });
 

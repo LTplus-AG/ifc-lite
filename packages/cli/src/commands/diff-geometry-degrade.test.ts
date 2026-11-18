@@ -50,7 +50,7 @@ vi.mock('@ifc-lite/wasm', () => {
       throw new Error('synthetic wasm panic (test)');
     }
   }
-  return { initSync: (): void => {}, IfcAPI: FakeIfcAPI };
+  return { ENGINE_BINARY_URL: null, initSync: (): void => {}, IfcAPI: FakeIfcAPI };
 });
 
 // Imported AFTER the mock declaration in source order, but `vi.mock` is

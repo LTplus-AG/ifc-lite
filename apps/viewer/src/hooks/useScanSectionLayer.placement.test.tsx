@@ -19,7 +19,7 @@ it('uses the final GPU world matrix without applying IFC RTC a second time (#422
   // Fixture at the renderer boundary: native decode origin 1000 plus the
   // user's 7 m correction. The shader draws residual x=1 at world x=1008.
   const matrix = nativePointCloudOriginMatrix([1000, 0, 0]); matrix[12] += 7;
-  renderer.getPointCloudTransform = () => new Float32Array(matrix);
+  renderer.getPointCloudPlacement = () => new Float64Array(matrix);
   setGlobalRendererRef({ current: renderer });
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('scan'), pointCloudHandleId: 7 }), pointCloudAlignmentEnabled: false });
   registerPointCloudScanCache(7, 1);

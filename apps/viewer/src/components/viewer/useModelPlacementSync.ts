@@ -7,6 +7,7 @@ import { useViewerStore, type ViewerState } from '@/store';
 import { endClashScenePresentation } from '@/lib/clash/visibility-ownership';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { createPlacementIndexSync } from '@/lib/model-placement/spatial-index';
+import { subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { placementMoved, staleMeasurementIds } from '@/lib/model-placement/spatial-invalidation';
 import { equalTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
@@ -52,6 +53,7 @@ export function useModelPlacementSync(
     sync(useViewerStore.getState());
     const index = placementIndex.current!;
     index.refreshMissing(useViewerStore.getState());
+    const unsubscribeShards = subscribeInstancedShards((event) => index.instancedShards(event, useViewerStore.getState()));
     const unsubscribe = useViewerStore.subscribe((state, previous) => {
       index.update(state, previous);
       if (state.modelPlacement === previous.modelPlacement) return;
@@ -67,6 +69,6 @@ export function useModelPlacementSync(
       state.setPointCloudDeviationComputed(false);
       if (state.pointCloudColorMode === 'deviation') state.setPointCloudColorMode('rgb');
     });
-    return () => { unsubscribe(); index.dispose(); };
+    return () => { unsubscribe(); unsubscribeShards(); index.dispose(); };
   }, [rendererRef, initialized, indices, geometry]);
 }

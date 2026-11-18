@@ -112,6 +112,12 @@ function numberEnd(text: string, from: number): number {
   return i;
 }
 
+/** Read one STEP number with the shared numeric grammar and surrounding trivia. */
+export function parseStepNumber(token: string): number {
+  const start = skipStepTrivia(token, 0), end = start < 0 ? -1 : numberEnd(token, start);
+  return end >= 0 && skipStepTrivia(token, end) === token.length ? Number(token.slice(start, end)) : NaN;
+}
+
 /**
  * Whether `value` is exactly ONE STEP value, trivia allowed around it and
  * between its parts. See the module comment for the grammar.

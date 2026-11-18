@@ -72,17 +72,17 @@ describe('startScanDetection lifetime (#6894)', () => {
       const held = heldDetector();
       const deps: DetectionDeps = { detector: () => held.detector, cloudMatrix: () => null };
       const running = startScanDetection('scan', deps);
-      assert.equal(useViewerStore.getState().scanDetectionStatus, 'running');
+      assert.equal(useViewerStore.getState().scanDetectionJob.kind, 'running');
       if (how === 'the scan is removed') useViewerStore.getState().removeModel('scan');
       else if (how === 'the IFC target is removed') useViewerStore.getState().removeModel('ifc');
       else useViewerStore.getState().clearAllModels();
       assert.equal(held.cancels(), 1, 'the running worker is terminated');
-      assert.equal(useViewerStore.getState().scanDetectionStatus, 'idle', 'no run is in flight any more');
+      assert.equal(useViewerStore.getState().scanDetectionJob.kind, 'idle', 'no run is in flight any more');
       // The worker answers anyway (it raced the terminate): nothing is stored.
       held.answer({ status: 'done', result: RESULT });
       await running;
       assert.equal(useViewerStore.getState().scanDetectionRun, null, 'no run for a scan or target that is gone');
-      assert.equal(useViewerStore.getState().scanDetectionStatus, 'idle');
+      assert.equal(useViewerStore.getState().scanDetectionJob.kind, 'idle');
     });
   }
 
@@ -91,10 +91,10 @@ describe('startScanDetection lifetime (#6894)', () => {
     const held = heldDetector();
     const running = startScanDetection('scan', { detector: () => held.detector, cloudMatrix: () => null });
     useViewerStore.getState().removeModel('scan');
-    assert.equal(useViewerStore.getState().scanDetectionStage, null);
+    assert.deepEqual(useViewerStore.getState().scanDetectionJob, { kind: 'idle' });
     // The terminated worker's last progress message was already in flight.
     held.stages[0]?.('proposing');
-    assert.equal(useViewerStore.getState().scanDetectionStage, null, 'a gone run reports no stage');
+    assert.deepEqual(useViewerStore.getState().scanDetectionJob, { kind: 'idle' }, 'a gone run reports no stage');
     held.answer({ status: 'cancelled' });
     await running;
   });

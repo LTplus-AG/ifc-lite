@@ -16,6 +16,7 @@
  */
 
 import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
+import { resolveIdsTargetFilter } from '@/lib/ids/resolve-target-filter';
 import { runIdsCheck } from '@/lib/validation/run-ids-check';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
 import { useCallback, useEffect, useRef } from 'react';
@@ -40,7 +41,7 @@ import { posthog } from '../lib/analytics';
 import { errorCaptureProps } from '../lib/load-errors';
 import { useValidationResults, type UseValidationResults } from './validation/useValidationResults';
 import { useValidationEpoch } from './validation/useValidationEpoch';
-import { guardValidationRun } from './validation/validationRunGuard';
+import { captureRunIdentity, guardAnalysisRun } from './analysisRunGuard';
 
 export interface UseIDSOptions {
   /** Automatically apply color overrides after validation */
@@ -190,6 +191,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       return null;
     }
     const { modelId, dataStore } = target;
+    const filterAtStart = useViewerStore.getState().idsTargetFilter;
     const myEpoch = bumpEpoch();
     workerAbortRef.current?.abort();
     const abortController = new AbortController();
@@ -199,7 +201,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     // A teardown that changes the model set ends this run instead of only
     // resetting its flags (A1).
     // The render-time `models` / `ifcDataStore` the target was resolved from.
-    const federation = guardValidationRun(useViewerStore, { models, ifcDataStore }, cancelThisRun);
+    const federation = guardAnalysisRun(useViewerStore, cancelThisRun, captureRunIdentity({ models, ifcDataStore }));
     const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: document.info.title,
       cancel: cancelThisRun });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
@@ -237,9 +239,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         }
       };
 
+      const entityIds = filterAtStart ? await resolveIdsTargetFilter(useViewerStore.getState(), modelId, dataStore,
+        structuredClone(filterAtStart.groups), abortController.signal) : undefined;
+      if (!stillWanted(myEpoch)) return null;
+      if (useViewerStore.getState().idsTargetFilter !== filterAtStart) { setIdsProgress(null); return null; }
       const { report: validationReport, snapshot } = await runIdsCheck({
         document, modelId, dataStore, mutationView: getMutationView(modelId),
-        locale, models, signal: abortController.signal, onProgress,
+        locale, models, signal: abortController.signal, onProgress, entityIds,
       });
 
       // A newer call may have started (and even published) while this one
@@ -247,7 +253,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // model set it read must still be loaded (A1). A refused run is still
       // this call's, so it clears its own progress (the finally ends loading).
       if (!stillWanted(myEpoch)) return null;
-      if (!federation.isCurrent()) { setIdsProgress(null); return null; }
+      if (!federation.isCurrent() || useViewerStore.getState().idsTargetFilter !== filterAtStart) { setIdsProgress(null); return null; }
       setIdsValidationReport(stampAnalysisReport(validationReport, stamp), snapshot);
       outcome = 'completed';
 

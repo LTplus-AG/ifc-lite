@@ -191,7 +191,7 @@ test('linked-records assistant: projections apply through the native service as 
   }, STORE, { timeout: 180000 });
   await expect(panel.getByRole('button', { name: 'Select Installed door 1', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  await page.getByRole('tabpanel', { name: 'Author', exact: true }).getByRole('button', { name: 'Model', exact: true }).click();
+  await page.locator('[data-command-id="tool:edit-mode"]').click();
   await page.route('**/api/chat', async route => route.fulfill({ contentType: 'text/event-stream',
     body: `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(ANSWERS.PROJECTION) } }] })}\n\ndata: [DONE]\n\n` }));
   await openPanel(page, 'semantic');

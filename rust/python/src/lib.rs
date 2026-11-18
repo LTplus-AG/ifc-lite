@@ -32,6 +32,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 use std::collections::HashSet;
 
+mod rhino;
 mod finite_json;
 mod swept_disks;
 mod alignment_axes;
@@ -226,7 +227,8 @@ fn geometry_data_json(
 }
 
 #[pymodule]
-fn ifclite_geom(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(rhino::rhino_scene, m)?)?;
     m.add_function(wrap_pyfunction!(alignment_axes::alignment_axes, m)?)?;
     m.add_function(wrap_pyfunction!(geometry_data_buffers, m)?)?;
     m.add_function(wrap_pyfunction!(geometry_data_json, m)?)?;

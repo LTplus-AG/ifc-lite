@@ -435,9 +435,12 @@ export function IfcTypeEnumToString(type: IfcTypeEnum): string {
 /**
  * IFC STEP attribute value as extracted from a STEP argument list.
  *
- * Two WRITE-ONLY markers (never produced by extraction) let authoring code
+ * WRITE-ONLY markers (never produced by extraction) let authoring code
  * pin the exact STEP token for a value whose type a bare JS primitive cannot
  * convey:
+ *
+ * - `{ literal: string }` (from `stepString`) writes quoted literal text even
+ *   when it equals `$`, `*`, a reference or an enumeration (#9876).
  *
  * - `{ real: number }` forces a STEP REAL literal with a decimal point for
  *   whole numbers (`5.` not `5`), which typed measures like `IfcLengthMeasure`
@@ -458,7 +461,8 @@ export type IfcAttributeValue =
   | boolean
   | null
   | { real: number }
-  | { typed: { type: string; value: string | number | boolean } }
+  | { literal: string }
+  | { typed: { type: string; value: string | number | boolean | number[] } }
   | IfcAttributeValue[];
 
 export interface IfcEntity {

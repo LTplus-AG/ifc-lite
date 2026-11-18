@@ -65,7 +65,7 @@ describe('#7955 M2 shape-only guard', () => {
     it(`mesh-derived exports ${retained ? 'are disabled with the shape-only reason' : 'stay available'} (${retained ? 'retained' : 'exact'} model)`, async () => {
       await seed(retained);
       render(<ExportProbe />);
-      for (const id of ['glb', 'kmz', 'ion', 'usd']) {
+      for (const id of ['glb', 'kmz', 'ion', 'usd', '3dm']) {
         const state = exportState(id);
         assert.equal(state.reason, retained ? RETAINED_SHAPE_ONLY_REASON : undefined, id);
         assert.equal(state.disabled, retained, id);
@@ -118,7 +118,7 @@ for (const retained of [false, true]) {
       act(() => useViewerStore.setState({ models }));
     }
     render(<ExportProbe />);
-    for (const id of ['usd', 'energy', 'ion']) {
+    for (const id of ['usd', '3dm', 'energy', 'ion']) {
       assert.deepEqual(exportState(id), { disabled: retained, reason: retained ? RETAINED_EXACT_ONLY_REASON : undefined }, id);
     }
     // A complete, final retained model still exports what the viewer holds.

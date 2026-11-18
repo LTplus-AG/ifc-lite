@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ReactNode } from 'react';
-import { Analytics } from '@vercel/analytics/react';
+import { HostingAnalytics } from '@/components/HostingAnalytics';
 import { BimProvider } from '@/sdk/BimProvider';
 import { ExtensionHostProvider } from '@/sdk/ExtensionHostProvider';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
@@ -25,7 +25,7 @@ export function ViewerRoot({ sourceProviders, children }: { sourceProviders?: re
           {/* Toasts mount inside ViewportContainer, anchored to the viewport (#5504). */}
           <ViewerLayout />
           <StaleDeploymentNotice />
-          <Analytics />
+          <HostingAnalytics />
         </SourceHostProvider>
       </ExtensionHostProvider>
     </BimProvider>

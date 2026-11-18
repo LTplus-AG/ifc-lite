@@ -19,6 +19,7 @@
  * call becomes a tool error the model sees, not a crash.
  */
 
+import { requestTimeoutMs } from './request-timeout.js';
 import { reserveRequest, settleRequest, type RootBudget } from './budget.js';
 import type { UsageReceipt } from './receipt.js';
 import type { TokenUsage } from './usage.js';
@@ -105,6 +106,9 @@ export interface ToolTurnRequest<Route extends string = string> {
   readonly routeCeiling: number;
   readonly budget: RootBudget;
   readonly signal?: AbortSignal;
+  /** Deadline in ms: finite values in [1, 2^31 - 1] truncate to integers.
+   * Invalid, sub-millisecond, or >= 2^31 values (including Infinity) become
+   * 1 ms, an effectively immediate timeout rather than an unlimited wait. */
   readonly timeoutMs: number;
   readonly onText?: (delta: string) => void;
   readonly onThinking?: (delta: string) => void;
@@ -146,7 +150,7 @@ export async function runToolTurn<Route extends string>(
   let timedOut = false;
   const abortFromCaller = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
-  const deadline = setTimeout(() => { timedOut = true; controller.abort(new Error('request-timeout')); }, request.timeoutMs);
+  const deadline = setTimeout(() => { timedOut = true; controller.abort(new Error('request-timeout')); }, requestTimeoutMs(request.timeoutMs));
 
   let turn: ToolTurn | null = null;
   let failure: Error | null = null;

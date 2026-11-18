@@ -314,6 +314,11 @@ export function migratePanelId(id: string): WorkspacePanelId | undefined {
 /** The panels Alt+1..9 / Alt+0 open, in key order (Alt+0 is the tenth). */
 export const ALT_SHORTCUT_PANELS: readonly WorkspacePanelDef[] = WORKSPACE_PANELS.slice(0, 10);
 
+/** The digit of the Alt shortcut for `ALT_SHORTCUT_PANELS[position]`. */
+export function altShortcutDigit(position: number): number {
+  return (position + 1) % 10;
+}
+
 /**
  * Map an Alt+digit shortcut's `KeyboardEvent.code` to the workspace panel it
  * opens (#1200/#1208). Digit/Numpad 1-9 select the first nine panels; 0 selects
@@ -325,8 +330,8 @@ export const ALT_SHORTCUT_PANELS: readonly WorkspacePanelDef[] = WORKSPACE_PANEL
 export function workspacePanelForShortcutCode(code: string): WorkspacePanelId | undefined {
   const m = /^(?:Digit|Numpad)([0-9])$/.exec(code);
   if (!m) return undefined;
-  const n = Number(m[1]);
-  return ALT_SHORTCUT_PANELS[n === 0 ? 9 : n - 1]?.id;
+  const digit = Number(m[1]);
+  return ALT_SHORTCUT_PANELS.find((_, position) => altShortcutDigit(position) === digit)?.id;
 }
 
 /** The analysis / tool panels that toggle in the sidebar (everything except

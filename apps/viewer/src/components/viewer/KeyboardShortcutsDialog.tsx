@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
+import { isFeatureEnabled } from '@/lib/features';
+import { isSurfaceCommandAvailable } from './surface-command-features';
+import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { Dialog, DialogBody, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -11,6 +13,7 @@ import { LearnTab } from '@/components/tours/LearnTab';
 import { navigateToPath } from '@/services/app-navigation';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { AboutTab } from './KeyboardShortcutsDialogTabs';
 import { ShortcutsTab } from './ShortcutsTab';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
@@ -56,6 +59,10 @@ interface InfoDialogProps {
  */
 export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialogProps) {
   const { t } = useTranslation();
+  const learn = isSurfaceCommandAvailable({ id: 'learn:hub' });
+  const tabs = TABS.filter(({ value }) => value !== 'learn' || learn);
+  // A deep link to a tab that is not offered opens on About.
+  const firstTab = tabs.find(({ value }) => value === initialTab)?.value ?? 'about';
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
@@ -78,7 +85,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
         <div className="flex shrink-0 items-center justify-between gap-2 p-4 border-b">
           <DialogTitle className="text-lg font-semibold shrink-0">{t('keyboardShortcuts.header.title')}</DialogTitle>
           <div className="flex items-center gap-1 min-w-0">
-            <button
+            {isFeatureEnabled('help.product-links') && <button
               type="button"
               onClick={() => { onClose(); navigateToPath('/mcp'); }}
               className="group inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-colors px-3 py-1.5 text-xs font-medium text-primary"
@@ -87,7 +94,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
               <Sparkles className="h-3.5 w-3.5 shrink-0 group-hover:rotate-12 transition-transform" />
               <span className="truncate">{t('keyboardShortcuts.header.mcpCta')}</span>
               <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
-            </button>
+            </button>}
             <IconButton label={t('viewerShell.dialog.close')} variant="ghost" size="icon-sm" className="shrink-0" onClick={onClose}>
               <X className="h-4 w-4" />
             </IconButton>
@@ -97,12 +104,12 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
         {/* Tabbed Content */}
         {/* The dialog unmounts when closed, so defaultValue re-applies on
             every open - enough for deep-linking without controlled tabs. */}
-        <Tabs defaultValue={initialTab ?? 'about'} className="flex min-h-0 flex-1 flex-col">
+        <Tabs defaultValue={firstTab} className="flex min-h-0 flex-1 flex-col">
           <div className="shrink-0 px-4 pt-4">
             {/* Wider than a phone: the strip scrolls sideways, and the
                 selected tab stays in view. */}
             <TabsList scrollable className="w-full justify-start max-sm:h-auto">
-              {TABS.map(({ value, Icon, label }) => (
+              {tabs.map(({ value, Icon, label }) => (
                 <TabsTrigger key={value} value={value} className={TAB_TRIGGER_CLASS}>
                   <Icon className="h-3.5 w-3.5" />
                   {t(label)}
@@ -118,7 +125,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
           <DialogBody asChild><TabsContent value="about" className={TAB_BODY_CLASS}><AboutTab /></TabsContent></DialogBody>
           <DialogBody asChild><TabsContent value="whatsnew" className={TAB_BODY_CLASS}><ChunkErrorBoundary label="What's New tab"><Suspense fallback={null}><WhatsNewTab /></Suspense></ChunkErrorBoundary></TabsContent></DialogBody>
           <DialogBody asChild><TabsContent value="shortcuts" className={TAB_BODY_CLASS}><ShortcutsTab /></TabsContent></DialogBody>
-          <DialogBody asChild><TabsContent value="learn" className={TAB_BODY_CLASS}><LearnTab onClose={onClose} /></TabsContent></DialogBody>
+          {learn && <DialogBody asChild><TabsContent value="learn" className={TAB_BODY_CLASS}><LearnTab onClose={onClose} /></TabsContent></DialogBody>}
         </Tabs>
 
         {/* Footer */}
@@ -151,6 +158,16 @@ export function useKeyboardShortcutsDialog() {
     setTab(next);
     setOpen(true);
   }, []);
+
+  useEffect(() => {
+    const showShortcuts = (event: Event) => {
+      const tab = (event as CustomEvent<{ tab?: InfoDialogTab } | undefined>).detail?.tab;
+      if (tab) openTab(tab);
+      else toggle();
+    };
+    window.addEventListener(EVENT_SHOW_SHORTCUTS, showShortcuts);
+    return () => window.removeEventListener(EVENT_SHOW_SHORTCUTS, showShortcuts);
+  }, [openTab, toggle]);
 
   useLayoutEffect(() => {
     const toggleFromKey = () => {

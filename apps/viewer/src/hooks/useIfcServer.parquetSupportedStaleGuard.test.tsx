@@ -168,6 +168,8 @@ describe('loadFromServer — supersession during the isParquetSupported await', 
       new File(['x'], 'model.ifc'),
       SMALL_BUFFER,
       () => stale,
+      undefined,
+      'server',
     );
 
     // Wait on the SIGNAL that isParquetSupported was called, not a tick
@@ -193,7 +195,7 @@ describe('loadFromServer — supersession during the isParquetSupported await', 
   });
 
   it('control: a NON-stale load still proceeds to parseParquet and paints geometry', async () => {
-    const resultPromise = loadFromServer!(new File(['x'], 'model.ifc'), SMALL_BUFFER, () => false);
+    const resultPromise = loadFromServer!(new File(['x'], 'model.ifc'), SMALL_BUFFER, () => false, undefined, 'server');
     await isParquetSupportedCalled;
     releaseIsParquetSupported(true);
 

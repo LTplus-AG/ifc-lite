@@ -1,0 +1,11 @@
+--- a/packages/renderer/src/triangle-counts.ts
++++ b/packages/renderer/src/triangle-counts.ts
+@@ -47,7 +47,7 @@
+     const added = new TriangleCounts();
+     for (const mesh of meshes) added.addMesh(mesh);
+     for (const [id, count] of added.byEntity) {
+-      this.flat.add(id, 0);
++      this.flat.add(id, count);
+       if (queued) this.queued.add(id, count);
+     }
+     this.cached = undefined;

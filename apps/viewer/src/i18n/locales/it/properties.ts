@@ -214,6 +214,7 @@ export const propertiesIt = {
   "properties.modelMetadata.notAvailable": "N/D",
   "properties.modelMetadata.buildingStoreys": "Piani dell'edificio",
   "properties.modelMetadata.elementsWithGeometry": "Elementi con geometria",
+  "properties.modelMetadata.triangles": "Triangoli",
   "properties.modelMetadata.maxExpressId": "EXPRESS ID massimo",
   "properties.modelMetadata.classificationSystemsHeading": "Sistemi di classificazione",
   "properties.modelMetadata.classificationUnresolved": "Sistemi di classificazione presenti, ma non disponibili in questa origine dati",

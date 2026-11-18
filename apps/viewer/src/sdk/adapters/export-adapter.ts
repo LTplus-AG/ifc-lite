@@ -1,10 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { viewerDrawingAnnotations } from '@/lib/export/viewer-drawing-annotations';
 import { trackExportCompleted } from '@/lib/analytics';
 import { prepareAppearanceSerialization } from '../../lib/appearance/serialization.js';
 import { packagePortableIfc, portableIfcDownload } from '../../lib/export/portable-ifc.js';
-
 import type { StoreApi } from './types.js';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
@@ -15,6 +15,7 @@ import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from './export-schedule-splice.js';
 import { downloadFile, sanitizeFilename, buildExportFilename } from '../../lib/export/download.js';
+import { isFeatureEnabled } from '../../lib/features/index.js';
 import { resolveExportVisibility } from '../../store/exportVisibility.js';
 import { stripScheduleEntities } from './export-schedule-strip.js';
 
@@ -353,6 +354,9 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       if (dataStore.schemaVersion === 'IFC5') {
         throw new Error('export.ifc: IFC5 export is not supported by STEP exporter, use IFC2X3/IFC4/IFC4X3 models');
       }
+      if (dataStore.sourceKind === 'tabular') {
+        throw new Error(`export.ifc: model '${modelId}' has no IFC STEP source for the STEP exporter`);
+      }
 
       const options = candidateOptions;
       const selectedExpressIds = refs ? new Set(refs.map(ref => ref.expressId)) : null;
@@ -379,7 +383,7 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         modelId, model.ifcDataStore,
         mutationView ?? undefined,
       );
-      const exporter = new StepExporter(model.ifcDataStore, serialized.view);
+      const exporter = new StepExporter(model.ifcDataStore, options.includeMutations === false ? serialized.view : viewerDrawingAnnotations(modelId, model.ifcDataStore, serialized.view));
       // Include georeferencing mutations if present
       const georefMutations = options.includeMutations !== false
         ? state.georefMutations?.get(modelId) ?? undefined
@@ -583,6 +587,8 @@ function triggerDownload(content: string | Uint8Array, filename: string, mimeTyp
   if (typeof document === 'undefined') {
     throw new Error('download() requires a browser environment (document is unavailable)');
   }
+  // Scripts and extensions save files through here; a host can switch export off (`lib/features`).
+  if (!isFeatureEnabled('export.files')) throw new Error('Export is switched off in this viewer');
   downloadFile(content, filename, mimeType);
   trackExportCompleted({ format: 'other', surface: 'script' });
 }

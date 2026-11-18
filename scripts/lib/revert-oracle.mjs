@@ -39,14 +39,15 @@ import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-orac
 import { passVerdict } from './revert-oracle-pass-verdict.mjs';
 import { processResultGap } from './revert-oracle-process-result.mjs';
 import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
+import { isDependencyVersionOnlyPackageJson } from './revert-oracle-version-bump.mjs';
 export { cargoRunner } from './revert-oracle-cargo.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
 
-/** Paths no test can observe: release/CI/docs. `tests/e2e/**` is test scaffolding; its Playwright specs run in a browser (#6267). */
+/** Paths no test can observe: release/CI/docs, and the files `retained-notices.mjs --refresh` writes (gated by its `--check`; hand-edited `supplemental.json` stays production). `tests/e2e/**` is test scaffolding; its Playwright specs run in a browser (#6267). */
 const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/'];
-const IGNORED_EXACT = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'rust/python/Cargo.lock', 'CHANGELOG.md', 'playwright.config.ts']);
+const IGNORED_EXACT = new Set(['licenses/retained/manifest.json', 'licenses/retained/README.md', 'licenses/retained/THIRD_PARTY_NOTICES.txt', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'rust/python/Cargo.lock', 'CHANGELOG.md', 'playwright.config.ts']);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 
 /**
@@ -87,15 +88,13 @@ export function classifyPath(path) {
 
 /**
  * @param {Array<{status: string, path: string, oldPath?: string}>} entries from `git diff --name-status`
+ * @param {(path: string) => {before?: string, after?: string}} [readSides] merge-base/head text; without it, or when either side does not parse, a dependency-version-only package.json stays production
  */
-export function classifyDiff(entries) {
-  const production = [];
-  const test = [];
-  const ignored = [];
-  const inert = [];
-  const warnings = [];
+export function classifyDiff(entries, readSides) {
+  const [production, test, ignored, inert, warnings] = [[], [], [], [], []];
   for (const entry of entries) {
-    const kind = classifyPath(entry.path);
+    let kind = classifyPath(entry.path);
+    if (kind === 'production' && readSides && isDependencyVersionOnlyPackageJson(entry.path, readSides)) kind = 'ignored';
     const bucket = kind === 'production' ? production : kind === 'test' ? test : kind === 'inert' ? inert : ignored;
     bucket.push(entry);
   }
@@ -159,14 +158,14 @@ export function detectRunner(testScript, files) {
   return null;
 }
 
-/** Flags that must survive from the package's own test script. */
+/** Flags that must survive from the package's own test script. A `$var` value cannot expand here (no shell; node would ignore it and run files in parallel), so --test-concurrency falls back to 1, apps/viewer's serial default (#3061, #9791); any other such flag is dropped. */
 export function extractNodeFlags(script) {
   const flags = [];
   const paired = /(--import|--tsconfig|--conditions|--loader|--require)[\s=]+(\S+)/g;
   let m;
   while ((m = paired.exec(script)) !== null) flags.push(m[1], m[2].replace(/^["']|["']$/g, ''));
   const standalone = /--(test-concurrency|test-timeout|test-force-exit|experimental-[\w-]+)(=\S+)?/g;
-  while ((m = standalone.exec(script)) !== null) flags.push(`--${m[1]}${m[2] ?? ''}`);
+  while ((m = standalone.exec(script)) !== null) { if (!m[2]?.includes('$')) flags.push(`--${m[1]}${m[2] ?? ''}`); else if (m[1] === 'test-concurrency') flags.push('--test-concurrency=1'); }
   return flags;
 }
 

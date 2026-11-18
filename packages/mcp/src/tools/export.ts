@@ -12,61 +12,16 @@
  * `export_pdf_report` remains stubbed pending the PDF stack.
  */
 
-import { writeFile, readFile } from 'node:fs/promises';
+import { withIfcBytes, refusingEmpty } from './export-source.js';
+import { export3dmTool } from './export-3dm.js';
+import { writeFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
-import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { countGlbMeshes, countObjVertices, countUsdMeshes } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { fmtInt, okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-
-/**
- * Run `fn` over the current model's IFC bytes for the wasm exporters: bake
- * pending edits through the same STEP exporter as export_ifc, otherwise prefer
- * the in-memory source and fall back to disk.
- *
- * Scoped rather than returning the buffer (#2183): each Rust exporter below
- * takes the WHOLE file, so the source really is materialised — but only for the
- * duration of one export, so the buffer never outlives the tool call.
- */
-async function withIfcBytes<T>(
-  m: ReturnType<typeof resolveModel>,
-  fn: (bytes: Uint8Array) => Promise<T>,
-): Promise<T> {
-  if (m.backend.getMutationView()?.hasPendingChanges()) {
-    const content = m.bim.export.ifc(undefined, { includeMutations: true });
-    return fn(typeof content === 'string' ? new TextEncoder().encode(content) : content);
-  }
-  if (m.store.source.byteLength > 0) return m.store.source.withMaterializedAsync(fn);
-  if (m.filePath) return fn(await readFile(m.filePath));
-  throw new ToolExecutionError({
-    code: ToolErrorCode.UNSUPPORTED_OPERATION,
-    message: 'Model has no in-memory source bytes and no file path to re-read for export.',
-  });
-}
-
-/**
- * Run a render-geometry export. The Rust boundary's `NO_RENDER_GEOMETRY`
- * refusal (#7695) and, as defense-in-depth, an artifact whose `count` is 0
- * become a tool error carrying `emptyMessage`: a zero-mesh file is never
- * written and reported as success. Other failures propagate unchanged.
- */
-function refusingEmpty(
-  run: () => Uint8Array | null,
-  count: (artifact: Uint8Array) => number,
-  emptyMessage: string,
-): Uint8Array | null {
-  const empty = () => new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: emptyMessage });
-  let out: Uint8Array | null;
-  try {
-    out = run();
-  } catch (err) {
-    throw isNoRenderGeometryError(err) ? empty() : err;
-  }
-  if (out != null && count(out) === 0) throw empty();
-  return out;
-}
 
 const exportIfc: Tool = {
   name: 'export_ifc',
@@ -234,7 +189,7 @@ const exportGlb: Tool = {
         // not an empty Uint32Array — the wasm boundary now treats an
         // explicit empty array as "isolation active, matches nothing"
         // (#4328), and would fail-close every unfiltered export otherwise.
-        const glb = refusingEmpty(
+        const glb = await refusingEmpty(
           () => gp.exportGlb(bytes, false, new Uint32Array(), filterType ? isolated : undefined, ''),
           countGlbMeshes,
           glbEmpty,
@@ -296,7 +251,7 @@ const exportObj: Tool = {
           : 'OBJ export produced 0 vertices - the model has no exportable render geometry.';
         // A `type` that matched only non-rendered entities (e.g. IfcProject)
         // is refused (#7695); vertex count is the content signal, as in the CLI.
-        const obj = refusingEmpty(
+        const obj = await refusingEmpty(
           () => gp.exportObj(bytes, true, new Uint32Array(), filterType ? isolated : undefined),
           countObjVertices,
           objEmpty,
@@ -367,7 +322,7 @@ const exportUsd: Tool = {
       const gp = new GeometryProcessor();
       try {
         await gp.init();
-        const usd = refusingEmpty(
+        const usd = await refusingEmpty(
           () => gp.exportUsd(bytes),
           countUsdMeshes,
           'USD export produced 0 meshes - the model has no exportable render geometry.',
@@ -397,4 +352,4 @@ const exportPdfReport: Tool = {
   },
 };
 
-export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, exportPdfReport];
+export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, export3dmTool, exportPdfReport];

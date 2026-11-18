@@ -219,7 +219,7 @@ function describeEntry(entry: ConversionLossEntry): string {
 }
 
 /**
- * One type's entries: its records grouped by the dropped attributes no carrier
+ * The entries of a type with dropped attributes: its records grouped by those no carrier
  * restores for them. A `lossy` record that loses nothing then has no entry.
  */
 function splitByRestored(
@@ -232,7 +232,7 @@ function splitByRestored(
   for (const id of expressIds) {
     const back = restored.get(id);
     const dropped = info.droppedAttributes.filter((a) => !back?.has(a));
-    if (info.kind === 'lossy' && info.droppedAttributes.length && !dropped.length) continue;
+    if (info.kind === 'lossy' && !dropped.length) continue;
     const key = dropped.join(',');
     const group = groups.get(key) ?? { dropped, ids: [] };
     group.ids.push(id);
@@ -251,7 +251,9 @@ function splitByRestored(
  * A complete, per-type loss report for converting every entity `store`
  * contains from `fromSchema` to `toSchema` — no export attempted, so this
  * never throws and always covers the whole file, not just the first record a
- * full export would have aborted on.
+ * full export would have aborted on. With the source bytes, it leaves out what
+ * an IFC2X3 <-> IFC4 structural carrier brings back (#9668); it describes the
+ * default export, an unedited full one, which is the only kind that arms them.
  */
 export function analyzeConversionLoss(
   store: Pick<IfcDataStore, 'entityIndex'> & Partial<Pick<IfcDataStore, 'source'>>,
@@ -275,7 +277,7 @@ export function analyzeConversionLoss(
       ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema, typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])))
       : new Map<number, ReadonlySet<string>>();
     for (const [sourceType, expressIds, info] of typed) {
-      if (restored.size && carrying(sourceType, info)) entries.push(...splitByRestored(sourceType, expressIds, info, restored));
+      if (carrying(sourceType, info)) entries.push(...splitByRestored(sourceType, expressIds, info, restored));
       else entries.push({ ...info, sourceType, count: expressIds.length, expressIds });
     }
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));

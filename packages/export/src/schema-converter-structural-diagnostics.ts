@@ -8,7 +8,7 @@ import { StructuralCarriers } from './schema-converter-structural-carriers.js';
 import { conversionMode, namesWithheld, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
-import { StructuralVarying } from './schema-converter-structural-varying.js';
+import { SHARED_CONFIGURATION, StructuralVarying } from './schema-converter-structural-varying.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
@@ -36,11 +36,10 @@ export class StructuralDiagnostics {
    * The source prepasses for an IFC2X3 <-> IFC4 export; the caller arms them
    * only for an unedited full export.
    */
-  fromStore(store: SourceStore, from: string, to: string): void {
+  fromStore(store: SourceStore, from: string, to: string, source = new SourceRecords(store)): void {
     if (from === 'IFC2X3') this.axes.fromStore(store);
     else this.links.fromStore(store);
     this.varying.fromStore(store, from, to);
-    const source = new SourceRecords(store);
     this.carriers.fromStore(source, from, to);
     this.thickness.fromStore(source, from, to);
   }
@@ -167,10 +166,11 @@ export function structuralRoundTrip(store: SourceStore, from: string, to: string
   if (!records.length) return new Map();
   const run = new StructuralDiagnostics(true);
   try {
-    run.fromStore(store, from, to);
-  } catch {
-    // The varying prepass refuses a configuration it cannot convert; the export throws the same, so nothing comes back.
-    return new Map();
+    run.fromStore(store, from, to, source);
+  } catch (error) {
+    // The export refuses this file with the same error, so nothing comes back.
+    if (error instanceof Error && error.message === SHARED_CONFIGURATION) return new Map();
+    throw error;
   }
   // Nothing is written, so every added record may take the same id.
   run.ids = () => 0;

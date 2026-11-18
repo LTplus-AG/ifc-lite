@@ -28,6 +28,9 @@ const KINDS = [
   { ifc2x3: 'IFCSTRUCTURALPLANARACTIONVARYING', ifc4: 'IFCSTRUCTURALSURFACEACTION', first: ['IFCSTRUCTURALLOADPLANARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 3, spread: ['.NOTDEFINED.', '.BILINEAR.'] },
 ] as const;
 
+/** Why the downgrade refuses a file: a configuration it converts is also named by a record it does not. */
+export const SHARED_CONFIGURATION = 'IFCSTRUCTURALLOADCONFIGURATION shared with a non-converted referrer has no representation in IFC2X3';
+
 const FROM_IFC2X3 = 'an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect of its representation keeps the locations';
 const TO_IFC2X3 = 'an IFC4 curve or surface action with an IfcStructuralLoadConfiguration is written as an IFC2X3 varying action, its locations taken from the one IfcShapeAspect of its representation; the configuration Name, Locations and the action PredefinedType have no slot in IFC2X3';
 
@@ -100,7 +103,7 @@ export class StructuralVarying {
     for (const [id] of this.byId) {
       if (candidates.has(id)) continue;
       if (slots(id)?.some((a) => referencesAnyExpressId(a, consumed))) {
-        throw new Error('IFCSTRUCTURALLOADCONFIGURATION shared with a non-converted referrer has no representation in IFC2X3');
+        throw new Error(SHARED_CONFIGURATION);
       }
     }
   }

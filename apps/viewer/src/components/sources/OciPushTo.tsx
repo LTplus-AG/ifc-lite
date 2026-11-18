@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { exportRegistryModel } from '@/lib/registry/export-model';
@@ -90,9 +91,14 @@ export function OciPushTo({ disabled = false, onBusyChange, connections: configu
     <p className="text-xs text-muted-foreground">{model ? t('registry.activeModel', { name: model.name }) : t('registry.noModel')}</p>
     {!managed && <>
       <Label htmlFor={`${id}-store`}>{t('registry.push.store')}</Label>
-      <select id={`${id}-store`} className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={registry} disabled={busy || disabled} onChange={e => { setRegistry(e.target.value); useHandoffWorkspace.setState({ saved: undefined }); }}>
-        {connections.map(c => <option key={c.registry} value={c.registry}>{c.name ?? new URL(c.registry).host}</option>)}
-      </select>
+      <Select value={registry} disabled={busy || disabled} onValueChange={value => {
+        setRegistry(value); useHandoffWorkspace.setState({ saved: undefined });
+      }}>
+        <SelectTrigger id={`${id}-store`}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {connections.map(c => <SelectItem key={c.registry} value={c.registry}>{c.name ?? new URL(c.registry).host}</SelectItem>)}
+        </SelectContent>
+      </Select>
       <Label htmlFor={`${id}-folder`}>{t('registry.push.folder')}</Label>
       <Input id={`${id}-folder`} value={repository} disabled={busy || disabled} autoComplete="off" onChange={e => { setRepository(e.target.value); useHandoffWorkspace.setState({ saved: undefined }); }} />
       <Label htmlFor={`${id}-version`}>{t('registry.newVersion')}</Label>

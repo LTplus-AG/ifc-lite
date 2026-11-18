@@ -1,11 +1,12 @@
+diff --git a/apps/viewer/src/components/sources/OciPushTo.tsx b/apps/viewer/src/components/sources/OciPushTo.tsx
 --- a/apps/viewer/src/components/sources/OciPushTo.tsx
 +++ b/apps/viewer/src/components/sources/OciPushTo.tsx
-@@ -77,7 +77,7 @@
+@@ -78,7 +78,7 @@
          if (managed) useHandoffWorkspace.setState({ pendingPublication: { handoff: managed.handoff, artifact } });
        }
        const savedVersion = managed && publicationToken
--        ? await confirmPublication(connection, managed.handoff, artifact, publicationToken, controller.signal)
-+        ? await confirmPublication(connection, managed.handoff, artifact, publicationToken, controller.signal).catch(() => artifact)
+-        ? await confirmPublication(connection, managed.handoff, artifact, publicationToken, controller.signal).catch(() => artifact)
++        ? await confirmPublication(connection, managed.handoff, artifact, publicationToken, controller.signal)
          : artifact;
        controller.signal.throwIfAborted();
        useHandoffWorkspace.setState({ saved: savedVersion, ...(managed && { pendingPublication: undefined }) });

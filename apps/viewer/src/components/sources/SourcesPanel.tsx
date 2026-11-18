@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
@@ -29,9 +29,7 @@ import {
   type SourceRevisionUpdate,
 } from '@/lib/sources/revisionWatch';
 
-const OciPushTo = lazy(() => import('./OciPushTo').then(module => ({ default: module.OciPushTo })));
-const RegistrySource = lazy(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
-
+import { RegistrySources } from './RegistrySources';
 interface SourcesPanelProps {
   onClose: () => void;
   registryEnabled?: boolean;
@@ -116,9 +114,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
   const [downloadContext, setDownloadContext] = useState<{ providerId: string; projectId: string } | null>(null);
   const downloadOwner = downloadContext?.providerId ?? null;
   const [browsing, setBrowsing] = useState<string | null>(null);
-  const [localRegistryBusy, setLocalRegistryBusy] = useState(false);
-  const [publicationBusy, setPublicationBusy] = useState(false);
-  const registryBusy = localRegistryBusy || publicationBusy;
+  const [registryBusy, setRegistryBusy] = useState(false);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.
   const [prefsVersion, setPrefsVersion] = useState(0);
@@ -326,13 +322,8 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
         />
 
         <ul className="space-y-2">
-          {registryEnabled && <Suspense fallback={null}>
-            <RegistrySource expanded={browsing === 'oci-registry'} navigationDisabled={downloading || publicationBusy} onBusyChange={setLocalRegistryBusy}
-              onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />
-          </Suspense>}
-          {registryEnabled && import.meta.env.VITE_REGISTRY_CONNECTIONS && <li className="rounded border p-3">
-            <Suspense fallback={null}><OciPushTo disabled={downloading || localRegistryBusy} onBusyChange={setPublicationBusy} /></Suspense>
-          </li>}
+          {registryEnabled && <RegistrySources expanded={browsing === 'oci-registry'} navigationDisabled={downloading} onBusyChange={setRegistryBusy}
+            onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />}
           {[...providers].sort((a, b) => Number(pins.ids.includes(b.manifest.name)) - Number(pins.ids.includes(a.manifest.name))).map((p) => (
             <SourceProviderRow
               key={p.manifest.name}

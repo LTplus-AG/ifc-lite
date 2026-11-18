@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { startServer, closeAll, send } from '../../../../../packages/oci/test/fake-registry.js';
 import { pushRegistry } from '../../../../../packages/oci/test/push-registry.js';
-import { handoffContext, readHandoff, registryConnections, HANDOFF_PROTOCOL } from './handoff-contract';
+import { handoffContext, readHandoff, registryConnections, HANDOFF_PROTOCOL, type OciHandoff } from './handoff-contract';
 import { exchangeRegistryToken, resourceSession } from './handoff-auth';
 import { confirmPublication } from './handoff-publication';
 import { pullHandoff, pushHandoff } from './handoff-client';
@@ -54,7 +54,7 @@ test('exchange scopes the registry token and a failed confirmation retries the s
   const fixture = pushRegistry({ repository: stagingRepository, accept: value => value === 'Bearer registry-only' });
   const registry = await startServer(fixture.handler);
   const source = { registry: registry.origin, repository: sourceRepository, digest: 'sha256:' + 'a'.repeat(64) };
-  const handoff = { protocol: HANDOFF_PROTOCOL, source, intent: 'edit' as const, destination: { registry: registry.origin, repository: stagingRepository } };
+  const handoff: OciHandoff = { protocol: HANDOFF_PROTOCOL, source, intent: 'edit', destination: { registry: registry.origin, repository: stagingRepository } };
   const scope = `repository:${stagingRepository}:pull repository:${stagingRepository}:push`;
   const tokenType = 'urn:ietf:params:oauth:token-type:access_token';
   const receipts: unknown[] = [];

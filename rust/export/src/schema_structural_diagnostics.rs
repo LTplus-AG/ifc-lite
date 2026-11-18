@@ -81,18 +81,17 @@ impl StructuralDiagnostics {
     /// TypeScript twin allocates them while writing: per action in id order,
     /// its 'Causes' relationship, then its load configuration.
     pub(crate) fn allocate(&mut self, mut allocate: impl FnMut() -> Option<u32>) {
-        use crate::schema_structural_varying::StructuralVarying;
-        let causes: BTreeMap<u32, bool> = self.carriers.needs_ids().map(|(id, entity)| (id, StructuralVarying::is_varying(entity))).collect();
+        let causes: BTreeMap<u32, bool> = self.carriers.needs_ids().collect();
         let actions: BTreeSet<u32> = causes.keys().copied().chain(self.varying.needs_ids()).collect();
         for action in actions {
             let configured = self.varying.plans(action);
             // A varying action that stays unconverted gets no relationship.
             let caused = causes.get(&action).is_some_and(|&varying| !varying || configured);
             // All of an action's ids or none, so a relationship never names an action left unconverted.
-            let Some(ids) = (0..usize::from(caused) + usize::from(configured)).map(|_| allocate()).collect::<Option<Vec<u32>>>() else { return };
-            let mut ids = ids.into_iter();
-            if caused { self.carriers.assign(action, ids.next().expect("allocated above")); }
-            if configured { self.varying.assign(action, ids.next().expect("allocated above")); }
+            let relationship = if caused { let Some(id) = allocate() else { return }; Some(id) } else { None };
+            let configuration = if configured { let Some(id) = allocate() else { return }; Some(id) } else { None };
+            if let Some(id) = relationship { self.carriers.assign(action, id); }
+            if let Some(id) = configuration { self.varying.assign(action, id); }
         }
     }
 

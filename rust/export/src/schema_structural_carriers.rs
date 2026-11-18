@@ -12,7 +12,7 @@
 //! Both directions read the source, so only an unedited full export arms them.
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use crate::schema_structural_axes::list_items;
-use crate::schema_structural_links::{slot_ref, slot_unset};
+use crate::schema_structural_links::{slot_is, slot_ref, slot_unset};
 use crate::schema_structural_varying::record;
 use crate::step_record_frame::record_frame;
 use crate::step_slot::split_top_level_args;
@@ -32,8 +32,8 @@ struct Cause {
     /// The 'Causes' relationship to add, without its id, unless a source one already names the reaction.
     relationship: Option<String>,
     message: &'static str,
-    /// The action's IFC2X3 type.
-    entity: String,
+    /// An IFC2X3 varying action, which only a converting `StructuralVarying` turns into an IFC4 product.
+    varying: bool,
     /// The relationship's id, from [`StructuralCarriers::assign`].
     id: Option<u32>,
 }
@@ -82,7 +82,7 @@ impl Source {
         let is = |id: u32, parent: &str| self.types.get(&id).is_some_and(|t| schema.is_subtype_of(t, parent));
         let mut causes: HashMap<u32, BTreeSet<u32>> = HashMap::new();
         for args in &self.relationships {
-            if args.len() != 7 || !names_causes(&args[2]) { continue; }
+            if args.len() != 7 || !slot_is(&args[2], b"'Causes'") { continue; }
             let Some(action) = slot_ref(&args[6]).filter(|&a| is(a, "IfcStructuralAction")) else { continue };
             for reaction in list_items(&args[4]).unwrap_or_default().iter().filter_map(|r| slot_ref(r)) {
                 if is(reaction, "IfcStructuralReaction") { causes.entry(action).or_default().insert(reaction); }
@@ -111,7 +111,7 @@ impl StructuralCarriers {
             // The downgrade restores CausedBy only for an action with exactly one cause.
             let total = named.map_or(0, BTreeSet::len) + usize::from(new);
             let message = if total == 1 { CAUSED_BY_WRITTEN } else { CAUSED_BY_AMONG };
-            result.causes.insert(*id, Cause { relationship, message, entity: ty.clone(), id: None });
+            result.causes.insert(*id, Cause { relationship, message, varying: crate::schema_structural_varying::StructuralVarying::is_varying(ty), id: None });
         }
         result
     }
@@ -128,9 +128,9 @@ impl StructuralCarriers {
         result
     }
 
-    /// The actions that need a relationship id, in id order, with their types.
-    pub(crate) fn needs_ids(&self) -> impl Iterator<Item = (u32, &str)> + '_ {
-        self.causes.iter().filter(|(_, c)| c.relationship.is_some()).map(|(id, c)| (*id, c.entity.as_str()))
+    /// The actions that need a relationship id, in id order, each with whether it is a varying action.
+    pub(crate) fn needs_ids(&self) -> impl Iterator<Item = (u32, bool)> + '_ {
+        self.causes.iter().filter(|(_, c)| c.relationship.is_some()).map(|(id, c)| (*id, c.varying))
     }
 
     /// Give the relationship of `action` its id.
@@ -160,13 +160,6 @@ impl StructuralCarriers {
 
     /// The relationships written, to append after the source records.
     pub(crate) fn added(&mut self) -> Vec<String> { std::mem::take(&mut self.pending).into_values().collect() }
-}
-
-/// Whether a Name slot is the string 'Causes', with STEP whitespace and comments around it allowed (#10248).
-fn names_causes(token: &str) -> bool {
-    use ifc_lite_core::parser::skip_step_trivia;
-    let bytes = token.as_bytes();
-    skip_step_trivia(bytes, 0).is_some_and(|start| bytes[start..].starts_with(b"'Causes'") && skip_step_trivia(bytes, start + 8) == Some(bytes.len()))
 }
 
 #[cfg(test)]

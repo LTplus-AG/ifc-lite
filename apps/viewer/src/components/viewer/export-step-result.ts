@@ -8,8 +8,8 @@ import type { ExportDialogShellResult } from './ExportDialogShell';
 
 /** Toast and dialog result for a finished STEP export (single or merged): an
  * export with exporter warnings toasts as info and lists them (#10606).
- * Identical lines are kept: each cropped source of a sectioned merge reports
- * its own records (e.g. "1 structural conversion record(s): ..."). The count
+ * Lines are not deduplicated: each one counts records (e.g. "1 structural
+ * conversion record(s): ..."), so an equal line is another fact. The count
  * is formatted for the active locale (`getLocale()`), which `t` also reads. */
 export function stepExportResult(summary: string, warnings: readonly string[], t: UseTranslationResult['t']): ExportDialogShellResult {
   if (!warnings.length) {

@@ -70,17 +70,22 @@ impl Source<'_> {
             let slots = self.slots(set)?;
             let [_, _, set_name, _, has_properties] = slots.as_slice() else { return None; };
             if set_name.trim() != name { return None; }
-            let members = references(related)?;
-            let ids = references(has_properties)?;
+            // A relationship listing a non-reference relates the set to nothing it reads.
+            let members = references(related).unwrap_or_default();
+            let listed = list_items(has_properties);
+            let ids: Vec<u32> = listed.iter().flatten().filter_map(|item| reference(item)).collect();
+            // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that
+            // does not, or lists a property it cannot read, still counts as present but gives no property.
+            let mut unread = listed.as_ref().is_some_and(|items| items.len() != ids.len());
             let mut properties = BTreeMap::new();
             for &id in &ids {
-                let Some(args) = self.slots(id) else { continue; };
-                let Some(name) = args.first() else { continue; };
-                if properties.insert(name.trim().to_string(), id).is_some() {
-                    properties.clear();
-                    break;
+                let name = self.slots(id).and_then(|args| args.first().map(|name| name.trim().to_string()));
+                match name.filter(|name| name.starts_with('\'') && !properties.contains_key(name)) {
+                    Some(name) => { properties.insert(name, id); }
+                    None => unread = true,
                 }
             }
+            if unread { properties.clear(); }
             Some(PropertySet { rel, set, members, ids, properties })
         }).collect()
     }

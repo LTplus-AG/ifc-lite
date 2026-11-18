@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Shared STEP source resolution for geometry exports (USD and Rhino), including
- * dialog and command-palette callers. Pending edits are regenerated, and ZIP
+ * Shared STEP source resolution for geometry exports (USD, Rhino, CityJSON), including
+ * dialog and command-palette callers. CityJSON also writes session georeferencing
+ * edits through {@link resolveStepExportSource}. Pending edits are regenerated, and ZIP
  * containers use their parsed STEP payload rather than the raw archive.
  */
 
@@ -91,7 +92,10 @@ export async function resolveStepExportSource(
         const result = regenerate(model.ifcDataStore, georefMutations);
         return { bytes: result.content, warnings: result.stats.georeferencingWarnings ?? [] };
       } catch (error) {
-        warnings.push(`${SESSION_GEOREF_NOT_WRITTEN} ${error instanceof Error ? error.message : String(error)}`);
+        // Only the exporter's georeferencing refusals ("Georeferencing was not exported: ...", the IFC2X3
+        // guard); any other failure is a real export failure.
+        if (!(error instanceof Error && error.message.startsWith('Georeferencing '))) throw error;
+        warnings.push(`${SESSION_GEOREF_NOT_WRITTEN} ${error.message}`);
       }
     }
   }

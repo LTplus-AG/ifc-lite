@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
+import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -33,13 +34,17 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     if (!modelList.some((m) => m.id === selectedId)) setSelectedId(modelList[0]?.id ?? '');
   }, [modelList, selectedId]);
   const model = modelList.find((m) => m.id === selectedId);
-  // Session georeferencing edits are written into the STEP the exporter reads, so the notices follow the
-  // effective georeferencing: the file's own with this session's edits applied.
+  // Session georeferencing edits are written into the STEP the exporter reads when the model can take them, so
+  // the notices then follow the effective georeferencing: the file's own with this session's edits applied.
+  // Edits the exporter still refuses (a partial position) come back as export warnings.
   const georefMutations = useViewerStore((s) => (model ? s.georefMutations.get(model.id) : undefined));
-  const effective = useMemo(() => (open && model ? getEffectiveGeoreference(model.ifcDataStore, undefined, georefMutations) : null),
-    [open, model, georefMutations]);
-  const localCoordinates = open && !!model && !effective?.hasGeoreference;
-  const sessionCrs = model && writesSessionGeoref(model) && hasGeorefEdits(georefMutations) ? effective?.projectedCRS?.name.trim() || null : null;
+  const writesSession = !!model && writesSessionGeoref(model) && hasGeorefEdits(georefMutations);
+  const georef = useMemo(() => {
+    if (!open || !model?.ifcDataStore) return null;
+    return writesSession ? getEffectiveGeoreference(model.ifcDataStore, undefined, georefMutations) : extractGeoreferencingOnDemand(model.ifcDataStore);
+  }, [open, model, writesSession, georefMutations]);
+  const localCoordinates = open && !!model && !georef?.hasGeoreference;
+  const sessionCrs = writesSession ? georef?.projectedCRS?.name.trim() || null : null;
 
   async function handleExport(): Promise<ExportDialogShellResult> {
     if (!model) return { success: false, message: t('cityJsonExport.noSource') };

@@ -132,13 +132,21 @@ describe('resolveStepExportBytes', () => {
   });
 });
 
-describe('resolveStepExportSource session georeferencing', () => {
+describe('resolveStepExportSource session georeferencing (#10660)', () => {
   it('does not write session georef edits into IFC2X3: the file bytes export unchanged, with a warning', async () => {
     const store = await parsedDataStore();
     const ifc2x3: StepExportModel = { id: 'm', name: 'b', sourceFile: new File([], 'b.ifc'), ifcDataStore: store, schemaVersion: 'IFC2X3' };
     const { bytes, warnings } = await resolveStepExportSource(ifc2x3, () => null, { mapConversion: { eastings: 1 } });
     assert.deepEqual(bytes, store.source.materialize());
-    assert.match(warnings[0], /IFC2X3/);
+    assert.match(warnings[0], /were not written/);
     assert.equal(warnings.length, 1);
+  });
+  it('an edit the exporter refuses (a new CRS with no position) still exports the file bytes and says why', async () => {
+    const store = await parsedDataStore();
+    const ifc4: StepExportModel = { id: 'm', name: 'b', sourceFile: new File([], 'b.ifc'), ifcDataStore: store, schemaVersion: 'IFC4' };
+    const { bytes, warnings } = await resolveStepExportSource(ifc4, () => null, { projectedCRS: { name: 'EPSG:2056' } });
+    assert.deepEqual(bytes, store.source.materialize());
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /were not written.*no position/);
   });
 });

@@ -44,11 +44,13 @@ export function hasGeorefEdits(gm: StepExportGeorefMutations | undefined): gm is
   return !!gm && (Object.keys(gm.mapConversion ?? {}).length > 0 || Object.keys(gm.projectedCRS ?? {}).length > 0);
 }
 
+const SESSION_GEOREF_NOT_WRITTEN = 'Session georeferencing edits were not written; the export uses the file\'s own georeferencing or local coordinates.';
+
 /**
  * Whether {@link resolveStepExportSource} writes session georeferencing edits for `model`: it needs a
  * regenerable STEP store, and IFC2X3 has no IfcProjectedCRS/IfcMapConversion to write them into.
  */
-export function writesSessionGeoref(model: StepExportModel): boolean {
+export function writesSessionGeoref(model: StepExportModel): model is StepExportModel & { ifcDataStore: IfcDataStore } {
   const store = model.ifcDataStore;
   return !!store && store.source.byteLength > 0 && store.sourceKind !== 'tabular'
     && model.schemaVersion !== 'IFC5' && model.schemaVersion !== 'IFC2X3';
@@ -67,7 +69,7 @@ export function writesSessionGeoref(model: StepExportModel): boolean {
  *     UNWRAPPED STEP payload, so an `.ifczip` model exports correctly instead
  *     of handing the raw ZIP container to the STEP-byte exporter;
  *  3. else the source file bytes, unwrapping ZIP containers (store-less fallback).
- * `warnings` lists georeferencing edits that were refused or written only in part.
+ * `warnings` lists session georeferencing edits that were refused or written only in part.
  */
 export async function resolveStepExportSource(
   model: StepExportModel,
@@ -75,20 +77,26 @@ export async function resolveStepExportSource(
   georefMutations?: StepExportGeorefMutations,
 ): Promise<{ bytes: Uint8Array; warnings: string[] }> {
   const view = getMutationView(model.id);
-  const store = model.ifcDataStore;
-  const mutationEdits = !!resolveEnergyExportMutationSource({ mutationView: view, dataStore: store, schemaVersion: model.schemaVersion });
-  // Georeferencing edits live outside the mutation view, so they regenerate on their own.
-  const georef = hasGeorefEdits(georefMutations) && writesSessionGeoref(model) ? georefMutations : undefined;
-  const refused = hasGeorefEdits(georefMutations) && model.schemaVersion === 'IFC2X3'
-    ? ['Session georeferencing edits are not written: IFC2X3 has no IfcProjectedCRS or IfcMapConversion.'] : [];
-  if (store && (mutationEdits || georef)) {
-    const result = new StepExporter(store, view ?? undefined).export({
-      schema: store.schemaVersion,
-      ...(georef ? { georefMutations: georef } : {}),
-    });
-    return { bytes: result.content, warnings: [...refused, ...(result.stats.georeferencingWarnings ?? [])] };
+  const regenerate = (store: IfcDataStore, georef?: StepExportGeorefMutations) => new StepExporter(store, view ?? undefined).export({
+    schema: store.schemaVersion,
+    ...(georef ? { georefMutations: georef } : {}),
+  });
+  // Georeferencing edits live outside the mutation view, so they regenerate on their own. The exporter
+  // throws on edits it cannot write (a partial position, IFC2X3); the export then goes ahead without them.
+  const warnings: string[] = [];
+  if (hasGeorefEdits(georefMutations)) {
+    if (!writesSessionGeoref(model)) warnings.push(SESSION_GEOREF_NOT_WRITTEN);
+    else {
+      try {
+        const result = regenerate(model.ifcDataStore, georefMutations);
+        return { bytes: result.content, warnings: result.stats.georeferencingWarnings ?? [] };
+      } catch (error) {
+        warnings.push(`${SESSION_GEOREF_NOT_WRITTEN} ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   }
-  return { bytes: await rawStepBytes(model), warnings: refused };
+  const mutationSource = resolveEnergyExportMutationSource({ mutationView: view, dataStore: model.ifcDataStore, schemaVersion: model.schemaVersion });
+  return { bytes: mutationSource ? regenerate(mutationSource.dataStore).content : await rawStepBytes(model), warnings };
 }
 
 /** {@link resolveStepExportSource} without session georeferencing, bytes only. */

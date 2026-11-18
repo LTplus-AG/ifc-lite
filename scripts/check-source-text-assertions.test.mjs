@@ -224,6 +224,13 @@ for (const [name, body] of [
   });
 }
 
+test('a call through any other import still resolves by name', () => {
+  assert.ok(flagged(`import reg from './reg.mjs';\n${LOCAL_OK}
+function check(s) { return s.includes('x'); }
+reg.set('check', check);
+reg.check(source);`));
+});
+
 test('a path predicate on an untainted path is not flagged', () => {
   assert.equal(
     flagged(`${READ}

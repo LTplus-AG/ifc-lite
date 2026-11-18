@@ -273,21 +273,28 @@ function callRootedAt(id) {
   return n !== id && ts.isCallExpression(n.parent) && n.parent.expression === n ? n.parent : null;
 }
 
+const ASSERT_MODULES = new Set(['assert', 'node:assert', 'assert/strict', 'node:assert/strict']);
+
 /**
- * Imports used ONLY as a call namespace: every mention outside the `import`
- * is the root of a callee, as in `assert.ok(…)`. Such a call runs the other
- * module's function and cannot land in a local one, so its bare method name
- * says nothing about a local `ok` (`const facts = { ok: … }`, #10687).
+ * Names bound to Node's assert module and used ONLY as a call namespace: every
+ * mention outside the `import` is the root of a callee, as in `assert.ok(…)`.
+ * Such a call runs Node's function, so its bare method name says nothing about
+ * a local `ok` (`const facts = { ok: … }`, #10687).
+ *
+ * Only assert: it never turns a function handed to it into one of its own
+ * methods, and calls what `throws`/`rejects` receive with no arguments. A
+ * general import can (`reg.set('check', check); reg.check(source)`).
  *
  * Any other mention disqualifies the name: a `const assert` that shadows it, a
- * parameter of that name, `reg.check = check`, `Object.assign(reg, …)`. The
- * analysis has no scoping, so it cannot tell whether such a call still means
- * the import, and those keep resolving by name.
+ * parameter of that name, `assert.ok = check`. The analysis has no scoping, so
+ * it cannot tell whether such a call still means the import, and those keep
+ * resolving by name.
  */
-function importNamespaces(sourceFile) {
+function assertNamespaces(sourceFile) {
   const imported = new Set();
   for (const st of sourceFile.statements) {
     if (!ts.isImportDeclaration(st) || !st.importClause) continue;
+    if (!ts.isStringLiteral(st.moduleSpecifier) || !ASSERT_MODULES.has(st.moduleSpecifier.text)) continue;
     const { name, namedBindings } = st.importClause;
     if (name) imported.add(name.text);
     if (namedBindings && ts.isNamespaceImport(namedBindings)) imported.add(namedBindings.name.text);
@@ -305,7 +312,7 @@ function importNamespaces(sourceFile) {
 }
 
 /** TRUE for a dotted call rooted in one of `namespaces`: `assert.ok(…)`. */
-function callsIntoImport(callee, namespaces) {
+function callsAssert(callee, namespaces) {
   if (!ts.isPropertyAccessExpression(callee)) return false;
   let root = callee.expression;
   while (ts.isPropertyAccessExpression(root)) root = root.expression;
@@ -423,7 +430,7 @@ function enclosingStatement(node) {
  */
 function computeTainted(sourceFile) {
   const tainted = new Set(READ_NAMES);
-  const imports = importNamespaces(sourceFile);
+  const assertNames = assertNamespaces(sourceFile);
 
   const bindings = [];      // { names: string[], init: Node }
   const functions = [];     // { node, name, params: string[][] }
@@ -516,8 +523,8 @@ function computeTainted(sourceFile) {
       }
 
       // A tainted argument taints the parameter it lands in, unless the call
-      // goes into an import and so cannot land in a local function.
-      const named = callsIntoImport(call.expression, imports) ? undefined : byName.get(calleeName(call.expression));
+      // is Node's assert and so cannot land in a local function.
+      const named = callsAssert(call.expression, assertNames) ? undefined : byName.get(calleeName(call.expression));
       if (named)
         for (const fn of named)
           args.forEach((arg, idx) => {

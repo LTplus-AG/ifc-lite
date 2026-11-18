@@ -14,6 +14,8 @@ export interface ShadowOccluderDraw {
   kind: ShadowDrawKind;
   /** Smallest full scene id in this draw, for the packed 24-bit vertex lane. */
   entityIdAnchor?: number;
+  /** A partly hidden batch drawn whole: the fragment tests the GPU visibility table (#10264 S2). */
+  visibilityFiltered?: boolean;
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
   indexCount: number;

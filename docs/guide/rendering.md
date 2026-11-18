@@ -781,6 +781,17 @@ renderer.render({
 });
 ```
 
+A colour batch holds many entities. When only some of them are hidden or
+isolated away, the batch is still drawn whole from its own GPU buffers, and
+each fragment looks its entity up in a GPU table of the hidden and isolated
+ids, which the colour, shadow and pick passes share. No subset of the batch is
+rebuilt from CPU geometry, so a visibility change uploads one small id table
+instead of new vertex buffers. `hiddenIds` and `isolatedIds` keep the
+semantics above: hiding wins, an empty isolation set hides everything, and
+`null` isolates nothing. X-Ray (`transparencyOverrides`, `ghostExceptIds`) and
+lens colour promotion can still split a batch into per-alpha subsets; those
+subsets hold only visible entities.
+
 ### Basket Isolation (Viewer App)
 
 The viewer app provides a **basket** — an incremental isolation set that lets you build up a working set of entities interactively. Unlike simple isolation which replaces the set each time, the basket supports add/remove operations:

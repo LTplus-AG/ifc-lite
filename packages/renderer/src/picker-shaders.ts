@@ -12,7 +12,6 @@
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 import { sectionExclusionsWgsl } from './section-exclusions.js';
 import { extraClipWgsl } from './extra-clip-planes.js';
-import { pickVisibilityWgsl } from './pick-visibility.js';
 
 /** Flat meshes: one dynamic-offset uniform slot per mesh, expressIds in a storage buffer. */
 export const flatPickShaderWgsl = `
@@ -168,9 +167,10 @@ export const instancedPickShaderWgsl = `
  * it with the instanced marker (bit 30): like an instanced sample it names
  * its entity directly, with no per-draw table to index.
  *
- * Hide/isolate is the fragment's own test against `pickVisibility`, because a
- * batch is drawn whole. Clip discards mirror the flat pick pass. Same layout as
- * the flat uniform block, plus `quantParams` for 12-byte lattice batches.
+ * Hide/isolate is the fragment's own test against the shared entity
+ * visibility table (`entityVisible`), because a batch is drawn whole. Clip
+ * discards mirror the flat pick pass. Same layout as the flat uniform block,
+ * plus `quantParams` for 12-byte lattice batches.
  */
 export const lanePickShaderWgsl = `
         ${relativeToEyeWgsl}
@@ -188,9 +188,7 @@ export const lanePickShaderWgsl = `
           quantParams: vec4<f32>,  // xyz = lattice min, w = step (quantized batches only)
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-        @binding(1) @group(0) var<storage, read> pickVisibility: array<u32>;
         @binding(2) @group(0) var<uniform> extraClip: ExtraClip;
-        ${pickVisibilityWgsl}
 
         struct VertexOutput {
           @builtin(position) position: vec4<f32>,
@@ -221,7 +219,7 @@ export const lanePickShaderWgsl = `
 
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) u32 {
-          if (!pickVisible(input.entityId)) {
+          if (!entityVisible(input.entityId)) {
             discard;
           }
           let excluded = sectionExcluded(input.entityId);

@@ -111,40 +111,12 @@ function anyVisible(ids: readonly number[], vis: ShadowVisibility | undefined): 
   return false;
 }
 
-/**
- * How a shared batch stands under the current hide/isolate state (#2670, Phase
- * 2b), so the renderer can feed the shadow collector the SAME visible subset the
- * colour pass draws:
- * - `all` — no filtering, or every element visible → cast the batch's own buffers.
- * - `none` — every element hidden/excluded → the batch does not cast at all.
- * - `partial` — a mix → cast only `visibleIds` (via the colour pass's cached
- *   partial sub-batch), so an individually-hidden element stops casting instead
- *   of throwing a phantom shadow.
- *
- * Uses {@link isEntityVisible}, so the empty-isolate-hides-everything and
- * hiding-wins-over-isolation rules match every other visibility surface exactly.
- */
-export type BatchVisibilityClass =
-  | { kind: 'all' }
-  | { kind: 'none' }
-  | { kind: 'partial'; visibleIds: Set<number> };
-
-export function classifyBatchVisibility(
-  expressIds: readonly number[],
-  hiddenIds: ReadonlySet<number> | null | undefined,
-  isolatedIds: ReadonlySet<number> | null | undefined,
-): BatchVisibilityClass {
-  // No active filter → the whole batch is visible (fast path, no Set built).
-  if ((hiddenIds == null || hiddenIds.size === 0) && isolatedIds == null) {
-    return { kind: 'all' };
-  }
-  const visibleIds = new Set<number>();
-  for (const id of expressIds) {
-    if (isEntityVisible(id, hiddenIds, isolatedIds)) visibleIds.add(id);
-  }
-  if (visibleIds.size === 0) return { kind: 'none' };
-  if (visibleIds.size === expressIds.length) return { kind: 'all' };
-  return { kind: 'partial', visibleIds };
+/** Entries of `ids` visible under `vis` (all of them without a filter). */
+function visibleCount(ids: readonly number[], vis: ShadowVisibility | undefined): number {
+  if (!vis || (!vis.hiddenIds?.size && vis.isolatedIds == null)) return ids.length;
+  let n = 0;
+  for (const id of ids) if (isEntityVisible(id, vis.hiddenIds, vis.isolatedIds)) n++;
+  return n;
 }
 
 /**
@@ -153,10 +125,10 @@ export function classifyBatchVisibility(
  * A batch casts if it is GPU-resident, opaque enough (material alpha >=
  * `minCastAlpha` — transparent glass lets light through, see
  * {@link ShadowOccluderOptions.minCastAlpha}) and has at least one visible
- * element. Per-element hide/isolate within a shared batch is applied UPSTREAM:
- * the renderer feeds this collector the same visible subset it draws (a
- * fully-hidden batch is dropped, a partially-hidden one arrives as its visible
- * sub-batch), so `sources.batches` is already visibility-correct. Instanced
+ * element. A partly hidden batch casts whole and is marked
+ * `visibilityFiltered`, so the shadow fragment drops its hidden entities
+ * against the GPU visibility table, as the colour pass does (#10264 S2); the
+ * renderer only passes such a batch when that table is ready. Instanced
  * templates carry a per-occurrence HIDDEN flag the depth shader discards on, so
  * a hidden/isolated occurrence stops casting. Textured meshes are filtered per
  * element like the main textured sub-pass.
@@ -173,11 +145,13 @@ export function collectShadowOccluders(
     if (batch.gpuResident === false) continue;
     if (!batch.vertexBuffer || !batch.indexBuffer || batch.indexCount <= 0) continue;
     if (batch.color[3] < minCastAlpha) continue; // transparent (glass) → light through
-    if (!anyVisible(batch.expressIds, visibility)) continue;
+    const visible = visibleCount(batch.expressIds, visibility);
+    if (visible === 0) continue;
     const q = batch.quantized;
     draws.push({
       kind: q ? 'quantized' : 'flat',
       entityIdAnchor: batchEntityIdAnchor(batch) ?? 0xFFFFFFFF,
+      ...(visible < batch.expressIds.length ? { visibilityFiltered: true } : {}),
       vertexBuffer: batch.vertexBuffer,
       indexBuffer: batch.indexBuffer,
       indexCount: batch.indexCount,

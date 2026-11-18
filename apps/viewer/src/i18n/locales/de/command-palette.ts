@@ -224,4 +224,8 @@ export const commandPaletteDe = {
   'commandPalette.category.extensions': 'Erweiterungen',
   'commandPalette.category.learn': 'Lernen',
   "commandPalette.tool.deriveStructural.label": "Statisches Analysemodell ableiten",
+  'commandPalette.vis.structural.both.label': 'Tragwerksansicht: beide Modelle',
+  'commandPalette.vis.structural.analytical.label': 'Tragwerksansicht: nur Analysemodell',
+  'commandPalette.vis.structural.physical.label': 'Tragwerksansicht: nur physisches Modell',
+  'commandPalette.availability.structuralDerivable': 'Ein Modell mit Tragwerksanalysedaten laden oder eines mit „Statisches Analysemodell ableiten“ erstellen.',
 } satisfies Catalogue;

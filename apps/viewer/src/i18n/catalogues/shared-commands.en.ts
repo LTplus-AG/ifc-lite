@@ -143,6 +143,7 @@ export const sharedCommandsEn = {
   'classVisibility.grids.description': 'Structural axes',
   'classVisibility.structuralGlyphs.label': 'Supports & loads',
   'classVisibility.structuralGlyphs.description': 'Structural analysis symbols',
+  'classVisibility.structuralGlyphs.maskedHint': 'Hidden in the physical-only structural view',
 
   'classVisibility.mergeLayers.label': 'Merge multilayer walls',
   'classVisibility.mergeLayers.description': 'Render walls as one solid · on reload',

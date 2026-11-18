@@ -267,4 +267,8 @@ export const commandPaletteEn = {
   'commandPalette.category.extensions': 'Extensions',
   'commandPalette.category.learn': 'Learn',
   'commandPalette.tool.deriveStructural.label': 'Derive structural analysis model',
+  'commandPalette.vis.structural.both.label': 'Structural view: both models',
+  'commandPalette.vis.structural.analytical.label': 'Structural view: analytical model only',
+  'commandPalette.vis.structural.physical.label': 'Structural view: physical model only',
+  'commandPalette.availability.structuralDerivable': 'Load a model with structural analysis data, or create one with Derive structural analysis model.',
 } as const satisfies Record<string, TranslationValue>;

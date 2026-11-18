@@ -4,7 +4,7 @@
 
 /**
  * Ribbon · View tab — camera presets and projection, world context
- * (Cesium / sun / SpaceMouse), and interface options.
+ * (Cesium / sun / SpaceMouse), the structural view, and interface options.
  */
 
 import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Spatial, SiteContext, FloodCheck } from '@/icons';
@@ -21,6 +21,7 @@ import {
   RibbonSmallStack,
 } from '../primitives';
 import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
+import { StructuralRibbonGroup } from './StructuralRibbonGroup';
 
 export function ViewTab() {
   const { t } = useTranslation();
@@ -162,6 +163,10 @@ export function ViewTab() {
           />
         </RibbonSmallStack>
       </RibbonGroup>
+
+      <RibbonGroupDivider />
+
+      <StructuralRibbonGroup />
 
       <RibbonGroupDivider />
 

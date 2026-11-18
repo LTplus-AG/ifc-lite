@@ -41,6 +41,7 @@ import { useViewerStore } from '@/store';
 import { isPreviewTier } from '@/store/constants';
 import { cn } from '@/lib/utils';
 import { openSettings } from '@/lib/settings/open-settings';
+import { structuralGlyphsVisible, toggleStructuralGlyphs } from '@/lib/visibility/structural-view';
 
 interface ClassVisibilityRowProps {
   /** Colored class glyph (caller sets the tint). */
@@ -82,6 +83,7 @@ function ClassVisibilityRow({ icon, label, description, checked, onChange }: Cla
  */
 export function useVisibleClassCount(): { visible: number; total: number } {
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
+  const structuralViewMode = useViewerStore((state) => state.structuralViewMode);
   const toggles = [
     typeVisibility.spaces,
     typeVisibility.spatialZones,
@@ -90,7 +92,7 @@ export function useVisibleClassCount(): { visible: number; total: number } {
     typeVisibility.site,
     typeVisibility.ifcAnnotations,
     typeVisibility.ifcGrid,
-    typeVisibility.structuralGlyphs,
+    structuralGlyphsVisible(typeVisibility, structuralViewMode),
   ];
   return { visible: toggles.filter(Boolean).length, total: toggles.length };
 }
@@ -106,6 +108,8 @@ export function ClassVisibilityControls({ inMenu = false, onNavigate }: { inMenu
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
   const resetTypeVisibility = useViewerStore((state) => state.resetTypeVisibility);
+  const structuralViewMode = useViewerStore((state) => state.structuralViewMode);
+  const glyphsMasked = typeVisibility.structuralGlyphs && structuralViewMode === 'physical';
   // #957 follow-up: Model/Types 3D view switch — 'model' shows placed
   // occurrences (default), 'types' shows the type-library shapes.
   const typeViewMode = useViewerStore((state) => state.typeViewMode);
@@ -240,9 +244,10 @@ export function ClassVisibilityControls({ inMenu = false, onNavigate }: { inMenu
       <ClassVisibilityRow
         icon={<ArrowDownToLine className="h-4 w-4 shrink-0 text-status-ok" />}
         label={t('classVisibility.structuralGlyphs.label')}
-        description={t('classVisibility.structuralGlyphs.description')}
-        checked={typeVisibility.structuralGlyphs}
-        onChange={() => toggleTypeVisibility('structuralGlyphs')}
+        // The switch reports the drawn layer: Physical masks the glyphs whatever the preference (#10604).
+        description={glyphsMasked ? t('classVisibility.structuralGlyphs.maskedHint') : t('classVisibility.structuralGlyphs.description')}
+        checked={structuralGlyphsVisible(typeVisibility, structuralViewMode)}
+        onChange={() => toggleStructuralGlyphs(useViewerStore.getState())}
       />
 
       <Separator className="my-1" />

@@ -1712,7 +1712,7 @@ export class Renderer {
             hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds, visibilityVersion: newVisibilityVersion,
             modelIndex: selectedModelIndex, itemFilterExpressId, itemFilterItemId, pool: this.scene.getBatchedMeshes().length > 0 || this.scene.getTexturedMeshes().length > 0,
         }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged),
-            { device, pipeline: this.pipeline, get table() { return sectionExclusions(device); }, onTableReady: () => this.requestRender() });
+            { device, pipeline: this.pipeline, get table() { return sectionExclusions(device); }, onTableReady: () => this.requestRender(), onPipelineReady: () => this.requestRender() });
 
         let meshes = this.scene.getMeshes();
 
@@ -2840,7 +2840,7 @@ export class Renderer {
             const hoverModel = hovered?.modelIndex;
             const ownHover = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel));
             // From the colour batches when they hold all of it (#10264 S3), else copies of its pieces.
-            const hoverBatches = ownHover ? this.hoverBatches.resolve(this.scene, hoverId, hoverModel, { device, pipeline: this.pipeline }) : null;
+            const hoverBatches = ownHover ? this.hoverBatches.resolve(this.scene, hoverId, hoverModel, { device, pipeline: this.pipeline, onPipelineReady: () => this.requestRender() }) : null;
             for (const batch of hoverBatches ?? []) this.scene.recordBatchDrawn(batch);
             const hoverPieces = ownHover && !hoverBatches
                 ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m), this.scene.getPickGeometryRevision())) ?? []

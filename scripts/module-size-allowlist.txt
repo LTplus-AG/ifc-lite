@@ -242,7 +242,7 @@
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
    706 packages/renderer/src/picker.ts
-   939 packages/renderer/src/pipeline.ts
+   947 packages/renderer/src/pipeline.ts
    465 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
   3512 packages/renderer/src/renderer.ts

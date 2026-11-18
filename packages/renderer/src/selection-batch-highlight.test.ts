@@ -365,7 +365,11 @@ describe('selection highlight from colour batches (#10264 S3)', () => {
     h.render({});
     const copies = h.render({ selectedIds: new Set([3]) });
     assert.equal(copies.filter((d) => d.pipeline === h.BATCH_QUANTIZED).length, 0);
-    assert.ok(hydrated(h).length > 0, 'copies stand in without the quantized highlight pipeline');
+    assert.ok(hydrated(h).length > 0, 'copies stand in while the quantized highlight pipeline is being built');
+    h.pipelines.quantizedReady = true; // the late build lands: the next frame draws from the batch again
+    const back = h.render({ selectedIds: new Set([3]) });
+    assert.ok(back.filter((d) => d.pipeline === h.BATCH_QUANTIZED).length > 0);
+    assert.equal(hydrated(h).length, 0);
   });
 });
 

@@ -45,6 +45,7 @@ export class RenderPipeline {
     private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
     private makeQuantizedPipelineAsync: ((kind: 'opaque' | 'transparent' | 'selection') => Promise<GPURenderPipeline>) | null = null;
     private quantizedPipelines: Partial<Record<'opaque' | 'transparent' | 'overlay' | 'selection', GPURenderPipeline>> = {};
+    private quantizedSelectionBuilding = false;
     private makeGhostPipelineAsync: ((quantized: boolean) => Promise<GPURenderPipeline>) | null = null;
     private readonly ghostPipelines = new Map<boolean, GPURenderPipeline | null>();
     private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
@@ -588,7 +589,7 @@ export class RenderPipeline {
     async ensureQuantizedPipelines(): Promise<boolean> {
         const factory = this.makeQuantizedPipelineAsync;
         if (this.destroyed || !factory) return false;
-        const kinds = ['opaque', 'transparent', 'selection'] as const;
+        const kinds = ['opaque', 'transparent'] as const;
         try {
             for (const kind of kinds) {
                 if (!this.quantizedPipelines[kind]) {
@@ -795,9 +796,16 @@ export class RenderPipeline {
         return this.selectionPipeline;
     }
 
-    /** The highlight draw of a colour batch (#10264 S3); null while a quantized one is not built. */
-    getBatchSelectionPipeline(quantized: boolean): GPURenderPipeline | null {
-        return quantized ? this.quantizedPipelines.selection ?? null : this.selectionPipeline;
+    /** The highlight draw of a colour batch (#10264 S3). The quantized one is built on first ask, outside the admission probe; null until then. */
+    getBatchSelectionPipeline(quantized: boolean, onReady?: () => void): GPURenderPipeline | null {
+        if (!quantized) return this.selectionPipeline;
+        const factory = this.makeQuantizedPipelineAsync;
+        if (!this.quantizedPipelines.selection && !this.quantizedSelectionBuilding && factory) {
+            this.quantizedSelectionBuilding = true;
+            factory('selection').then((pipeline) => { if (!this.destroyed) { this.quantizedPipelines.selection = pipeline; onReady?.(); } },
+                (err) => console.warn('[Pipeline] quantized selection pipeline build failed; quantized batches keep highlight copies:', err));
+        }
+        return this.quantizedPipelines.selection ?? null;
     }
 
     getTransparentPipeline(): GPURenderPipeline {

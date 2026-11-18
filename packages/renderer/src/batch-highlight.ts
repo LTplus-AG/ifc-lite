@@ -38,6 +38,8 @@ export type BatchHighlightScene = Pick<Scene, 'getBatchedMeshes' | 'requestBatch
 export interface BatchHighlightResources {
   device: GPUDevice;
   pipeline: Pick<RenderPipeline, 'getUniformBufferSize' | 'getBindGroupLayout' | 'getBatchSelectionPipeline'>;
+  /** Asks for a frame once a highlight pipeline that was still being built is ready. */
+  onPipelineReady?: () => void;
 }
 
 /** What {@link BatchHighlight.sync} decided. */
@@ -65,8 +67,11 @@ export function stageBatchHighlight(mesh: Mesh, uniforms: Float32Array): boolean
 
 /** Whether a batch's own buffers can draw the highlight this frame. */
 function drawable(batch: BatchedMesh, resources: BatchHighlightResources): boolean {
-  return batch.gpuResident !== false && batchEntityIdAnchor(batch) !== null
-    && resources.pipeline.getBatchSelectionPipeline(batch.quantized !== undefined) !== null;
+  return batch.gpuResident !== false && batchEntityIdAnchor(batch) !== null && hasPipeline(batch, resources);
+}
+
+function hasPipeline(batch: BatchedMesh, resources: BatchHighlightResources): boolean {
+  return resources.pipeline.getBatchSelectionPipeline(batch.quantized !== undefined, resources.onPipelineReady) !== null;
 }
 
 /**
@@ -79,9 +84,10 @@ export function batchesHolding(
   ids: ReadonlySet<number>,
   modelIndex: number | undefined,
   resources: BatchHighlightResources,
-): { batches: Map<BatchedMesh, number>; evicted: Map<BatchedMesh, number>; blocked: Set<number>; found: Set<number> } {
+): { batches: Map<BatchedMesh, number>; evicted: Map<BatchedMesh, number>; blocked: Set<number>; found: Set<number>; awaitsPipeline: boolean } {
   const batches = new Map<BatchedMesh, number>();
   const evicted = new Map<BatchedMesh, number>();
+  let awaitsPipeline = false;
   const blocked = new Set<number>();
   const found = new Set<number>();
   const list = scene.getBatchedMeshes();
@@ -101,9 +107,15 @@ export function batchesHolding(
     if (!holds) continue;
     if (drawable(batch, resources)) { batches.set(batch, index); continue; }
     if (batch.gpuResident === false) { scene.requestBatchResidency(batch); evicted.set(batch, index); }
+    if (!hasPipeline(batch, resources)) awaitsPipeline = true;
     for (const id of batch.expressIds) if (ids.has(id)) blocked.add(id);
   }
-  return { batches, evicted, blocked, found };
+  return { batches, evicted, blocked, found, awaitsPipeline };
+}
+
+/** Whether the quantized highlight pipeline a batch waited for exists now (only quantized pipelines are built late). */
+function quantizedPipelineReady(resources: BatchHighlightResources): () => boolean {
+  return () => resources.pipeline.getBatchSelectionPipeline(true) !== null;
 }
 
 /**
@@ -117,13 +129,16 @@ class BatchWatch {
   private waiting = new Map<BatchedMesh, number>();
   private list: readonly BatchedMesh[] | null = null;
   private listLength = 0;
+  /** Set while a batch waited for its quantized highlight pipeline: true once it exists. */
+  private pipelineReady: (() => boolean) | null = null;
 
-  set(scene: BatchHighlightScene, drawn: Map<BatchedMesh, number>, waiting: Map<BatchedMesh, number>): void {
-    this.drawn = drawn; this.waiting = waiting;
+  set(scene: BatchHighlightScene, drawn: Map<BatchedMesh, number>, waiting: Map<BatchedMesh, number>, pipelineReady: (() => boolean) | null = null): void {
+    this.drawn = drawn; this.waiting = waiting; this.pipelineReady = pipelineReady;
     this.list = scene.getBatchedMeshes(); this.listLength = this.list.length;
   }
 
   stale(scene: BatchHighlightScene): boolean {
+    if (this.pipelineReady?.()) return true;
     if (this.drawn.size === 0 && this.waiting.size === 0) return false;
     const list = scene.getBatchedMeshes();
     if (list !== this.list || list.length !== this.listLength) return true;
@@ -133,7 +148,7 @@ class BatchWatch {
   }
 
   has(batch: BatchedMesh): boolean { return this.drawn.has(batch); }
-  clear(): void { this.drawn = new Map(); this.waiting = new Map(); this.list = null; this.listLength = 0; }
+  clear(): void { this.drawn = new Map(); this.waiting = new Map(); this.pipelineReady = null; this.list = null; this.listLength = 0; }
 }
 
 /** The selection's batch draws, kept between frames. */
@@ -155,7 +170,7 @@ export class BatchHighlight {
   ): BatchHighlightResult {
     if (this.device !== resources.device) { this.clear(); this.device = resources.device; }
     const wanted = exact.size === 0 ? visible : new Set([...visible].filter((id) => !exact.has(id)));
-    const { batches, evicted, blocked, found } = batchesHolding(scene, wanted, modelIndex, resources);
+    const { batches, evicted, blocked, found, awaitsPipeline } = batchesHolding(scene, wanted, modelIndex, resources);
     const covered = new Set<number>();
     for (const id of found) if (!blocked.has(id)) covered.add(id);
     const draws: Mesh[] = [];
@@ -165,7 +180,7 @@ export class BatchHighlight {
       draws.push(this.record(batch, resources));
       drawn.set(batch, index);
     }
-    this.watch.set(scene, drawn, evicted);
+    this.watch.set(scene, drawn, evicted, awaitsPipeline ? quantizedPipelineReady(resources) : null);
     for (const [batch, mesh] of this.records) {
       if (this.watch.has(batch)) continue;
       sources.get(mesh)!.slot.release();
@@ -224,9 +239,9 @@ export class HoverBatches {
     const key = `${modelIndex ?? 'any'}:${id}:${list.length}`;
     if (key === this.key && list === this.list && !this.watch.stale(scene)) return this.batches;
     this.list = list;
-    const { batches, evicted, blocked, found } = batchesHolding(scene, new Set([id]), modelIndex, resources);
+    const { batches, evicted, blocked, found, awaitsPipeline } = batchesHolding(scene, new Set([id]), modelIndex, resources);
     this.batches = found.has(id) && !blocked.has(id) ? [...batches.keys()] : null;
-    this.watch.set(scene, this.batches ? batches : new Map(), evicted);
+    this.watch.set(scene, this.batches ? batches : new Map(), evicted, awaitsPipeline ? quantizedPipelineReady(resources) : null);
     this.key = key;
     return this.batches;
   }

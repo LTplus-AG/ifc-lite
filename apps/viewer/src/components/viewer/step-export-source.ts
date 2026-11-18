@@ -64,10 +64,12 @@ export async function resolveStepExportSource(
     schemaVersion: model.schemaVersion,
   });
   // Georeferencing edits live outside the mutation view, so they regenerate on their own.
-  const georef = hasGeorefEdits(georefMutations) && model.ifcDataStore && model.ifcDataStore.source.byteLength > 0
-    && model.ifcDataStore.sourceKind !== 'tabular' && model.schemaVersion !== 'IFC5' ? georefMutations : undefined;
-  if (mutationSource || georef) {
-    const dataStore = mutationSource?.dataStore ?? model.ifcDataStore!;
+  const store = model.ifcDataStore;
+  const georefStore = hasGeorefEdits(georefMutations) && store && store.source.byteLength > 0
+    && store.sourceKind !== 'tabular' && model.schemaVersion !== 'IFC5' ? store : null;
+  const georef = georefStore ? georefMutations : undefined;
+  const dataStore = mutationSource?.dataStore ?? georefStore;
+  if (dataStore) {
     const result = new StepExporter(dataStore, mutationSource?.mutationView ?? view ?? undefined).export({
       schema: dataStore.schemaVersion,
       ...(georef ? { georefMutations: georef } : {}),

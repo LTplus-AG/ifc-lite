@@ -32,7 +32,6 @@ export const siteContextRu = {
   "siteContext.refusal.outsideSwitzerland": "Окружение участка доступно для участков в Швейцарии; эта модель расположена в другом месте.",
   "siteContext.refusal.heightDatum": "Высоты окружения указаны в LN02; в модели указано {datum}. Системы высот не смешиваются.",
   "siteContext.refusal.heightUnknown": "Высоты окружения в LN02; в модели не указана система высот, и для этого формата она не предполагается. Укажите систему высот, чтобы загрузить окружение вокруг модели.",
-  "siteContext.refusal.openEditor": "Добавить привязку",
   "siteContext.card.title": "Окружение участка",
   "siteContext.card.category": "Категория",
   "siteContext.card.complete": "Полностью",
@@ -52,4 +51,10 @@ export const siteContextRu = {
   "siteContext.card.subjectMatchFootprint": "его контур перекрывает модель на {overlap} %",
   "siteContext.card.showSubject": "Показать",
   "siteContext.card.hideSubject": "Скрыть снова",
+  "siteContext.refusal.addHint": "Добавьте геопривязку выше: выберите систему координат (для участков в Швейцарии EPSG:2056 · CH1903+ / LV95), затем разместите модель на карте.",
+  "siteContext.refusal.outsideHint": "Если эта модель находится в Швейцарии, проверьте её систему координат и задайте положение на карте выше.",
+  "siteContext.command.noModel": "Сначала откройте модель: окружение участка загружается вокруг модели.",
+  "siteContext.ribbon.label": "Окружение",
+  "siteContext.ribbon.tooltip": "Рельеф, участок и соседние здания от swisstopo вокруг геопривязанной швейцарской модели",
+  "siteContext.refusal.crsHint": "Откройте «Проекционная CRS» выше и исправьте Name (для участков в Швейцарии EPSG:2056) и VerticalDatum (LN02).",
 } satisfies Catalogue;

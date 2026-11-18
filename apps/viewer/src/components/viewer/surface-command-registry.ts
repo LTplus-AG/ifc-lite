@@ -7,7 +7,7 @@
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, ChevronsUpDown,
   Crosshair, FolderOpen, Home, Layers3, Maximize2, Orbit, Save,
-  SquareStack, Sun, Tag, Mountain,
+  SquareStack, Sun, Tag, Mountain, Droplets,
 } from 'lucide-react';
 import { resolve as t, resolveEnglish } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
@@ -187,10 +187,16 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
     run: () => { openSettings('display'); },
   },
   {
-    id: 'view:site-context', labelKey: 'siteContext.palette.label',
-    keywords: 'site context terrain parcel cadastre swisstopo swiss gis surroundings', category: 'View', icon: Mountain,
-    surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { void import('@/lib/site-context/site-context-command').then(({ openSiteContext }) => openSiteContext()); },
+    id: 'view:site-context', labelKey: 'siteContext.palette.label', ribbonLabelKey: 'siteContext.ribbon.label', ribbonTooltipKey: 'siteContext.ribbon.tooltip',
+    keywords: 'site context terrain parcel cadastre swisstopo swiss gis surroundings neighbours buildings georeference', category: 'View', icon: Mountain,
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: ({ surface }: SurfaceCommandContext) => { void import('@/lib/site-context/site-context-command').then(({ openSiteContext }) => openSiteContext(surface)); },
+  },
+  {
+    id: 'view:flood-check', labelKey: 'floodCheck.palette.label', ribbonLabelKey: 'floodCheck.ribbon.label', ribbonTooltipKey: 'floodCheck.ribbon.tooltip',
+    keywords: 'flood surface runoff overland flow water hazard rain bafu swiss gis check', category: 'View', icon: Droplets,
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: ({ surface }: SurfaceCommandContext) => { void import('@/lib/site-context/site-context-command').then(({ openFloodCheck }) => openFloodCheck(surface)); },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];
 type SurfaceCommandEntry =

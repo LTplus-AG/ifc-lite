@@ -266,14 +266,14 @@ describe('finished-scene snapshot', () => {
     const drawnIndices = (visible: Set<number> | null, batch = glass): number => {
       const requests = new PartialBatchRequests(lens, new XRayAlpha({}, new Set()), (b) => scene.canPartitionBatch(b));
       let drawn = 0;
-      if (visible) requests.pushVisible(batch, visible, true);
-      else if (!requests.pushWholeSplit(batch, true)) drawn += batch.indexCount;
+      // Not split: drawn whole, a partly hidden batch under the GPU visibility test (#10264 S2).
+      if (!requests.pushSplit(batch, true, visible)) drawn += batch.indexCount;
       for (const r of requests.items) drawn += scene.getOrCreatePartialBatch(r.sourceBatchKey, r.colorKey, r.visibleIds, device, pipeline)?.indexCount ?? 0;
       return drawn;
     };
     assert.strictEqual(scene.isSceneSnapshotHydrating(), true);
     assert.strictEqual(drawnIndices(null), 9, 'fully visible: the whole batch, once');
-    assert.strictEqual(drawnIndices(new Set([4, 5])), 9, 'under hide: the whole batch, once, until the pieces arrive');
+    assert.strictEqual(drawnIndices(new Set([4, 5])), 9, 'under hide: the whole batch, once, its hidden entity discarded on the GPU');
 
     // A fragment streamed in meanwhile has its own pieces, but every slot is still served
     // the bucket's whole batch: splitting it would draw that batch once per subset.

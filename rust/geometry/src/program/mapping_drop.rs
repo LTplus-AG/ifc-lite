@@ -47,7 +47,9 @@ pub(super) fn report_drop(
         DropReason::Item { item, .. } => item.ifc_type.clone(),
         DropReason::NestedFailure { .. } | DropReason::LogicalStop { .. } => IfcType::IfcMappedItem,
     };
-    router.record_unsupported_item(ifc_type);
+    if !matches!(reason, DropReason::LogicalStop { .. }) {
+        router.record_unsupported_item(ifc_type);
+    }
     if matches!(reason, DropReason::LogicalStop { .. }) {
         drop(scope.take());
     }

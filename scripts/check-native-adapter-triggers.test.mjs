@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -16,11 +15,15 @@ const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
 const TEST_WORKFLOW = '.github/workflows/test.yml';
 
+const BISECT = '.github/workflows/native-adapter-bisect.yml';
+
 /** A tree with the real workflow and every crate manifest the closure reads. */
 function copyTree(context) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-triggers-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', '.github/workflows/report-scheduled-failure.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
+  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/workflow-job-condition.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', '.github/workflows/report-scheduled-failure.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
+  // The bisect workflow is optional, so a revert of it reads as an audit failure, not a copy error.
+  if (existsSync(join(REPO, BISECT))) files.push(BISECT);
   for (const f of files) {
     mkdirSync(join(root, dirname(f)), { recursive: true });
     cpSync(join(REPO, f), join(root, f));
@@ -67,6 +70,12 @@ test('a non-crate Rust input (Cargo.lock) dropped from the list is reported', (c
   const root = copyTree(context);
   mutate(root, (t) => t.replaceAll("      - 'Cargo.lock'\n", ''));
   assert.ok(audit(root).some((f) => f.includes('Cargo.lock') && f.includes('on.pull_request.paths')));
+});
+
+test('a narrow entry under .cargo/ does not cover the whole directory', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replaceAll("      - '.cargo/**'\n", "      - '.cargo/x/x'\n"));
+  assert.ok(audit(root).some((f) => f.includes('.cargo/** is not covered by on.pull_request.paths')));
 });
 
 test('probe-file globs that leave the rest of a crate untriggered are reported', (context) => {
@@ -165,7 +174,7 @@ test('running the corpus inside native-adapter again is reported', (context) => 
 
 test('a corpus job that runs on every PR, or has no literal budget, is reported', (context) => {
   const ungated = copyTree(context);
-  mutate(ungated, (t) => t.replace("    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120", "    runs-on: ubuntu-24.04\n    timeout-minutes: 120"));
+  mutate(ungated, (t) => t.replace("    if: (inputs.bisect_sha && inputs.bisect_shards) || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120", "    runs-on: ubuntu-24.04\n    timeout-minutes: 120"));
   assert.ok(audit(ungated).some((f) => f.includes('native-corpus must be gated')));
   const unbounded = copyTree(context);
   mutate(unbounded, (t) => t.replace('    timeout-minutes: 120\n    strategy:', '    timeout-minutes: 400\n    strategy:'));
@@ -197,11 +206,11 @@ test('a compare step that is fatal or unbounded, or an unjudged shard, is report
 
 test('an aggregate that does not need the matrix or ignores its result, and a reporter that ignores the corpus, are reported', (context) => {
   const root = copyTree(context);
-  mutate(root, (t) => t.replace('    needs: [native-corpus]\n', '    needs: []\n').replace('          [[ "$SHARDS_RESULT" == success ]]\n', '').replace('needs: [native-adapter, native-corpus-result]\n    if: always() && github.event_name', 'needs: [native-adapter]\n    if: always() && github.event_name'));
+  mutate(root, (t) => t.replace('    needs: [native-corpus]\n', '    needs: []\n').replace('          [[ "$SHARDS_RESULT" == success ]]\n', '').replace('needs: [nightly-range, native-adapter, native-corpus-result]\n    if: always() && github.event_name', 'needs: [nightly-range, native-adapter]\n    if: always() && github.event_name'));
   const failures = audit(root);
   assert.ok(failures.some((f) => f.includes('must need native-corpus')));
   assert.ok(failures.some((f) => f.includes('matrix result is not success')));
-  assert.ok(failures.some((f) => f.includes('report-scheduled-failure must need native-corpus-result')));
+  assert.ok(failures.some((f) => f.includes('report-scheduled-failure must need nightly-range, native-adapter and native-corpus-result')));
 });
 
 test('an aggregate that stops reporting the models left out of the corpus is reported', (context) => {
@@ -250,9 +259,9 @@ test('an if: always() on an earlier step does not satisfy the judge-step check',
 
 test('an unreadable matrix reports the real cause once, without a size-0 remedy', (context) => {
   const root = copyTree(context);
-  mutate(root, (t) => t.replace(/        shard: \[[0-9, ]+\]\n/, `        shard: \${{ fromJSON('[0,1]') }}\n`));
+  mutate(root, (t) => t.replace(/        shard: \$\{\{ fromJSON\(inputs\.bisect_shards \|\| '\[[0-9, ]+\]'\) \}\}\n/, `        shard: \${{ fromJSON('[0,1]') }}\n`));
   const failures = audit(root);
-  assert.ok(failures.some((f) => f.includes('matrix shard must list 0..N-1')));
+  assert.ok(failures.some((f) => f.includes('listing 0..N-1 in order')));
   assert.ok(!failures.some((f) => f.includes('(0)') || f.includes('exactly the matrix\'s 0')), failures.join('\n'));
 });
 
@@ -413,101 +422,65 @@ test('the call\'s own grant is the block at job level, and it must be readable',
   assert.deepEqual(scan('jobs:\n  a:\n    uses: ./.github/workflows/x.yml # note\n', [], 'w').calls, ['.github/workflows/x.yml']);
 });
 
-const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');
-// A hook's GIT_DIR or GIT_INDEX_FILE would point git -C at the real repository.
-const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+// ------------------------------------------------------------ the nightly route (what covers #10619's excluded paths)
 
-/** A repository whose HEAD is the PR merge commit of a branch that adds `add`, git-mv's `move` ([old, new] pairs) and, with `dropOwnPath`, deletes the workflow's own entry from its paths list; `merge: false` makes it a squash. */
-function batchRepo(context, { add = [], move = [], dropOwnPath = false, merge = true, workflow = readFileSync(join(REPO, WORKFLOW), 'utf8') } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'native-adapter-batch-'));
-  context.after(() => rmSync(root, { recursive: true, force: true }));
-  const git = (...args) => {
-    const r = spawnSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8', env: cleanEnv() });
-    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
-  };
-  const write = (rel, body) => {
-    mkdirSync(join(root, dirname(rel)), { recursive: true });
-    writeFileSync(join(root, rel), body);
-  };
-  git('init', '-q', '-b', 'main');
-  write(WORKFLOW, workflow);
-  write('README.md', 'base\n');
-  for (const [from] of move) write(from, 'moved\n');
-  git('add', '-A');
-  git('commit', '-q', '-m', 'base');
-  git('checkout', '-q', '-b', 'mergify/merge-queue/batch');
-  for (const f of add) write(f, 'changed\n');
-  if (dropOwnPath) {
-    const dropped = workflow.replace(`      - '${WORKFLOW}'\n`, '');
-    if (dropped === workflow) throw new Error(`dropOwnPath: ${WORKFLOW} no longer lists itself in that spelling; update the fixture`);
-    write(WORKFLOW, dropped);
+test('a nightly route that loses its schedule, record, range-carrying report or bisect is reported', (context) => {
+  const cases = [
+    ['no schedule', (t) => t.replace("  schedule:\n    - cron: '30 2 * * *'\n", ''), 'on.schedule'],
+    ['corpus off the nightly', (t) => t.replace(" || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120", "\n    runs-on: ubuntu-24.04\n    timeout-minutes: 120"), 'native-corpus must be gated'],
+    ['no record', (t) => t.replace(/  nightly-range:\n[\s\S]*?(?=\n {2}# One tracking issue)/, ''), 'no nightly-range job'],
+    ['record gated only on a step', (t) => {
+      const job = t.slice(t.indexOf('  nightly-range:\n'));
+      const gateLine = job.split('\n').find((l) => l.startsWith('    if: '));
+      assert.ok(gateLine, 'nightly-range has a job-level if:');
+      return t.replace(`  nightly-range:\n    name: Nightly coverage range\n${gateLine}\n`, '  nightly-range:\n    name: Nightly coverage range\n').replace('      - name: Name the commits this run covers\n', `      - name: Name the commits this run covers\n        ${gateLine.trim()}\n`);
+    }, 'nightly-range must run on every full run'],
+    ['range step switched off', (t) => t.replace('      - name: Name the commits this run covers\n', '      - name: Name the commits this run covers\n        if: false\n'), 'neither step gated by its own if:'],
+    ['record upload switched off', (t) => t.replace('      - name: Keep the coverage record for the bisect\n', '      - name: Keep the coverage record for the bisect\n        if: false\n'), 'neither step gated by its own if:'],
+    ['full clone on another step', (t) => t.replace('          fetch-depth: 0\n          filter: blob:none\n      - name: Name the commits', '          filter: blob:none\n      - name: Name the commits').replace('      - name: Keep the coverage record for the bisect\n', '      - name: Other\n        uses: some/action@v1\n        with:\n          fetch-depth: 0\n      - name: Keep the coverage record for the bisect\n'), 'fetch-depth: 0 on its checkout'],
+    ['record off main', (t) => t.replace("    if: github.ref == 'refs/heads/main' && (", "    if: (github.ref == 'refs/heads/main' || true) && ("), 'nightly-range must run on every full run'],
+    ['record behind the lane', (t) => t.replace('    name: Nightly coverage range\n', '    name: Nightly coverage range\n    needs: [native-adapter]\n'), 'must not need another job'],
+    ['record never uploaded', (t) => t.replace(`          path: \${{ runner.temp }}/nightly-range.json\n`, `          path: \${{ runner.temp }}/other.json\n`), 'upload nightly-range.json as the nightly-range artifact'],
+    ['record under another artifact name', (t) => t.replace('          name: nightly-range\n          path:', '          name: other\n          path:'), 'upload nightly-range.json as the nightly-range artifact'],
+    ['shallow record', (t) => t.replace('          fetch-depth: 0\n          filter: blob:none\n      - name: Name the commits', '          filter: blob:none\n      - name: Name the commits'), 'fetch-depth: 0'],
+    ['report without the range', (t) => t.replace(`      detail: \${{ needs.nightly-range.outputs.detail }}\n`, ''), 'must pass the nightly-range detail'],
+    ['report without the label', (t) => t.replace('      labels: nightly-red\n', ''), 'labels: nightly-red'],
+    ['report ignores the record', (t) => t.replace("needs.nightly-range.result != 'success' || needs.native-adapter", 'needs.native-adapter'), 'must report a red nightly-range'],
+    ['renamed corpus aggregate', (t) => t.replace('    name: Native corpus result\n', '    name: Corpus result\n'), 'must keep the names the coverage record reads'],
+    ['renamed workflow', (t) => t.replace('name: Geometry platform (native adapter)\n', 'name: Geometry platform\n'), "its name must stay 'Geometry platform (native adapter)'"],
+  ];
+  cases.push(...[
+    ['no trigger', (t) => t.replace("    workflows: ['Geometry platform (native adapter)']\n", "    workflows: ['Geometry platform']\n"), 'must start on workflow_run'],
+    ['probe at the wrong commit', (t) => t.replace(`      bisect_sha: \${{ needs.plan.outputs.probe }}\n`, ''), 'the probe job must call'],
+    ['probe under-granted', (t) => t.replace(`    with:\n      bisect_sha: \${{ needs.plan.outputs.probe }}\n      bisect_adapter: \${{ needs.plan.outputs.adapter == 'true' }}\n      bisect_shards: \${{ needs.plan.outputs.shards }}\n    # Everything geometry-platform.yml asks for, or GitHub refuses the run.\n    permissions:\n      actions: read\n      contents: read\n      issues: write\n`, `    with:\n      bisect_sha: \${{ needs.plan.outputs.probe }}\n    permissions:\n      contents: read\n`), 'must grant issues: write'],
+  ].map(([name, fn, expected]) => [name, fn, expected, BISECT]));
+  for (const [name, fn, expected, file = WORKFLOW] of cases) {
+    const root = copyTree(context);
+    mutate(root, (t) => {
+      const out = fn(t);
+      assert.notEqual(out, t, `${name}: the mutation did not apply`);
+      return out;
+    }, file);
+    const failures = audit(root);
+    assert.ok(failures.some((f) => f.includes(expected)), `${name}: ${failures.join('\n')}`);
   }
-  for (const [from, to] of move) {
-    mkdirSync(join(root, dirname(to)), { recursive: true });
-    git('mv', from, to);
-  }
-  git('add', '-A');
-  git('commit', '-q', '-m', 'batch');
-  git('checkout', '-q', 'main');
-  // main moves on, as it does under a batch, so the merge is a real two-parent commit.
-  write('README.md', 'main moved\n');
-  git('commit', '-q', '-am', 'main');
-  if (merge) git('merge', '-q', '--no-ff', '--no-edit', 'mergify/merge-queue/batch');
-  else git('merge', '-q', '--squash', 'mergify/merge-queue/batch'), git('commit', '-q', '-m', 'squash');
-  return root;
-}
-
-function decide(root, { output = true } = {}) {
-  const out = join(root, '.gh-output');
-  const env = cleanEnv();
-  if (output) env.GITHUB_OUTPUT = out;
-  else delete env.GITHUB_OUTPUT;
-  const r = spawnSync(process.execPath, [CLI, '--batch-decide', '--root', root], { encoding: 'utf8', env });
-  const written = existsSync(out) ? readFileSync(out, 'utf8') : '';
-  return { status: r.status, log: r.stdout + r.stderr, written };
-}
-
-test('a batch touching a path the lane observes runs it; docs, ceilings and changesets do not', (context) => {
-  for (const file of ['rust/core/src/lib.rs', 'native/smlib-adapter/x.cpp', 'Cargo.lock', 'packages/geometry/src/x.ts', WORKFLOW]) {
-    const d = decide(batchRepo(context, { add: [file, 'docs/guide/x.md'] }));
-    assert.equal(d.status, 0, d.log);
-    assert.equal(d.written, 'native_adapter=true\n', `${file}: ${d.log}`);
-  }
-  const quiet = decide(batchRepo(context, { add: ['docs/guide/x.md', 'tests/perf-ratchets/viewer.json', '.changeset/a.md', 'AGENTS.md', 'scripts/ci-pr-lane.mjs'] }));
-  assert.equal(quiet.status, 0, quiet.log);
-  assert.equal(quiet.written, 'native_adapter=false\n', quiet.log);
+  const gone = copyTree(context);
+  rmSync(join(gone, BISECT));
+  assert.ok(audit(gone).some((f) => f.includes('native-adapter-bisect.yml is missing')));
 });
 
-test('a batch that edits the workflow runs the lane, even after dropping its own path', (context) => {
-  const d = decide(batchRepo(context, { dropOwnPath: true }));
-  assert.equal(d.written, 'native_adapter=true\n', d.log);
+test('an equivalent nightly-range gate folded into a >- block still audits clean', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => {
+    const out = t.replace("    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true))\n", "    if: >-\n      github.ref == 'refs/heads/main' &&\n      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true))\n");
+    assert.notEqual(out, t, 'the mutation did not apply');
+    return out;
+  });
+  assert.deepEqual(audit(root), []);
 });
 
-test('a file moved out of a watched directory counts by its old path', (context) => {
-  const d = decide(batchRepo(context, { move: [['rust/core/src/old.rs', 'docs/old.rs']] }));
-  assert.equal(d.written, 'native_adapter=true\n', d.log);
-});
-
-test('every doubt runs the lane: no merge commit, an unreadable or missing paths list', (context) => {
-  const squash = decide(batchRepo(context, { add: ['docs/guide/x.md'], merge: false }));
-  assert.equal(squash.written, 'native_adapter=true\n', squash.log);
-  const inline = decide(batchRepo(context, { add: ['docs/guide/x.md'], workflow: "on:\n  pull_request:\n    paths:\n      - docs/**\n" }));
-  assert.equal(inline.written, 'native_adapter=true\n', inline.log);
-  const none = decide(batchRepo(context, { add: ['docs/guide/x.md'], workflow: 'on:\n  schedule:\n    - cron: x\n' }));
-  assert.equal(none.written, 'native_adapter=true\n', none.log);
-});
-
-test('a checkout git cannot diff runs the lane', (context) => {
-  const notGit = mkdtempSync(join(tmpdir(), 'native-adapter-nogit-'));
-  context.after(() => rmSync(notGit, { recursive: true, force: true }));
-  mkdirSync(join(notGit, dirname(WORKFLOW)), { recursive: true });
-  cpSync(join(REPO, WORKFLOW), join(notGit, WORKFLOW));
-  const d = decide(notGit);
-  assert.equal(d.written, 'native_adapter=true\n', d.log);
-});
-
-test('no GITHUB_OUTPUT fails the step, so test.yml reads an absent answer and runs the lane', (context) => {
-  const d = decide(batchRepo(context, { add: ['docs/guide/x.md'] }), { output: false });
-  assert.equal(d.status, 1, d.log);
-  assert.equal(d.written, '');
+test('a bisect probe that would run the adapter it was not asked for is reported', (context) => {
+  const root = copyTree(context);
+  mutate(root, (t) => t.replace('      (!inputs.bisect_sha || inputs.bisect_adapter) && (\n', '      (\n'));
+  assert.ok(audit(root).some((f) => f.includes('a bisect probe only with bisect_adapter')));
 });

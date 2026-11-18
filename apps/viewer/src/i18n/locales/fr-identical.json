@@ -2218,5 +2218,17 @@
   "siteContext.section.radiusValue": {
     "value": "{radius} m",
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "exportCommands.cityjson.label": {
+    "value": "CityJSON",
+    "reason": "Canonical interoperable file format name and extension."
+  },
+  "cityJsonExport.document": {
+    "value": "CityJSON (.city.json)",
+    "reason": "Canonical interoperable file format name and extension."
+  },
+  "cityJsonExport.sequence": {
+    "value": "CityJSONSeq (.city.jsonl)",
+    "reason": "Canonical interoperable file format name and extension."
   }
 }

@@ -5,6 +5,16 @@
 import type { Catalogue } from '../../registry';
 
 export const geometryExportDialogsRu = {
+  "cityJsonExport.description": "Экспорт выбранной модели IFC в CityJSON 2.0 или CityJSONSeq.",
+  "cityJsonExport.localNotice": "У этой модели нет геопривязки. Файл будет использовать локальные координаты модели, а не координаты карты.",
+  "cityJsonExport.sessionGeorefNotice": "Изменения геопривязки, сделанные в этом сеансе, не включены в этот экспорт.",
+  "cityJsonExport.noSource": "Загрузите модель IFC или IFCZIP для экспорта.",
+  "cityJsonExport.document": "CityJSON (.city.json)",
+  "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",
+  "cityJsonExport.exported": "CityJSON экспортирован",
+  "cityJsonExport.warnings": "Экспортировано с предупреждениями ({count}):\n{warnings}",
+  "cityJsonExport.failed": "Не удалось экспортировать CityJSON: {reason}",
+
   "geometryExport.shared.currentModelFallbackName": "Текущая модель",
   "geometryExport.shared.unknownError": "Неизвестная ошибка",
   "geometryExport.shared.geometryEngineUnavailableError": "Геометрический движок недоступен",

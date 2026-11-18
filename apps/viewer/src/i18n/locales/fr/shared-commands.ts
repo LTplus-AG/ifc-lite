@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const sharedCommandsFr = {
+  "exportCommands.cityjson.label": "CityJSON",
+  "exportCommands.cityjson.menuLabel": "Exporter en CityJSON",
+  "exportCommands.cityjson.tooltip": "Exporter en CityJSON / CityJSONSeq",
+
   "exportCommands.ion.label": "Cesium ion",
   "exportCommands.ion.menuLabel": "Téléverser vers Cesium ion",
   "exportCommands.ion.tooltip": "Téléverser l'IFC modifié vers votre compte Cesium ion",
@@ -104,6 +108,7 @@ export const sharedCommandsFr = {
   "classVisibility.grids.description": "Axes structurels",
   "classVisibility.structuralGlyphs.label": "Appuis et charges",
   "classVisibility.structuralGlyphs.description": "Symboles de l'analyse structurelle",
+  'classVisibility.structuralGlyphs.maskedHint': 'Masqués dans la vue structurelle physique seule',
   "classVisibility.mergeLayers.label": "Fusionner les murs multicouches",
   "classVisibility.mergeLayers.description": "Afficher les murs comme un seul solide · au rechargement",
   "classVisibility.fastGeometry.label": "Géométrie rapide",

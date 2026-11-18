@@ -10935,6 +10935,21 @@
     "resolveLiveOwnerHistoryId: function",
     "stringToEntityRef: function"
   ],
+  "@ifc-lite/sdk/georef-doctor": [
+    "CrsFact: interface",
+    "GeorefCheckReport: interface",
+    "GeorefFacts: interface",
+    "GeorefFinding: interface",
+    "GeorefFindingCode: type",
+    "GeorefFixPlan: interface",
+    "GeorefPlannedFix: interface",
+    "GeorefPlannedWrite: type",
+    "OperationFact: interface",
+    "Severity: type",
+    "checkGeorefFacts: function",
+    "collectGeorefFacts: function",
+    "planGeorefFixes: function"
+  ],
   "@ifc-lite/sdk/headless": [
     "CreatedEntity: interface",
     "HeadlessBackend: class",

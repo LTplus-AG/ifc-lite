@@ -224,4 +224,8 @@ export const commandPaletteRu = {
   "commandPalette.category.extensions": "Расширения",
   "commandPalette.category.learn": "Обучение",
   "commandPalette.tool.deriveStructural.label": "Построить расчётную модель",
+  'commandPalette.vis.structural.both.label': 'Вид конструкций: обе модели',
+  'commandPalette.vis.structural.analytical.label': 'Вид конструкций: только расчётная модель',
+  'commandPalette.vis.structural.physical.label': 'Вид конструкций: только физическая модель',
+  'commandPalette.availability.structuralDerivable': 'Загрузите модель с данными структурного анализа или создайте её командой «Построить расчётную модель».',
 } satisfies Catalogue;

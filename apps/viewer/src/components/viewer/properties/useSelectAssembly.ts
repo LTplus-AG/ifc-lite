@@ -28,10 +28,14 @@ export function useSelectAssembly(): (expressId: number) => void {
 /**
  * Replace the whole selection with one entity on both selection channels and
  * frame it. Also narrows a multi-selection to one of its members (#5900).
+ * `parts` (express ids in the same model) are highlighted and framed with it:
+ * a group such as an IfcStructuralAnalysisModel owns no mesh and no
+ * aggregated parts, so its assigned members stand in for it (#10605).
  */
-export function selectOnlyEntity(ref: EntityRef): void {
+export function selectOnlyEntity(ref: EntityRef, parts: readonly number[] = []): void {
   const s = useViewerStore.getState();
   const globalId = toGlobalIdFromModels(s.models, ref.modelId, ref.expressId);
+  const partIds = parts.map((expressId) => toGlobalIdFromModels(s.models, ref.modelId, expressId));
 
   // An assembly owns no mesh of its own and the renderer highlights by
   // mesh-id match, so selecting the bare id cleared the part's highlight and
@@ -39,8 +43,12 @@ export function selectOnlyEntity(ref: EntityRef): void {
   // nothing lit up (Viewport.tsx:1156-1167). Highlight the renderable parts,
   // assembly id LAST so it stays primary (#1133), the shape
   // SearchModal.text and HierarchyPanel already use.
-  const renderableParts = s.cameraCallbacks.resolveHighlightIds?.([globalId]) ?? [];
-  s.setSelectedEntityIds([...renderableParts, globalId]);
+  const renderableParts = s.cameraCallbacks.resolveHighlightIds?.([...partIds, globalId]) ?? [];
+  // Parts stay even when the resolver drops them: a structural member the
+  // current structural view mode filters out is not renderable yet.
+  const highlighted = partIds.length === 0 ? renderableParts
+    : [...new Set([...renderableParts, ...partIds])].filter((id) => id !== globalId);
+  s.setSelectedEntityIds([...highlighted, globalId]);
   s.setSelectedEntityId(globalId);
   s.setSelectedEntity(ref);
 

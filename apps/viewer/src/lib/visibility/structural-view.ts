@@ -17,6 +17,38 @@ export function structuralGlyphsVisible(visibility: Pick<TypeVisibility, 'struct
   return visibility.structuralGlyphs && mode !== 'physical';
 }
 
+/** Flip the drawn supports & loads layer, not just the preference: Physical
+ *  masks the glyphs, so turning them on there also leaves Physical (#10604). */
+export function toggleStructuralGlyphs(state: Pick<ViewerState, 'typeVisibility' | 'structuralViewMode' | 'toggleTypeVisibility' | 'setStructuralViewMode'>): void {
+  const mode = state.structuralViewMode ?? 'both';
+  if (structuralGlyphsVisible(state.typeVisibility, mode)) { state.toggleTypeVisibility('structuralGlyphs'); return; }
+  if (!state.typeVisibility.structuralGlyphs) state.toggleTypeVisibility('structuralGlyphs');
+  if (mode === 'physical') state.setStructuralViewMode('both');
+}
+
+/** Whether `mode` hides a product of this class (null: deleted or unknown, never masked). */
+function maskedByMode(mode: StructuralViewMode, type: string | null): boolean {
+  if (type === null || mode === 'both') return false;
+  const isAnalytical = isAnalyticalProduct(type);
+  return (mode === 'physical' && isAnalytical) || (mode === 'analytical' && !isAnalytical && isProductClass(type));
+}
+
+/** A jump to an entity the structural view mode hides (a counterpart link,
+ *  #10604) switches the view to Both first, so framing lands on something drawn. */
+export function revealUnderStructuralMode(
+  state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews' | 'structuralViewMode' | 'setStructuralViewMode'>,
+  modelId: string,
+  expressId: number,
+): boolean {
+  const mode = state.structuralViewMode ?? 'both';
+  if (mode === 'both') return false;
+  const store = state.models.get(modelId)?.ifcDataStore ?? (state.models.size ? null : state.ifcDataStore);
+  const view = overlayViewFor((key) => state.mutationViews.get(key), modelId) ?? undefined;
+  if (!maskedByMode(mode, entityClass(store, view, expressId))) return false;
+  state.setStructuralViewMode('both');
+  return true;
+}
+
 export type StructuralVisibilityState = Pick<ViewerState,
   'models' | 'ifcDataStore' | 'mutationViews' | 'hiddenEntities' | 'toGlobalId' | 'structuralViewMode'>;
 
@@ -124,9 +156,7 @@ export function structuralViewHidden(
   if (mode === 'both') return hidden;
   const result = new Set(hidden);
   const mask = (id: number, type: string | null, global: (id: number) => number) => {
-    if (type === null) return;
-    const isAnalytical = isAnalyticalProduct(type);
-    if ((mode === 'physical' && isAnalytical) || (mode === 'analytical' && !isAnalytical && isProductClass(type))) result.add(global(id));
+    if (maskedByMode(mode, type)) result.add(global(id));
   };
   for (const { store, view, modelId } of sources(models, fallback, views)) {
     const global = modelId === null ? (id: number) => id : (id: number) => toGlobalId(modelId, id);

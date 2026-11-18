@@ -47,8 +47,6 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.themeSwitchToLightTooltip',
   'ribbon.infoTooltip', // Radix tooltip content, only mounted on hover
   'ribbon.expand', // ribbon is expanded
-  'ribbon.file.addModelTooltip', // small-button tooltip, only mounted on hover
-  'ribbon.file.refreshModelTooltip', // small-button tooltip, only mounted on hover
   'ribbon.file.refreshModelsTooltip', // no models loaded
   'ribbon.file.shareGroup', // collab feature flag is off under test
   'ribbon.file.share',
@@ -56,13 +54,14 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.file.roomTooltip',
   'ribbon.file.roomNotJoinedTooltip',
   'ribbon.view.worldShowTooltip', // Cesium is enabled
-  'ribbon.view.moveGeorefStartTooltip', // small-button tooltip, only mounted on hover
   'ribbon.view.moveGeorefStopTooltip', // not in placement mode
-  'ribbon.view.spaceMouseTooltip', // small-button tooltip, only mounted on hover
-  'ribbon.view.followWorkTooltip', // small-button tooltip, only mounted on hover
-  'ribbon.view.settingsTooltip', // small-button tooltip, only mounted on hover
+  'ribbon.view.structural.bothTooltip', // no model: the unavailable reason replaces each structural tooltip
+  'ribbon.view.structural.analyticalTooltip',
+  'ribbon.view.structural.physicalTooltip',
+  'ribbon.view.structural.deriveTooltip',
+  'ribbon.view.structuralGlyphsTooltip',
+  'ribbon.view.structuralGlyphsMaskedTooltip', // the glyphs are not masked by Physical
   'ribbon.elements.selectionGroup', // a selection exists
-  'ribbon.elements.frameTooltip', // small-button tooltip, only mounted on hover
   'ribbon.analyze.validateGroup', // Analyze group browser is closed
   'ribbon.analyze.compareGroup',
   'ribbon.analyze.dataGroup',

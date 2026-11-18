@@ -18,6 +18,10 @@ import type { TranslationValue } from '../types';
  * IFC EXPRESS names and single-letter/number keyboard shortcuts stay literal.
  */
 export const sharedCommandsEn = {
+  "exportCommands.cityjson.label": "CityJSON",
+  "exportCommands.cityjson.menuLabel": "Export CityJSON",
+  "exportCommands.cityjson.tooltip": "Export CityJSON / CityJSONSeq",
+
   'exportCommands.ion.label': 'Cesium ion',
   'exportCommands.ion.menuLabel': 'Upload to Cesium ion',
   'exportCommands.ion.tooltip': 'Upload edited IFC to your Cesium ion account',
@@ -139,6 +143,7 @@ export const sharedCommandsEn = {
   'classVisibility.grids.description': 'Structural axes',
   'classVisibility.structuralGlyphs.label': 'Supports & loads',
   'classVisibility.structuralGlyphs.description': 'Structural analysis symbols',
+  'classVisibility.structuralGlyphs.maskedHint': 'Hidden in the physical-only structural view',
 
   'classVisibility.mergeLayers.label': 'Merge multilayer walls',
   'classVisibility.mergeLayers.description': 'Render walls as one solid · on reload',

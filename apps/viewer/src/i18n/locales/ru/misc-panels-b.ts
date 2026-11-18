@@ -139,6 +139,7 @@ export const miscPanelsBRu = {
   "shareScopeField.uploadNotice": "Создание ссылки загружает общие данные модели на сервер для совместной работы, так что пользователи, имеющие ссылку, могут открыть её.",
   "loadReportPanel.selectAndFrameTitle": "Выбрать и вписать этот элемент",
   "loadReportPanel.entitySummary": "#{productId} {ifcType} — сбоев {csgFailures}, проёмов {openings}",
+  "loadReportPanel.budgetRefusal": "{budget}: лимит {limit}, достигнуто {reached}; источник #{sourceId}",
   "loadReportPanel.tierSuffix": " · уровень {tier}",
   "loadReportPanel.fastModeSuffix": " · быстрый режим",
   "loadReportPanel.affectedEntitiesLabel": "Затронутые сущности",

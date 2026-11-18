@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "PR #10356 adds the whole rust/cache crate, so a derived revert deletes the code its tests compile against (INCONCLUSIVE); this keeps the crate and drops only the soft-cap close, so a full cell never closes and the canonical grouping assertions fail.",
+  "key": "rust/cache/src/geometry/chunks.rs",
+  "mutation": "tests/evidence/cache-native-chunks-9584/behaviour.oracle.patch",
+  "test": "rust/cache/src/geometry/chunks_tests.rs"
+}

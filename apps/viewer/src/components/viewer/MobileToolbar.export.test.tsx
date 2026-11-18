@@ -52,6 +52,7 @@ describe('mobile Export sheet is the export registry (#5842)', () => {
   it('lists every registry format, CSV per table, in a multi-model session', async () => {
     seedFederation();
     await openExportSheet();
+    assert.ok(EXPORT_COMMANDS.some((c) => c.id === 'cityjson'), 'CityJSON is offered (#10607)');
     const expected = EXPORT_COMMANDS.flatMap((c) => c.kind === 'table-menu'
       ? c.items.map((item) => `export:csv-${item.type}`)
       : [`export:${c.id}`]);

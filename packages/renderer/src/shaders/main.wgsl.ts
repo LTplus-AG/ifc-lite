@@ -16,6 +16,7 @@ import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
 import { specularWgsl } from './specular.wgsl.js';
 import { entityColorTableWgsl } from './entity-color-table.wgsl.js';
 import { depthNudgeWgsl } from './depth-nudge.wgsl.js';
+import { MESH_FLAG_ENTITY_VISIBILITY } from '../entity-visibility-table.js';
 
 /**
  * Translucent surfaces draw at this fraction of their alpha, so interiors
@@ -300,6 +301,9 @@ export const mainShaderSource = `
               if (!occOpaque) { discard; }
             }
           }
+          // A partly hidden batch drawn whole: drop the hidden entities'
+          // fragments (entity-visibility-table.ts, #10264 S2).
+          if ((uniforms.flags.x & ${MESH_FLAG_ENTITY_VISIBILITY}u) != 0u && !entityVisible(input.sectionEntityId)) { discard; }
           // Section plane / clip box (mesh-uniforms.wgsl.ts, shared with the
           // selection mask so an outline is cut where its surface is).
           if (sectionClipped(fragmentPos, input.sectionEntityId)) { discard; }

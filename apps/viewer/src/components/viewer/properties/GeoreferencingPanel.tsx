@@ -6,10 +6,8 @@
  * Georeferencing panel - displays and allows editing of IfcProjectedCRS
  * and IfcMapConversion entities with field-specific editing assistance.
  *
- * Per-field rows (`GeorefRow`, `AngleRow`) live in `./georef-rows` (#5812),
- * and `TerrainHeightButton` lives in `./georef-terrain-height-button`.
- * They were extracted so this file — already over the repo's ~400-line module guideline before
- * this change — does not grow.
+ * Rows (`./georef-rows`, #5812), `TerrainHeightButton` and the georef-check diagnosis (`./georef-diagnosis-gate`,
+ * #10608) live in their own modules so this file, over the ~400-line module guideline, does not grow.
  */
 
 import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
@@ -49,6 +47,8 @@ import { WorldViewSettings } from './world-view-settings';
 import { SiteContextSection } from '../site-context/SiteContextSection';
 import { FloodCheckSection } from '../site-context/FloodCheckSection';
 import { CrsAssumedBadge } from './crs-assumed-badge';
+import { GeorefEmptyState } from './georef-empty-state';
+import { GeorefDiagnosis } from './georef-diagnosis-gate';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
 
@@ -337,21 +337,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const hasData = mergedCRS || mergedConversion;
   const editable = enableEditing && !!modelId && canUseStandardGeoreferencing && !isReadOnlyCoordinateOperation(georef);
 
-  // When no georef data exists, show "Add Georeferencing" in edit mode
+  // No georeferencing: the add row (or why it cannot be added) and the sections that need it (#10603).
   if (!hasData && !georef?.hasGeoreference) {
-    if (!editable) return null;
-    return (
-      <div className="px-3 py-1.5 flex items-center gap-2">
-        <Globe className="h-3 w-3 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noGeoreferencing')}</span>
-        <EpsgLookupDialog onSelect={handleEpsgSelect}>
-          <Button type="button" variant="outline" size="segment" className="min-h-6 gap-1 px-1.5 text-xs [&_svg]:size-2.5">
-            <Globe />
-            {t('properties.georef.addGeoreferencing')}
-          </Button>
-        </EpsgLookupDialog>
-      </div>
-    );
+    return <GeorefEmptyState georef={georef} modelId={modelId} editable={editable === true} schemaNotice={!canUseStandardGeoreferencing} onEpsgSelect={handleEpsgSelect} />;
   }
 
   return (
@@ -402,6 +390,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           </EpsgLookupDialog>
         )}
       </div>
+      {modelId && <GeorefDiagnosis modelId={modelId} editable={editable} mapUnitScale={mergedCRS?.mapUnitScale} shownInPanel={{ doubleGeoref: !!doubleGeoref, scaleMismatch: !!scaleMismatch }} />}
 
       {/* Doubly-georeferenced model (#2526). Informational, not a warning, and
           deliberately without an action: the model on screen is already
@@ -582,7 +571,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         instancedModelRange={instancedModelRange}
         modelName={modelId ? models.get(modelId)?.name : undefined} lengthUnitScale={lengthUnitScale} editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined} />
-      {modelId && <SiteContextSection modelId={modelId} />}
+      {modelId && <SiteContextSection modelId={modelId} editable={editable === true} />}
       {modelId && <FloodCheckSection key={modelId} modelId={modelId} />}
     </div>
   );

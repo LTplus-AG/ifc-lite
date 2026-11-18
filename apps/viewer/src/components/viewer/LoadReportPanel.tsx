@@ -16,7 +16,7 @@
  * spurious warning. JSON export mirrors `idsExportService`'s pattern.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useId, useMemo } from 'react';
 import { FileWarning, Download, Focus, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
@@ -55,21 +55,35 @@ function AffectedEntityRow({
     csgFailures: entity.csgFailures,
     openings: entity.openings,
   });
+  // Which allowance refused this product, its limit and demand (#9268).
+  const refusalsId = useId();
+  const refusals = entity.budgetRefusals?.length ? (
+    <div id={refusalsId} className="pl-6 text-2xs text-muted-foreground">
+      {entity.budgetRefusals.map((refusal) => {
+        const line = t('loadReportPanel.budgetRefusal', refusal);
+        return <span key={`${refusal.sourceId}:${refusal.budget}:${refusal.limit}:${refusal.reached}`} className="block truncate" title={line}>{line}</span>;
+      })}
+    </div>
+  ) : null;
   if (!entity.renderable) {
     // No captured bbox: nothing to frame in 3D. Show the source identity
     // only, per the issue's boundary — never invent a selection target.
-    return <div className="pl-2 text-2xs text-muted-foreground">{label}</div>;
+    return <div><div className="pl-2 text-2xs text-muted-foreground">{label}</div>{refusals}</div>;
   }
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(entity)}
-      className="flex w-full items-center gap-1.5 rounded pl-2 py-0.5 text-left text-2xs hover:bg-accent"
-      title={t('loadReportPanel.selectAndFrameTitle')}
-    >
-      <Focus className="h-3 w-3 shrink-0 text-muted-foreground" />
-      <span className="truncate">{label}</span>
-    </button>
+    <div>
+      <button
+        type="button"
+        onClick={() => onSelect(entity)}
+        className="flex w-full items-center gap-1.5 rounded pl-2 py-0.5 text-left text-2xs hover:bg-accent"
+        title={t('loadReportPanel.selectAndFrameTitle')}
+        aria-describedby={refusals ? refusalsId : undefined}
+      >
+        <Focus className="h-3 w-3 shrink-0 text-muted-foreground" />
+        <span className="truncate">{label}</span>
+      </button>
+      {refusals}
+    </div>
   );
 }
 

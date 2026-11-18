@@ -22,6 +22,11 @@
       "import": "./dist/review.js",
       "default": "./dist/review.js"
     },
+    "./georef-doctor": {
+      "types": "./dist/georef-doctor.d.ts",
+      "import": "./dist/georef-doctor.js",
+      "default": "./dist/georef-doctor.js"
+    },
     "./headless": {
       "types": "./dist/headless.d.ts",
       "import": "./dist/headless.js",
@@ -56,11 +61,11 @@
   "devDependencies": {
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
-    "@mergifyio/vitest": "^2026.10.11",
+    "@mergifyio/vitest": "^2026.11.8",
     "apache-arrow": "^21.2.0",
     "parquet-wasm": "^0.9.0",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

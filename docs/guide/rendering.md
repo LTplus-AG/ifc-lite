@@ -576,8 +576,16 @@ canvas.addEventListener('click', async (e) => {
 names the `IfcRepresentationItem` that particular surface was built from, so a host can
 drill from one pane of a curtain wall down to its own entity in the IFC source instead of
 stopping at the wall. It is the same value under the same name as `MeshData.geometryItemId`
-from `@ifc-lite/geometry`, and it is reported on both pick paths: the GPU pick pass, and
-the CPU raycast fallback that every model past the pick-mesh budget takes.
+from `@ifc-lite/geometry`, and it is reported on every pick route: the GPU pick pass over
+hydrated per-piece meshes (small models), the GPU pick pass over whole colour batches
+that models past the pick-mesh budget take, and the CPU raycast fallback.
+
+On the batch route the GPU reads only the entity from the vertex lane, so the renderer
+raycasts that one entity's retained CPU pieces along the same texel-centre ray to name
+the model and item. If that narrow raycast misses (a silhouette texel the f32 CPU test
+rounds the other way), the item is reported only when all of the entity's pieces agree on
+it. The hit point is the GPU's own: depth unprojected under the camera-relative frame the
+pass rasterised in.
 
 ```typescript
 canvas.addEventListener('click', async (e) => {
@@ -772,6 +780,17 @@ renderer.render({
   selectedIds
 });
 ```
+
+A colour batch holds many entities. When only some of them are hidden or
+isolated away, the batch is still drawn whole from its own GPU buffers, and
+each fragment looks its entity up in a GPU table of the hidden and isolated
+ids, which the colour, shadow and pick passes share. No subset of the batch is
+rebuilt from CPU geometry, so a visibility change uploads one small id table
+instead of new vertex buffers. `hiddenIds` and `isolatedIds` keep the
+semantics above: hiding wins, an empty isolation set hides everything, and
+`null` isolates nothing. X-Ray (`transparencyOverrides`, `ghostExceptIds`) and
+lens colour promotion can still split a batch into per-alpha subsets; those
+subsets hold only visible entities.
 
 ### Basket Isolation (Viewer App)
 

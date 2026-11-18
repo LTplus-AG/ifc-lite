@@ -5,10 +5,6 @@
 /**
  * Sibling-extracted from source-text-assertion-detect.mjs (#10687) to keep that
  * file under its module-size budget; imported there and nowhere else.
- *
- * The detector resolves a call by its rightmost name, so `assert.ok(source…)`
- * used to taint the parameters of any local `ok`, and the flat taint set spread
- * it. Calls into Node's assert are exempt from that by-name step.
  */
 
 import ts from 'typescript';
@@ -29,8 +25,8 @@ const ASSERT_MODULES = new Set(['assert', 'node:assert', 'assert/strict', 'node:
  * a local `ok` (`const facts = { ok: … }`, #10687).
  *
  * Only assert: it never turns a function handed to it into one of its own
- * methods, and calls what `throws`/`rejects` receive with no arguments. A
- * general import can (`reg.set('check', check); reg.check(source)`).
+ * methods, which a general import can (`reg.set('check', check); reg.check(…)`).
+ * What it calls itself (a `throws` block, a validator) is untouched by this.
  *
  * Any other mention disqualifies the name: a `const assert` that shadows it, a
  * parameter of that name, `assert.ok = check`. The analysis has no scoping, so
@@ -48,17 +44,17 @@ function assertNamespaces(sourceFile) {
     if (namedBindings && ts.isNamedImports(namedBindings))
       for (const el of namedBindings.elements) imported.add(el.name.text);
   }
-  const disqualified = new Set();
+  if (imported.size === 0) return imported;
   const visit = (n) => {
     if (ts.isImportDeclaration(n)) return;
     if (ts.isIdentifier(n) && imported.has(n.text)) {
       const isName = ts.isPropertyAccessExpression(n.parent) && n.parent.name === n;
-      if (!isName && !rootsACall(n)) disqualified.add(n.text);
+      if (!isName && !rootsACall(n)) imported.delete(n.text);
     }
     ts.forEachChild(n, visit);
   };
   visit(sourceFile);
-  return new Set([...imported].filter((name) => !disqualified.has(name)));
+  return imported;
 }
 
 /**

@@ -31,6 +31,7 @@ import { Grip, ChevronRight, Rows2, X, Check, GripHorizontal } from 'lucide-reac
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
+import { isPanelAvailable } from '@/lib/panels/availability';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
@@ -71,7 +72,7 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
     setSecondary(id);
   };
 
-  const options = SIDE_PANELS.filter((p) => p.id !== primaryId);
+  const options = SIDE_PANELS.filter((p) => p.id !== primaryId && isPanelAvailable(p.id));
 
   return (
     <DropdownMenu>

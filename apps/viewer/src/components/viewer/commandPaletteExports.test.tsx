@@ -145,6 +145,7 @@ describe('command palette exports (#5601)', () => {
       // CSV is one row per table: `export:csv-<table>` all belong to `csv`.
       .map((cmd) => cmd.id.replace(/^export:/, '').replace(/^csv-.*/, 'csv'))
       .filter((id, index, all) => all.indexOf(id) === index);
+    assert.ok(EXPORT_COMMANDS.some((c) => c.id === 'cityjson'), 'CityJSON is offered (#10607)');
     assert.deepEqual(ids, [...EXPORT_COMMAND_IDS]);
   });
 

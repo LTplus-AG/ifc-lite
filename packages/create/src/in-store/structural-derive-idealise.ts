@@ -86,7 +86,10 @@ type LineIdealisation = { start: Vec3; end: Vec3; source: 'extrusion' | 'profile
 export function idealiseLine(prism: PrismFact): LineIdealisation {
   const f = prismFrame(prism);
   if (typeof f === 'string') return { issue: f };
-  if (f.depth >= f.long) return { start: f.centre, end: add(f.centre, prism.extrusion), source: 'extrusion' };
+  if (f.depth >= f.long) {
+    const start = prism.centroid ?? f.centre;
+    return { start, end: add(start, prism.extrusion), source: 'extrusion' };
+  }
   if (f.nearRectangle && !f.oblique) {
     const mid = add(f.centre, scale(prism.extrusion, 0.5));
     const half = scale(f.u, f.long / 2);

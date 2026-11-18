@@ -226,15 +226,50 @@ for (const end of formatEnds) {
   }
 }
 
-it('a primary Cancel after a federated add failed beside it leaves no spinner (L5)', async () => {
+it('a primary Cancel while a federated add waits for its scene leaves no spinner (L5)', async () => {
   const primary = heldFile('primary.glb', buildTriangleGlb(3));
   let primaryLoad!: Promise<void>;
   await act(async () => {
     primaryLoad = loader!.loadFile(primary.file, { kind: 'primary', modelId: 'primary' });
     await primary.started;
   });
-  await act(async () => { await loader!.loadFile(new File(['0 0 0\n'], 'bad.xyz'), { kind: 'federated', modelId: 'bad' }); });
+  let joined!: Promise<void>;
+  await act(async () => { joined = loader!.loadFile(new File(['0 0 0\n'], 'bad.xyz'), { kind: 'federated', modelId: 'bad' }); });
   const job = loadJob('primary.glb');
-  await act(async () => { cancelActivity(job); primary.release(); await primaryLoad; });
+  await act(async () => { cancelActivity(job); primary.release(); await Promise.all([primaryLoad, joined]); });
+  assert.equal(useViewerStore.getState().models.has('bad'), false, 'Cancel cannot publish a waiting add');
   assert.equal(useViewerStore.getState().loading, false);
+});
+
+for (const refused of [false, true]) it(`#10264 federated publication waits for primary initialization, refused=${refused}`, async () => {
+  const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+  Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 4 });
+  const primary = heldFile(refused ? 'refused.ifc' : 'primary.glb', refused ? ifcBytes() : buildTriangleGlb(3));
+  if (refused) Object.defineProperty(primary.file, 'size', { value: 1.26e9 });
+  const joinedName = `joined-${refused ? 'refused' : 'accepted'}.glb`;
+  let primaryLoad!: Promise<void>, addLoad!: Promise<void>, addSettled = false;
+  try {
+    await act(async () => {
+      primaryLoad = loader!.loadFile(primary.file, { kind: 'primary', modelId: 'primary' });
+      await primary.started;
+      addLoad = loader!.loadFile(new File([buildTriangleGlb(7)], joinedName), { kind: 'federated', modelId: 'joined' }).finally(() => { addSettled = true; });
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    assert.equal(addSettled, false, 'a joined add cannot finish before the pending primary decides');
+    assert.equal(useViewerStore.getState().models.has('joined'), false, 'no publication into the scene that will be cleared');
+    await act(async () => { primary.release(); await Promise.all([primaryLoad, addLoad]); });
+    const models = useViewerStore.getState().models;
+    assert.equal(models.has('joined'), !refused, 'an admitted child survives primary reset; a refused parent admits no child');
+    if (refused) assert.equal(useActivityJournal.getState().jobs.find(job => job.subject === joinedName)?.outcome, 'cancelled');
+    if (!refused) {
+      assert.equal(models.get('primary')?.loadState, 'complete');
+      assert.notEqual(models.get('joined')?.loadState, 'error');
+      assert.equal(models.get('joined')?.geometryResult?.totalTriangles, 1, 'the actual GLB triangle remains registered');
+    }
+    assert.equal(useViewerStore.getState().loading, false);
+  } finally {
+    primary.release();
+    await Promise.allSettled([primaryLoad, addLoad]);
+    if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
+  }
 });

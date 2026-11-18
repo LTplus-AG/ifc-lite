@@ -29,7 +29,7 @@ export function clockOrigins(lanes) {
   if (def.length) parts.push(`${def.join(', ')} time from the file input change event (arming after a quiet shell)`);
   const early = lanes.filter((l) => /^browser-(cold|warm1|warm)-early$/.test(l));
   if (early.length) parts.push(`${early.join(', ')} time from the first paint of that open's page, the file picked at once, so boot work that delays the pick and its dispatch is included`);
-  const settled = lanes.filter((l) => /-settled$/.test(l));
+  const settled = lanes.filter((l) => l.endsWith('-settled'));
   if (settled.length) parts.push(`${settled.join(', ')} time from the change event after the viewer reported its idle boot work settled and the shell went quiet; the wait for that signal is not timed (see the arm-protocol table)`);
   if (has(/^native-cold$/)) parts.push('native-cold is a batch call (file read + full `process_geometry`)');
   if (has(/^boot$/)) parts.push('boot times from navigation start');
@@ -154,8 +154,9 @@ export function summarize(plan, rawSamples, { floors = null } = {}) {
   for (const fx of planFixtures) {
     const lanes = {};
     // The cold lane's cross-side output, whatever the plan's lane order (reopen verdicts are chained through it).
-    const coldOutputOf = (name) => {
-      const cold = samples.filter((s) => s.fixture === name && s.lane === 'browser-cold' && s.ok);
+    const coldOutputOf = (name, reopenLane) => {
+      const coldLane = reopenLane.replace(/^browser-warm(?:1)?/, 'browser-cold');
+      const cold = samples.filter((s) => s.fixture === name && s.lane === coldLane && s.ok);
       const fp = (side) => [...new Set(cold.filter((r) => r.side === side).map((r) => r.fingerprint))];
       return cold.length ? outputVerdict(fp('base'), fp('branch')) : undefined;
     };
@@ -212,7 +213,7 @@ export function summarize(plan, rawSamples, { floors = null } = {}) {
       const timed = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
       const identityLane = identityLaneFor(lane);
       const identity = identityLane ? laneIdentityVerdict(samples.filter((s) => s.fixture === fx.name), identityLane) : null;
-      const output = (identity === null ? null : reopenOutputVerdict(identity, timed, lanes['browser-cold']?.output ?? coldOutputOf(fx.name))) ?? timed;
+      const output = (identity === null ? null : reopenOutputVerdict(identity, timed, coldOutputOf(fx.name, lane))) ?? timed;
       // -settled lanes: both sides must have armed the same way, or the comparison says so.
       let armProtocol = null;
       if (lane.endsWith('-settled')) {
@@ -273,7 +274,7 @@ function baselineTable(summary, set, lanes) {
         return { median: median(values), spread: relativeSpread(values), values };
       };
       const okFailed = `${l.sides.base.ok + (summary.kind === 'aa' ? l.sides.branch.ok : 0)}/${l.sides.base.failed + (summary.kind === 'aa' ? l.sides.branch.failed : 0)}`;
-      const warmNote = lane.startsWith('browser-warm') && /^none/.test(f.expectedTier ?? '') ? ' (no cache tier: warm = uncached reopen)' : '';
+      const warmNote = lane.startsWith('browser-warm') && (f.expectedTier ?? '').startsWith('none') ? ' (no cache tier: warm = uncached reopen)' : '';
       const flags = summary.kind === 'aa' ? [l.sides.base, l.sides.branch] : [l.sides.base];
       const flagged = `${flags.reduce((a, x) => a + x.underLoad, 0)} / ${flags.reduce((a, x) => a + x.inputDelayed, 0)}`;
       lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled(selectedKey(lane)))} | ${cell(pooled(FRAME_KEY))} | ${isReopenLane(lane) ? cell(pooled(METADATA_FRAME_KEY)) : '—'} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.outputSource === 'identity pass' ? 'match (identity pass: reopen = own cold, both sides)' : (l.sides.base.fingerprints[0] ?? '').slice(0, 60)) : l.output} |`);

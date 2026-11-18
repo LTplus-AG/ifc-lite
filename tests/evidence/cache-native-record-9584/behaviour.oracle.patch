@@ -1,0 +1,12 @@
+diff --git a/rust/cache/src/geometry/record.rs b/rust/cache/src/geometry/record.rs
+--- a/rust/cache/src/geometry/record.rs
++++ b/rust/cache/src/geometry/record.rs
+@@ -18,7 +18,7 @@
+ use crate::buf::Buf;
+ 
+ /// The v14 absent source id. Not 0: `#0` can decode as a material-free layer.
+-const ABSENT_SOURCE_ID: u32 = 0;
++const ABSENT_SOURCE_ID: u32 = u32::MAX;
+ 
+ /// `mesh-metadata.ts` flags.
+ const SHADING_COLOR: u8 = 1;

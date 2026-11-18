@@ -1476,9 +1476,24 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     // is chaotic in sub-micrometre input (dropping the fused outline's two
     // sub-cell kink vertices returns it to 0 and moves 4,500 triangles), so it
     // is pinned rather than chased. CI runs this mode (`test.yml`, census job).
+    //
+    // The post-cut sliver pass keeps a bisection only when the mesh census's
+    // sliver measure improves (`facet_weld::adopt`), so the triangles it used
+    // to add are gone: #12381 7552 -> 7424 (11110 -> 10982 with the prism route
+    // off) on the same surface (2905.7543 m2 either way, 3442 -> 3374 slivers),
+    // and #32810 3207 -> 3064 (3224 -> 3096). #32810's three open edges close
+    // with them (3/3 -> 0/0, both triangulators; 1257.4454 m2 either way).
     // Columns: (host, open, strict, strict under the alternate, triangles).
+    //
+    // Site-frame cut (#10435): the slab is cut in its site placement's frame,
+    // where the two boundary vertices above no longer share a weld cell, so
+    // the alternate reads #12381 strict 0 again, and both slabs consolidate
+    // further: prism route off, #12381 10982 -> 7252 triangles and #32810
+    // 3096 -> 3086; on, #12381 5756 -> 5322 and #32810 3064 -> 3060. Volumes
+    // against IfcOpenShell 0.8.2: #12381 1437.0993 m3 (1437.1123, -0.0009%),
+    // #32810 881.2594 m3 (881.3038, -0.005%, as before), closed both ways.
     let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
-        [(12381, 0, 0, 2, 11110), (32810, 0, 0, 0, 3224)]
+        [(12381, 0, 0, 0, 7252), (32810, 0, 0, 0, 3086)]
     } else {
         // #7292: retaining supported finite source cells removes ten signed
         // and strict boundary defects in both triangulators (25/26 -> 15/16).
@@ -1496,7 +1511,11 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
         // came from the rim refinement, which is now adopted only when its
         // cleanup stays closed: 3/3/3 -> 0/0/0 and 3207 -> 3064 triangles,
         // volume 881.2597 m3 against IfcOpenShell 0.8.2's 881.3038 (-0.005%).
-        [(12381, 0, 0, 0, 5884), (32810, 0, 0, 0, 3064)]
+        //
+        // `facet_weld::adopt`: #12381 5884 -> 5756, volume unchanged. The
+        // sliver pass no longer keeps bisections the census measure does not
+        // improve.
+        [(12381, 0, 0, 0, 5322), (32810, 0, 0, 0, 3060)]
     };
     for &alt in triangulators {
         set_alt(alt);
@@ -1508,7 +1527,7 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
             assert_eq!(stats.open, open, "host #{id}, alt={alt}: signed edge reading");
             assert_eq!(stats.strict, strict, "host #{id}, alt={alt}: strict edge reading");
             if !alt {
-                assert_eq!(mesh.triangle_count(), tris, "host #{id}: geometry must not shrink");
+                assert_eq!(mesh.triangle_count(), tris, "host #{id}: triangle count");
             }
         }
     }
@@ -1553,33 +1572,55 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #7869 / main592d: straight-corner reconstruction closes these
                 // hosts. Actual ac02 merged-source unblessed run measured the
                 // exact incoming-main tuples; keep the stronger closed result.
-                (11477, 0, 0, 154, 0),
+                // Triangle counts here fell when the post-cut sliver pass
+                // stopped bisecting where the census's sliver measure does not
+                // improve (`facet_weld::adopt`). Each host keeps its surface:
+                // areas agree to 7e-6 and every one is closed before and
+                // after. 154 -> 26.
+                //
+                // Site-frame cut (#10435), every host here closed. Census
+                // volumes against IfcOpenShell 0.8.2 (these 12 mm coverings sit
+                // within one kernel-grid step of thickness, 0.127%): #11477
+                // 26 -> 24 (-0.061%), #31156 70 -> 68 (-0.039%), #17553
+                // 24 -> 12 (-0.059%), #17615 22 -> 12 (-0.014%), #26681
+                // 142 -> 60 (-0.052%; the alternate closes, 7 -> 0 open), and
+                // #25914 closes, 25 open -> 0 (strict 28 -> 22, the doubled
+                // interface of its layers), 87 -> 100 triangles, -0.002%.
+                (11477, 0, 0, 24, 0),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
-                (11690, 0, 0, 144, 0),
-                (31156, 0, 0, 198, 0),
-                (17553, 0, 0, 116, 0),
-                (17615, 0, 0, 244, 0),
-                (25914, 25, 28, 87, 25),
-                (26610, 0, 0, 86, 0),
+                // 144 -> 148 triangles: the cut keeps the 1 mm skin behind an
+                // 11 mm recess (0.019668 -> 0.019679 m3, 3.3707 -> 3.3907 m2;
+                // IfcOpenShell 0.8.2 reads 0.019690 m3 and 3.3908 m2).
+                // 148 -> 20 unbisected, 3.3907 m2 still.
+                (11690, 0, 0, 20, 0),
+                (31156, 0, 0, 68, 0),
+                (17553, 0, 0, 12, 0),
+                (17615, 0, 0, 12, 0),
+                (25914, 0, 22, 100, 0),
+                (26610, 0, 0, 20, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
                 // #7292: preserve the ordinary exactly closed boundary; the
                 // stronger exact fixture below checks both triangulators.
-                (10191, 0, 0, 172, 0),
+                (10191, 0, 0, 44, 0),
                 // #8047: retain the supported convex thin patches instead of
                 // dropping their finite faces. DEFAULT now closes; the exact
                 // boundary is checked separately below, beyond this 1mm pin.
-                (26681, 0, 0, 270, 10),
+                // 270 -> 142 unbisected; the alternate reads 7 open, was 10.
+                (26681, 0, 0, 60, 0),
             ][..],
         ),
         (
             "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
             &[
-                (247051, 0, 0, 60, 0),
-                (141060, 0, 0, 70, 0),
-                (145756, 0, 0, 38, 0),
+                // Site-frame cut (#10435): closed, 44 -> 40, 70 -> 62 and
+                // 16 -> 12 triangles; census volume against IfcOpenShell 0.8.2
+                // +0.008%, -0.00002% and -0.005%.
+                (247051, 0, 0, 40, 0),
+                (141060, 0, 0, 62, 0),
+                (145756, 0, 0, 12, 0),
             ][..],
         ),
     ] {
@@ -1833,9 +1874,13 @@ END-ISO-10303-21;"##
 /// larger than authored on a watertight host, the #3219 shape, reads one of
 /// two ways under that vocabulary, and both are green:
 ///
-/// - at 1.4x every count holds and the pair is an IDENTICAL row;
-/// - at 1.6x the cutter emits MORE triangles, and a grown `tris` files under
-///   `improved`, which requires no bless.
+/// - every count holds and the pair is an IDENTICAL row (1.4x and 1.6x);
+/// - the cut emits MORE triangles, and a grown `tris` files under `improved`,
+///   which requires no bless. The 1.6x cut read that way while the post-cut
+///   sliver pass bisected its narrower jambs; the pass keeps a bisection only
+///   when the census's sliver measure improves, so both scales now give the
+///   32 triangles of a box with a hole. That reading is shown on the measured
+///   row with its count raised.
 ///
 /// Measured on the pipeline rather than on synthetic rows: both walls go
 /// through the `process` / `edge_stats` / `max_abs_coord` path the sweep uses,
@@ -1849,7 +1894,7 @@ END-ISO-10303-21;"##
 fn an_over_cut_on_a_watertight_host_requires_a_bless() {
     let swept: BTreeSet<String> = ["overcut.ifc".to_string()].into_iter().collect();
 
-    for (scale, tris_grow) in [(1.4, false), (1.6, true)] {
+    for scale in [1.4, 1.6] {
         let ifc = over_cut_fixture(scale);
         let voids = void_index(&ifc);
         let frame = ModelFrame::new(&ifc);
@@ -1869,16 +1914,9 @@ fn an_over_cut_on_a_watertight_host_requires_a_bless() {
         assert_eq!(wired_a.strict, wired_b.strict, "{scale}x: strict");
         assert_eq!(wired_a.collapsed, wired_b.collapsed, "{scale}x: collapsed");
         assert_eq!(wired_a.far, wired_b.far, "{scale}x: far");
-        // The one count that CAN move, pinned per scale so the test says which
-        // green reading it is exercising. If either arm flips, the fixture has
-        // stopped demonstrating that reading and the test must say so rather
-        // than pass on the other one.
-        let (ta, tb) = (wired_a.tris, wired_b.tris);
-        if tris_grow {
-            assert!(tb > ta, "{scale}x: expected MORE triangles, got {ta} -> {tb}");
-        } else {
-            assert_eq!(ta, tb, "{scale}x: expected the same triangle count");
-        }
+        // The one count that CAN move. If it does, the fixture has stopped
+        // demonstrating the identical-row reading and the test must say so.
+        assert_eq!(wired_a.tris, wired_b.tris, "{scale}x: expected the same triangle count");
 
         // The volume is what differs. Panel 2.0 x 0.1 x 3.0 = 0.6 m³, less the
         // opening 0.5 x 0.1 x 1.0 = 0.05 m³ authored and 0.05 * scale² over-cut.
@@ -1914,13 +1952,17 @@ fn an_over_cut_on_a_watertight_host_requires_a_bless() {
             !blind.requires_bless(),
             "{scale}x: without a volume column the census sees nothing to bless"
         );
-        if tris_grow {
-            assert_eq!(blind.improved.len(), 1, "{scale}x: and calls the over-cut an improvement");
-            let reasons = blind.improved[0].reasons.join("; ");
-            assert!(reasons.contains("(improved)"), "{reasons}");
-        } else {
-            assert!(blind.improved.is_empty(), "{scale}x: the over-cut is an identical row");
-        }
+        assert!(blind.improved.is_empty(), "{scale}x: the over-cut is an identical row");
+        // The other green reading: the same over-cut with more triangles.
+        let grown = census_golden::diff(
+            &[HostRow { vol: None, ..wired_a.clone() }],
+            &[HostRow { vol: None, tris: wired_b.tris + 8, ..wired_b.clone() }],
+            &swept,
+        );
+        assert!(!grown.requires_bless(), "{scale}x: a grown count needs no bless either");
+        assert_eq!(grown.improved.len(), 1, "{scale}x: and calls the over-cut an improvement");
+        let reasons = grown.improved[0].reasons.join("; ");
+        assert!(reasons.contains("(improved)"), "{reasons}");
 
         // With the column, the pair is a volume move and the golden must absorb it.
         let seen = census_golden::diff(&[wired_a], &[wired_b], &swept);
@@ -2057,7 +2099,13 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // (7 -> 0), #349767, #358944, #360795, #628727, #639525, #642493, #886572 and
 // #923985 (6 -> 0 each) and #638255 (3 -> 0). Their volumes agree with
 // IfcOpenShell 0.8.2 to 0.005% or better (worst: #358944, +220 cm3 of 4.156 m3).
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 2;
+// 2 -> 1. #1320395 (open 13 -> 0) closed once the post-cut sliver pass stopped
+// keeping a bisection the census's sliver measure does not improve
+// (`facet_weld::adopt`): unbisected, its cut is closed.
+// Site-frame cut (#10435): 1 -> 0. #423069 (open 3 -> 0, 0.828724 m3 against
+// IfcOpenShell 0.8.2 at 0.828794) closes once the host is cut in its site's
+// frame.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 0;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,

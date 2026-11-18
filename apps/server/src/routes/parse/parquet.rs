@@ -16,7 +16,9 @@ use super::{
 use crate::error::ApiError;
 use crate::services::baked_basis_zup;
 use crate::services::parquet::serialize_combined_for_layout;
-use crate::services::{extract_data_model_with, serialize_data_model_to_parquet, DataModelOptions};
+use crate::services::{
+    extract_data_model_with, serialize_data_model_to_parquet, DataModelExtraction, DataModelOptions,
+};
 use crate::types::{with_finishes, CollectedFinishes, ModelMetadata, ProcessingStats};
 use crate::AppState;
 use axum::{
@@ -166,7 +168,7 @@ pub async fn parse_parquet(
             // First: extract geometry and the data model in parallel.
             // #5984: the pass joins each mesh's finish itself (`with_finishes`).
             let mut finishes = CollectedFinishes::default();
-            let (mut geometry_result, data_model) = rayon::join(
+            let (mut geometry_result, DataModelExtraction { model: data_model, total_entities, .. }) = rayon::join(
                 || process(&content, &with_finishes(ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing)), &mut finishes),
                 || extract_data_model_with(&content, DataModelOptions::for_entities(data_model_entities)),
             );
@@ -176,7 +178,7 @@ pub async fn parse_parquet(
             // (#6034), so the header both variants share carries
             // `total_entities`, not the served variant's row count (#9582).
             let dm_stats = DataModelStats {
-                entity_count: data_model.total_entities,
+                entity_count: total_entities,
                 property_set_count: data_model.property_sets.len(),
                 relationship_count: data_model.relationships.len(),
                 spatial_node_count: data_model.spatial_hierarchy.nodes.len(),

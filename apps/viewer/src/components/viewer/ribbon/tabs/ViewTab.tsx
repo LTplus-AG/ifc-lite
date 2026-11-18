@@ -4,10 +4,10 @@
 
 /**
  * Ribbon · View tab — camera presets and projection, world context
- * (Cesium / sun / SpaceMouse), and interface options.
+ * (Cesium / sun / SpaceMouse), the structural view, and interface options.
  */
 
-import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Spatial } from '@/icons';
+import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Spatial, SiteContext, FloodCheck } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -21,6 +21,7 @@ import {
   RibbonSmallStack,
 } from '../primitives';
 import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
+import { StructuralRibbonGroup } from './StructuralRibbonGroup';
 
 export function ViewTab() {
   const { t } = useTranslation();
@@ -135,6 +136,11 @@ export function ViewTab() {
             active={cesiumEnabled}
           />
         )}
+        {/* Swiss site context and the surface runoff check open their sections
+            of the model's Georeference panel, which say what a model still
+            needs when it cannot host them yet (#10603). */}
+        <RibbonCommandLargeButton commandId="view:site-context" icon={SiteContext} disabled={!hasModels} />
+        <RibbonCommandLargeButton commandId="view:flood-check" icon={FloodCheck} disabled={!hasModels} />
         <RibbonCommandLargeButton
           commandId="view:lighting"
           icon={Lighting}
@@ -157,6 +163,10 @@ export function ViewTab() {
           />
         </RibbonSmallStack>
       </RibbonGroup>
+
+      <RibbonGroupDivider />
+
+      <StructuralRibbonGroup />
 
       <RibbonGroupDivider />
 

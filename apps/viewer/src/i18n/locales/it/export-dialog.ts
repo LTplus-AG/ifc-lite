@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const exportDialogIt = {
+  'exportDialog.warningsMore': "e altri {countDisplay}",
   'exportDialog.trigger': 'Esporta IFC',
   'exportDialog.title': 'Esporta file IFC',
   'exportDialog.description.ifc5': 'Esporta dati e geometria del modello, incluso il posizionamento attuale nello spazio di lavoro',
@@ -54,6 +55,7 @@ export const exportDialogIt = {
   'exportDialog.noStepRecords.error': 'Questo modello non contiene record IFC da cui scrivere. Scegli IFC5 per esportarlo come IFCX.',
   'exportDialog.mergeSkipped.noRecords': 'Esclusi dal file unito, nessun record IFC da cui scrivere: {models}.',
   'exportDialog.mergeSkipped.noData': 'Esclusi dal file unito, nessun dato disponibile per l’esportazione: {models}.',
+  'exportDialog.sectionWarningsWholeModel': 'Gli avvisi dei modelli tagliati alle sezioni riguardano l’esportazione prima del taglio, non solo la parte mantenuta.',
   'exportDialog.landXml.title': 'LandXML non può essere esportato come IFC',
   'exportDialog.landXml.description': 'I suoi record del terreno restano nel formato di origine; per l’esportazione non viene sintetizzata alcuna entità IFC.',
   'exportDialog.landXml.error': 'LandXML è geometria di origine, non IFC. Esporta invece il file LandXML originale.',

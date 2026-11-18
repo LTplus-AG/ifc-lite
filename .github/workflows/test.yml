@@ -158,7 +158,13 @@ jobs:
       lane: ${{ steps.lane.outputs.lane || 'full' }}
       # `true` on a Mergify batch PR, which is the queue's full gate: it arrives as
       # `pull_request`, so the queue-only lanes below test this output as well.
-      batch: ${{ steps.lane.outputs.batch || 'false' }}
+      # The lane step is continue-on-error; if it writes nothing, the head ref
+      # (ci-pr-lane.mjs BATCH_BRANCH_PREFIX) still marks a batch, so a crash
+      # there cannot skip the queue-only lanes.
+      batch: ${{ steps.lane.outputs.batch || (startsWith(github.head_ref, 'mergify/merge-queue/') && 'true' || 'false') }}
+      # On a batch, `false` only when its diff touches none of the native
+      # adapter's trigger paths; anything else (empty included) runs it.
+      native_adapter: ${{ steps.nativeadapter.outputs.native_adapter }}
       # `lean` only on the release PR with CI_RELEASE_LANE=on
       # (scripts/ci-release-lane.mjs): the path filter is then withheld, so
       # every path-gated lane skips. Missing or garbled runs the filter.
@@ -317,15 +323,27 @@ jobs:
       # skips and the aggregate replays the recorded verdict. Mergify rewrites a batch
       # PR's body on every status change, and without this gate each rewrite re-ran
       # the whole suite on the same head (draft #9664: 3 full runs, 2 h to merge).
-      - if: (github.event_name == 'merge_group' || steps.lane.outputs.batch == 'true') && steps.noop.outputs.noop != 'true'
+      - if: (github.event_name == 'merge_group' || (steps.lane.outputs.batch == 'true' || startsWith(github.head_ref, 'mergify/merge-queue/'))) && steps.noop.outputs.noop != 'true'
         id: all
         run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+      # THE NATIVE ADAPTER ON A BATCH. The SMLib lane (geometry-platform.yml)
+      # takes over an hour, so a batch runs it only when its diff touches the
+      # native/retained engine (BATCH_EXCLUDE in scripts/lib/native-adapter-batch.mjs).
+      # continue-on-error, and the `native-adapter` job below
+      # skips only on an explicit `false`, so a crash here runs the lane.
+      - name: Decide whether this batch runs the native adapter
+        id: nativeadapter
+        if: (steps.lane.outputs.batch == 'true' || startsWith(github.head_ref, 'mergify/merge-queue/')) && steps.noop.outputs.noop != 'true'
+        continue-on-error: true
+        run: node scripts/check-native-adapter-triggers.mjs --batch-decide
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        if: github.event_name != 'merge_group' && steps.lane.outputs.batch != 'true' && steps.noop.outputs.noop != 'true' && steps.release.outputs.lane != 'lean'
+        if: github.event_name != 'merge_group' && !(steps.lane.outputs.batch == 'true' || startsWith(github.head_ref, 'mergify/merge-queue/')) && steps.noop.outputs.noop != 'true' && steps.release.outputs.lane != 'lean'
         id: filter
         with:
           filters: |
             rust:
+              - 'scripts/ci-rust-metrics.mjs'
+              - 'scripts/ci-rust-metrics.test.mjs'
               - 'rust/**'
               - 'scripts/retained-browser-runtime-tests.mjs'
               - 'scripts/stage-retained-runtime-peer.mjs'
@@ -351,6 +369,17 @@ jobs:
               - 'tests/fixtures/cli-retained/**'
               - 'tests/manifests/**'
               - '.github/workflows/test.yml'
+              # #9584: the native .ifclite writer's cross-language gate runs
+              # the TS reader/writer against it, so a TS-only format change
+              # must run it too (it needs cargo, which this filter arms).
+              - 'packages/cache/src/**'
+              - 'scripts/cache-native-conformance.mjs'
+              - 'scripts/lib/cache-native-*.mjs'
+              # Its oracles read the TS type/relationship tables, the TS
+              # parser and the committed samples, so a change to any runs it.
+              - 'packages/data/src/**'
+              - 'packages/parser/src/**'
+              - 'apps/viewer/public/samples/**'
             # AGENTS.md is the instruction file every agent reads, and
             # scripts/check-agents-md-size.mjs gates its size and line length.
             # It gets its OWN output rather than joining `frontend`: the gate is
@@ -585,6 +614,8 @@ jobs:
               # scripts/generate-enum-reconciliation.mjs checks this generated ledger (#5365).
               - 'docs/architecture/schema-enum-reconciliation.md'
             geometry:
+              - 'scripts/ci-rust-metrics.mjs'
+              - 'scripts/ci-rust-metrics.test.mjs'
               - 'rust/geometry/**'
               - 'rust/core/**'
               - 'rust/processing/**'
@@ -906,6 +937,23 @@ jobs:
           VITE_BUNDLE_ANALYSIS: "1"
         run: pnpm build
 
+      # #9584: the native .ifclite writer (rust/cache) against @ifc-lite/cache.
+      # Self-reproducible bytes across RAYON_NUM_THREADS, scalar sections
+      # byte-identical to the TS writer's for the same model, geometry equal
+      # after inflating every chunk, and the TS reader's acceptance and
+      # refusals; then two independent oracles: the data model against a TS
+      # parse of the same IFC, the meshes and CoordinateInfo against the
+      # canonical processing output. Needs cargo (armed by the rust filter,
+      # which lists the TS cache sources and these scripts) and the packages
+      # built above; committed fixtures mean it never runs empty, and the
+      # catalogued ones fetched above must be present.
+      - name: Native .ifclite writer conformance against @ifc-lite/cache
+        if: needs.changes.outputs.rust == 'true'
+        timeout-minutes: 15
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: node scripts/cache-native-conformance.mjs
+
       # Keep the score ratchet in build, not node-tests (skipped by fast PRs).
       # This job has verified manifest fixtures and current workspace packages.
       - name: Check structural coverage score ratchet
@@ -913,7 +961,7 @@ jobs:
         # hash, so without it the scorer's turbo build misses that cache.
         env:
           VITE_BUNDLE_ANALYSIS: "1"
-        run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r6.json
+        run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r13.json
 
       # A separate feature bundle exposes only the test ownership probe.
       # Do not overwrite pkg-diff or its committed production declarations.
@@ -2376,6 +2424,9 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           SHARD: ${{ matrix.shard }}
           IFC_LITE_SECTION_EVIDENCE_DIR: ${{ runner.temp }}/section-export-7711-${{ github.run_id }}-${{ github.run_attempt }}
+          # This job fetches and verifies every fixture above, so a test that needs one must fail, never skip, when it is
+          # absent (the export and flood-check fixture policies read this; #6692).
+          IFC_LITE_REQUIRE_FIXTURES: "1"
         run: |
           filters_txt=$(node scripts/ci-node-test-shards.mjs --shard "$SHARD")
           mapfile -t filters <<<"$filters_txt"
@@ -2944,15 +2995,10 @@ jobs:
           else
             echo "::warning::lld could not be installed; linking with the default linker"
           fi
-      - name: Cargo cache
-        # Skipped only where the warm target dir above was set.
-        if: env.CARGO_TARGET_DIR == ''
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          prefix-key: ci-rust-retained
-          shared-key: main
-          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
+      # One owner restores/saves this mixed native+WASM dependency tree.
+      # Two overlapping rust-cache post actions prune and save the same paths.
       - uses: ./.github/actions/setup-wasm-build
+        id: retained_cache
         with:
           cache-prefix: rust-retained-runtime
       # Hosted Ubuntu images ship a matched chromedriver; the runner image has
@@ -2974,7 +3020,9 @@ jobs:
           "$dir/chromedriver-linux64/chromedriver" --version
           echo "IFCLITE_REAL_CHROMEDRIVER=$dir/chromedriver-linux64/chromedriver" >> "$GITHUB_ENV"
       - name: SMLib-free retained runtime in a real WASM module
-        run: node scripts/retained-browser-runtime-tests.mjs
+        env:
+          RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
+        run: node scripts/ci-rust-metrics.mjs retained-browser-boundary command node scripts/retained-browser-runtime-tests.mjs
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -2982,10 +3030,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: SMLib-free CLI report over the real retained WASM boundary
         id: retained_node_tests
+        env:
+          RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
         run: |
-          BUILD_RETAINED=1 bash scripts/build-wasm.sh
-          pnpm build --filter=@ifc-lite/cli
-          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/browser-corpus-pages.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
+          BUILD_RETAINED=1 node scripts/ci-rust-metrics.mjs retained-wasm-build command bash scripts/build-wasm.sh
+          node scripts/ci-rust-metrics.mjs retained-cli-build command pnpm build --filter=@ifc-lite/cli
+          node scripts/ci-rust-metrics.mjs retained-cli-report command node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/browser-corpus-pages.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
@@ -2996,26 +3046,36 @@ jobs:
           test_step_outcome: ${{ steps.retained_node_tests.outcome }}
 
       - name: Rust tests and Clippy (retained controller and executor)
+        env:
+          RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
         # #7955 M1: the opt-in `retained-runtime` feature is outside the
         # default workspace build, so the PR job compiles, lints and tests it.
         run: |
-          cargo test -p ifc-lite-geometry --features retained-runtime
-          cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
-          cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
-          cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
-          cargo test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*' --test retained_refusal_lifecycle --test retained_finishes_from_source
+          node scripts/ci-rust-metrics.mjs retained-ifc-lite-geometry-native-retained-runtime test -p ifc-lite-geometry --features retained-runtime
+          node scripts/ci-rust-metrics.mjs retained-ifc-lite-geometry-native-retained-runtime clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
+          node scripts/ci-rust-metrics.mjs retained-ifc-lite-processing-native-retained-runtime clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
+          node scripts/ci-rust-metrics.mjs retained-processing-session-tests test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
+          node scripts/ci-rust-metrics.mjs retained-processing-integration-tests test -p ifc-lite-processing --features retained-runtime --test 'm[0-9]*' --test retained_refusal_lifecycle --test retained_finishes_from_source
           # Includes M11-0 m11_presentation (SDK-free face-copy mutation witness).
           # Includes M11-F m11_faces (SDK-free face attribution and tie-break mutation witness).
-          cargo test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
-          cargo test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
-          cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser
-          cargo clippy -p ifc-lite-wasm --features retained-browser --all-targets -- -D warnings
+          node scripts/ci-rust-metrics.mjs retained-wasm-model-tests test -p ifc-lite-wasm --features retained-browser --test m1_retained_model
+          node scripts/ci-rust-metrics.mjs retained-wasm-view-tests test -p ifc-lite-wasm --features retained-browser --test m2_retained_view
+          node scripts/ci-rust-metrics.mjs retained-wasm-library-tests test -p ifc-lite-wasm --lib --features retained-browser retained_browser
+          node scripts/ci-rust-metrics.mjs retained-ifc-lite-wasm-native-retained-browser clippy -p ifc-lite-wasm --features retained-browser --all-targets -- -D warnings
           # Match geometry-platform's wasm test target: testkit exposes the
           # mesh-check oracles through the existing test-support feature.
-          cargo clippy --target wasm32-unknown-unknown -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
-          cargo test -p ifc-lite-retained-native --features retained-runtime
-          cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
-          cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
+          node scripts/ci-rust-metrics.mjs retained-ifc-lite-wasm-wasm32-retained-browser clippy --target wasm32-unknown-unknown -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
+          node scripts/ci-rust-metrics.mjs retained-native-library-tests test -p ifc-lite-retained-native --features retained-runtime
+          node scripts/ci-rust-metrics.mjs retained-native-example-tests test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
+          node scripts/ci-rust-metrics.mjs retained-ifc-lite-retained-native-native-retained-runtime clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
+      - name: Upload Rust cache and timing evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rust-ci-metrics-${{ github.job }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rust-ci-metrics.jsonl
+          if-no-files-found: error
+          retention-days: 14
       - name: Disk left on the runner
         if: always()
         run: df -h .
@@ -3400,6 +3460,7 @@ jobs:
             echo "::warning::lld could not be installed; linking with the default linker"
           fi
       - name: Cargo cache
+        id: csg_cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           prefix-key: ci-rust-csg-gates
@@ -3427,14 +3488,20 @@ jobs:
       # run, and `--all-targets` type-checks the test targets the steps below
       # then run.
       - name: Clippy (csg_manifold_gate)
-        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
+        env:
+          RUST_CI_CACHE_HIT: ${{ steps.csg_cache.outputs.cache-hit }}
+        run: node scripts/ci-rust-metrics.mjs csg-ifc-lite-geometry-native-csg_manifold_gate clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
       - name: Clippy (csg_topology_gate)
-        run: cargo clippy -p ifc-lite-geometry --features csg_topology_gate --all-targets -- -D warnings
+        env:
+          RUST_CI_CACHE_HIT: ${{ steps.csg_cache.outputs.cache-hit }}
+        run: node scripts/ci-rust-metrics.mjs csg-ifc-lite-geometry-native-csg_topology_gate clippy -p ifc-lite-geometry --features csg_topology_gate --all-targets -- -D warnings
       # The combined build selects code behind cfg(all(...)) that neither
       # single-feature pass compiles, and `cargo test` does not make warnings
       # fatal, so it needs its own -D warnings pass.
       - name: Clippy (both gates)
-        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --all-targets -- -D warnings
+        env:
+          RUST_CI_CACHE_HIT: ${{ steps.csg_cache.outputs.cache-hit }}
+        run: node scripts/ci-rust-metrics.mjs csg-ifc-lite-geometry-native-csg_manifold_gate,csg_topology_gate clippy -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --all-targets -- -D warnings
 
       # `IFC_LITE_REQUIRE_FIXTURES` for the same reason rust-tests sets it:
       # fixtures are fetched and verified above, so a missing one here is drift,
@@ -3443,13 +3510,15 @@ jobs:
       - name: Rust tests (csg_manifold_gate)
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
-        run: cargo test -p ifc-lite-geometry --features csg_manifold_gate --no-fail-fast
+          RUST_CI_CACHE_HIT: ${{ steps.csg_cache.outputs.cache-hit }}
+        run: node scripts/ci-rust-metrics.mjs csg-ifc-lite-geometry-native-csg_manifold_gate test -p ifc-lite-geometry --features csg_manifold_gate --no-fail-fast
       - name: Free the previous leg's geometry artifacts
         run: cargo clean -p ifc-lite-geometry && df -h .
       - name: Rust tests (csg_topology_gate)
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
-        run: cargo test -p ifc-lite-geometry --features csg_topology_gate --no-fail-fast
+          RUST_CI_CACHE_HIT: ${{ steps.csg_cache.outputs.cache-hit }}
+        run: node scripts/ci-rust-metrics.mjs csg-ifc-lite-geometry-native-csg_topology_gate test -p ifc-lite-geometry --features csg_topology_gate --no-fail-fast
       - name: Free the previous leg's geometry artifacts (again)
         run: cargo clean -p ifc-lite-geometry && df -h .
 
@@ -3461,7 +3530,16 @@ jobs:
       - name: Rust tests (both gates)
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
-        run: cargo test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --no-fail-fast
+          RUST_CI_CACHE_HIT: ${{ steps.csg_cache.outputs.cache-hit }}
+        run: node scripts/ci-rust-metrics.mjs csg-ifc-lite-geometry-native-csg_manifold_gate,csg_topology_gate test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --no-fail-fast
+      - name: Upload Rust cache and timing evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rust-ci-metrics-${{ github.job }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rust-ci-metrics.jsonl
+          if-no-files-found: error
+          retention-days: 14
       - name: Disk left on the runner
         if: always()
         run: df -h .
@@ -4026,9 +4104,33 @@ jobs:
       - name: Check the examples' registry ranges against the workspace majors
         run: node --test --test-reporter=tap --test-reporter-destination=stdout --test-name-pattern='found the examples|registry ranges target' scripts/examples-current.test.mjs
 
+  # The SMLib native adapter on a merge-queue batch whose diff it can observe
+  # (#8408 and #8415 merged untested failures while it ran only nightly or on
+  # labelled PRs). The job lives in geometry-platform.yml and is called, not
+  # copied; its corpus jobs and nightly reporter skip on this event. The
+  # aggregate below judges it: failure or cancellation blocks, skipped passes.
+  # PR pushes, `main` pushes (`batch` is false) and no-op edits never run it,
+  # so the push replay still skips only lanes the batch run executed.
+  native-adapter:
+    name: Native adapter (merge-queue batch)
+    needs: changes
+    if: needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop != 'true' && needs.changes.outputs.native_adapter != 'false'
+    # GitHub checks nested permissions when the run starts, skipped jobs
+    # included, so this grants what geometry-platform.yml's nightly
+    # report-scheduled-failure job asks for (check-native-adapter-triggers.mjs
+    # holds the two together). The native-adapter job itself gets the callee's
+    # workflow-level `contents: read`.
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: ./.github/workflows/geometry-platform.yml
+    with:
+      batch: true
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, scripts-tests, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet, release-pr]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, scripts-tests, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet, release-pr, native-adapter]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -4156,6 +4258,7 @@ jobs:
             [silent-revert]="${{ needs.silent-revert.result }}"
             [native-instructions]="${{ needs.native-instructions.result }}"
             [perf-ratchet]="${{ needs.perf-ratchet.result }}"
+            [native-adapter]="${{ needs.native-adapter.result }}"
             [release-pr]="${{ needs.release-pr.result }}"
           )
           fail=0

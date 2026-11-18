@@ -21,7 +21,7 @@ import {
   PRECISION_GRIDS,
   hasFailedPrecisionGrid,
   hasLoadedPrecisionGrid,
-} from '@/lib/geo/precision-grids';
+} from '@ifc-lite/geo/proj4';
 import { useTranslation } from '@/i18n';
 
 interface PrecisionGridBadgeProps {

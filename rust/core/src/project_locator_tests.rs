@@ -142,14 +142,14 @@ fn find_project_id_accepts_a_record_at_the_start_of_input() {
     assert_eq!(find_project_id(b"#7=IFCPROJECT('g',$);\n"), Some(7));
 }
 
-/// `find_project_keyword` is `find_keyword` anchored on `J` rather than
+/// `find_record_keyword` for `IFCPROJECT(` is `find_keyword` anchored on `J` rather than
 /// the lead `I` (a ~20x scan win on a project-less file, since every IFC
 /// keyword starts with `I`). The offset arithmetic that buys it — candidate
 /// start is `j - 6`, with the first six bytes skipped and `from` applied by
 /// slicing — is exactly where such a rewrite goes wrong, so pin it against a
 /// naive reference over every offset of adversarial and pseudo-random buffers.
 #[test]
-fn find_project_keyword_matches_a_naive_reference_at_every_offset() {
+fn find_record_keyword_matches_a_naive_reference_at_every_offset() {
     const KEYWORD: &[u8] = b"IFCPROJECT(";
     fn naive(content: &[u8], from: usize) -> Option<usize> {
         if content.len() < KEYWORD.len() {
@@ -199,7 +199,7 @@ fn find_project_keyword_matches_a_naive_reference_at_every_offset() {
     for case in &cases {
         for from in 0..=case.len() {
             assert_eq!(
-                find_project_keyword(case, from),
+                find_record_keyword(case, from, b"IFCPROJECT("),
                 naive(case, from),
                 "from={from} in {:?}",
                 String::from_utf8_lossy(case)
@@ -254,4 +254,30 @@ fn decoder_project_id_falls_back_to_the_entity_scan() {
         assert_eq!(decoder.project_id(), Some(1), "{case}");
         assert_eq!(decoder.length_unit_scale(), 0.001, "{case}");
     }
+}
+
+/// Sites are found in any keyword case and with trivia around `=`, a decoy
+/// inside a string is not one, and every site is kept in file order.
+#[test]
+fn find_site_ids_finds_every_site_and_skips_a_decoy() {
+    let content = b"#1=IFCWALL('#9=IFCSITE(',$);\n#30= ifcSite('a',$,$,$,$,#31,$);\n#40=IFCSITE('b',$,$,$,$,$,$);\n";
+    assert_eq!(find_site_ids(content), vec![30, 40]);
+    assert_eq!(scan_for_site_ids(content), vec![30, 40]);
+    assert!(find_site_ids(b"#1=IFCPROJECT('g',$);\n").is_empty());
+}
+
+/// A site's placement counts, one written as `IFCSITE (` that only the entity
+/// scan sees counts too, and a site without a placement adds nothing.
+#[test]
+fn is_site_placement_reads_each_sites_placement() {
+    use crate::EntityDecoder;
+    let file = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
+#31=IFCLOCALPLACEMENT($,$);\n#30=IFCSITE('a',$,$,$,$,#31,$,$,.ELEMENT.,$,$,$,$,$);\n\
+#40=IFCSITE('b',$,$,$,$,$,$,$,.ELEMENT.,$,$,$,$,$);\n#50=IFCLOCALPLACEMENT($,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let mut decoder = EntityDecoder::new(file);
+    assert!(decoder.is_site_placement(31));
+    assert!(!decoder.is_site_placement(50));
+    let spaced = file.replace("#30=IFCSITE(", "#30=IFCSITE (").replace("#40=IFCSITE(", "#40=IFCSITE (");
+    let mut decoder = EntityDecoder::new(&spaced);
+    assert!(decoder.is_site_placement(31), "the entity scan finds a site the byte search cannot see");
 }

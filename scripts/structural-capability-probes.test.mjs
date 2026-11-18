@@ -19,7 +19,9 @@ test('#9668: perturbing real derived axes, endpoints, links or connections canno
   assert.ok(actual.members.length && actual.nodes.length);
   assert.ok(actual.members.every((m)=>m.links.length));
   const control = compareDerived(actual,expected);
-  assert.equal(control.status,'partial');
+  // The roof truss derives AxisVM's two heel supports and none at the tie's overhang tips.
+  assert.equal(control.status,'pass');
+  assert.equal(control.counts.supportDerivedNodes,2);
   assert.equal(control.counts.matchedMembers,13);
   // #9923: mutate the real planner output before real apply/export, as a product regression would.
   const shiftedContext = { ...ctx, pkgs: { ...ctx.pkgs, create: { ...ctx.pkgs.create,
@@ -45,6 +47,8 @@ test('#9668: perturbing real derived axes, endpoints, links or connections canno
     (a)=>{a.members[0].links=[];},
     (a)=>{a.nodes[0].position[2]+=1;},
     (a)=>{a.members.pop();},
+    (a)=>{a.nodes.find((n)=>!n.support).support=true;},
+    (a)=>{a.nodes.find((n)=>n.support).support=false;},
     (a)=>{a.nodes.push({...structuredClone(a.nodes[0]),position:[10000,10000,10000]});},
   ]) {
     const changed = structuredClone(actual);

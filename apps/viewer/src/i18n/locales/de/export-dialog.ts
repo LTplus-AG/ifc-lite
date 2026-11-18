@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const exportDialogDe = {
+  'exportDialog.warningsMore': "und {countDisplay} weitere",
   'exportDialog.trigger': 'IFC exportieren',
   'exportDialog.title': 'IFC-Datei exportieren',
   'exportDialog.description.ifc5': 'Modelldaten und Geometrie exportieren, einschließlich der aktuellen Platzierung im Arbeitsbereich',
@@ -53,6 +54,7 @@ export const exportDialogDe = {
   'exportDialog.noStepRecords.error': 'Dieses Modell enthält keine IFC-Datensätze, aus denen geschrieben werden kann. Wählen Sie IFC5, um es als IFCX zu exportieren.',
   'exportDialog.mergeSkipped.noRecords': 'Nicht in der zusammengeführten Datei enthalten, keine IFC-Datensätze zum Schreiben vorhanden: {models}.',
   'exportDialog.mergeSkipped.noData': 'Nicht in der zusammengeführten Datei enthalten, keine Daten für den Export vorhanden: {models}.',
+  'exportDialog.sectionWarningsWholeModel': 'Warnungen aus an Schnitten beschnittenen Modellen gelten für den Export vor dem Beschneiden, nicht nur für den behaltenen Teil.',
   'exportDialog.landXml.title': 'LandXML kann nicht als IFC exportiert werden',
   'exportDialog.landXml.description': 'Die Geländedatensätze bleiben in ihrem ursprünglichen Quellformat; für den Export werden keine IFC-Entitäten erzeugt.',
   'exportDialog.landXml.error': 'LandXML ist Quellgeometrie, kein IFC. Exportieren Sie stattdessen die ursprüngliche LandXML-Datei.',

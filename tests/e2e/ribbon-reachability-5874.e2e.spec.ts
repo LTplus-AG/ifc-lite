@@ -8,15 +8,21 @@ import { expect, test } from '@playwright/test';
 test.use({ viewport: { width: 1280, height: 900 } });
 
 const TAB_BUTTON_COUNTS = [
-  ['File', 21], // includes the Cesium ion upload command (#6587), LandXML (terrain) (#7600) and Rhino .3dm
+  ['File', 22], // includes the Cesium ion upload command (#6587), LandXML (terrain) (#7600), Rhino .3dm and CityJSON export
   ['Home', 7],
-  ['View', 19], // Settings moved to the persistent header (#5857)
+  ['View', 26], // Settings moved to the persistent header (#5857); Site context and Surface runoff; Structural group (#10604)
   ['Elements', 18], // includes selected mesh hover outline (#5748) and Presentation layers (#7619)
-  ['Analyze', 18], // 17 commands including Linked records (#6643) plus the panel-browser content trigger (#5873)
+  ['Analyze', 18], // commands including Linked records (#6643) plus the panel-browser content trigger (#5873)
   ['Author', 7], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1); Model itself sits in the tab row (#9296)
 ] as const;
 
-test('authored IFC keeps all 90 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
+// A ribbon change edits only its tab's count above; the total follows.
+const BROWSE_PANELS_TRIGGERS = 1; // Analyze content trigger, not a command (#5873)
+const HEADER_COMMANDS = 1; // Settings in the persistent header (#5857)
+const RIBBON_COMMAND_TOTAL = TAB_BUTTON_COUNTS.reduce((total, [, count]) => total + count, 0)
+  - BROWSE_PANELS_TRIGGERS + HEADER_COMMANDS;
+
+test(`authored IFC keeps all ${RIBBON_COMMAND_TOTAL} ribbon commands and panel browser reachable at 1280px (#5874, #5778)`, async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -91,8 +97,8 @@ test('authored IFC keeps all 90 ribbon commands and panel browser reachable at 1
   visited.Header = [await settings.getAttribute('aria-label') ?? ''];
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
   expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
-  expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(90);
+  expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(BROWSE_PANELS_TRIGGERS);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(RIBBON_COMMAND_TOTAL);
   // #7619: the added hierarchy command is unique and opens its actual sidebar
   // grouping, after the inventory above checks its accessible pointer target.
   const presentationLayerCommandName = 'Presentation layers';

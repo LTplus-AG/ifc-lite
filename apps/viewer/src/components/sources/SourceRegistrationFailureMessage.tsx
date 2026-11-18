@@ -14,4 +14,3 @@ export function RegistrationFailureMessage({ provider, reason }: { provider: str
     ? [segment]
     : [segment, <span key={index} className="font-medium">{provider}</span>]);
 }
-

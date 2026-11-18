@@ -6,7 +6,7 @@
 //! forgery, decode to something that still passes the invariants) without a
 //! panic or an unbounded allocation.
 
-use super::super::envelope::{encode_entry, validate_entry, BODY_START, HEADER_LEN};
+use super::super::envelope::{encode_entry, validate_entry, BODY_START, FORMAT_VERSION, HEADER_LEN};
 use super::super::CodecError;
 use super::{decode, full_result, identity, reseal_directory, seal, sections};
 
@@ -57,8 +57,9 @@ fn identity_and_version_mismatches_are_named() {
     other.engine_digest[31] ^= 1;
     assert!(matches!(validate_entry(&bytes, &other), Err(CodecError::IdentityMismatch)));
     let mut newer = bytes.clone();
-    newer[8] = 2;
-    assert!(matches!(decode(&newer), Err(CodecError::Unsupported(2))));
+    let next = FORMAT_VERSION + 1;
+    newer[8..12].copy_from_slice(&next.to_le_bytes());
+    assert!(matches!(decode(&newer), Err(CodecError::Unsupported(v)) if v == next));
     assert!(matches!(decode(b"not an entry at all"), Err(CodecError::BadMagic)));
 }
 

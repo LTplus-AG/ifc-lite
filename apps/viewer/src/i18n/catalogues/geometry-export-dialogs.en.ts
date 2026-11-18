@@ -23,6 +23,18 @@
 import type { TranslationValue } from '../types';
 
 export const geometryExportDialogsEn = {
+  "geometryExport.shared.georefRequired": "This model has no georeferencing. Add a location before exporting.",
+  "geometryExport.shared.openGeoreferencing": "Open georeferencing",
+  "cityJsonExport.description": "Export the selected IFC model as CityJSON 2.0 or CityJSONSeq.",
+  "cityJsonExport.localNotice": "This model has no georeferencing. The file will use the model’s local coordinates, not map coordinates.",
+  "cityJsonExport.sessionCrs": "Writes coordinates in {crs}, including this session’s georeferencing changes.",
+  "cityJsonExport.noSource": "Load an IFC or IFCZIP model to export.",
+  "cityJsonExport.document": "CityJSON (.city.json)",
+  "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",
+  "cityJsonExport.exported": "CityJSON exported",
+  "cityJsonExport.warnings": "Exported with {count} warnings:\n{warnings}",
+  "cityJsonExport.failed": "CityJSON export failed: {reason}",
+
   // --- shared across GLBExportDialog.tsx / KmzExportDialog.tsx ---
   'geometryExport.shared.currentModelFallbackName': 'Current Model',
   'geometryExport.shared.unknownError': 'Unknown error',
@@ -31,8 +43,8 @@ export const geometryExportDialogsEn = {
   // --- ExportDialogShell.tsx (#5848) ---
   'geometryExport.shell.filenamePreviewLabel': 'Will save as:',
   'geometryExport.shell.warningsSummary': {
-    one: '{count} warning',
-    other: '{count} warnings',
+    one: '{countDisplay} warning',
+    other: '{countDisplay} warnings',
   },
 
   // --- GLBExportDialog.tsx ---

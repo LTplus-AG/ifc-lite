@@ -8,6 +8,13 @@ import { beforeSend } from './analytics.js';
 import { type ExportCompletedProperties } from './analytics-export-events.js';
 
 describe('export completion privacy contract (#5844)', () => {
+  it('retains CityJSON and CityJSONSeq completion formats (#10607)', () => {
+    for (const format of ['cityjson', 'cityjsonseq'] as const) {
+      const properties = { format, surface: 'ribbon', size_kb: 1 };
+      assert.deepEqual(beforeSend({ event: 'export_completed', properties: { ...properties } })?.properties, properties);
+    }
+  });
+
   it('keeps a fixed surface and aggregate metrics through the actual send gate', () => {
     const properties: ExportCompletedProperties = {
       format: 'ifc-anonymized', surface: 'palette', seed_count: 2,

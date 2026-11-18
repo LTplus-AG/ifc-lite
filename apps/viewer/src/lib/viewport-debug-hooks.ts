@@ -2,14 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readPerfFlag } from './perf/flags.js';
-import { sceneIdentityEnabled, tappedSceneSnapshots } from './perf/sceneIdentityTap.js';
+import { sceneIdentityEnabled, tappedSceneSnapshots, resetSceneIdentityTap } from './perf/sceneIdentityTap.js';
 import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { isSceneSettled } from '@/lib/scene-settled';
 import { geometryRestoreBackstopFires } from './geometry-restore-gate.js';
+import type { PickParityRequest } from './perf/pickParity.js';
 
 /** One resident part of an owner as plain data: no buffers, no live objects. */
 export interface ScenePartSnapshot {
@@ -164,6 +166,25 @@ export function installViewportDebugHooks(
       raw: base64(frame.rgba), duplicate: base64(frame.duplicate), png: await encodeColorFrame(Promise.resolve(frame)) };
   };
   host.__ifc_lite_capture_color_frame__ = () => encodeColorFrame(renderer.captureColorFrame());
+  // CPU geometry still referenced on the main thread, by holder (#10264). One walk per call, loaded on first use.
+  host.__ifc_lite_cpu_geometry_held__ = async () => {
+    const { measureCpuGeometryHeld } = await import('./perf/cpuGeometryHeld.js');
+    const state = useViewerStore.getState();
+    return measureCpuGeometryHeld({ models: state.models.values(), geometryResult: state.geometryResult,
+      removedMeshes: state.removedMeshes.values(), renderer });
+  };
+  // GPU click pick vs the exact CPU raycast over a texel grid, under the current
+  // hide/isolate (#10264 S1). Loaded on first use; drives no frame or load path.
+  host.__ifc_lite_pick_parity__ = async (request: Omit<PickParityRequest, 'options' | 'isAnnotationOwner'>) => {
+    const { runPickParity } = await import('./perf/pickParity.js');
+    const { hiddenIds, isolatedIds } = visibility();
+    const isAnnotationOwner = (globalId: number): boolean => {
+      const ref = resolveEntityRef(globalId);
+      const type = useViewerStore.getState().models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId) ?? '';
+      return /^Ifc(Annotation|Grid|GridAxis)$/i.test(type);
+    };
+    return runPickParity(renderer, { ...request, isAnnotationOwner, options: { hiddenIds: new Set(hiddenIds), isolatedIds: isolatedIds ? new Set(isolatedIds) : null } });
+  };
   // The camera's world view-projection, the matrix every mesh draw packs as
   // `uniforms.viewProj` (the depth nudge reads its projection from it, #6729).
   host.__ifc_lite_view_projection__ = () => Array.from(renderer.getCamera().getViewProjMatrix().m);
@@ -236,6 +257,7 @@ export function installViewportDebugHooks(
 }
 
 export function clearViewportDebugHooks(): void {
+  resetSceneIdentityTap();
   const host = globalThis as Record<string, unknown>;
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_frame__;
@@ -243,6 +265,8 @@ export function clearViewportDebugHooks(): void {
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_scene_identity__;
   delete host.__ifc_lite_capture_color_frame__;
+  delete host.__ifc_lite_cpu_geometry_held__;
+  delete host.__ifc_lite_pick_parity__;
   delete host.__ifc_lite_capture_color_diagnostic__;
   delete host.__ifc_lite_view_projection__;
   delete host.__ifc_lite_render_visibility__;

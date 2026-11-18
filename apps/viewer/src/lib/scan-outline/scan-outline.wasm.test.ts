@@ -18,6 +18,8 @@ import { ensureWasm, roomSlab } from '@/test/scan-slab-fixture';
 import { exportToDXF, parseDxf, DEFAULT_SECTION_CONFIG, type Drawing2D, type DxfEntity } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { buildDxfExportTransform } from '@/hooks/dxfExportGeoref';
+import { runScanOutlineJob, type ScanOutlineSource } from './scan-outline-job';
+import { selectScanBand, type ScanSectionPlane } from '@/hooks/scanSectionMath';
 import { scanOutlineDxfLayers, traceScanOutlineLayer, SCAN_OUTLINE_DXF_LAYER } from './scan-outline';
 
 const FACES_X = [20, 26, 19.8, 26.2];
@@ -88,4 +90,65 @@ describe('scan outline through the real wasm engine (#6871)', () => {
     assert.equal(layer.rings.length, 0);
     assert.deepEqual(scanOutlineDxfLayers(layer), []);
   });
+});
+
+// #10094 item 2: noiseless dense faces make the traced vertices measurable
+// against the actual band dots, without an algorithm fitting tolerance.
+describe('scan outline shared precision frame (#10094 item 2)', () => {
+  function source(tx: number, tz: number): ScanOutlineSource {
+    const positions: number[] = [];
+    const faces = [
+      [0, 0, 6, 0], [6, 0, 6, 4], [6, 4, 0, 4], [0, 4, 0, 0],
+      [-0.2, -0.2, 6.2, -0.2], [6.2, -0.2, 6.2, 4.2],
+      [6.2, 4.2, -0.2, 4.2], [-0.2, 4.2, -0.2, -0.2],
+    ];
+    for (const [x0, y0, x1, y1] of faces) {
+      const steps = Math.round(Math.hypot(x1 - x0, y1 - y0) * 1000);
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        positions.push(x0 + t * (x1 - x0), 1, -(y0 + t * (y1 - y0)));
+      }
+    }
+    return {
+      positions: new Float32Array(positions), count: positions.length / 3,
+      model: new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, tx, 0, tz, 1]),
+      modelOutputsRenderFrame: true,
+    };
+  }
+
+  for (const flipped of [false, true]) {
+    it(`restores map-scale rings onto the dots within 1 mm, flipped=${flipped}`, (t) => {
+      if (!ensureWasm(t)) return;
+      let localRings: { x: number; y: number }[][] = [];
+      for (const offset of [0, 2_600_000]) {
+        // An empty first source must not pin the shared anchor to zero.
+        // Two rooms with distinct placements exercise a single merged frame.
+        const sources: ScanOutlineSource[] = [
+          { positions: new Float32Array(), count: 0 },
+          source(offset + 0.123, -offset - 0.067),
+          source(offset + 8.157, -offset - 0.089),
+        ];
+        const plane: ScanSectionPlane = { axis: 'y', position: 1, flipped };
+        const job = { sources, coordinateInfo: undefined, plane, thickness: 0.2, maxGap: 0.3 };
+        const layer = runScanOutlineJob(job);
+        assert.equal(layer.rings.length, 4, 'both rooms and their holes survive the merged trace');
+        const dots = sources.flatMap((sample) => selectScanBand({
+          ...job, sample, model: sample.model, modelOutputsRenderFrame: true,
+        }).points.map((p) => p.point));
+        for (const p of layer.rings.flat()) {
+          const nearest = dots.reduce((best, dot) => Math.min(best, Math.hypot(dot.x - p.x, dot.y - p.y)), Infinity);
+          assert.ok(nearest < 0.001, `outline vertex is ${nearest} m off the band dots at ${offset}`);
+        }
+        if (offset === 0) localRings = layer.rings;
+        else {
+          assert.deepEqual(layer.rings.map((r) => r.length), localRings.map((r) => r.length));
+          layer.rings.forEach((ring, r) => ring.forEach((p, k) => {
+            const local = localRings[r][k];
+            assert.ok(Math.abs(p.x - (flipped ? -offset : offset) - local.x) < 0.001);
+            assert.ok(Math.abs(p.y + offset - local.y) < 0.001);
+          }));
+        }
+      }
+    });
+  }
 });

@@ -14,7 +14,7 @@
  * number rather than as a failure.
  */
 
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
 
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -706,6 +706,13 @@ describe('alignGeometryToReference — inline point clouds ride with the meshes 
     return { expressId: 90, ...(origin ? { origin } : {}), chunk: { pointCount: world.length, positions,
       bbox: { min: [positions[0], positions[1], positions[2]], max: [positions[0], positions[1], positions[2]] } } };
   }
+  /** World position of point `i`: f64 origin plus the f32 residual. */
+  const worldAt = (o: { origin?: number[]; positions: Float32Array }, i: number) =>
+    [0, 1, 2].map((a) => (o.origin?.[a] ?? 0) + o.positions[3 * i + a]);
+  const cloudAt = (c: PointCloudAsset, i: number) => worldAt({ origin: c.origin, positions: c.chunk.positions }, i);
+  // The reprojected path (#10093) moves inline clouds through the same per-point map as the meshes.
+  const utm32 = () => georef({ eastings: 500_000, northings: 5_000_000 }, 'EPSG:32632');
+  const utm33 = () => georef({ eastings: 300_000, northings: 5_000_000 }, 'EPSG:32633');
 
   it('moves a cloud point and the mesh vertex at the same world point together, keeping millimetres (same CRS)', async () => {
     const mesh = boxMesh(33, [2_600_000.01, 0.02, 0.03], [2_600_000.01, 0.02, 0.03], [2_600_000, 0, 0]);
@@ -739,5 +746,59 @@ describe('alignGeometryToReference — inline point clouds ride with the meshes 
     assert.ok(Number.isNaN(p[0]) && Number.isNaN(p[1]) && Number.isNaN(p[2]), 'the missing point is not invented');
     assert.ok(Math.abs(points.origin![0] + p[3] - 2501) < 1e-3);
     assert.deepEqual(points.chunk.bbox, { min: [p[3], p[4], p[5]], max: [p[3], p[4], p[5]] });
+  });
+
+  it('moves every cloud point with the mesh vertex at the same world point (cross CRS)', async () => {
+    // A 10 m box and a cloud sharing a non-zero f64 origin at the box centre, so
+    // no test point sits on it. The zone hop rotates the grid, so a cloud that only
+    // shifted rigidly, or lost its origin before reprojection, misses by tens of centimetres.
+    const origin: [number, number, number] = [105, 205, 5];
+    const mesh = boxMesh(35, [100, 200, 0], [110, 210, 10], origin);
+    mesh.origin = [...origin];
+    const points = cloud([[100, 200, 0], [110, 210, 10], [130, 200, 0]], origin);
+    const geom = { ...geometry([mesh]), pointClouds: [points] };
+    const before = points.chunk;
+    const sourcePositions = new Float32Array(before.positions);
+    assert.equal(await alignGeometryToReference(geom, utm32(), utm33()), 'reprojected');
+    assert.ok(Math.abs(worldAt(mesh, 0)[0] - 100) > 1000, 'the zone hop moved the model');
+    for (const [i, corner] of [[0, 0], [1, 7]]) { // boxMesh corner 0 is the min, 7 the max
+      const c = cloudAt(points, i), m = worldAt(mesh, corner);
+      for (let a = 0; a < 3; a++) assert.ok(Math.abs(c[a] - m[a]) < 1e-3, `point ${i} axis ${a}: cloud ${c[a]}, mesh ${m[a]}`);
+    }
+    // Point 2 lies beyond the mesh, so only the cloud can put it inside the model bounds.
+    assert.ok(Math.abs(geom.coordinateInfo.originalBounds.max.x - cloudAt(points, 2)[0]) < 1e-3, 'the cloud sets the model bounds');
+    for (let a = 0; a < 3; a++) assert.ok(Math.abs(points.origin![a] - mesh.origin![a]) < 1e-3, `origin axis ${a} is the mapped source origin`);
+    const { bbox, positions } = points.chunk; // residual frame, like positions
+    const axis = (a: number) => [0, 1, 2].map((i) => positions[3 * i + a]);
+    assert.deepEqual(bbox, { min: [0, 1, 2].map((a) => Math.min(...axis(a))), max: [0, 1, 2].map((a) => Math.max(...axis(a))) });
+    assert.notEqual(points.chunk, before, 'a new chunk, so the old one is an intact rollback snapshot');
+    assert.deepEqual(before.positions, sourcePositions, 'the old chunk keeps its source positions');
+  });
+
+  it('refuses the alignment and publishes nothing when a cloud point cannot be reprojected', async () => {
+    const origin: [number, number, number] = [105, 205, 5];
+    const mesh = boxMesh(36, [0, 0, 0], [1, 1, 1]);
+    // proj4 answers Infinity, not an error, for a point outside the target zone's domain.
+    const points = cloud([[100, 200, 0], [3e8, 0, 0]], origin);
+    const geom = { ...geometry([mesh]), pointClouds: [points] };
+    const meshBefore = new Float32Array(mesh.positions);
+    const chunkBefore = points.chunk;
+    const cloudBefore = new Float32Array(chunkBefore.positions);
+    const frameBefore = structuredClone(geom.coordinateInfo);
+    const boxBefore = structuredClone(mesh.geometryAabb);
+    const warn = mock.method(console, 'warn', () => {});
+    try {
+      assert.equal(await alignGeometryToReference(geom, utm32(), utm33()), 'failed');
+      assert.ok(warn.mock.calls.some((c) => String(c.arguments[0]).includes('inline point cloud')), 'the cloud point is what refused');
+    } finally {
+      warn.mock.restore();
+    }
+    assert.deepEqual(mesh.positions, meshBefore);
+    assert.equal(mesh.origin, undefined);
+    assert.deepEqual(mesh.geometryAabb, boxBefore);
+    assert.equal(points.chunk, chunkBefore);
+    assert.deepEqual(points.chunk.positions, cloudBefore);
+    assert.deepEqual(points.origin, [105, 205, 5]);
+    assert.deepEqual(geom.coordinateInfo, frameBefore, 'the model frame and bounds are not moved');
   });
 });

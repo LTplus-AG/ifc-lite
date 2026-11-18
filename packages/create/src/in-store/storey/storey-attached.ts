@@ -35,6 +35,8 @@ import { setWallSectionInStore } from '../wall-section-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
 import { readPlacementLeaf, worldLiftInParent, writeShiftedPlacement, type PlacementLeaf } from './storey-placement.js';
 import { placementWorldZ } from './storey-grid.js';
+import { readTopAttachment, topAttachmentProblem } from './storey-attachment.js';
+import type { StoreyInventory } from './storey-model.js';
 import { scaleWallQuantities, snapshotWallQuantities, wallQuantityBaseline, wallGeometry } from './wall-height-quantities.js';
 
 export type AttachedKind = 'wall' | 'column' | 'linear' | 'curtainWall';
@@ -51,6 +53,13 @@ export const MIN_ATTACHED_EXTENT = 0.01;
 
 export function attachedKind(type: string | undefined): AttachedKind | null {
   return type ? KINDS[type.toUpperCase()] ?? null : null;
+}
+
+/** Classify a top dependency without reading its geometry. The inventory and
+ * detailed planner share the same binding and unresolved-record semantics. */
+export function attachedTopDependency(inventory: StoreyInventory, id: number) {
+  const attachment = readTopAttachment(inventory, id);
+  return { attachment, problem: attachment ? null : topAttachmentProblem(inventory, id) };
 }
 
 export type AttachedOutcome = { readonly ok: true; readonly remesh: number[] } | { readonly ok: false; readonly reason: string };
@@ -150,7 +159,7 @@ export function levelTopFaceAbove(target: EditTarget, id: number, kind: Attached
   const ref = leaf?.refDirection ? pointOf(reader, leaf.refDirection, 'IFCDIRECTION') : null;
   const z = ends.chain.axisDirection;
   // The section's X is the RefDirection made square to the axis; its Y is Axis × X.
-  const raw: Vec3 = ref ?? [1, 0, 0];
+  const raw: Vec3 = ref ?? (Math.abs(z[0]) > 1 - 1e-9 ? [0, 1, 0] : [1, 0, 0]);
   const along = raw[0] * z[0] + raw[1] * z[1] + raw[2] * z[2];
   const xr: Vec3 = [raw[0] - along * z[0], raw[1] - along * z[1], raw[2] - along * z[2]];
   const length = Math.hypot(...xr);

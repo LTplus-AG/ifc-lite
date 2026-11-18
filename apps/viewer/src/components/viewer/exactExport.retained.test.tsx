@@ -30,11 +30,20 @@ for (const format of ['USD', 'energy', 'ion'] as const) {
     useViewerStore.setState({ models: new Map([['A', {
       ...exact, sourceFile: new File(['unused: submission must refuse before reading'], 'A.ifc'),
     }]]) });
+    // #10647: ion prechecks georeferencing; give model A a session georef edit.
+    if (format === 'ion') useViewerStore.setState({ georefMutations: new Map([['A', {
+      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
+      projectedCRS: { name: 'EPSG:2056' },
+    }]]) });
     render(format === 'USD' ? <UsdExportDialog surface="ribbon" />
       : format === 'energy' ? <EnergyModelExportDialog surface="ribbon" />
       : <CesiumIonExportDialog surface="ribbon" upload={async () => assert.fail('retained STEP must not upload')} />);
     click(button(format === 'USD' ? 'Export USD' : format === 'energy' ? 'Energy Model' : 'Upload to Cesium ion'));
-    if (format === 'ion') type(document.querySelector<HTMLInputElement>('#ion-token')!, 'test-token');
+    if (format === 'ion') {
+      type(document.querySelector<HTMLInputElement>('#ion-token')!, 'test-token');
+      assert.equal(document.body.textContent?.includes('This model has no georeferencing.'), false,
+        'the ion fixture must count as georeferenced');
+    }
     act(() => useViewerStore.setState({ models: new Map([['A', {
       ...useViewerStore.getState().models.get('A')!,
       retainedGeometry: { kernel: 'retained', candidates: 2, published: 2, refused: [],

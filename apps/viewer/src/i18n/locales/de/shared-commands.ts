@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const sharedCommandsDe = {
+  "exportCommands.cityjson.label": "CityJSON",
+  "exportCommands.cityjson.menuLabel": "CityJSON exportieren",
+  "exportCommands.cityjson.tooltip": "CityJSON / CityJSONSeq exportieren",
+
   "exportCommands.ion.label": "Cesium ion",
   "exportCommands.ion.menuLabel": "Auf Cesium ion hochladen",
   "exportCommands.ion.tooltip": "Bearbeitete IFC in Ihr Cesium ion-Konto hochladen",
@@ -107,6 +111,7 @@ export const sharedCommandsDe = {
   "classVisibility.grids.description": "Tragwerksachsen",
   "classVisibility.structuralGlyphs.label": "Lager & Lasten",
   "classVisibility.structuralGlyphs.description": "Symbole der Tragwerksanalyse",
+  'classVisibility.structuralGlyphs.maskedHint': 'In der rein physischen Tragwerksansicht ausgeblendet',
   "classVisibility.mergeLayers.label": "Mehrschichtige Wände zusammenführen",
   "classVisibility.mergeLayers.description": "Rendern Sie Wände beim Neuladen als einen einzigen Volumenkörper",
   "classVisibility.fastGeometry.label": "Schnelle Geometrie",

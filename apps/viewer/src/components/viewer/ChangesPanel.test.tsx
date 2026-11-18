@@ -17,6 +17,7 @@ import { ChangesPanel } from './ChangesPanel';
 import { revertChangeOperation } from '@/lib/changes/revert-change-operation';
 import { changeOperations } from '@/lib/changes/change-operations';
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
+import { resetFeaturesForTest } from '@/lib/features';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial); });
@@ -156,7 +157,7 @@ test('#5902 georeference row has no fake Jump and downloads its model-level muta
   useViewerStore.setState({ models: new Map([['A', model]]), activeModelId: 'A',
     undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
     georefMutations: new Map(), editEnabled: true });
-  useViewerStore.getState().setGeorefFields('A', 'mapConversion', [{ field: 'Eastings', value: 42 }]);
+  useViewerStore.getState().setGeorefFields('A', 'mapConversion', [{ field: 'eastings', value: 42 }]);
   const ui = render(<ChangesPanel />);
   assert.match(ui.textContent ?? '', /Georeference/);
   assert.equal(ui.querySelectorAll('button[aria-label^="Jump to"]').length, 0);
@@ -166,7 +167,22 @@ test('#5902 georeference row has no fake Jump and downloads its model-level muta
     const download = downloads[0];
     assert.ok(download, 'a georeference-only row must not export an empty delta');
     const payload = JSON.parse(await download.text()) as { mutations: Array<{ attributeName?: string; newValue?: unknown }> };
-    assert.deepEqual(payload.mutations.map(mutation => mutation.attributeName), ['georef.mapConversion.Eastings']);
-    assert.deepEqual(payload.mutations.map(mutation => mutation.newValue), [42]);
+    // The edit leaves the position incomplete, so the store completes it with 0 in the same step and the delta carries both.
+    assert.deepEqual(payload.mutations.map(mutation => mutation.attributeName), ['georef.mapConversion.eastings', 'georef.mapConversion.northings', 'georef.mapConversion.orthogonalHeight']);
+    assert.deepEqual(payload.mutations.map(mutation => mutation.newValue), [42, 0, 0]);
   });
+});
+
+test('a host that switches off export keeps the change list but drops the export footer', () => {
+  const model = { ...fixtureModel('A'), schemaVersion: 'IFC4' as const, maxExpressId: 102 };
+  useViewerStore.setState({ models: new Map([['A', model]]), activeModelId: 'A',
+    mutationViews: new Map([['A', new MutablePropertyView(null, 'A')]]), undoStacks: new Map(), redoStacks: new Map(),
+    mutationBatchTags: new Map(), dirtyModels: new Set(), mutationVersion: 0, editEnabled: true });
+  useViewerStore.getState().setProperty('A', 101, 'Pset_Test', 'Status', 'draft', PropertyValueType.Label);
+  resetFeaturesForTest({ default: 'all', disable: ['export.files'] });
+  try {
+    const ui = render(<ChangesPanel />);
+    assert.match(ui.textContent ?? '', /1 edit/);
+    assert.doesNotMatch(ui.textContent ?? '', /Changes only/);
+  } finally { resetFeaturesForTest(); }
 });

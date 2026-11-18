@@ -26,6 +26,8 @@ export interface StructuralConnectionConditionInfo {
 /** One `IfcRelConnectsStructuralMember` (or `IfcRelConnectsWithEccentricity`); ids are model-local. */
 export interface StructuralMemberConnectionInfo {
   expressId: number;
+  /** `IfcRelConnectsStructuralMember`, or its subtype `IfcRelConnectsWithEccentricity`. */
+  type: string;
   RelatedStructuralConnection: number;
   /** Member-end release or fixity at this connection, resolved. */
   AppliedCondition?: BoundaryConditionInfo;
@@ -35,6 +37,8 @@ export interface StructuralMemberConnectionInfo {
   /** `IfcConnectionPointEccentricity`, the only constraint subtype read. */
   ConnectionConstraint?: {
     expressId: number;
+    /** `IfcConnectionPointEccentricity`. */
+    type: string;
     EccentricityInX?: number;
     EccentricityInY?: number;
     EccentricityInZ?: number;
@@ -194,6 +198,8 @@ export interface StructuralAnalysisModelInfo {
 }
 
 export interface StructuralExtraction {
+  /** Standalone or referenced IFC4/IFC4X3 reinforcement results, indexed by local express id. */
+  reinforcementAreas?: StructuralLoadInfo[];
   analysisModels: StructuralAnalysisModelInfo[];
   members: StructuralMemberInfo[];
   connections: StructuralConnectionInfo[];

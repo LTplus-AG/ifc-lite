@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { renderableCoordinates } from './renderable-coordinates.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 export function worldBounds(meshes: readonly MeshData[]): {
@@ -129,6 +130,6 @@ export function topologySafeBatchOrigin(
   // every mesh, rather than treating exhausted preferred frames as exhaustion
   // of all frames. GPU high/low origin lanes must remain finite too (#5010).
   const authored: [number, number, number] = meshes[0]?.origin ?? [0, 0, 0];
-  return authored.every((axis) => Number.isFinite(Math.fround(axis)))
+  return renderableCoordinates(authored)
     && preserves(authored) ? authored : undefined;
 }

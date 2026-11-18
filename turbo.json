@@ -71,6 +71,7 @@
         "package.json",
         "tsconfig.json",
         "tsconfig.*.json",
+        "!tsconfig.tests.json",
         "vite.config.ts",
         "index.html"
       ],
@@ -111,7 +112,7 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "passThroughEnv": ["IFCOPENSHELL_PYTHON", "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE", "IFCLITE_TEST_CHROME_EXECUTABLE", "GITHUB_*", "RUNNER_*", "MERGIFY_*", "OCI_REGISTRY_BINARY", "ORAS_BINARY"],
+      "passThroughEnv": ["IFCOPENSHELL_PYTHON", "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE", "IFC_LITE_REQUIRE_FIXTURES", "IFCLITE_TEST_CHROME_EXECUTABLE", "GITHUB_*", "RUNNER_*", "MERGIFY_*", "OCI_REGISTRY_BINARY", "ORAS_BINARY"],
       "cache": false,
       "env": [
         "TEST_PATTERN",
@@ -123,7 +124,7 @@
       "dependsOn": ["build"],
       "cache": false,
       "env": ["TEST_PATTERN", "TEST_SHARD", "TEST_SHARDS"],
-      "passThroughEnv": ["IFC_LITE_SECTION_EVIDENCE_DIR", "GITHUB_*", "RUNNER_*", "MERGIFY_*"]
+      "passThroughEnv": ["IFC_LITE_SECTION_EVIDENCE_DIR", "IFC_LITE_REQUIRE_FIXTURES", "GITHUB_*", "RUNNER_*", "MERGIFY_*"]
     },
     "lint": {
       "dependsOn": ["build"],

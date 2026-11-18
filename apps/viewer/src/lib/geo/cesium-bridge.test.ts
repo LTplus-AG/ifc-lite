@@ -12,7 +12,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { computeModelCenterInIfcMeters } from './map-absolute.js';
 import { viewerToIfcAxes } from './coordinate-frame.js';
-import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
+import PROJ_ORACLE from '../../test/proj-oracle.js';
 
 const KROVAK =
   '+proj=krovak +lat_0=49.5 +lon_0=24.83333333333333 '

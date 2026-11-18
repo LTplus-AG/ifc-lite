@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { getVisibleBasketEntityRefsFromStore, invalidateVisibleBasketCache } from './basketVisibleSet.js';
+import { getVisibleBasketEntityRefsFromStore, invalidateVisibleBasketCache, visibilityFingerprint } from './basketVisibleSet.js';
 import { useViewerStore } from './index.js';
 import { entityRefToString } from './types.js';
 import { fixtureDataStore, fixtureModel } from '../test/store-fixture.js';
@@ -96,5 +96,26 @@ describe('the visible-ref cache sees store and view swaps', () => {
     assert.deepEqual(visible(), ['legacy:1', 'legacy:2', 'legacy:3']);
     useViewerStore.setState({ geometryResult: geometry([mesh(1), mesh(2), mesh(4)]) });
     assert.deepEqual(visible(), ['legacy:1', 'legacy:2', 'legacy:4']);
+  });
+});
+
+describe('the visibility fingerprint tells different sets of the same size apart (#10247)', () => {
+  const state = (hidden: number[]) => ({ ...useViewerStore.getState(), hiddenEntities: new Set(hidden) });
+
+  it('does not collide for {1,6} and {2,5} (same count, xor and sum)', () => {
+    assert.notEqual(visibilityFingerprint(state([1, 6])), visibilityFingerprint(state([2, 5])));
+  });
+
+  it('does not depend on insertion order', () => {
+    assert.equal(visibilityFingerprint(state([1, 6, 9])), visibilityFingerprint(state([9, 1, 6])));
+  });
+
+  it('separates every pair of two-id sets drawn from 1..40', () => {
+    const seen = new Map<string, string>();
+    for (let a = 1; a <= 40; a++) for (let b = a + 1; b <= 40; b++) {
+      const key = visibilityFingerprint(state([a, b]));
+      assert.equal(seen.get(key), undefined, `{${a},${b}} collides with ${seen.get(key)}`);
+      seen.set(key, `{${a},${b}}`);
+    }
   });
 });

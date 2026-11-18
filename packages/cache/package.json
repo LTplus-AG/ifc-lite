@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cache",
-  "version": "3.7.4",
+  "version": "3.8.0",
   "description": "Binary cache format for IFC-Lite - fast model loading",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,9 +30,9 @@
   },
   "devDependencies": {
     "@ifc-lite/parser": "workspace:^",
-    "@mergifyio/vitest": "^2026.10.11",
+    "@mergifyio/vitest": "^2026.11.8",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -55,6 +55,7 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "SPEC.md"
   ]
 }

@@ -22,7 +22,7 @@ import {
 } from '@/lib/geo/reproject';
 import { useTranslation } from '@/i18n/useTranslation';
 import { createCesiumBridge } from '@/lib/geo/cesium-bridge';
-import { isGeographicProj4 } from '@/lib/geo/proj4-utils';
+import { isGeographicProj4 } from '@ifc-lite/geo/proj4';
 import { useViewerStore } from '@/store';
 // Side-effect import: merges the measure catalogue into the runtime `en`
 // object so `t('measure.*')` resolves under the real 'en' locale (see that

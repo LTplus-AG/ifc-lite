@@ -17,6 +17,7 @@ The `bim` object (a `BimContext`) groups its capabilities into namespaces, plus 
 | `bim.create` | Create IFC elements from scratch |
 | `bim.export` | Export to CSV, JSON, IFC/STEP, HBJSON, DFJSON |
 | `bim.clash` | Run clash rules and the discipline matrix |
+| `bim.georef` | Read and write georeferencing (IfcProjectedCRS + IfcMapConversion; IFC2X3 ePSet convention), fail-closed — see [Georeferencing](#georeferencing) |
 | `bim.cost` | Read and evaluate IFC 5D cost schedules, items, values, and quantities |
 | `bim.structural` | Read-only access to IFC structural analysis data (analysis models, members, connections, activities, load/result groups) |
 | `bim.ids` | IDS validation; `bim.ids.authoring` opens, edits (through grounded operations), lints and writes IDS documents |
@@ -286,6 +287,41 @@ Use `model.capability('store.roomCommand')` before offering a backend operation.
 `close()` is idempotent and clears preparation caches. Capability checks then report unsupported with a closed-session reason. Retained backend queries and mutation namespaces then throw `HeadlessSessionClosedError` with code `SESSION_CLOSED`. In-flight injected geometry preparation rechecks the session before it can commit. Closing does not revoke the returned source store or pure helpers that operate on caller-supplied data. Existing MCP constructors and embedded/remote SDK entry points retain their behavior.
 
 The CLI and MCP compose the shared `@ifc-lite/sdk/headless` implementation. Query reads, pending mutations, standard exports, and model identity checks share one implementation. CLI-specific authoring, schedules, spaces, and energy exports remain host adapters; explicit aliases preserve its existing model-ID spellings.
+
+## Georeferencing
+
+`bim.georef` reads and writes a model's georeferencing on headless contexts (`openModel`, the CLI, MCP). IFC4 and IFC4X3 get `IfcProjectedCRS` + `IfcMapConversion` (IFC4X3 with `FactorX/Y/Z`: `IfcMapConversionScaled`); IFC2X3 gets the `ePSet_MapConversion` / `ePSet_ProjectedCRS` property sets on IfcSite (updates preserve an existing host). A write is held in the session and lands in the file with the next `bim.export.ifc()`.
+
+```typescript
+import { readFile, writeFile } from 'node:fs/promises';
+import { openModel } from '@ifc-lite/sdk/headless';
+
+const model = await openModel(await readFile('model.ifc'));
+try {
+  const result = model.bim.georef.set({
+    ProjectedCRS: { Name: 'EPSG:2056', GeodeticDatum: 'CH1903+', VerticalDatum: 'LN02', MapUnit: 'METRE' },
+    MapConversion: { Eastings: 2600000, Northings: 1200000, OrthogonalHeight: 400, Scale: 1 },
+    rotationDegrees: 12.5,
+  });
+  console.log(result.mapUnit, result.notes);
+  model.bim.georef.update({ MapConversion: { OrthogonalHeight: 401 } });
+  console.log(model.bim.georef.get().MapConversion);
+  await writeFile('georeferenced.ifc', model.bim.export.ifc());
+} finally {
+  model.close();
+}
+```
+
+Writes fail closed and throw a `GeoreferencingError` whose `code` says why and whose `missing` names the inputs that would let it proceed:
+
+- No CRS, map unit, scale or factor is assumed. `ProjectedCRS.MapUnit` must be given, or come from an IfcProjectedCRS of the same `Name` being replaced or updated whose unit the reader resolved (`result.mapUnit.source` says which); the writer supports metres with any SI prefix, `FOOT` and `US SURVEY FOOT`.
+- A model without an `IfcGeometricRepresentationContext` (the map conversion's `SourceCRS`) is refused; for IFC2X3, a model without exactly one IfcSite.
+- `set` on a georeferenced model is refused unless `replace: true`, which removes the existing map conversions, CRSs and their `IfcWellKnownText` and writes one map conversion (for the 3D `Model` context); `result.notes` names any other context that loses its conversion.
+- Contradictions are refused: an angle and an `XAxisAbscissa`/`XAxisOrdinate` vector that disagree, half a vector, factors outside FILE_SCHEMA `IFC4X3` / `IFC4X3_ADD2`, unknown keys, factors on a plain `IfcMapConversion` (use `set` with `replace`), or an `update` that renames the CRS while keeping the old datum or unit.
+
+`get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `set`/`update` leave IfcSite `RefLatitude`/`RefLongitude` untouched and say so in `notes`; `setSite({ RefLatitude, RefLongitude, RefElevation })` writes them (decimal degrees, written as `IfcCompoundPlaneAngleMeasure`; RefElevation in project length units), as one undo step.
+
+`check()`, `planFixes()` and `fix()` are the georeferencing doctor: what is wrong, which fixes the write API can apply, and applying them. See [Georeferencing](georeferencing.md).
 
 ## Embedding programmatically
 

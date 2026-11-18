@@ -25,7 +25,7 @@ import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsi
 import { Boxes, Anchor, ArrowDownToLine, TriangleAlert, ChevronDown } from 'lucide-react';
 import { formatLocaleNumber, localeCount, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleList, formatLocaleValueList } from '@/i18n/intlFormat';
-import { resolveMeasureDisplay, type UnitDisplay } from '@/lib/units/display';
+import { formatMeasureNumber, resolveMeasureDisplay, type UnitDisplay } from '@/lib/units/display';
 import type {
   ProjectUnits,
   StructuralExtraction,
@@ -316,9 +316,6 @@ function SectionRows({ section, format, children }: {
 }
 
 const NO_OVERRIDES: Record<string, string> = {};
-/** Enough digits for a structural value the file states (0.0125 m, 1,000,000,000 N/m) without float noise. */
-// `roundingPriority` is ES2023 Intl; the viewer's lib is ES2022, hence the cast.
-const CARD_NUMBER = { maximumFractionDigits: 3, maximumSignificantDigits: 6, roundingPriority: 'morePrecision' } as Intl.NumberFormatOptions;
 
 interface CardValueFormat {
   locale: string;
@@ -338,7 +335,7 @@ function formatCardValue(row: StructuralCardRow, f: CardValueFormat): string {
   const { measure } = row;
   // The unit depends on the measure alone, so any finite value resolves it.
   const unit = measure ? f.measure(0, measure).unit : null;
-  const number = (n: number) => formatLocaleNumber(f.locale, (measure ? f.measure(n, measure).converted : null) ?? n, CARD_NUMBER);
+  const number = (n: number) => formatMeasureNumber(f.locale, (measure ? f.measure(n, measure).converted : null) ?? n);
   const withUnit = (text: string) => (unit ? `${text} ${unit}` : text);
   const reference = (id: number) => {
     const target = f.entity(id);

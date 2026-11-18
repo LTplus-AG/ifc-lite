@@ -27,6 +27,9 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
 import { fixtureModel } from '@/test/store-fixture';
 import { configureMutationView } from '@/utils/configureMutationView';
+import { registerAgentCommandHost } from './command-host';
+import { paletteSurfaceCommands } from '@/components/viewer/surface-commands';
+import { VIEWER_COMMAND_SPECS } from '@/lib/agent-tools/viewer-command-tools';
 import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
 import { useAgentChangeLabels } from '@/lib/changes/agent-change-labels';
 import type { WebSocketConstructor, WebSocketLike } from './client';
@@ -146,7 +149,7 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     resetAgentBridgeStateForTests();
   });
 
-  it('pairs read-only, lists the 27 read tools (the edit tools stay hidden), and answers real calls from the live store including unsaved edits', async () => {
+  it('pairs read-only, lists read and command-discovery tools (the edit tools stay hidden), and answers real calls from the live store including unsaved edits', async () => {
     const before = (await mcp.request('tools/list')).tools as { name: string }[];
     assert.deepEqual(before.map((tool) => tool.name), ['bridge_status'], 'no tab yet: only bridge_status');
 
@@ -157,7 +160,7 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
 
     const listed = (await mcp.request('tools/list')).tools as { name: string; annotations?: { readOnlyHint?: boolean } }[];
     assert.equal(listed[0].name, 'bridge_status');
-    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST].sort());
+    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => spec.readOnly).map(([name]) => name)].sort());
     assert.ok(listed.slice(1).every((tool) => tool.annotations?.readOnlyHint === true));
 
     // An unsaved edit in the viewer is what the agent reads.
@@ -244,6 +247,60 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     assert.equal(refused.isError, true);
     assert.equal((refused.structuredContent as { code: string }).code, 'READ_ONLY');
     assert.equal(useViewerStore.getState().undoStacks.get('hello')?.length ?? 0, undoBefore, 'nothing was written');
+  });
+
+  it('real MCP command dispatch is gated by grant and revoke, and shares native palette actions', async () => {
+    const release = registerAgentCommandHost(() => paletteSurfaceCommands({ canEditInSession: true }, () => {}));
+    const projection = useViewerStore.getState().projectionMode;
+    const invoke = () => mcp.request('tools/call', { name: 'viewer_command_run', arguments: { command_id: 'view:projection' } });
+    try {
+      const discovered = await mcp.request('tools/call', { name: 'viewer_commands', arguments: { command_id: 'view:projection' } });
+      assert.equal(discovered.isError, undefined, JSON.stringify(discovered));
+      assert.equal((await invoke()).isError, true, 'read-only bridge refuses execution');
+      let seen = listChanged();
+      setAgentBridgePermission('read-write');
+      await until(() => listChanged() > seen, 'command tools listed after grant');
+      const selected = await mcp.request('tools/call', { name: 'viewer_select', arguments: { model_id: 'hello', express_ids: [WALL_ID] } });
+      assert.equal(selected.isError, undefined, JSON.stringify(selected));
+      assert.ok(useViewerStore.getState().selectedEntityIds.has(WALL_ID));
+      const applied = await invoke();
+      assert.equal(applied.isError, undefined, JSON.stringify(applied));
+      assert.equal((applied.structuredContent as { status: string }).status, 'dispatched');
+      assert.notEqual(useViewerStore.getState().projectionMode, projection);
+      seen = listChanged();
+      setAgentBridgePermission('read-only');
+      await until(() => listChanged() > seen, 'command tools removed after revoke');
+      assert.equal((await invoke()).isError, true);
+      assert.notEqual(useViewerStore.getState().projectionMode, projection, 'refused call did not toggle it back');
+    } finally { release(); }
+  });
+
+  it('executes model-free numerical operations over real MCP transport with live grants (#10525 follow-up)', async () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null });
+    const discovered = await mcp.request('tools/call', { name: 'viewer_operations', arguments: { operation_id: 'measurements.distance' } });
+    assert.equal(discovered.isError, undefined, JSON.stringify(discovered));
+    const invoke = () => mcp.request('tools/call', { name: 'viewer_operation_execute', arguments: {
+      operation_id: 'measurements.distance', input: { start: [0, 0, 0], end: [3, 4, 0] },
+      idempotency_key: 'wire-distance',
+    } });
+    assert.equal((await invoke()).isError, true, 'read-only transport refuses view effects');
+    let seen = listChanged();
+    setAgentBridgePermission('read-write');
+    await until(() => listChanged() > seen, 'operation execution listed after grant');
+    const first = await invoke();
+    assert.equal(first.isError, undefined, JSON.stringify(first));
+    assert.equal((first.structuredContent as { result: { distance: number } }).result.distance, 5);
+    const count = useViewerStore.getState().measurements.length;
+    assert.equal((await invoke()).isError, undefined);
+    assert.equal(useViewerStore.getState().measurements.length, count, 'wire retry is deduplicated');
+    seen = listChanged();
+    setAgentBridgePermission('read-only');
+    await until(() => listChanged() > seen, 'operation execution removed after revoke');
+    assert.equal((await invoke()).isError, true, 'revoked grant refuses even a cached write outcome');
+    const read = await mcp.request('tools/call', { name: 'viewer_operation_inspect', arguments: {
+      operation_id: 'measurements.read',
+    } });
+    assert.equal(read.isError, undefined, JSON.stringify(read));
   });
 
   it('the bridge shutting down ends the tab\'s session as bridge-shutdown', async () => {

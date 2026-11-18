@@ -36,6 +36,7 @@ import { useExportRunner } from './useExportRunner';
 import { buildExportCommands } from './commandPaletteExports';
 import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-command-registry';
 import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
+import { isSurfaceCommandAvailable } from './surface-command-features';
 import { ActivityTrayDialog } from './activity/ActivityTray';
 import type { MobileCommandPlacement } from '@/lib/layout/form-factor';
 
@@ -100,7 +101,9 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
   const addModel = mobileCommand('file:add-model');
   const OpenFileIcon = mobileIcon(openFile);
   const AddModelIcon = mobileIcon(addModel);
-  const toolButtons = ['tool:select', 'tool:measure', 'tool:section'] as const;
+  // Commands a host switched off (`lib/features`) are left out, not disabled.
+  const toolButtons = (['tool:select', 'tool:measure', 'tool:section'] as const)
+    .filter((id) => isSurfaceCommandAvailable(mobileCommand(id)));
   // Seven 44px targets fit a 320px phone in one row (7 x 44 = 308px); nine did
   // not, so Add model and Show all live in More (#8802, maintainer's call).
   const quickActions = ['view:home', 'view:fit'] as const;
@@ -110,6 +113,7 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
   const WalkIcon = mobileIcon(walk);
   const menuItem = (id: SurfaceCommandId, disabled = false) => {
     const command = mobileCommand(id);
+    if (!isSurfaceCommandAvailable(command)) return null;
     const Icon = mobileIcon(command);
     return (
       <DropdownMenuItem key={id} data-command-id={id} disabled={disabled} onClick={() => runMobile(command)}>
@@ -124,7 +128,7 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
       {fileCommands.fileInputs}
 
       {/* Open File */}
-      <Button
+      {isSurfaceCommandAvailable(openFile) && <Button
         variant="ghost"
         size="icon-sm"
         className={target}
@@ -138,7 +142,7 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
         ) : (
           <OpenFileIcon className="h-4 w-4" />
         )}
-      </Button>
+      </Button>}
 
       {divider('tools')}
 
@@ -232,7 +236,7 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
               <DropdownMenuSeparator />
             </>
           )}
-          {hasModelsLoaded && (
+          {hasModelsLoaded && isSurfaceCommandAvailable(addModel) && (
             <>
               <DropdownMenuItem
                 data-command-id={addModel.id}
@@ -248,17 +252,20 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
           {menuItem('ui:commands')}
           {menuItem('pref:settings')}
           <DropdownMenuSeparator />
-          {/* Walk Mode */}
-          <DropdownMenuCheckboxItem
-            data-command-id={walk.id}
-            checked={activeTool === 'walk'}
-            onCheckedChange={() => runMobile(walk)}
-          >
-            <WalkIcon className="h-4 w-4 mr-2" />
-            {mobileLabel(walk)}
-          </DropdownMenuCheckboxItem>
-
-          <DropdownMenuSeparator />
+          {/* Walk Mode, with its own separator so a switched-off Walk leaves no empty band */}
+          {isSurfaceCommandAvailable(walk) && (
+            <>
+              <DropdownMenuCheckboxItem
+                data-command-id={walk.id}
+                checked={activeTool === 'walk'}
+                onCheckedChange={() => runMobile(walk)}
+              >
+                <WalkIcon className="h-4 w-4 mr-2" />
+                {mobileLabel(walk)}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
 
           {/* Visibility */}
           {menuItem('vis:isolate')}
@@ -276,6 +283,7 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
           {/* Export: the registry's rows, same as the command palette. Inline
               rather than a submenu: a nested Radix submenu closes as a touch
               leaves its trigger, so its rows could not be tapped on a phone. */}
+          {exportRows.length > 0 && <>
           <DropdownMenuLabel data-mobile-export-menu className="flex items-center text-xs text-muted-foreground">
             <Download className="h-3.5 w-3.5 mr-2" />
             {t('shellChrome.mobileToolbar.export')}
@@ -293,6 +301,7 @@ export function MobileToolbar({ placement = 'bottom-bar', style }: {
           ))}
 
           <DropdownMenuSeparator />
+          </>}
 
           {/* The activity tray lives in the status bar, which phones do not show (#6925). */}
           <DropdownMenuItem data-command-id={activity.id} onClick={() => runSurfaceCommand(activity, { surface: 'mobile', openActivity: () => setActivityOpen(true) })}>

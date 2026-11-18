@@ -111,7 +111,7 @@ function mount(initialHost: BoundaryHost, ribbon = false) {
   };
 }
 const icons: ExportIconSet = {
-  ifc: Puzzle, anonymized: Puzzle, 'modified-ifc': Puzzle, glb: Puzzle, kmz: Puzzle,
+  ifc: Puzzle, anonymized: Puzzle, 'modified-ifc': Puzzle, glb: Puzzle, kmz: Puzzle, cityjson: Puzzle,
   ion: Puzzle, usd: Puzzle, '3dm': Puzzle, energy: Puzzle, 'landxml-terrain': Puzzle, csv: Puzzle,
   json: Puzzle, screenshot: Puzzle, pdf: Puzzle, extension: Puzzle,
 };

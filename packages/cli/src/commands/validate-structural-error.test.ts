@@ -14,7 +14,7 @@ import { IfcParser } from '@ifc-lite/parser';
 vi.mock('@ifc-lite/parser', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@ifc-lite/parser')>()),
   // A thrown non-Error, so the report must not rely on `.message`.
-  structuralConsistencyIssues: () => { throw 'unreadable structural record'; },
+  structuralConsistencyReport: () => { throw 'unreadable structural record'; },
 }));
 
 const { computeValidationIssues } = await import('./validate.js');

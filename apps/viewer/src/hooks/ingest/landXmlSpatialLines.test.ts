@@ -122,7 +122,12 @@ describe('LandXML federated overlay coordinates (#5048)', () => {
     const target = reference(-9_240_280.602725117, 10_330_575.179250661, 0, 'EPSG:32632');
     const updates = await buildLandXmlRenderedLineUpdates(parsed, source, target, undefined);
     applyLandXmlRenderedLineUpdates(updates);
-    assert.deepStrictEqual(parsed.surfaces[0].breaklines[0].renderedPoints, [[0, 0, 0]]);
+    // The target is proj4's own output for this point; proj4 releases differ in
+    // the last bit (2.23 gives ...118 where 2.22 gave ...117, 1.9e-9 m). A unit
+    // mix-up would be off by a factor of 3.28, so a micrometre bound is exact enough.
+    const rendered = parsed.surfaces[0].breaklines[0].renderedPoints;
+    assert.ok(rendered && rendered.length === 1, JSON.stringify(rendered));
+    assert.ok(rendered[0].every((value) => Math.abs(value) < 1e-6), JSON.stringify(rendered));
   });
 
   it('suppresses only a failed 1e100 line instead of falling back to source coordinates in an aligned surface (#5048)', async () => {

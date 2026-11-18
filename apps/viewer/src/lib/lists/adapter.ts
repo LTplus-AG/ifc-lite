@@ -279,9 +279,8 @@ export function createListDataProvider(
       return ancestry().projectName;
     },
 
-    getModelName(): string {
-      return modelName;
-    },
+    getModelName: () => modelName,
+    getTriangleCount: (id) => zoneContext?.getTriangleCount?.(id) ?? null,
     getWorldPosition: (id) => zoneContext?.getWorldPosition?.(id) ?? null,
 
     discoverAllColumns(): DiscoveredColumns {

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { viewerDrawingAnnotations } from '@/lib/export/viewer-drawing-annotations';
 import { StepExporter, countStepEntities, type SectionExportOptions, type StepExportOptions } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -31,7 +32,8 @@ export async function exportModelStep(input: {
   const dataStore = portable?.dataStore ?? input.dataStore;
   const view = portable ? portable.mutationView : input.mutationView;
   const serialized = prepareAppearanceSerialization(modelId, dataStore, options.applyMutations !== false ? view : undefined);
-  const result = await new StepExporter(dataStore, serialized.view).exportAsync({
+  const toSourceId = (id: number) => portable ? portable.toSourceIds(new Set([id]))?.values().next().value : id;
+  const result = await new StepExporter(dataStore, options.applyMutations === false ? serialized.view : viewerDrawingAnnotations(modelId, dataStore, serialized.view, toSourceId)).exportAsync({
     ...options,
     hiddenEntityIds: portable ? portable.toSourceIds(options.hiddenEntityIds) ?? undefined : options.hiddenEntityIds,
     isolatedEntityIds: portable ? portable.toSourceIds(options.isolatedEntityIds) : options.isolatedEntityIds,

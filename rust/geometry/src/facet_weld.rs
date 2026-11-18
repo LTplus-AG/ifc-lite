@@ -73,6 +73,7 @@
 use crate::mesh::Mesh;
 use std::collections::BTreeMap;
 
+mod adopt;
 mod components;
 mod eligibility;
 mod fit;
@@ -497,9 +498,15 @@ fn aspect(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
 /// common case for clean cuts).
 ///
 /// Not source cleanup: its fresh candidates need local handling (#4797).
-pub fn refine_high_aspect_slivers(mesh: &Mesh) -> Mesh {
-    refine_high_aspect_slivers_impl(mesh, None)
+#[cfg(test)]
+pub(crate) fn refine_high_aspect_slivers(mesh: &Mesh) -> Mesh {
+    refine_high_aspect_slivers_impl(mesh, None, true).unwrap_or_else(|| mesh.clone())
 }
+
+pub(crate) use adopt::{canonicalised, improves, refine_slivers_if_better, refine_within_to_fixpoint};
+
+/// The cutter boxes a scoped refinement is limited to.
+type Region<'a> = &'a [([f64; 3], [f64; 3])];
 
 /// Region-scoped [`refine_high_aspect_slivers`]: only triangles whose AABB
 /// intersects one of `boxes`, grown by the canonicalization slack below, are
@@ -517,6 +524,7 @@ pub fn refine_high_aspect_slivers(mesh: &Mesh) -> Mesh {
 /// touches its cutter's box) without refining geometry the cut never created.
 /// Callers pad `boxes` for their own seam tolerance; this function adds the
 /// canonicalization slack itself.
+#[cfg(test)]
 pub(crate) fn refine_high_aspect_slivers_within(
     mesh: &Mesh,
     boxes: &[([f64; 3], [f64; 3])],
@@ -524,16 +532,16 @@ pub(crate) fn refine_high_aspect_slivers_within(
     if boxes.is_empty() {
         return mesh.clone();
     }
-    refine_high_aspect_slivers_impl(mesh, Some(boxes))
+    refine_high_aspect_slivers_impl(mesh, Some(boxes), true).unwrap_or_else(|| mesh.clone())
 }
 
-fn refine_high_aspect_slivers_impl(
-    mesh: &Mesh,
-    region: Option<&[([f64; 3], [f64; 3])]>,
-) -> Mesh {
+/// The pass itself. `None` when no sliver fired and the mesh is unchanged.
+/// With `split` off a firing sliver still rebuilds the mesh from its
+/// canonical vertices, and nothing is bisected.
+fn refine_high_aspect_slivers_impl(mesh: &Mesh, region: Option<Region<'_>>, split: bool) -> Option<Mesh> {
     let vertex_count = mesh.positions.len() / 3;
     if vertex_count < 3 || mesh.indices.len() < 6 {
-        return mesh.clone();
+        return None;
     }
 
     // RAW NO-SLIVER PRE-SCAN (perf; Holter-class hosts fire the prism void
@@ -628,7 +636,7 @@ fn refine_high_aspect_slivers_impl(
         mn - EDGE_SLACK <= 1.0e-9 || (mx + EDGE_SLACK) > SLIVER_ASPECT * (mn - EDGE_SLACK)
     });
     if !raw_may_have_sliver {
-        return mesh.clone();
+        return None;
     }
 
     // Canonicalise vertices by snapped position so a shared edge is ONE key.
@@ -688,10 +696,10 @@ fn refine_high_aspect_slivers_impl(
         aspect(cpos[t[0]], cpos[t[1]], cpos[t[2]]) > SLIVER_ASPECT
             && tri_in_region(cpos[t[0]], cpos[t[1]], cpos[t[2]])
     }) {
-        return mesh.clone();
+        return None;
     }
 
-    let mut changed_any = false;
+    let mut changed_any = !split;
     // SCOPED-mode split budget. The unscoped loop is inherently bounded (ONE
     // split per round × MAX_BISECT_ROUNDS). The scoped batched loop splits many
     // edges per round, so a triangle that bisection cannot improve — a
@@ -702,7 +710,7 @@ fn refine_high_aspect_slivers_impl(
     // and a hard cap on total splits bounds the worst case regardless.
     const MAX_SCOPED_SPLITS: usize = 2048;
     let mut splits_done = 0usize;
-    for _round in 0..MAX_BISECT_ROUNDS {
+    for _round in 0..if split { MAX_BISECT_ROUNDS } else { 0 } {
         // Build edge → incident triangle indices (deterministic BTreeMap).
         let mut edge_tris: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
         for (ti, t) in tris.iter().enumerate() {
@@ -841,7 +849,7 @@ fn refine_high_aspect_slivers_impl(
     }
 
     if !changed_any {
-        return mesh.clone();
+        return None;
     }
 
     // Rebuild a flat mesh from the refined canonical triangles, re-deriving a
@@ -866,7 +874,7 @@ fn refine_high_aspect_slivers_impl(
     // local-frame origin + #1474 capture to defaults and mis-place exactly the
     // hosts whose cuts slivered. `instance_meta` is dropped (the refined mesh no
     // longer matches its canonical rep) — see `Mesh::rebuilt_like`.
-    mesh.rebuilt_like(positions, normals, indices)
+    Some(mesh.rebuilt_like(positions, normals, indices))
 }
 
 #[cfg(test)]

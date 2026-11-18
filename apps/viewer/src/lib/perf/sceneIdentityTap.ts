@@ -19,6 +19,7 @@ export interface TappedSnapshot { kind: TappedKind; sig: string | null; batches:
 
 const tapped: TappedSnapshot[] = [];
 let pending = 0;
+let generation = 0;
 
 export function sceneIdentityEnabled(): boolean {
   const v = readPerfFlag('sceneIdentity');
@@ -29,14 +30,22 @@ export function sceneIdentityEnabled(): boolean {
 export function tapSceneSnapshot(kind: TappedKind, snapshot: SceneSnapshot): void {
   if (!sceneIdentityEnabled()) return;
   const entry: TappedSnapshot = { kind, sig: null, batches: snapshot.batches.length };
+  const owner = generation;
   tapped.push(entry);
   pending++;
   import('./sceneIdentity.js')
-    .then(({ snapshotSignature }) => { entry.sig = snapshotSignature(snapshot); })
-    .catch((err: unknown) => { entry.error = String(err); })
-    .finally(() => { pending--; });
+    .then(({ snapshotSignature }) => { if (owner === generation) entry.sig = snapshotSignature(snapshot); })
+    .catch((err: unknown) => { if (owner === generation) entry.error = String(err); })
+    .finally(() => { if (owner === generation) pending--; });
 }
 
 export function tappedSceneSnapshots(): { snapshots: readonly TappedSnapshot[]; pending: number } {
   return { snapshots: tapped.map((t) => ({ ...t })), pending };
+}
+
+/** Drop the previous viewport's taps and invalidate its pending hash callbacks (#9990). */
+export function resetSceneIdentityTap(): void {
+  generation++;
+  tapped.length = 0;
+  pending = 0;
 }

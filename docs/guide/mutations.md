@@ -500,7 +500,12 @@ image, network or application undo resources are implicitly published by this AP
 | `"#42"` (string) | entity reference |
 | `".AREA."` (string) | enum |
 | `"My Column"` (string) | quoted STEP string |
+| `stepString("$")` / `stepString("*")` from `@ifc-lite/data` | literal quoted text `'$'` / `'*'` |
 | `[1, 2, 3]` | STEP list `(1,2,3)` — recursive |
+
+Use `stepString(text)` for imported text that might look like a STEP marker,
+reference or enumeration. Existing plain `$` and `*` marker inputs retain their
+meaning; `null` remains the way to write an omitted attribute.
 
 ### High-Level Builders — `addColumnToStore` / `addWallToStore` / …
 
@@ -1227,7 +1232,9 @@ unmodified row without copying it into the draft. Use the ordinary getters or
 mutation methods for writes. `StoreEditor.readNewEntity` provides the same
 read-only borrow. `readNewEntityKinds(type?)`, `hasNewEntity(id)` and
 `getNewEntityCount()` answer enumeration and membership without reading any
-payload.
+payload. The read snapshot cache is bounded, and completed atomic transactions
+release temporary indexes even during a long synchronous session. Retained
+draft views remain private and rebuild their indexes when queried again.
 
 `planFootprintRoof(footprint, edgeSlopes, overhang)` exposes the same pure planner
 used by the roof builder for previews. Coordinates and overhang share a length
@@ -1347,3 +1354,43 @@ readable before export.
 Retargeting a roof-cut wall to a planar roof or storey restores a planar top and updates its existing prism quantities from their pre-cut baseline. Repeated refits preserve declared quantity units, including a net area in mm² beside a gross area in m².
 
 Direct placement translations return the final local coordinates after fitting an attached top; a level beam or member can therefore keep its original Z under a slab despite a requested vertical move. A storey with a present but unreadable placement cannot supply a floor from its Elevation metadata: fitting a top refuses atomically until that placement is repaired. An invalid storey-delete move destination returns an `invalidTarget` refusal before planning relative attachments. A deletion preview returns an `unreadablePlacement` refusal when a target floor has an explicit missing reference or an unreadable placement chain.
+
+Hosted door and window types are reused only when their resolved IFC operation
+or partitioning and user-defined text match. An enumeration and free text with
+the same display label remain distinct types. Low-level `duplicateInStore`
+callers supplying an `IfcRelDefinesByType` association's `relId` must also
+supply a nonempty `relatedIds` list containing its current `RelatedObjects`.
+Missing or empty lists are refused before any records are written. A parsed
+relationship without a live overlay list is checked against its source
+`RelatedObjects`; incomplete or extra members are refused atomically. Later
+copies preserve the current overlay list, including earlier copies. Material
+associations retain their `relId`-only input form.
+
+`StoreEditor.getSourceEntityData(id)` exposes one source record's bytes and its
+rebased entity index span for builders that need to verify source-backed relationships;
+it returns `null` when that entity has no source span.
+
+Attachment notices identify the element kind so a column, beam, member or
+curtain wall is described in its own terms. Raw authored doors or windows with
+nonpositive or nonfinite numeric `OverallWidth` or `OverallHeight` report a quantity diagnostic and keep
+an empty derived quantity result; existing third-party quantity sets are
+preserved.
+
+### Ordering a bounded set of authored records
+
+`view.getNewEntityCreationOrder(expressId)` reads a live creation's relative insertion order without enumerating the session. It returns `null` for an ID that is not a live creation. Compare these numbers only within the current view order; atomic publication, undo and snapshot restoration may renumber them. Nested atomic drafts include their own new records.
+
+`view.getNewEntityReferenceSlotIds(type, slot, target)` projects a raw authored positional scalar reference. A `null` target includes absent and malformed values. Small class buckets are checked directly; larger classes use a maintained projection, including nested drafts and exposed-array edits. Combine candidates with attribute overrides and verify effective values before using them. This is a raw creation index, not an effective-record reader.
+
+`view.trackEntityChanges()` supplies a disposable invalidation cursor for derived
+inventories. `take()` returns changed entity IDs since the previous call, or
+`null` after a full restoration or more than 65,536 distinct changes. It includes
+skip-history writes, atomic publication and undo. Escaped mutable creation arrays
+remain conservative candidates on every call. Read effective records after the
+write completes, rebuild on `null`, and call `dispose()` when the inventory is
+retired. An unchanged detached draft can borrow the inventory identified by the
+cursor's `origin` view and revision; changes inside that draft remain separate.
+
+`view.getNewEntityType(id)` reads one live creation's authored class without
+borrowing its attributes or copying it into a draft. It returns `null` for an
+absent creation; consult `getEntityTypeMutation(id)` for an effective retype.

@@ -162,6 +162,22 @@ function isStreamedScanOnly(geometry: RtcRebaseGeometry): boolean {
   return geometry.meshes.length === 0 && clouds.length > 0 && clouds.every(isStreamedDescriptor);
 }
 
+/**
+ * What {@link convergeGeometryOntoRtcAnchor} does with one geometry: leave it
+ * (a streamed scan, or already on the anchor), refuse it (GPU-instanced), or
+ * move it. Exported so a caller that acts before the move (withdrawing a
+ * spatial index) decides with the same rule.
+ */
+export function rtcConvergeAction<T extends RtcRebaseGeometry>(
+  geometry: T,
+  anchor: Readonly<Vec3>,
+  hasOtherInstancedGeometry?: (geometry: T) => boolean,
+): 'leave' | 'refuse' | 'move' {
+  if (isStreamedScanOnly(geometry) || isOnRtcAnchor(geometry.coordinateInfo, anchor)) return 'leave';
+  if (carriesGpuInstancedGeometry(geometry) || hasOtherInstancedGeometry?.(geometry) === true) return 'refuse';
+  return 'move';
+}
+
 export interface RtcConvergeResult<T> {
   /** Geometries moved onto the anchor (need a GPU rebuild and a spatial reindex). */
   moved: T[];
@@ -189,8 +205,9 @@ export function convergeGeometryOntoRtcAnchor<T extends RtcRebaseGeometry>(
   const refused: T[] = [];
   const seen = new Set<object>(); // a mesh or cloud shared between two results moves once
   for (const geometry of new Set(geometries)) {
-    if (isStreamedScanOnly(geometry) || isOnRtcAnchor(geometry.coordinateInfo, anchor)) continue;
-    if (carriesGpuInstancedGeometry(geometry) || hasOtherInstancedGeometry?.(geometry) === true) {
+    const action = rtcConvergeAction(geometry, anchor, hasOtherInstancedGeometry);
+    if (action === 'leave') continue;
+    if (action === 'refuse') {
       refused.push(geometry);
       continue;
     }

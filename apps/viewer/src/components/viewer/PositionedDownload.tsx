@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 import { useTranslation } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -23,6 +24,8 @@ export function PositionedDownload({ modelId }: { modelId: string }) {
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), [modelId, model?.sourceFile]);
   if (!model || (!model.gaussianSplat && model.pointCloudHandleId === undefined)) return null;
+  // It saves the model as a file; a host can switch export off (`lib/features`).
+  if (!isFeatureEnabled('export.files')) return null;
   const unavailable = !model.sourceFile || (model.loadState !== undefined && model.loadState !== 'complete') || preview;
   const start = async () => {
     if (controller.current) return;

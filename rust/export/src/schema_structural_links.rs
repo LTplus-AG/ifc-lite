@@ -10,7 +10,7 @@
 //! IfcElement. Anything else stays an IfcRelAssignsToProduct. Types come from
 //! the source, so only an unedited full export arms it.
 use std::collections::{HashMap, HashSet};
-use crate::schema_ifc2x3_records::ref_id;
+use ifc_lite_core::parser::skip_step_trivia;
 use crate::schema_structural_axes::list_items;
 use crate::step_slot::split_top_level_args;
 
@@ -26,11 +26,31 @@ fn becomes(entity: &str, parent: &str) -> bool {
     ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(target, parent)
 }
 
+/// An entity reference slot, with STEP whitespace and comments around it allowed (#10248).
+pub(crate) fn slot_ref(token: &str) -> Option<u32> {
+    let bytes = token.as_bytes();
+    let start = skip_step_trivia(bytes, 0)?;
+    let rest = token.get(start..)?.strip_prefix('#')?;
+    let rest = rest.trim_start();
+    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+    let end = token.len() - rest.len() + digits;
+    (digits > 0 && skip_step_trivia(bytes, end) == Some(bytes.len())).then(|| rest[..digits].parse().ok()).flatten()
+}
+
+/// Whether the slot is exactly `literal`, with STEP whitespace and comments around it allowed (#10248).
+pub(crate) fn slot_is(token: &str, literal: &[u8]) -> bool {
+    let bytes = token.as_bytes();
+    skip_step_trivia(bytes, 0).is_some_and(|start| bytes[start..].starts_with(literal) && skip_step_trivia(bytes, start + literal.len()) == Some(bytes.len()))
+}
+
+/// Whether the slot is the unset marker `$`.
+pub(crate) fn slot_unset(token: &str) -> bool { slot_is(token, b"$") }
+
 /// (member, element) of an `IFCRELASSIGNSTOPRODUCT` record of the shape the upgrade writes.
 fn endpoints(args: &[String]) -> Option<(u32, u32)> {
-    if args.len() != 7 || args[5].trim() != "$" { return None; }
-    let member = match list_items(&args[4])?.as_slice() { [only] => ref_id(Some(only))?, _ => return None };
-    Some((member, ref_id(Some(&args[6]))?))
+    if args.len() != 7 || !slot_unset(&args[5]) { return None; }
+    let member = match list_items(&args[4])?.as_slice() { [only] => slot_ref(only)?, _ => return None };
+    Some((member, slot_ref(&args[6])?))
 }
 
 impl StructuralLinks {
@@ -95,6 +115,14 @@ mod tests {
         // A subset has no source types to read, so the link stays an assignment.
         let subset = export(&ifc4, StepOptions { included: Some(vec![10, 20, 30]), ..to("IFC2X3") });
         assert!(record(&subset, "#30=").starts_with("#30=IFCRELASSIGNSTOPRODUCT("), "{subset}");
+    }
+
+    #[test]
+    fn link_with_step_comments_in_its_slots_is_restored_10248() {
+        let source = model("IFC4", "#10=IFCBEAM('2O2Fr$t4X7Zf8NOew3FLOH',$,'Beam',$,$,$,$,$,$);\n#20=IFCSTRUCTURALCURVEMEMBER('1kTvXnbbzCWw8lcMd1dR4o',$,'Member',$,$,$,$,.RIGID_JOINED_MEMBER.,$);\n#30=IFCRELASSIGNSTOPRODUCT('3KIbrf6nfOzPbzsemNGvi0',$,$,$,/* related */(/* the member */#20/* end */),$/* unset */,/* beam */#10 /* tail */);\n#31=IFCRELASSIGNSTOPRODUCT('3KIbrf6nfOzPbzsemNGvi1',$,$,$,(#20/* m */),/* set */.PRODUCT.,#10);");
+        let out = export(&source, to("IFC2X3"));
+        assert_eq!(record(&out, "#30="), "#30=IFCRELCONNECTSSTRUCTURALELEMENT('3KIbrf6nfOzPbzsemNGvi0',$,$,$,#10,#20);");
+        assert!(record(&out, "#31=").starts_with("#31=IFCRELASSIGNSTOPRODUCT("), "{out}");
     }
 
     #[test]

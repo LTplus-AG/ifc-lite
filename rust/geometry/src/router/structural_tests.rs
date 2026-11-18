@@ -99,6 +99,24 @@ fn signed_xy_area(mesh: &crate::Mesh) -> f64 {
         .sum()
 }
 
+/// Whether some triangle of the mesh contains the point (x, y) of the xy plane.
+fn covers(mesh: &crate::Mesh, x: f64, y: f64) -> bool {
+    mesh.indices.chunks_exact(3).any(|triangle| {
+        let point = |index: u32| {
+            let base = index as usize * 3;
+            [mesh.positions[base] as f64, mesh.positions[base + 1] as f64]
+        };
+        let [a, b, c] = [point(triangle[0]), point(triangle[1]), point(triangle[2])];
+        // A collapsed triangle covers nothing (all three side values would be zero for every point).
+        if ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])).abs() < 1e-12 {
+            return false;
+        }
+        let side = |p: [f64; 2], q: [f64; 2]| (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
+        let (s1, s2, s3) = (side(a, b), side(b, c), side(c, a));
+        (s1 >= -1e-9 && s2 >= -1e-9 && s3 >= -1e-9) || (s1 <= 1e-9 && s2 <= 1e-9 && s3 <= 1e-9)
+    })
+}
+
 fn curved_member(orientation: bool) -> String {
     let oriented = if orientation {
         "#9=IFCORIENTEDEDGE(*,*,#8,.T.);"
@@ -746,13 +764,65 @@ fn curve_bounded_plane_face_on_another_product_stays_empty_issue_9668() {
 }
 
 #[test]
-fn two_outer_bounds_on_another_product_keep_main_rule_issue_9668() {
-    // Main keeps the last outer bound as the ring and makes the earlier one a
-    // hole, so only the 2 x 2 square meshes (area 4, measured on main).
+fn disjoint_outer_bounds_on_another_product_are_regions_issue_9945() {
+    // The generic pipeline reads the same face the same way: two disjoint
+    // outer-bound triangles of a square are two regions, 100, where main kept the
+    // last as the ring and made the first a hole (one triangle, 50).
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#1,#3,#4));#21=IFCFACEOUTERBOUND(#20,.T.);",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    assert!((signed_xy_area(&meshed(&proxy_with(&source), 18)) - 100.0).abs() < 1e-5);
+}
+
+#[test]
+fn a_tile_across_a_slot_of_a_concave_loop_is_a_region_issue_9945() {
+    // A 10 x 10 square with a thin slot cut in from the top (x 3 to 3.2, down to y 2), and a thin triangle whose
+    // vertices and edge midpoints are all in the square but whose long edge (0,0)-(10,9) crosses the slot.
+    // The triangle is a region of its own, not the square's opening, so the part of it inside the slot is drawn.
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#31,#32,#33,#34,#35,#36,#37,#38));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#31,#40,#41));#21=IFCFACEOUTERBOUND(#20,.T.);\
+         #31=IFCCARTESIANPOINT((0.,0.,0.));#32=IFCCARTESIANPOINT((10.,0.,0.));#33=IFCCARTESIANPOINT((10.,10.,0.));\
+         #34=IFCCARTESIANPOINT((3.2,10.,0.));#35=IFCCARTESIANPOINT((3.2,2.,0.));#36=IFCCARTESIANPOINT((3.,2.,0.));\
+         #37=IFCCARTESIANPOINT((3.,10.,0.));#38=IFCCARTESIANPOINT((0.,10.,0.));\
+         #40=IFCCARTESIANPOINT((10.,9.,0.));#41=IFCCARTESIANPOINT((10.,0.5,0.));",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    let mesh = meshed(&proxy_with(&source), 18);
+    assert!(covers(&mesh, 3.1, 2.4), "the triangle is a region: its part inside the slot is meshed");
+    // (8, 9) is in the square but outside the thin triangle, so only the square covers it.
+    assert!(covers(&mesh, 8.0, 9.0), "the square is meshed");
+}
+
+#[test]
+fn an_opening_that_touches_the_outer_loop_is_still_an_opening_issue_9945() {
+    // A 10 x 10 square and a triangle (base 4, height 3, area 6) with one vertex on the square's bottom edge.
+    // Touching is no crossing, so the triangle is the square's opening: 100 - 6 = 94, not two regions (106).
+    let source = surface_member(true, false).replace(
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);",
+        "#5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);#20=IFCPOLYLOOP((#31,#32,#33));#21=IFCFACEOUTERBOUND(#20,.T.);\
+         #31=IFCCARTESIANPOINT((5.,0.,0.));#32=IFCCARTESIANPOINT((7.,3.,0.));#33=IFCCARTESIANPOINT((3.,3.,0.));",
+    ).replace("IFCFACESURFACE((#6),", "IFCFACESURFACE((#6,#21),");
+    let mesh = meshed(&proxy_with(&source), 18);
+    assert!((signed_xy_area(&mesh) - 94.0).abs() < 1e-5);
+    assert!(!covers(&mesh, 5.0, 2.0), "the triangle's interior is the opening, empty");
+    assert!(covers(&mesh, 1.0, 5.0), "the square around it is meshed");
+}
+
+#[test]
+fn an_opening_tagged_as_an_outer_bound_is_an_opening_on_every_product_issue_9945() {
+    // A 2 x 2 loop tagged IfcFaceOuterBound inside the 10 x 10 loop is that loop's
+    // opening: 100 - 4 = 96, on a proxy and on a structural member alike. Main
+    // meshed only the small square on a proxy (4), and the member counted the
+    // overlap twice (104).
     let face = surface_member(true, true).replace("#12=IFCFACEBOUND(#11,.T.);", "#12=IFCFACEOUTERBOUND(#11,.T.);");
-    assert!((signed_xy_area(&meshed(&proxy_with(&face), 18)) - 4.0).abs() < 1e-5);
-    // The same face on a structural member is two regions, 100 + 4 (AxisVM writes slabs so).
-    assert!((signed_xy_area(&meshed(&face, 18)) - 104.0).abs() < 1e-5);
+    for mesh in [meshed(&proxy_with(&face), 18), meshed(&face, 18)] {
+        assert!((signed_xy_area(&mesh) - 96.0).abs() < 1e-5);
+        // Area alone cannot tell an opening from a filled hole (a covering square plus a reverse-wound inner one also sums
+        // to 96): the opening's centre (5, 5) must be empty while the ring around it is meshed.
+        assert!(!covers(&mesh, 5.0, 5.0), "the opening is empty");
+        assert!(covers(&mesh, 2.0, 2.0) && covers(&mesh, 8.0, 8.0), "the ring around it is meshed");
+    }
 }
 
 #[test]

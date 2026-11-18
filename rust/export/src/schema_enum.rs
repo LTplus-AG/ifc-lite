@@ -173,19 +173,59 @@ impl ConversionChecks {
         Self::default()
     }
 
-    /// Source-derived orientations and link types are safe only for an unedited full export.
-    pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: impl Fn(u32, usize) -> bool) -> Self {
+    /// Source-derived orientations, link types and varying actions are safe only
+    /// for an unedited full export. `allocate` is the writer's express-id allocator.
+    #[inline(never)]
+    pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: &dyn Fn(u32, usize) -> bool, allocate: &mut dyn FnMut() -> Option<u32>) -> Self {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let mut checks = Self::new();
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }
         match (from, to) {
-            ("IFC2X3", "IFC4") => checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept),
-            ("IFC4", "IFC2X3") => checks.structural.links = crate::schema_structural_links::StructuralLinks::scan(content, kept),
+            ("IFC2X3", "IFC4") => {
+                checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, kept);
+                checks.structural.carriers = crate::schema_structural_carriers::StructuralCarriers::scan_ifc2x3(content, kept);
+                checks.structural.allocate(&mut *allocate);
+                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept, false, allocate);
+                checks.structural.values = crate::schema_structural_values::StructuralValues::scan(content, kept, false, allocate);
+            }
+            ("IFC4", "IFC2X3") => {
+                checks.structural.links = crate::schema_structural_links::StructuralLinks::scan(content, kept);
+                checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc4(content, kept);
+                checks.structural.carriers = crate::schema_structural_carriers::StructuralCarriers::scan_ifc4(content, kept);
+                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept, true, allocate);
+                checks.structural.values = crate::schema_structural_values::StructuralValues::scan(content, kept, true, allocate);
+            }
             _ => {}
         }
         checks
+    }
+
+    /// Whether the writer leaves out this source record: a conversion consumed it.
+    pub(crate) fn drops(&self, id: u32) -> bool {
+        self.structural.varying.drops(id) || self.structural.axes.carriers.drops(id) || self.structural.values.drops(id)
+    }
+
+    /// Append the records a conversion created, then finish `body`; the change in record count.
+    pub(crate) fn finish(
+        &mut self,
+        mut body: crate::schema_ifc2x3_body::Body<'_>,
+        mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+    ) -> std::io::Result<isize> {
+        use std::io::Write as _;
+        let mut added = self.structural.added();
+        added.extend(self.structural.values.added());
+        added.extend(self.structural.axes.added());
+        let count = added.len() as isize;
+        for record in added {
+            let record = match slots.as_deref_mut() {
+                Some(slots) => slots.apply(record),
+                None => record,
+            };
+            writeln!(body, "{record}")?;
+        }
+        Ok(count + body.finish()?)
     }
 
     /// Both checks' warnings, IFC4 slots first.

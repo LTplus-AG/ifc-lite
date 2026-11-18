@@ -45,6 +45,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { useIfcLoader } from './useIfcLoader.js';
+import { click, waitFor } from '@/test/render.js';
+import { loadDialogs } from '@/test/dialog-host.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 /**
  * `STREAM_SAB_THRESHOLD` (apps/viewer/src/utils/ifcConfig.ts) is 256 MiB.
@@ -80,9 +83,9 @@ interface FileProbe {
  * on purpose: the loader's 4 KiB head slice for point-cloud detection is a
  * separate `Blob`, so it never lands in these counters.
  */
-function probedStepFile(probe: FileProbe): File {
-  const file = new File([STEP_BYTES], 'sab-streaming.ifc');
-  Object.defineProperty(file, 'size', { value: ABOVE_SAB_THRESHOLD });
+function probedStepFile(probe: FileProbe, size = ABOVE_SAB_THRESHOLD, name = 'sab-streaming.ifc'): File {
+  const file = new File([STEP_BYTES], name);
+  Object.defineProperty(file, 'size', { value: size });
 
   const realArrayBuffer = file.arrayBuffer.bind(file);
   Object.defineProperty(file, 'arrayBuffer', {
@@ -146,11 +149,13 @@ let container: HTMLDivElement | null = null;
 beforeEach(async () => {
   hookApi = null;
   useViewerStore.getState().resetViewerState();
+  useViewerStore.getState().clearAllModels();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  const { ConfirmDialogHost } = await loadDialogs();
   await act(async () => {
-    root!.render(<Probe />);
+    root!.render(<><Probe /><ConfirmDialogHost /></>);
   });
 });
 
@@ -199,3 +204,78 @@ describe('useIfcLoader - the IFC/STEP path keeps SAB streaming (#600)', () => {
     );
   });
 });
+
+// #10264: exercise the real loader, including header detection for renamed IFC
+// files and the federation entry. No giant fixture is allocated by this test.
+for (const name of ['large.ifc', 'renamed.bin']) {
+  for (const kind of ['primary', 'federated'] as const) {
+    it(`#10264 refuses a 1 GB+ ${kind} IFC (${name}) before reading or allocating its source`, async () => {
+      const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+      const cores = Object.getOwnPropertyDescriptor(navigator, 'hardwareConcurrency');
+      Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 4 });
+      Object.defineProperty(navigator, 'hardwareConcurrency', { configurable: true, value: 32 });
+      const probe: FileProbe = { arrayBuffer: 0, stream: 0 };
+      const sizes: number[] = [];
+      const errors: string[] = [];
+      if (kind === 'federated') useViewerStore.setState(fixtureModels(fixtureModel('already-loaded')));
+      const existingModels = new Map(useViewerStore.getState().models);
+      try {
+        await withRecordedSharedArrayBuffer(sizes, async () => {
+          await act(async () => {
+            await hookApi!.loadFile(probedStepFile(probe, 1.26e9, name),
+              { kind, modelId: 'memory-refusal' }, { onLoadError: (message) => errors.push(message) });
+          });
+        });
+        assert.equal(errors.length, 1, 'the caller receives the refusal, not an engine/network failure');
+        assert.match(errors[0], /local processing memory budget/);
+        assert.match(errors[0], /smaller model|native CLI\/server/);
+        assert.deepEqual(probe, { arrayBuffer: 0, stream: 0 }, 'no whole-source read started');
+        assert.deepEqual(fileSized(sizes), [], 'no file-sized shared source was allocated');
+        assert.equal(useViewerStore.getState().loading, false, 'the refusal settles the load UI');
+        if (kind === 'federated') {
+          const models = useViewerStore.getState().models;
+          assert.deepEqual([...models.keys()], [...existingModels.keys()], 'no new model is registered');
+          for (const [id, model] of existingModels) assert.equal(models.get(id), model, 'existing models are untouched');
+        }
+      } finally {
+        if (memory) Object.defineProperty(navigator, 'deviceMemory', memory);
+        else Reflect.deleteProperty(navigator, 'deviceMemory');
+        if (cores) Object.defineProperty(navigator, 'hardwareConcurrency', cores);
+        else Reflect.deleteProperty(navigator, 'hardwareConcurrency');
+      }
+    });
+  }
+}
+
+for (const kind of ['primary', 'federated'] as const) {
+  for (const proceed of [false, true]) it(`#10264 ${kind}: 8 GB warning ${proceed ? 'Continue permits' : 'Cancel prevents'} source acquisition`, async () => {
+    const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 8 });
+    const probe: FileProbe = { arrayBuffer: 0, stream: 0 }, sizes: number[] = [];
+    useViewerStore.setState(fixtureModels(fixtureModel('existing')));
+    const before = new Map(useViewerStore.getState().models);
+    try {
+      await withRecordedSharedArrayBuffer(sizes, async () => {
+        let pending: Promise<void> | undefined;
+        await act(async () => { pending = hookApi!.loadFile(probedStepFile(probe, 1.26e9), { kind, modelId: 'memory-consent' }); });
+        await waitFor(() => !!document.querySelector('[role="alertdialog"]'), 'memory consent opens before any source allocation');
+        assert.deepEqual(probe, { arrayBuffer: 0, stream: 0 });
+        assert.deepEqual(fileSized(sizes), []);
+        const dialog = document.querySelector('[role="alertdialog"]')!;
+        assert.match(dialog.textContent ?? '', /about 9.9 GiB/);
+        const buttons = dialog.querySelectorAll('button');
+        click(buttons[proceed ? 1 : 0]);
+        await act(async () => { await pending; });
+        assert.equal(probe.stream, proceed ? 1 : 0);
+        assert.equal(fileSized(sizes).length, proceed ? 1 : 0);
+        if (!proceed) {
+          assert.deepEqual([...useViewerStore.getState().models], [...before], 'Cancel preserves the loaded scene');
+          assert.equal(useViewerStore.getState().error, null, 'Cancel is not a load failure');
+        }
+      });
+    } finally {
+      if (memory) Object.defineProperty(navigator, 'deviceMemory', memory);
+      else Reflect.deleteProperty(navigator, 'deviceMemory');
+    }
+  });
+}

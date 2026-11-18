@@ -542,10 +542,12 @@ export interface FederatedModel extends ModelLoadReportFields {
   name: string; // Display name (filename by default, user can rename)
   sourceFingerprint?: string; // Durable identity for persisted model filters.
   sourceContentHash?: string; // Full-content identity for workspace placements.
+  sourceReadRefused?: boolean; // Explicit pre-acquisition refusal, distinct from a published load error (#10264).
   /** Parsed IFC data model */
   ifcDataStore: IfcDataStore | null;
   /** Non-IFC source semantics, kept outside the IFC data store by design; `terrainImagery` is imagery draped on it (#5942), provenance only. */
   landXmlDocument?: LandXmlTinDocument; terrainImagery?: import('../lib/terrain-imagery/drape-state.js').TerrainImageryDrape;
+  /** How container rows hide/show their subtree (a Rhino layer, #10214); absent: rows act on direct members. */ containerVisibility?: import('../lib/container-visibility').ContainerVisibilityPlan;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
   sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */
@@ -565,12 +567,9 @@ export interface FederatedModel extends ModelLoadReportFields {
   visible: boolean;
   /** UI collapse state in hierarchy panel */
   collapsed: boolean;
-  /** IFC schema version */
-  schemaVersion: SchemaVersion;
-  /** Load timestamp */
-  loadedAt: number;
-  /** Original file size in bytes */
-  fileSize: number;
+  schemaVersion: SchemaVersion; // IFC schema version
+  loadedAt: number; // Load timestamp
+  fileSize: number; // Original file size in bytes
   /** Original source handle used for explicit reload/reposition operations. */
   sourceFile?: ModelSourceFile;
   /**
@@ -585,6 +584,8 @@ export interface FederatedModel extends ModelLoadReportFields {
    * layers. Held in memory only; never serialized to cache.
    */
   sourceHandle?: FileSystemFileHandle;
+  /** A model the processing server already processed: opened by reference, so there are no source bytes and no `sourceFile`. */
+  processedModel?: import('@/lib/processed-model').ProcessedModelSource;
   /** ID offset for this model (from FederationRegistry).
    * All mesh expressIds are globalIds = originalExpressId + idOffset
    * Use this to convert back to original IDs for property lookup

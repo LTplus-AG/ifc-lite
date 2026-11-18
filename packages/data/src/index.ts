@@ -67,6 +67,7 @@ export {
   ref,
   enumVal,
   serializeValue,
+  stepString,
   formatStepReal,
   toStepLineWithRegistry,
   generateHeader,
@@ -93,6 +94,27 @@ export {
   lookupProj4,
   searchEpsgIndex,
 } from './epsg-index.js';
+export {
+  createEpsgCrsCatalog,
+  getEpsgAreaOfUse,
+  getEpsgAreasOfUse,
+  getEpsgCompoundComponents,
+  getEpsgUnits,
+  isLonLatInAreaOfUse,
+  isLonLatInEpsgAreaOfUse,
+  loadEpsgExtentsDatasetVersion,
+  loadEpsgExtentsFetchedDate,
+} from './epsg-extents.js';
+export type {
+  EpsgAreaOfUse,
+  EpsgCatalogAreaOfUse,
+  EpsgCatalogEntry,
+  EpsgCompoundComponents,
+  EpsgCrsCatalog,
+  EpsgCrsKind,
+  EpsgUnit,
+  EpsgUnits,
+} from './epsg-extents.js';
 
 // Entity name mapping (UPPERCASE → PascalCase)
 export { IFC_ENTITY_NAMES } from './ifc-entity-names.js';

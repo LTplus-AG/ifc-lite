@@ -5,13 +5,25 @@
 import type { Catalogue } from '../../registry';
 
 export const geometryExportDialogsDe = {
+  "geometryExport.shared.georefRequired": "Dieses Modell hat keine Georeferenzierung. Fügen Sie vor dem Export einen Standort hinzu.",
+  "geometryExport.shared.openGeoreferencing": "Georeferenzierung öffnen",
+  "cityJsonExport.description": "Das gewählte IFC-Modell als CityJSON 2.0 oder CityJSONSeq exportieren.",
+  "cityJsonExport.localNotice": "Dieses Modell hat keine Georeferenzierung. Die Datei verwendet die lokalen Modellkoordinaten, keine Kartenkoordinaten.",
+  "cityJsonExport.sessionCrs": "Schreibt Koordinaten in {crs}, einschließlich der Georeferenzierungsänderungen dieser Sitzung.",
+  "cityJsonExport.noSource": "Laden Sie ein IFC- oder IFCZIP-Modell zum Exportieren.",
+  "cityJsonExport.document": "CityJSON (.city.json)",
+  "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",
+  "cityJsonExport.exported": "CityJSON exportiert",
+  "cityJsonExport.warnings": "Exportiert mit {count} Warnungen:\n{warnings}",
+  "cityJsonExport.failed": "CityJSON-Export fehlgeschlagen: {reason}",
+
   "geometryExport.shared.currentModelFallbackName": "Aktuelles Modell",
   "geometryExport.shared.unknownError": "Unbekannter Fehler",
   "geometryExport.shared.geometryEngineUnavailableError": "Geometrie-Engine nicht verfügbar",
   "geometryExport.shell.filenamePreviewLabel": "Wird gespeichert als:",
   "geometryExport.shell.warningsSummary": {
-    "one": "{count} Warnung",
-    "other": "{count} Warnungen"
+    "one": "{countDisplay} Warnung",
+    "other": "{countDisplay} Warnungen"
   },
   "geometryExport.glb.triggerButton": "GLB exportieren",
   "geometryExport.glb.dialogTitle": "GLB-Datei exportieren",

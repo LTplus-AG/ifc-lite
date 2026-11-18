@@ -96,7 +96,11 @@ describe('other File > Export geometry exports on an authored session (#9026 ite
   });
 
   it('Cesium ion: the uploaded IFC carries every authored element', { skip }, async () => {
-    const { panels, members } = await authoredSession();
+    const { panels, members, model } = await authoredSession();
+    useViewerStore.setState({ georefMutations: new Map([[model.id, {
+      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
+      projectedCRS: { name: 'EPSG:2056' },
+    }]]) });
     let sent: IonUploadInput | undefined;
     render(<CesiumIonExportDialog surface="ribbon" upload={async (input) => { sent = input; return { assetId: 1 }; }} />);
     click(button('Upload to Cesium ion'));

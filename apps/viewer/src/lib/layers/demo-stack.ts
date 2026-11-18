@@ -15,6 +15,7 @@
  * the demo never mints new content addresses.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import type { IfcxFile, IfcxNode, ProvenanceBase } from '@ifc-lite/ifcx';
 import {
   computeLayerId,
@@ -109,6 +110,7 @@ export async function buildDemoLayerFiles(): Promise<File[]> {
  *  window event bus (usable from panels AND the tour's demoFulfil, where
  *  no hook context exists). */
 export async function loadDemoLayerStack(): Promise<void> {
+  if (!isFeatureEnabled('files.samples')) throw new Error('Sample models are switched off in this viewer');
   const files = await buildDemoLayerFiles();
   window.dispatchEvent(new CustomEvent(EVENT_LOAD_LAYER_STACK, { detail: files }));
 }

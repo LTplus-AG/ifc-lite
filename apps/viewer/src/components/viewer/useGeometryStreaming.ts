@@ -104,6 +104,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   } = params;
 
   const [finalizeWake, wakeAfterFailure] = useFinalizationRecoveryWake(gpuRecoveryEpoch);
+  const triangleSourceSceneRef = useRef<ReturnType<NonNullable<typeof rendererRef.current>['getScene']> | null>(null);
   const processedMeshIdsRef = useRef<Set<string>>(new Set());
   const lastGeometryLengthRef = useRef(0);
   const lastGeometryRef = useRef<MeshData[] | null>(null);
@@ -210,10 +211,15 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     if (!renderer || !isInitialized) return;
 
+    const scene = renderer.getScene();
+    scene.setTriangleCountReplayComplete?.(false);
     const device = renderer.getGPUDevice();
     if (!device) return;
-
-    const scene = renderer.getScene();
+    if (triangleSourceSceneRef.current !== scene) {
+      triangleSourceSceneRef.current = scene;
+      processedMeshIdsRef.current.clear();
+      lastGeometryLengthRef.current = 0; lastGeometryRef.current = null;
+    }
     const currentLength = geometry.length;
 
     // In-place mutation detection: when geometryContentVersion bumps, mesh
@@ -265,7 +271,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     // Adopted snapshot batches own the scene until their meshes arrive.
     if (isCleared && adoptedSceneOutlivesEmptyGeometry(scene)) return;
-    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef }, isStreaming)) return;
+    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef }, isStreaming)) {
+      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
+      return;
+    }
 
     if (isCleared) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
@@ -276,6 +285,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // A filtered/released flat snapshot must keep its existing reset behavior.
       lastGeometryRef.current = geometryKernel === 'retained' && lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
         && scene.getInstancedModelIndices().length > 0 ? geometry : null;
+      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
       renderer.requestRender();
       return;
     }
@@ -307,20 +317,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       lastGeometryLengthRef.current = 0;
       lastGeometryRef.current = geometry;
     } else if (currentLength === lastLength) {
-      // No mesh-count change, so the queueMeshes / appendToBatches block
-      // below would be a no-op. But we MUST still reach the camera-fit
-      // block — the streaming-complete re-render (isStreaming flips
-      // false, geometry array length stays at the final mesh count)
-      // arrives here, and that's the FIRST render where path 2
-      // (`computeBounds(geometry)` fallback when shiftedBounds is empty)
-      // is allowed to fire. Pre-fix the early return short-circuited
-      // the camera fit entirely; the user reported 33 meshes streamed
-      // with the viewport stuck at the default ±100 m bounds (issue
-      // #859 / PR #871 deploy preview, `linear-placement-of-signal.ifc`).
-      //
-      // Skip only when the camera is already fitted or there's nothing
-      // to fit to.
+      // Completion can arrive with unchanged length after the last streaming
+      // append. Publish source completion before a camera-only early return.
       if (cameraFittedRef.current || currentLength === 0) {
+        if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
         return;
       }
       // Otherwise fall through so the camera-fit block at the bottom of
@@ -399,9 +399,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           ensureQueuePump();
         } else {
           // Non-streaming: process immediately (visibility toggles, etc.)
-          // The production crash path: this effect is where a failed
-          // createBuffer escaped into React's commit phase and unmounted the
-          // viewport, blanking the canvas.
+          // Keep failed GPU allocation inside the upload error boundary.
           const uploaded = runGpuUpload('appendToBatches:non-streaming', () => {
             scene.appendToBatches(newMeshes, device, pipeline, false);
             return true;
@@ -417,14 +415,15 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             }
           }
         }
+      } else {
+        appendFailed = true;
+        for (const key of claimedMeshKeys) processedMeshIdsRef.current.delete(key);
       }
     }
 
-    // The incremental/fast path tracks progress by length rather than by
-    // key, so it needs the same rollback: leaving this un-advanced is what
-    // makes the failed append retryable there.
     if (!appendFailed) {
       lastGeometryLengthRef.current = currentLength;
+      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
     }
 
     // Fit a loaded source once; authoring keeps the user camera.
@@ -534,7 +533,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
 
     renderer.requestRender();
-  }, [geometryKernel, geometry, geometryVersion, geometryReplacementVersion, geometryContentVersion, appearanceSourceGeometry, coordinateInfo, isInitialized, gpuRecoveryEpoch, isStreaming, modelCount]);
+  }, [geometryKernel, geometry, geometryVersion, geometryReplacementVersion, geometryContentVersion, appearanceSourceGeometry, coordinateInfo, isInitialized, gpuRecoveryEpoch, isStreaming, modelCount, rendererRef.current]);
 
   useEffect(() => {
     return () => {

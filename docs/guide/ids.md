@@ -465,3 +465,17 @@ a job targeting several models produces adjacent model reports rather than a
 merged fictitious IFC model or an averaged pass rate. Information rule sets
 evaluate their targeted federation as one job. Validation uses current effective
 property/entity edits, preserving the same native evaluator semantics.
+
+### Validate a filtered population
+
+Enable **Filter objects before validation** in the IDS panel to choose objects
+with the same Rules filters used by Search. Filters narrow the selected model
+before the IDS applicability rules run; they do not modify the IDS file. For
+example, combine the wall class with a project property that identifies new
+construction to exclude existing walls from this run.
+
+The controls apply to the next run. A completed report keeps its original scope.
+Filtered results carry a candidate-count note in the panel, JSON and HTML
+exports, BCF description, and saved document/PDF reports. A passing filtered
+result does not establish compliance for the whole model. Disable the filter to
+validate the entire selected model again.

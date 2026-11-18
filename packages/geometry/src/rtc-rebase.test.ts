@@ -10,6 +10,7 @@ import {
   isOnRtcAnchor,
   rebaseCoordinateInfoOntoRtcAnchor,
   rebaseOriginByRtcDelta,
+  rtcConvergeAction,
   rtcRebaseDeltaYup,
 } from './rtc-rebase.js';
 import { ifcToViewerAxes } from './world-frame.js';
@@ -104,6 +105,22 @@ describe('precision (#4906 review): the rebase never narrows the anchor into f32
     expect(Array.from(mesh.positions)).toEqual([1.5, 2.5, 3.5]);
     const delta = ifcToViewerAxes(LV95);
     expect(mesh.origin).toEqual([-delta.x, -delta.y, -delta.z]);
+  });
+});
+
+describe('rtcConvergeAction', () => {
+  const scan = () => ({ ...raw([]), pointClouds: [{ expressId: 1, chunk: { pointCount: 0 } }] });
+  it('leaves a streamed scan and a geometry on the anchor, before any instancing check', () => {
+    expect(rtcConvergeAction(scan(), ANCHOR, () => true)).toBe('leave');
+    expect(rtcConvergeAction(raw([{ positions: new Float32Array(3) }], { wasmRtcOffset: { ...ANCHOR } }), ANCHOR, () => true)).toBe('leave');
+  });
+  it('refuses an instanced geometry off the anchor, from its own signal or the caller\'s', () => {
+    expect(rtcConvergeAction(raw([{ positions: new Float32Array(3), geometryClass: 2 }]), ANCHOR)).toBe('refuse');
+    expect(rtcConvergeAction(raw([{ positions: new Float32Array(3) }]), ANCHOR, () => true)).toBe('refuse');
+  });
+  it('moves any other geometry off the anchor, an inline cloud included', () => {
+    expect(rtcConvergeAction(raw([{ positions: new Float32Array(3) }]), ANCHOR)).toBe('move');
+    expect(rtcConvergeAction({ ...raw([]), pointClouds: [{ expressId: 1, chunk: { pointCount: 4 } }] }, ANCHOR)).toBe('move');
   });
 });
 

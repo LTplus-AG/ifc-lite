@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { initWasmWithRetry } from './wasm-init-retry.js';
-import { readNodeWasmBytes } from './node-wasm-bytes.js';
+import { loadExportPayload } from './export-payload.js';
 
 export const RHINO_UNITS = ['source', 'meters', 'millimeters', 'centimeters', 'feet', 'inches'] as const;
 export const RHINO_COORDINATES = ['local', 'world'] as const;
@@ -43,27 +42,10 @@ export const RHINO_SCENE_DEFAULTS: Required<RhinoSceneExportOptions> = {
 /** The encoded scene `@ifc-lite/rhino3dm` writes: manifest JSON and its binary blob. */
 export interface RhinoSceneBuffers { manifest: string; blob: Uint8Array }
 
-type RhinoEngine = typeof import('@ifc-lite/wasm/rhino');
-let engine: Promise<RhinoEngine> | null = null;
-
-/** Import and initialize the separate Rhino wasm (`@ifc-lite/wasm/rhino`) once.
- * It is never part of the default engine, so nothing is fetched until the
- * first .3dm export. A failed load is not cached, so a later export retries. */
-function loadRhinoEngine(): Promise<RhinoEngine> {
-  engine ??= (async () => {
-    const module = await import('@ifc-lite/wasm/rhino');
-    const bytes = await readNodeWasmBytes('@ifc-lite/wasm/rhino_bg.wasm');
-    await initWasmWithRetry(async () => { await module.default(bytes ? { module_or_path: bytes } : undefined); }, { label: 'rhino-export' });
-    return module;
-  })();
-  engine.catch(() => { engine = null; });
-  return engine;
-}
-
 /** Build the encoded Rhino scene for `content` with the shared Rust scene builder.
  * Copies both results out and frees the wasm handle. A model with no render
  * geometry rejects with `NO_RENDER_GEOMETRY`, as `exportUsd` throws. */
 export async function exportRhinoScene(content: Uint8Array, options: RhinoSceneExportOptions = {}): Promise<RhinoSceneBuffers> {
-  const scene = (await loadRhinoEngine()).exportRhinoScene(content, JSON.stringify(options));
+  const scene = (await loadExportPayload()).exportRhinoScene(content, JSON.stringify(options));
   try { return { manifest: scene.manifest, blob: scene.blob }; } finally { scene.free(); }
 }

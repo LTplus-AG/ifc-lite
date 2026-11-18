@@ -224,6 +224,7 @@ export const scheduleDe = {
   "schedule.animation.taskType.disposal": "Entsorgung",
   "schedule.animation.taskType.userDefined": "Benutzerdefiniert",
   "schedule.animation.taskType.notDefined": "Nicht definiert",
+  "schedule.panel.pendingSourceSchedule": "Das Gantt-Diagramm zeigt ausstehende Änderungen. IFC-Terminplanänderungen für dieses Modell müssen separat abgeglichen werden.",
   "schedule.panel.importReplaceWarning": "Der Import von „{fileName}“ ersetzt den aktuellen Terminplan und dessen Rückgängig-Verlauf.",
   "schedule.panel.replace": "Ersetzen",
   "schedule.panel.cancel": "Abbrechen"

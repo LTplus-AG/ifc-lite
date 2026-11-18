@@ -75,3 +75,36 @@ export function classificationToken(schema: CreatorSchema, request: Classificati
   }
   return `.${token}.`;
 }
+
+/**
+ * The attributes after `Tag` for a generic element writer (`addElement`,
+ * `addAxisElement`), written from the target schema's own attribute list:
+ * - the classification slot (`PredefinedType`, else the first enum slot, e.g. IFC2X3
+ *   `CompositionType` / `ShapeType`) gets the caller's value, checked against its enum,
+ *   defaulting to NOTDEFINED where the enum has it and `$` where it is optional;
+ * - every other optional slot (IfcDoor `OverallHeight`, …) is `$`, a required enum
+ *   slot is NOTDEFINED, and any other required slot throws;
+ * - a caller value with no classification slot throws.
+ * Entities the schema does not know keep the historical `,.TOKEN.` tail.
+ */
+export function genericElementTail(schema: CreatorSchema, ifcTypeUpper: string, predefinedType: string | undefined): string {
+  const registry = getSchemaRegistryForVersion(schema);
+  const entity = Object.keys(registry.entities).find((name) => name.toUpperCase() === ifcTypeUpper);
+  if (!entity) return `,.${predefinedType ?? 'NOTDEFINED'}.`;
+  const rest = (registry.entities[entity].allAttributes ?? []).slice(8);
+  const target = rest.find((a) => a.name === 'PredefinedType') ?? rest.find((a) => registry.enums[a.type]);
+  if (predefinedType !== undefined && !target) throw new Error(`${entity} has no PredefinedType attribute in ${schema}`);
+  return rest.map((attr) => {
+    const allowed = registry.enums[attr.type] ?? [];
+    if (attr === target && predefinedType !== undefined && !(predefinedType === 'NOTDEFINED' && !allowed.includes('NOTDEFINED'))) {
+      if (!allowed.includes(predefinedType)) {
+        throw new Error(`${entity}.${attr.name} must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
+      }
+      return `,.${predefinedType}.`;
+    }
+    if (attr === target && allowed.includes('NOTDEFINED')) return ',.NOTDEFINED.';
+    if (attr.optional) return ',$';
+    if (allowed.includes('NOTDEFINED')) return ',.NOTDEFINED.';
+    throw new Error(`${entity}.${attr.name} is required in ${schema} and cannot be written by the generic element writer`);
+  }).join('');
+}

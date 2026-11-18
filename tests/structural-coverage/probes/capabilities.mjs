@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { verdict } from '../lib/values.mjs';
 import { storeOf } from '../lib/packages.mjs';
 import { extractionEntry } from './read.mjs';
+import { isStructuralItem } from '../lib/step.mjs';
 import checks from './capability-checks.mjs';
 import stale from './capability-stale.mjs';
 
@@ -39,7 +40,6 @@ const isElement = (table, type) => table.chain(table.types.get(String(type ?? ''
  * assigned to a storey or an action assigned to a member is not a link.
  */
 function physicalLinks(step, table) {
-  const structural = (e) => e && /^IFCSTRUCTURAL(CURVE|SURFACE|POINT)(MEMBER|CONNECTION)/.test(e.type);
   const element = (e) => e && isElement(table, e.type);
   const pairs = new Map();
   const add = (item, product) => pairs.set(`${item},${product}`, [item, product]);
@@ -48,12 +48,12 @@ function physicalLinks(step, table) {
     if (!product) continue;
     for (const r of rel.args[4] ?? []) {
       const related = step.get(r);
-      if (structural(related) && element(product)) add(r.ref, product.id);
-      else if (structural(product) && element(related)) add(product.id, related.id);
+      if (isStructuralItem(related) && element(product)) add(r.ref, product.id);
+      else if (isStructuralItem(product) && element(related)) add(product.id, related.id);
     }
   }
   for (const rel of step.of('IFCRELCONNECTSSTRUCTURALELEMENT')) {
-    if (structural(step.get(rel.args[5])) && element(step.get(rel.args[4]))) add(rel.args[5].ref, rel.args[4].ref);
+    if (isStructuralItem(step.get(rel.args[5])) && element(step.get(rel.args[4]))) add(rel.args[5].ref, rel.args[4].ref);
   }
   return [...pairs.values()];
 }

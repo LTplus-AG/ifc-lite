@@ -119,6 +119,8 @@ export {
 // New extractors with 100% schema coverage
 export { extractMaterials, getMaterialForElement, getMaterialNameForElement, type MaterialsData, type Material, type MaterialLayer, type MaterialLayerSet } from './material-extractor.js';
 export { materialAssignmentsAvailable } from './material-overlay.js';
+export { extractGeoreferenceCandidates, type GeoreferenceCandidates } from './georef-candidates.js';
+export { extractGeoreferenceCandidatesOnDemand } from './on-demand-georeferencing.js';
 export { extractGeoreferencing, computeTransformMatrix, transformToWorld, transformToLocal, getCoordinateSystemDescription, computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from './georef-extractor.js';
 export { extractClassifications, getClassificationsForElement, getClassificationCodeForElement, getClassificationPath, groupElementsByClassification, type ClassificationsData, type Classification, type ClassificationReference } from './classification-extractor.js';
 
@@ -155,8 +157,8 @@ export {
   type BoundaryConditionInfo,
 } from './structural-extractor.js';
 export { structuralCounterparts, type StructuralCounterparts } from './structural-counterparts.js';
-export { DEFAULT_AXIS_DRIFT_TOLERANCE, type StructuralConsistencyIssue, type StructuralConsistencyOptions, type StructuralConsistencyRule, type StructuralLine } from './structural-consistency.js';
-export { DERIVATION_AXIS_PROPERTIES, DERIVATION_ELEMENT_PROPERTY, STRUCTURAL_DERIVATION_PSET, structuralConsistencyIssues, type StructuralConsistencyIssuesOptions } from './structural-consistency-facts.js';
+export { DEFAULT_AXIS_DRIFT_TOLERANCE, type StructuralConsistencyIssue, type StructuralConsistencyOptions, type StructuralConsistencyReport, type StructuralConsistencyRule, type StructuralLine, type StructuralSkippedMember, type StructuralSkipReason } from './structural-consistency.js';
+export { DERIVATION_AXIS_PROPERTIES, DERIVATION_ELEMENT_PROPERTY, STRUCTURAL_DERIVATION_PSET, structuralConsistencyIssues, structuralConsistencyReport, type StructuralConsistencyIssuesOptions } from './structural-consistency-facts.js';
 
 // IFC4 STEP serializer for schedule entities — produces ready-to-splice
 // `#N=IFC...(...)` lines from a `ScheduleExtraction`.

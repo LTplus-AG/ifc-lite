@@ -16,6 +16,7 @@
 
 import { paletteExportAvailability } from './palette-export-availability';
 import { useViewerStore } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 import type { TranslationKey } from '@/i18n';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
 import { Camera, Download, EyeOff, FileJson, FilePen, FileSpreadsheet, FileText, Globe2, Mountain, Puzzle } from 'lucide-react';
@@ -34,6 +35,7 @@ const PALETTE_EXPORT_ICONS: ExportIconSet = {
   'modified-ifc': FilePen,
   glb: Download,
   kmz: Globe2,
+  cityjson: FileJson,
   ion: Globe2,
   usd: Download,
   '3dm': Download,
@@ -53,6 +55,7 @@ const EXPORT_KEYWORDS: Record<ExportCommandId, string> = {
   'modified-ifc': 'ifc changes edits edited modified pending unexported save review download',
   glb: '3d model gltf download',
   kmz: 'google earth kml georeferenced download',
+  cityjson: 'cityjson cityjsonseq city json sequence buildings download',
   ion: 'cesium ion upload cloud bim ifc tiles',
   usd: '3d model usd usda openusd omniverse blender usdview download',
   '3dm': '3d model rhino 3dm rhinoceros grasshopper mcneel layers blocks download',
@@ -119,6 +122,7 @@ export function buildExportCommands(
   extensionExporters: readonly ExtensionExporter[] = [],
   surface: Extract<CommandSurface, 'palette' | 'mobile'> = 'palette',
 ): Command[] {
+  if (!isFeatureEnabled('export.files')) return [];
   const { activeModelId, ifcDataStore, models } = useViewerStore.getState();
   const activationContext = { activeModelId, ifcDataStore, models };
   const extensionRows = extensionExporters.map((exporter): Command => ({

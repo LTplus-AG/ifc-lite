@@ -252,3 +252,14 @@ describe('#7974 actual viewer IDS BCF export', () => {
     await assert.rejects(runIdsBcfExport(run.params), /snapshot/i);
   });
 });
+
+it('writes the filtered-population qualifier into the BCF project and topic markup (#10371)', async () => {
+  const run = setup(false, false);
+  run.params.report.targetScope = { kind: 'subset', entityCount: 2 };
+  await runIdsBcfExport(run.params);
+  const project = run.exported();
+  assert.match(project.name ?? '', /filtered, 2 candidates/);
+  const result = await archive(project);
+  assert.match(result.topic.description ?? '', /not a whole-model validation/);
+  assert.match(result.markup, /Filtered population: 2 candidates/);
+});

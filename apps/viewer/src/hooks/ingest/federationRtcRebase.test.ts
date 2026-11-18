@@ -240,6 +240,15 @@ describe('convergeFederationRtcFrame - spatial index', () => {
     assert.notStrictEqual(liveModel('A').ifcDataStore!.spatialIndex, stale, 'raycasts still read the pre-rebase index');
   });
 
+  it('keeps the spatial index of a streamed scan off the anchor, which never moves (#10094)', () => {
+    const stale = { kept: true } as unknown as NonNullable<FederatedModel['ifcDataStore']>['spatialIndex'];
+    const scan = model('P', 1, { ...geometry([]), pointClouds: [{ expressId: 1, chunk: { pointCount: 0 } }] } as unknown as GeometryResult);
+    scan.ifcDataStore = { spatialIndex: stale } as unknown as FederatedModel['ifcDataStore'];
+    seed([scan, anchoredModel(2)]);
+    convergeFederationRtcFrame();
+    assert.strictEqual(liveModel('P').ifcDataStore!.spatialIndex, stale);
+  });
+
   it('keeps the spatial index of a model that is already on the anchor', () => {
     const stale = { kept: true } as unknown as NonNullable<FederatedModel['ifcDataStore']>['spatialIndex'];
     const b = anchoredModel(2);

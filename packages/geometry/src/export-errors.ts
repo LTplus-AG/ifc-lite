@@ -38,3 +38,16 @@ export function terrainRefusalReason(error: unknown): string | null {
     ? error.message.slice(prefix.length).trim()
     : null;
 }
+
+/** A CityJSON export had no building model to write: the model has no
+ * `IfcBuilding` in its spatial structure, or the options are invalid. */
+export const CITYJSON_REFUSED = 'CITYJSON_REFUSED';
+
+/** The reason a CityJSON export was refused, or `null` when `error` is not
+ * a CityJSON refusal. */
+export function cityJsonRefusalReason(error: unknown): string | null {
+  const prefix = `${CITYJSON_REFUSED}:`;
+  return error instanceof Error && error.message.startsWith(prefix)
+    ? error.message.slice(prefix.length).trim()
+    : null;
+}

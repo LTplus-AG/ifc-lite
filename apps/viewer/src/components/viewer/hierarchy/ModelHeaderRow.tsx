@@ -11,6 +11,7 @@
  */
 
 import { SourceWriteBackAction } from '@/components/sources/SourceWriteBackAction';
+import { isFeatureEnabled } from '@/lib/features';
 import { PositionedDownload } from '../PositionedDownload';
 import { Move3D, ChevronRight, Eye, EyeOff, FileBox, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -121,7 +122,7 @@ export function ModelHeaderRow({
         <SourceWriteBackAction modelId={modelId} />
         <ModelRowTags modelId={modelId} modelName={node.name} />
 
-        <button
+        {isFeatureEnabled('edit.placement') && <button
           // 14px icon, `p-[5px]` a side: 14 + 2*5 = 24, the WCAG 2.2 2.5.8
           // minimum with no headroom to spare — these buttons sit `gap-1`
           // (4px) apart, so a bigger hit area (via padding or slop) would
@@ -132,7 +133,7 @@ export function ModelHeaderRow({
           onClick={(event) => { event.stopPropagation(); openRepositionModels([modelId]); }}
         >
           <Move3D className="h-3.5 w-3.5" />
-        </button>
+        </button>}
         <Tooltip>
           <TooltipTrigger asChild>
             <button

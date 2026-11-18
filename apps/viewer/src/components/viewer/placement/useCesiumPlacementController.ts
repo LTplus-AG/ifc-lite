@@ -13,6 +13,7 @@
  * underlying draft itself already lives in the store (`cesiumPlacementDraft`),
  * so two independent calls to this hook stay in lock-step for free.
  */
+import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useEffect, useMemo } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -47,7 +48,9 @@ export function useCesiumPlacementController({
   // IfcMapConversion edits only (see GeoreferencingPanel).
   const readOnlyCoordinateOperation = baseMapConversion.operation === 'rigidOperation'
     || Boolean(projectedCRS?.wellKnownText);
-  const canEdit = projectionKind === 'projected' && !readOnlyCoordinateOperation;
+  // The georeference is written into the model, so a host that switched editing off (`lib/features`) leaves it read-only.
+  const switchedOff = !isFeatureEnabled('edit.model');
+  const canEdit = !switchedOff && projectionKind === 'projected' && !readOnlyCoordinateOperation;
   const editMode = useViewerStore((s) => s.cesiumPlacementEditMode);
   const draftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const draft = useViewerStore((s) => s.cesiumPlacementDraft);
@@ -158,7 +161,7 @@ export function useCesiumPlacementController({
   }, [canEdit, setEditMode]);
 
   return {
-    editMode: editMode && canEdit, canEdit, readOnlyCoordinateOperation, draftModelId, draft, activeDraft, updateDraft,
+    editMode: editMode && canEdit, canEdit, switchedOff, readOnlyCoordinateOperation, draftModelId, draft, activeDraft, updateDraft,
     mapUnitScale, mapUnitSuffix, activeAngle, deltaE, deltaN, deltaH, deltaAngle,
     dirty, nudgeStep, guardConversion, mapAbsoluteActive,
     handleReset, handleApply, handleClose, beginEditing,

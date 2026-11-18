@@ -10,6 +10,7 @@
  */
 
 import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { Point2D } from '@ifc-lite/drawing-2d';
 import { collectScanBandPlaneXY, type ScanPointSample, type ScanSectionPlane } from '@/hooks/scanSectionMath';
 import { traceScanOutlineLayer, type ScanOutlineLayer } from './scan-outline';
 
@@ -37,20 +38,28 @@ export interface ScanOutlineJob {
 
 /** Band-collect and trace. The wasm module must be initialised. */
 export function runScanOutlineJob(job: ScanOutlineJob): ScanOutlineLayer {
-  const parts = job.sources.map((sample) => collectScanBandPlaneXY({
-    sample,
-    coordinateInfo: job.coordinateInfo,
-    plane: job.plane,
-    thickness: job.thickness,
-    classMask: job.classMask,
-    model: sample.model,
-    modelOutputsRenderFrame: sample.modelOutputsRenderFrame,
-  }));
+  const parts: Float32Array[] = [];
+  let anchor: Point2D | undefined;
+  for (const sample of job.sources) {
+    const part = collectScanBandPlaneXY({
+      sample,
+      coordinateInfo: job.coordinateInfo,
+      plane: job.plane,
+      thickness: job.thickness,
+      classMask: job.classMask,
+      model: sample.model,
+      modelOutputsRenderFrame: sample.modelOutputsRenderFrame,
+    }, anchor);
+    // Every source shares the first nonempty band's f64 anchor, so merging
+    // never adds map-scale coordinates back into an f32 buffer.
+    if (part.planeXY.length > 0) anchor ??= part.anchor;
+    parts.push(part.planeXY);
+  }
   const planeXY = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
   let at = 0;
   for (const p of parts) {
     planeXY.set(p, at);
     at += p.length;
   }
-  return traceScanOutlineLayer(planeXY, job.maxGap);
+  return traceScanOutlineLayer(planeXY, job.maxGap, anchor);
 }

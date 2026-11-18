@@ -1,0 +1,60 @@
+{
+  "name": "@ifc-lite/tiles3d",
+  "version": "0.2.0",
+  "description": "Headless OGC 3D Tiles reader: region queries over tilesets, b3dm/glb decoding (incl. Draco) into per-feature ECEF meshes with attributes",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./draco_decoder.wasm": "./dist/draco_decoder.wasm"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "pnpm exec tsc && node scripts/copy-draco-wasm.mjs",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run",
+    "smoke:live": "pnpm build && node scripts/live-smoke.mjs"
+  },
+  "dependencies": {
+    "draco3d": "1.5.9"
+  },
+  "devDependencies": {
+    "@mergifyio/vitest": "^2026.11.8",
+    "@types/node": "^26.6.6",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/tiles3d"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "3d-tiles",
+    "b3dm",
+    "gltf",
+    "draco",
+    "gis",
+    "bim",
+    "aec"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

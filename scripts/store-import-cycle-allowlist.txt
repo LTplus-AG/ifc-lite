@@ -1,4 +1,2 @@
 # Existing reachable viewer store modules that import back into store/index.
 # This ratchets down: the check fails whenever a new module joins this list.
-apps/viewer/src/store/basketVisibleSet.ts
-apps/viewer/src/store/resolveEntityRef.ts

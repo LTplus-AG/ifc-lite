@@ -13,6 +13,7 @@
  * open the empty state keeps its own action alone.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import { useState, type ReactNode } from 'react';
 import { Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,7 +43,7 @@ export function AnalysisEmptyState({ icon, title, description, hint, action, loa
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const [loading, setLoading] = useState(false);
-  const offerDemo = loadDemo !== undefined && demoKitReplacesNothing(models.values());
+  const offerDemo = isFeatureEnabled('files.samples') && loadDemo !== undefined && demoKitReplacesNothing(models.values());
 
   const tryDemo = async (): Promise<void> => {
     if (!loadDemo) return;

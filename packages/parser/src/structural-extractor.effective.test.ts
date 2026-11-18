@@ -139,6 +139,6 @@ describe('extractStructuralOnDemand effective membership (#5236)', () => {
     const member = result.members[0];
     expect(member?.physicalElementIds).toEqual([8]);
     expect(member?.connectionGlobalIds).toEqual(['ConnectionGuid000000001']);
-    expect(member?.IfcRelConnectsStructuralMember).toEqual([{ expressId: 4, RelatedStructuralConnection: 2 }]);
+    expect(member?.IfcRelConnectsStructuralMember).toEqual([{ expressId: 4, type: 'IfcRelConnectsWithEccentricity', RelatedStructuralConnection: 2 }]);
   });
 });

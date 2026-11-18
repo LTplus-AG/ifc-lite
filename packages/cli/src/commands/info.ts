@@ -13,6 +13,8 @@ import { printJson, formatCount, formatTable, hasFlag, fatal } from '../output.j
 import { EntityNode } from '@ifc-lite/query';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import type { ClassCensusEntry } from '@ifc-lite/parser';
+import { readGeoreferencing } from '@ifc-lite/sdk';
+import { georeferencingSummary } from './georef-format.js';
 
 /**
  * Render a census entry's class for display. The census carries the raw STEP
@@ -78,6 +80,9 @@ export async function infoCommand(args: string[]): Promise<void> {
       }
     : { ran: false as const };
 
+  // The same read `ifc-lite georef show --json` reports; `null` when the
+  // model declares none, so a JSON consumer never confuses "none" with "not read".
+  const georef = readGeoreferencing(store);
   const summary = {
     file: filePath,
     schema: store.schemaVersion,
@@ -87,6 +92,7 @@ export async function infoCommand(args: string[]): Promise<void> {
     parseTime: `${store.parseTime.toFixed(0)}ms`,
     storeys: storeys.map(s => s.name),
     typeCounts,
+    georeferencing: georef.hasGeoreference ? georef : null,
     dropCensus: dropCensusSummary,
   };
 
@@ -101,6 +107,7 @@ export async function infoCommand(args: string[]): Promise<void> {
   process.stdout.write(`  Size:     ${summary.fileSizeHuman}\n`);
   process.stdout.write(`  Entities: ${formatCount(store.entityCount)}\n`);
   process.stdout.write(`  Parsed:   ${summary.parseTime}\n`);
+  process.stdout.write(`  Georef:   ${georeferencingSummary(georef)}\n`);
 
   if (storeys.length > 0) {
     process.stdout.write(`\n  Storeys:\n`);

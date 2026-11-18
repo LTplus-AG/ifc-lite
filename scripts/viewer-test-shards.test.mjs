@@ -41,6 +41,14 @@ function realTestFiles() {
 const manifest = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
 const files = realTestFiles();
 
+test('measured durations cover at least 95% of the current viewer suite (#10279)', () => {
+  // Newly added files may use the hash fallback. A refresh must keep that
+  // exception small enough that LPT still schedules almost the entire suite.
+  const measured = files.filter(path => Object.hasOwn(manifest.seconds, path));
+  assert.ok(measured.length >= Math.ceil(files.length * 0.95),
+    `${measured.length}/${files.length} current tests have measured durations; refresh the manifest from green CI`);
+});
+
 test('the REAL test files are partitioned: each runs in exactly one of the 16 shards, none is empty', () => {
   // Anti-vacuity: an empty walk or an empty manifest would partition trivially.
   assert.ok(files.length >= 2000, `expected the real viewer suite, got ${files.length} files`);

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/flow",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Keyed-data graph runtime for BIM workflows: typed ports, item/list/group lifting, memoised evaluation, and element tracking for re-runnable graphs",
   "type": "module",
   "main": "./dist/index.js",
@@ -33,10 +33,10 @@
     "@noble/hashes": "^2.4.0"
   },
   "devDependencies": {
-    "@mergifyio/vitest": "^2026.10.11",
-    "@types/node": "^26.6.4",
+    "@mergifyio/vitest": "^2026.11.8",
+    "@types/node": "^26.6.6",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

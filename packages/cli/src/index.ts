@@ -29,7 +29,7 @@ async function readVersion(): Promise<string> {
  * `Commands:` block carries. Their handlers already tested for it; before
  * #5527 that branch was simply unreachable.
  */
-const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext', 'oci']);
+const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext', 'oci', 'georef', 'site-context']);
 
 let activeCommand = '';
 /** True when --debug was passed (stack traces on error). */
@@ -192,6 +192,12 @@ async function main(): Promise<void> {
       break;
     case 'oci':
       await (await import('./commands/oci.js')).ociCommand(commandArgs);
+      break;
+    case 'georef':
+      await (await import('./commands/georef.js')).georefCommand(commandArgs);
+      break;
+    case 'site-context':
+      await (await import('./commands/site-context.js')).siteContextCommand(commandArgs);
       break;
     case 'ref':
       await (await import('./commands/ref.js')).refCommand(commandArgs);

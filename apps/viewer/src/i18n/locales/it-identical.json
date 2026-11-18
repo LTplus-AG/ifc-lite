@@ -327,6 +327,10 @@
     "value": "SpaceMouse",
     "reason": "commandPalette.view.spacemouse.label: SpaceMouse is the device product name, shared across the palette, ribbon, settings and panel."
   },
+  "commands.ui.openPanelEntry": {
+    "value": "{digit} {panel}",
+    "reason": "Runtime placeholders only (the Alt shortcut digit and a panel title, each already localized); no English prose."
+  },
   "compareAnalysis.reconcile.runLabel": {
     "value": "{time} · {models}",
     "reason": "compareAnalysis.reconcile.runLabel: Run label joins a supplied time and model summary with a middle dot."
@@ -1730,5 +1734,25 @@
   "agentBridge.panel.editChange": {
     "value": "{entity} · {field}: {before} → {after}",
     "reason": "Placeholders and symbols only (middle dot, colon, arrow); no English prose."
+  },
+  "siteContext.card.imageryGsd": {
+    "value": "{gsd} m per pixel",
+    "reason": "Italian uses the same wording « per pixel » for a ground sample distance; placeholder and unit symbol only otherwise."
+  },
+  "siteContext.section.radiusValue": {
+    "value": "{radius} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "exportCommands.cityjson.label": {
+    "value": "CityJSON",
+    "reason": "Canonical interoperable file format name and extension."
+  },
+  "cityJsonExport.document": {
+    "value": "CityJSON (.city.json)",
+    "reason": "Canonical interoperable file format name and extension."
+  },
+  "cityJsonExport.sequence": {
+    "value": "CityJSONSeq (.city.jsonl)",
+    "reason": "Canonical interoperable file format name and extension."
   }
 }

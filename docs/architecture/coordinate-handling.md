@@ -16,7 +16,7 @@ IFC4X3 adds `IfcRigidOperation`, a pure translation (no rotation or scale) whose
 
 ### Globe anchor: grid north and grid scale
 
-The anchor frame corrects two properties of the projected CRS at the anchor, both measured through proj4 on the WGS84 ellipsoid (`computeGridPointFactors` in `apps/viewer/src/lib/geo/proj4-utils.ts`, checked against PROJ in `__fixtures__/proj-oracle.json`, which `scripts/geo/generate-proj-oracle.py` writes):
+The anchor frame corrects two properties of the projected CRS at the anchor, both measured through proj4 on the WGS84 ellipsoid (`computeGridPointFactors` in `packages/geo/src/proj4-utils.ts`, checked against PROJ in `packages/geo/src/__fixtures__/proj-oracle.json`, which `scripts/geo/generate-proj-oracle.py` writes):
 
 - **Meridian convergence** rotates grid north onto true north.
 - **The combined scale factor** k_c = k · R/(R+h) relates grid lengths to ground lengths (`ground-scale.ts`). Here k is the projection's point scale and R/(R+h) the height reduction. Map (grid) coordinates are k_c times ground lengths: 0.9996 on a UTM central meridian, which is 40 mm per 100 m.

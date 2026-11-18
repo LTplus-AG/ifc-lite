@@ -26,7 +26,7 @@ import { cleanup, render } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useFilteredGeometry } from '@/components/viewer/useFilteredGeometry';
-import { useRetypedClasses } from '@/hooks/useViewerSelectors';
+import { useRetypedClasses, useVisibilityState } from '@/hooks/useViewerSelectors';
 import { visibleCutMeshes } from '@/lib/drawing/cut-meshes';
 import { collectViewMeshes } from '@/lib/export/view-pdf/collect-view-meshes';
 import { readViewPdfSource } from '@/lib/export/view-pdf/view-pdf-export-source';
@@ -143,6 +143,25 @@ for (const federated of [false, true]) {
       // Companion previews resolve through the federation; the legacy slot has none.
       if (federated) assert.equal(companionHiddenNow(beam, state), mode === 'physical', `companion, ${mode}`);
     }
+  });
+}
+
+for (const federated of [false, true]) {
+  it(`#10245 the viewport's ID mask hides an occurrence retyped into a toggled-off class (${federated ? 'federated' : 'legacy'})`, () => {
+    // Instanced shards carry no class, so the mask is the only gate they have.
+    const { beam, view } = seed(federated);
+    const localBeam = federated ? BEAM : beam;
+    let hidden = new Set<number>();
+    function Probe() { hidden = useVisibilityState().hiddenEntities; return null; }
+    render(<Probe />);
+    assert.equal(hidden.has(beam), false);
+    act(() => {
+      new StoreEditor(federated ? useViewerStore.getState().models.get('b')!.ifcDataStore! : useViewerStore.getState().ifcDataStore!, view).setEntityType(localBeam, 'IfcSpace');
+      useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+    });
+    assert.equal(hidden.has(beam), true, 'Spaces is off: the retyped beam is masked');
+    act(() => useViewerStore.setState((s) => ({ typeVisibility: { ...s.typeVisibility, spaces: true } })));
+    assert.equal(hidden.has(beam), false, 'Spaces on: it is drawn again');
   });
 }
 

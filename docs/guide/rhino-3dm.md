@@ -38,6 +38,7 @@ is fetched only when you first open a `.3dm` or export one.
 | Object and layer colours, and material colour and transparency | the object's colour in the viewer |
 | Layers | the hierarchy tree, nested as in Rhino |
 | A layer switched off, or an object hidden | starts hidden, and the tree's eye shows it again |
+| A layer's eye in the tree | hides or shows its sub-layers too, as in Rhino: showing it leaves a sub-layer that is off itself, and an object hidden on its own, hidden |
 | Attribute User Text | property sets on the object |
 | Document user text | the model metadata panel |
 
@@ -134,10 +135,6 @@ storeys for.
 - **With a second model loaded, a hidden object's row is out of reach.** The tree then
   lists unified storeys and model rows, not each object of the `.3dm`, so the eye on a
   hidden object's own row is only there while the `.3dm` is the one loaded model.
-- **Showing a layer that was off does not show its sub-layers.** Turning the parent on shows
-  only what sits directly on it, so show each sub-layer that has its own row too. Rhino
-  brings them back with the parent
-  ([#10214](https://github.com/LTplus-AG/ifc-lite/issues/10214)).
 - **A loaded `.3dm` cannot be exported as IFC STEP.** There are no STEP records behind it,
   so the export dialog refuses and says so. IFCX, glTF, CSV and the other content exports
   work normally.

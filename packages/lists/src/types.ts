@@ -170,6 +170,8 @@ export interface ListDataProvider {
     homeValue: number | null;
     shares: Array<{ zoneName: string; value: number }>;
   } | null;
+  /** Rendered triangle occurrences for an entity; null means geometry is unavailable, not empty (#10370). */
+  getTriangleCount?(expressId: number): number | null;
   getWorldPosition?(expressId: number): { x: number; y: number; z: number } | null; // World Coordinate, PROJECT-space not map/WGS84 (#3671)
   /** The element's group in a custom grouping (#8425), the same first match the `customGrouping` rule applies; `null` when in none. */
   getCustomGroup?(expressId: number, grouping: CustomGroupingRef): string | null;
@@ -278,7 +280,7 @@ export interface PropertyCondition {
    * - `zone` — a location-zone assignment (issue #1810); `psetName` holds the
    *   zone-SET id, `propertyName` selects `Zone` (default, the zone name —
    *   or the straddled zones joined when the element crosses a boundary) or
-   *   `Straddles` (boolean); `geometry` is the World Coordinate (#3671) — `propertyName` selects axis `X` (default) | `Y` | `Z`
+   *   `Straddles` (boolean); `geometry` is the World Coordinate (#3671) — `propertyName` selects axis `X` (default) | `Y` | `Z`, or `TriangleCount` (unitless occurrence count)
    */
   source: ListConditionSource;
   /** Property set name (for property/quantity sources); the zone-SET id for `zone`. */

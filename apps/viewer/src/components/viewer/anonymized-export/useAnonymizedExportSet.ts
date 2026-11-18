@@ -27,13 +27,7 @@ import { collectRelatedEntities, type RelatedEntities, type RelatedEntityOptions
 import { useViewerStore, resolveEntityRef } from '@/store';
 import type { EntityRef, FederatedModel } from '@/store';
 
-/** (relationship, role) pairs that make an id part of the ALWAYS-included
- *  spatial containment chain — never individually excludable, matching the
- *  locked "Spatial containers" row in the dialog. */
-const LOCKED_GROUP_KEYS = new Set([
-  'IfcRelContainedInSpatialStructure|container',
-  'IfcRelAggregates|spatial ancestor',
-]);
+import { lockedAnonymizedIds, includedAnonymizedIds } from '@/lib/export/anonymized-native-set';
 
 export interface AnonymizedExportSetResult {
   /** The model this export targets — the model of the primary selection, or
@@ -180,16 +174,7 @@ export function useAnonymizedExportSet(active: boolean): AnonymizedExportSetResu
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `options` is a plain object recreated on every setOption; its own identity is the intended dependency, not a deep-equality trap
   }, [targetModel, seeds, options]);
 
-  const lockedIds = useMemo(() => {
-    const locked = new Set<number>(seeds);
-    if (!related) return locked;
-    for (const group of related.groups) {
-      if (!LOCKED_GROUP_KEYS.has(`${group.relationship}|${group.role}`)) continue;
-      for (const id of group.expressIds) locked.add(id);
-      for (const id of group.relationshipIds) locked.add(id);
-    }
-    return locked;
-  }, [related, seeds]);
+  const lockedIds = useMemo(() => lockedAnonymizedIds(related, seeds), [related, seeds]);
 
   // Prune exclusions that no longer apply: an id dropped from the related set
   // by a toggle, or an id that BECAME locked (e.g. also reached via the
@@ -260,17 +245,7 @@ export function useAnonymizedExportSet(active: boolean): AnonymizedExportSetResu
     });
   }, []);
 
-  const includedIds = useMemo(() => {
-    if (!related) return new Set<number>();
-    const out = new Set<number>();
-    for (const id of related.all) {
-      if (excludedIds.has(id)) continue;
-      const typeName = typeOfId.get(id);
-      if (typeName !== undefined && excludedTypes.has(typeName) && !lockedIds.has(id)) continue;
-      out.add(id);
-    }
-    return out;
-  }, [related, excludedIds, excludedTypes, typeOfId, lockedIds]);
+  const includedIds = useMemo(() => includedAnonymizedIds(related, lockedIds, excludedIds, excludedTypes, typeOfId), [related, excludedIds, excludedTypes, typeOfId, lockedIds]);
 
   const setOption = useCallback((patch: Partial<RelatedEntityOptions>) => {
     setOptions((prev) => ({ ...prev, ...patch }));

@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gateCommands, runGates, oraclePrerequisites } from './pre-handoff.mjs';
+import { gateCommands, main, runGates, oraclePrerequisites } from './pre-handoff.mjs';
 
 test('#7955 handoff keeps running after failures and distinguishes missing prerequisites', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'handoff-'));
@@ -78,4 +79,128 @@ test('a contrast browser probe that cannot run is a named gap, not a thrown fail
   writeFileSync(join(root, dynamic), "const h = await import('@/test/contrast/render-harness.js');\n");
   const broken = () => { throw new Error('contrast browser probe failed: tsx exited 1\nstack'); };
   assert.match(oraclePrerequisites(root, { test: dynamic }, 'unused', broken), /a contrast browser answer \(contrast browser probe failed: tsx exited 1\)/);
+});
+
+const MIRROR_WORKFLOW = `jobs:
+  changes:
+    steps:
+      - uses: dorny/paths-filter
+        with:
+          filters: |
+            frontend:
+              - 'scripts/**'
+            docs:
+              - 'docs/**'
+  revert-oracle:
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.frontend == 'true'
+  node-guards:
+    if: needs.changes.outputs.frontend == 'true'
+`;
+
+function write(root, path, text) {
+  mkdirSync(join(root, path, '..'), { recursive: true });
+  writeFileSync(join(root, path), text);
+}
+
+/** A git repo whose origin/main is one commit behind HEAD, with stub gate scripts. */
+function mirrorRepo(t, { changed, oracleExit = 0, driftExit = 0, workflow = MIRROR_WORKFLOW }) {
+  const root = mkdtempSync(join(tmpdir(), 'handoff-mirror-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+  const commit = (files) => {
+    for (const [path, text] of Object.entries(files)) write(root, path, text);
+    git('add', '-A');
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'commit');
+  };
+  git('init', '-q', '-b', 'main');
+  commit({
+    'package.json': '{}',
+    '.github/workflows/test.yml': workflow,
+    'scripts/check-test-revert-oracle.mjs': `process.exit(${oracleExit});`,
+    'scripts/check-ui-drift.mjs': `process.exit(${driftExit});`,
+  });
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  commit(changed);
+  return root;
+}
+
+function runMirror(root, argv = []) {
+  const tables = [];
+  const { log, table } = console;
+  console.log = () => {};
+  console.table = (rows) => tables.push(rows);
+  try {
+    const exitCode = main(argv, root, () => []);
+    const rows = Object.fromEntries(tables[0].map((row) => [row.gate, row]));
+    return { exitCode, oracle: rows['revert-oracle (CI changed-tests)'], drift: rows['ui-drift'], mirror: rows['CI mirror'] };
+  } finally { Object.assign(console, { log, table }); }
+}
+
+const SCRIPT_CHANGE = { 'scripts/feature.mjs': 'export const x = 2;\n', 'scripts/feature.test.mjs': "import './feature.mjs';\n" };
+
+test('pre-handoff runs both CI gates on a production change and passes when they pass', (t) => {
+  const result = runMirror(mirrorRepo(t, { changed: SCRIPT_CHANGE }));
+  assert.equal(result.oracle.result, 'PASS');
+  assert.equal(result.drift.result, 'PASS');
+  assert.equal(result.exitCode, 0);
+});
+
+test('a failing changed-tests oracle fails pre-handoff', (t) => {
+  const result = runMirror(mirrorRepo(t, { changed: SCRIPT_CHANGE, oracleExit: 1 }));
+  assert.deepEqual([result.oracle.result, result.drift.result, result.exitCode], ['FAIL', 'PASS', 1]);
+});
+
+test('a failing ui-drift ratchet fails pre-handoff', (t) => {
+  const result = runMirror(mirrorRepo(t, { changed: SCRIPT_CHANGE, driftExit: 1 }));
+  assert.deepEqual([result.oracle.result, result.drift.result, result.exitCode], ['PASS', 'FAIL', 1]);
+});
+
+test('both gates are SKIPPED with a reason when CI would not run them', (t) => {
+  const result = runMirror(mirrorRepo(t, { changed: { 'docs/page.md': 'text\n' } }));
+  assert.equal(result.oracle.result, 'SKIPPED');
+  assert.match(result.oracle.detail, /revert-oracle job would not run/);
+  assert.equal(result.drift.result, 'SKIPPED');
+  assert.match(result.drift.detail, /node-guards job would not run/);
+});
+
+test('the oracle is SKIPPED when CI would run but nothing changed is production', (t) => {
+  const result = runMirror(mirrorRepo(t, { changed: { 'scripts/only.test.mjs': 'export {};\n' } }));
+  assert.equal(result.oracle.result, 'SKIPPED');
+  assert.match(result.oracle.detail, /no changed file as production/);
+  assert.equal(result.drift.result, 'PASS');
+});
+
+test('a missing base skips the oracle with the reason, still runs ui-drift, and fails the handoff', (t) => {
+  const result = runMirror(mirrorRepo(t, { changed: SCRIPT_CHANGE, oracleExit: 1 }), ['--base', 'origin/absent']);
+  assert.equal(result.oracle.result, 'SKIPPED');
+  assert.match(result.oracle.detail, /origin\/absent not found/);
+  assert.equal(result.drift.result, 'PASS');
+  assert.equal(result.exitCode, 1);
+});
+
+test('an unbuilt workspace dependency is named as a missing prerequisite', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'handoff-unbuilt-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  write(root, 'package.json', '{}');
+  write(root, 'packages/app/package.json', JSON.stringify({ scripts: { test: 'node --test' }, devDependencies: { '@x/lib': 'workspace:*' } }));
+  write(root, 'packages/app/witness.test.mjs', '');
+  write(root, 'packages/app/node_modules/@x/lib/package.json', JSON.stringify({ name: '@x/lib', main: 'dist/index.js', scripts: { build: 'tsc' } }));
+  assert.match(oraclePrerequisites(root, { test: 'packages/app/witness.test.mjs' }, 'unused'), /built packages \(1 unbuilt, e\.g\. @x\/lib; run pnpm build\)/);
+  write(root, 'packages/app/node_modules/@x/lib/dist/index.js', '');
+  assert.equal(oraclePrerequisites(root, { test: 'packages/app/witness.test.mjs' }, 'unused'), null);
+});
+
+test('a job gated only by a negative filter term runs on any path, as in CI', (t) => {
+  const workflow = MIRROR_WORKFLOW.replace("if: needs.changes.outputs.frontend == 'true'", "if: needs.changes.outputs.docs != 'true'");
+  const result = runMirror(mirrorRepo(t, { changed: { 'README.md': 'x\n' }, workflow, driftExit: 1 }));
+  assert.deepEqual([result.drift.result, result.exitCode], ['FAIL', 1]);
+});
+
+test('an unreadable CI job still runs ui-drift and fails the mirror row', (t) => {
+  const workflow = MIRROR_WORKFLOW.replace('  revert-oracle:', '  renamed-oracle:');
+  const result = runMirror(mirrorRepo(t, { changed: SCRIPT_CHANGE, workflow, driftExit: 1 }));
+  assert.match(result.mirror.detail, /no revert-oracle job/);
+  assert.deepEqual([result.mirror.result, result.drift.result, result.exitCode], ['FAIL', 'FAIL', 1]);
 });

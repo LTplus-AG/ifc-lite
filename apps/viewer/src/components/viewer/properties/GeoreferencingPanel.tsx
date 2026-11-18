@@ -6,12 +6,11 @@
  * Georeferencing panel - displays and allows editing of IfcProjectedCRS
  * and IfcMapConversion entities with field-specific editing assistance.
  *
- * Per-field rows (`GeorefRow`, `AngleRow`) live in `./georef-rows` (#5812),
- * and `TerrainHeightButton` lives in `./georef-terrain-height-button`.
- * They were extracted so this file — already over the repo's ~400-line module guideline before
- * this change — does not grow.
+ * Rows (`./georef-rows`, #5812), `TerrainHeightButton`, the georef-check diagnosis and the IfcSite location rows
+ * (`./georef-diagnosis-gate`, #10608, #10659) live in their own modules so this file, over the ~400-line guideline, does not grow.
  */
 
+import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
 import { useState, useCallback, useMemo } from 'react';
 import { Globe, MapPin, Search, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,11 +23,12 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { FederationAlignmentControls } from './FederationAlignmentControls';
 import { PrecisionGridBadge } from './PrecisionGridBadge';
-import { LocationMap, type PickedPosition } from './LocationMap';
+import { LocationMap, type PickedPosition } from './location-map-gate';
 import { computeOrthogonalHeightForBaseAltitude } from '@/lib/geo/cesium-placement';
 import {
   detectScaleUnitMismatch,
   mergeMapConversion,
+  mapUnitDisplaySuffix,
   mergeProjectedCRS,
   resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
@@ -44,6 +44,12 @@ import { GeorefRow, AngleRow } from './georef-rows';
 import { TerrainHeightButton } from './georef-terrain-height-button';
 import { GeorefReadOnlyNotices, WellKnownTextRow, isReadOnlyCoordinateOperation } from './georef-notices';
 import { WorldViewSettings } from './world-view-settings';
+import { SiteContextSection } from '../site-context/SiteContextSection';
+import { FloodCheckSection } from '../site-context/FloodCheckSection';
+import { CrsAssumedBadge } from './crs-assumed-badge';
+import { GeorefEmptyState } from './georef-empty-state';
+import { GeorefCompleteRow } from './georef-complete-row';
+import { GeorefDiagnosis, GeorefSiteLocation } from './georef-diagnosis-gate';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
 
@@ -141,13 +147,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     );
   }, [mergedConversion, mergedCRS, coordinateInfo, lengthUnitScale]);
 
-  const mapUnitSuffix = useMemo(() => {
-    const mapUnit = mergedCRS?.mapUnit?.toUpperCase();
-    if (!mapUnit) return 'm';
-    if (mapUnit.includes('US') && mapUnit.includes('FOOT')) return 'ftUS';
-    if (mapUnit.includes('FOOT') || mapUnit.includes('FEET')) return 'ft';
-    return 'm';
-  }, [mergedCRS?.mapUnit]);
+  const mapUnitSuffix = mapUnitDisplaySuffix(mergedCRS?.mapUnit);
 
   /**
    * Given a target world altitude (metres) for the model's ground floor
@@ -285,7 +285,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     requestAlignmentReload();
   }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload, oHeightForBaseAltitude]);
 
-  const initializeMapConversionDefaults = useCallback(() => {
+  const initializeMapConversionDefaults = useCallback((batch?: string) => {
     if (!modelId || !setGeorefFields) return;
     setGeorefFields(modelId, 'mapConversion', [
       { field: 'eastings', value: mergedConversion?.eastings ?? 0, oldValue: mergedConversion?.eastings },
@@ -294,7 +294,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       { field: 'xAxisAbscissa', value: mergedConversion?.xAxisAbscissa ?? 1, oldValue: mergedConversion?.xAxisAbscissa },
       { field: 'xAxisOrdinate', value: mergedConversion?.xAxisOrdinate ?? 0, oldValue: mergedConversion?.xAxisOrdinate },
       { field: 'scale', value: mergedConversion?.scale ?? 1, oldValue: mergedConversion?.scale },
-    ]);
+    ], batch);
     setConversionOpen(true);
     requestAlignmentReload();
   }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
@@ -325,9 +325,11 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             : result.unit;
       fieldUpdates.push({ field: 'mapUnit', value: mapUnit, oldValue: mergedCRS?.mapUnit });
     }
-    setGeorefFields(modelId, 'projectedCRS', fieldUpdates);
+    // The CRS and its default conversion are one undo step: undoing only the conversion would leave a CRS with no position.
+    const batch = newMutationBatchId();
+    setGeorefFields(modelId, 'projectedCRS', fieldUpdates, batch);
     if (!mergedConversion && !mutations?.mapConversion) {
-      initializeMapConversionDefaults();
+      initializeMapConversionDefaults(batch);
     }
     setCrsOpen(true);
     requestAlignmentReload();
@@ -336,21 +338,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const hasData = mergedCRS || mergedConversion;
   const editable = enableEditing && !!modelId && canUseStandardGeoreferencing && !isReadOnlyCoordinateOperation(georef);
 
-  // When no georef data exists, show "Add Georeferencing" in edit mode
+  // No georeferencing: the add row (or why it cannot be added) and the sections that need it (#10603).
   if (!hasData && !georef?.hasGeoreference) {
-    if (!editable) return null;
-    return (
-      <div className="px-3 py-1.5 flex items-center gap-2">
-        <Globe className="h-3 w-3 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noGeoreferencing')}</span>
-        <EpsgLookupDialog onSelect={handleEpsgSelect}>
-          <Button type="button" variant="outline" size="segment" className="min-h-6 gap-1 px-1.5 text-xs [&_svg]:size-2.5">
-            <Globe />
-            {t('properties.georef.addGeoreferencing')}
-          </Button>
-        </EpsgLookupDialog>
-      </div>
-    );
+    return <GeorefEmptyState georef={georef} modelId={modelId} editable={editable === true} schemaNotice={!canUseStandardGeoreferencing} onEpsgSelect={handleEpsgSelect} />;
   }
 
   return (
@@ -376,8 +366,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
       <GeorefReadOnlyNotices georef={georef} schemaNotice={!canUseStandardGeoreferencing && !mergedCRS && !mergedConversion} />
-      {/* Federation alignment badge + anchor / re-align controls.
-          Hidden when only one model is loaded — alignment is a federation concept. */}
+      {/* Federation alignment badge + anchor / re-align controls; hidden for one model (alignment is a federation concept). */}
       {modelId && models.size > 1 && <FederationAlignmentControls modelId={modelId} />}
       {/* CRS summary — always visible */}
       <div className="px-3 py-1.5 flex items-center gap-2">
@@ -391,7 +380,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         {mergedCRS?.description && (
           <span className="text-xs font-mono text-muted-foreground truncate">{mergedCRS.description}</span>
         )}
-        {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
+        {mergedCRS?.name && <><PrecisionGridBadge crsName={mergedCRS.name} /><CrsAssumedBadge crsName={mergedCRS.name} /></>}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
             <button className={`relative ml-auto flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS} after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`}>
@@ -401,6 +390,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           </EpsgLookupDialog>
         )}
       </div>
+      {modelId && <GeorefDiagnosis modelId={modelId} editable={editable} mapUnitScale={mergedCRS?.mapUnitScale} shownInPanel={{ doubleGeoref: !!doubleGeoref, scaleMismatch: !!scaleMismatch }} />}
 
       {/* Doubly-georeferenced model (#2526). Informational, not a warning, and
           deliberately without an action: the model on screen is already
@@ -466,17 +456,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
-      {!mergedCRS && editable && mergedConversion && (
-        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.missingCrsNotice')}</span>
-          <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}>
-              <Search className="h-2.5 w-2.5" />
-              {t('properties.georef.addCrs')}
-            </button>
-          </EpsgLookupDialog>
-        </div>
-      )}
+      {!mergedCRS && editable && mergedConversion && <GeorefCompleteRow modelId={modelId} missing="crs" onEpsgSelect={handleEpsgSelect} />}
 
       {/* IfcMapConversion */}
       {mergedConversion && (
@@ -550,18 +530,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
-      {!mergedConversion && editable && mergedCRS && (
-        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-          <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noConversionNotice')}</span>
-          <button
-            onClick={initializeMapConversionDefaults}
-            className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}
-          >
-            <MapPin className="h-2.5 w-2.5" />
-            {t('properties.georef.addCoordinates')}
-          </button>
-        </div>
-      )}
+      {modelId && <GeorefSiteLocation modelId={modelId} editable={editable} />}
+      {!mergedConversion && editable && mergedCRS && <GeorefCompleteRow modelId={modelId} missing="conversion" onAddCoordinates={() => initializeMapConversionDefaults()} />}
 
       {/* World-view settings — only when the Cesium overlay is active */}
       {cesiumEnabled && isActiveCesiumModel && mergedConversion && (
@@ -579,11 +549,10 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         // panel's model id hasn't resolved and more than one model is loaded — see `canExportKmz`.
         geometryResult={canExportKmz ? geometryResult : null}
         instancedModelRange={instancedModelRange}
-        modelName={modelId ? models.get(modelId)?.name : undefined}
-        lengthUnitScale={lengthUnitScale}
-        editable={editable}
-        onApplyPosition={editable ? handleApplyPosition : undefined}
-      />
+        modelName={modelId ? models.get(modelId)?.name : undefined} lengthUnitScale={lengthUnitScale} editable={editable}
+        onApplyPosition={editable ? handleApplyPosition : undefined} />
+      {modelId && <SiteContextSection modelId={modelId} editable={editable === true} />}
+      {modelId && <FloodCheckSection key={modelId} modelId={modelId} />}
     </div>
   );
 }

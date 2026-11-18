@@ -427,6 +427,10 @@
     "value": "Site",
     "reason": "French uses the same spelling « Site » for this contextual label; reviewed against its feature meaning."
   },
+  "commands.ui.openPanelEntry": {
+    "value": "{digit} {panel}",
+    "reason": "Runtime placeholders only (the Alt shortcut digit and a panel title, each already localized); no English prose."
+  },
   "compareAnalysis.reconcile.kind.validation": {
     "value": "Validation",
     "reason": "French uses the same spelling « Validation » for this contextual label; reviewed against its feature meaning."
@@ -2206,5 +2210,25 @@
   "viewportLighting.container.emptyState.formats.rhino": {
     "value": "Rhino",
     "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
+  },
+  "siteContext.category.terrain": {
+    "value": "Terrain",
+    "reason": "French uses the same spelling « Terrain » for this contextual label; reviewed against its feature meaning."
+  },
+  "siteContext.section.radiusValue": {
+    "value": "{radius} m",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "exportCommands.cityjson.label": {
+    "value": "CityJSON",
+    "reason": "Canonical interoperable file format name and extension."
+  },
+  "cityJsonExport.document": {
+    "value": "CityJSON (.city.json)",
+    "reason": "Canonical interoperable file format name and extension."
+  },
+  "cityJsonExport.sequence": {
+    "value": "CityJSONSeq (.city.jsonl)",
+    "reason": "Canonical interoperable file format name and extension."
   }
 }

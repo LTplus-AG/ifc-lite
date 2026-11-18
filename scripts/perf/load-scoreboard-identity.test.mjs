@@ -91,7 +91,7 @@ test('identity rows map reopen i to its lane, and the report takes the reopen ou
 });
 
 test('review #9863: the cold lane links the sides, timed RESTORE MISMATCH wins, failed samples never match', async () => {
-  const { reopenOutputVerdict, laneIdentityVerdict, identityRowReopens } = await load('./load-scoreboard-identity.mjs');
+  const { reopenOutputVerdict, identityRowReopens } = await load('./load-scoreboard-identity.mjs');
   assert.equal(reopenOutputVerdict('match', 'unverifiable (x)', 'match'), 'match');
   assert.match(reopenOutputVerdict('match', 'unverifiable (x)', 'CHANGED'), /^CHANGED \(cold output CHANGED across sides/, 'different builds never read as matching');
   assert.match(reopenOutputVerdict('match', 'unverifiable (x)', 'unverifiable (a sample has no output identity)'), /^unverifiable \(each reopen restored its own cold open, but the cold lane/);
@@ -124,8 +124,8 @@ test('review #9863: a reopen lane whose cold output differs across sides reads C
 test('review #9863: a clean earlier reopen keeps its match through identityRow when a later reopen failed', async () => {
   const { identityRow, laneIdentityVerdict } = await load('./load-scoreboard-identity.mjs');
   const opens = [{ label: 'cold', identity: id('P', [cap('S1')]) }, { label: 'warm1', identity: id('P', [adopt('S1')]) }, { label: 'warm2', identity: id('P', [adopt('S1')]) }];
-  const sample = (side) => ({ meta: { identityOpens: opens }, lanes: { 'browser-cold': { ok: true }, 'browser-warm1': { ok: true }, 'browser-warm': { ok: false, error: 'warm2: GPU device lost' } } });
-  const rows = ['base', 'branch'].map((side) => identityRow({ fixture: 'F', side, round: 0, group: 'browser' }, sample(side), 2, () => {}));
+  const sample = () => ({ meta: { identityOpens: opens }, lanes: { 'browser-cold': { ok: true }, 'browser-warm1': { ok: true }, 'browser-warm': { ok: false, error: 'warm2: GPU device lost' } } });
+  const rows = ['base', 'branch'].map((side) => identityRow({ fixture: 'F', side, round: 0, group: 'browser' }, sample(), 2, () => {}));
   assert.equal(rows[0].ok, false, 'the row records the failed sample');
   assert.equal(laneIdentityVerdict(rows, 'browser-warm1'), 'match', 'warm1 was clean on both sides');
   assert.match(laneIdentityVerdict(rows, 'browser-warm'), /^unverifiable \(identity pass: UNVERIFIABLE \(identity sample failed: warm2: GPU device lost/);
@@ -149,3 +149,24 @@ test('the identity pass waits for the viewer\'s own settled check, not only hydr
   assert.equal(identityReady({ ...quiet, settled: true, pending: 1 }), false);
   assert.equal(identityReady(quiet), true, 'a build that does not report settled keeps the narrower check');
 });
+
+for (const suffix of ['-early', '-settled']) for (const warm of ['browser-warm', 'browser-warm1']) {
+  test(`#9990 ${warm}${suffix} chains only through the cold output of its own arm`, async () => {
+    const { summarize } = await load('./load-scoreboard-report.mjs');
+    const lane = warm + suffix, cold = 'browser-cold' + suffix;
+    // Reopen first deliberately: output linkage must not depend on lane order.
+    const plan = { name: 'same-arm', lanes: [lane, cold, 'browser-cold'], rounds: 1, warmOpens: 2,
+      fixtures: [{ name: 'F', bytes: 2 ** 25 }], sides: { base: {}, branch: {} } };
+    const sample = (lane, side, fingerprint) => ({ lane, side, fixture: 'F', round: 0, ok: true, interactiveMs: 100, fingerprint });
+    const rows = ['base', 'branch'].flatMap(side => [
+      sample('browser-cold', side, 'elements=2 sig=plain'),
+      sample(lane, side, 'UNVERIFIABLE (cache hit)'),
+      { lane: 'identity', side, fixture: 'F', round: 0, ok: true, reopens: { [warm]: { verdict: 'match', match: true } } },
+    ]);
+    const output = (extra) => summarize(plan, [...rows, ...extra]).fixtures[0].lanes[lane].output;
+    assert.match(output([]), /^unverifiable/, 'a plain cold match cannot substitute for the missing arm');
+    assert.equal(output(['base', 'branch'].map(side => sample(cold, side, 'elements=2 sig=arm'))), 'match');
+    assert.match(output([sample(cold, 'base', 'elements=2 sig=A'), sample(cold, 'branch', 'elements=2 sig=B')]), /^CHANGED/,
+      'a plain cold match cannot hide changed output in this arm');
+  });
+}

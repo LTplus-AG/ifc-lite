@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { isFeatureEnabled } from '../../lib/features/index.js';
 import type { StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
@@ -60,6 +61,7 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     return { modelPlacement: importPlacements(state.modelPlacement, incoming) };
   }),
   openReposition: (modelIds) => {
+    if (!isFeatureEnabled('edit.placement')) return;
     const state = get();
     const ids = modelIds ?? (state.activeModelId ? [state.activeModelId] : [...state.models.keys()].slice(0, 1));
     const modelPlacement = beginPlacement(state.modelPlacement, ids, new Set(state.models.keys()));

@@ -43,6 +43,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { readStdinUtf8 } from './lib/read-stdin.mjs';
 
 export const MANIFEST_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'apps/viewer/test-durations.json');
 
@@ -145,7 +146,7 @@ export function shardFromEnv(env) {
 function main() {
   try {
     const { shard, count } = shardFromEnv(process.env);
-    const paths = readFileSync(0, 'utf8').split('\n').filter((l) => l.length > 0);
+    const paths = readStdinUtf8().split('\n').filter((l) => l.length > 0);
     const manifest = count === 1 ? EMPTY_MANIFEST : parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
     const selected = selectShard(paths, manifest, shard, count);
     if (selected.length === 0) {

@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "key": "packages/flood-check/src/check/outcome.ts",
+  "mutation": "tests/evidence/flood-check-class-boundary/behaviour.oracle.patch",
+  "why": "The PR adds the whole @ifc-lite/flood-check package, so reverting production files removes the modules the tests import. Reverse application keeps every export but makes compareLevel treat a level exactly at terrain + class lower bound as not exposed, although the water surface is strictly above it; the boundary cases in test/outcome.test.ts that expect 'exposed' at z = T + L go red."
+}

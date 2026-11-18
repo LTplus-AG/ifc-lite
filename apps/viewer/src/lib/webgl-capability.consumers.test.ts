@@ -70,7 +70,8 @@ function installDevice(refuses: (attrs: Record<string, unknown>) => boolean): ()
       getContext(type: string, attrs?: unknown) {
         if (type !== 'webgl2') return null;
         if (refuses((attrs ?? {}) as Record<string, unknown>)) return null;
-        return { getExtension: () => ({ loseContext: () => undefined }) };
+        return { getExtension: () => ({ loseContext: () => undefined }),
+          getShaderPrecisionFormat: () => ({ precision: 23 }) };
       },
     } as unknown as HTMLCanvasElement;
   }) as typeof document.createElement;

@@ -217,3 +217,80 @@ fn a_varying_rewrite_counts_a_missing_caused_by_even_with_free_ids_10597() {
         assert_eq!(stats.attribute_values_dropped, expected, "{out}");
     }
 }
+
+fn shared(second: &str, list: &str) -> String {
+    model("IFC2X3", &format!("#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#9,$,.RIGID_JOINED_MEMBER.);
+#21=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,{second},$,$);
+#22=IFCBEAM('1wng2kJ6bGvgWud8Cpi0D9',#5,'Beam',$,$,#10,$,$);
+#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$);
+#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,{list},$,#30);"))
+}
+const MODEL_SHARED: &str = "#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);";
+
+#[test]
+fn writes_the_placement_every_grouped_item_shares_9668() {
+    let (up, warnings) = convert(&shared("#9", "(#20,#21,#22)"), "IFC4");
+    assert_eq!(record(&up, 30), MODEL_SHARED);
+    assert!(warnings.contains("SharedPlacement is written as the local placement"), "{warnings}");
+}
+
+#[test]
+fn reads_equal_copies_as_the_lowest_id_and_places_items_by_it_9668() {
+    // The item on the higher-id copy is listed first, so the lowest id, not the first item, is chosen.
+    let (up, _) = convert(&shared("#10", "(#21,#20,#22)"), "IFC4");
+    assert_eq!(record(&up, 30), MODEL_SHARED);
+    assert_eq!(record(&up, 21), "#21=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,#9,$,$,$);");
+    // The beam is not a structural item, so it keeps its own placement.
+    assert!(record(&up, 22).contains(",'Beam',$,$,#10,"), "{up}");
+}
+
+#[test]
+fn places_by_neither_model_an_item_two_models_group_9668() {
+    let two = shared("#10", "(#20,#21,#22)").replace("#31=", "#14=IFCLOCALPLACEMENT($,#8);
+#23=IFCSTRUCTURALCURVEMEMBER('1XciGbSFPUkgAKmWK4M6tc',#5,'M2',$,$,#14,$,.RIGID_JOINED_MEMBER.);
+#32=IFCSTRUCTURALANALYSISMODEL('4rBQGmCZHSd9Yn0gS5NyiS',#5,'Model 2',$,$,.LOADING_3D.,$,$,$);
+#33=IFCRELASSIGNSTOGROUP('2rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#21,#23),$,#32);
+#31=");
+    let (up, _) = convert(&two, "IFC4");
+    assert!(record(&up, 21).contains(",'N',$,$,#10,"), "{up}");
+    assert!(record(&up, 30).ends_with(",$);") && record(&up, 32).ends_with(",$);"), "{up}");
+}
+
+#[test]
+fn reads_no_placement_from_a_grouping_with_a_non_reference_item_9668() {
+    let (up, _) = convert(&shared("#10", "(#20,#21,$)"), "IFC4");
+    assert!(record(&up, 30).ends_with(",$);"), "{up}");
+    assert!(record(&up, 21).contains(",'N',$,$,#10,"), "{up}");
+}
+
+#[test]
+fn leaves_shared_placement_unset_for_different_placements_9668() {
+    let (up, _) = convert(&shared("#13", "(#20,#21,#22)").replace("#20=", "#13=IFCLOCALPLACEMENT(#9,#8);\n#20="), "IFC4");
+    assert_eq!(record(&up, 30), "#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,$);");
+}
+
+#[test]
+fn reports_a_shared_placement_ifc2x3_cannot_hold_as_lost_9668() {
+    let ifc4 = model("IFC4", "#13=IFCGRIDPLACEMENT($,$,$);
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#13,$,.RIGID_JOINED_MEMBER.,$);
+#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#13);
+#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#20),$,#30);");
+    assert!(convert(&ifc4, "IFC2X3").1.contains("IFCSTRUCTURALANALYSISMODEL.SharedPlacement has no slot in IFC2X3; its value is omitted"));
+}
+
+#[test]
+fn reads_no_placement_when_a_grouped_item_cannot_be_read_10597() {
+    // A slot holding only a comment does not split, so the item's placement is unknown.
+    let unread = shared("#9", "(#20,#21,#22)").replace(",'N',$,$,#9,$,$);", ",'N',$,$,#9,/* */,$);");
+    let (up, _) = convert(&unread, "IFC4");
+    assert!(record(&up, 30).ends_with(",$);"), "{up}");
+}
+
+#[test]
+fn an_item_placed_by_the_highest_id_gives_its_model_no_shared_placement_10597() {
+    // u32::MAX marks a model internally; an item placed by #4294967295 must not read as one.
+    let source = shared("#4294967295", "(#20,#21)").replace("#20=", "#4294967295=IFCLOCALPLACEMENT($,#8);\n#20=");
+    let (up, _) = convert(&source, "IFC4");
+    assert!(record(&up, 30).ends_with(",$);"), "{up}");
+    assert!(record(&up, 21).contains(",'N',$,$,#4294967295,"), "{up}");
+}

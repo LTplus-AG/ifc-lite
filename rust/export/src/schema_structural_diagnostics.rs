@@ -111,10 +111,9 @@ impl StructuralDiagnostics {
 
     /// An already converted line with the values carriers fill in place (`StructuralCarriers::after`).
     pub(crate) fn after(&mut self, id: u32, line: String) -> String {
-        match self.carriers.after(id, &line) {
-            Some(filled) => { self.record(crate::schema_structural_carriers::CAUSED_BY_READ.into()); filled }
-            None => line,
-        }
+        let Some((filled, message)) = self.carriers.after(id, &line) else { return line };
+        if let Some(message) = message { self.record(message.into()); }
+        filled
     }
 
     /// Records the conversion added: load configurations, then 'Causes' relationships, as the TypeScript twin appends them.

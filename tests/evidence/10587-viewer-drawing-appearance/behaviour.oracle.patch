@@ -20,3 +20,30 @@ diff --git a/apps/viewer/src/lib/agent-tools/operations/appearance-native-source
        const frame =
          value.calibrationFrame ??
          (value.pdf ? pdfCalibrationFrame(value.pdf.recipe) : imageCalibrationFrame(value.width, value.height));
+diff --git a/apps/viewer/src/lib/drawing/export-view-frame.ts b/apps/viewer/src/lib/drawing/export-view-frame.ts
+--- a/apps/viewer/src/lib/drawing/export-view-frame.ts
++++ b/apps/viewer/src/lib/drawing/export-view-frame.ts
+@@ -11,5 +11,5 @@
+ /** The cache validates its own sheet/geometry key before reuse. Holding the last
+  * rendered frame also preserves the native pinned placement when a panel closes. */
+ export function drawingExportFrame(drawing: Drawing2D): Frame | undefined {
+-  return latest?.drawing === drawing ? { ...latest.frame, ...{ drawing } } : undefined;
++  return latest?.drawing === drawing ? latest.frame : undefined;
+ }
+diff --git a/apps/viewer/src/lib/appearance/command.ts b/apps/viewer/src/lib/appearance/command.ts
+--- a/apps/viewer/src/lib/appearance/command.ts
++++ b/apps/viewer/src/lib/appearance/command.ts
+@@ -179,7 +179,12 @@
+     // IFC + GPU are ready. Publish the geometry and history entry together so
+     // observers never see new IFC history paired with the old render buffers.
+     published = true;
+-    record(publication);
++    try { record(publication); }
++    catch (error) {
++      const last = useViewerStore.getState().undoStacks.get(modelId)?.at(-1);
++      if (!last || last.id !== applied.mutations.at(-1)?.id) throw error;
++      console.error('Appearance was committed, but a state observer failed', error);
++    }
+   } catch (error) {
+     if (!published) {
+       failWithCleanup(error, [() => prepared.rollback(),

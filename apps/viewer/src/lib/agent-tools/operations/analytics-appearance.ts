@@ -61,14 +61,16 @@ export async function prepareAnalyticsAppearanceCandidate(i: { source_id: string
       const prepared = await prepareNativeAppearancePlan({ snapshot, productIds: i.express_ids, sourceId: i.source_id, selectedSource, settings: i.settings, planner, owner, signal, faceMasks });
       if (!prepared.plan.items.length || prepared.plan.exclusions.length) throw new Error(prepared.plan.exclusions.map(row => row.reason).join('; ') || 'No supported native appearance surfaces.');
       snapshot.validate(); gate(c.model.id); checkpoint(c);
-      const map = owned(c.host); if (map.size >= 16) throw new Error('Cancel an existing native appearance preview before preparing more.');
+      const map = owned(c.host);
       const token = crypto.randomUUID();
       if (getGlobalRenderer() !== renderer || useViewerStore.getState().appearanceSources.find(source => source.id === i.source_id) !== selectedSource)
         throw new Error('The native renderer or source changed during preview preparation.');
       c.commit(() => {
-        if ([...map.values()].some(candidate => candidate.modelId === c.model.id && candidate.applying))
+        const replacements = [...map].filter(([, candidate]) => candidate.modelId === c.model.id);
+        if (map.size - replacements.length >= 16) throw new Error('Cancel an existing native appearance preview before preparing more.');
+        if (replacements.some(([, candidate]) => candidate.applying))
           throw new Error('An appearance candidate is being applied to this model.');
-        for (const [key, candidate] of map) if (candidate.modelId === c.model.id) { release(candidate); map.delete(key); }
+        for (const [key, candidate] of replacements) { release(candidate); map.delete(key); }
         const stage = stageNativeAppearancePreview(c.model.id, prepared, i.settings, renderer);
         map.set(token, { modelId: c.model.id, revision: snapshot.revision, renderer, prepared, stage, owner }); adopted = true;
       });

@@ -34,6 +34,7 @@ interface Candidate {
   draftId: string;
   placed?: string;
   placing?: boolean;
+  discard?: 'pending' | 'failed';
 }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 async function release(value: Candidate) {
@@ -185,6 +186,7 @@ export const appearanceReferenceOperations = [
       const { placeNativeAppearanceReference } = await import('@/lib/appearance/appearance-native-reference');
       const saved = candidates(c).get(i.token);
       if (!saved) throw new Error('Unknown reference candidate for this host.');
+      if (saved.discard) throw new Error('The reference candidate is being discarded.');
       if (saved.placed) return out({ reference_id: saved.placed, placed: true });
       assertToolActive(c);
       if (!c.signal || getGlobalRenderer() !== saved.renderer) throw new Error('Native renderer/session changed.');
@@ -217,7 +219,10 @@ export const appearanceReferenceOperations = [
       if (!saved) throw new Error('Unknown reference candidate.');
       if (saved.placing) throw new Error('The reference candidate is being placed.');
       assertToolActive(c);
-      await release(saved);
+      if (saved.discard === 'pending') throw new Error('The reference candidate is being discarded.');
+      saved.discard = 'pending';
+      try { await release(saved); }
+      catch (error) { saved.discard = 'failed'; throw error; }
       candidates(c).delete(i.token);
       return out({ discarded: true });
     },

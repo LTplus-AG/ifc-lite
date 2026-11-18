@@ -2,5 +2,5 @@
   "issue": 7955,
   "key": "apps/viewer/src/lib/agent-tools/operations/analytics-drawing-markup.ts",
   "mutation": "tests/evidence/10587-viewer-drawing-appearance/behaviour.oracle.patch",
-  "why": "Reverse application retains the operation registry and changes two behaviors: dimension history runs the opposite action, and source calibration accepts an outdated snapshot."
+  "why": "Reverse application retains the operation registry while reversing dimension undo, permitting stale calibration, overwriting composed drawing bounds, and propagating an observer failure after an appearance commit."
 }

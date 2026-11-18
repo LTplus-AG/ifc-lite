@@ -41,6 +41,7 @@ import { analyticsListControlOperations } from './analytics-list-controls';
 import { analyticsLensControlOperations } from './analytics-lens-controls';
 import { analyticsScheduleControlOperations } from './analytics-schedule-controls';
 import { analyticsDrawingControlOperations } from './analytics-drawing-controls';
+import { publishDrawingExportFrame } from '@/lib/drawing/export-view-frame';
 import { dxfPlaneDrawingMapper } from '@/hooks/dxfReferencePlane';
 import { computeAnimationFrame } from '@/components/viewer/schedule/schedule-animator';
 import { measuredDimensionValue } from '@/store/slices/drawing2DDimensions';
@@ -414,6 +415,20 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await run('drawing.styleText', { id: text.id, expected_json: JSON.stringify(original), font_size: 24, color: '#123456', background: '#ffffff', border: '#654321' }, viewerContext);
     const imported = await run<{ id: string }>('drawing.importDxf', { filename: 'reference.dxf', units: 'm', register_to_drawing_plane: true,
       content: '0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n10\n20\n20\n11\n12\n21\n22\n0\nENDSEC\n0\nEOF\n' }, viewerContext);
+    // #10587: panel placement metadata must preserve the composed export bounds.
+    const exportSvg = async () => {
+      const result = await run<{ artifact: { artifact_id: string } }>('drawing.export', { format: 'svg', use_display_scale: false, scale: 100 }, viewerContext);
+      const read = await readArtifact(context.host, result.artifact.artifact_id, 0, 65536);
+      return Buffer.from(read.data, 'base64').toString('utf8');
+    };
+    const withoutFrame = await exportSvg();
+    const cachedSheetTransformRef = { current: null };
+    publishDrawingExportFrame({ drawing, isPinned: false, cachedSheetTransformRef });
+    try {
+      assert.equal((await exportSvg()).match(/viewBox="[^"]+"/)?.[0], withoutFrame.match(/viewBox="[^"]+"/)?.[0]);
+    } finally {
+      publishDrawingExportFrame({ drawing: null, isPinned: false, cachedSheetTransformRef });
+    }
     await run('drawing.centerDxf', { id: imported.id }, viewerContext);
     const underlay = useViewerStore.getState().dxfUnderlays.find(row => row.id === imported.id); assert.ok(underlay?.referenceFrame);
     const mapped = dxfPlaneDrawingMapper(underlay, useViewerStore.getState(), drawing.config.plane); assert.ok(mapped);

@@ -192,26 +192,32 @@ export const appearanceTransferOperations = [
         throw new Error('No current reviewed native transfer.');
       if (transfer.applied) return out(transfer.applied);
       const recovery = { request: registration.request, rebind: state.session.afterAppearance() };
-      if (!transfer.stage.preview) {
-        const preview = c.commit(() => compareNativeAppearancePreview(renderer, transfer.stage.groups, null, false));
-        if (!preview) throw new Error('Native preview could not be restored.');
-        transfer.stage.preview = preview;
-      }
-      const { preview } = transfer.stage;
       transfer.applying = true;
       try {
-        await c.commitAsync(() =>
-          commitAppearance(
-            c.model.id,
-            transfer.output.assetIds,
-            transfer.output.plan!,
-            renderer,
-            preview,
-            transfer.stage.groups,
-            state.session.appearanceSource,
-            { signal: c.signal, onProgress: () => c.checkpoint?.() },
-          ),
-        );
+        await c.commitAsync(async () => {
+          const preview = transfer.stage.preview ?? compareNativeAppearancePreview(renderer, transfer.stage.groups, null, false);
+          if (!preview) throw new Error('Native preview could not be restored.');
+          transfer.stage.preview = preview;
+          try {
+            await commitAppearance(
+              c.model.id,
+              transfer.output.assetIds,
+              transfer.output.plan!,
+              renderer,
+              preview,
+              transfer.stage.groups,
+              state.session.appearanceSource,
+              { signal: c.signal, onProgress: () => c.checkpoint?.() },
+            );
+          } catch (error) {
+            transfer.stage.preview = null;
+            // The command normally cancels on rollback. Also release any preview
+            // that failed before preparation started.
+            try { if (preview.isStaged) preview.cancel(); }
+            catch (cleanupError) { console.warn('[Appearance] Scan preview cleanup failed', cleanupError); }
+            throw error;
+          }
+        });
         transfer.applied = { committed: true, revalidation_required: true };
         state.recovery = recovery;
         state.result = undefined;

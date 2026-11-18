@@ -414,6 +414,18 @@ describe('appearance command atomicity #4243', () => {
     assert.equal(useViewerStore.getState().geometryResult?.totalVertices, 6);
     assert.deepEqual(f.parts()[0].indices, f.after.indices);
   });
+  it('#10587 reports a successful commit when an observer throws after history publication', async () => {
+    const f = await fixture();
+    const unsubscribe = useViewerStore.subscribe(state => {
+      if (state.undoStacks.get(MODEL)?.length) throw new Error('Observer failed after publish');
+    });
+    try { await f.commit(); }
+    finally { unsubscribe(); }
+    assert.equal(useViewerStore.getState().undoStacks.get(MODEL)?.length, 1);
+    assert.deepEqual(f.parts()[0].indices, f.after.indices);
+    useViewerStore.getState().undo(MODEL);
+    assert.deepEqual(f.parts()[0].indices, f.before.indices);
+  });
   it('publishes and replays a primary object with omitted modelIndex (#4243 browser Undo regression)', async () => {
     const f = await fixture();
     const observations: number[] = [];

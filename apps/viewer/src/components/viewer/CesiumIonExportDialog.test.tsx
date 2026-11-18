@@ -13,9 +13,21 @@ import { useViewerStore } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { render, click, type, cleanup, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { parseFixtureModel, FIXTURE_WALL_A } from './anonymized-export/anonymized-export-fixture.test-support';
+import { FIXTURE_MODEL, FIXTURE_WALL_A } from './anonymized-export/anonymized-export-fixture.test-support';
 import { CesiumIonExportDialog } from './CesiumIonExportDialog';
 import { initializeIonExportWasm } from './CesiumIonExportDialog.wasm.test-support';
+
+// #10647: export-capable ion fixtures need a real CRS and representation context.
+async function parseFixtureModel() {
+  const source = FIXTURE_MODEL.replace('DATA;', `DATA;
+#900=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#901,$);
+#901=IFCAXIS2PLACEMENT3D(#902,$,$);
+#902=IFCCARTESIANPOINT((0.,0.,0.));
+#903=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);
+#904=IFCMAPCONVERSION(#900,#903,2600000.,1200000.,0.,1.,0.,1.);
+`);
+  return new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
+}
 
 before(initializeIonExportWasm);
 import { IonUploadError, uploadToCesiumIon, type IonUploadInput } from '@/lib/geo/cesium-ion-upload';
@@ -35,10 +47,7 @@ test('ion dialog defaults to active IFC, uploads edited bytes, and forgets write
   configureMutationView(view, dataStore);
   view.setAttribute(FIXTURE_WALL_A, 'Name', 'Upload edit', 'Wall A');
   useViewerStore.setState({ ...fixtureModels(scan, model), activeModelId: model.id, mutationViews: new Map([[model.id, view]]),
-    georefMutations: new Map([[model.id, {
-      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
-      projectedCRS: { name: 'EPSG:2056' },
-    }]]), scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
+    georefMutations: new Map(), scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
   let sent: IonUploadInput | undefined;
   render(<CesiumIonExportDialog surface="ribbon" upload={async input => { sent = input; return { assetId: 42 }; }} />);
   click(button('Upload to Cesium ion'));
@@ -64,10 +73,7 @@ test('ion dialog defaults to active IFC, uploads edited bytes, and forgets write
 
 test('ion refuses image-bearing IFC before creating a remote asset (#6587)', async () => {
   const model = { ...fixtureModel('textured.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
-  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map([[model.id, {
-      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
-      projectedCRS: { name: 'EPSG:2056' },
-    }]]),
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
     scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
   mock.method(modelAppearanceAssets, 'exportOriginals', () => ({ resources: new Map([['texture.png', new Uint8Array([1])]]) }));
   render(<CesiumIonExportDialog surface="ribbon" upload={async () => assert.fail('must not create asset or lose texture')} />);
@@ -81,10 +87,7 @@ test('ion refuses image-bearing IFC before creating a remote asset (#6587)', asy
 
 test('ion Cancel upload aborts the active request and exposes the partial asset (#6587)', async () => {
   const model = { ...fixtureModel('cancel.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
-  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map([[model.id, {
-      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
-      projectedCRS: { name: 'EPSG:2056' },
-    }]]),
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
     scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
   let started: IonUploadInput | undefined;
   render(<CesiumIonExportDialog surface="ribbon" upload={async input => {
@@ -111,10 +114,7 @@ test('ion Cancel upload aborts the active request and exposes the partial asset 
 
 test('ion shows request rejection without blaming token permissions and supports retry (#6587)', async () => {
   const model = { ...fixtureModel('retry.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
-  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map([[model.id, {
-      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
-      projectedCRS: { name: 'EPSG:2056' },
-    }]]),
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
     scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
   let attempts = 0;
   render(<CesiumIonExportDialog surface="ribbon" upload={async () => {
@@ -138,10 +138,7 @@ test('ion shows request rejection without blaming token permissions and supports
 test('ion completion keeps a long asset name intact and accessible in the primary link (#6587)', async () => {
   const longName = 'Georeferencing_georeferenced-bridge-deck_model_with_a_long_unbroken_filename';
   const model = { ...fixtureModel(`${longName}.ifc`), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
-  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map([[model.id, {
-      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
-      projectedCRS: { name: 'EPSG:2056' },
-    }]]),
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
     scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
   render(<CesiumIonExportDialog surface="ribbon" upload={async () => ({ assetId: 99 })} />);
   click(button('Upload to Cesium ion'));
@@ -158,10 +155,7 @@ test('ion completion keeps a long asset name intact and accessible in the primar
 
 test('ion partial recovery names the invocation-resolved export despite model changes (#6587)', async () => {
   const model = { ...fixtureModel('rendered.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
-  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map([[model.id, {
-      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
-      projectedCRS: { name: 'EPSG:2056' },
-    }]]),
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
     scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
   let sent: IonUploadInput | undefined;
   let failUpload: ((error: IonUploadError) => void) | undefined;
@@ -198,10 +192,7 @@ test('ion Activity Cancel drains native upload and an old callback cannot abort 
   const authored = await readFile(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
   const dataStore = await new IfcParser().parseColumnar(authored.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   const model = { ...fixtureModel('tray.ifc'), ifcDataStore: dataStore, schemaVersion: 'IFC4' as const };
-  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map([[model.id, {
-      mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
-      projectedCRS: { name: 'EPSG:2056' },
-    }]]),
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
     scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
   const sent: Array<{ signal: AbortSignal; bytes: Uint8Array; settle: () => void }> = [];
   let completed = 0;

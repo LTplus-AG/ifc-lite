@@ -13,9 +13,23 @@ import { useViewerStore } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { render, click, type, cleanup, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { parseFixtureModel, FIXTURE_WALL_A } from './anonymized-export/anonymized-export-fixture.test-support';
+import { FIXTURE_MODEL, FIXTURE_WALL_A } from './anonymized-export/anonymized-export-fixture.test-support';
 import { CesiumIonExportDialog } from './CesiumIonExportDialog';
 import { initializeIonExportWasm } from './CesiumIonExportDialog.wasm.test-support';
+
+// #10647: export-capable ion fixtures need a real CRS and representation context.
+async function parseFixtureModel() {
+  const source = FIXTURE_MODEL.replace('DATA;', `DATA;
+#900=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#901,$);
+#901=IFCAXIS2PLACEMENT3D(#902,$,$);
+#902=IFCCARTESIANPOINT((0.,0.,0.));
+#903=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#905);
+#904=IFCMAPCONVERSION(#900,#903,2600000.,1200000.,0.,1.,0.,1.);
+#905=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#906=IFCUNITASSIGNMENT((#905));
+`).replace(/(#1=IFCPROJECT[^\n]*),\$,\$\);/, '$1,(#900),#906);');
+  return new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
+}
 
 before(initializeIonExportWasm);
 import { IonUploadError, uploadToCesiumIon, type IonUploadInput } from '@/lib/geo/cesium-ion-upload';

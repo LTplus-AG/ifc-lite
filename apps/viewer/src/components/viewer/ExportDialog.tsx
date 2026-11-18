@@ -32,7 +32,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
-import { stepExportSummary } from '@/lib/export/step-export-summary';
+import { mergedExportSummary, stepExportSummary } from '@/lib/export/step-export-summary';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
@@ -373,12 +373,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         // Named for the first model: `keep-first` makes its IfcProject the merged file's.
         downloadFile(result.content, modelExportFilename(mergeInputs[0]?.name ?? '', 'ifc', '_merged'), 'text/plain');
 
-        const skipNotice = mergeSkipNotice(skipped, t);
-        const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`
-          + (result.stats.normalizedModelCount > 0
-            ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
-            : '')
-          + (skipNotice ? `. ${skipNotice}` : '');
+        const msg = mergedExportSummary(result.stats, mergeSkipNotice(skipped, t), prepared.warnings.length > 0, t);
         exportedFormat = 'ifc';
         return stepExportResult(msg, [...prepared.warnings, ...result.stats.warnings], t);
       }

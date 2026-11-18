@@ -346,4 +346,5 @@ version, then returns its `{registry, repository, digest}` locator as a JSON
 object. It should return the same result for a repeated submission of the same
 digests, and respond with HTTP 409 when the source version is out of date. The
 viewer shows a save only after it receives the receipt. A failed confirmation
-can be retried for the uploaded digest from the current tab.
+can be retried for the uploaded digest from the current tab with a fresh user
+access token.

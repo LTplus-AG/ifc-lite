@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { exportRegistryModel } from '@/lib/registry/export-model';
-import { authorizeDestination, resourceAllows } from '@/lib/registry/handoff-auth';
+import { authorizeDestination, authorizePublicationConfirmation, resourceAllows } from '@/lib/registry/handoff-auth';
 import { confirmPublication } from '@/lib/registry/handoff-publication';
 import { pushHandoff } from '@/lib/registry/handoff-client';
 import { connectionFor, HANDOFF_PATH, HANDOFF_PROTOCOL, registryConnections, type RegistryConnection } from '@/lib/registry/handoff-contract';
@@ -56,18 +56,21 @@ export function OciPushTo({ disabled = false, onBusyChange, connections: configu
       if (!model) return;
       const target = managed?.destination ?? { registry, repository };
       const connection = connectionFor(target.registry, connections);
-      const previous = useHandoffWorkspace.getState().destinationSession;
-      const authorization = !managed && previous?.registry === target.registry &&
-        resourceAllows(previous, target.repository, 'pull') && resourceAllows(previous, target.repository, 'push')
-        ? { session: previous }
-        : await authorizeDestination(connection, target.repository, controller.signal);
-      controller.signal.throwIfAborted();
-      const { session, publicationToken } = authorization;
-      if (managed && !publicationToken) throw new Error(t('registry.push.openForEdit'));
-      if (!managed) useHandoffWorkspace.setState({ destinationSession: session });
-
       let artifact = uploaded;
-      if (!artifact) {
+      let publicationToken: string | undefined;
+      if (artifact) {
+        publicationToken = await authorizePublicationConfirmation(connection, controller.signal);
+      } else {
+        const previous = useHandoffWorkspace.getState().destinationSession;
+        const authorization = !managed && previous?.registry === target.registry &&
+          resourceAllows(previous, target.repository, 'pull') && resourceAllows(previous, target.repository, 'push')
+          ? { session: previous }
+          : await authorizeDestination(connection, target.repository, controller.signal);
+        controller.signal.throwIfAborted();
+        const { session } = authorization;
+        publicationToken = authorization.publicationToken;
+        if (managed && !publicationToken) throw new Error(t('registry.push.openForEdit'));
+        if (!managed) useHandoffWorkspace.setState({ destinationSession: session });
         const current = useViewerStore.getState();
         const activeId = current.activeModelId ?? (current.models.size === 1 ? current.models.keys().next().value : undefined);
         if (activeId !== model.id) throw new Error(t('registry.push.modelChanged'));

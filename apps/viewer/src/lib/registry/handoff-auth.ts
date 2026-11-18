@@ -99,19 +99,14 @@ export async function exchangeRegistryToken(connection: RegistryConnection, subj
   }
   return resourceSession(response, connection.registry, scope);
 }
-async function redeem(
+function redeem(
   connection: RegistryConnection, tokenEndpoint: string, redirectUri: string,
-  code: string, verifier: string, scope: string, write: boolean, signal: AbortSignal,
-): Promise<DestinationAuthorization> {
-  const authorization = authorizationRequest(connection, scope, write);
-  const reply = await postToken(tokenEndpoint, new URLSearchParams({
+  code: string, verifier: string, resource: string, signal: AbortSignal,
+): Promise<unknown> {
+  return postToken(tokenEndpoint, new URLSearchParams({
     grant_type: 'authorization_code', client_id: connection.client_id, redirect_uri: redirectUri,
-    code, code_verifier: verifier, resource: authorization.resource,
+    code, code_verifier: verifier, resource,
   }), signal);
-  if (!connection.token_exchange) return { session: resourceSession(reply, connection.registry, scope) };
-  const grant = bearerGrant(reply);
-  const session = await exchangeRegistryToken(connection, grant.token, scope, signal);
-  return { session, publicationToken: write && connection.token_exchange.publication_endpoint ? grant.token : undefined };
 }
 export async function prepareHandoff(href: string, signal: AbortSignal, connections = registryConnections()): Promise<string> {
   sessionStorage.removeItem(PENDING);
@@ -142,19 +137,20 @@ export async function finishHandoff(href: string, signal: AbortSignal, connectio
   if (callback.searchParams.getAll('iss').length !== 1 || callback.searchParams.get('iss') !== p.issuer) throw new RegistryError('The authorization response came from another issuer.');
   const code = validateRegistryCallback(href, p.redirectUri, p.state);
   const metadata = await authorizationMetadata(connection, signal);
-  const { session } = await redeem(connection, metadata.token_endpoint, p.redirectUri, code, p.verifier, p.scope, false, signal);
+  const authorization = authorizationRequest(connection, p.scope, false);
+  const reply = await redeem(connection, metadata.token_endpoint, p.redirectUri, code, p.verifier, authorization.resource, signal);
+  const session = connection.token_exchange
+    ? await exchangeRegistryToken(connection, bearerGrant(reply).token, p.scope, signal)
+    : resourceSession(reply, connection.registry, p.scope);
   if (!resourceAllows(session, handoff.source.repository, 'pull')) throw new RegistryError('This account cannot open the selected folder.', 403);
   return { handoff, session };
 }
-/** Each push destination obtains its own resource-bound token; source tokens are never reused. */
-export async function authorizeDestination(connection: RegistryConnection, repository: string, signal: AbortSignal): Promise<DestinationAuthorization> {
-  repositoryName(repository);
+async function destinationGrant(connection: RegistryConnection, authorization: AuthorizationRequest, signal: AbortSignal): Promise<unknown> {
   const popup = window.open('about:blank', 'ifc-lite-oci-push', 'width=520,height=720');
   if (!popup) throw new RegistryError('Allow the sign-in popup and try Push to again.');
   try {
     const metadata = await authorizationMetadata(connection, signal);
-    const redirectUri = new URL(PUSH_CALLBACK, window.location.origin).href, scope = `repository:${repository}:pull repository:${repository}:push`;
-    const authorization = authorizationRequest(connection, scope, true);
+    const redirectUri = new URL(PUSH_CALLBACK, window.location.origin).href;
     const request = await createAuthorizationRequest({ authorizationEndpoint: metadata.authorization_endpoint, clientId: connection.client_id,
       redirectUri, scope: authorization.scope, extraParams: { resource: authorization.resource } });
     signal.throwIfAborted();
@@ -163,9 +159,27 @@ export async function authorizeDestination(connection: RegistryConnection, repos
     const href = await waiting, callback = new URL(href);
     if (callback.searchParams.getAll('iss').length !== 1 || callback.searchParams.get('iss') !== connection.authorization_server) throw new RegistryError('The authorization response came from another issuer.');
     const code = validateRegistryCallback(href, redirectUri, request.state);
-    const result = await redeem(connection, metadata.token_endpoint, redirectUri, code, request.codeVerifier, scope, true, signal);
-    const { session } = result;
-    if (!resourceAllows(session, repository, 'pull') || !resourceAllows(session, repository, 'push')) throw new RegistryError('Ask the owner for permission to view and publish in this folder.', 403);
-    return result;
+    return await redeem(connection, metadata.token_endpoint, redirectUri, code, request.codeVerifier, authorization.resource, signal);
   } finally { popup.close(); }
+}
+
+/** Each push destination obtains its own resource-bound token; source tokens are never reused. */
+export async function authorizeDestination(connection: RegistryConnection, repository: string, signal: AbortSignal): Promise<DestinationAuthorization> {
+  repositoryName(repository);
+  const scope = `repository:${repository}:pull repository:${repository}:push`;
+  const reply = await destinationGrant(connection, authorizationRequest(connection, scope, true), signal);
+  const subject = connection.token_exchange ? bearerGrant(reply).token : undefined;
+  const session = subject
+    ? await exchangeRegistryToken(connection, subject, scope, signal)
+    : resourceSession(reply, connection.registry, scope);
+  if (!resourceAllows(session, repository, 'pull') || !resourceAllows(session, repository, 'push')) {
+    throw new RegistryError('Ask the owner for permission to view and publish in this folder.', 403);
+  }
+  return { session, publicationToken: connection.token_exchange?.publication_endpoint ? subject : undefined };
+}
+
+/** Confirmation can be retried after the file store closes its upload repository. */
+export async function authorizePublicationConfirmation(connection: RegistryConnection, signal: AbortSignal): Promise<string> {
+  if (!connection.token_exchange?.publication_endpoint) throw new RegistryError('No publication endpoint is configured for this file store.');
+  return bearerGrant(await destinationGrant(connection, authorizationRequest(connection, '', true), signal)).token;
 }

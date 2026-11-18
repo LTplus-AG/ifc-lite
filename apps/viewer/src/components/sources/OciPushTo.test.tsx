@@ -61,6 +61,7 @@ test('Save new version retries confirmation without republishing the edited IFC'
   const destination = { registry: registry.origin, repository: staging };
   const scope = `repository:${staging}:pull repository:${staging}:push`;
   const publications: unknown[] = [];
+  let exchangeCount = 0;
   const issuedTokenType = 'urn:ietf:params:oauth:token-type:access_token';
   let providerOrigin = '';
   const provider = await startServer(cors(async (req, res) => {
@@ -82,6 +83,8 @@ test('Save new version retries confirmation without republishing the edited IFC'
       return reply(200, { access_token: 'user-token', token_type: 'Bearer', expires_in: 300 });
     }
     if (req.url === '/exchange') {
+      exchangeCount++;
+      if (publications.length > 0) return reply(403, {});
       const fields = new URLSearchParams(body);
       assert.equal(fields.get('subject_token'), 'user-token');
       assert.equal(fields.get('scope'), scope);
@@ -113,11 +116,11 @@ test('Save new version retries confirmation without republishing the edited IFC'
       token_exchange: { endpoint: provider.origin + '/exchange', publication_endpoint: provider.origin + '/publications',
         authorization_resource: provider.origin + '/files', read_scope: 'openid read', write_scope: 'openid read write' },
     }]} onBusyChange={() => {}} />);
-    function button(text: string) {
+    const button = (text: string) => {
       const item = Array.from(ui.querySelectorAll('button')).find(b => b.textContent === text);
       assert(item);
       return item;
-    }
+    };
     click(button('Save new version'));
     await waitFor(() => Boolean(ui.querySelector('[role=alert]')));
     assert.equal(useHandoffWorkspace.getState().saved, undefined);
@@ -128,6 +131,7 @@ test('Save new version retries confirmation without republishing the edited IFC'
     await waitFor(() => Boolean(useHandoffWorkspace.getState().saved));
     assert.deepEqual(useHandoffWorkspace.getState().saved, { ...source, digest: uploaded.digest });
     assert.equal(registry.requests.length, beforeRetry);
+    assert.equal(exchangeCount, 1);
     assert.deepEqual(publications, [{ source, uploaded }, { source, uploaded }]);
     assert.deepEqual(popup.errors, []);
   } finally {

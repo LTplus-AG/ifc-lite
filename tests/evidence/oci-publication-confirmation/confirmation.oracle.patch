@@ -1,7 +1,7 @@
 diff --git a/apps/viewer/src/components/sources/OciPushTo.tsx b/apps/viewer/src/components/sources/OciPushTo.tsx
 --- a/apps/viewer/src/components/sources/OciPushTo.tsx
 +++ b/apps/viewer/src/components/sources/OciPushTo.tsx
-@@ -78,7 +78,7 @@
+@@ -81,7 +81,7 @@
          if (managed) useHandoffWorkspace.setState({ pendingPublication: { handoff: managed.handoff, artifact } });
        }
        const savedVersion = managed && publicationToken

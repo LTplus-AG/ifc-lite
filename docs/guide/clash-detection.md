@@ -262,3 +262,10 @@ colored rings, counts, rule names, model identities, tolerances and capture time
 The document embeds its images and literal text, so it remains usable after the
 saved report or source models are removed. Older reports without object coverage
 remain readable but do not acquire a retrospective score.
+
+To add a linked result to an existing document, choose **Add block → Quality
+gate** in Documentation. Select the saved check report and its rule. The
+preview and PDF use that run's captured percentages and category policy. After
+saving a revised check, select the new report in the same block to update it
+in place. Moving the block uses the same controls as other document blocks.
+Deleting the source report makes its linked blocks unavailable.

@@ -87,7 +87,7 @@ export async function prepareDocument(document: DocumentSpec, state: ViewerState
   return { document, bindings: { models: [...state.models.values()].flatMap((model) => model.ifcDataStore
     ? [{ id: model.id, name: model.name, store: model.ifcDataStore, view: state.mutationViews.get(model.id) }] : []),
     activeModelId: state.activeModelId, today }, aggregations, chartMessages, chartErrors,
-    tables, topics: state.bcfProject?.topics ?? new Map(),
+    tables, topics: state.bcfProject?.topics ?? new Map(), qualityGateReports: state.savedClashReports,
     snapshotIds: (blockId) => largestBucketIds(aggregations.get(blockId)),
   };
 }

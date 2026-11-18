@@ -30,14 +30,13 @@
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import {
-  bareMeasure, conversionMode, IFC2X3_ACTIONS, isSubtype, namesWithheld, readCarrierSets, slotRef, slotUnset, SourceRecords, stepString, writeCarrierSet,
+  bareMeasure, COEFFICIENTS, conversionMode, IFC2X3_ACTIONS, isSubtype, namesWithheld, readCarrierSets, slotRef, slotUnset, SourceRecords, stepString, writeCarrierSet,
   type ConversionMode, type StructuralRewrite,
 } from './schema-converter-structural-source.js';
 import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
 
 /** The property set an IFC2X3 load group carries when it was an IFC4 IfcStructuralLoadCase. */
 export const LOAD_CASE_PSET = 'IFC4 IfcStructuralLoadCase';
-const COEFFICIENTS = 'SelfWeightCoefficients';
 const CAUSES = 'Causes';
 /** IfcStructuralAction.CausedBy in IFC2X3 (IFC2X3_TC1.exp:7237): slot 10 of every action. */
 const CAUSED_BY = 10;

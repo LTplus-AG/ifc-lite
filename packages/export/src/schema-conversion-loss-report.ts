@@ -92,18 +92,15 @@ export function classifyEntityTypeConversion(
 ): EntityConversionInfo {
   const upper = entityType.toUpperCase();
   const info = classifyByAttributeTables(upper, fromSchema, toSchema);
+  // After every branch: an IFC2X3 action reaches the reordered-attributes one, which is always lossy.
+  if (info.kind !== 'lossy' || info.droppedAttributes.length === 0) return info;
   const carried = carriedAttributes(conversionMode(fromSchema, toSchema), upper);
-  if (info.kind !== 'lossy' || !info.droppedAttributes.some((a) => carried.includes(a))) return info;
   const dropped = info.droppedAttributes.filter((a) => !carried.includes(a));
   if (dropped.length > 0) return { ...info, droppedAttributes: dropped };
   return { ...info, kind: info.targetType === upper ? 'identity' : 'renamed', droppedAttributes: [] };
 }
 
-function classifyByAttributeTables(
-  upper: string,
-  fromSchema: IfcSchemaVersion,
-  toSchema: IfcSchemaVersion,
-): EntityConversionInfo {
+function classifyByAttributeTables(upper: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion): EntityConversionInfo {
   if (fromSchema === toSchema) return { targetType: upper, kind: 'identity', droppedAttributes: [] };
 
   const newType = convertEntityType(upper, fromSchema, toSchema);

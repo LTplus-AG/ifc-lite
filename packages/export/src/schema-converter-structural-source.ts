@@ -21,6 +21,9 @@ export const conversionMode = (from: string, to: string): ConversionMode =>
 /** The IFC2X3 actions with a CausedBy slot (IFC2X3_TC1.exp:7237). */
 export const IFC2X3_ACTIONS: ReadonlySet<string> = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
 
+/** IFC4 IfcStructuralLoadCase.SelfWeightCoefficients, which IFC2X3 has no slot for. */
+export const COEFFICIENTS = 'SelfWeightCoefficients';
+
 const CARRIED = {
   // StructuralCarriers.noteCause, StructuralThickness.note.
   upgrade: new Map<string, readonly string[]>([
@@ -28,7 +31,7 @@ const CARRIED = {
     ['IFCSTRUCTURALSURFACEMEMBERVARYING', ['SubsequentThickness', 'VaryingThicknessLocation']],
   ]),
   // StructuralCarriers.rewrite.
-  downgrade: new Map<string, readonly string[]>([['IFCSTRUCTURALLOADCASE', ['SelfWeightCoefficients']]]),
+  downgrade: new Map<string, readonly string[]>([['IFCSTRUCTURALLOADCASE', [COEFFICIENTS]]]),
 };
 
 /**

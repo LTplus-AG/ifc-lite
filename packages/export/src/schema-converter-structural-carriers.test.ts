@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
 import { LOAD_CASE_PSET } from './schema-converter-structural-carriers.js';
+import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 
 const model = (schema: string, data: string): string =>
   `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [StructuralAnalysisView]'),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;\n${data}\nENDSEC;\nEND-ISO-10303-21;\n`;
@@ -557,5 +558,37 @@ describe('carrier prepass on a truncated property set #9668', () => {
     expect(line(step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADGROUP\(/);
     expect(records(step, 'IFCSTRUCTURALLOADCASE')).toEqual([]);
     for (const id of [32, 33]) expect(line(step, id)).toBeDefined();
+  });
+});
+
+// #10597: the conversion loss preview names an attribute lost exactly when the export does.
+describe('conversion loss report and structural carriers #10597', () => {
+  const preview = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') =>
+    analyzeConversionLoss(await parse(text), from, to).entries.flatMap((e) => e.droppedAttributes.map((a) => `${e.sourceType}.${a}`));
+  const cases = [
+    ['IFCSTRUCTURALLINEARACTION.CausedBy', 'IFC2X3', 'IFC4', `#20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
+#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);`],
+    ['IFCSTRUCTURALSURFACEMEMBERVARYING.SubsequentThickness', 'IFC2X3', 'IFC4', `#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
+#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
+#17=IFCSHAPEASPECT((#16),'Thickness locations',$,.T.,#15);
+#20=IFCSTRUCTURALSURFACEMEMBERVARYING('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',$,$,#9,#15,.SHELL.,0.2,(0.25,0.3),#17);`],
+    ['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients', 'IFC4', 'IFC2X3', `#20=IFCSTRUCTURALLOADCASE('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S',(0.,0.,-1.));`],
+  ] as const;
+
+  it.each(cases)('does not report %s lost, as the export keeps it', async (carried, from, to, data) => {
+    const text = model(from, `${OWNER}\n${data}`);
+    expect((await convert(text, to)).warnings).not.toContain(`${carried} has no slot`);
+    expect(await preview(text, from, to)).not.toContain(carried);
+  });
+
+  it('still reports SharedPlacement lost into IFC2X3, as the export does', async () => {
+    const text = model('IFC4', `${OWNER}
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#9,$,.RIGID_JOINED_MEMBER.,$);
+#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);
+#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#20),$,#30);`);
+    expect((await convert(text, 'IFC2X3')).warnings).toContain('IFCSTRUCTURALANALYSISMODEL.SharedPlacement has no slot in IFC2X3');
+    expect(await preview(text, 'IFC4', 'IFC2X3')).toContain('IFCSTRUCTURALANALYSISMODEL.SharedPlacement');
   });
 });

@@ -234,6 +234,7 @@ export const scheduleIt = {
   "schedule.animation.taskType.disposal": "Smaltimento",
   "schedule.animation.taskType.userDefined": "Definito dall'utente",
   "schedule.animation.taskType.notDefined": "Non definito",
+  "schedule.panel.pendingSourceSchedule": "Il diagramma di Gantt mostra le modifiche in sospeso. Le modifiche alla pianificazione IFC di questo modello devono essere riconciliate separatamente.",
   "schedule.panel.importReplaceWarning": "Importare \"{fileName}\" sostituirà il programma attuale e la sua cronologia di annullamento.",
   "schedule.panel.replace": "Sostituisci",
   "schedule.panel.cancel": "Annulla"

@@ -248,6 +248,7 @@ const RESET = {
   lensColorMap: new Map(),
   lensHiddenIds: new Set<number>(),
   lensRuleIsolation: null,
+  isolatedEntities: null,
   lensRuleCounts: new Map(),
   lensAutoColorLegend: [] as AutoColorLegendEntry[],
   discoveredLensData: null,
@@ -396,6 +397,7 @@ describe('Lens panel localization (#4918)', () => {
       activeLensId: 'lens-rules',
       lensRuleCounts: new Map([['r1', 5], ['r2', 0]]),
       lensRuleIsolation: { ruleId: 'r1', entityIds: [1, 2, 3] },
+      isolatedEntities: new Set([1, 2, 3]),
     });
     const container = render(<LensPanel />);
     const english = chromeStrings(container);
@@ -415,6 +417,9 @@ describe('Lens panel localization (#4918)', () => {
     assertMarked(after, 'lensPanel.card.ruleCount', { count: 2 });
     assertMarked(after, 'lensPanel.card.editTooltip');
     assertMarked(after, 'lensPanel.card.deleteTooltip');
+
+    act(() => useViewerStore.getState().isolateEntities([4]));
+    assert.ok([...chromeStrings(container)].every(value => !value.includes('lensPanel.isolatedBadge')));
   });
 
   it('auto-color lens card: active shows legend rows, isolate tooltip, sort control, and legend count', () => {

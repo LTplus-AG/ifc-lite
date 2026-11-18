@@ -105,10 +105,11 @@ impl Source {
                     source.groups.extend(read_group(&text));
                 }
             } else if action || placed {
-                let Some(args) = record(content, start, end) else { continue };
-                if ty == MODEL { if args.len() == 9 { source.placed.insert(id, MODEL_WITH_NINE); } }
-                else if placed { source.placed.insert(id, args.get(OBJECT_PLACEMENT).and_then(|a| slot_ref(a)).unwrap_or(0)); }
-                else { source.actions.push((id, ty.clone(), args)); }
+                // An unreadable record keeps its type: an item with no placement, a model of no known shape.
+                let args = record(content, start, end);
+                if ty == MODEL { if args.as_ref().is_some_and(|a| a.len() == 9) { source.placed.insert(id, MODEL_WITH_NINE); } }
+                else if placed { source.placed.insert(id, args.as_ref().and_then(|a| a.get(OBJECT_PLACEMENT)).and_then(|a| slot_ref(a)).unwrap_or(0)); }
+                else if let Some(args) = args { source.actions.push((id, ty.clone(), args)); }
             }
             if structural { source.types.insert(id, ty); }
         }
@@ -149,6 +150,8 @@ fn common_placement(source: &Source, content: &[u8], placed: &[(u32, u32)]) -> O
     let mut first: Option<Vec<String>> = None;
     let mut lowest = u32::MAX;
     for &(_, placement) in placed {
+        // Items mostly share one placement; it is read once.
+        if placement == lowest { continue; }
         let &(start, end) = source.local.get(&placement)?;
         let args = record(content, start, end)?;
         if let Some(first) = &first {

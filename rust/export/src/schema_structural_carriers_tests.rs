@@ -277,3 +277,11 @@ fn reports_a_shared_placement_ifc2x3_cannot_hold_as_lost_9668() {
 #31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#20),$,#30);");
     assert!(convert(&ifc4, "IFC2X3").1.contains("IFCSTRUCTURALANALYSISMODEL.SharedPlacement has no slot in IFC2X3; its value is omitted"));
 }
+
+#[test]
+fn reads_no_placement_when_a_grouped_item_cannot_be_read_10597() {
+    // A slot holding only a comment does not split, so the item's placement is unknown.
+    let unread = shared("#9", "(#20,#21,#22)").replace(",'N',$,$,#9,$,$);", ",'N',$,$,#9,/* */,$);");
+    let (up, _) = convert(&unread, "IFC4");
+    assert!(record(&up, 30).ends_with(",$);"), "{up}");
+}

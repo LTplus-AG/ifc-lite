@@ -15,6 +15,8 @@ import {
   type WorkScheduleInfo,
 } from '@ifc-lite/parser';
 import { cleanup, render } from '@/test/render.js';
+import { getLocale, registerLocale, setLocale } from '@/i18n/registry';
+import { scheduleEn } from '@/i18n/catalogues/schedule.en';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { GanttPanel } from './GanttPanel.js';
 
@@ -119,6 +121,35 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
 
     assert.match(ui.textContent ?? '', /Federated fit-out plan.*No nested schedules/);
     assert.doesNotMatch(ui.textContent ?? '', /Delivery plan/);
+  });
+
+  it('#10584 shows a localized notice while preserving a pending schedule over IFC data', async () => {
+    const sourceSchedule = control('WorkSchedule', 'source', 'IFC programme');
+    const store = await parseSchedule([sourceSchedule]);
+    const active = model('model-pending', store, 0);
+    const task: ScheduleTaskInfo = {
+      expressId: 0, globalId: 'pending-task', name: 'Pending task', isMilestone: false,
+      childGlobalIds: [], productExpressIds: [], productGlobalIds: [], controllingScheduleGlobalIds: [sourceSchedule.globalId],
+    };
+    useViewerStore.setState({ models: new Map([[active.id, active]]), activeModelId: active.id, ifcDataStore: store });
+    useViewerStore.getState().commitGeneratedSchedule({
+      hasSchedule: true, workSchedules: [sourceSchedule], tasks: [task], sequences: [], workCalendars: [],
+    }, active.id);
+    const previousLocale = getLocale();
+    const key = 'schedule.panel.pendingSourceSchedule';
+    try {
+      setLocale('en');
+      const ui = render(<GanttPanel />);
+      assert.ok(ui.textContent?.includes(scheduleEn[key]));
+      assert.equal(useViewerStore.getState().scheduleData?.tasks[0]?.globalId, task.globalId);
+
+      registerLocale('pending-gantt-pseudo', { [key]: 'Localized pending schedule notice' });
+      act(() => setLocale('pending-gantt-pseudo'));
+      assert.ok(ui.textContent?.includes('Localized pending schedule notice'));
+    } finally {
+      cleanup();
+      setLocale(previousLocale);
+    }
   });
 
   it('distinguishes an empty selected schedule from a model with no IfcTask records (#4834)', async () => {

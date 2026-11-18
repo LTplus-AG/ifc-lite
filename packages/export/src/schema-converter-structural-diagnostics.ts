@@ -126,6 +126,17 @@ export class StructuralDiagnostics {
     return rewrite.body;
   }
 
+  /**
+   * The attributes of one source record the target holds elsewhere, decided as
+   * `rewrite` decides them, without writing anything. For a preview of the
+   * export (`analyzeConversionLoss`).
+   */
+  held(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): readonly string[] {
+    const cause = !this.varying.staysUnconverted(entity, args) && this.carriers.causeOf(entity, args, withheld) !== null;
+    if (cause || this.thickness.holds(id, entity, args, withheld)) return carriedAttributes('upgrade', entity);
+    return this.carriers.holdsLoadCase(entity, args, withheld) ? carriedAttributes('downgrade', entity) : [];
+  }
+
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }
   warnings(): string[] { return [...this.losses].sort(([a], [b]) => a.localeCompare(b)).map(([message, count]) => `${count} structural conversion record(s): ${message} (#9668).`); }
 }

@@ -68,7 +68,7 @@ describeFixture(
       // IFC2X3 never defined a curve/surface reaction entity at all.
       expect(byType.get('IFCSTRUCTURALCURVEREACTION')).toMatchObject({ kind: 'proxied', count: 3 });
 
-      // A property set carries the load case's SelfWeightCoefficients (#10597).
+      // The export carries the load case's SelfWeightCoefficients in a property set (#10597).
       expect(byType.has('IFCSTRUCTURALLOADCASE')).toBe(false);
 
       // Lossy (this PR's fix): renamed with a real IFC2X3 target, but not

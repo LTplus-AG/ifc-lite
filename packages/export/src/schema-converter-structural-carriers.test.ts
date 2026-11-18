@@ -583,6 +583,19 @@ describe('conversion loss report and structural carriers #10597', () => {
     expect(await preview(text, from, to)).not.toContain(carried);
   });
 
+  // The same records, each changed so its carrier declines it.
+  const declined = [
+    { lost: cases[0][0], from: 'IFC2X3', to: 'IFC4', data: cases[0][3].replace(',.F.,#20,', ',.F.,#9,'), why: 'CausedBy names no point reaction' },
+    { lost: cases[1][0], from: 'IFC2X3', to: 'IFC4', data: cases[1][3].replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), why: 'no thickness location' },
+    { lost: cases[2][0], from: 'IFC4', to: 'IFC2X3', data: cases[2][3].replace('(0.,0.,-1.)', '(0.,-1.)'), why: 'two coefficients' },
+  ] as const;
+
+  it.each(declined)('reports $lost lost when the export does ($why)', async ({ lost, from, to, data }) => {
+    const text = model(from, `${OWNER}\n${data}`);
+    expect((await convert(text, to)).warnings).toContain(`${lost} has no slot`);
+    expect(await preview(text, from, to)).toContain(lost);
+  });
+
   it('still reports SharedPlacement lost into IFC2X3, as the export does', async () => {
     const text = model('IFC4', `${OWNER}
 #20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#9,$,.RIGID_JOINED_MEMBER.,$);

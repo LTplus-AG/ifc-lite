@@ -159,13 +159,24 @@ export class StructuralCarriers {
       if (coefficients !== undefined) return { body: `IFCSTRUCTURALLOADCASE(${[...args, coefficients].join(',')})`, losses: [LOAD_CASE_READ] };
       const placement = this.shared.get(id);
       if (placement !== undefined) return { body: `IFCSTRUCTURALANALYSISMODEL(${[...args, `#${placement}`].join(',')})`, losses: [SHARED_PLACEMENT] };
-    } else if (this.mode === 'downgrade' && entity === 'IFCSTRUCTURALLOADCASE' && args.length === 11 && this.ids && !namesWithheld(args, withheld)) {
-      const property = coefficientsProperty(args[10]);
-      if (property === null) return undefined;
+    } else {
+      const property = this.loadCaseProperty(entity, args, withheld);
+      if (property === null || !this.ids) return undefined;
       this.pending.push(...writeCarrierSet(this.ids, `ifc4-load-case:${args[0].trim()}`, args[1], LOAD_CASE_PSET, id, [property]));
       return { body: `IFCSTRUCTURALLOADGROUP(${args.slice(0, 10).join(',')})`, losses: [LOAD_CASE_WRITTEN] };
     }
     return undefined;
+  }
+
+  /** IFC4 -> IFC2X3: the carrier property for a load case's SelfWeightCoefficients, or null. Writes nothing. */
+  private loadCaseProperty(entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
+    if (this.mode !== 'downgrade' || entity !== 'IFCSTRUCTURALLOADCASE' || args.length !== 11 || !this.ids || namesWithheld(args, withheld)) return null;
+    return coefficientsProperty(args[10]);
+  }
+
+  /** Whether `rewrite` holds this load case's SelfWeightCoefficients in a property set. */
+  holdsLoadCase(entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+    return this.loadCaseProperty(entity, args, withheld) !== null;
   }
 
   /**

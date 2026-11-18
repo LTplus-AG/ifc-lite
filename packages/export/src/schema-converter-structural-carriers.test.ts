@@ -448,7 +448,9 @@ ENDSEC;\nEND`);
     const report = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4');
     const entries = report.entries.filter((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING');
     expect(entries).toHaveLength(1);
-    expect(entries[0].recordGroups?.map((g) => [g.targetType, g.expressIds])).toEqual([['IFCSTRUCTURALCURVEACTION', [30]], ['IFCSTRUCTURALLINEARACTIONVARYING', [31]]]);
+    expect(entries[0].recordGroups?.map((g) => [g.targetType, g.expressIds, g.droppedAttributes])).toEqual([
+      ['IFCSTRUCTURALCURVEACTION', [30], ['CausedBy']], ['IFCSTRUCTURALLINEARACTIONVARYING', [31], ['CausedBy']],
+    ]);
     expect(report.describe().filter((d) => d.includes('CausedBy'))).toEqual([
       expect.stringContaining('IFCSTRUCTURALLINEARACTIONVARYING → IFCSTRUCTURALCURVEACTION (#30)'),
       expect.stringContaining('IFCSTRUCTURALLINEARACTIONVARYING → IFCSTRUCTURALLINEARACTIONVARYING (#31)'),

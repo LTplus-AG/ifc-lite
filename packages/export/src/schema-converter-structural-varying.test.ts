@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter, exportToStep } from './step-exporter.js';
+import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 
 const model = (schema: string, data: string): string =>
   `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [StructuralAnalysisView]'),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;\n${data}\nENDSEC;\nEND-ISO-10303-21;\n`;
@@ -46,6 +47,22 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
 #31=IFCSTRUCTURALCURVEACTION('1d2HL$ILbNDhwyUI0qw12$',$,'Sinus',$,$,$,#10,#25,.GLOBAL_COORDS.,.F.,$,.SINUS.);`);
     const awaitedStore = await parse(source);
     expect(() => exportToStep(awaitedStore, { schema: 'IFC2X3' })).toThrow(/IFCSTRUCTURALLOADCONFIGURATION/);
+  });
+
+  // #10715: the writer converts only a record on one line (STEP_RECORD) and passes a split one
+  // through as it is, still naming the configuration IFC2X3 cannot hold, so the export refuses.
+  it('refuses a configuration named by an action split over lines, its only referrer', async () => {
+    const config = '#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);';
+    const action = (sep: string, type = '.LINEAR.') => `#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,${sep}.GLOBAL_COORDS.,.F.,$,${type});`;
+    for (const type of ['.LINEAR.', '.SINUS.']) {
+      const store = await parse(model('IFC4', `${SHARED}\n${config}\n${action('\n  ', type)}`));
+      expect(() => exportToStep(store, { schema: 'IFC2X3' }), type).toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
+    }
+    // The preview agrees: no carrier writes the split action, so the configuration's Values are lost, which one line keeps.
+    const values = async (sep: string) => analyzeConversionLoss(await parse(model('IFC4', `${SHARED}\n${config}\n${action(sep)}`)), 'IFC4', 'IFC2X3')
+      .entries.find((e) => e.sourceType === 'IFCSTRUCTURALLOADCONFIGURATION')?.droppedAttributes;
+    expect(await values('\n  ')).toEqual(['Name', 'Values', 'Locations']);
+    expect(await values('')).toEqual(['Name', 'Locations']);
   });
 
   it('requires one aspect representation per load in both directions (B)', async () => {

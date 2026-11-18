@@ -55,7 +55,7 @@ export class StructuralDiagnostics {
    */
   fromStore(store: SourceStore, from: string, to: string, source = new SourceRecords(store)): void {
     if (from !== 'IFC2X3') this.links.fromStore(store);
-    this.varying.fromStore(store, from, to);
+    this.varying.fromStore(store, from, to, source);
     this.axes.fromStore(source, from, to);
     this.carriers.fromStore(source, from, to);
     this.thickness.fromStore(source, from, to);

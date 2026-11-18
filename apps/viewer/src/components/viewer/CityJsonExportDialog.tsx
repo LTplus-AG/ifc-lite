@@ -16,7 +16,7 @@ import type { ExportSurface } from '@/lib/analytics-export-events';
 import { downloadBlob } from '@/lib/export/download';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { cityJsonEngine, cityJsonFilename, produceNativeCityJson, type CityJsonEngine } from '@/lib/export/native-cityjson';
-import { hasGeorefEdits, isStepSourceModel } from './step-export-source';
+import { hasGeorefEdits, isStepSourceModel, writesSessionGeoref } from './step-export-source';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
 
@@ -39,7 +39,7 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
   const effective = useMemo(() => (open && model ? getEffectiveGeoreference(model.ifcDataStore, undefined, georefMutations) : null),
     [open, model, georefMutations]);
   const localCoordinates = open && !!model && !effective?.hasGeoreference;
-  const sessionCrs = hasGeorefEdits(georefMutations) ? effective?.projectedCRS?.name.trim() || null : null;
+  const sessionCrs = model && writesSessionGeoref(model) && hasGeorefEdits(georefMutations) ? effective?.projectedCRS?.name.trim() || null : null;
 
   async function handleExport(): Promise<ExportDialogShellResult> {
     if (!model) return { success: false, message: t('cityJsonExport.noSource') };

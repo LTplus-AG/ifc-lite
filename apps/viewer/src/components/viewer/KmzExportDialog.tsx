@@ -161,7 +161,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
         geometryResult: selectedModel.geometryResult,
         instancedModelRange: selectedModel.instancedModelRange,
         dataStore: selectedModel.dataStore,
-        mutations: georefMutations.get(selectedModelId),
+        mutations: georefMutations.get(selectedModel.id),
         name: baseName,
         altitudeMode,
       });

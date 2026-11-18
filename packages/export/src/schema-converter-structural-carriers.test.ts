@@ -615,6 +615,28 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     }
   });
 
+  it('gives back the source records through a tilted frame, writing no float noise', async () => {
+    const tilted = ifc4(`#37=IFCDIRECTION((0.2,0.3,0.9));
+#38=IFCDIRECTION((1.,0.5,0.));
+#39=IFCAXIS2PLACEMENT3D(#7,#37,#38);
+#40=IFCLOCALPLACEMENT($,#39);
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#40,$,.RIGID_JOINED_MEMBER.,#36);`);
+    const down = await convert(tilted, 'IFC2X3');
+    expect(carrier(down.step, 20).orientation).not.toMatch(/E-1[0-9]/);
+    const up = await convert(down.step, 'IFC4');
+    expect(data(up.step)).toEqual(data(tilted));
+  });
+
+  it('carries an Axis an association holds at another length', async () => {
+    const held = UNPLACED.replace('#20=', `#37=IFCDIRECTION((0.,0.,2.));
+#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,(#20),#40,$,#37);
+#20=`);
+    const down = await convert(held, 'IFC2X3');
+    expect(down.warnings).not.toContain('IFCSTRUCTURALCURVEMEMBER.Axis has no slot in IFC2X3');
+    expect(records(down.step, 'IFCRELASSOCIATESPROFILEPROPERTIES').filter((l) => l.includes('(#20)'))).toEqual([line(held, 41)]);
+  });
+
   it('fills the unset orientation of an association the member already has, and adds none', async () => {
     const own = PLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
 #41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,(#20),#40,$,$);
@@ -628,6 +650,17 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     const up = await convert(down.step, 'IFC4');
     expect(line(up.step, 20)).toBe(line(own, 20));
     expect(line(up.step, 40)).toBe(line(own, 40));
+  });
+
+  it('reports the Axis lost, and writes no direction, when the association it would fill is refused', async () => {
+    // The IFC4-only material profile is withheld from IFC2X3, so an association naming it cannot be written as filled.
+    const refused = PLACED.replace('#20=', `#42=IFCMATERIAL('Steel',$,$);
+#40=IFCMATERIALPROFILE($,$,#42,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,(#20),#40,$,$);
+#20=`);
+    const down = await convert(refused, 'IFC2X3');
+    expect(down.warnings).toContain('IFCSTRUCTURALCURVEMEMBER.Axis has no slot in IFC2X3; its value is omitted');
+    expect(records(down.step, 'IFCDIRECTION')).toHaveLength(records(refused, 'IFCDIRECTION').length + 1);
   });
 
   it('keeps an association whose orientation already holds the Axis, and reports one that holds another as lost', async () => {

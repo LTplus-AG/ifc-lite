@@ -25,6 +25,7 @@
 import { firstProjAxis, formatStepReal, walkPlacementChain } from '@ifc-lite/data';
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { readStepSlots } from './step-argument-parser.js';
+import { EPS, OBJECT_PLACEMENT, type Vec3 } from './schema-ifc2x3-records.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 // A cycle with the source module, which reads lists here; only functions cross it, called after load.
 import { conversionMode, namesWithheld, slotRef, slotUnset, stepString, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
@@ -34,15 +35,10 @@ const AXIS_CARRIER = 'IFC4 Axis';
 const AXIS_WRITTEN = `IFC4 Axis is written as IfcRelAssociatesProfileProperties.ProfileOrientation in the analysis model frame`;
 const MEMBERS = new Set(['IFCSTRUCTURALCURVEMEMBER', 'IFCSTRUCTURALCURVEMEMBERVARYING']);
 const RELATION = 'IFCRELASSOCIATESPROFILEPROPERTIES';
-const OBJECT_PLACEMENT = 5;
 /** IFC4 IfcStructuralCurveMember.Axis. */
 const AXIS = 8;
 /** IfcRelAssociatesProfileProperties.RelatedObjects, RelatingProfileProperties, ProfileOrientation. */
 const RELATED = 4, PROPERTIES = 5, ORIENTATION = 7;
-/** How far apart two direction ratios may be and still be the same direction. */
-const EPS = 1e-9;
-
-type Vec3 = [number, number, number];
 /** A rotation as the images of the local x, y and z axes. */
 type Frame = [Vec3, Vec3, Vec3];
 const IDENTITY: Frame = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
@@ -73,11 +69,15 @@ const apply = (f: Frame, v: Vec3): Vec3 => [0, 1, 2].map((i) => f[0][i] * v[0] +
 /** `v` in the parent's coordinates, in local ones. */
 const unapply = (f: Frame, v: Vec3): Vec3 => [dot(f[0], v), dot(f[1], v), dot(f[2], v)];
 const isIdentity = (f: Frame): boolean => f.every((axis, i) => axis.every((x, j) => x === (i === j ? 1 : 0)));
-const near = (a: Vec3, b: Vec3): boolean => a.every((x, i) => Math.abs(x - b[i]) <= EPS * Math.max(1, Math.abs(x)));
+/** Whether two directions point the same way, whatever their lengths. */
+const same = (a: Vec3, b: Vec3): boolean => {
+  const [ua, ub] = [unit(a), unit(b)];
+  return !!ua && !!ub && ua.every((x, i) => Math.abs(x - ub[i]) <= EPS);
+};
 /** A key equal for directions whose ratios agree to 12 digits. */
 const key = (v: Vec3): string => tuple(v, 12);
-/** Ratios as STEP, with the float noise of a turn rounded away. */
-const tuple = (v: Vec3, digits = 15): string => `(${v.map((x) => formatStepReal(Number(x.toPrecision(digits)) || 0)).join(',')})`;
+/** Ratios as STEP, with the float noise of a turn rounded away: a ratio within EPS of zero is zero. */
+const tuple = (v: Vec3, digits = 15): string => `(${v.map((x) => formatStepReal(Math.abs(x) < EPS ? 0 : Number(x.toPrecision(digits)))).join(',')})`;
 
 export class StructuralAxes {
   /** The exporter's express-id allocator, shared with every other record it appends. */
@@ -97,8 +97,8 @@ export class StructuralAxes {
   private readonly consumed = new Set<number>();
   /** Downgrade: association id -> the Axis that fills its unset orientation. */
   private readonly fills = new Map<number, Plan>();
-  /** Downgrade: member id -> its Axis and where it travels: an association it has, or a new one (null). */
-  private readonly carried = new Map<number, Plan & { into: number | null }>();
+  /** Downgrade: member id -> its Axis and where it travels: an association it has (with its slots), or a new one (null). */
+  private readonly carried = new Map<number, Plan & { into: number | null; intoArgs?: readonly string[] }>();
 
   /** Reads one IFC2X3 record; `fromStore` reads them all. */
   note(line: string): void {
@@ -133,7 +133,9 @@ export class StructuralAxes {
     }
     for (const id of rels) this.readRelation(source.type(id), source.slots(id));
     for (const [member, orientation] of this.axes) {
-      const frame = orientation !== null && MEMBERS.has(source.type(member) ?? '') && this.direction(source, orientation) ? frames(source.slots(member)?.[OBJECT_PLACEMENT]) : null;
+      const args = MEMBERS.has(source.type(member) ?? '') ? source.slots(member) : undefined;
+      // `axis` reads only an IFC2X3 member (8 slots), so only its carrier may go.
+      const frame = orientation !== null && args?.length === 8 && this.direction(source, orientation) ? frames(args[OBJECT_PLACEMENT]) : null;
       if (frame) this.memberFrames.set(member, frame);
     }
     this.findCarriers(source, rels);
@@ -211,16 +213,16 @@ export class StructuralAxes {
       const held = slotRef(args[ORIENTATION]);
       if (held !== null) {
         const value = this.direction(source, held);
-        if (value && near(value, plan.world)) this.carried.set(member, { ...plan, into: rel });
+        if (value && same(value, plan.world)) this.carried.set(member, { ...plan, into: rel, intoArgs: args });
         continue;
       }
       if (!slotUnset(args[ORIENTATION])) continue;
       if (!agreed.has(rel)) {
         const related = listItems(args[RELATED])?.map(slotRef) ?? [];
-        agreed.set(rel, related.every((m) => m !== null && plans.has(m) && near(plans.get(m)!.world, plan.world) && owned.get(m)!.length === 1));
+        agreed.set(rel, related.every((m) => m !== null && plans.has(m) && same(plans.get(m)!.world, plan.world) && owned.get(m)!.length === 1));
       }
       if (!agreed.get(rel)) continue;
-      this.carried.set(member, { ...plan, into: rel });
+      this.carried.set(member, { ...plan, into: rel, intoArgs: args });
       if (!this.fills.has(rel)) this.fills.set(rel, plan);
     }
   }
@@ -266,7 +268,8 @@ export class StructuralAxes {
   /** IFC4 -> IFC2X3: the message when this member's Axis travels in an association, writing a new one when it needs it; else null. */
   hold(id: number, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
     const plan = this.carried.get(id);
-    if (!plan || !this.ids || namesWithheld([args[1], args[AXIS]], withheld) || (plan.into !== null && withheld?.has(plan.into))) return null;
+    // A record naming a withheld id is refused or proxied, so neither the member nor its association may carry it.
+    if (!plan || !this.ids || namesWithheld(args, withheld) || namesWithheld(plan.intoArgs, withheld)) return null;
     if (plan.into === null) {
       const props = this.ids(), rel = this.ids();
       const guid = deterministicGlobalId(`ifc4-axis:${args[0].trim()}`);
@@ -278,10 +281,10 @@ export class StructuralAxes {
   }
 
   /** The target body of a carrier record: left out on the upgrade, an association given the orientation on the downgrade. */
-  rewrite(id: number, args: readonly string[]): StructuralRewrite | undefined {
+  rewrite(id: number, args: readonly string[], withheld: ReadonlySet<number> | undefined): StructuralRewrite | undefined {
     if (this.consumed.has(id)) return { body: null, losses: [] };
     const plan = this.fills.get(id);
-    if (!plan || !this.ids) return undefined;
+    if (!plan || !this.ids || namesWithheld(args, withheld)) return undefined;
     return { body: `${RELATION}(${[...args.slice(0, ORIENTATION), this.worldDirection(plan)].join(',')})`, losses: [] };
   }
 

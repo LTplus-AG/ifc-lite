@@ -267,9 +267,8 @@ export class StructuralAxes {
 
   /** IFC4 -> IFC2X3: the message when this member's Axis travels in an association, writing a new one when it needs it; else null. */
   hold(id: number, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
-    const plan = this.carried.get(id);
-    // A record naming a withheld id is refused or proxied, so neither the member nor its association may carry it.
-    if (!plan || !this.ids || namesWithheld(args, withheld) || namesWithheld(plan.intoArgs, withheld)) return null;
+    const plan = this.holds(id, args, withheld) ? this.carried.get(id) : undefined;
+    if (!plan || !this.ids) return null;
     if (plan.into === null) {
       const props = this.ids(), rel = this.ids();
       const guid = deterministicGlobalId(`ifc4-axis:${args[0].trim()}`);
@@ -278,6 +277,13 @@ export class StructuralAxes {
         `#${rel}=${RELATION}('${guid}',${args[1]},'${AXIS_CARRIER}',$,(#${id}),#${props},$,${orientation});`);
     }
     return AXIS_WRITTEN;
+  }
+
+  /** Whether `hold` carries this member's Axis, without writing anything. */
+  holds(id: number, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {
+    const plan = this.carried.get(id);
+    // A record naming a withheld id is refused or proxied, so neither the member nor its association may carry it.
+    return !!plan && !!this.ids && !namesWithheld(args, withheld) && !namesWithheld(plan.intoArgs, withheld);
   }
 
   /** The target body of a carrier record: left out on the upgrade, an association given the orientation on the downgrade. */

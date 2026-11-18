@@ -112,7 +112,7 @@ export class StructuralDiagnostics {
     const cause = this.causes(entity, args, withheld) ? this.carriers.noteCause(id, entity, args, withheld) : null;
     const thickness = cause ? [] : this.thickness.note(id, entity, args, withheld);
     const axis = cause || thickness.length ? null : this.axes.hold(id, args, withheld);
-    const held = cause ? carriedAttributes('upgrade', entity) : axis ? ['Axis'] : thickness;
+    const held = cause ? carriedAttributes('upgrade', entity) : axis ? carriedAttributes('downgrade', entity) : thickness;
     let carried = NONE;
     if (held.length) {
       carried = new Set(held);
@@ -143,7 +143,8 @@ export class StructuralDiagnostics {
     const entity = this.source?.type(id), args = this.source?.slots(id);
     if (!entity || !args) return [];
     if (this.causes(entity, args, withheld) || this.thickness.holds(id, entity, args, withheld)) return carriedAttributes('upgrade', entity);
-    return this.carriers.holdsLoadCase(entity, args, withheld) ? carriedAttributes('downgrade', entity) : [];
+    const downgrade = this.carriers.holdsLoadCase(entity, args, withheld) || this.axes.holds(id, args, withheld);
+    return downgrade ? carriedAttributes('downgrade', entity) : [];
   }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }

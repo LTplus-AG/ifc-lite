@@ -238,7 +238,10 @@ function uncarriedIds(
   diagnostics.ids = () => { throw new Error('analyzeConversionLoss writes no records'); };
   const withheld = computeWithheldRefIds(full, toSchema);
   return (type, ids, dropped) => !dropped.length || !carriedAttributes(mode, type).length ? ids
-    : ids.filter((id) => !dropped.every((a) => diagnostics.held(id, withheld).includes(a)));
+    : ids.filter((id) => {
+      const held = diagnostics.held(id, withheld);
+      return !dropped.every((a) => held.includes(a));
+    });
 }
 
 /**

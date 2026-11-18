@@ -575,6 +575,8 @@ describe('conversion loss report and structural carriers #10597', () => {
 #17=IFCSHAPEASPECT((#16),'Thickness locations',$,.T.,#15);
 #20=IFCSTRUCTURALSURFACEMEMBERVARYING('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',$,$,#9,#15,.SHELL.,0.2,(0.25,0.3),#17);`],
     ['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients', 'IFC4', 'IFC2X3', `#20=IFCSTRUCTURALLOADCASE('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S',(0.,0.,-1.));`],
+    ['IFCSTRUCTURALCURVEMEMBER.Axis', 'IFC4', 'IFC2X3', `#35=IFCDIRECTION((0.,0.,1.));
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,$,$,.RIGID_JOINED_MEMBER.,#35);`],
   ] as const;
 
   it.each(cases)('does not report %s lost, as the export keeps it', async (carried, from, to, data) => {
@@ -588,6 +590,10 @@ describe('conversion loss report and structural carriers #10597', () => {
     { lost: cases[0][0], from: 'IFC2X3', to: 'IFC4', data: cases[0][3].replace(',.F.,#20,', ',.F.,#9,'), why: 'CausedBy names no point reaction' },
     { lost: cases[1][0], from: 'IFC2X3', to: 'IFC4', data: cases[1][3].replace('(0.25,0.3),#17)', '(0.25,0.3),$)'), why: 'no thickness location' },
     { lost: cases[2][0], from: 'IFC4', to: 'IFC2X3', data: cases[2][3].replace('(0.,0.,-1.)', '(0.,-1.)'), why: 'two coefficients' },
+    { lost: cases[3][0], from: 'IFC4', to: 'IFC2X3', data: cases[3][3].replace('#20=', `#42=IFCMATERIAL('Steel',$,$);
+#40=IFCMATERIALPROFILE($,$,#42,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,(#20),#40,$,$);
+#20=`), why: 'its association is refused' },
   ] as const;
 
   it.each(declined)('reports $lost lost when the export does ($why)', async ({ lost, from, to, data }) => {

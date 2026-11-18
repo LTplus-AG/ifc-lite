@@ -30,8 +30,11 @@ const CARRIED = {
     ...[...IFC2X3_ACTIONS].map((t): [string, readonly string[]] => [t, ['CausedBy']]),
     ['IFCSTRUCTURALSURFACEMEMBERVARYING', ['SubsequentThickness', 'VaryingThicknessLocation']],
   ]),
-  // StructuralCarriers.rewrite.
-  downgrade: new Map<string, readonly string[]>([['IFCSTRUCTURALLOADCASE', [COEFFICIENTS]]]),
+  // StructuralCarriers.rewrite, StructuralAxes.hold.
+  downgrade: new Map<string, readonly string[]>([
+    ['IFCSTRUCTURALLOADCASE', [COEFFICIENTS]],
+    ...['IFCSTRUCTURALCURVEMEMBER', 'IFCSTRUCTURALCURVEMEMBERVARYING'].map((t): [string, readonly string[]] => [t, ['Axis']]),
+  ]),
 };
 
 /**

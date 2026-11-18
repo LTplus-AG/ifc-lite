@@ -5,7 +5,7 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r12.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r13.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
@@ -18,7 +18,7 @@ A failed build is a harness error, never a product score. Without wasm-pack, `bu
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
 wasm toolchain. The toggle probe also loads the viewer’s Node test adapter.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r12.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r13.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -157,3 +157,5 @@ R5 adds 74 edit and 74 remove passes to R4, for 469.5/774 cells. R4 render cover
 [R11 derived supports](baseline/r11-notes.md): derivation guesses supports only where a lowest-level run bears, so the roof truss derives AxisVM's two heel supports; 109.5/119 rows and 760/774 cells. R0 to R10 remain retained.
 
 [R12 final round](baseline/r12-notes.md): the IFC2X3 coverage fixture gives one location per varying load, so both varying actions and their relationships convert (111/119 rows, 762/774 cells), and every remaining unmet cell is labelled by a cited limit except two reachable `Axis` cells. R0 to R11 remain retained.
+
+[R13 curve member Axis](baseline/r13-notes.md): the IFC4 -> IFC2X3 converter carries a curve member's `Axis` as `ProfileOrientation`, so the varying member converts (111.5/119 rows, 762.5/774 cells) and no reachable cell is left. R0 to R12 remain retained.

@@ -142,9 +142,9 @@
  * accepts. The decision stays a grep-able line in the diff, which a structural
  * carve-out never would be.
  */
-
 import ts from 'typescript';
 import { isModuleSpecifierLiteral } from './source-text-assertion-module-specifier.mjs';
+import { callsImportedModule } from './source-text-assertion-import-receiver.mjs';
 
 /**
  * The taint source: a disk read, however the call is qualified. This used to be
@@ -470,7 +470,7 @@ function computeTainted(sourceFile) {
 
       // A tainted argument taints the parameter it lands in.
       const named = byName.get(calleeName(call.expression));
-      if (named)
+      if (named && !callsImportedModule(call.expression))
         for (const fn of named)
           args.forEach((arg, idx) => {
             if (idx < fn.params.length && carriesFileBytes(arg))

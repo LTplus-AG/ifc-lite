@@ -60,7 +60,8 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
       const store = await parse(model('IFC4', `${SHARED}\n${config}\n${record}`));
       expect(() => exportToStep(store, { schema: 'IFC2X3' }), record).toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
     }
-    // The preview agrees: no carrier writes the split action, so the configuration's Values are lost, which one line keeps.
+    // The preview agrees: as for any file the export refuses (structuralRoundTrip), no carrier restores the
+    // configuration's Values, which the one-line action keeps.
     const values = async (sep: string) => analyzeConversionLoss(await parse(model('IFC4', `${SHARED}\n${config}\n${action(sep)}`)), 'IFC4', 'IFC2X3')
       .entries.find((e) => e.sourceType === 'IFCSTRUCTURALLOADCONFIGURATION')?.droppedAttributes;
     expect(await values('\n  ')).toEqual(['Name', 'Values', 'Locations']);

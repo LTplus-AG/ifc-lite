@@ -137,8 +137,10 @@ fn recompute_reason(mesh: &Mesh, flipped: bool) -> NormalProvenance {
 /// inherits its underlying style (#913 §2.7); else, when the element has
 /// material colours, the style on the `IfcMappedItem` occurrence this sub-mesh
 /// was produced under (`occurrence_style_source`); else the material cursor;
-/// else the element colour. Without material colours the occurrence's style is
-/// the element colour this falls back to, as before #10698.
+/// else the element colour. Without material colours the occurrence lookup is
+/// skipped and an unstyled leaf keeps the existing product-wide element colour,
+/// as before #10698: that is the product's first styled item, which may be a
+/// sibling occurrence's style, not this occurrence's own.
 #[allow(clippy::too_many_arguments)] // canonical precedence and one collection cursor
 pub(super) fn color(
     job: &AssemblyJob<'_>,

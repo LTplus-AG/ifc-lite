@@ -179,41 +179,47 @@ pub(crate) fn product_shape_style_source(
     None
 }
 
-/// Every styled `IfcMappedItem` in a product's shape, in walk order
-/// (representations, then items depth-first), each once, through at most
-/// [`MAX_MAPPED_ITEM_DEPTH`] mapped levels. These are the occurrence styles an
-/// unstyled sub-mesh can be coloured by (`presentation_source::color`, #10698):
-/// a joined-on property of the sub-mesh's colour (`style::finish_join`) has
-/// them as candidates, since the mesh no longer says which occurrence it was.
+/// Every styled `IfcMappedItem` in the representations of `product` that
+/// render (`meshed_representations`, so a mapped duplicate the router skips is
+/// left out), in walk order (representations, then items depth-first), each
+/// once, through at most [`MAX_MAPPED_ITEM_DEPTH`] mapped levels. An item is
+/// re-expanded when reached again nearer the root, the rule
+/// `find_geometry_item_style_source_at` follows. These are the occurrence
+/// styles an unstyled sub-mesh can be coloured by (`presentation_source::color`,
+/// #10698): a joined-on property of the sub-mesh's colour (`style::finish_join`)
+/// has them as candidates, since the mesh no longer says which occurrence it was.
 pub(crate) fn mapped_item_style_sources(
-    product_definition_shape_id: u32,
+    product: &DecodedEntity,
     has_style: &dyn Fn(u32) -> bool,
     decoder: &mut EntityDecoder,
 ) -> Vec<u32> {
-    let Ok(shape) = decoder.decode_by_id(product_definition_shape_id) else {
-        return Vec::new();
-    };
+    let reprs: Vec<DecodedEntity> = product_shape_id(product)
+        .and_then(|shape_id| decoder.decode_by_id(shape_id).ok())
+        .map(|shape| pds_representation_ids(&shape).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|repr_id| decoder.decode_by_id(repr_id).ok())
+        .collect();
     let mut stack: Vec<(u32, u32)> = Vec::new();
-    for shape_repr_id in pds_representation_ids(&shape).collect::<Vec<_>>().into_iter().rev() {
-        let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) else {
-            continue;
-        };
+    for shape_repr in ifc_lite_geometry::meshed_representations(product, &reprs).collect::<Vec<_>>().into_iter().rev() {
         let items = shape_repr.ref_list_at(ifc_lite_core::slot::IfcRepresentation::ITEMS).unwrap_or_default();
         stack.extend(items.into_iter().rev().map(|item| (item, 0)));
     }
     let mut sources = Vec::new();
-    let mut seen = rustc_hash::FxHashSet::default();
+    let mut recorded = rustc_hash::FxHashSet::default();
+    let mut expanded: FxHashMap<u32, u32> = FxHashMap::default();
     while let Some((item_id, depth)) = stack.pop() {
-        if depth >= MAX_MAPPED_ITEM_DEPTH || !seen.insert(item_id) {
+        if depth >= MAX_MAPPED_ITEM_DEPTH || expanded.get(&item_id).is_some_and(|&seen| seen <= depth) {
             continue;
         }
+        expanded.insert(item_id, depth);
         let Ok(item) = decoder.decode_by_id(item_id) else {
             continue;
         };
         if item.ifc_type != IfcType::IfcMappedItem {
             continue;
         }
-        if has_style(item_id) {
+        if has_style(item_id) && recorded.insert(item_id) {
             sources.push(item_id);
         }
         let Some(mapped) = mapped_item_representation_id(&item, decoder).and_then(|id| decoder.decode_by_id(id).ok())

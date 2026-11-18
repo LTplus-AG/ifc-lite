@@ -145,15 +145,25 @@ fn a_style_on_the_mapped_geometry_still_outranks_the_material() {
 
 #[test]
 fn each_occurrence_of_a_shared_leaf_takes_its_own_style() {
-    let colours = colours_of(40);
-    assert_eq!(colours.len(), 2, "two occurrences, two sub-meshes: {colours:?}");
-    assert!(colours.iter().any(|&c| approx_eq(c, GREY)), "the styled occurrence must draw grey: {colours:?}");
-    assert!(colours.iter().any(|&c| approx_eq(c, TEAL)), "the unstyled occurrence must draw teal: {colours:?}");
+    // #43 (grey) places the leaf at the origin, #44 (unstyled) 3 m along x.
+    let result = process_geometry(MAPPED_ITEM_STYLE_IFC);
+    let meshes: Vec<_> = result.meshes.iter().filter(|m| m.express_id == 40).collect();
+    assert_eq!(meshes.len(), 2, "two occurrences, two meshes");
+    for mesh in meshes {
+        let min_x = world_min_x(mesh);
+        let expected = if min_x < 1.5 { GREY } else { TEAL };
+        assert!(approx_eq(mesh.color, expected), "mesh at x={min_x}: expected {expected:?}, got {:?}", mesh.color);
+    }
 }
 
 #[test]
 fn a_skipped_mapped_representation_does_not_colour_the_direct_body() {
-    for colour in colours_of(50) {
-        assert!(approx_eq(colour, TEAL), "the direct body has no style of its own: expected teal, got {colour:?}");
-    }
+    let colours = colours_of(50);
+    assert_eq!(colours.len(), 1, "only the direct body renders, the mapped duplicate is skipped: {colours:?}");
+    assert!(approx_eq(colours[0], TEAL), "the direct body has no style of its own: expected teal, got {:?}", colours[0]);
+}
+
+/// The smallest x of a mesh's vertices (positions are placed, relative to `origin`).
+fn world_min_x(mesh: &ifc_lite_processing::MeshData) -> f64 {
+    mesh.positions.chunks_exact(3).map(|p| f64::from(p[0]) + mesh.origin[0]).fold(f64::INFINITY, f64::min)
 }

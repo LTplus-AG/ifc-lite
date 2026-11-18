@@ -102,10 +102,11 @@ fn a_file_without_finishes_joins_nothing() {
 }
 
 /// #10698: one product maps an unstyled leaf (#130) twice. The first occurrence
-/// (#112) is styled shading-only red, the second (#113) glossy blue, and the
-/// product has a material, so each sub-mesh takes its occurrence's colour. The
-/// blue one must keep the glossy finish even though the product-level source
-/// is the red occurrence.
+/// (#112) is styled shading-only red, the second (#113) glossy blue. The test
+/// isolates finish selection: it supplies each mesh's colour (the occurrence
+/// colour a material-coloured product would render it with; the fixture itself
+/// has no material) and checks that the blue mesh keeps the glossy finish
+/// although the product-level source is the red occurrence.
 const TWO_OCCURRENCES: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -150,4 +151,23 @@ fn an_occurrence_coloured_mesh_takes_the_finish_of_its_own_occurrence() {
     assert!((f.roughness.unwrap() - 0.25).abs() < 1e-6);
     // The red occurrence authors no finish, and must not borrow the blue one's.
     assert_eq!(finishes.finish_for_mesh(&mesh(100, Some(130), red)), None);
+}
+
+/// #10698: a product whose direct body has a red-styled face set (#160) and the
+/// unstyled leaf #130, plus a glossy-blue styled mapped duplicate (#113) of
+/// #130. The router meshes only the direct body (`meshed_representations` drops
+/// the duplicate map), and the product-level source is the red #160, so a mesh
+/// of the blue colour must not take the skipped duplicate's finish.
+#[test]
+fn a_skipped_mapped_duplicate_lends_no_finish() {
+    let content = TWO_OCCURRENCES
+        .replace(
+            "#101=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));",
+            "#101=IFCPRODUCTDEFINITIONSHAPE($,$,(#103,#102));\n#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#160,#130));\n#160=IFCTRIANGULATEDFACESET(#131,$,.T.,((1,2,3)),$);",
+        )
+        .replace("'MappedRepresentation',(#112,#113)", "'MappedRepresentation',(#113)")
+        .replace("#140=IFCSTYLEDITEM(#112,", "#140=IFCSTYLEDITEM(#160,");
+    let mut finishes = ModelFinishes::from_content(content.as_bytes());
+    let blue = style_color(&finishes, 113);
+    assert_eq!(finishes.finish_for_mesh(&mesh(100, Some(130), blue)), None);
 }

@@ -48,8 +48,9 @@ use crate::types::mesh::MeshData;
 use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, IfcType};
 use rustc_hash::FxHashMap;
 
-/// Element id → its element-level style-source candidates, in colour order.
-type ElementSources = FxHashMap<u32, Vec<u32>>;
+/// Element id → its element-level style-source candidates keyed by their
+/// style colour (`f32::to_bits`), the first candidate in colour order per colour.
+type ElementSources = FxHashMap<u32, FxHashMap<[u32; 4], u32>>;
 
 /// The join itself (see the module doc for the rule). `element_sources`
 /// memoises step 2 per element: a type product or a multi-part product has
@@ -78,19 +79,25 @@ fn join_finish(
             return finish_of(source);
         }
     }
-    let candidates = element_sources
-        .entry(express_id)
-        .or_insert_with(|| element_style_sources(express_id, &has_style, decoder));
-    candidates
-        .iter()
-        .find(|&&source| style_color(source) == Some(color))
-        .and_then(|&source| finish_of(source))
+    let candidates = element_sources.entry(express_id).or_insert_with(|| {
+        // Indexed by colour once per element: a product can have many meshes
+        // and many occurrence styles. The first candidate of a colour wins.
+        let mut by_colour = FxHashMap::default();
+        for source in element_style_sources(express_id, &has_style, decoder) {
+            if let Some(rgba) = style_color(source) {
+                by_colour.entry(rgba.map(f32::to_bits)).or_insert(source);
+            }
+        }
+        by_colour
+    });
+    candidates.get(&color.map(f32::to_bits)).and_then(|&source| finish_of(source))
 }
 
 /// Step 2's candidates for one element: every representation map of a type
 /// product (in `RepresentationMaps` order, as `produce_type_geometry` renders
-/// them), or a product's product-shape source followed by its styled
-/// `IfcMappedItem` occurrences (each can colour an unstyled sub-mesh, #10698). Attribute 6 is
+/// them), or a product's product-shape source followed by the styled
+/// `IfcMappedItem` occurrences of its rendered representations (each can
+/// colour an unstyled sub-mesh, #10698). Attribute 6 is
 /// `RepresentationMaps` on `IfcTypeProduct` and `Representation` on
 /// `IfcProduct`.
 fn element_style_sources(
@@ -112,13 +119,10 @@ fn element_style_sources(
     let Some(shape) = entity.get_ref(6) else {
         return Vec::new();
     };
+    // The candidates are deduplicated by the caller's colour index.
     let mut sources: Vec<u32> =
         crate::element::product_shape_style_source(shape, has_style, decoder).into_iter().collect();
-    for source in crate::element::mapped_item_style_sources(shape, has_style, decoder) {
-        if !sources.contains(&source) {
-            sources.push(source);
-        }
-    }
+    sources.extend(crate::element::mapped_item_style_sources(&entity, has_style, decoder));
     sources
 }
 

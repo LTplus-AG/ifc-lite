@@ -115,7 +115,8 @@ fn coefficients(token: &str) -> Option<Vec<String>> {
 }
 
 impl StructuralValues {
-    pub(crate) fn scan(content: &[u8], kept: impl Fn(u32, usize) -> bool, downgrade: bool, mut allocate: impl FnMut() -> Option<u32>) -> Self {
+    #[inline(never)]
+    pub(crate) fn scan(content: &[u8], kept: &dyn Fn(u32, usize) -> bool, downgrade: bool, allocate: &mut dyn FnMut() -> Option<u32>) -> Self {
         let mut values = Self::default();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         let mut needed = false;
@@ -135,8 +136,8 @@ impl StructuralValues {
             if kept(id, start) { source.index.insert(id, (kind, start, end)); }
         }
         if !downgrade { values.shared_placements(&source); }
-        values.load_cases(&source, downgrade, &mut allocate);
-        values.varying_thickness(&source, downgrade, &mut allocate);
+        values.load_cases(&source, downgrade, allocate);
+        values.varying_thickness(&source, downgrade, allocate);
         values
     }
 
@@ -177,7 +178,8 @@ impl StructuralValues {
         }
     }
 
-    fn load_cases(&mut self, source: &Source<'_>, downgrade: bool, allocate: &mut impl FnMut() -> Option<u32>) {
+    #[inline(never)]
+    fn load_cases(&mut self, source: &Source<'_>, downgrade: bool, allocate: &mut dyn FnMut() -> Option<u32>) {
         if downgrade {
             for id in source.ids(LOAD_CASE) {
                 let Some(args) = source.slots(id).filter(|args| args.len() == 11) else { continue; };
@@ -223,7 +225,8 @@ impl StructuralValues {
         }
     }
 
-    fn varying_thickness(&mut self, source: &Source<'_>, downgrade: bool, allocate: &mut impl FnMut() -> Option<u32>) {
+    #[inline(never)]
+    fn varying_thickness(&mut self, source: &Source<'_>, downgrade: bool, allocate: &mut dyn FnMut() -> Option<u32>) {
         let sets = source.property_sets(THICKNESS_PSET);
         let mut by_member = HashMap::<u32, Vec<&PropertySet>>::new();
         for set in &sets {
@@ -286,7 +289,7 @@ impl StructuralValues {
         }
     }
 
-    fn add_set(&mut self, allocate: &mut impl FnMut() -> Option<u32>, seed: &str, owner: &str, name: &str, member: u32, properties: &[String]) -> bool {
+    fn add_set(&mut self, allocate: &mut dyn FnMut() -> Option<u32>, seed: &str, owner: &str, name: &str, member: u32, properties: &[String]) -> bool {
         let Some(ids) = (0..properties.len() + 2).map(|_| allocate()).collect::<Option<Vec<_>>>() else { return false; };
         let property_ids = &ids[..properties.len()];
         let set = ids[properties.len()];

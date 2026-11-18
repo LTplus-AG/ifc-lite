@@ -41,11 +41,12 @@ fn same(a: Vector3<f64>, b: Vector3<f64>) -> bool {
 }
 
 impl AxisCarrierRecords {
+    #[inline(never)]
     pub(super) fn downgrade(
         plans: Vec<AxisPlan>,
         associations: Vec<(u32, Vec<String>)>,
         directions: &HashMap<u32, Vector3<f64>>,
-        mut allocate: impl FnMut() -> Option<u32>,
+        allocate: &mut dyn FnMut() -> Option<u32>,
     ) -> Self {
         let mut result = Self::default();
         let mut owners = HashMap::<u32, Vec<usize>>::new();
@@ -60,7 +61,7 @@ impl AxisCarrierRecords {
                 [] => {
                     let Some(properties) = allocate() else { continue; };
                     let Some(rel) = allocate() else { continue; };
-                    let Some(axis) = result.direction(plan, &mut allocate) else { continue; };
+                    let Some(axis) = result.direction(plan, allocate) else { continue; };
                     let guid = crate::merged::deterministic_global_id(&format!("ifc4-axis:{}", plan.args[0].trim()));
                     let owner_history = &plan.args[1];
                     result.added.push(format!("#{properties}=IFCGENERALPROFILEPROPERTIES($,$,$,$,$,$,$);"));
@@ -80,7 +81,7 @@ impl AxisCarrierRecords {
                             owners[&other.member].len() == 1 && same(other.ratios, plan.ratios)
                         })
                     }) {
-                        if let Some(axis) = result.direction(plan, &mut allocate) {
+                        if let Some(axis) = result.direction(plan, allocate) {
                             result.fills.insert(*rel, axis);
                             result.carried.insert(member);
                         }
@@ -92,7 +93,7 @@ impl AxisCarrierRecords {
         result
     }
 
-    fn direction(&mut self, plan: &AxisPlan, allocate: &mut impl FnMut() -> Option<u32>) -> Option<u32> {
+    fn direction(&mut self, plan: &AxisPlan, allocate: &mut dyn FnMut() -> Option<u32>) -> Option<u32> {
         if !plan.turned { return Some(plan.axis); }
         let id = allocate()?;
         self.added.push(format!("#{id}=IFCDIRECTION({});", direction_tuple(plan.ratios, 15)));
@@ -104,7 +105,7 @@ impl AxisCarrierRecords {
         properties: &HashSet<u32>,
         plans: &[AxisPlan],
         content: &[u8],
-        kept: impl Fn(u32, usize) -> bool,
+        kept: &dyn Fn(u32, usize) -> bool,
     ) -> HashMap<u32, RemovableAssociation> {
         let by_member: HashMap<_, _> = plans.iter().map(|plan| (plan.member, plan)).collect();
         let candidates: Vec<_> = associations.iter().filter_map(|(relationship, args)| {

@@ -30,7 +30,8 @@ pub(crate) fn list_items(token: &str) -> Option<Vec<String>> {
 }
 
 impl StructuralAxes {
-    pub(crate) fn scan(content: &[u8], kept: impl Fn(u32, usize) -> bool, downgrade: bool, mut allocate: impl FnMut() -> Option<u32>) -> Self {
+    #[inline(never)]
+    pub(crate) fn scan(content: &[u8], kept: &dyn Fn(u32, usize) -> bool, downgrade: bool, allocate: &mut dyn FnMut() -> Option<u32>) -> Self {
         if !has_members(content) { return Self::default(); }
         let mut result = Self::default();
         let mut members = Vec::new();
@@ -116,21 +117,22 @@ impl StructuralAxes {
             plans.push(AxisPlan { member, axis, turned, ratios, args });
         }
         if downgrade {
-            result.carriers = AxisCarrierRecords::downgrade(plans, associations, &result.directions, &mut allocate);
+            result.carriers = AxisCarrierRecords::downgrade(plans, associations, &result.directions, allocate);
         } else {
-            result.restore_axes(plans, &associations, &properties, content, &kept, &mut allocate);
+            result.restore_axes(plans, &associations, &properties, content, kept, allocate);
         }
         result
     }
 
+    #[inline(never)]
     fn restore_axes(
         &mut self,
         plans: Vec<AxisPlan>,
         associations: &[(u32, Vec<String>)],
         properties: &HashSet<u32>,
         content: &[u8],
-        kept: impl Fn(u32, usize) -> bool,
-        mut allocate: impl FnMut() -> Option<u32>,
+        kept: &dyn Fn(u32, usize) -> bool,
+        allocate: &mut dyn FnMut() -> Option<u32>,
     ) {
         let candidates = AxisCarrierRecords::removable_associations(associations, properties, &plans, content, kept);
         let mut reusable = HashMap::new();

@@ -236,6 +236,7 @@ export const scheduleRu = {
   "schedule.animation.taskType.disposal": "Утилизация",
   "schedule.animation.taskType.userDefined": "Пользовательский",
   "schedule.animation.taskType.notDefined": "Не определено",
+  "schedule.panel.pendingSourceSchedule": "На диаграмме Ганта показаны ожидающие изменения. Изменения графика IFC для этой модели нужно согласовать отдельно.",
   "schedule.panel.importReplaceWarning": "Импорт \"{fileName}\" заменит текущий календарный план и его историю отмены.",
   "schedule.panel.replace": "Заменить",
   "schedule.panel.cancel": "Отменить",

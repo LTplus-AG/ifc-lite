@@ -58,7 +58,7 @@ impl StructuralDiagnostics {
     /// pair): the target record body, reported because the class changes.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
         // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
-        if self.varying.stays_unconverted(id, entity) && self.carriers.cause(id).is_some() { self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into()); }
+        if self.varying.stays_unconverted(id, entity) && self.carriers.names_reaction(id) { self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into()); }
         let cause = self.cause(id, entity);
         if let Some(message) = cause {
             self.record(message.into());

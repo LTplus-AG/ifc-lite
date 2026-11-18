@@ -156,3 +156,17 @@ fn reads_causes_and_unset_slots_with_step_comments_10248() {
         "#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,/*n*/'Causes',$,(#20),$,#21);"].join("\n"));
     assert!(record(&convert(&source, "IFC2X3").0, 21).ends_with(",.F.,#20,.TRUE_LENGTH.);"));
 }
+
+#[test]
+fn reports_caused_by_lost_when_no_id_is_left_for_its_relationship_10597() {
+    let mut checks = crate::schema_enum::ConversionChecks::new();
+    let source = model("IFC2X3", &[REACTION, CAUSED].join("\n"));
+    checks.structural.carriers = super::StructuralCarriers::scan_ifc2x3(source.as_bytes(), |_, _| true);
+    checks.structural.allocate(|| None);
+    let line = CAUSED.to_string();
+    crate::schema_convert::convert_step_line(&line, "IFC2X3", "IFC4", 21, &mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+    assert!(checks.structural.added().is_empty());
+    let warnings = checks.structural.warnings().join("\n");
+    assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4"), "{warnings}");
+    assert!(!warnings.contains("CausedBy is written as"), "{warnings}");
+}

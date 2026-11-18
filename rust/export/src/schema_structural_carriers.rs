@@ -143,8 +143,14 @@ impl StructuralCarriers {
         if let Some(Cause { relationship: Some(body), id: Some(id), .. }) = self.causes.get(&action) { self.pending.insert(*id, format!("#{id}={body};")); }
     }
 
-    /// The message for an action whose CausedBy names a point reaction, or None.
-    pub(crate) fn cause(&self, id: u32) -> Option<&'static str> { self.causes.get(&id).map(|c| c.message) }
+    /// Whether the action's CausedBy names a point reaction.
+    pub(crate) fn names_reaction(&self, id: u32) -> bool { self.causes.contains_key(&id) }
+
+    /// The message for an action whose CausedBy a 'Causes' relationship holds: one
+    /// the source has, or one given an id. None otherwise, so the loss is reported.
+    pub(crate) fn cause(&self, id: u32) -> Option<&'static str> {
+        self.causes.get(&id).filter(|c| c.relationship.is_none() || c.id.is_some()).map(|c| c.message)
+    }
 
     /// IFC4 -> IFC2X3: record `id`, already converted to `line`, with CausedBy
     /// filled from its one 'Causes' relationship. None when nothing changes.

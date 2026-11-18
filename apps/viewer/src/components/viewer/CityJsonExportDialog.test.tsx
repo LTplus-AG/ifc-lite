@@ -12,7 +12,8 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { render, cleanup, click, waitFor, advance } from '@/test/render';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
 import { toast } from '@/components/ui/toast';
-import { CityJsonExportDialog, cityJsonEngine } from './CityJsonExportDialog';
+import { CityJsonExportDialog } from './CityJsonExportDialog';
+import { cityJsonEngine } from '@/lib/export/native-cityjson';
 
 const wasm = new URL('../../../../../packages/wasm/pkg-rhino/ifc-lite-rhino_bg.wasm', import.meta.url);
 const skip = existsSync(wasm) ? false : 'Export WASM absent; run pnpm build:wasm';

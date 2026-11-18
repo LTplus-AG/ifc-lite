@@ -15,11 +15,10 @@ import { useTranslation } from '@/i18n';
 import { trackExportCompleted } from '@/lib/analytics';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { downloadBlob } from '@/lib/export/download';
-import { cityJsonEngine, cityJsonFilename, produceNativeCityJson, type CityJsonEngine } from '@/lib/export/native-cityjson';
+import { cityJsonEngine, cityJsonFilename, hasSessionGeoref, produceNativeCityJson, type CityJsonEngine } from '@/lib/export/native-cityjson';
 import { isStepSourceModel } from './step-export-source';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
-export { cityJsonEngine };
 
 /** STEP-based export: preserve the producer's local-coordinate fallback (#10607). */
 export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurface; trigger?: React.ReactNode }) {
@@ -36,10 +35,7 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
   const model = modelList.find((m) => m.id === selectedId);
   // resolveStepExportBytes does not apply session georeferencing edits, so the local notice stays keyed on the
   // file and a separate notice says when such edits exist.
-  const sessionGeoref = useViewerStore((s) => {
-    const gm = model ? s.georefMutations.get(model.id) : undefined;
-    return !!gm && (Object.keys(gm.mapConversion ?? {}).length > 0 || Object.keys(gm.projectedCRS ?? {}).length > 0);
-  });
+  const sessionGeoref = useViewerStore((s) => !!model && hasSessionGeoref(s.georefMutations, model.id));
   const localCoordinates = useMemo(() => open && !!model &&
     (!model.ifcDataStore || !extractGeoreferencingOnDemand(model.ifcDataStore)?.hasGeoreference), [open, model]);
 
@@ -49,7 +45,7 @@ export function CityJsonExportDialog({ surface, trigger }: { surface: ExportSurf
     try {
       engine = await cityJsonEngine.load();
       const result = await produceNativeCityJson(engine, model, getMutationView, sequence);
-      const blob = result.blob;
+      const { blob } = result;
       downloadBlob(blob, result.filename);
       const message = t('cityJsonExport.exported');
       // Keep diagnostics visible and bounded; retain the full list inline.

@@ -9,11 +9,17 @@ export type CityJsonEngine = Pick<typeof import('@ifc-lite/geometry'), 'exportCi
 /** Load both the facade and the separate export WASM only on demand. An object so tests can fail the load. */
 export const cityJsonEngine = { load: (): Promise<CityJsonEngine> => import('@ifc-lite/geometry') };
 
+/** Session MapConversion/ProjectedCRS edits: the STEP source does not carry them, so the export does not either. */
+export function hasSessionGeoref(georefMutations: ReadonlyMap<string, { mapConversion?: object; projectedCRS?: object }>, modelId: string): boolean {
+  const gm = georefMutations.get(modelId);
+  return !!gm && (Object.keys(gm.mapConversion ?? {}).length > 0 || Object.keys(gm.projectedCRS ?? {}).length > 0);
+}
+
 /** The download name the dialog previews and both producers use. */
 export const cityJsonFilename = (name: string, sequence: boolean) => modelExportFilename(name, sequence ? 'city.jsonl' : 'city.json');
 
 /** The CityJSON producer shared by the toolbar dialog and exports.cityjson (#10612): edited STEP source, then the writer. */
-export async function produceNativeCityJson(engine: CityJsonEngine, model: StepExportModel & { name: string },
+export async function produceNativeCityJson(engine: CityJsonEngine, model: StepExportModel,
   getMutationView: (modelId: string) => MutablePropertyView | null, sequence: boolean) {
   const result = await engine.exportCityJson(await resolveStepExportBytes(model, getMutationView), { sequence });
   return {

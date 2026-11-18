@@ -19,6 +19,7 @@ import { exportNativeDataOperations } from './export-native-data';
 import { exportNativeAnonymizedOperations } from './export-native-anonymized';
 import { exportNativeViewOperations } from './export-native-view';
 import { cityJsonExportOperations } from './model-cityjson';
+import { cityJsonEngine } from '@/lib/export/native-cityjson';
 import { nativeExportGuard } from './export-native-runtime';
 import { nativeExportRegistryInventory } from './export-native-inventory';
 import { EXPORT_COMMAND_IDS } from '@/components/viewer/toolbar/export-commands';
@@ -41,10 +42,29 @@ describe('native export registry automation (#10525)', () => {
     for (const id of EXPORT_COMMAND_IDS) { const row = nativeExportRegistryInventory.find(row => row.registry_id === id); assert.ok(row, id); assert.ok(row.operations.length || 'classification' in row, id); }
     for (const op of entries) assert.ok(nativeExportRegistryInventory.some(row => (row.operations as readonly string[]).includes(op.id)), op.id);
   });
-  it('exports.cityjson refuses unknown models and models without a retained IFC source before loading the writer', async () => {
+  it('exports.cityjson refuses unknown models and models without a retained IFC source before loading the writer', async (t) => {
+    const load = t.mock.method(cityJsonEngine, 'load');
     await assert.rejects(run('exports.cityjson', { target_model_id: 'missing', sequence: false }), /existing exportable model/);
     assert.equal(useViewerStore.getState().models.get('A')?.sourceFile, undefined);
     await assert.rejects(run('exports.cityjson', { target_model_id: 'A', sequence: true }), /retained \.ifc\/\.ifczip source/);
+    assert.equal(load.mock.callCount(), 0);
+  });
+  it('exports.cityjson returns the producer output with its warnings and maps package refusals', async (t) => {
+    const models = new Map(useViewerStore.getState().models);
+    models.set('A', { ...models.get('A')!, sourceFile: new File(['ISO-10303-21;'], 'a.ifc') });
+    useViewerStore.setState({ models, georefMutations: new Map([['A', { mapConversion: { Eastings: 1 } }]]) as never });
+    t.mock.method(cityJsonEngine, 'load', async () => ({
+      exportCityJson: async (_bytes: Uint8Array, options: { sequence?: boolean }) => ({ text: options.sequence ? '{}\n' : '{"type":"CityJSON"}', warnings: ['no georef'] }),
+      cityJsonRefusalReason: () => null,
+    }));
+    const result = await run<{ artifact: { filename: string; mime_type: string }; diagnostics_json: string }>('exports.cityjson', { target_model_id: 'A', sequence: false });
+    assert.match(result.artifact.filename, /\.city\.json$/); assert.equal(result.artifact.mime_type, 'application/json');
+    const { warnings } = JSON.parse(result.diagnostics_json) as { warnings: string[] };
+    assert.match(warnings[0], /Session georeferencing edits are not applied/); assert.equal(warnings[1], 'no georef');
+    t.mock.method(cityJsonEngine, 'load', async () => ({
+      exportCityJson: async () => { throw new Error('raw'); }, cityJsonRefusalReason: () => 'The model has no IfcBuilding.',
+    }));
+    await assert.rejects(run('exports.cityjson', { target_model_id: 'A', sequence: true }), /no IfcBuilding/);
   });
   it('writes real single-model JSON entity bytes and refuses unknown/capture targets instead of mixing federation IDs', async () => {
     const store = useViewerStore.getState().models.get('B')?.ifcDataStore; assert.ok(store);

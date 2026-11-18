@@ -5,9 +5,11 @@
 import type { Catalogue } from '../../registry';
 
 export const geometryExportDialogsIt = {
+  "geometryExport.shared.georefRequired": "Questo modello non è georeferenziato. Aggiungi una posizione prima di esportarlo.",
+  "geometryExport.shared.openGeoreferencing": "Apri georeferenziazione",
   "cityJsonExport.description": "Esporta il modello IFC selezionato come CityJSON 2.0 o CityJSONSeq.",
   "cityJsonExport.localNotice": "Questo modello non è georeferenziato. Il file userà le coordinate locali del modello, non le coordinate cartografiche.",
-  "cityJsonExport.sessionGeorefNotice": "Le modifiche alla georeferenziazione apportate in questa sessione non sono incluse in questa esportazione.",
+  "cityJsonExport.sessionCrs": "Scrive le coordinate in {crs}, incluse le modifiche alla georeferenziazione di questa sessione.",
   "cityJsonExport.noSource": "Carica un modello IFC o IFCZIP da esportare.",
   "cityJsonExport.document": "CityJSON (.city.json)",
   "cityJsonExport.sequence": "CityJSONSeq (.city.jsonl)",

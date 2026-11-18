@@ -37,18 +37,18 @@ export class StructuralDiagnostics {
    * only for an unedited full export.
    */
   fromStore(store: SourceStore, from: string, to: string, source = new SourceRecords(store)): void {
-    if (from === 'IFC2X3') this.axes.fromStore(store);
-    else this.links.fromStore(store);
+    if (from !== 'IFC2X3') this.links.fromStore(store);
     this.varying.fromStore(store, from, to);
+    this.axes.fromStore(source, from, to);
     this.carriers.fromStore(source, from, to);
     this.thickness.fromStore(source, from, to);
   }
 
   /** The exporter's express-id allocator, for the records the prepasses add. */
-  set ids(next: () => number) { this.varying.ids = next; this.carriers.ids = next; this.thickness.ids = next; }
+  set ids(next: () => number) { this.varying.ids = next; this.carriers.ids = next; this.thickness.ids = next; this.axes.ids = next; }
 
   /** Records the prepasses added, to append after the source records. */
-  added(): string[] { return [...this.varying.added(), ...this.carriers.added(), ...this.thickness.added()]; }
+  added(): string[] { return [...this.varying.added(), ...this.carriers.added(), ...this.thickness.added(), ...this.axes.added()]; }
 
   /** An already converted IFC2X3 <-> IFC4 line with the values carriers fill in place (`StructuralCarriers.after`). */
   after(line: string, withheld: ReadonlySet<number> | undefined): string {
@@ -116,18 +116,21 @@ export class StructuralDiagnostics {
     const unconverted = this.varying.staysUnconverted(entity, args);
     if (unconverted && this.carriers.causeOf(entity, args, withheld) !== null) this.record(CAUSED_BY_UNCONVERTED);
     const cause = unconverted ? null : this.carriers.noteCause(id, entity, args, withheld);
-    const held = cause ? ['CausedBy'] : this.thickness.note(id, entity, args, withheld);
+    const thickness = cause ? [] : this.thickness.note(id, entity, args, withheld);
+    const axis = cause || thickness.length ? null : this.axes.hold(id, args, withheld);
+    const held = cause ? ['CausedBy'] : axis ? ['Axis'] : thickness;
     let carried = NONE;
     if (held.length) {
       carried = new Set(held);
-      this.record(cause?.message ?? THICKNESS_WRITTEN);
+      this.record(cause?.message ?? axis ?? THICKNESS_WRITTEN);
       this.carried.set(id, carried);
       // The downgrade reads a held thickness back (`StructuralThickness.rewrite`); a cause only when it says so.
       if (cause?.restored !== false) this.restore(id, held);
     }
     const attrs = this.links.link(entity, args);
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
-      : this.varying.rewrite(id, entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld) ?? this.thickness.rewrite(id, entity, args);
+      : this.varying.rewrite(id, entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld)
+        ?? this.thickness.rewrite(id, entity, args) ?? this.axes.rewrite(id, args, withheld);
     if (!rewrite || (withheld && rewrite.body !== null && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
     rewrite.losses.forEach((loss) => this.record(loss));
     rewrite.restored?.forEach(([source, attributes]) => this.restore(source, attributes));

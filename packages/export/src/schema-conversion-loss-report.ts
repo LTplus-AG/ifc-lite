@@ -173,6 +173,8 @@ export interface ConversionLossEntry extends EntityConversionInfo {
   sourceType: string;
   count: number;
   expressIds: readonly number[];
+  /** Record-level losses when instances of this type lose different attributes. */
+  recordGroups?: readonly Pick<ConversionLossEntry, 'expressIds' | 'droppedAttributes' | 'count'>[];
 }
 
 export interface ConversionLossReport {
@@ -182,7 +184,7 @@ export interface ConversionLossReport {
    *  `blocked` types the store actually contains at least one instance of.
    *  A type whose records lose different attributes, because an IFC2X3 <-> IFC4
    *  structural carrier brings some of them back for some records, has one
-   *  entry per set of attributes lost (#9668). */
+   *  entry with record groups and the union of their lost attributes (#9668). */
   entries: readonly ConversionLossEntry[];
   /** True when a full-fidelity export exists (no `blocked` entries) but at
    *  least one type is `lossy` or `proxied`. */
@@ -219,15 +221,15 @@ function describeEntry(entry: ConversionLossEntry): string {
 }
 
 /**
- * The entries of a type with dropped attributes: its records grouped by those no carrier
+ * The entry for a type with dropped attributes: its records grouped by those no carrier
  * restores for them. A `lossy` record that loses nothing then has no entry.
  */
-function splitByRestored(
+function entryAfterRestoration(
   sourceType: string,
   expressIds: readonly number[],
   info: EntityConversionInfo,
   restored: ReadonlyMap<number, ReadonlySet<string>>,
-): ConversionLossEntry[] {
+): ConversionLossEntry | undefined {
   const groups = new Map<string, { dropped: string[]; ids: number[] }>();
   for (const id of expressIds) {
     const back = restored.get(id);
@@ -238,13 +240,23 @@ function splitByRestored(
     group.ids.push(id);
     groups.set(key, group);
   }
-  return [...groups.values()].map(({ dropped, ids }) => ({
-    ...info,
+  if (!groups.size) return undefined;
+  const recordGroups = [...groups.values()].map(({ dropped, ids }) => ({
     droppedAttributes: dropped,
-    sourceType,
     count: ids.length,
     expressIds: ids,
   }));
+  const lost = new Set(recordGroups.flatMap((group) => group.droppedAttributes));
+  const omitted = new Set(recordGroups.flatMap((group) => group.expressIds));
+  const reportedIds = expressIds.filter((id) => omitted.has(id));
+  return {
+    ...info,
+    droppedAttributes: info.droppedAttributes.filter((attribute) => lost.has(attribute)),
+    sourceType,
+    count: reportedIds.length,
+    expressIds: reportedIds,
+    ...(recordGroups.length > 1 ? { recordGroups } : {}),
+  };
 }
 
 /**
@@ -279,8 +291,10 @@ export function analyzeConversionLoss(
       ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema, typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])))
       : new Map<number, ReadonlySet<string>>();
     for (const [sourceType, expressIds, info] of typed) {
-      if (carrying(sourceType, info)) entries.push(...splitByRestored(sourceType, expressIds, info, restored));
-      else entries.push({ ...info, sourceType, count: expressIds.length, expressIds });
+      const entry = carrying(sourceType, info)
+        ? entryAfterRestoration(sourceType, expressIds, info, restored)
+        : { ...info, sourceType, count: expressIds.length, expressIds };
+      if (entry) entries.push(entry);
     }
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
@@ -291,6 +305,7 @@ export function analyzeConversionLoss(
     entries,
     hasLoss: entries.length > 0,
     hasBlocking,
-    describe: () => entries.map(describeEntry),
+    describe: () => entries.flatMap((entry) => entry.recordGroups
+      ?.map((group) => describeEntry({ ...entry, ...group })) ?? [describeEntry(entry)]),
   };
 }

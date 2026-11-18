@@ -60,7 +60,8 @@ describe('native export registry automation (#10525)', () => {
     const result = await run<{ artifact: { filename: string; mime_type: string }; diagnostics_json: string }>('exports.cityjson', { target_model_id: 'A', sequence: false });
     assert.match(result.artifact.filename, /\.city\.json$/); assert.equal(result.artifact.mime_type, 'application/json');
     const { warnings } = JSON.parse(result.diagnostics_json) as { warnings: string[] };
-    assert.match(warnings[0], /Session georeferencing edits are not applied/); assert.equal(warnings[1], 'no georef');
+    // The session MapConversion edit reaches the georeferencing phase; its refusal (no CRS to target) leads the producer's own warnings.
+    assert.match(warnings[0], /Cannot create IfcMapConversion/); assert.deepEqual(warnings.slice(1), ['no georef']);
     t.mock.method(cityJsonEngine, 'load', async () => ({
       exportCityJson: async () => { throw new Error('raw'); }, cityJsonRefusalReason: () => 'The model has no IfcBuilding.',
     }));

@@ -4324,6 +4324,117 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "pointCloudOperations"
   },
   {
+    "id": "clash.analyze",
+    "version": 1,
+    "owner": "clash",
+    "description": "Run parameterized clash rules against live native geometry of the selected model. Uses the panel geometry collector (including instanced occurrences and exclusions) and SDK engine. Selectors are IFC type globs. Returns an analysis result without replacing the panel report or its visibility. Background execution supports cancellation.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "a": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "b": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "hard",
+                  "clearance"
+                ]
+              },
+              "tolerance": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "clearance": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "a",
+              "b",
+              "mode",
+              "tolerance",
+              "clearance"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "rules"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": "object"
+        },
+        "groups": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "model_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result",
+        "groups",
+        "model_id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "sdk",
+    "module": "clash",
+    "exportName": "clashOperations"
+  },
+  {
     "id": "authoring.describe",
     "version": 1,
     "owner": "model",
@@ -13512,6 +13623,1831 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "annotationOperations"
   },
   {
+    "id": "clash.state",
+    "version": 1,
+    "owner": "clash",
+    "description": "Read native clash settings/presets/exclusions/reviews, exact stale-state signatures, run progress and focus-solid status. Does not gather geometry.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native",
+    "exportName": "nativeClashOperations"
+  },
+  {
+    "id": "clash.results",
+    "version": 1,
+    "owner": "clash",
+    "description": "Read a bounded page of complete native clash pairs and durable review annotations.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "offset",
+        "limit",
+        "run_seq"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native",
+    "exportName": "nativeClashOperations"
+  },
+  {
+    "id": "clash.run",
+    "version": 1,
+    "owner": "clash",
+    "description": "Run the actual native federated Clash workflow and publish its native panel result: all, matrix, preset, duplicates or exact recorded rerun. Native model/tag/filter/exclusion/placement/run-epoch guards remain active. Completes after detection; cancellation aborts the native engine.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "all",
+            "matrix",
+            "preset",
+            "duplicates",
+            "rerun"
+          ]
+        },
+        "preset_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "expected_settings": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "kind",
+        "preset_id",
+        "expected_model_ids",
+        "expected_settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native",
+    "exportName": "nativeClashOperations"
+  },
+  {
+    "id": "clash.action",
+    "version": 1,
+    "owner": "clash",
+    "description": "Use native clash cancellation/clear/highlight/solid invalidation handlers. Clear retains durable review/exclusion settings, matching the panel.",
+    "needs": "viewer",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "cancel",
+            "clear",
+            "highlightAll",
+            "clearHighlight",
+            "invalidateSolid",
+            "resetSettings"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native",
+    "exportName": "nativeClashOperations"
+  },
+  {
+    "id": "clash.focus",
+    "version": 1,
+    "owner": "clash",
+    "description": "Focus an exact native pair, one side or a group with native federation/ref/visibility ownership and latest-solid guards. Pair solid computation is dispatched; inspect clash.state for its actual outcome.",
+    "needs": "viewer",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "clash_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "highlight",
+            "isolate",
+            "ghost"
+          ]
+        },
+        "element": {
+          "type": "string",
+          "enum": [
+            "pair",
+            "a",
+            "b"
+          ]
+        }
+      },
+      "required": [
+        "clash_ids",
+        "run_seq",
+        "mode",
+        "element"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "completion": "dispatched",
+    "implementation": "native-store",
+    "module": "clash-native",
+    "exportName": "nativeClashOperations"
+  },
+  {
+    "id": "clash.viewSettings",
+    "version": 1,
+    "owner": "clash",
+    "description": "Set native sort/touching/review-status filters, focus mode and region-box display after inspecting the exact settings. These change presentation, not detection results.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sortBy": {
+          "type": "string",
+          "enum": [
+            "severity",
+            "depth",
+            "distance"
+          ]
+        },
+        "hideTouching": {
+          "type": "boolean"
+        },
+        "focusMode": {
+          "type": "string",
+          "enum": [
+            "highlight",
+            "isolate",
+            "ghost"
+          ]
+        },
+        "showRegionBox": {
+          "type": "boolean"
+        },
+        "statusFilter": {
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "open",
+              "resolved",
+              "accepted"
+            ]
+          }
+        },
+        "expected_settings": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "sortBy",
+        "hideTouching",
+        "focusMode",
+        "showRegionBox",
+        "statusFilter",
+        "expected_settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-settings",
+    "exportName": "clashSettingsOperations"
+  },
+  {
+    "id": "clash.settings.write",
+    "version": 1,
+    "owner": "clash",
+    "description": "Set the complete canonical native detection settings in one native durable flavor transaction. Unknown fields or normalization changes are refused; settings_json uses ClashGlobalSettings. Inspect clash.state first.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "settings_json": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "expected_settings": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "settings_json",
+        "expected_settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-settings",
+    "exportName": "clashSettingsOperations"
+  },
+  {
+    "id": "clash.presets.write",
+    "version": 1,
+    "owner": "clash",
+    "description": "Create/edit/delete/enable/reset/import native rule presets, including side set/model-tag filters. Preserves built-in protections, validation, storage rollback and all SaveResult refusals. preset_json for create/update is a canonical stored ClashPreset; import is a native exported JSON file.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "create",
+            "update",
+            "delete",
+            "enabled",
+            "reset",
+            "import"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "preset_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "expected_presets": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "action",
+        "id",
+        "preset_json",
+        "enabled",
+        "expected_presets"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-settings",
+    "exportName": "clashSettingsOperations"
+  },
+  {
+    "id": "clash.review",
+    "version": 1,
+    "owner": "clash",
+    "description": "Write the supplied native clash review status/comment under its durable review key, preserving native persistence refusal.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "clash_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved",
+            "accepted"
+          ]
+        },
+        "comment": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "clash_id",
+        "run_seq",
+        "status",
+        "comment"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-settings",
+    "exportName": "clashSettingsOperations"
+  },
+  {
+    "id": "clash.exclusions.write",
+    "version": 1,
+    "owner": "clash",
+    "description": "Create native type-any/type-pair/element-pair exclusions from exact current findings, or remove/toggle/clear. Native derivation recomputes filtered results/groups/counts without rerunning geometry; durable IDs use native factories.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "typeAny",
+            "typePair",
+            "elementPair",
+            "remove",
+            "enabled",
+            "clear"
+          ]
+        },
+        "clash_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tag": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "expected_exclusions": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "action",
+        "clash_id",
+        "run_seq",
+        "tag",
+        "id",
+        "enabled",
+        "expected_exclusions"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-settings",
+    "exportName": "clashSettingsOperations"
+  },
+  {
+    "id": "clash.export",
+    "version": 1,
+    "owner": "clash",
+    "description": "Export the exact current native CSV table or rule preset JSON through the existing panel writer into a host-owned artifact. No immediate browser download.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "csv",
+            "presets"
+          ]
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "run_seq"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "clash-native-exports",
+    "exportName": "clashExportOperations"
+  },
+  {
+    "id": "clash.exportBcf",
+    "version": 1,
+    "owner": "clash",
+    "description": "Export the native grouped BCF report with severity/finding scope, exact topic cap and optional native snapshots. Uses the same shared exporter as ClashPanel. Cancellation suppresses publication; a snapshot already capturing may settle.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "groupBy": {
+          "type": "string",
+          "enum": [
+            "cluster",
+            "rule",
+            "typePair",
+            "element"
+          ]
+        },
+        "severities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "major",
+              "minor",
+              "info"
+            ]
+          }
+        },
+        "includeSnapshots": {
+          "type": "boolean"
+        },
+        "maxTopics": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "clash_ids": {
+          "type": "array",
+          "maxItems": 50000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "required": [
+        "run_seq",
+        "groupBy",
+        "severities",
+        "includeSnapshots",
+        "maxTopics",
+        "clash_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "clash-native-exports",
+    "exportName": "clashExportOperations"
+  },
+  {
+    "id": "clash.groups.library",
+    "version": 1,
+    "owner": "clash",
+    "description": "Select an exact native manual-group workspace or retry/restore its native durable library. Preserves the native default empty workspace and storage refusal semantics.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "select",
+            "retry",
+            "restore"
+          ]
+        },
+        "workspace_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "expected_library": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "action",
+        "workspace_id",
+        "expected_library"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-review",
+    "exportName": "clashReviewOperations"
+  },
+  {
+    "id": "clash.groups.read",
+    "version": 1,
+    "owner": "clash",
+    "description": "Read native durable manual-group workspaces, active population and save state; supplies exact workspace snapshot guards.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-review",
+    "exportName": "clashReviewOperations"
+  },
+  {
+    "id": "clash.groups.evidence",
+    "version": 1,
+    "owner": "clash",
+    "description": "Read canonical durable manual-group member identities for explicit current findings. No fabricated keys or bare-ID inference.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "clash_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "clash_ids",
+        "run_seq"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-review",
+    "exportName": "clashReviewOperations"
+  },
+  {
+    "id": "clash.groups.write",
+    "version": 1,
+    "owner": "clash",
+    "description": "Create/rename/edit manual group partitions and memberships using the canonical whole-workspace codec and durable native content writer. Duplicate/overlapping finding claims are refused atomically. Use groups.evidence for current occurrence-qualified members; empty groups remove all groups.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "workspace_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "expected_library": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "workspace_json",
+        "expected_library"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-review",
+    "exportName": "clashReviewOperations"
+  },
+  {
+    "id": "clash.quality.read",
+    "version": 1,
+    "owner": "clash",
+    "description": "Read native quality thresholds and evaluate the exact current run using native stale/completeness/kind diagnostics.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-review",
+    "exportName": "clashReviewOperations"
+  },
+  {
+    "id": "clash.quality.write",
+    "version": 1,
+    "owner": "clash",
+    "description": "Set native clash/duplicate quality bands using exact canonical monotonic percentage/color/label validation and durable preference writer.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "config_json": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "expected_config": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "config_json",
+        "expected_config"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-review",
+    "exportName": "clashReviewOperations"
+  },
+  {
+    "id": "clash.revision",
+    "version": 1,
+    "owner": "clash",
+    "description": "Read/capture/clear native revision baseline or compare it with the exact current run through compareClashRevisions. Native unretested-element/model/rule distinctions remain explicit.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "read",
+            "capture",
+            "clear",
+            "compare"
+          ]
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "action",
+        "run_seq"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-review",
+    "exportName": "clashReviewOperations"
+  },
+  {
+    "id": "clash.reports.read",
+    "version": 1,
+    "owner": "clash",
+    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics. Saved results never install historical runtime IDs into the current scene.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-reports",
+    "exportName": "clashReportOperations"
+  },
+  {
+    "id": "clash.reports.save",
+    "version": 1,
+    "owner": "clash",
+    "description": "Capture native current report evidence, review annotations, model identities, stale limits and frozen quality thresholds into the durable saved-report library.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "name",
+        "run_seq"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-reports",
+    "exportName": "clashReportOperations"
+  },
+  {
+    "id": "clash.reports.write",
+    "version": 1,
+    "owner": "clash",
+    "description": "Rename/import/restore/retry native saved reports through authoritative codecs and immutable-evidence collision checks. Does not reconstruct a live run from historical model IDs.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "rename",
+            "import",
+            "restore",
+            "retry"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "report_json": {
+          "type": "string",
+          "maxLength": 10000000
+        },
+        "expected_reports": {
+          "type": "string",
+          "maxLength": 10000000
+        }
+      },
+      "required": [
+        "action",
+        "id",
+        "name",
+        "report_json",
+        "expected_reports"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-reports",
+    "exportName": "clashReportOperations"
+  },
+  {
+    "id": "clash.reports.delete.prepare",
+    "version": 1,
+    "owner": "clash",
+    "description": "Read exact native saved-report deletion dependencies across live/durable dashboards and Documents. Returns an immutable host-owned candidate; load failures refuse the preview.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-reports",
+    "exportName": "clashReportOperations"
+  },
+  {
+    "id": "clash.reports.delete.apply",
+    "version": 1,
+    "owner": "clash",
+    "description": "Delete the exact reviewed native report using its guarded content writer. Rechecks live and durable dependency signature immediately before native persistence; report replacement or changed dependencies refuse rather than bypass the preview.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-reports",
+    "exportName": "clashReportOperations"
+  },
+  {
+    "id": "clash.reports.document",
+    "version": 1,
+    "owner": "clash",
+    "description": "Create the native frozen quality-gate Document from an exact saved clash report through the same native builder and durable Document writer. Requires the browser Canvas2D ring renderer used by the UI.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-reports",
+    "exportName": "clashReportOperations"
+  },
+  {
+    "id": "clash.topic.create",
+    "version": 1,
+    "owner": "clash",
+    "description": "Create the native in-app BCF topic from a current clash, explicit manual group or report view. Calls the exact shared Clash-panel/manual-group native topic service, preserving camera/scene validity, viewport capture, source header provenance and atomic final publication. No topic/project is created on capture failure or cancellation.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "pair",
+            "report",
+            "group"
+          ]
+        },
+        "clash_ids": {
+          "type": "array",
+          "maxItems": 2000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "group_name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "highlight",
+            "isolate",
+            "ghost"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "clash_ids",
+        "run_seq",
+        "group_name",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "guid": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "guid"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-topic",
+    "exportName": "clashTopicOperations"
+  },
+  {
+    "id": "clash.classification.prepare",
+    "version": 1,
+    "owner": "clash",
+    "features": [],
+    "description": "Capture complete native classification chunks, bounded sample evidence and native root-budget estimate before any provider call. Uses the configured UI model capability ceiling; no network or model edit.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-classification",
+    "exportName": "clashClassificationOperations"
+  },
+  {
+    "id": "clash.classification.run",
+    "version": 1,
+    "owner": "clash",
+    "features": [
+      "ai.assistant"
+    ],
+    "description": "Run the existing chunked classify-all service against the already configured native route/keys/proxy, with the exact native root budget and explicit normalization consent. Forwards real cancellation and current-run guard. Returns native accounting/diagnostics and a review draft; does not apply groups.",
+    "needs": "viewer",
+    "effects": [
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "allow_normalization": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "token",
+        "allow_normalization"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "clash-native-classification",
+    "exportName": "clashClassificationOperations"
+  },
+  {
+    "id": "clash.classification.sample",
+    "version": 1,
+    "owner": "clash",
+    "features": [],
+    "description": "Ground a supplied typed clash.groups answer against the exact captured native sample evidence, then create the same editable review draft as the Assistant UI.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "answer": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "token",
+        "answer"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-classification",
+    "exportName": "clashClassificationOperations"
+  },
+  {
+    "id": "clash.classification.edit",
+    "version": 1,
+    "owner": "clash",
+    "features": [],
+    "description": "Run native review draft rename/move/new-group/unclassify/merge handlers, preserving native immutable finding IDs, name validation and accounting.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "rename",
+            "move",
+            "newGroup",
+            "unclassify",
+            "merge"
+          ]
+        },
+        "group": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "occurrences": {
+          "type": "array",
+          "maxItems": 50000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 10000
+          }
+        }
+      },
+      "required": [
+        "token",
+        "action",
+        "group",
+        "target",
+        "name",
+        "occurrences"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-classification",
+    "exportName": "clashClassificationOperations"
+  },
+  {
+    "id": "clash.classification.plan",
+    "version": 1,
+    "owner": "clash",
+    "features": [],
+    "description": "Prepare the exact native reviewed grouping application into an existing workspace (workspace_id) or new workspace (empty id). Returns moved-finding and native expected-revision details before apply.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "workspace_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "token",
+        "workspace_id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-classification",
+    "exportName": "clashClassificationOperations"
+  },
+  {
+    "id": "clash.classification.apply",
+    "version": 1,
+    "owner": "clash",
+    "features": [],
+    "description": "Apply the exact native grouping plan in the existing optimistic content batch with explicit moved-finding confirmation and immutable receipt. Preserves stale-run/unsaved-edit/storage/revision refusals.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "confirm_moves": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "token",
+        "confirm_moves"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-classification",
+    "exportName": "clashClassificationOperations"
+  },
+  {
+    "id": "clash.classification.undo",
+    "version": 1,
+    "owner": "clash",
+    "features": [],
+    "description": "Undo an exact native grouping receipt through the original optimistic revision/partition guards. Never overwrites a later human edit/import.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "receipt_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "receipt_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-classification",
+    "exportName": "clashClassificationOperations"
+  },
+  {
+    "id": "clash.drafts.create",
+    "version": 1,
+    "owner": "clash",
+    "description": "Create a native BCF draft batch from the exact active manual-group workspace or explicitly selected current findings, through the existing native draftBatchFromGroups/draftBatchFromSelection services and durable draft writer. Captures native framing/provenance; does not publish to a server or create live BCF topics. Cancellation suppresses saving while an in-flight native frame may settle.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "groups",
+            "selection"
+          ]
+        },
+        "clash_ids": {
+          "type": "array",
+          "maxItems": 50000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "run_seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_groups": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "source",
+        "clash_ids",
+        "run_seq",
+        "expected_groups",
+        "name",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string"
+        },
+        "topics": {
+          "type": "integer"
+        },
+        "persisted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "batch_id",
+        "topics",
+        "persisted"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "clash-native-drafts",
+    "exportName": "clashDraftOperations"
+  },
+  {
     "id": "exports.modelStep",
     "version": 1,
     "owner": "exports",
@@ -14004,7 +15940,7 @@ export const operationContracts: readonly OperationContract[] = [
     "features": [
       "export.files"
     ],
-    "description": "Produce native CityJSON (or CityJSONSeq with sequence=true) from the explicit model's current edited IFC source, through the same producer as the toolbar dialog. A model without georeferencing exports in local coordinates; producer warnings are returned, and package refusals (for example no IfcBuilding) are errors.",
+    "description": "Produce native CityJSON (or CityJSONSeq with sequence=true) from the explicit model's current edited IFC source, through the same producer as the toolbar dialog. Session georeferencing edits are written; a model without georeferencing exports in local coordinates; producer warnings are returned, and package refusals (for example no IfcBuilding) are errors.",
     "needs": "viewer",
     "effects": [
       "artifact"

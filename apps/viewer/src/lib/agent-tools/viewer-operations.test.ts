@@ -5,12 +5,14 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
+import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import type { Renderer } from '@ifc-lite/renderer';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configuredView } from '@/test/agent-tools-fixture';
-import { createBimContext } from '@ifc-lite/sdk';
+import { ClashNamespace, createBimContext } from '@ifc-lite/sdk';
+import { summarizeClashes, type ClashResult } from '@ifc-lite/clash';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
@@ -34,6 +36,23 @@ const inspect = (id: string, input: unknown = {}, extra: Record<string, unknown>
   dispatchMainViewerTool(host, 'viewer_operation_inspect', { ...(viewerOperations().find(operation => operation.id === id)?.needs === 'model' ? { model_id: 'A' } : {}), operation_id: id, input, ...extra });
 const job = (job_id: string) => dispatchMainViewerTool(host, 'viewer_operation_job', { job_id });
 function data<T>(value: { structured: unknown; isError: boolean; text: string }): T { assert.equal(value.isError, false, value.text); return value.structured as T; }
+/** Holds `ClashNamespace.run` until its abort signal fires and, unless `released`, until `release()`. */
+function holdClashRunner(t: { mock: { method: typeof import('node:test').mock.method } }, { released = false } = {}) {
+  let entered!: () => void, aborted!: () => void, release!: () => void;
+  const settle = released ? Promise.resolve() : new Promise<void>(r => { release = r; });
+  const gate = { entered: new Promise<void>(r => { entered = r; }), aborted: new Promise<void>(r => { aborted = r; }), release: () => release?.() };
+  const run = ClashNamespace.prototype.run;
+  t.mock.method(ClashNamespace.prototype, 'run', async function (this: ClashNamespace, ...args: Parameters<typeof run>) {
+    entered();
+    const signal = args[2]?.signal;
+    assert.ok(signal, 'clash.analyze must pass its abort signal to the engine');
+    if (!signal.aborted) await once(signal, 'abort');
+    aborted();
+    await settle;
+    return run.apply(this, args);
+  });
+  return gate;
+}
 async function settled(id: string) {
   for (let i = 0; i < 50; i++) {
     await setImmediate();
@@ -245,6 +264,17 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     useViewerStore.setState({ mutationVersion: 3 });
     assert.equal((await execute('environment.exposure', { value: 1.1 }, { expected_revision: 2 })).errorCode, 'STATE_CHANGED');
   });
+  it('runs real box-mesh clash analysis with structured job completion', async () => {
+    const panelReport: ClashResult = { clashes: [], summary: summarizeClashes([]), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+    useViewerStore.setState({ clashResult: panelReport });
+    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+    const queued = data<{ job: { id: string; state: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+    assert.equal(queued.job.state, 'running');
+    const terminal = data<{ state: string; result: { result: { clashes: unknown[] } } }>(await settled(queued.job.id));
+    assert.equal(terminal.state, 'succeeded');
+    assert.ok(terminal.result.result.clashes.length > 0, 'real coincident meshes must clash');
+    assert.equal(useViewerStore.getState().clashResult, panelReport, 'analysis leaves the open panel report in place');
+  });
   it('refuses completed job results after a model edit and isolates host job ownership', async () => {
     const queued = data<{ job: { id: string } }>(await inspect('schedule.tasks', {}, { background: true }));
     assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'succeeded');
@@ -253,6 +283,23 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     useViewerStore.setState({ mutationVersion: 1 });
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
   });
+  it('cancels a real clash job and waits for native runner settlement', async (t) => {
+    // The runner signals entry, waits for the abort, then waits on a gate. While the gate is
+    // closed the job must still be running: cancellation is not terminal until the runner settles.
+    const gate = holdClashRunner(t);
+    try {
+      const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+      const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+      await gate.entered;
+      const requested = data<{ state: string; cancellationRequested?: boolean }>(await dispatchMainViewerTool(host, 'viewer_operation_cancel', { job_id: queued.job.id }));
+      assert.equal(requested.state, 'running');
+      assert.equal(requested.cancellationRequested, true);
+      await gate.aborted;
+      assert.equal(data<{ state: string }>(await job(queued.job.id)).state, 'running', 'cancelled only once the runner settles');
+      gate.release();
+      assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'cancelled');
+    } finally { gate.release(); }
+  });
   it('discards a completed result when the model object changes even if its store survives', async () => {
     const queued = data<{ job: { id: string } }>(await inspect('schedule.tasks', {}, { background: true }));
     assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'succeeded');
@@ -260,6 +307,16 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     models.set('A', { ...models.get('A')!, name: 'replacement' });
     useViewerStore.setState({ models });
     assert.equal((await job(queued.job.id)).errorCode, 'STATE_CHANGED');
+  });
+  it('aborts host-owned analysis after its original MCP call has returned', async (t) => {
+    const lifetime = new AbortController();
+    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), { lifetimeSignal: lifetime.signal });
+    const rules = [{ id: 'walls', name: 'Wall pairs', a: 'IfcWall', b: 'IfcWall', mode: 'hard', tolerance: 0, clearance: 0 }];
+    const gate = holdClashRunner(t, { released: true });
+    const queued = data<{ job: { id: string } }>(await inspect('clash.analyze', { rules }, { background: true }));
+    await gate.entered;
+    lifetime.abort();
+    assert.equal(data<{ state: string }>(await settled(queued.job.id)).state, 'cancelled');
   });
   it('declares an explicit capability and closed runtime schema for every exact ID', () => {
     const ids = new Set<string>();

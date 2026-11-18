@@ -251,12 +251,32 @@ describe('analyzeConversionLoss and the structural carriers (#9668)', () => {
     ]);
     expect(line(await roundTrip(ifc4('.NOTDEFINED.'), 'IFC4', 'IFC2X3'), 30)).toMatch(/,#16,#(\d+),\.GLOBAL_COORDS\.,\.F\.,\.TRUE_LENGTH\.,\.NOTDEFINED\.\);$/);
     expect(await roundTrip(ifc4('.NOTDEFINED.'), 'IFC4', 'IFC2X3')).toContain('=IFCSTRUCTURALLOADCONFIGURATION($,(#18,#19),$);');
+    const mixed = ifc4('.NOTDEFINED.').replace('ENDSEC;\nEND-ISO', '#26=IFCSTRUCTURALLOADCONFIGURATION($,(#18,#19),$);\nENDSEC;\nEND-ISO');
+    const report = analyzeConversionLoss(await parse(mixed), 'IFC4', 'IFC2X3');
+    const configurations = report.entries.filter((entry) => entry.sourceType === 'IFCSTRUCTURALLOADCONFIGURATION');
+    expect(configurations).toMatchObject([{
+      count: 2,
+      expressIds: [25, 26],
+      droppedAttributes: ['Name', 'Values', 'Locations'],
+      recordGroups: [
+        { expressIds: [25], droppedAttributes: ['Name', 'Locations'] },
+        { expressIds: [26], droppedAttributes: ['Name', 'Values', 'Locations'] },
+      ],
+    }]);
     // A LINEAR action comes back NOTDEFINED.
     expect(await losses(ifc4('.LINEAR.'), 'IFC4', 'IFC2X3')).toEqual([
       { type: 'IFCSTRUCTURALCURVEACTION', ids: [30], lost: ['PredefinedType'] },
       { type: 'IFCSTRUCTURALLOADCONFIGURATION', ids: [25], lost: ['Name', 'Locations'] },
     ]);
     expect(line(await roundTrip(ifc4('.LINEAR.'), 'IFC4', 'IFC2X3'), 30)).toMatch(/,\.NOTDEFINED\.\);$/);
+  });
+
+  it('omits Axis when the IFC2X3 profile association restores it (#9668)', async () => {
+    const ifc4 = model('IFC4', `${OWNER}
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#9,$,.RIGID_JOINED_MEMBER.,#21);
+#21=IFCDIRECTION((0.,1.,0.));`);
+    expect(await losses(ifc4, 'IFC4', 'IFC2X3')).toEqual([]);
+    expect(line(await roundTrip(ifc4, 'IFC4', 'IFC2X3'), 20)).toMatch(/,#21\);$/);
   });
 
   it('leaves the report as it was for a store without source bytes', () => {

@@ -8,6 +8,8 @@ import { beforeEach, describe, it } from 'node:test';
 import { setImmediate } from 'node:timers/promises';
 import type { Renderer } from '@ifc-lite/renderer';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { configuredView } from '@/test/agent-tools-fixture';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
@@ -105,6 +107,20 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal(useViewerStore.getState().measurements.length, 1);
     assert.equal((await execute('measurements.distance', { ...input, end: [1, 1, 1] }, { idempotency_key: 'distance-1' })).isError, true);
   });
+  it('exports a real changed IFC artifact without downloading or discarding pending edits', async () => {
+    const view = new MutablePropertyView(null, 'A');
+    view.setAttribute(1, 'Name', 'AGENT-EXPORTED-WALL');
+    useViewerStore.setState({ mutationViews: new Map([['A', view]]), mutationVersion: 1 });
+    const result = data<{ committed: boolean; result: { artifact: { artifact_id: string }; files: Array<{ model_id: string }> } }>(await execute('exports.changedModels'));
+    assert.equal(result.committed, true);
+    assert.equal(result.result.files[0].model_id, 'A');
+    const chunk = data<{ data: string; next_offset: number | null }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: result.result.artifact.artifact_id, offset: 0, length: 65536 }));
+    assert.equal(chunk.next_offset, null);
+    assert.match(Buffer.from(chunk.data, 'base64').toString('utf8'), /AGENT-EXPORTED-WALL/);
+    assert.equal(view.getMutations().length, 1, 'creating an export must not discard its pending edits');
+    assert.equal((await execute('model.unload')).isError, true, 'unexported edits still require native discard confirmation');
+    assert.ok(useViewerStore.getState().models.has('A'));
+  });
   it('validates every basket reference before changing native basket isolation', async () => {
     useViewerStore.getState().clearBasket();
     const before = useViewerStore.getState().isolatedEntities;
@@ -114,6 +130,31 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal((await inspect('basket.clear')).errorCode, 'READ_ONLY');
     assert.equal((await execute('basket.replace', { express_ids: [1] }, {}, false)).errorCode, 'READ_ONLY');
     assert.equal(useViewerStore.getState().pinboardEntities.size, 0);
+  });
+  it('exports explicit native STEP targets and refuses an unknown merge member before retaining an artifact', async () => {
+    const options = { schema: 'IFC4', include_geometry: true, apply_mutations: true, visible_only: false, section_mode: 'trim' };
+    const exported = data<{ result: { artifact: { artifact_id: string }; diagnostics_json: string } }>(await execute('exports.modelStep', options));
+    const bytes = data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: exported.result.artifact.artifact_id }));
+    assert.match(Buffer.from(bytes.data, 'base64').toString('utf8'), /IFCWALL/);
+    await seed(2);
+    const refused = await execute('exports.mergedStep', { ...options, model_ids: ['A', 'missing'], unit_reconciliation: 'assume-shared' });
+    assert.equal(refused.isError, true);
+    assert.deepEqual(data<{ artifacts: unknown[] }>(await dispatchMainViewerTool(host, 'viewer_artifacts', {})).artifacts, []);
+    // The fixture gives both models the same wall names and GlobalIds (the clash tests need that), and the
+    // merge de-duplicates by GlobalId. Give B's wall its own identity and mark one wall per model.
+    const views = new Map(['A', 'B'].map(id => {
+      const store = useViewerStore.getState().models.get(id)!.ifcDataStore!;
+      const view = configuredView(store, id);
+      view.setAttribute(1, 'Name', `Merged marker ${id}`);
+      if (id === 'B') view.setAttribute(1, 'GlobalId', '0001bbbbbbbbbbbbbbbbbb');
+      return [id, view] as const;
+    }));
+    useViewerStore.setState({ mutationViews: views });
+    const merged = data<{ result: { artifact: { artifact_id: string }; diagnostics_json: string } }>(await execute('exports.mergedStep', { ...options, model_ids: ['A', 'B'], unit_reconciliation: 'assume-shared' }));
+    const diagnostics = JSON.parse(merged.result.diagnostics_json) as { stats: { modelCount: number }; skipped: unknown[] };
+    assert.equal(diagnostics.stats.modelCount, 2); assert.deepEqual(diagnostics.skipped, []);
+    const mergedText = Buffer.from(data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: merged.result.artifact.artifact_id })).data, 'base64').toString('utf8');
+    for (const id of ['A', 'B']) assert.equal(mergedText.split(`Merged marker ${id}`).length - 1, 1, id);
   });
   it('runs native Rules filters, rejects stale configuration, and pages the published result', async () => {
     const state = data<{ result: { native_json: string } }>(await inspect('filters.state'));

@@ -22,7 +22,7 @@ const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const paletteOnly = ['palette'] as const;
 /** The structural view modes in their ribbon order. */
-export const STRUCTURAL_VIEW_MODES = ['both', 'analytical', 'physical'] as const;
+const STRUCTURAL_VIEW_MODES = ['both', 'analytical', 'physical'] as const;
 
 export const VISIBILITY_SURFACE_COMMANDS = [
   {

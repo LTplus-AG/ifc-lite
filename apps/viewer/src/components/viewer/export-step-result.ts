@@ -10,7 +10,7 @@ import type { ExportDialogShellResult } from './ExportDialogShell';
  * export with exporter warnings toasts as info and lists them (#10606).
  * Identical lines are kept: each cropped source of a sectioned merge reports
  * its own records (e.g. "1 structural conversion record(s): ..."). The count
- * is formatted for the locale `t` resolves in, read when the export finishes. */
+ * is formatted for the active locale (`getLocale()`), which `t` also reads. */
 export function stepExportResult(summary: string, warnings: readonly string[], t: UseTranslationResult['t']): ExportDialogShellResult {
   if (!warnings.length) {
     toast.success(summary);

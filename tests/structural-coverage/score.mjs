@@ -237,7 +237,7 @@ function print(s) {
 }
 
 /** Runs every probe over the corpus and scores it; `main`'s default, injectable so a test can drive its exits. */
-async function evaluate({ rows, tables }, { offline }) {
+async function evaluateCorpus({ rows, tables }, { offline }) {
   const corpus = loadCorpus(ROOT, { offline });
   const pkgs = await loadPackages(ROOT);
   const ctx = { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() };
@@ -252,7 +252,7 @@ async function evaluate({ rows, tables }, { offline }) {
   return { summary, limitIssues };
 }
 
-export async function main(argv, { evaluate: run = evaluate } = {}) {
+export async function main(argv, { evaluate = evaluateCorpus } = {}) {
   // Strict: a valued flag without its value, or a misspelt flag, exits 2 instead of running without the ratchet.
   let values;
   try {
@@ -294,7 +294,7 @@ export async function main(argv, { evaluate: run = evaluate } = {}) {
   let summary;
   let limitIssues;
   try {
-    ({ summary, limitIssues } = await run(catalogue, { offline: values.offline === true }));
+    ({ summary, limitIssues } = await evaluate(catalogue, { offline: values.offline === true }));
   } catch (e) {
     console.error(`score: ${e.message}`);
     return 2;

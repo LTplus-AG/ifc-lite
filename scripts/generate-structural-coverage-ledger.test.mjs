@@ -146,24 +146,20 @@ test('limits (#9668): label every problem or count it open, never change a score
   assert.ok(labelled.rows[0].levels.convert.limits && !('problems' in labelled.rows[0].levels.convert), 'the summary keeps the label, not the problem list');
 });
 
-test('score.mjs: a stale limit fails the run with exit 1 and names the label; the summary is still written (#10597)', async () => {
+test('score.mjs: a stale limit fails the run with exit 1 and names the label; the summary is still written (#10597)', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'structural-score-'));
   const out = join(dir, 'summary.json');
   const stale = { row: two[0].id, level: 'convert', kind: 'schema', problem: /^never reported$/, cite: 'test', holds: () => true };
+  const error = t.mock.method(console, 'error', () => {});
+  t.mock.method(console, 'log', () => {});
   const run = async (limits) => {
-    const errors = [];
-    const { error, log } = console;
-    console.error = (m) => errors.push(String(m));
-    console.log = () => {};
-    try {
-      const evaluate = async () => {
-        const cells = cellsOf({});
-        return { summary: score(two, cells), limitIssues: markLimits(cells, {}, limits) };
-      };
-      return { code: await main(['--quiet', '--out', out], { evaluate }), errors: errors.join('\n') };
-    } finally {
-      Object.assign(console, { error, log });
-    }
+    error.mock.resetCalls();
+    const evaluate = async () => {
+      const cells = cellsOf({});
+      return { summary: score(two, cells), limitIssues: markLimits(cells, {}, limits) };
+    };
+    const code = await main(['--quiet', '--out', out], { evaluate });
+    return { code, errors: error.mock.calls.map((c) => String(c.arguments[0])).join('\n') };
   };
   try {
     const failed = await run([stale]);

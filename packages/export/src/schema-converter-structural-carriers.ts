@@ -45,8 +45,8 @@ const CAUSED_BY = 10;
 const OBJECT_PLACEMENT = 5;
 const IFC2X3_ACTIONS = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
 
-export const CAUSED_BY_AMONG = "IFC2X3 CausedBy is one of several reactions the action's 'Causes' relationships name in IFC4, so IFC2X3 CausedBy cannot be restored from them";
-export const CAUSED_BY_WRITTEN = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";
+const CAUSED_BY_AMONG = "IFC2X3 CausedBy is one of several reactions the action's 'Causes' relationships name in IFC4, so IFC2X3 CausedBy cannot be restored from them";
+const CAUSED_BY_WRITTEN = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";
 const CAUSED_BY_READ = "an IfcRelAssignsToProduct named 'Causes' from an action to one point reaction also fills the IFC2X3 CausedBy";
 const LOAD_CASE_WRITTEN = `IfcStructuralLoadCase is written as an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set holding ${COEFFICIENTS}`;
 const LOAD_CASE_READ = `an IfcStructuralLoadGroup with a '${LOAD_CASE_PSET}' property set is written as the IFC4 IfcStructuralLoadCase it came from`;
@@ -55,6 +55,8 @@ const SHARED_PLACEMENT = 'IfcStructuralAnalysisModel.SharedPlacement is written 
 export class StructuralCarriers {
   /** The exporter's express-id allocator, shared with every other record it appends. */
   ids: (() => number) | null = null;
+  /** Whether to find what the reverse conversion restores (`restored`, `restoredFrom`); only the loss report asks. */
+  roundTrip = false;
   private readonly pending: string[] = [];
   private mode: ConversionMode = null;
   /** Upgrade: action id -> reaction ids a source 'Causes' relationship already names. */
@@ -86,6 +88,7 @@ export class StructuralCarriers {
         const [only] = reactions;
         if (reactions.size === 1 && source.type(only) === 'IFCSTRUCTURALPOINTREACTION') this.causedBy.set(action, only);
       }
+      if (!this.roundTrip) return;
       if (source.ids('IFCSTRUCTURALLOADCASE').length) {
         for (const set of readCarrierSets(source, LOAD_CASE_PSET, false)) for (const g of set.related) this.carrierLoadCases.add(g);
       }
@@ -188,14 +191,14 @@ export class StructuralCarriers {
   /**
    * IFC2X3 -> IFC4: the 'Causes' relationship for an action's CausedBy, added
    * unless the source's 'Causes' relationships already name that reaction.
-   * Returns the message to report when IFC4 holds the cause: CAUSED_BY_WRITTEN
-   * when the action ends with that one cause, which the downgrade reads back;
-   * CAUSED_BY_AMONG when it ends with several. Null when the carrier is not
+   * Returns the message to report when IFC4 holds the cause and whether the
+   * downgrade reads it back: it does when the action ends with that one cause
+   * (CAUSED_BY_WRITTEN), not with several (CAUSED_BY_AMONG). Null when the carrier is not
    * armed (no upgrade, no id allocator, a withheld set) or the record is not an
    * IFC2X3 action whose CausedBy names a point reaction; `inspect` then reports
    * a set CausedBy omitted.
    */
-  noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null {
+  noteCause(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): { message: string; restored: boolean } | null {
     const reaction = this.causeOf(entity, args, withheld);
     if (reaction === null || !this.ids) return null;
     const written = this.causesWritten.get(id) ?? new Set<number>();
@@ -205,7 +208,7 @@ export class StructuralCarriers {
     }
     // The downgrade restores CausedBy only for an action with exactly one cause.
     const total = written.size + (written.has(reaction) ? 0 : 1);
-    return total === 1 ? CAUSED_BY_WRITTEN : CAUSED_BY_AMONG;
+    return total === 1 ? { message: CAUSED_BY_WRITTEN, restored: true } : { message: CAUSED_BY_AMONG, restored: false };
   }
 
   /** IFC2X3 -> IFC4: the point reaction an action's CausedBy names that a 'Causes' relationship would carry, or null. */

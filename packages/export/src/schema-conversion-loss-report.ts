@@ -231,7 +231,7 @@ function splitByRestored(
   const groups = new Map<string, { dropped: string[]; ids: number[] }>();
   for (const id of expressIds) {
     const back = restored.get(id);
-    const dropped = back ? info.droppedAttributes.filter((a) => !back.has(a)) : [...info.droppedAttributes];
+    const dropped = info.droppedAttributes.filter((a) => !back?.has(a));
     if (info.kind === 'lossy' && info.droppedAttributes.length && !dropped.length) continue;
     const key = dropped.join(',');
     const group = groups.get(key) ?? { dropped, ids: [] };
@@ -243,7 +243,7 @@ function splitByRestored(
     droppedAttributes: dropped,
     sourceType,
     count: ids.length,
-    expressIds: ids.length === expressIds.length ? expressIds : ids,
+    expressIds: ids,
   }));
 }
 
@@ -267,12 +267,17 @@ export function analyzeConversionLoss(
       const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
       if (info.kind !== 'identity' && info.kind !== 'renamed') typed.push([sourceType.toUpperCase(), expressIds, info]);
     }
-    // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost. Needs the source bytes.
+    // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost.
+    // Only IfcStructural* records carry anything, and reading them needs the source bytes.
+    const carrying = (type: string, info: EntityConversionInfo) => type.startsWith('IFCSTRUCTURAL') && info.droppedAttributes.length > 0;
     const { source } = store;
     const restored = source
-      ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema, typed.flatMap(([, ids, info]) => (info.droppedAttributes.length ? ids : [])))
+      ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema, typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])))
       : new Map<number, ReadonlySet<string>>();
-    for (const [sourceType, expressIds, info] of typed) entries.push(...splitByRestored(sourceType, expressIds, info, restored));
+    for (const [sourceType, expressIds, info] of typed) {
+      if (restored.size && carrying(sourceType, info)) entries.push(...splitByRestored(sourceType, expressIds, info, restored));
+      else entries.push({ ...info, sourceType, count: expressIds.length, expressIds });
+    }
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
   const hasBlocking = entries.some((e) => e.kind === 'blocked');

@@ -4,13 +4,12 @@ import { getSchemaRegistryForVersion, getCanonicalEntityName } from '@ifc-lite/p
 import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
-import { CAUSED_BY_AMONG, StructuralCarriers } from './schema-converter-structural-carriers.js';
-import { SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
+import { StructuralCarriers } from './schema-converter-structural-carriers.js';
+import { conversionMode, namesWithheld, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
-import { decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
@@ -29,6 +28,9 @@ export class StructuralDiagnostics {
   private readonly carried = new Map<number, ReadonlySet<string>>();
   /** Source record id -> attributes the target leaves out or holds elsewhere that the reverse conversion writes back. */
   private readonly restored = new Map<number, Set<string>>();
+
+  /** `roundTrip`: also find what the reverse conversion restores (`structuralRoundTrip`); an export does not. */
+  constructor(private readonly roundTrip = false) { this.carriers.roundTrip = roundTrip; }
 
   /**
    * The source prepasses for an IFC2X3 <-> IFC4 export; the caller arms them
@@ -109,7 +111,8 @@ export class StructuralDiagnostics {
    * A body still naming a `withheld` id is refused, and then nothing is reported.
    */
   rewrite(id: number, entity: string, args: readonly string[], withheld: ReadonlySet<number> | undefined): string | null | undefined {
-    this.restore(id, this.carriers.restoredFrom(id));
+    // A record naming a withheld id becomes a proxy, which the reverse conversion derives nothing for.
+    if (this.roundTrip && !namesWithheld(args, withheld)) this.restore(id, this.carriers.restoredFrom(id));
     // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
     const unconverted = this.varying.staysUnconverted(entity, args);
     if (unconverted && this.carriers.causeOf(entity, args, withheld) !== null) this.record(CAUSED_BY_UNCONVERTED);
@@ -118,10 +121,10 @@ export class StructuralDiagnostics {
     let carried = NONE;
     if (held.length) {
       carried = new Set(held);
-      this.record(cause ?? THICKNESS_WRITTEN);
+      this.record(cause?.message ?? THICKNESS_WRITTEN);
       this.carried.set(id, carried);
-      // The downgrade restores CausedBy only for an action with one cause.
-      if (cause !== CAUSED_BY_AMONG) this.restore(id, held);
+      // The downgrade reads a held thickness back (`StructuralThickness.rewrite`); a cause only when it says so.
+      if (cause?.restored !== false) this.restore(id, held);
     }
     const attrs = this.links.link(entity, args);
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
@@ -135,7 +138,7 @@ export class StructuralDiagnostics {
   }
 
   private restore(id: number, attributes: readonly string[]): void {
-    if (!attributes.length) return;
+    if (!this.roundTrip || !attributes.length) return;
     const set = this.restored.get(id) ?? new Set<string>();
     attributes.forEach((a) => set.add(a));
     this.restored.set(id, set);
@@ -158,11 +161,11 @@ export class StructuralDiagnostics {
  * for any other schema pair, and for a file the export refuses.
  */
 export function structuralRoundTrip(store: SourceStore, from: string, to: string, ids: readonly number[]): ReadonlyMap<number, ReadonlySet<string>> {
-  if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return new Map();
-  // @raw-entity-enumeration-ok same unedited source-only prepass
-  const entries = ids.map((id) => [id, store.entityIndex.byId.get(id)] as const).filter(([, e]) => e?.type.toUpperCase().startsWith('IFCSTRUCTURAL'));
-  if (!entries.length) return new Map();
-  const run = new StructuralDiagnostics();
+  if (!conversionMode(from, to) || !ids.length) return new Map();
+  const source = new SourceRecords(store);
+  const records = ids.filter((id) => source.type(id)?.startsWith('IFCSTRUCTURAL'));
+  if (!records.length) return new Map();
+  const run = new StructuralDiagnostics(true);
   try {
     run.fromStore(store, from, to);
   } catch {
@@ -171,10 +174,11 @@ export function structuralRoundTrip(store: SourceStore, from: string, to: string
   }
   // Nothing is written, so every added record may take the same id.
   run.ids = () => 0;
+  // Only an IFC2X3 target withholds ids.
   const withheld = to === 'IFC2X3' ? computeWithheldRefIds(store, to) : undefined;
-  for (const [id, entry] of entries) {
-    const rec = entry && readStepSlots(decodeRange(store.source, entry.byteOffset, entry.byteOffset + entry.byteLength));
-    if (rec) run.rewrite(id, rec.type, rec.slots, withheld);
+  for (const id of records) {
+    const slots = source.slots(id);
+    if (slots) run.rewrite(id, source.type(id)!, slots, withheld);
   }
   return run.restoredAttributes();
 }

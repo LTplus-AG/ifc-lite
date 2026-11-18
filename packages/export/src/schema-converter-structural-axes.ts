@@ -279,8 +279,11 @@ export class StructuralAxes {
     return AXIS_WRITTEN;
   }
 
-  /** The association `hold` fills for this member's Axis, or null when it writes a new one. */
-  association(id: number): number | null { return this.carried.get(id)?.into ?? null; }
+  /** The association `rewrite` fills with this member's Axis, or null: `hold` writes a new one, or the association already holds it. */
+  association(id: number): number | null {
+    const into = this.carried.get(id)?.into ?? null;
+    return into !== null && this.fills.has(into) ? into : null;
+  }
 
   /** Whether `hold` carries this member's Axis, without writing anything. */
   holds(id: number, args: readonly string[], withheld: ReadonlySet<number> | undefined): boolean {

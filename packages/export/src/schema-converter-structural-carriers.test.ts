@@ -777,6 +777,15 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     expect((await lossIds(split, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALCURVEMEMBER.Axis']).toEqual([20]);
   });
 
+  it('keeps the Axis in the preview when a split association already holds it, which the writer leaves as it is', async () => {
+    const split = UNPLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
+#41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,
+  (#20),#40,$,#30);
+#20=`).replace('#35);', '#30);');
+    expect((await convert(split, 'IFC2X3')).step).toContain('(#20),#40,$,#30);');
+    expect((await lossIds(split, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALCURVEMEMBER.Axis']).toBeUndefined();
+  });
+
   it('reports the Axis lost, and writes no direction, when the association it would fill is refused', async () => {
     // The IFC4-only material profile is withheld from IFC2X3, so an association naming it cannot be written as filled.
     const refused = PLACED.replace('#20=', `#42=IFCMATERIAL('Steel',$,$);

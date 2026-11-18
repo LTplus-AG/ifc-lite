@@ -21,16 +21,16 @@ import type { ViewerState } from '../../store/index.js';
 /** Sentinel model ID used for the legacy single-model path */
 export const LEGACY_MODEL_ID = 'default';
 
-/**
- * The id `normalizeMutationModelId` stamps onto the refs the SDK store adapter
- * mints while the legacy single-model path is active, and the key its mutation
- * views are registered under.
- *
- * It lives here rather than beside that normalizer because `getModelForRef`
- * has to accept it and `mutation-view.ts` already imports this module (#5234);
- * `mutation-view.ts` re-exports it so existing importers are unaffected.
- */
+/** Key used for the mutation view in a legacy single-model session. */
 export const LEGACY_MUTATION_MODEL_ID = '__legacy__';
+
+export function isLegacyMutationRef(state: Pick<ViewerState, 'models'>, modelId: string): boolean {
+  return state.models.size === 0 && (modelId === 'legacy' || modelId === LEGACY_MODEL_ID || modelId === LEGACY_MUTATION_MODEL_ID);
+}
+
+export function normalizeMutationModelId(state: Pick<ViewerState, 'models'>, modelId: string): string {
+  return isLegacyMutationRef(state, modelId) ? LEGACY_MUTATION_MODEL_ID : modelId;
+}
 
 /** Minimal model shape needed by the SDK adapters.
  *
@@ -62,10 +62,7 @@ export function getModelForRef(state: Pick<ViewerState, 'models' | 'ifcDataStore
   // (#5234): without it, feeding such a ref's `modelId` to any reader built on
   // this resolver — `bim.cost`, the mutation-view attribute reader — failed
   // with "Unknown modelId '__legacy__'" for an id this adapter itself issued.
-  const legacyAlias = modelId === LEGACY_MODEL_ID
-    || modelId === 'legacy'
-    || modelId === LEGACY_MUTATION_MODEL_ID;
-  if (legacyAlias && state.models.size === 0 && state.ifcDataStore) {
+  if (isLegacyMutationRef(state, modelId) && state.ifcDataStore) {
     return buildLegacyModel(state.ifcDataStore);
   }
 

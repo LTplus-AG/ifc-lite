@@ -12,6 +12,7 @@ import { modelEditTarget, readModelEditTarget } from './mutation-modelling-recor
 import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
+import { normalizeMutationModelId } from '@/sdk/adapters/model-compat';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
@@ -1058,7 +1059,8 @@ export const createMutationSlice: StateCreator<
 
   // Mutation View Management
   getMutationView: (modelId) => {
-    return get().mutationViews.get(modelId) || null;
+    const state = get();
+    return state.mutationViews.get(modelId) ?? state.mutationViews.get(normalizeMutationModelId(state, modelId)) ?? null;
   },
 
   registerMutationView: (modelId, view) => {

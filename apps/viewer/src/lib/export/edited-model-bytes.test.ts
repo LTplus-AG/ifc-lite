@@ -13,6 +13,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { useViewerStore } from '@/store';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
+import { resolveTerrainSelection } from './landXmlTerrainExport';
 import { configureMutationView } from '@/utils/configureMutationView';
 
 // Loaded at runtime: the changed-test oracle removes new production files, and
@@ -64,6 +67,32 @@ describe('editedModelBytes (#5397)', () => {
     assert.equal(edited.entities.getName(created), 'Wall C');
     assert.equal(edited.entities.getGlobalId(created), '2Wall00000000000000012');
   });
+});
+
+it('LandXML preflight sees pending edits in the legacy single-model session (#10676)', async () => {
+  assert.ok(mod, 'edited-model-bytes must exist');
+  const store = await parse(new TextEncoder().encode(FIXTURE.replace(
+    "#10=IFCWALL('0Wall00000000000000010',$,'Wall A',$,$,$,$,$,$);",
+    "#10=IFCGEOGRAPHICELEMENT('0Wall00000000000000010',$,'Terrain',$,$,$,$,$,.TERRAIN.);",
+  )));
+  const snapshot = useViewerStore.getState();
+  useViewerStore.setState({ models: new Map(), ifcDataStore: store, mutationViews: new Map() });
+  try {
+    const view = getOrCreateMutationView(useViewerStore, 'legacy');
+    assert.ok(view);
+    view.setAttribute(10, 'Name', 'Edited terrain', 'Terrain');
+    const selection = resolveTerrainSelection({
+      refs: [{ modelId: 'legacy', expressId: 10 }],
+      models: useViewerStore.getState().models,
+      legacyStore: store,
+    });
+    assert.equal(selection.kind, 'ready');
+    const bytes = mod.editedModelBytes(selection.store, useViewerStore.getState().getMutationView(selection.modelId));
+    const exported = await parse(bytes);
+    assert.equal(exported.entities.getName(10), 'Edited terrain');
+  } finally {
+    useViewerStore.setState(snapshot);
+  }
 });
 
 describe('editedModelBytes on an IFC2X3 model (#5397 review)', () => {

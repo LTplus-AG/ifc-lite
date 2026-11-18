@@ -45,10 +45,10 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
-async function structuralModel(id: string, idOffset = 0) {
+async function structuralModel(id: string, idOffset = 0, text = source) {
   const model = fixtureModel(id, { idOffset });
   model.schemaVersion = 'IFC4';
-  model.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+  model.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
   return model;
 }
 
@@ -152,13 +152,9 @@ it('merged STEP export formats its entity count for the viewer locale, like its 
   // Enough points that the count needs a group separator.
   const points = Array.from({ length: 600 }, (_, i) => `#${100 + i}=IFCCARTESIANPOINT((${i}.,0.,0.));`).join('\n');
   const big = source.replace('ENDSEC;\nEND-ISO', `${points}\nENDSEC;\nEND-ISO`);
-  const bigModel = async (id: string, idOffset: number) => {
-    const model = fixtureModel(id, { idOffset });
-    model.schemaVersion = 'IFC4';
-    model.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(big).buffer);
-    return model;
-  };
-  useViewerStore.setState({ ...fixtureModels(await bigModel('structural.ifc', 0), await bigModel('annex.ifc', 1_000_000)), dirtyModels: new Set() });
+  useViewerStore.setState({
+    ...fixtureModels(await structuralModel('structural.ifc', 0, big), await structuralModel('annex.ifc', 1_000_000, big)), dirtyModels: new Set(),
+  });
   // German number formatting under a test-only tag; its empty catalogue leaves every string English.
   const locale = 'de-x-export-test';
   registerLocale(locale, {});

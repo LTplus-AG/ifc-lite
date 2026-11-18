@@ -376,13 +376,13 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         const skipNotice = mergeSkipNotice(skipped, t);
         // The cropped sources' warnings come from their export before the crop; they carry no
         // entity ids to filter by, so the toast says they cover each whole model.
-        const notes = [skipNotice, prepared.warnings.length > 0 ? t('exportDialog.sectionWarningsWholeModel') : null]
-          .filter((note): note is string => !!note).map((note) => note.replace(/\.$/, ''));
+        const notes = [skipNotice, prepared.warnings.length > 0 ? t('exportDialog.sectionWarningsWholeModel') : '']
+          .filter(Boolean).join(' ');
         const msg = `Merged ${result.stats.modelCount} models, ${formatLocaleNumber(getLocale(), result.stats.totalEntityCount)} entities`
           + (result.stats.normalizedModelCount > 0
             ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
             : '')
-          + notes.map((note) => `. ${note}`).join('') + (notes.length > 0 ? '.' : '');
+          + (notes ? `. ${notes}` : '');
         exportedFormat = 'ifc';
         return stepExportResult(msg, [...prepared.warnings, ...result.stats.warnings], t);
       }

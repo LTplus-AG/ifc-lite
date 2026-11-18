@@ -1120,6 +1120,35 @@ contracts; do not infer latency from allocation counts or relax the gate.
 The user explicitly accepted the small absolute cost to retain the broader
 gains, with further investigation bounded by #10555.
 
+## Small void classes walk canonically (#10555)
+
+#10420's first hosted window in a 1K session exceeded the regression boundary. Phase timing through the real session API put
+the extra cost in `readHostOpeningExtents` for an empty void class. It came
+from the source projection, two reference-slot queries, override
+classification (the session carries one source override) and V8 compiling
+that path on first use. The rejected bb492a5e skipped only the slot queries.
+Removing work from that call also moved its cold cost elsewhere: the
+`addOpeningToStore` pre-registration became the slot code's first execution.
+
+When both the authored and effective counts of `IfcRelVoidsElement` are at
+most 32, `readHostOpeningExtents` takes the canonical class walk in reference
+order. The pre-registration query is gone. Larger classes keep the #10420
+candidate path and build the projection on the first query. Fail-first
+tests pin "no slot query or override classification" for a small class and
+for a session's first windows.
+
+Exclusive Pop cohort `cc8c640c-5faf-486d-bc5f-8aa21a646c7a` measured
+`b2dba7ba7e` against the exact #10420 parent `33339ce582`. It used the
+unchanged session worker, five fresh pairs per size, the original quiet
+guard (GPU samples all 0%, 0.51 busy cores) and the unchanged own-noise-floor
+gate. Prepared identities and the WASM matched.
+
+The original gate passed at 1K, 10K and 50K. The branch was faster in every pair at every size. Two earlier submissions
+were refused by the quiet guard on GPU load from the Pop desktop compositor;
+they recorded no timings. Still open, and not a registered row: a second
+window on a wall that already has an opening costs more after #10420
+(`readHostedFill`); see #10555.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

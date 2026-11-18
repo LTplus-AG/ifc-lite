@@ -1048,6 +1048,61 @@ ${call}
   assert.equal(flagged(src(`check(s, 'literal');`)), false, 'taint landed in the wrong parameter');
 });
 
+test('assert.ok does not resolve to a local helper that happens to be named ok', () => {
+  // #10595: a helper `{ ok: (n) => n < 3 }` took the taint of a marked
+  // `assert.ok(source…)`, and the flat taint set then marked every later `n`,
+  // so 46 output assertions read as source reads. `assert` is the imported
+  // module, never a local binding, so its methods carry nothing into one.
+  for (const [method, helper] of [
+    ['ok', `const limits = { ok: (n) => n < 3 };`],
+    ['ok', `const ok = (n) => n < 3;`],
+    ['equal', `function equal(n, m) { return n === m; }`],
+    ['match', `const match = (n) => /x/.test(n);`],
+  ]) {
+    const src = `
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+${helper}
+const source = readFileSync('a.ts', 'utf8');
+assert.${method}(source.length > 0, true); // @source-text-assertion-ok size only
+const rows = [1, 2].map((n) => String(n * 2));
+assert.ok(rows.includes('2'));
+`;
+    assert.deepEqual(analyze(src).hits, [], `assert.${method} leaked into a local ${method}`);
+  }
+});
+
+test('a member call on a LOCAL object named assert is still followed', () => {
+  // Only an imported module is opaque. A local `assert` is ordinary code, and
+  // its parameters take the taint of what is passed in, also when it shadows
+  // the import inside a test.
+  const local = `const assert = { ok: (text) => text.includes('x') };
+  assert.ok(readFileSync('a.ts', 'utf8'));`;
+  assert.equal(flagged(`import { readFileSync } from 'node:fs';\n${local}`), true, 'no import');
+  assert.equal(
+    flagged(`import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+test('x', () => {
+  ${local}
+});`),
+    true,
+    'a local assert shadowing the import',
+  );
+});
+
+test('a method of any import does not resolve to a same-named local helper', () => {
+  const src = `
+import * as path from 'node:path';
+import { readFileSync } from 'node:fs';
+function join(n) { return n; }
+const source = readFileSync('a.ts', 'utf8');
+path.join(source);
+const rows = [1, 2].map((n) => String(n));
+assert.ok(rows.includes('2'));
+`;
+  assert.deepEqual(analyze(src).hits, []);
+});
+
 test('a marker written after the assertion on the same line still excuses it', () => {
   // TypeScript attaches a same-line trailing comment to the PRECEDING token, so
   // it is trailing trivia and not leading trivia of anything. A comment walk

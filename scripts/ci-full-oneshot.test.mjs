@@ -71,7 +71,7 @@ test('`shadow` only records; unset, `off` and typos leave labels alone', () => {
   for (const mode of ['true', ' on', 'remove']) {
     const d = decide({ mode });
     assert.equal(d.action, 'keep', mode);
-    assert.match(d.warning ?? '', /not one of off, shadow, on/); // @source-text-assertion-ok subject is the decision's returned message
+    assert.match(d.warning ?? '', /not one of off, shadow, on/);
   }
 });
 

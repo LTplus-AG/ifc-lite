@@ -7,8 +7,15 @@
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
-import { afterEach, before, test } from 'node:test';
+import { afterEach, before, mock, test } from 'node:test';
 import { extractStructuralOnDemand } from '@ifc-lite/parser';
+import { StepExporter } from '@ifc-lite/export';
+import { registerLocale, setLocale, type Locale } from '@/i18n';
+import { structuralDeriveEn } from '@/i18n/catalogues/structural-derive.en';
+import { structuralDeriveDe } from '@/i18n/locales/de/structural-derive';
+import { structuralDeriveFr } from '@/i18n/locales/fr/structural-derive';
+import { structuralDeriveIt } from '@/i18n/locales/it/structural-derive';
+import { structuralDeriveRu } from '@/i18n/locales/ru/structural-derive';
 import { useViewerStore } from '@/store';
 import { recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -23,7 +30,7 @@ import { StructuralDerivationReview, DerivationSummary } from './StructuralDeriv
 
 before(() => loadStructuralWrites());
 const initial = useViewerStore.getState();
-afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
+afterEach(() => { cleanup(); mock.restoreAll(); setLocale('en'); useViewerStore.setState(initial, true); });
 
 const buttons = (root: HTMLElement) => [...root.querySelectorAll('button')];
 const button = (root: HTMLElement, text: RegExp) => buttons(root).find((b) => text.test(b.textContent ?? ''));
@@ -201,4 +208,48 @@ test('#10605 a linked beam whose axis cannot be read is reported unchecked, neve
   assert.ok(beam);
   click(beam);
   assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: SAMPLE_MODEL, expressId: 65 });
+});
+
+const REFUSALS: Array<[Locale, Record<string, string>]> = [
+  ['en', structuralDeriveEn], ['de', structuralDeriveDe], ['fr', structuralDeriveFr], ['it', structuralDeriveIt], ['ru', structuralDeriveRu],
+];
+for (const [locale, catalogue] of REFUSALS) {
+  test(`#10621 follow-up: the refusal names the existing analysis model as a link (${locale})`, async () => {
+    if (locale !== 'en') registerLocale(locale, catalogue);
+    setLocale(locale);
+    await seed(true);
+    commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
+    const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
+    const [existing] = review.plan.existingAnalysisModels;
+    assert.ok(existing, 'the model has an analysis model');
+    // The plan refuses when it would derive new members beside it; this frame has none left to derive.
+    review.plan.refusal = 'refused';
+    const root = render(<DerivationSummary review={review} />);
+    const refusal = root.querySelector('p[role="alert"]');
+    assert.ok(refusal, text(root));
+    const link = [...refusal.querySelectorAll('button')].find((b) => b.textContent?.startsWith(`#${existing.expressId} `));
+    assert.ok(link, `the refusal links #${existing.expressId}: ${refusal.textContent}`);
+    // The catalogue's own words around the placeholder survive, with no stray mark or doubled #.
+    const [before, after] = catalogue['structuralDerive.existing'].split('{ids}');
+    assert.equal(refusal.textContent, `${before}${link.textContent}${after}`);
+    click(link);
+    assert.equal(useViewerStore.getState().selectedEntityId, globalId(existing.expressId));
+  });
+}
+
+test('#10621 follow-up: when the consistency check itself fails, the analysis model can still be shown', async () => {
+  await seed(false);
+  commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
+  const review = prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL);
+  const [existing] = review.plan.existingAnalysisModels;
+  // The check exports the edited model before reading it; make that export fail.
+  mock.method(StepExporter.prototype, 'export', () => { throw new Error('export exploded'); });
+  const root = render(<DerivationSummary review={review} />);
+  await waitFor(() => /could not be checked: export exploded/.test(text(root)), `the check fails: ${text(root)}`);
+  const show = button(root, /Show analytical model/);
+  assert.ok(show, `a failed check still offers the analysis model: ${text(root)}`);
+  click(show);
+  const state = useViewerStore.getState();
+  assert.equal(state.structuralViewMode, 'analytical');
+  assert.deepEqual(state.selectedEntity, { modelId: SAMPLE_MODEL, expressId: existing.expressId });
 });

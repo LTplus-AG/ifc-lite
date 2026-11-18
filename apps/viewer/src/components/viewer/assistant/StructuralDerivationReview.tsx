@@ -27,12 +27,14 @@ export function DerivationSummary({ review }: { review: Review }) {
   const nodeRow = (index: number) => <>{t('structuralDerive.nodeAt', { node: index + 1, position: metres(plan.nodes[index].position) })}
     {plan.nodes[index].elementIds.map((id) => <Fragment key={id}> {link(id)}</Fragment>)}</>;
   const { counts, skipped, skippedOpenings, unconnectedEnds, extendedEnds, freeEnds } = plan.report;
-  const existing = plan.existingAnalysisModels.map((m) => `#${m.expressId}`).join(', ');
   return <>
     <output className="block">{t('structuralDerive.counts', { ...counts, created: review.created })}</output>
-    {plan.refusal !== null && <p role="alert">{t('structuralDerive.existing', { ids: existing })}</p>}
+    {plan.refusal !== null && <p role="alert">{linkedText(t, 'structuralDerive.existing', {}, {
+      ids: plan.existingAnalysisModels.map((m, index) => <Fragment key={m.expressId}>{index > 0 && ', '}{link(m.expressId)}</Fragment>),
+    })}</p>}
     {plan.refusal === null && review.created === 0 && <p role="alert">{t('structuralDerive.nothing')}</p>}
-    {plan.existingAnalysisModels.length > 0 && review.created === 0 && <StructuralConsistencyFindings modelId={modelId} prepared={review} />}
+    {plan.existingAnalysisModels.length > 0 && review.created === 0 && <StructuralConsistencyFindings modelId={modelId} prepared={review}
+      existing={plan.existingAnalysisModels} />}
     {counts.assumedLoadBearing > 0 && <p>{t('structuralDerive.assumed', { count: counts.assumedLoadBearing })}</p>}
     <Listing summary={t('structuralDerive.skipped', { count: skipped.length })} rows={skipped} row={(item) => <>
       {link(item.elementId)}: {t(`structuralDerive.reason.${item.reason}`)} <span className="text-muted-foreground">({item.detail})</span>

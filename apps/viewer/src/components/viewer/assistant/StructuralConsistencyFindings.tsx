@@ -25,11 +25,23 @@ function FindingRow({ modelId, issue }: { modelId: string; issue: StructuralCons
   return <>{linkedText(t, `structuralDerive.consistency.rule.${issue.rule}`, { distance: issue.distance?.toFixed(3) ?? '' }, links)}</>;
 }
 
+/** An analysis model as a link, with the button that shows it. */
+function AnalysisModelRow({ modelId, expressId, memberIds }: { modelId: string; expressId: number; memberIds: readonly number[] }) {
+  return <div className="flex items-center gap-2">
+    <ElementLink modelId={modelId} expressId={expressId} />
+    <ShowAnalyticalModelButton modelId={modelId} analysisModelId={expressId} memberIds={memberIds} />
+  </div>;
+}
+
 /**
  * Runs the consistency checks for `modelId` and lists what they find. They run
  * again for each new `prepared` review, since the model may have changed in between.
+ * If the check itself fails, the `existing` analysis models can still be shown,
+ * though without their members, which only the check reads.
  */
-export function StructuralConsistencyFindings({ modelId, prepared }: { modelId: string; prepared: object }) {
+export function StructuralConsistencyFindings({ modelId, prepared, existing }: {
+  modelId: string; prepared: object; existing: readonly { expressId: number }[];
+}) {
   const { t } = useTranslation();
   const [result, setResult] = useState<StructuralConsistencyReview | 'checking' | { failed: string }>('checking');
   useEffect(() => {
@@ -45,13 +57,13 @@ export function StructuralConsistencyFindings({ modelId, prepared }: { modelId: 
     return () => { live = false; };
   }, [modelId, prepared]);
   if (result === 'checking') return <output className="block">{t('structuralDerive.consistency.checking')}</output>;
-  if ('failed' in result) return <p role="alert">{t('structuralDerive.consistency.failed', { error: result.failed })}</p>;
+  if ('failed' in result) return <div className="space-y-2">
+    <p role="alert">{t('structuralDerive.consistency.failed', { error: result.failed })}</p>
+    {existing.map((model) => <AnalysisModelRow key={model.expressId} modelId={modelId} expressId={model.expressId} memberIds={[]} />)}
+  </div>;
   const { linked, skipped } = result.axisCoverage;
   return <section aria-label={t('structuralDerive.consistency.title')} className="space-y-2">
-    {result.analysisModels.map((model) => <div key={model.expressId} className="flex items-center gap-2">
-      <ElementLink modelId={modelId} expressId={model.expressId} />
-      <ShowAnalyticalModelButton modelId={modelId} analysisModelId={model.expressId} memberIds={model.memberIds} />
-    </div>)}
+    {result.analysisModels.map((model) => <AnalysisModelRow key={model.expressId} modelId={modelId} expressId={model.expressId} memberIds={model.memberIds} />)}
     {result.issues.length === 0
       ? <output className="block">{skipped.length === 0 ? t('structuralDerive.consistency.consistent')
         : t('structuralDerive.consistency.partial', { count: skipped.length, total: linked })}</output>

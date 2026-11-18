@@ -42,7 +42,7 @@ describe('native export registry automation (#10525)', () => {
     for (const op of entries) assert.ok(nativeExportRegistryInventory.some(row => (row.operations as readonly string[]).includes(op.id)), op.id);
   });
   it('exports.cityjson refuses unknown models and models without a retained IFC source before loading the writer', async () => {
-    await assert.rejects(run('exports.cityjson', { target_model_id: 'missing', sequence: false }), /Unknown loaded native model/);
+    await assert.rejects(run('exports.cityjson', { target_model_id: 'missing', sequence: false }), /existing exportable model/);
     assert.equal(useViewerStore.getState().models.get('A')?.sourceFile, undefined);
     await assert.rejects(run('exports.cityjson', { target_model_id: 'A', sequence: true }), /retained \.ifc\/\.ifczip source/);
   });

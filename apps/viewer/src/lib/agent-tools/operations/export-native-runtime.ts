@@ -18,7 +18,7 @@ export function nativeExportTarget(id: string): NativeExportTarget {
 }
 export function nativeStepTarget(id: string) {
   const model = nativeExportTarget(id);
-  if (!model.sourceFile || !/\.(ifc|ifczip)$/i.test(model.sourceFile.name)) throw new Error('Native USD/Rhino export requires a retained .ifc/.ifczip source.');
+  if (!model.sourceFile || !/\.(ifc|ifczip)$/i.test(model.sourceFile.name)) throw new Error('This native export requires a retained .ifc/.ifczip source.');
   return { ...model, sourceFile: model.sourceFile };
 }
 /** Extend the common source guard with the current-view inputs these formats consume. */

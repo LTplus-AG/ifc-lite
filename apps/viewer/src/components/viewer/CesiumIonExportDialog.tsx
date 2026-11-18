@@ -150,7 +150,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
       </a>
     </Button>}
   >{({ isExporting }) => <>
-    {missingGeoref && <ExportGeorefNotice modelId={selectedId} onClose={() => setOpen(false)} />}
+    {missingGeoref && <ExportGeorefNotice modelId={selectedId} onClose={() => { setToken(''); setOpen(false); }} />}
     <div className="grid gap-2">
       <Label htmlFor="ion-model">{t('ionUpload.model')}</Label>
       <Select value={selectedId} onValueChange={setSelectedId} disabled={isExporting}>

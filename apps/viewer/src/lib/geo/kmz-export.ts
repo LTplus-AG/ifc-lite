@@ -30,9 +30,11 @@ function resolveKmzGeoreference(dataStore: IfcDataStore | null | undefined, muta
   if (!dataStore) return null;
   const info = extractGeoreferencingOnDemand(dataStore);
   const scale = extractLengthUnitScale(dataStore.source, dataStore.entityIndex) ?? 1;
+  // Presence is decided AFTER merging: unsaved additions can be the only georeference (#1427).
   const conversion = mergeMapConversion(info?.mapConversion, mutations?.mapConversion);
   const crs = mergeProjectedCRS(info?.projectedCRS, mutations?.projectedCRS, scale);
   if (!conversion || !crs) return null;
+  // IFC2x3 ePSet MapUnit defaults to project length units, rather than metres.
   crs.mapUnitScale = resolveEpsetMapUnitScale(info?.source, crs.mapUnitScale, scale);
   return { conversion, crs, scale };
 }

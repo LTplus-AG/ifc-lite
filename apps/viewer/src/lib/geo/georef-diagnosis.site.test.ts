@@ -7,6 +7,7 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseIfcBytes, seedGeorefModel } from '@/test/georef-check-fixture.js';
+import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { editedSiteLocation } from './georef-diagnosis';
 
@@ -21,7 +22,7 @@ async function twoSites() {
   return store;
 }
 
-const write = (id: number, lat: unknown, lon: unknown) =>
+const write = (id: number, lat: IfcAttributeValue, lon: IfcAttributeValue) =>
   useViewerStore.getState().setPositionalAttributesBatch('m', [{ entityId: id, index: 9, value: lat }, { entityId: id, index: 10, value: lon }]);
 const view = () => useViewerStore.getState().mutationViews.get('m') ?? null;
 
@@ -45,4 +46,11 @@ it('reports no location once no site has both coordinates', async () => {
   const store = await twoSites();
   write(11, null, null);
   assert.equal(editedSiteLocation(store, view()), null);
+});
+
+it('falls through to the next located site when the first one is deleted', async () => {
+  const store = await twoSites();
+  write(900, [46, 30, 0, 0], [7, 15, 0, 0]);
+  view()?.deleteEntity(11);
+  assert.equal(editedSiteLocation(store, view())?.siteId, 900);
 });

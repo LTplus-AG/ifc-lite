@@ -55,7 +55,7 @@ export default function GeorefSiteSection({ modelId, editable }: GeorefSiteSecti
       setHeld({ owner: '', values: NOTHING_HELD });
       posthog.capture('georeference_set', { method: 'site_field', field: attribute });
     } else if (outcome.code === 'MISSING_INPUT') {
-      setHeld({ owner, values: { ...pending, [attribute]: value } });
+      setHeld((h) => ({ owner, values: { ...(h.owner === owner ? h.values : NOTHING_HELD), [attribute]: value } }));
       toast.info(t('properties.georef.site.needsBoth'));
     } else {
       toast.error(t('properties.georef.site.writeRefused', { message: outcome.message }));

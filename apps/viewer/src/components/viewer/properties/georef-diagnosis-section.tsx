@@ -120,8 +120,11 @@ export default function GeorefDiagnosisSection({ modelId, editable, mapUnitScale
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   // Re-check when this session's site location changes, not on every other edit; mutationVersion because
   // the view's positional edits change in place.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const siteKey = useMemo(() => (store ? JSON.stringify(editedSiteLocation(store, view)) ?? 'none' : ''), [store, view, mutationVersion]);
+  const siteKey = useMemo(() => {
+    const site = store ? editedSiteLocation(store, view) : undefined;
+    return site === undefined ? 'unedited' : JSON.stringify(site);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, view, mutationVersion]);
   const [state, setState] = useState<CheckState>({ status: 'running' });
   const [open, setOpen] = useState(false);
 

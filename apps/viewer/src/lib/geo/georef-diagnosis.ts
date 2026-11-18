@@ -141,16 +141,18 @@ const lowerFirst = (name: string): string => name.charAt(0).toLowerCase() + name
 
 /**
  * The site location as this session's edits leave it: undefined when no edit
- * touched an IfcSite location slot, null when no live site is left with both
- * coordinates. Picks the site as the SDK reader does (`withSiteEdits`): the
- * first live IfcSite with both coordinates. Serializable, so the panel can
- * compare it to decide when to re-check.
+ * touched an IfcSite location slot or deleted a site, null when no live site
+ * is left with both coordinates. Picks the site as the SDK reader does
+ * (`withSiteEdits`): the first live IfcSite with both coordinates, elevation
+ * 0 when unset. Serializable, so the panel can compare it to decide when to
+ * re-check.
  */
 export function editedSiteLocation(store: IfcDataStore, view: MutablePropertyView | null | undefined): GeorefFacts['siteLocation'] | null | undefined {
   if (!view) return undefined;
   // @raw-entity-enumeration-ok source IfcSite ids minus this session's tombstones
-  const sites = (store.entityIndex.byType.get('IFCSITE') ?? []).filter((id) => !view.isDeleted(id));
-  const touched = sites.some((id) => {
+  const all = store.entityIndex.byType.get('IFCSITE') ?? [];
+  const sites = all.filter((id) => !view.isDeleted(id));
+  const touched = sites.length < all.length || sites.some((id) => {
     const edits = view.getPositionalMutationsForEntity(id);
     return !!edits && Object.values(SITE_SLOTS).some((slot) => edits.has(slot));
   });
@@ -158,7 +160,7 @@ export function editedSiteLocation(store: IfcDataStore, view: MutablePropertyVie
   for (const siteId of sites) {
     const v = readSiteValues(store, view, siteId);
     if (v.RefLatitude === null || v.RefLongitude === null) continue;
-    return { siteId, latitude: v.RefLatitude, longitude: v.RefLongitude, ...(v.RefElevation === null ? {} : { elevation: v.RefElevation }) };
+    return { siteId, latitude: v.RefLatitude, longitude: v.RefLongitude, elevation: v.RefElevation ?? 0 };
   }
   return null;
 }

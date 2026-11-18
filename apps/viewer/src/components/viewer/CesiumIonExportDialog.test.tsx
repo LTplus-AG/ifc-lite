@@ -23,9 +23,11 @@ async function parseFixtureModel() {
 #900=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#901,$);
 #901=IFCAXIS2PLACEMENT3D(#902,$,$);
 #902=IFCCARTESIANPOINT((0.,0.,0.));
-#903=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);
+#903=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#905);
 #904=IFCMAPCONVERSION(#900,#903,2600000.,1200000.,0.,1.,0.,1.);
-`);
+#905=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#906=IFCUNITASSIGNMENT((#905));
+`).replace(/(#1=IFCPROJECT[^\n]*),\$,\$\);/, '$1,(#900),#906);');
   return new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
 }
 

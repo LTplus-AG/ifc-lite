@@ -69,23 +69,21 @@ impl Source<'_> {
             if !self.kind(set, "IFCPROPERTYSET") { return None; }
             let slots = self.slots(set)?;
             let [_, _, set_name, _, has_properties] = slots.as_slice() else { return None; };
-            if set_name.trim() != name { return None; }
+            if step_string(set_name) != Some(name) { return None; }
             // A relationship listing a non-reference relates the set to nothing it reads.
             let members = references(related).unwrap_or_default();
-            let listed = list_items(has_properties);
-            let ids: Vec<u32> = listed.iter().flatten().filter_map(|item| reference(item)).collect();
             // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that
             // does not, or lists a property it cannot read, still counts as present but gives no property.
-            let mut unread = listed.as_ref().is_some_and(|items| items.len() != ids.len());
-            let mut properties = BTreeMap::new();
-            for &id in &ids {
-                let name = self.slots(id).and_then(|args| args.first().map(|name| name.trim().to_string()));
-                match name.filter(|name| name.starts_with('\'') && !properties.contains_key(name)) {
-                    Some(name) => { properties.insert(name, id); }
-                    None => unread = true,
+            let ids = references(has_properties);
+            let properties = (|| {
+                let mut properties = BTreeMap::new();
+                for &id in ids.as_ref()? {
+                    let name = step_string(self.slots(id)?.first()?)?.to_string();
+                    if properties.insert(name, id).is_some() { return None; }
                 }
-            }
-            if unread { properties.clear(); }
+                Some(properties)
+            })().unwrap_or_default();
+            let ids = ids.unwrap_or_default();
             Some(PropertySet { rel, set, members, ids, properties })
         }).collect()
     }
@@ -97,6 +95,16 @@ struct PropertySet {
     members: Vec<u32>,
     ids: Vec<u32>,
     properties: BTreeMap<String, u32>,
+}
+
+/// One whole STEP string with its quotes, STEP whitespace and comments around it allowed: the
+/// TypeScript twin's `stepString`. Compared only with fixed names, so escapes are not decoded.
+fn step_string(token: &str) -> Option<&str> {
+    let bytes = token.as_bytes();
+    let start = ifc_lite_core::parser::skip_step_trivia(bytes, 0)?;
+    if bytes.get(start) != Some(&b'\'') { return None; }
+    let end = ifc_lite_core::step_encoding::step_string_literal_end(bytes, start)?;
+    (ifc_lite_core::parser::skip_step_trivia(bytes, end) == Some(bytes.len())).then(|| &token[start..end])
 }
 
 fn references(token: &str) -> Option<Vec<u32>> {

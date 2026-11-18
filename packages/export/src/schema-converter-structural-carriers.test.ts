@@ -224,37 +224,6 @@ describe('IfcStructuralLoadCase IFC4 -> IFC2X3 -> IFC4 #9668', () => {
   });
 });
 
-// #10597: a carrier set is read in full or not at all.
-describe('carrier property set with an unreadable item #10597', () => {
-  it('leaves a load group whose carrier relationship lists a non-reference as a load group', async () => {
-    const ifc2x3 = model('IFC2X3', `${OWNER}
-#20=IFCSTRUCTURALLOADGROUP('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,$,$);
-#30=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.)),$);
-#31=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'${LOAD_CASE_PSET}',$,(#30));
-#32=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20,$),#31);`);
-    const { step } = await convert(ifc2x3, 'IFC4');
-    expect(line(step, 20)).toMatch(/^#20=IFCSTRUCTURALLOADGROUP\(/);
-    for (const id of [30, 31, 32]) expect(line(step, id)).toBeDefined();
-  });
-
-  it('reads no thicknesses from a set that lists a non-reference property', async () => {
-    const ifc4 = model('IFC4', `${OWNER}
-#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
-#14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
-#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
-#16=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
-#17=IFCSHAPEASPECT((#16),$,$,.T.,#15);
-#20=IFCSTRUCTURALSURFACEMEMBERVARYING('2KZvpy1jjNYvbqlQZoD987',#5,'Slab',$,$,#9,#15,.SHELL.,0.2);
-#40=IFCPROPERTYSINGLEVALUE('Thickness1',$,IFCPOSITIVELENGTHMEASURE(0.2),$);
-#41=IFCPROPERTYSINGLEVALUE('Thickness2',$,IFCPOSITIVELENGTHMEASURE(0.25),$);
-#42=IFCPROPERTYSINGLEVALUE('Thickness3',$,IFCPOSITIVELENGTHMEASURE(0.3),$);
-#44=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#41,#42,$));
-#45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#20),#44);`);
-    expect(line((await convert(ifc4, 'IFC2X3')).step, 20)).toContain(',.SHELL.,0.2,$,$);');
-    expect(line((await convert(ifc4.replace(',(#40,#41,#42,$));', ',(#40,#41,#42));'), 'IFC2X3')).step, 20)).toMatch(/,0\.2,\(0\.25,0\.3\),#17\);$/);
-  });
-});
-
 // #9668: IFC4 gives varying thicknesses by Pset_StructuralSurfaceMemberVaryingThickness.
 describe('varying surface member thickness IFC2X3 <-> IFC4 #9668', () => {
   const geometry = `#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);

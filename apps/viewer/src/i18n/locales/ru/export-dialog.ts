@@ -5,8 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const exportDialogRu = {
-  'exportDialog.warningsCount': {"one": "{count} предупреждение", "few": "{count} предупреждения", "many": "{count} предупреждений", "other": "{count} предупреждения"},
-  'exportDialog.warningsMore': "и ещё {count}",
+  'exportDialog.warningsMore': "и ещё {countDisplay}",
   "exportDialog.trigger": "Экспортировать IFC",
   "exportDialog.title": "Экспорт файла IFC",
   "exportDialog.description.ifc5": "Экспортировать данные и геометрию модели, включая её текущее положение в рабочей области",

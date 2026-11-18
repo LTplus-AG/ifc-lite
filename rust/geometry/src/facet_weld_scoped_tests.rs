@@ -10,29 +10,8 @@ use super::*;
 mod unchanged_cut_tests;
 
 fn directed_closed_mesh(mesh: &Mesh) -> bool {
-    let key = |i: u32| -> (i64, i64, i64) {
-        let i = i as usize;
-        let q = |c: f32| (c as f64 / 1.0e-6).round() as i64;
-        (
-            q(mesh.positions[i * 3]),
-            q(mesh.positions[i * 3 + 1]),
-            q(mesh.positions[i * 3 + 2]),
-        )
-    };
-    type K = (i64, i64, i64);
-    let mut seen: std::collections::BTreeMap<(K, K), i32> = std::collections::BTreeMap::new();
-    for t in mesh.indices.chunks_exact(3) {
-        for k in 0..3 {
-            let a = key(t[k]);
-            let b = key(t[(k + 1) % 3]);
-            if a == b {
-                continue; // zero-length edge of a degenerate tri — not a seam
-            }
-            *seen.entry((a, b)).or_insert(0) += 1;
-        }
-    }
-    seen.iter()
-        .all(|(&(a, b), &n)| n == 1 && seen.get(&(b, a)).copied().unwrap_or(0) == 1)
+    use crate::mesh_check::{Degenerate, EdgeLedger, VertexKey};
+    EdgeLedger::build(mesh, VertexKey::GridDiv(1.0e-6), Degenerate::SkipEdge).strictly_paired()
 }
 
 fn signed_volume(mesh: &Mesh) -> f64 {

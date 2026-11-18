@@ -197,6 +197,14 @@ impl EdgeLedger {
         })
     }
 
+    /// Whether an edge now has more than two uses and its use count grew.
+    pub(crate) fn overuse_increased_from(&self, before: &Self) -> bool {
+        self.uses.iter().any(|(edge, &(forward, reverse))| {
+            let uses = forward + reverse;
+            uses > 2 && before.uses.get(edge).is_none_or(|&(f, r)| f + r < uses)
+        })
+    }
+
     /// The two defects a signed tally cannot represent: more than two uses,
     /// and exactly two uses running the same way. An edge used once is an open
     /// boundary, not a multiplicity defect.

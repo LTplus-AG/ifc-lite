@@ -59,6 +59,7 @@ import {
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { trackExportCompleted } from '@/lib/analytics';
+import { downloadBlob } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
 import { collectViewMeshes } from '@/lib/export/view-pdf/collect-view-meshes';
@@ -70,6 +71,7 @@ import {
 } from '@/lib/export/view-pdf/view-pdf-page-estimate';
 import {
   deriveDisplayedScaleFactor,
+  formatMm,
   describePage,
 } from '@/lib/export/view-pdf/view-pdf-scale';
 import { viewPdfPhaseLabel } from '@/lib/export/view-pdf/view-pdf-progress';
@@ -103,11 +105,6 @@ interface PdfViewExportDialogProps {
 /** The drafting scales offered as presets, coarsest detail last. */
 const SCALE_PRESETS = [10, 20, 50, 100, 200, 500] as const;
 
-/** Round a millimetre figure for display without inventing precision. */
-function formatMm(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
-}
 
 export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfViewExportDialogProps) {
   const { t } = useTranslation();
@@ -239,8 +236,10 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
       // load lands in the catch below, not on the console as an unhandled
       // rejection.
       const runExport = exportViewPdf ?? (async (pdfInput: ViewPdfExportInput) => {
-        const { generateViewPdf } = await import('@/lib/export/view-pdf/generate-view-pdf');
-        return generateViewPdf(pdfInput);
+        const { produceNativeViewPdf } = await import('@/lib/export/native-view-pdf');
+        const { result, blob } = await produceNativeViewPdf(pdfInput);
+        downloadBlob(blob, result.filename);
+        return result;
       });
       const result = await runExport({
         view: source.view,

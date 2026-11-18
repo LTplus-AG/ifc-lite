@@ -29,14 +29,15 @@ export const settingsSchema: JSONSchemaType<Settings> = {
   }, required: ['representationPolicy', 'kind', 'plane', 'repeatU', 'repeatV', 'tileWidth', 'tileHeight', 'tileDepth', 'rotationDegrees', 'offsetU', 'offsetV', 'offsetW', 'repeatS', 'repeatT'], additionalProperties: false,
 };
 type Prepared = Awaited<ReturnType<typeof prepareNativeAppearancePlan>>;
-interface Candidate { modelId: string; revision: string; renderer: Renderer; prepared: Prepared; stage: ReturnType<typeof stageNativeAppearancePreview>; owner: AppearanceAssetOwner; originalShown?: boolean; applying?: boolean }
+type Staged = ReturnType<typeof stageNativeAppearancePreview>;
+interface Candidate { modelId: string; revision: string; renderer: Renderer; prepared: Prepared; stage: Omit<Staged, 'session'> & { session: Staged['session'] | null }; owner: AppearanceAssetOwner; applying?: boolean }
 const candidates = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(host: ToolHost) {
   let value = candidates.get(host);
   if (!value) { const map = new Map<string, Candidate>(); value = map; candidates.set(host, map); host.lifetimeSignal?.addEventListener('abort', () => { for (const candidate of map.values()) { if (candidate.applying) continue; try { release(candidate); } catch (error) { console.error('[appearance operations] preview cleanup failed', error); } } map.clear(); }); }
   return value;
 }
-function release(candidate: Candidate) { try { candidate.stage.session.cancel(); } finally { appearanceAssets.releaseOwner(candidate.owner); } }
+function release(candidate: Candidate) { try { candidate.stage.session?.cancel(); } finally { appearanceAssets.releaseOwner(candidate.owner); } }
 function gate(modelId: string) { const denial = mutationDenial(useViewerStore.getState(), modelId); if (denial) throw new Error(denial); if (useViewerStore.getState().collabRoomId) throw new Error('Leave the shared room before changing appearance.'); }
 /** Shared native Compare seam for the appearance-owned operation module. */
 export function compareAnalyticsAppearancePreview(host: ToolHost, id: string, modelId: string, original: boolean) {
@@ -44,9 +45,7 @@ export function compareAnalyticsAppearancePreview(host: ToolHost, id: string, mo
   if (!candidate || candidate.modelId !== modelId) throw new Error('Unknown appearance candidate for this host/model.');
   if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
   if (appearanceRevision(modelId) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a new candidate.');
-  const session = compareNativeAppearancePreview(candidate.renderer, candidate.stage.groups, candidate.originalShown ? null : candidate.stage.session, original);
-  if (session) candidate.stage.session = session;
-  candidate.originalShown = original;
+  candidate.stage.session = compareNativeAppearancePreview(candidate.renderer, candidate.stage.groups, candidate.stage.session, original);
   return { preview_visible: !original, model_id: modelId, preview_token: id };
 }
 /** Shared candidate preparation; native face-mask services supply already validated requests. */
@@ -79,7 +78,7 @@ export function inspectAnalyticsAppearanceCandidate(host: ToolHost, id: string, 
   if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
   if (appearanceRevision(modelId) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a new candidate.');
   return { model_id: candidate.modelId, revision: candidate.revision, plan: candidate.prepared.plan, groups: candidate.stage.groups,
-    original_shown: Boolean(candidate.originalShown), applying: Boolean(candidate.applying) };
+    original_shown: candidate.stage.session === null, applying: Boolean(candidate.applying) };
 }
 
 export const analyticsAppearanceOperations = [
@@ -93,10 +92,11 @@ export const analyticsAppearanceOperations = [
   }), policy: { model: 'native-reviewed' } }, idSchema, async (i, c) => {
     const map = owned(c.host); const candidate = map.get(i.id); if (!candidate || candidate.modelId !== c.model.id) throw new Error('Unknown appearance candidate for this host/model.');
     gate(c.model.id); if (appearanceRevision(c.model.id) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a fresh preview.');
-    if (candidate.originalShown) throw new Error('Restore the native appearance preview before applying it.');
+    const { session } = candidate.stage;
+    if (!session) throw new Error('Restore the native appearance preview before applying it.');
     checkpoint(c); candidate.applying = true;
     try {
-      await c.commitAsync(() => commitAppearance(c.model.id, candidate.prepared.assetIds, candidate.prepared.plan, candidate.renderer, candidate.stage.session, candidate.stage.groups, candidate.prepared.source));
+      await c.commitAsync(() => commitAppearance(c.model.id, candidate.prepared.assetIds, candidate.prepared.plan, candidate.renderer, session, candidate.stage.groups, candidate.prepared.source));
       return { model_id: c.model.id, committed: true, affected_products: [...new Set(candidate.prepared.plan.items.map(item => item.productId))] };
     } finally { map.delete(i.id); release(candidate); }
   }),

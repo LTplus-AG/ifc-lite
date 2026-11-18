@@ -121,7 +121,7 @@ export const appearanceTransferOperations = [
         if (output.transfer.exclusions.length)
           throw new Error(`Native transfer excludes target objects: ${JSON.stringify(output.transfer.exclusions)}`);
         const stage = c.commit(() => stageNativeScanTransfer(output, c.model.id, renderer));
-        state.transfer = { output, owner, stage, original: false, renderer };
+        state.transfer = { output, owner, stage, renderer };
         state.version++;
         adopted = true;
         return out({ ready: true, version: state.version, coverage: output.transfer });
@@ -152,14 +152,12 @@ export const appearanceTransferOperations = [
         throw new Error('No current native transfer preview or renderer changed.');
       return out(
         c.commit(() => {
-          const preview = compareNativeAppearancePreview(
+          transfer.stage.preview = compareNativeAppearancePreview(
             renderer,
             transfer.stage.groups,
-            transfer.original ? null : transfer.stage.preview,
+            transfer.stage.preview,
             i.original,
           );
-          if (preview) transfer.stage.preview = preview;
-          transfer.original = i.original;
           return { original: i.original, version: state.version };
         }),
       );
@@ -192,12 +190,12 @@ export const appearanceTransferOperations = [
         throw new Error('No current reviewed native transfer.');
       if (transfer.applied) return out(transfer.applied);
       const recovery = { request: registration.request, rebind: state.session.afterAppearance() };
-      if (transfer.original) {
+      if (!transfer.stage.preview) {
         const preview = c.commit(() => compareNativeAppearancePreview(renderer, transfer.stage.groups, null, false));
         if (!preview) throw new Error('Native preview could not be restored.');
         transfer.stage.preview = preview;
-        transfer.original = false;
       }
+      const { preview } = transfer.stage;
       transfer.applying = true;
       try {
         await c.commitAsync(() =>
@@ -206,7 +204,7 @@ export const appearanceTransferOperations = [
             transfer.output.assetIds,
             transfer.output.plan!,
             renderer,
-            transfer.stage.preview,
+            preview,
             transfer.stage.groups,
             state.session.appearanceSource,
             { signal: c.signal, onProgress: () => c.checkpoint?.() },

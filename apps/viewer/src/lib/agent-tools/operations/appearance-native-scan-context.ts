@@ -15,6 +15,7 @@ import type { AppearanceAssetOwner } from '@/lib/appearance/assets';
 import type { prepareMeshTransfer } from '@/lib/appearance/scan/prepare-transfer';
 import type { stageNativeScanTransfer } from '@/lib/appearance/appearance-native-transfer';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
+type StagedTransfer = ReturnType<typeof stageNativeScanTransfer>;
 export interface NativeScanState {
   session: ScanSession;
   pairs: ScanPair[];
@@ -25,8 +26,7 @@ export interface NativeScanState {
   transfer?: {
     output: Awaited<ReturnType<typeof prepareMeshTransfer>>;
     owner: AppearanceAssetOwner;
-    stage: ReturnType<typeof stageNativeScanTransfer>;
-    original: boolean;
+    stage: Omit<StagedTransfer, 'preview'> & { preview: StagedTransfer['preview'] | null };
     renderer: Renderer;
     applying?: boolean;
     releaseRequested?: boolean;
@@ -71,7 +71,7 @@ export function releaseNativeScanTransfer(state: NativeScanState) {
     return;
   }
   try {
-    transfer.stage.preview.cancel();
+    transfer.stage.preview?.cancel();
   } finally {
     appearanceAssets.releaseOwner(transfer.owner);
     state.transfer = undefined;

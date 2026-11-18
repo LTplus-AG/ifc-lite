@@ -119,7 +119,7 @@ export const appearanceScanOperations = [
         can_revalidate: !!state.recovery,
         transfer: state.transfer
           ? {
-              original: state.transfer.original,
+              original: state.transfer.stage.preview === null,
               coverage: state.transfer.output.transfer,
               applied: !!state.transfer.applied,
             }

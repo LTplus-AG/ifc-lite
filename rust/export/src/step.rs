@@ -345,7 +345,7 @@ fn emit<W: std::io::Write>(
         written += 2;
     }
 
-    written = written.checked_add_signed(checks.finish(body)?).unwrap_or(written);
+    written = written.checked_add_signed(checks.finish(body, targets_ifc2x3.then_some(&mut slot_fill))?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     Ok((StepStats {

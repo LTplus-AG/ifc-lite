@@ -69,7 +69,7 @@ pub(super) enum LineDecision {
 
 /// Collect every `#N` reference in a line's ARGUMENT list, skipping the leading
 /// `#id=` (which is the line's own id, not an outgoing reference).
-pub(super) fn arg_refs(line: &[u8], out: &mut Vec<u32>) {
+pub(crate) fn arg_refs(line: &[u8], out: &mut Vec<u32>) {
     // A complete entity record starts with its own #id. Scan from that
     // boundary so an equals sign inside head trivia cannot cut a comment in
     // half. Keep collecting references even from an unreadable body: the drop

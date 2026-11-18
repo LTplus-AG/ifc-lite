@@ -27,6 +27,7 @@ mod empty;
 mod guid;
 mod header;
 mod line_edit;
+pub(crate) use line_edit::arg_refs;
 mod plan;
 mod single_parents;
 mod spatial;

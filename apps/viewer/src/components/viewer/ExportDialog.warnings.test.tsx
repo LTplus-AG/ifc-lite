@@ -165,9 +165,13 @@ it('merged STEP export formats its entity count for the viewer locale, like its 
   await chooseMerged();
   await runExport(toasts);
   const message = [...toasts.success.mock.calls, ...toasts.info.mock.calls][0].arguments[0] ?? '';
-  const count = Number(/^Merged 2 models, ([\d.]+) entities/.exec(message)?.[1].replaceAll('.', ''));
+  // The runtime's own German separator, so the test does not assume ICU data.
+  const group = new Intl.NumberFormat(locale).formatToParts(1_000).find((part) => part.type === 'group')?.value ?? '';
+  const shown = /^Merged 2 models, (\S+) entities/.exec(message)?.[1] ?? '';
+  const count = Number(shown.replaceAll(group, ''));
   assert.ok(count > 1_000, message);
-  assert.match(message, new RegExp(`^Merged 2 models, ${formatLocaleNumber(locale, count).replaceAll('.', '\\.')} entities`));
+  assert.equal(shown, formatLocaleNumber(locale, count), message);
+  assert.notEqual(shown, count.toLocaleString('en'), 'the count is not in the browser\'s English format');
 });
 
 it('caps displayed diagnostics while retaining their total count (#10606)', async () => {

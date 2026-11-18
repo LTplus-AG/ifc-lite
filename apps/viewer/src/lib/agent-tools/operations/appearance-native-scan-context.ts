@@ -43,7 +43,10 @@ export function nativeScanStates(c: { host: ToolHost }) {
     c.host.lifetimeSignal?.addEventListener(
       'abort',
       () => {
-        for (const state of values.values()) releaseNativeScanTransfer(state);
+        for (const state of values.values()) {
+          try { releaseNativeScanTransfer(state); }
+          catch (error) { console.warn('[Appearance] Scan transfer cleanup failed', error); }
+        }
         values.clear();
       },
       { once: true },

@@ -36,7 +36,7 @@ export async function exportNativeDrawing(format: 'svg' | 'dxf' | 'pdf', options
       || now.polygonArea2DResults !== s.polygonArea2DResults || now.textAnnotations2D !== s.textAnnotations2D || now.cloudAnnotations2D !== s.cloudAnnotations2D
       || now.tagAnnotations2D !== s.tagAnnotations2D || now.unitDisplayOverrides !== s.unitDisplayOverrides
       || now.activePresetId !== s.activePresetId || now.overridesEnabled !== s.overridesEnabled || now.customOverrideRules !== s.customOverrideRules
-      || now.georefMutations !== s.georefMutations || now.pointCloudClassMask !== s.pointCloudClassMask
+      || now.anchorModelIdOverride !== s.anchorModelIdOverride || now.georefMutations !== s.georefMutations || now.pointCloudClassMask !== s.pointCloudClassMask
       || now.dxfUnderlays !== s.dxfUnderlays || now.drawing2DDisplayOptions !== s.drawing2DDisplayOptions) throw new Error('Native drawing inputs changed during export. Discarded artifact.');
   };
   const raster = prepareDrawingWithReferences(source, projectDrawingReferences(source.config.plane, s));
@@ -67,7 +67,7 @@ export async function exportNativeDrawing(format: 'svg' | 'dxf' | 'pdf', options
     overrideEngine: new GraphicOverrideEngine(s.getActiveOverrideRules()), measure2DResults: s.measure2DResults,
     polygonArea2DResults: s.polygonArea2DResults, textAnnotations2D: s.textAnnotations2D, cloudAnnotations2D: s.cloudAnnotations2D,
     sheetEnabled: s.sheetEnabled, activeSheet: s.activeSheet, dxfUnderlays: underlays, ifcDataStore: s.ifcDataStore,
-    coordinateInfo: geometry?.coordinateInfo, scanSection: { points: band?.merged.points ?? [], outline }, ...drawingExportFrame(),
+    coordinateInfo: geometry?.coordinateInfo, scanSection: { points: band?.merged.points ?? [], outline }, ...drawingExportFrame(source),
   }, { t: resolve, dimensionGraphicsAt: createExportDimensionGraphics(s.measure2DResults, s) });
   const artifact = format === 'svg' ? exporter.createSvgArtifact() : format === 'dxf' ? exporter.createDxfArtifact() : await exporter.createPdfArtifact(options.scale);
   current(); return { ...artifact, warnings: [...warnings, ...artifact.warnings] };

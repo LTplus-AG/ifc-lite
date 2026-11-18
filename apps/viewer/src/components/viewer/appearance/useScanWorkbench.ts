@@ -154,7 +154,13 @@ export function useScanWorkbench() {
     busy, stale, applyAppearance, revalidateAppearance, canRevalidateAppearance: stale && recovery.current !== null, previewReady, setPreviewReady, status, error, aligned, setAligned, pickSource, calculate, cancel,
     restart() { setRestart(value => value + 1); },
     remove(id: string) { setPairs(previous => previous.filter(p => p.correspondence.id !== id)); setResult(null); setAligned(false); },
-    changePartition(id: string, value: 'fit' | 'check') { setPairs(previous => changeNativeScanPartition(previous,id,value)); setResult(null); setAligned(false); },
+    changePartition(id: string, value: 'fit' | 'check') {
+      try { setPairs(changeNativeScanPartition(pairs, id, value)); setResult(null); setAligned(false); }
+      catch (error) {
+        if (!(error instanceof ScanValidationError)) throw error;
+        setError(true); setStatus(translated(error.key));
+      }
+    },
     previewError(value: string) { setError(true); setStatus(raw(value)); setPreviewReady(false); },
   };
 }

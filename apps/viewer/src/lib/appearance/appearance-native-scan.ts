@@ -80,5 +80,8 @@ export function changeNativeScanPartition(
   id: string,
   partition: 'fit' | 'check',
 ): ScanPair[] {
+  const current = pairs.find(pair => pair.correspondence.id === id);
+  if (current && current.partition !== partition && pairs.filter(pair => pair.partition === partition).length >= 256)
+    throw new ScanValidationError('appearance.scan.error.pairLimit');
   return pairs.map((pair) => (pair.correspondence.id === id ? { ...pair, partition } : pair));
 }

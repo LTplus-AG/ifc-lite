@@ -28257,9 +28257,9 @@ export const operationContracts: readonly OperationContract[] = [
     "description": "Run the same native Rust registerScan service over current fit/check correspondences and immutable frames. Returns actual fit/held-out residuals and degeneracy diagnostics; forwards worker cancellation and revalidates native session after completion.",
     "needs": "model",
     "effects": [
-      "read"
+      "configuration"
     ],
-    "capability": "read",
+    "capability": "commands-and-edits",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -28603,6 +28603,7 @@ export const operationContracts: readonly OperationContract[] = [
     "description": "Run the native retained-surface proof and registration refresh after a completed/cancelled appearance transaction. Refuses changed sources/frames/paired IFC geometry and preserves recovery state for a later explicit retry.",
     "needs": "model",
     "effects": [
+      "model",
       "view"
     ],
     "capability": "commands-and-edits",
@@ -28639,6 +28640,9 @@ export const operationContracts: readonly OperationContract[] = [
     },
     "result": "value",
     "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
     "module": "appearance-native-transfer",
     "exportName": "appearanceTransferOperations"
   },

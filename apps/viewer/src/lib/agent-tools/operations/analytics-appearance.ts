@@ -63,7 +63,11 @@ export async function prepareAnalyticsAppearanceCandidate(i: { source_id: string
       snapshot.validate(); gate(c.model.id); checkpoint(c);
       const map = owned(c.host); if (map.size >= 16) throw new Error('Cancel an existing native appearance preview before preparing more.');
       const token = crypto.randomUUID();
+      if (getGlobalRenderer() !== renderer || useViewerStore.getState().appearanceSources.find(source => source.id === i.source_id) !== selectedSource)
+        throw new Error('The native renderer or source changed during preview preparation.');
       c.commit(() => {
+        if ([...map.values()].some(candidate => candidate.modelId === c.model.id && candidate.applying))
+          throw new Error('An appearance candidate is being applied to this model.');
         for (const [key, candidate] of map) if (candidate.modelId === c.model.id) { release(candidate); map.delete(key); }
         const stage = stageNativeAppearancePreview(c.model.id, prepared, i.settings, renderer);
         map.set(token, { modelId: c.model.id, revision: snapshot.revision, renderer, prepared, stage, owner }); adopted = true;
@@ -92,6 +96,7 @@ export const analyticsAppearanceOperations = [
   }), policy: { model: 'native-reviewed' } }, idSchema, async (i, c) => {
     const map = owned(c.host); const candidate = map.get(i.id); if (!candidate || candidate.modelId !== c.model.id) throw new Error('Unknown appearance candidate for this host/model.');
     gate(c.model.id); if (appearanceRevision(c.model.id) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a fresh preview.');
+    if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
     const { session } = candidate.stage;
     if (!session) throw new Error('Restore the native appearance preview before applying it.');
     checkpoint(c); candidate.applying = true;

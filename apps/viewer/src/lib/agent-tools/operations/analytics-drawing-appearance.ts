@@ -46,8 +46,9 @@ export const analyticsDrawingAppearanceOperations = [
     const s = useViewerStore.getState(); if (!s.drawing2D) throw new Error('Generate a native drawing first.');
     if (s.measure2DStart) throw new Error('Complete or cancel the current interactive 2D measurement.');
     if (i.start[0] === i.end[0] && i.start[1] === i.end[1]) throw new Error('A distance needs distinct points.');
+    const previousCount = s.measure2DResults.length;
     checkpoint(c); c.commit(() => { s.setMeasure2DStart({ x: i.start[0], y: i.start[1] }); s.setMeasure2DCurrent({ x: i.end[0], y: i.end[1] }); s.completeMeasure2D(); });
-    const result = useViewerStore.getState().measure2DResults.at(-1); if (!result) throw new Error('Native 2D completion failed.'); return result;
+    const result = useViewerStore.getState().measure2DResults[previousCount]; if (!result) throw new Error('Native 2D completion failed.'); return result;
   }),
   viewerOperation(metadata('drawing.exportGeneratedSvg', 'drawing', 'Return the current native generated SVG cache as a real artifact. This cache does not include panel-composed sheets, references or live markup overlays.', ['read', 'artifact'], artifactSchema), emptySchema, async (_, c) => {
     const s = useViewerStore.getState(); if (s.drawing2DStatus !== 'ready' || !s.drawing2DSvgContent) throw new Error('No completed native SVG drawing is available.'); checkpoint(c);

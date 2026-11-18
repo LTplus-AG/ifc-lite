@@ -33,6 +33,7 @@ interface Candidate {
   renderer: NonNullable<ReturnType<typeof getGlobalRenderer>>;
   draftId: string;
   placed?: string;
+  placing?: boolean;
 }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 async function release(value: Candidate) {
@@ -187,16 +188,21 @@ export const appearanceReferenceOperations = [
       if (saved.placed) return out({ reference_id: saved.placed, placed: true });
       assertToolActive(c);
       if (!c.signal || getGlobalRenderer() !== saved.renderer) throw new Error('Native renderer/session changed.');
-      const record = await placeNativeAppearanceReference(
-        saved.prepared,
-        saved.renderer,
-        c.signal,
-        saved.editing,
-        (write) => c.commit(write),
-      );
-      saved.placed = record.id;
-      await release(saved);
-      return out({ reference_id: record.id, placed: true });
+      if (saved.placing) throw new Error('The reference candidate is being placed.');
+      saved.placing = true;
+      try {
+        const { ownReference } = await import('@/lib/appearance/references/types');
+        const expected = ownReference(saved.prepared.record);
+        const current = useViewerStore.getState().appearanceReferences.get(expected.id);
+        if (!current || JSON.stringify(current) !== JSON.stringify(expected)) {
+          await placeNativeAppearanceReference(saved.prepared, saved.renderer, c.signal, saved.editing, (write) => c.commit(write));
+        }
+        saved.placed = expected.id;
+        await release(saved);
+        return out({ reference_id: expected.id, placed: true });
+      } finally {
+        saved.placing = false;
+      }
     },
   ),
   viewerOperation<{ token: string }>(
@@ -209,6 +215,7 @@ export const appearanceReferenceOperations = [
     async (i, c) => {
       const saved = candidates(c).get(i.token);
       if (!saved) throw new Error('Unknown reference candidate.');
+      if (saved.placing) throw new Error('The reference candidate is being placed.');
       assertToolActive(c);
       await release(saved);
       candidates(c).delete(i.token);

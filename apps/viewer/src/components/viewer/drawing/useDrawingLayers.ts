@@ -81,7 +81,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     outline: { enabled: displayOptions.scanSectionOutline, maxGap: displayOptions.scanSectionOutlineMaxGap },
   });
 
-  useEffect(() => { publishDrawingExportFrame({ isPinned: vm.isPinned, cachedSheetTransformRef: vm.cachedSheetTransformRef }); }, [vm.isPinned, vm.cachedSheetTransformRef]);
+  useEffect(() => { publishDrawingExportFrame({ drawing: vm.sourceDrawing, isPinned: vm.isPinned, cachedSheetTransformRef: vm.cachedSheetTransformRef }); }, [vm.sourceDrawing, vm.isPinned, vm.cachedSheetTransformRef]);
 
   const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint, getExportDimensionGraphics } = useDrawingExport({
     // Only the drawing on screen exports: a dialog left open while the cut

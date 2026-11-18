@@ -239,7 +239,7 @@ export const appearanceFaceOperations = [
       return out({
         candidate: prepared,
         diagnostics: reconciled.diagnostics,
-        masks: [...reconciled.masks.values()].map((mask) => ({ ...mask, triangles: [...mask.triangles] })),
+        masks: [...reconciled.masks.values()].map(({ productId, triangles }) => ({ productId, triangleCount: triangles.length })),
       });
     },
   ),

@@ -21,13 +21,17 @@ export function sourceLandmark(
 ): ScanLandmark {
   const triangle = hit.triangleIndex,
     weights: ScanPoint = [hit.barycentricCoord.w, hit.barycentricCoord.u, hit.barycentricCoord.v];
+  const tolerance = 1e-6;
   if (
-    !weights.every((value) => Number.isFinite(value) && value >= 0 && value <= 1) ||
-    Math.abs(weights[0] + weights[1] + weights[2] - 1) > 1e-6
+    !weights.every((value) => Number.isFinite(value) && value >= -tolerance && value <= 1 + tolerance) ||
+    Math.abs(weights[0] + weights[1] + weights[2] - 1) > tolerance
   )
     throw new Error('Choose valid barycentric weights on the native source triangle.');
   if (!Number.isInteger(triangle) || triangle < 0 || triangle * 3 + 2 >= mesh.indices.length)
     throw new Error('The picked scan triangle is no longer available.');
+  for (const axis of [0, 1, 2] as const) weights[axis] = Math.max(0, Math.min(1, weights[axis]));
+  const total = weights[0] + weights[1] + weights[2];
+  for (const axis of [0, 1, 2] as const) weights[axis] /= total;
   const point: ScanPoint = [0, 0, 0];
   for (let corner = 0; corner < 3; corner++)
     for (let axis = 0; axis < 3; axis++)

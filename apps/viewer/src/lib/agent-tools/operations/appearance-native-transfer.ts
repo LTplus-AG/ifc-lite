@@ -99,7 +99,6 @@ export const appearanceTransferOperations = [
       for (const express_id of i.express_ids) resolveRef(c.model, { express_id });
       const renderer = getGlobalRenderer();
       if (!renderer) throw new Error('The native viewport is unavailable.');
-      releaseNativeScanTransfer(state);
       const planner = createAppearancePlanner(),
         owner = { kind: 'draft' as const, id: crypto.randomUUID() };
       let adopted = false;
@@ -120,10 +119,13 @@ export const appearanceTransferOperations = [
           return out({ ready: false, coverage: output.transfer });
         if (output.transfer.exclusions.length)
           throw new Error(`Native transfer excludes target objects: ${JSON.stringify(output.transfer.exclusions)}`);
-        const stage = c.commit(() => stageNativeScanTransfer(output, c.model.id, renderer));
-        state.transfer = { output, owner, stage, renderer };
-        state.version++;
-        adopted = true;
+        c.commit(() => {
+          releaseNativeScanTransfer(state);
+          const stage = stageNativeScanTransfer(output, c.model.id, renderer);
+          state.transfer = { output, owner, stage, renderer };
+          state.version++;
+          adopted = true;
+        });
         return out({ ready: true, version: state.version, coverage: output.transfer });
       } finally {
         planner.dispose();
@@ -248,6 +250,7 @@ export const appearanceTransferOperations = [
     meta(
       'appearance.scan.revalidate',
       'Run the native retained-surface proof and registration refresh after a completed/cancelled appearance transaction. Refuses changed sources/frames/paired IFC geometry and preserves recovery state for a later explicit retry.',
+      true,
     ),
     tokenInput,
     async (i, c) => {
@@ -262,11 +265,14 @@ export const appearanceTransferOperations = [
       try {
         const refreshed = await refreshNativeScanBinding(state.session, state.recovery, planner, c.signal);
         assertToolActive(c);
-        state.session = refreshed.session;
-        state.result = refreshed.result;
-        state.recovery = refreshed.recovery;
-        state.version++;
-        return out({ version: state.version, result: state.result });
+        return c.commit(() => {
+          nativeScanState(c, i.token, i.version, false);
+          state.session = refreshed.session;
+          state.result = refreshed.result;
+          state.recovery = refreshed.recovery;
+          state.version++;
+          return out({ version: state.version, result: state.result });
+        });
       } finally {
         planner.dispose();
       }

@@ -19,7 +19,7 @@ import { controlledPdf } from '@/lib/appearance/pdf/fixtures';
 import { rasterNativePdfSource } from '@/lib/appearance/appearance-native-pdf';
 import type { PdfWorkerClient } from '@/lib/appearance/pdf/worker-client';
 import type { PdfRasterRecipe } from '@/lib/appearance/pdf/types';
-import { appendNativeScanPair } from '@/lib/appearance/appearance-native-scan';
+import { appendNativeScanPair, changeNativeScanPartition } from '@/lib/appearance/appearance-native-scan';
 import { sourceLandmark } from '@/lib/appearance/scan/landmarks';
 import { changeNativeFaceMask, faceMaskRequests } from '@/lib/appearance/face-masks';
 import type { AppearancePlan } from '@/lib/appearance/planner-types';
@@ -60,13 +60,14 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   });
   it('calibrates actual encoded image coordinates with no IFC loaded and refuses a stale source snapshot', async () => {
-    const asset = await appearanceAssets.add(png, {
+    const calibrationImage = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAADklEQVR4nGP4jwQYkDkANvEX6SAXxcIAAAAASUVORK5CYII='), c => c.charCodeAt(0));
+    const asset = await appearanceAssets.add(calibrationImage, {
       owner: { kind: 'source', id: 'calibration-fixture' },
       mimeType: 'image/png',
     });
     useViewerStore
       .getState()
-      .addAppearanceSource({ id: asset.id, assetId: asset.id, name: 'Calibration.png', width: 1, height: 1 });
+      .addAppearanceSource({ id: asset.id, assetId: asset.id, name: 'Calibration.png', width: 3, height: 2 });
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });
     const read = value<{ expected_source: string }>(await call('appearance.source.inspect', { source_id: asset.id }));
     const input = {
@@ -84,7 +85,7 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     assert.deepEqual(calibrated.calibration, {
       sourcePoints: [
         [0, 0],
-        [1, 1],
+        [3, 2],
       ],
       distanceMetres: 2,
     });
@@ -258,6 +259,14 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     const pending = { point, partition: 'fit' as const },
       target = { point: [10, 20, 30] as [number, number, number], feature: 'native-ifc-triangle' };
     const pairs = appendNativeScanPair([], pending, target);
+    const edge = sourceLandmark(mesh, { triangleIndex: 0, barycentricCoord: { w: -Number.EPSILON, u: 0.9, v: 0.1 } }, 3);
+    assert.deepEqual(edge.barycentric, [0, 0.9, 0.1]);
+    const fit = Array.from({ length: 256 }, (_, index) => ({
+      ...pairs[0], correspondence: { ...pairs[0].correspondence, id: `fit-${index}` },
+    }));
+    const check = { ...pairs[0], partition: 'check' as const };
+    assert.throws(() => changeNativeScanPartition([...fit, check], check.correspondence.id, 'fit'), /pairLimit/);
+
     assert.throws(
       () => appendNativeScanPair(pairs, pending, { ...target, feature: 'another-triangle' }),
       /duplicateLandmark/,
@@ -270,7 +279,7 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
   it('refuses forged Compare/scan tokens through the actual operation gateway', async () => {
     const initial = useViewerStore.getState().mutationVersion;
     assert.equal((await call('appearance.compare', { candidate_id: 'not-owned', original: true }, true)).isError, true);
-    assert.equal((await call('appearance.scan.calculate', { token: 'not-owned', version: 0 })).isError, true);
+    assert.equal((await call('appearance.scan.calculate', { token: 'not-owned', version: 0 }, true)).isError, true);
     assert.equal(useViewerStore.getState().mutationVersion, initial);
   });
 });

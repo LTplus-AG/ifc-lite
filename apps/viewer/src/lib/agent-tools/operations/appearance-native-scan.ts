@@ -80,6 +80,7 @@ export const appearanceScanOperations = [
       );
       assertToolActive(c);
       session.validate();
+      if (nativeScanStates(c).size >= 8) throw new Error('Native scan session capacity reached.');
       const token = crypto.randomUUID();
       nativeScanStates(c).set(token, { session, pairs: [], version: 0 });
       return out({
@@ -205,8 +206,9 @@ export const appearanceScanOperations = [
       const target = targetLandmark(state.session, renderer, i.viewport_x, i.viewport_y);
       if (!target) throw new Error('Native target picking is currently unavailable.');
       return c.commit(() => {
+        const pairs = appendNativeScanPair(state.pairs, pending, target);
         releaseNativeScanTransfer(state);
-        state.pairs = appendNativeScanPair(state.pairs, pending, target);
+        state.pairs = pairs;
         state.pending = undefined;
         state.result = undefined;
         state.recovery = undefined;
@@ -219,6 +221,7 @@ export const appearanceScanOperations = [
     meta(
       'appearance.scan.calculate',
       'Run the same native Rust registerScan service over current fit/check correspondences and immutable frames. Returns actual fit/held-out residuals and degeneracy diagnostics; forwards worker cancellation and revalidates native session after completion.',
+      true,
     ),
     tokenInput,
     async (i, c) => {
@@ -232,13 +235,15 @@ export const appearanceScanOperations = [
       try {
         const result = await registerNativeScanSession(state.session, state.pairs, planner, c.signal);
         assertToolActive(c);
-        nativeScanState(c, i.token, i.version);
-        releaseNativeScanTransfer(state);
-        state.result = result;
-        state.recovery = undefined;
-        state.pending = undefined;
-        state.version++;
-        return out({ result, version: state.version });
+        return c.commit(() => {
+          nativeScanState(c, i.token, i.version);
+          releaseNativeScanTransfer(state);
+          state.result = result;
+          state.recovery = undefined;
+          state.pending = undefined;
+          state.version++;
+          return out({ result, version: state.version });
+        });
       } finally {
         planner.dispose();
       }
@@ -277,8 +282,8 @@ export const appearanceScanOperations = [
           state.version++;
           return out({ version: state.version });
         }
-        releaseNativeScanTransfer(state);
         if (i.action === 'discard') {
+          releaseNativeScanTransfer(state);
           nativeScanStates(c).delete(i.token);
           return out({ discarded: true });
         }
@@ -287,12 +292,14 @@ export const appearanceScanOperations = [
           !state.pairs.some((pair) => pair.correspondence.id === i.pair_id)
         )
           throw new Error('Unknown native correspondence.');
-        state.pairs =
+        const pairs =
           i.action === 'clearPairs'
             ? []
             : i.action === 'changePartition'
               ? changeNativeScanPartition(state.pairs, i.pair_id, i.partition)
               : state.pairs.filter((pair) => pair.correspondence.id !== i.pair_id);
+        releaseNativeScanTransfer(state);
+        state.pairs = pairs;
         state.result = undefined;
         state.recovery = undefined;
         state.pending = undefined;

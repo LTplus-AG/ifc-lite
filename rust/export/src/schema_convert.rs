@@ -239,7 +239,7 @@ pub fn convert_step_line(
     let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
     if let Some(checks) = checks {
         converted = checks.enums.apply(converted, cto);
-        if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
+        converted = checks.structural.after(express_id, converted);
         (cto == "IFC4" && (cfrom != "IFC2X3" || converted.split('=').nth(1).is_some_and(|s| s.starts_with("IFCSTRUCTURAL")))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })

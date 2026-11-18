@@ -132,6 +132,12 @@ describe('IfcStructuralAnalysisModel.SharedPlacement IFC2X3 -> IFC4 #9668', () =
     expect(warnings).toContain('IFCSTRUCTURALANALYSISMODEL.SharedPlacement has no slot in IFC2X3; its value is omitted');
   });
 
+  it('reads no placement from a model whose grouping lists a non-reference item', async () => {
+    const { step } = await convert(ifc2x3('#10').replace('(#20,#21,#22)', '(#20,#21,$)'), 'IFC4');
+    expect(line(step, 30)).toMatch(/,\$\);$/);
+    expect(line(step, 21)).toContain(",'N',$,$,#10,");
+  });
+
   it('leaves it unset when the items use different placements', async () => {
     const { step } = await convert(ifc2x3('#13').replace('#12=', '#13=IFCLOCALPLACEMENT(#9,#8);\n#12='), 'IFC4');
     expect(line(step, 30)).toBe("#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,$);");

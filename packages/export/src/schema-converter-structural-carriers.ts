@@ -258,19 +258,23 @@ export class StructuralCarriers {
 function soleModelItems(source: SourceRecords, schema: 'IFC2X3' | 'IFC4'): Map<number, Map<number, number | null>> {
   const models = new Map<number, Map<number, number | null>>();
   const owners = new Map<number, Set<number>>();
+  // A model one of whose groupings cannot be read in full is not known to share a placement.
+  const unread = new Set<number>();
   for (const id of source.ids('IFCRELASSIGNSTOGROUP')) {
     const args = source.slots(id);
     const model = slotRef(args?.[6]);
     if (!args || model === null || source.type(model) !== 'IFCSTRUCTURALANALYSISMODEL') continue;
     const items = models.get(model) ?? new Map<number, number | null>();
-    for (const item of (listItems(args[4]) ?? []).map(slotRef)) {
+    models.set(model, items);
+    const listed = listItems(args[4])?.map(slotRef);
+    if (!listed || listed.includes(null)) unread.add(model);
+    for (const item of listed ?? []) {
       if (item === null || !isSubtype(schema, source.type(item), 'IfcStructuralItem')) continue;
       items.set(item, slotRef(source.slots(item)?.[OBJECT_PLACEMENT]));
       owners.set(item, (owners.get(item) ?? new Set<number>()).add(model));
     }
-    models.set(model, items);
   }
-  for (const [model, items] of models) if ([...items.keys()].some((i) => owners.get(i)!.size > 1)) models.delete(model);
+  for (const [model, items] of models) if (unread.has(model) || [...items.keys()].some((i) => owners.get(i)!.size > 1)) models.delete(model);
   return models;
 }
 

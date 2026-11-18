@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Structural values one of IFC2X3 and IFC4 holds in an attribute and the other
 //! holds elsewhere (#9668). Twin of
-//! `packages/export/src/schema-converter-structural-carriers.ts`; ported so far:
+//! `packages/export/src/schema-converter-structural-carriers.ts`; ported so far (not yet the
+//! load-case property set):
 //!
 //! - CausedBy. IFC4 deleted IfcStructuralAction.CausedBy; an action caused by a
 //!   reaction is the RelatingProduct of an IfcRelAssignsToProduct named 'Causes'
 //!   whose RelatedObjects is the reaction. The upgrade adds that relationship;
 //!   the downgrade keeps it (IFC2X3 has the same entity) and fills CausedBy
 //!   from it.
+//! - SharedPlacement. IFC4 places every structural item grouped into an
+//!   analysis model by the model's SharedPlacement; IFC2X3 gives each its own
+//!   placement record. The upgrade writes the lowest-id one as SharedPlacement
+//!   when the items' local placements are equal copies, and places the items by
+//!   it. A model sharing an item with another model, or with a grouping that
+//!   lists a non-reference, is left alone.
 //!
 //! Both directions read the source, so only an unedited full export arms them.
 use std::collections::{BTreeMap, HashMap};
@@ -21,6 +28,14 @@ use crate::step_slot::slots_of;
 const IFC2X3_ACTIONS: [&str; 5] = ["IFCSTRUCTURALPOINTACTION", "IFCSTRUCTURALLINEARACTION", "IFCSTRUCTURALPLANARACTION", "IFCSTRUCTURALLINEARACTIONVARYING", "IFCSTRUCTURALPLANARACTIONVARYING"];
 /// IfcStructuralAction.CausedBy in IFC2X3: slot 10 of every action.
 pub(crate) const CAUSED_BY: usize = 10;
+/// IfcProduct.ObjectPlacement.
+const OBJECT_PLACEMENT: usize = 5;
+/// IFC4 IfcStructuralAnalysisModel.SharedPlacement.
+const SHARED_PLACEMENT_SLOT: usize = 9;
+const MODEL: &str = "IFCSTRUCTURALANALYSISMODEL";
+/// What `Source::placed` holds for an analysis model with IFC2X3's nine attributes.
+const MODEL_WITH_NINE: u32 = u32::MAX;
+const SHARED_PLACEMENT: &str = "IfcStructuralAnalysisModel.SharedPlacement is written as the local placement all of its grouped structural items use or copy, and they are placed by it";
 
 pub(crate) const CAUSED_BY_AMONG: &str = "IFC2X3 CausedBy is one of several reactions the action's 'Causes' relationships name in IFC4, so IFC2X3 CausedBy cannot be restored from them";
 pub(crate) const CAUSED_BY_WRITTEN: &str = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";
@@ -46,6 +61,9 @@ pub(crate) struct StructuralCarriers {
     pending: BTreeMap<u32, String>,
     /// Downgrade: action id -> the one point reaction that causes it.
     caused_by: HashMap<u32, u32>,
+    /// Upgrade: analysis model id -> its SharedPlacement; item id -> the placement it is moved to.
+    shared: Vec<(u32, u32)>,
+    moved: HashMap<u32, u32>,
 }
 
 /// The source records the carriers read, from one pass.
@@ -56,6 +74,13 @@ struct Source {
     /// IFC2X3 actions with their arguments; collected for the upgrade only.
     actions: Vec<(u32, String, Vec<String>)>,
     relationships: Vec<(u32, Vec<u32>)>,
+    /// Upgrade: each IfcRelAssignsToGroup's RelatingGroup and RelatedObjects, 0 for an item it cannot read.
+    groups: Vec<(u32, Vec<u32>)>,
+    /// Upgrade: the ObjectPlacement of each structural item, 0 for none;
+    /// [`MODEL_WITH_NINE`] for each analysis model with IFC2X3's nine attributes.
+    placed: HashMap<u32, u32>,
+    /// Upgrade: where each local placement's text is.
+    local: HashMap<u32, (usize, usize)>,
 }
 
 impl Source {
@@ -66,17 +91,24 @@ impl Source {
         while let Some((id, ty, start, end)) = scanner.next_entity() {
             let structural = ty.get(..13).is_some_and(|p| p.eq_ignore_ascii_case("IFCSTRUCTURAL"));
             let relationship = ty.eq_ignore_ascii_case("IFCRELASSIGNSTOPRODUCT");
-            if !(structural || relationship) || !kept(id, start) { continue; }
+            let group = upgrade && ty.eq_ignore_ascii_case("IFCRELASSIGNSTOGROUP");
+            if upgrade && ty.eq_ignore_ascii_case("IFCLOCALPLACEMENT") && kept(id, start) { source.local.insert(id, (start, end)); }
+            if !(structural || relationship || group) || !kept(id, start) { continue; }
             let ty = ty.to_ascii_uppercase();
             let action = upgrade && IFC2X3_ACTIONS.contains(&ty.as_str());
-            if relationship {
+            let placed = upgrade && structural && (ty == MODEL || ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(&ty, "IfcStructuralItem"));
+            if relationship || group {
                 let text = String::from_utf8_lossy(&content[start..end]);
-                if let Some(cause) = read_relationship(&text) {
-                    source.relationships.push(cause);
+                if relationship {
+                    source.relationships.extend(read_relationship(&text));
+                } else {
+                    source.groups.extend(read_group(&text));
                 }
-            } else if action {
+            } else if action || placed {
                 let Some(args) = record(content, start, end) else { continue };
-                source.actions.push((id, ty.clone(), args));
+                if ty == MODEL { if args.len() == 9 { source.placed.insert(id, MODEL_WITH_NINE); } }
+                else if placed { source.placed.insert(id, args.get(OBJECT_PLACEMENT).and_then(|a| slot_ref(a)).unwrap_or(0)); }
+                else { source.actions.push((id, ty.clone(), args)); }
             }
             if structural { source.types.insert(id, ty); }
         }
@@ -102,6 +134,29 @@ impl Source {
         }
         causes
     }
+}
+
+/// RelatingGroup and RelatedObjects of an IfcRelAssignsToGroup; 0 for an item that is not a reference.
+fn read_group(line: &str) -> Option<(u32, Vec<u32>)> {
+    let args = slots_of(record_frame(line)?.args(line))?;
+    let items = args.get(4).and_then(|a| list_items(a)).map_or(vec![0], |items| items.iter().map(|i| slot_ref(i).unwrap_or(0)).collect());
+    Some((slot_ref(args.get(6)?)?, items))
+}
+
+/// The lowest-id local placement of `placed` when there is one and each item's
+/// is a local placement equal to the others but for whitespace, or None.
+fn common_placement(source: &Source, content: &[u8], placed: &[(u32, u32)]) -> Option<u32> {
+    let mut first: Option<Vec<String>> = None;
+    let mut lowest = u32::MAX;
+    for &(_, placement) in placed {
+        let &(start, end) = source.local.get(&placement)?;
+        let args = record(content, start, end)?;
+        if let Some(first) = &first {
+            if first.len() != args.len() || first.iter().zip(&args).any(|(a, b)| a.trim() != b.trim()) { return None; }
+        } else { first = Some(args); }
+        lowest = lowest.min(placement);
+    }
+    first.map(|_| lowest)
 }
 
 fn read_relationship(line: &str) -> Option<(u32, Vec<u32>)> {
@@ -134,7 +189,33 @@ impl StructuralCarriers {
             let message = if total == 1 { CAUSED_BY_WRITTEN } else { CAUSED_BY_AMONG };
             result.causes.insert(*id, Cause { relationship, message, varying: crate::schema_structural_varying::StructuralVarying::is_varying(ty), id: None });
         }
+        result.share_placements(&source, content);
         result
+    }
+
+    /// IFC2X3 -> IFC4: the SharedPlacement of each model whose grouped items'
+    /// local placements are one or equal copies of one, for the models none of
+    /// whose items another model also groups.
+    #[inline(never)]
+    fn share_placements(&mut self, source: &Source, content: &[u8]) {
+        let item = |id: &u32| source.placed.get(id).filter(|&&p| p != MODEL_WITH_NINE).copied();
+        'models: for (&model, _) in source.placed.iter().filter(|p| *p.1 == MODEL_WITH_NINE) {
+            let mut placed = Vec::new();
+            for (_, items) in source.groups.iter().filter(|g| g.0 == model) {
+                for id in items {
+                    // A grouping that cannot be read in full leaves the model's items unknown.
+                    if *id == 0 { continue 'models; }
+                    let Some(placement) = item(id) else { continue };
+                    // IFC4 would place an item two models group by both their placements.
+                    let elsewhere = source.groups.iter().any(|(other, items)| *other != model && source.types.get(other).is_some_and(|t| t == MODEL) && items.contains(id));
+                    if elsewhere { continue 'models; }
+                    placed.push((*id, placement));
+                }
+            }
+            let Some(shared) = common_placement(source, content, &placed) else { continue };
+            self.shared.push((model, shared));
+            for (id, placement) in placed { if placement != shared { self.moved.insert(id, shared); } }
+        }
     }
 
     /// IFC4 -> IFC2X3: the actions one 'Causes' relationship names one point reaction for.
@@ -179,19 +260,27 @@ impl StructuralCarriers {
         self.causes.get(&id).filter(|c| c.relationship.is_none() || c.id.is_some()).map(|c| c.message)
     }
 
-    /// IFC4 -> IFC2X3: record `id`, already converted to `line`, with CausedBy
-    /// filled from its one 'Causes' relationship. None when nothing changes.
-    pub(crate) fn after(&self, id: u32, line: &str) -> Option<String> {
-        let reaction = self.caused_by.get(&id)?;
+    /// Record `id`, already converted to `line`, with what a carrier fills in
+    /// place, and the message to report: on the upgrade an analysis model's
+    /// SharedPlacement and its grouped items' ObjectPlacement, on the downgrade
+    /// an action's CausedBy from its one 'Causes' relationship. None when
+    /// nothing changes.
+    #[inline(never)]
+    pub(crate) fn after(&self, id: u32, line: &str) -> Option<(String, Option<&'static str>)> {
+        let (index, value, message) = if let Some(&placement) = self.moved.get(&id) {
+            (OBJECT_PLACEMENT, placement, None)
+        } else if let Some(&(_, placement)) = self.shared.iter().find(|s| s.0 == id) {
+            (SHARED_PLACEMENT_SLOT, placement, Some(SHARED_PLACEMENT))
+        } else {
+            (CAUSED_BY, *self.caused_by.get(&id)?, Some(CAUSED_BY_READ))
+        };
+        let cause = index == CAUSED_BY;
         let frame = record_frame(line)?;
-        if !IFC2X3_ACTIONS.contains(&frame.head.type_name(line)) { return None; }
-        let args = slots_of(frame.args(line))?;
-        let slot = *args.get(CAUSED_BY)?;
-        if !slot_unset(slot) { return None; }
+        if cause && !IFC2X3_ACTIONS.contains(&frame.head.type_name(line)) { return None; }
+        let slot = *slots_of(frame.args(line))?.get(index)?;
+        if cause && !slot_unset(slot) { return None; }
         let start = slot.as_ptr() as usize - line.as_ptr() as usize;
-        let mut output = line.to_owned();
-        output.replace_range(start..start + slot.len(), &format!("#{reaction}"));
-        Some(output)
+        Some(([&line[..start], "#", &value.to_string(), &line[start + slot.len()..]].concat(), message))
     }
 
     /// The relationships written, to append after the source records.

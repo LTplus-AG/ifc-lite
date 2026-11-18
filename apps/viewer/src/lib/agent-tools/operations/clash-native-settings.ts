@@ -135,6 +135,8 @@ export const clashSettingsOperations = [
         i.action === 'import'
           ? await importPresets(new File([i.preset_json], 'clash-presets.json', { type: 'application/json' }))
           : null;
+      // The panel refuses an import with no valid rules (noValidRulesToast); so does the operation.
+      if (imported && !imported.length) throw new Error('The preset file contains no valid clash rules.');
       let preset;
       if (i.action === 'create' || i.action === 'update') {
         const value: unknown = JSON.parse(i.preset_json);
@@ -186,7 +188,9 @@ export const clashSettingsOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { clashReviewKey } = await import('@ifc-lite/clash');
+      const [{ clashReviewKey }, { MAX_COMMENT }] = await Promise.all([import('@ifc-lite/clash'), import('@/lib/clash/persistence')]);
+      if (i.comment.trim().length > MAX_COMMENT)
+        throw new Error(`Review comments are limited to ${MAX_COMMENT} characters after trimming.`);
       assertToolActive(c);
       return out(
         c.commit(() =>
@@ -244,8 +248,9 @@ export const clashSettingsOperations = [
             );
           }
           if (i.action === 'typeAny') {
-            if (!i.tag.trim()) throw new Error('An IFC class is required.');
-            return saved(s.addClashExclusion(typeAnyExclusion(i.tag)));
+            const tag = i.tag.trim();
+            if (!tag) throw new Error('An IFC class is required.');
+            return saved(s.addClashExclusion(typeAnyExclusion(tag)));
           }
           const pair = currentClash(i.run_seq, i.clash_id);
           return saved(

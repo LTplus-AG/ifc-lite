@@ -562,7 +562,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       try {
         const created = await createNativeClashTopic({clashes:clash?[clash]:[],total,mode:focusMode,focusClash,focusClashes,isCurrent});
         if(created) toast.success(t('clashTools.bcfTopic.created'), {label:t('clashTools.bcfTopic.open'),onClick:()=>setBcfPanelVisible(true)});
-      } catch(error) { console.error('[clash] BCF topic creation failed',error); }
+      } catch(error) { console.error('[clash] BCF topic creation failed',error); if(isCurrent()) toast.error(error instanceof Error?error.message:'Could not create a BCF topic for this clash.'); }
     });
   },[result,selectedId,runTopic,total,focusMode,focusClash,focusClashes,t,setBcfPanelVisible]);
 

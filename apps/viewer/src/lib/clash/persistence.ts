@@ -104,8 +104,8 @@ const MAX_PRESETS = 200;
 const MAX_NAME = 100;
 /** Cap on stored reviews so a huge model can't blow the localStorage quota. */
 const MAX_REVIEWS = 10_000;
-/** Cap on a single review comment; longer notes belong in a real issue tracker. */
-const MAX_COMMENT = 2_000;
+/** Cap on a single review comment, cut on load; longer notes belong in a real issue tracker. */
+export const MAX_COMMENT = 2_000;
 /** Cap on stored exclusion rules. Type-pair rules keep the realistic count low. */
 const MAX_EXCLUSIONS = 2_000;
 
@@ -222,12 +222,7 @@ function readStoredPresets(): ClashPreset[] {
     const raw = localStorage.getItem(PRESETS_KEY);
     if (raw === null) return [];
     const parsed: unknown = JSON.parse(raw);
-    const list = Array.isArray(parsed)
-      ? parsed
-      : parsed && typeof parsed === 'object' && Array.isArray((parsed as { presets?: unknown }).presets)
-        ? (parsed as { presets: unknown[] }).presets
-        : [];
-    return list
+    return (presetListOf(parsed) ?? [])
       .filter(isValidStoredPreset)
       .map((p) => storedPresetToPreset(p, builtinPresetIds().has(p.id)));
   } catch (err) {
@@ -610,16 +605,17 @@ export function exportPresets(presets: ClashPreset[], emit: (content: string, fi
   trackExportCompleted({ format: 'json', surface: 'clash_results' });
 }
 
+/** The entries of a preset export (a bare array, or `{ presets: [...] }`); null for any other shape. */
+function presetListOf(value: unknown): unknown[] | null {
+  if (Array.isArray(value)) return value;
+  const presets = value && typeof value === 'object' ? (value as { presets?: unknown }).presets : undefined;
+  return Array.isArray(presets) ? presets : null;
+}
 /** Parse an exported file into custom presets (ids regenerated, `builtin` stripped). */
 export async function importPresets(file: File): Promise<ClashPreset[]> {
   const text = await file.text();
   const parsed: unknown = JSON.parse(text);
-  const list = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { presets?: unknown }).presets)
-      ? (parsed as { presets: unknown[] }).presets
-      : [];
-  return list.filter(isValidStoredPreset).map((p) => ({
+  return (presetListOf(parsed) ?? []).filter(isValidStoredPreset).map((p) => ({
     ...storedPresetToPreset(p, false),
     id: `custom-${crypto.randomUUID()}`,
     name: p.name.slice(0, MAX_NAME),

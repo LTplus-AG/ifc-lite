@@ -279,6 +279,7 @@ export const clashClassificationOperations = [
           source: saved.draft!.origin.kind,
           partial: saved.draft!.origin.kind === 'full-run' && saved.draft!.origin.partial,
         }),
+        (r) => r.ok,
       );
       if (!result.ok) throw new Error(`Native group apply refused: ${result.reason}`);
       return out(result);
@@ -302,7 +303,7 @@ export const clashClassificationOperations = [
       assertToolActive(c);
       const receipt = useClashGroupApplications.getState().entries.find((row) => row.id === i.receipt_id);
       if (!receipt) throw new Error('Unknown native grouping receipt.');
-      const result = await c.commitAsync(() => undoClashGroupApplication(receipt));
+      const result = await c.commitAsync(() => undoClashGroupApplication(receipt), (r) => r.ok);
       if (!result.ok) throw new Error(`Native grouping Undo refused: ${result.reason}`);
       return out(result);
     },

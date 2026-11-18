@@ -184,7 +184,11 @@ export const nativeClashOperations = [
       c.signal?.addEventListener('abort', cancel, { once: true });
       try {
         assertToolActive(c);
-        if (i.kind === 'rerun') await rerunClashRequest(runRequestOf(s.clashRawResult), runtime);
+        if (i.kind === 'rerun') {
+          const request = runRequestOf(s.clashRawResult);
+          if (!request) throw new Error('No recorded clash run to rerun. Choose a run kind instead.');
+          await rerunClashRequest(request, runtime);
+        }
         else if (i.kind === 'all') await runtime.runAll();
         else if (i.kind === 'matrix') await runtime.runMatrix();
         else if (i.kind === 'preset') await runtime.runPreset(i.preset_id);

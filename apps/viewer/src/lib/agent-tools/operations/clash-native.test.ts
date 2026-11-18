@@ -54,12 +54,9 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       const pairs = value<{ clashes: Array<{ clash: { a: { model: string }; b: { model: string } } }> }>(
         await call('clash.results', { offset: 0, limit: 10, run_seq: result.run_seq }),
       );
-      assert.ok(
-        pairs.clashes.every(
-          ({ clash }) =>
-            useViewerStore.getState().models.has(clash.a.model) && useViewerStore.getState().models.has(clash.b.model),
-        ),
-      );
+      assert.equal(pairs.clashes.length, 1, 'two coincident walls make exactly one pair');
+      const { a, b } = pairs.clashes[0].clash;
+      assert.deepEqual([a.model, b.model].sort(), count === 1 ? ['A', 'A'] : ['A', 'B']);
       value(await call('clash.run', runInput('duplicates'), true));
       assert.equal(runRequestOf(useViewerStore.getState().clashRawResult)?.kind, 'duplicates');
     });
@@ -163,25 +160,24 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     const rows = value<Array<{ member: unknown }>>(
       await call('clash.groups.evidence', { run_seq: result.run_seq, clash_ids: [id] }),
     );
-    const library = value<{ expected_library: string }>(await call('clash.groups.read'));
-    const workspace = {
-      version: 1,
-      id: 'conflicting-workspace',
-      name: 'Conflicting',
-      groups: [
-        { id: 'a', name: 'A', members: [rows[0].member] },
-        { id: 'b', name: 'B', members: [rows[0].member] },
-      ],
+    const write = async (groups: unknown[]) => {
+      const { expected_library } = value<{ expected_library: string }>(await call('clash.groups.read'));
+      const workspace = { version: 1, id: 'conflicting-workspace', name: 'Conflicting', groups };
+      return call('clash.groups.write', { workspace_json: JSON.stringify(workspace), expected_library }, true);
     };
-    const refused = await call(
-      'clash.groups.write',
-      { workspace_json: JSON.stringify(workspace), expected_library: library.expected_library },
-      true,
-    );
+    // The same workspace with one claim persists, so only the second claim can cause the refusal.
+    value(await write([{ id: 'a', name: 'A', members: [rows[0].member] }]));
+    const before = value<{ expected_library: string }>(await call('clash.groups.read')).expected_library;
+    const refused = await write([
+      { id: 'a', name: 'A', members: [rows[0].member] },
+      { id: 'b', name: 'B', members: [rows[0].member] },
+    ]);
     assert.equal(refused.isError, true);
+    assert.equal(value<{ expected_library: string }>(await call('clash.groups.read')).expected_library, before);
   });
   it('grounds typed grouping evidence, applies a native reviewed partition, and undoes only its own revision', async () => {
     value(await call('clash.run', runInput(), true));
+    const libraryBefore = value<{ expected_library: string }>(await call('clash.groups.read')).expected_library;
     const prepared = value<{ token: string }>(await call('clash.classification.prepare', {}, true));
     const answer = JSON.stringify({
       version: 1,
@@ -210,6 +206,45 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       await call('clash.classification.undo', { receipt_id: applied.receipt.id }, true),
     );
     assert.equal(undone.receipt.status, 'undone');
+    assert.equal(value<{ expected_library: string }>(await call('clash.groups.read')).expected_library, libraryBefore);
     assert.equal((await call('clash.classification.undo', { receipt_id: applied.receipt.id }, true)).isError, true);
+  });
+  it('refuses an exact rerun when no run was recorded', async () => {
+    value(await call('clash.run', runInput(), true));
+    useViewerStore.getState().clearClash();
+    const seq = useViewerStore.getState().clashRunSeq;
+    const refused = await call('clash.run', { ...runInput(), kind: 'rerun' }, true);
+    assert.equal(refused.isError, true);
+    assert.match(refused.text, /No recorded clash run/);
+    assert.equal(useViewerStore.getState().clashRunSeq, seq, 'no Detect all was started');
+  });
+  const firstPair = async () => {
+    const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    return { run_seq: result.run_seq, pair: useViewerStore.getState().clashResult!.clashes[0] };
+  };
+  it('refuses a review comment that a reload would cut', async () => {
+    const { run_seq, pair } = await firstPair();
+    const review = (comment: string) => call('clash.review', { clash_id: pair.id, run_seq, status: 'accepted', comment }, true);
+    assert.equal((await review('x'.repeat(2001))).isError, true);
+    value(await review(` ${'x'.repeat(2000)} `));
+  });
+  it('refuses a preset import with no valid rules, as the panel does', async () => {
+    const presets = (preset_json: string) =>
+      call('clash.presets.write', { action: 'import', id: '', preset_json, enabled: true, expected_presets: JSON.stringify(useViewerStore.getState().clashPresets) }, true);
+    for (const file of ['{}', '[]', '{"presets":[{"bogus":1}]}']) {
+      const refused = await presets(file);
+      assert.equal(refused.isError, true, file);
+      assert.match(refused.text, /no valid clash rules/);
+    }
+  });
+  it('trims the IFC class of a type exclusion', async () => {
+    const { run_seq } = await firstPair();
+    value(
+      await call('clash.exclusions.write', {
+        action: 'typeAny', clash_id: '', run_seq, tag: ' IfcWall ', id: '', enabled: true,
+        expected_exclusions: JSON.stringify(useViewerStore.getState().clashExclusions),
+      }, true),
+    );
+    assert.equal(useViewerStore.getState().clashResult!.clashes.length, 0, 'the trimmed class suppresses the wall pair');
   });
 });

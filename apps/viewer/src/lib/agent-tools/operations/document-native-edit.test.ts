@@ -32,12 +32,18 @@ it('#10525 pages large native documents and edits text without resending or losi
   assert.ok(JSON.stringify(library).length < 32000); assert.doesNotMatch(JSON.stringify(library), /data:image/);
   const inspected = await run<{ document: { revision: string }; blocks: unknown[]; next_offset: number | null }>('document.inspect', { id: document.id, offset: 0, limit: 1 });
   assert.equal(inspected.next_offset, 1); assert.equal(inspected.blocks.length, 1); assert.ok(JSON.stringify(inspected).length < 20000); assert.doesNotMatch(JSON.stringify(inspected), /base64/);
+  const media = await run<{ blocks: unknown[] }>('document.inspect', { id: document.id, offset: 1, limit: 1 });
+  assert.equal(media.blocks.length, 1);
+  assert.match(JSON.stringify(media.blocks), /"kind":"image"/);
+  assert.doesNotMatch(JSON.stringify(media), /base64|data:image/);
   const input = { id: document.id, expected_revision: inspected.document.revision, block_id: 'narrative', patch_json: '{"text":"Small native text edit"}' };
   assert.ok(JSON.stringify(input).length < 1000); const saved = await run<{ revision: string }>('document.editBlock', input); assert.notEqual(saved.revision, inspected.document.revision);
   await assert.rejects(run('document.editBlock', input), /changed since inspection/);
   const persisted = (await loadDocuments()).find(row => row.id === document.id); assert.ok(persisted);
   assert.equal(persisted.blocks[0].kind === 'text' && persisted.blocks[0].text, 'Small native text edit');
   assert.equal(persisted.blocks[0].kind === 'text' && aiBlockOrigin(persisted.blocks[0]), 'human-edited');
+  assert.deepEqual(persisted.blocks[0].kind === 'text' && persisted.blocks[0].aiProvenance,
+    document.blocks[0].kind === 'text' && document.blocks[0].aiProvenance);
   assert.deepEqual(persisted.aiReport, document.aiReport); assert.deepEqual(persisted.blocks[1], document.blocks[1]); assert.deepEqual(persisted.pageHeading, document.pageHeading);
   await run('document.editPage', { id: document.id, expected_revision: saved.revision, patch_json: '{"page":{"orientation":"landscape"},"pageHeading":{"text":"Edited heading"}}' });
   const pageSaved = (await loadDocuments()).find(row => row.id === document.id); assert.equal(pageSaved?.page.orientation, 'landscape'); assert.equal(pageSaved?.pageHeading?.logo?.dataUrl, dataUrl);

@@ -11,7 +11,7 @@ import { resolveRenderFrame } from '@/hooks/useRenderFrameOffsets';
 import { buildExportModel, createListArtifact } from '@/lib/lists/export';
 import { detectNumericColumns } from '@/components/viewer/lists/list-table-utils';
 import { operation, viewerOperation, emptySchema } from './contract';
-import { metadata, idSchema, jsonSchema, artifactSchema, removedSchema, checkpoint } from './analytics-common';
+import { matchesJsonSnapshot, metadata, idSchema, jsonSchema, artifactSchema, removedSchema, checkpoint } from './analytics-common';
 
 function savedDefinition(id: string) {
   const value = useViewerStore.getState().listDefinitions.find(row => row.id === id);
@@ -39,7 +39,7 @@ export const analyticsListOperations = [
   }), {
     type: 'object', properties: { id: idSchema.properties.id, expected_json: jsonSchema.properties.content_json, content_json: jsonSchema.properties.content_json }, required: ['id', 'expected_json', 'content_json'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string; expected_json: string; content_json: string }>, (i, c) => {
-    const current = definition(i.id); if (JSON.stringify(current) !== JSON.stringify(JSON.parse(i.expected_json))) throw new Error('List definition changed since inspection.');
+    const current = definition(i.id); if (!matchesJsonSnapshot(current, i.expected_json)) throw new Error('List definition changed since inspection.');
     const value = decodeSavedList(JSON.parse(i.content_json)); if (value.id !== i.id) throw new Error('Changing the list ID is not allowed.');
     checkpoint(c); const s = useViewerStore.getState();
     if (!c.commit(() => s.setListDefinitions(s.listDefinitions.map(row => row.id === i.id ? value : row)))) throw new Error(useViewerStore.getState().listError ?? 'Native list persistence failed.');

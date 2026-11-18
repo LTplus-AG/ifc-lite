@@ -14,7 +14,7 @@ import { resolve } from '@/i18n/registry';
 import { captureAnalysisStamp, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 import { sanitizeFilename } from '@/lib/export/download';
 import { viewerOperation } from './contract';
-import { metadata, idSchema, artifactSchema, checkpoint } from './analytics-common';
+import { matchesJsonSnapshot, metadata, idSchema, artifactSchema, checkpoint } from './analytics-common';
 interface Input { id: string; expected_json: string; page: { size: 'A4' | 'A3'; orientation: 'portrait' | 'landscape' }; title_block: { project: string; title: string; author: string; date: string; revision: string }; snapshots: boolean; save_setup: boolean }
 export const analyticsChartReportOperations = [
   viewerOperation<Input>(metadata('charts.exportReport', 'charts', 'Await all native chart datasets/filters, real multi-chart report PDF, optional restored viewport captures and native report setup persistence. Exposes the actual Report dialog paper/orientation/title-block/snapshot controls without mounting it.', ['read', 'artifact', 'configuration', 'view'], {
@@ -26,14 +26,20 @@ export const analyticsChartReportOperations = [
     }, required: ['id', 'expected_json', 'page', 'title_block', 'snapshots', 'save_setup'], additionalProperties: false,
   } satisfies JSONSchemaType<Input>, async (i, c) => {
     const state = useViewerStore.getState(); const dashboard = state.dashboards.find(row => row.id === i.id);
-    if (!dashboard || JSON.stringify(dashboard) !== JSON.stringify(JSON.parse(i.expected_json))) throw new Error('Dashboard changed since inspection.');
+    if (!dashboard || !matchesJsonSnapshot(dashboard, i.expected_json)) throw new Error('Dashboard changed since inspection.');
     const frozen = structuredClone(dashboard); const stamp = captureAnalysisStamp(true);
     const { chartSlice, chartSliceSource } = useViewerStore.getState();
     const aggregations = new Map<string, Aggregation | null>();
-    for (const chart of frozen.charts) { checkpoint(c); aggregations.set(chart.id, await evaluateDashboardChart(frozen, chart.id, c.signal)); }
+    const messages = new Map<string, ReturnType<typeof chartSourceMessage>>();
+    for (const chart of frozen.charts) {
+      checkpoint(c);
+      const source = resolveChartSource(chart, { source: chart.source, columns: [], rows: [], fingerprint: '' }, chartSourceContext(state));
+      messages.set(chart.id, chartSourceMessage(source, resolve));
+      aggregations.set(chart.id, source.status === 'missing' ? null : await evaluateDashboardChart(frozen, chart.id, c.signal));
+    }
     const result = await exportPreparedChartReport({ name: frozen.name, page: i.page, titleBlock: reportTitleBlock(i.title_block), snapshots: i.snapshots,
       charts: frozen.charts.map(chart => ({ id: chart.id, title: chart.title, aggregation: aggregations.get(chart.id) ?? null, snapshot: !isRecordedChart(chart),
-        message: chartSourceMessage(resolveChartSource(chart, { source: chart.source, columns: [], rows: [], fingerprint: '' }, chartSourceContext(state)), resolve) })),
+        message: messages.get(chart.id) })),
       snapshotIds: id => largestBucketIds(aggregations.get(id)),
     }, { signal: c.signal }); checkpoint(c);
     const now = useViewerStore.getState();

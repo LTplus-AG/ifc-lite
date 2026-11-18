@@ -20,7 +20,7 @@
 import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Download, Upload, Sparkles, ArrowUpDown } from 'lucide-react';
-import { discoverNativeLensData, isolateNativeLensRule, releaseNativeLensRuleIsolation, switchNativeLens } from '@/lib/lens/native-controls';
+import { currentNativeLensRuleId, discoverNativeLensData, isolateNativeLensRule, releaseNativeLensRuleIsolation, switchNativeLens } from '@/lib/lens/native-controls';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -231,7 +231,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const exportLenses = useViewerStore((s) => s.exportLenses);
   // Rule-isolation ownership lives in the STORE (not component state/refs) so
   // a panel unmount/remount cannot strand an isolation it can no longer release.
-  const lensRuleIsolation = useViewerStore((s) => s.lensRuleIsolation);
+  const isolatedRuleId = useViewerStore(currentNativeLensRuleId);
   // Footer count only: useLens pushes colours via pendingColorUpdates, so no effect keys off this and `.size` is safe (#5206).
   const lensColorMapSize = useViewerStore((s) => s.lensColorMap.size);
   const lensHiddenCount = useViewerStore((s) => s.lensHiddenIds.size); // footer count only
@@ -290,7 +290,6 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Rule isolation applied by the lens (persisted in the store so it survives
   // panel remounts). Only the ruleId is needed for the card highlight.
-  const isolatedRuleId = lensRuleIsolation?.ruleId ?? null;
 
   /**
    * Release the lens's rule isolation. Clears the shared isolation channel

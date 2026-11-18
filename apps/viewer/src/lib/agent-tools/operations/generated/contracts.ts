@@ -4867,7 +4867,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "document.import",
     "version": 1,
     "owner": "document",
-    "description": "Import a complete native document JSON with independently remapped document/block IDs, validated bindings and native persistence.",
+    "description": "Import a complete native document JSON with independently remapped document/block IDs, validated bindings and native persistence. For files above the bridge input limit use the viewer file importer.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -4879,7 +4879,7 @@ export const operationContracts: readonly OperationContract[] = [
         "content_json": {
           "type": "string",
           "minLength": 2,
-          "maxLength": 500000
+          "maxLength": 2000000
         }
       },
       "required": [
@@ -4929,12 +4929,12 @@ export const operationContracts: readonly OperationContract[] = [
         "expected_json": {
           "type": "string",
           "minLength": 2,
-          "maxLength": 500000
+          "maxLength": 2000000
         },
         "content_json": {
           "type": "string",
           "minLength": 2,
-          "maxLength": 500000
+          "maxLength": 2000000
         }
       },
       "required": [
@@ -6862,7 +6862,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_name": {
           "type": "string",
-          "maxLength": 200
+          "maxLength": 2000000
         },
         "name": {
           "type": "string",
@@ -10661,12 +10661,6 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
-        "data": {
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "edited": {
           "type": "boolean"
         },
@@ -10675,14 +10669,18 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "redo": {
           "type": "integer"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
         "model_id",
-        "data",
         "edited",
         "undo",
-        "redo"
+        "redo",
+        "task_count"
       ],
       "additionalProperties": false
     },
@@ -10744,12 +10742,6 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
-        "data": {
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "edited": {
           "type": "boolean"
         },
@@ -10758,14 +10750,18 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "redo": {
           "type": "integer"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
         "model_id",
-        "data",
         "edited",
         "undo",
-        "redo"
+        "redo",
+        "task_count"
       ],
       "additionalProperties": false
     },
@@ -10832,12 +10828,6 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
-        "data": {
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "edited": {
           "type": "boolean"
         },
@@ -10846,14 +10836,18 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "redo": {
           "type": "integer"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
         "model_id",
-        "data",
         "edited",
         "undo",
-        "redo"
+        "redo",
+        "task_count"
       ],
       "additionalProperties": false
     },
@@ -10909,12 +10903,6 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
-        "data": {
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "edited": {
           "type": "boolean"
         },
@@ -10923,14 +10911,18 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "redo": {
           "type": "integer"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
         "model_id",
-        "data",
         "edited",
         "undo",
-        "redo"
+        "redo",
+        "task_count"
       ],
       "additionalProperties": false
     },
@@ -10946,7 +10938,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "schedule.deleteTask",
     "version": 1,
     "owner": "gantt",
-    "description": "Delete a native task and its native dependent subtree/sequence cleanup with a complete expected task snapshot conflict check.",
+    "description": "Delete a native task and its native dependent subtree/sequence cleanup with a complete expected schedule.nativeData data snapshot conflict check.",
     "needs": "model",
     "effects": [
       "model"
@@ -10981,12 +10973,6 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
-        "data": {
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "edited": {
           "type": "boolean"
         },
@@ -10995,14 +10981,18 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "redo": {
           "type": "integer"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
         "model_id",
-        "data",
         "edited",
         "undo",
-        "redo"
+        "redo",
+        "task_count"
       ],
       "additionalProperties": false
     },
@@ -11064,12 +11054,6 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
-        "data": {
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "edited": {
           "type": "boolean"
         },
@@ -11078,14 +11062,18 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "redo": {
           "type": "integer"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
         "model_id",
-        "data",
         "edited",
         "undo",
-        "redo"
+        "redo",
+        "task_count"
       ],
       "additionalProperties": false
     },
@@ -11132,12 +11120,6 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
-        "data": {
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "edited": {
           "type": "boolean"
         },
@@ -11146,14 +11128,18 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "redo": {
           "type": "integer"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "required": [
         "model_id",
-        "data",
         "edited",
         "undo",
-        "redo"
+        "redo",
+        "task_count"
       ],
       "additionalProperties": false
     },
@@ -11206,12 +11192,6 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
-        "data": {
-          "type": [
-            "object",
-            "null"
-          ]
-        },
         "edited": {
           "type": "boolean"
         },
@@ -11221,16 +11201,21 @@ export const operationContracts: readonly OperationContract[] = [
         "redo": {
           "type": "integer"
         },
-        "warnings": {
-          "type": "array"
+        "task_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning_count": {
+          "type": "integer"
         }
       },
       "required": [
         "model_id",
-        "data",
         "edited",
         "undo",
-        "redo"
+        "redo",
+        "task_count",
+        "warning_count"
       ],
       "additionalProperties": false
     },
@@ -14743,9 +14728,6 @@ export const operationContracts: readonly OperationContract[] = [
     "outputSchema": {
       "type": "object",
       "properties": {
-        "extraction": {
-          "type": "object"
-        },
         "groups": {
           "type": "integer"
         },
@@ -14760,7 +14742,6 @@ export const operationContracts: readonly OperationContract[] = [
         }
       },
       "required": [
-        "extraction",
         "groups",
         "products",
         "finish",

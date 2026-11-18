@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { canonicalJson } from '@ifc-lite/flow';
 import type { ViewerOperationContext, Effect } from './contract';
 export const idSchema = { type: 'object' as const, properties: { id: { type: 'string' as const, minLength: 1, maxLength: 200 } }, required: ['id' as const], additionalProperties: false as const };
 export const jsonSchema = { type: 'object' as const, properties: { content_json: { type: 'string' as const, minLength: 2, maxLength: 500_000 } }, required: ['content_json' as const], additionalProperties: false as const };
@@ -14,3 +15,8 @@ export function metadata(id: string, owner: string, description: string, effects
 }
 export function checkpoint(c: ViewerOperationContext) { c.signal?.throwIfAborted(); c.checkpoint?.(); }
 export const removedSchema = { type: 'object', properties: { removed: { type: 'string' } }, required: ['removed'], additionalProperties: false };
+
+/** Compare a wire snapshot by JSON value, independent of property ordering. */
+export function matchesJsonSnapshot(value: unknown, expected: string): boolean {
+  return canonicalJson(value) === canonicalJson(JSON.parse(expected));
+}

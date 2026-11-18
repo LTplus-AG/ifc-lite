@@ -32,7 +32,7 @@ export const analyticsPresentationOperations = [
     checkpoint(c); c.commit(() => activateBasketViewFromStore(i.id)); return inspect();
   }),
   viewerOperation<{ id: string; expected_name: string; name: string; transition_ms: number }>(metadata('presentation.configureView', 'presentation', 'Rename and change native transition timing with an expected-name conflict check.', ['configuration'], output), {
-    type: 'object', properties: { id: idSchema.properties.id, expected_name: { type: 'string', maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 }, transition_ms: { type: 'integer', minimum: 150, maximum: 15000 } }, required: ['id', 'expected_name', 'name', 'transition_ms'], additionalProperties: false,
+    type: 'object', properties: { id: idSchema.properties.id, expected_name: { type: 'string', maxLength: 2_000_000 }, name: { type: 'string', minLength: 1, maxLength: 200 }, transition_ms: { type: 'integer', minimum: 150, maximum: 15000 } }, required: ['id', 'expected_name', 'name', 'transition_ms'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string; expected_name: string; name: string; transition_ms: number }>, (i, c) => {
     if (saved(i.id).name !== i.expected_name) throw new Error('View name changed since inspection.');
     checkpoint(c); c.commit(() => { const s = useViewerStore.getState(); s.renameBasketView(i.id, i.name); s.setBasketViewTransitionMs(i.id, i.transition_ms); }); return inspect();
@@ -44,7 +44,7 @@ export const analyticsPresentationOperations = [
   } satisfies JSONSchemaType<{ view_ids: string[]; repetitions: number }>, async (i, c) => {
     const duration = i.view_ids.reduce((total, id) => total + presentationStepMs(saved(id)), 0) * i.repetitions;
     if (duration > 120000) throw new Error('Choose a finite saved-view sequence lasting at most two minutes.'); checkpoint(c);
-    return playNativePresentation(i.view_ids, { repetitions: i.repetitions, signal: c.signal, beforeActivate: apply => c.commit(apply) });
+    return playNativePresentation(i.view_ids, { repetitions: i.repetitions, maxDurationMs: 120000, signal: c.signal, beforeActivate: apply => c.commit(apply) });
   }),
   viewerOperation({ ...metadata('presentation.stop', 'presentation', 'Request cancellation of the viewer-scoped native presentation sequence. Inspect presentation.playback for its terminal state; applied views are not rolled back.', ['view'], { type: 'object', properties: { requested: { type: 'boolean' } }, required: ['requested'], additionalProperties: false }), completion: 'dispatched' }, emptySchema, (_, c) => { checkpoint(c); const requested = presentationPlaybackState().state === 'running'; c.commit(stopPresentationPlayback); return { requested }; }),
 

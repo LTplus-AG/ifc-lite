@@ -94,7 +94,6 @@ export function ListPanel() {
 
     setListExecuting(true);
     setListError(null);
-    setActiveListId(definition.id);
     setEditingList(definition);
 
     // Use requestAnimationFrame to avoid blocking UI during execution
@@ -105,6 +104,7 @@ export function ListPanel() {
           pairs: modelProviderPairs, signal: controller.signal, legacyName: t('lists.resultChrome.loadedModel'),
         });
         if (controller.signal.aborted) return;
+        setActiveListId(definition.id);
         setListResult(result);
         setView('results');
         outcome = 'completed';
@@ -183,7 +183,10 @@ export function ListPanel() {
   }, [deleteListDefinition]);
 
   const handleEditFromResults = useCallback(() => {
-    if (editingList) {
+    const result = useViewerStore.getState().listResult;
+    const definition = (result ? listRunDefinition(result) : null) ?? editingList;
+    if (definition) {
+      setEditingList(definition);
       setView('builder');
     }
   }, [editingList]);
@@ -192,14 +195,14 @@ export function ListPanel() {
   // executed definition (so Settings reflects it), persist if it's saved, and
   // re-derive groups/summary over the current rows for a consistent result.
   const handleGroupingFromTable = useCallback((grouping: ListGrouping | undefined) => {
-    const def = editingList;
+    const current = useViewerStore.getState().listResult;
+    const def = (current ? listRunDefinition(current) : null) ?? editingList;
     if (!def) return;
     const next: ListDefinition = { ...def, grouping };
     setEditingList(next);
     if (listDefinitions.some((d) => d.id === def.id)) {
       updateListDefinition(def.id, { grouping });
     }
-    const current = useViewerStore.getState().listResult;
     if (current) {
       const summ = summariseListRows(next, current.rows);
       setListResult(carryListRun(current, { ...current, groups: summ.groups, summary: summ.summary }, next));

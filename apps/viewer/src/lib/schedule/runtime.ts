@@ -25,7 +25,7 @@ function localIdsToGlobal<T>(
   return out;
 }
 
-let untaskedCache: { meshes: readonly unknown[]; length: number; sourceModelId: string | null; ids: Set<number> } | null = null;
+const untaskedCache = new WeakMap<readonly unknown[], { length: number; sourceModelId: string | null; ids: Set<number> }>();
 function publishScheduleFrame(): void {
   const { animationEnabled, scheduleData, playbackTime, animationSettings, activeWorkScheduleId } = useViewerStore.getState();
     const store = useViewerStore.getState();
@@ -57,8 +57,8 @@ function publishScheduleFrame(): void {
       const meshes = sourceModel?.geometryResult?.meshes;
       if (meshes && meshes.length > 0) {
         // Every frame needs the same set; resolving each mesh again per frame is 100k+ lookups.
-        const cached = untaskedCache;
-        if (cached && cached.meshes === meshes && cached.length === meshes.length && cached.sourceModelId === sourceModelId) {
+        const cached = untaskedCache.get(meshes);
+        if (cached && cached.length === meshes.length && cached.sourceModelId === sourceModelId) {
           allLocalIds = cached.ids;
         } else {
           allLocalIds = new Set<number>();
@@ -66,7 +66,7 @@ function publishScheduleFrame(): void {
             const ref = store.resolveGlobalIdFromModels(mesh.expressId);
             if (ref?.modelId === sourceModelId) allLocalIds.add(ref.expressId);
           }
-          untaskedCache = { meshes, length: meshes.length, sourceModelId, ids: allLocalIds };
+          untaskedCache.set(meshes, { length: meshes.length, sourceModelId, ids: allLocalIds });
         }
       }
     }
@@ -92,6 +92,12 @@ function publishScheduleFrame(): void {
     });
 }
 let users = 0;
+let boundedPlayback = false;
+/** Suppress wrapping for one bounded run without editing the user's preference. */
+export function holdBoundedSchedulePlayback(): () => void {
+  boundedPlayback = true;
+  return () => { boundedPlayback = false; };
+}
 let unsubscribe: (() => void) | null = null;
 let animationFrame: number | null = null;
 let last: number | null = null;
@@ -105,7 +111,7 @@ function syncClock(): void {
   if (last === null) last = performance.now();
   animationFrame = requestAnimationFrame(now => {
     animationFrame = null; const delta = now - (last ?? now); last = now;
-    useViewerStore.getState().advancePlaybackBy(delta); syncClock();
+    useViewerStore.getState().advancePlaybackBy(delta, !boundedPlayback); syncClock();
   });
 }
 /** One ref-counted native clock/overlay runtime for panel and off-panel automation. */

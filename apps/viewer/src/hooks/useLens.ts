@@ -37,7 +37,7 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
 
-import { clearLensOutput, evaluateNativeLens, applyNativeLensResult, syncNativeLensHidden } from '@/lib/lens/native-lens';
+import { clearLensOutput, evaluateNativeLens, applyNativeLensResult, hasCurrentNativeLensResult, syncNativeLensHidden } from '@/lib/lens/native-lens';
 
 export function useLens(): void {
   const activeLensId = useViewerStore((s) => s.activeLensId);
@@ -90,6 +90,10 @@ export function useLens(): void {
   useEffect(() => {
     const modelSetChanged = prevModelSetKeyRef.current !== modelSetKey;
     prevModelSetKeyRef.current = modelSetKey;
+    if (activeLens && hasCurrentNativeLensResult(useViewerStore.getState())) {
+      prevLensIdRef.current = activeLensId;
+      return;
+    }
 
     // A removed model can release its global-ID range for immediate reuse.
     // Clear its old overlay before the chunked group evaluator yields.

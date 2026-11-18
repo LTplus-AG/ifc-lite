@@ -292,7 +292,6 @@ export function PresentationPanel() {
                 onEditingNameChange={setEditingName}
                 onSetTransition={() => setViewTransitionDuration(view.id, view.transitionMs)}
                 onDelete={() => {
-                  if (playingAll) stopPlayAll();
                   if (editingViewId === view.id) cancelRename();
                   removeBasketView(view.id);
                 }}

@@ -38,6 +38,7 @@ export function presentListIds(ids: readonly number[], channel: VisibilityChanne
     basketVisibilityOwned: null,
     chartVisibilityOwned: null,
     listVisibilityOwned: { channel, ids: installed },
+    lensRuleIsolation: null,
   });
 }
 
@@ -61,10 +62,18 @@ export function activeListRowChannel(key: string): VisibilityChannel | null {
   return key === shownListKey ? ownedListChannel() : null;
 }
 export function presentListRows(key: string, rows: readonly ListRow[], channel: VisibilityChannel): void {
-  if (activeListRowChannel(key) === channel) { releaseListVisibility(); shownListKey = null; return; }
   const state = useViewerStore.getState();
   const ids = rows.map(row => toGlobalIdFromModels(state.models, row.modelId, row.entityId));
   if (!ids.length) return;
+  if (activeListRowChannel(key) === channel) {
+    const current = state.listVisibilityOwned?.ids;
+    const requested = new Set(resolvePresentationIds(state.cameraCallbacks?.resolveHighlightIds, ids));
+    if (current && current.size === requested.size && [...requested].every(id => current.has(id))) {
+      releaseListVisibility();
+      shownListKey = null;
+      return;
+    }
+  }
   shownListKey = key;
   presentListIds(ids, channel);
 }

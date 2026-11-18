@@ -107,7 +107,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   const readRevisionRef = useRef<number | null>(computed ? (statistics?.withinTolerance ? revision : -1) : null);
   useEffect(() => {
     const readAt = readRevisionRef.current;
-    if (!computed || running || readAt === null || readAt === revision) return;
+    if (!computed || running || readAt === revision) return;
     const renderer = getGlobalRenderer();
     if (!renderer) return;
     readRevisionRef.current = revision;

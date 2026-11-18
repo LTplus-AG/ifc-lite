@@ -24,6 +24,7 @@ export async function computeNativeDeviation(renderer: Pick<Renderer, 'computeDe
   if (result.pointsProcessed === 0) throw new NativeDeviationError('deviationPanel.noPointsError');
   if (result.bvhTriangles === 0) throw new NativeDeviationError('deviationPanel.noMeshError');
   const state = useViewerStore.getState();
+  state.bumpPointCloudDeviationRevision();
   state.setPointCloudDeviationComputed(true);
   if (state.pointCloudDeviationHalfRange === 0.05 && result.suggestedHalfRange !== 0.05) state.setPointCloudDeviationHalfRange(result.suggestedHalfRange);
   state.setPointCloudColorMode('deviation');

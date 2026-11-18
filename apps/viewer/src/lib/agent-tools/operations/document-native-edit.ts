@@ -18,7 +18,7 @@ async function admitted(id: string, expected: string, c: ViewerOperationContext)
 async function persist(before: DocumentSpec, next: DocumentSpec, blockId: string | null, c: ViewerOperationContext) {
   checkpoint(c);
   if (!await c.commitAsync(() => { if (current(before.id) !== before) throw new Error('Document changed before native persistence admission.'); return useViewerStore.getState().upsertDocument(next); })) throw new Error('Native document persistence failed; inspect the library save status.');
-  const live = current(before.id); return { id: live.id, revision: await nativeDocumentRevision(live), block_id: blockId, blocks: live.blocks.length };
+  return { id: next.id, revision: await nativeDocumentRevision(next), block_id: blockId, blocks: next.blocks.length };
 }
 export const documentNativeEditOperations = [
   viewerOperation<{ id: string; offset: number; limit: number }>(metadata('document.inspect', 'document', 'Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export.', ['read'], { type: 'object', properties: { document: { type: 'object' }, page_metadata_json: { type: 'string' }, blocks: { type: 'array' }, total_blocks: { type: 'integer' }, next_offset: { type: ['integer', 'null'] } }, required: ['document', 'page_metadata_json', 'blocks', 'total_blocks', 'next_offset'], additionalProperties: false }), {

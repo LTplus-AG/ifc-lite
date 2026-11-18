@@ -73,6 +73,7 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     assert.equal(result.rows.length, 2); assert.equal(result.totalCount, 4);
     const stored = useViewerStore.getState().listResult; assert.ok(stored);
     assert.equal(stored.rows.length, 4); assert.equal(listRunDefinition(stored)?.id, list.id);
+    assert.deepEqual(result.rows, stored.rows.slice(1, 3));
     assert.deepEqual(listRunModels(stored)?.models.map(row => row.id), ['A', 'B']);
   });
   it('native group X-ray uses exact federated members, toggles off and never releases a successor visibility owner', async () => {
@@ -118,7 +119,7 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     const frame = computeAnimationFrame(useViewerStore.getState().scheduleData, Date.parse('2026-01-05T12:00:00Z'), useViewerStore.getState().animationSettings, undefined, [1, 2]);
     assert.deepEqual(frame.hiddenIds, new Set([1, 2]));
     await assert.rejects(run('schedule.configureAnimation', input, viewer), /changed since inspection/);
-    await assert.rejects(run('schedule.configureAnimation', { ...input, settings: { ...input.settings, palette: { ...input.settings.palette, COMPLETED: [1, 1, 1, 2] } } }, viewer));
+    await assert.rejects(run('schedule.configureAnimation', { ...input, expected_json: JSON.stringify(useViewerStore.getState().animationSettings), settings: { ...input.settings, palette: { ...input.settings.palette, COMPLETED: [1, 1, 1, 2] } } }, viewer));
   });
   it('does not publish rows when native query cancellation is requested', async () => {
     useViewerStore.setState({ listDefinitions: [list] }); const abort = new AbortController(); context.signal = abort.signal;
@@ -142,7 +143,10 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     const lens: Lens = { id: 'hide', name: 'Hide walls', rules: [{ id: 'walls', name: 'Walls', enabled: true, action: 'hide', color: '#000000', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }] }] };
     for (const count of [1, 2] as const) {
       await seed(count); useViewerStore.setState({ savedLenses: [lens], hiddenEntities: new Set([1]) });
-      await run('lens.apply', { id: 'hide' }); assert.equal(useViewerStore.getState().lensHiddenIds.size, 4);
+      await run('lens.apply', { id: 'hide' });
+      const current = useViewerStore.getState();
+      assert.equal(current.lensHiddenIds.size, 4);
+      assert.ok([...current.lensHiddenIds].every(id => current.hiddenEntities.has(id)));
       await run('lens.clear'); assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set([1]));
     }
   });
@@ -265,6 +269,9 @@ describe('native analytics operations (#10525 deeper automation)', () => {
       assert.equal(useViewerStore.getState().playbackTime, playbackTime);
       assert.equal(useViewerStore.getState().playbackIsPlaying, false);
     }
+    useViewerStore.getState().seekSchedule(scheduleRange.start - 2);
+    await assert.rejects(run('schedule.play', { until: scheduleRange.start - 1, max_real_seconds: 0.1 }), /within the native schedule range/);
+    assert.equal(useViewerStore.getState().playbackTime, scheduleRange.start - 2);
   });
 
   it('awaits native 4D clock completion without mounting Gantt and releases the host runtime', async () => {
@@ -279,8 +286,10 @@ describe('native analytics operations (#10525 deeper automation)', () => {
       await run('schedule.import', { format: 'csv', text: 'Name,Start,Finish\nBuild,2026-01-05,2026-01-06\n' });
       const range = useViewerStore.getState().scheduleRange; assert.ok(range);
       useViewerStore.getState().setPlaybackSpeed(3650);
+      useViewerStore.getState().setPlaybackLoop(true);
       const result = await run<{ state: string; time: number }>('schedule.play', { until: range.end, max_real_seconds: 2 });
       assert.equal(result.state, 'succeeded'); assert.ok(result.time >= range.end); assert.equal(useViewerStore.getState().playbackIsPlaying, false);
+      assert.equal(useViewerStore.getState().playbackLoop, true);
     } finally { lifetime.abort(); for (const timer of frames.values()) clearTimeout(timer); globalThis.requestAnimationFrame = previousRequest; globalThis.cancelAnimationFrame = previousCancel; }
   });
   it('native Presentation Stop cancels an in-flight saved-view sequence and retains the view already applied', async () => {
@@ -302,7 +311,9 @@ describe('native analytics operations (#10525 deeper automation)', () => {
   it('completes edge and face angle families and exposes finite native inclination readouts', async () => {
     const edges = await run<{ outcome: { outcome: { degrees: number } } }>('measurements.angleEdges', { points: [[0, 0, 0], [1, 0, 0], [0, 0, 0], [0, 1, 0]] });
     assert.equal(edges.outcome.outcome.degrees, 90);
+    const priorAngles = useViewerStore.getState().angleMeasurements.length;
     const faces = await run<{ outcome: { outcome: { degrees: number } } }>('measurements.angleFaces', { points: [[0, 0, 0], [1, 0, 0]], normals: [[1, 0, 0], [0, 1, 0]] }); assert.equal(faces.outcome.outcome.degrees, 90);
+    assert.equal(useViewerStore.getState().angleMeasurements.length, priorAngles + 1);
     const s = useViewerStore.getState(); s.startMeasurement({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }); s.updateMeasurement({ x: 0, y: 5, z: 0, screenX: 0, screenY: 0 }); s.finalizeMeasurement();
     const readouts = await run<{ distances: { inclination: { percent: number | null; percent_unbounded: boolean }; formatted: string }[] }>('measurements.readouts');
     const vertical = readouts.distances.at(-1); assert.equal(vertical?.inclination.percent, null); assert.equal(vertical?.inclination.percent_unbounded, true); assert.match(vertical?.formatted ?? '', /vertical/i);

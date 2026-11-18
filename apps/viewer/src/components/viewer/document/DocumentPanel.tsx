@@ -34,7 +34,7 @@ import { AssistantAction } from '../assistant/AssistantAction';
 import { BlockEditor } from './BlockEditor';
 import { DocumentBlockList } from './DocumentBlockList';
 import { useBlockSelection } from './useBlockSelection';
-import { patchNativeDocumentPage, moveNativeDocumentBlocks, copyNativeDocumentBlock } from '@/lib/document/native-edit';
+import { moveNativeDocumentBlocks, copyNativeDocumentBlock } from '@/lib/document/native-edit';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
@@ -104,7 +104,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     const current = live.documents.find(entry => entry.id === document.id);
     if (!current) return false;
     let next: DocumentSpec;
-    try { next = moveNativeDocumentBlocks(current, ids, beforeId); } catch (error) {
+    try { next = moveNativeDocumentBlocks(current, ids, beforeId, true); } catch (error) {
       console.warn('[document] block move refused', error);
       toast.error(t('document.panel.blockEditRefused'));
       return false;
@@ -121,7 +121,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     if (!current || index < 0) return;
     // The duplicate is the reviewer's own text; refresh only regenerates the original (#6918).
     let copy: ReturnType<typeof copyNativeDocumentBlock>;
-    try { copy = copyNativeDocumentBlock(current, id); } catch (error) {
+    try { copy = copyNativeDocumentBlock(current, id, true); } catch (error) {
       console.warn('[document] block copy refused', error);
       toast.error(t('document.panel.blockEditRefused'));
       return;
@@ -238,10 +238,10 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         </select>
         <DocumentMenu document={document} onUpsert={upsert} onDelete={remove} onActivate={setActiveDocumentId} />
         <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.panel.pageLabel')}
-          <select className={select} value={document?.page.size ?? 'A4'} disabled={!document} onChange={(e) => document && update(patchNativeDocumentPage(document, { page: { size: e.target.value as ReportPageSetup['size'] } }))} aria-label={t('document.panel.pageSizeAriaLabel')}>
+          <select className={select} value={document?.page.size ?? 'A4'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, size: e.target.value as ReportPageSetup['size'] } })} aria-label={t('document.panel.pageSizeAriaLabel')}>
             <option value="A4">{t('document.panel.pageSizeA4')}</option><option value="A3">{t('document.panel.pageSizeA3')}</option>
           </select>
-          <select className={select} value={document?.page.orientation ?? 'portrait'} disabled={!document} onChange={(e) => document && update(patchNativeDocumentPage(document, { page: { orientation: e.target.value as ReportPageSetup['orientation'] } }))} aria-label={t('document.panel.orientationAriaLabel')}>
+          <select className={select} value={document?.page.orientation ?? 'portrait'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, orientation: e.target.value as ReportPageSetup['orientation'] } })} aria-label={t('document.panel.orientationAriaLabel')}>
             <option value="portrait">{t('document.panel.orientationPortrait')}</option><option value="landscape">{t('document.panel.orientationLandscape')}</option>
           </select>
         </label>

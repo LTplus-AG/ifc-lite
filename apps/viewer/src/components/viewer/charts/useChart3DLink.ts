@@ -208,6 +208,7 @@ export interface Chart3DLink {
   selectionFor: (aggregation: Aggregation) => ChartSelection;
 }
 
+const nativeFocusColors = new WeakMap<Set<number>, { focused: Map<number, RGBA>; all: Map<number, RGBA> }>();
 /** Native bucket selection shared by the chart click handler and automation. */
 export function selectNativeChartItems(aggregation: Aggregation, items: readonly ChartItem[], focusMode: ChartFocusMode): void {
   const ids = [...idsForItems(aggregation, items)];
@@ -216,15 +217,26 @@ export function selectNativeChartItems(aggregation: Aggregation, items: readonly
   });
   selectChartIds(ids); presentChartIds(ids, focusMode);
   const state = useViewerStore.getState();
-  state.setChartSlice(ids.length > 0 ? new Set(ids) : null, aggregation.spec.id, buckets, state.selectionRevision);
-  if (state.chartColorIn3D) state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null,
-    colorOverrides: chartColorOverrides(aggregation, ids.length ? new Set(ids) : null, focusMode, buckets) });
+  const slice = ids.length ? new Set(ids) : null;
+  state.setChartSlice(slice, aggregation.spec.id, buckets, state.selectionRevision);
+  if (state.chartColorIn3D) {
+    const focused = chartColorOverrides(aggregation, slice, focusMode, buckets);
+    if (slice) nativeFocusColors.set(slice, { focused, all: chartColorOverrides(aggregation, null, focusMode, null) });
+    state.registerOverlayLayer({ id: CHART_OVERLAY_LAYER_ID, priority: CHART_OVERLAY_PRIORITY, hiddenIds: null, colorOverrides: focused });
+  }
 }
 export function clearNativeChartSelection(): void {
-  const state = useViewerStore.getState(); state.clearEntitySelection(); state.setChartSlice(null);
+  const state = useViewerStore.getState();
+  if (state.chartSelectionRevision === state.selectionRevision) state.clearEntitySelection();
+  state.setChartSlice(null);
   releaseChartVisibility();
   // With 'Colour in 3D' on, the bucket colours stay; the panel's overlay effect owns them.
   if (!state.chartColorIn3D) state.removeOverlayLayer(CHART_OVERLAY_LAYER_ID);
+  else if (state.chartSlice) {
+    const colors = nativeFocusColors.get(state.chartSlice);
+    const layer = useViewerStore.getState().overlayLayers.get(CHART_OVERLAY_LAYER_ID);
+    if (colors && layer?.colorOverrides === colors.focused) state.registerOverlayLayer({ ...layer, colorOverrides: colors.all });
+  }
 }
 
 export function useChart3DLink(): Chart3DLink {

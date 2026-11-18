@@ -168,7 +168,7 @@ function addMs(iso: string, ms: number): string {
   // Millisecond arithmetic preserves fractional days — `setDate()` with a
   // fractional argument silently truncates.
   d.setTime(d.getTime() + ms);
-  return toLocalIso(d);
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? d.toISOString() : toLocalIso(d);
 }
 
 /**

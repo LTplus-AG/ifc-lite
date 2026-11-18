@@ -4,10 +4,10 @@
 import { useSyncExternalStore } from 'react';
 import { useViewerStore } from '@/store';
 import { isToolAvailable } from '@/lib/features/tools';
-/** How long one saved view stays up during playback: its transition (clamped) plus a settle margin. */
+/** How long one saved view stays up during playback: its dispatched transition plus a settle margin. */
 export function presentationStepMs(view: { transitionMs?: number | null }): number {
   const t = view.transitionMs;
-  return (t && Number.isFinite(t) && t > 0 ? Math.max(150, Math.min(15000, Math.round(t))) : 700) + 180;
+  return (t && Number.isFinite(t) && t > 0 ? t : 700) + 180;
 }
 export interface PresentationPlaybackState { state: 'idle' | 'running' | 'succeeded' | 'cancelled' | 'failed'; current_view_id: string | null; played: number; error: string | null }
 let snapshot: PresentationPlaybackState = { state: 'idle', current_view_id: null, played: 0, error: null };
@@ -34,26 +34,39 @@ function delay(milliseconds: number, signal: AbortSignal) {
  * Completion describes the saved-view sequence; native camera callbacks expose no settle signal.
  * repetitions=0 is reserved for the UI's explicitly selected continuous-loop control.
  */
-export async function playNativePresentation(viewIds: readonly string[], options: { repetitions: number; signal?: AbortSignal; beforeActivate?: (apply: () => void) => void } = { repetitions: 1 }): Promise<PresentationPlaybackState> {
+export async function playNativePresentation(viewIds: readonly string[], options: { repetitions: number; maxDurationMs?: number; signal?: AbortSignal; beforeActivate?: (apply: () => void) => void } = { repetitions: 1 }): Promise<PresentationPlaybackState> {
   if (controller) throw new Error('A native presentation sequence is already running.');
   if (!viewIds.length) throw new Error('No presentation views were supplied.');
-  const views = viewIds.map(id => { const view = useViewerStore.getState().basketViews.find(row => row.id === id); if (!view) throw new Error('Unknown saved presentation view.'); return structuredClone(view); });
+  const views = [...viewIds];
+  const available = new Set(useViewerStore.getState().basketViews.map(view => view.id));
+  if (views.some(id => !available.has(id))) throw new Error('Unknown saved presentation view.');
   const abort = new AbortController(); controller = abort;
   const cancelled = () => abort.abort(options.signal?.reason); options.signal?.addEventListener('abort', cancelled, { once: true });
   const owns = () => controller === abort;
   let final: PresentationPlaybackState = { state: 'running', current_view_id: null, played: 0, error: null };
   const report = (update: Partial<PresentationPlaybackState>) => { final = { ...final, ...update }; if (owns()) publish(update); };
+  let elapsed = 0;
   report(final);
   try {
     const { activateBasketViewFromStore } = await import('@/store/basket/basketViewActivator');
-    for (let repetition = 0; options.repetitions === 0 || repetition < options.repetitions; repetition++) for (const view of views) {
+    for (let repetition = 0; options.repetitions === 0 || repetition < options.repetitions; repetition++) for (const id of views) {
       abort.signal.throwIfAborted(); options.signal?.throwIfAborted();
-      // A renamed or re-timed view keeps playing (as the panel always did); a deleted one stops the run.
-      if (!useViewerStore.getState().basketViews.some(row => row.id === view.id)) throw new Error('A saved view was deleted during playback.');
-      if (view.section?.plane.enabled && !isToolAvailable('section')) throw new Error('Section tools are disabled by the host.');
-      const apply = () => activateBasketViewFromStore(view.id); if (options.beforeActivate) options.beforeActivate(apply); else apply();
-      report({ current_view_id: view.id, played: final.played + 1 });
-      await delay(presentationStepMs(view), abort.signal);
+      let stepMs = 0;
+      const apply = () => {
+        const current = useViewerStore.getState().basketViews.find(row => row.id === id);
+        if (!current) throw new Error('A saved view was deleted during playback.');
+        if (current.section?.plane.enabled && !isToolAvailable('section')) throw new Error('Section tools are disabled by the host.');
+        stepMs = presentationStepMs(current);
+        if (options.maxDurationMs !== undefined && elapsed + stepMs > options.maxDurationMs) {
+          throw new Error('The saved-view sequence exceeded its duration limit.');
+        }
+        activateBasketViewFromStore(current.id);
+      };
+      if (options.beforeActivate) options.beforeActivate(apply); else apply();
+      report({ current_view_id: id, played: final.played + 1 });
+      elapsed += stepMs;
+      await delay(stepMs, abort.signal);
+      if (!useViewerStore.getState().basketViews.some(row => row.id === id)) throw new Error('A saved view was deleted during playback.');
     }
     report({ state: 'succeeded' });
   } catch (error) {

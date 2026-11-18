@@ -40,13 +40,16 @@ export function patchNativeDocumentPage(document: DocumentSpec, patchValue: unkn
   }
   return validated(next);
 }
-export function moveNativeDocumentBlocks(document: DocumentSpec, ids: ReadonlySet<string>, beforeId: string | null): DocumentSpec {
-  const blocks = reorderDocumentBlocks(document.blocks, ids, beforeId); return blocks === document.blocks ? document : replaceNativeDocumentBlocks(document, blocks);
+export function moveNativeDocumentBlocks(document: DocumentSpec, ids: ReadonlySet<string>, beforeId: string | null, allowUnfinishedDraft = false): DocumentSpec {
+  const blocks = reorderDocumentBlocks(document.blocks, ids, beforeId);
+  if (blocks === document.blocks) return document;
+  return allowUnfinishedDraft ? { ...document, blocks } : replaceNativeDocumentBlocks(document, blocks);
 }
-export function copyNativeDocumentBlock(document: DocumentSpec, id: string): { document: DocumentSpec; id: string } {
+export function copyNativeDocumentBlock(document: DocumentSpec, id: string, allowUnfinishedDraft = false): { document: DocumentSpec; id: string } {
   const index = document.blocks.findIndex(row => row.id === id); if (index < 0) throw new Error('Unknown native document block.');
   const copy = detachAiProvenance(copyDocumentBlock(document.blocks[index]));
-  return { document: replaceNativeDocumentBlocks(document, [...document.blocks.slice(0, index + 1), copy, ...document.blocks.slice(index + 1)]), id: copy.id };
+  const blocks = [...document.blocks.slice(0, index + 1), copy, ...document.blocks.slice(index + 1)];
+  return { document: allowUnfinishedDraft ? { ...document, blocks } : replaceNativeDocumentBlocks(document, blocks), id: copy.id };
 }
 export function addNativeDocumentBlock(document: DocumentSpec, value: unknown, beforeId: string | null): { document: DocumentSpec; id: string } {
   const block = record(value); const kind = block.kind;

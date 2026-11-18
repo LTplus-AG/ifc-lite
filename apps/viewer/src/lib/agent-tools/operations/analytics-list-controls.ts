@@ -7,14 +7,14 @@ import { entityExists } from '../refs';
 import { columnFromDraft, updateColumnInPlace, isEditableColumn, columnDefKey, draftDefKey } from '@/lib/lists/column-edit';
 import { presentListRows, activeListRowChannel, releaseListVisibility } from '@/lib/lists/list-visibility';
 import { viewerOperation, emptySchema } from './contract';
-import { metadata, checkpoint, idSchema } from './analytics-common';
+import { matchesJsonSnapshot, metadata, checkpoint, idSchema } from './analytics-common';
 const output = { type: 'object', properties: { applied: { type: 'boolean' } }, required: ['applied'], additionalProperties: false };
 export const analyticsListControlOperations = [
   viewerOperation<{ id: string; column_id: string; expected_json: string; source: 'property' | 'quantity'; set_name: string; property_name: string }>(metadata('lists.editColumn', 'lists', 'Use the native pencil-editor column-definition transformation, preserving column ID/order and custom labels; reject duplicates and stale complete definitions. This edits query configuration, never IFC values.', ['configuration'], output), {
     type: 'object', properties: { id: idSchema.properties.id, column_id: idSchema.properties.id, expected_json: { type: 'string', minLength: 2, maxLength: 500000 }, source: { type: 'string', enum: ['property', 'quantity'] }, set_name: { type: 'string', maxLength: 10000 }, property_name: { type: 'string', minLength: 1, maxLength: 10000 } }, required: ['id', 'column_id', 'expected_json', 'source', 'set_name', 'property_name'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string; column_id: string; expected_json: string; source: 'property' | 'quantity'; set_name: string; property_name: string }>, (i, c) => {
     const s = useViewerStore.getState(); const list = s.listDefinitions.find(row => row.id === i.id);
-    if (!list || JSON.stringify(list) !== JSON.stringify(JSON.parse(i.expected_json))) throw new Error('List definition changed since inspection.');
+    if (!list || !matchesJsonSnapshot(list, i.expected_json)) throw new Error('List definition changed since inspection.');
     const column = list.columns.find(row => row.id === i.column_id); if (!column || !isEditableColumn(column)) throw new Error('The native pencil editor supports property/quantity columns only.');
     const draft = { source: i.source, setName: i.set_name, propName: i.property_name };
     if (!draft.propName.trim() || list.columns.some(row => row.id !== column.id && columnDefKey(row) === draftDefKey(draft))) throw new Error('Empty or duplicate native column definition.');

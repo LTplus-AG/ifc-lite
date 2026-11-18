@@ -261,7 +261,7 @@ export interface IfcxExportInvocation {
    * only for the legacy single-model slot, which is provably the sole model
    * loaded — nothing else to wrongly include.
    */
-  maxExpressId?: number;
+  maxExpressId?: number; models: ReadonlyMap<string, FederatedModel>; // models: resolves the renderer index
   /** Room slot prefix a recipient's room model must drop from its node paths (#4444). */
   stripPathPrefix?: string;
 }
@@ -357,7 +357,7 @@ export async function buildChangedArtifacts(
         artifact = await deps.exportIfcx(entry.id, dataStore, view, {
           geometryResult,
           idOffset: model?.idOffset ?? 0,
-          maxExpressId: model?.maxExpressId,
+          maxExpressId: model?.maxExpressId, models: state.models,
           stripPathPrefix: roomExportPathPrefix(state, entry.id),
         });
       } else {

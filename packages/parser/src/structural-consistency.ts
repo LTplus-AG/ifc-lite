@@ -55,8 +55,8 @@ export interface StructuralGeometryFacts {
   physicalAxes: ReadonlyMap<number, StructuralLine>;
   /** Each curve member's edge. */
   memberLines: ReadonlyMap<number, StructuralLine>;
-  /** What derive recorded on each derived curve member, by the member's express id. */
-  derivationRecords?: ReadonlyMap<number, StructuralDerivationRecord>;
+  /** Derivation records by member id. A null value marks a record that could not be read. */
+  derivationRecords?: ReadonlyMap<number, StructuralDerivationRecord | null>;
 }
 
 /** The physical element a curve member was derived from, and that element's line at the time in IFC world metres. */
@@ -140,15 +140,10 @@ export interface StructuralConsistencyIssue {
   distance?: number;
 }
 
-/**
- * Why a geometry rule did not compare a linked curve member:
- * - `edge-unreadable`: the member's own edge could not be read (axis drift).
- * - `no-derivation-record`: the member carries no complete derivation record (movement).
- * - `element-without-axis`: no linked element has an axis (both rules), or the
- *   element its record names has none (movement).
- * - `recorded-element-unlinked`: the element its record names is no longer linked to it (movement).
- */
-export type StructuralSkipReason = 'edge-unreadable' | 'no-derivation-record' | 'element-without-axis' | 'recorded-element-unlinked';
+export type StructuralSkipReason =
+  | 'edge-unreadable' | 'axis-unusable' | 'element-without-axis'
+  | 'no-derivation-record' | 'derivation-record-unreadable'
+  | 'recorded-element-unlinked' | 'linked-element-identity-unreadable';
 
 /** A linked curve member that at least one geometry rule did not compare, and why, per rule. */
 export interface StructuralSkippedMember {
@@ -239,16 +234,19 @@ function axisDrift(targets: readonly LinkedCurveMember[], memberLines: ReadonlyM
   for (const { member, withAxis } of targets) {
     const line = memberLines.get(member.expressId);
     if (!line) { result.skipped.set(member.expressId, 'edge-unreadable'); continue; }
+    let compared = false;
     for (const { fact, axis } of withAxis) {
       const off = offLine(line, axis);
-      // Not greater also skips NaN, from a non-finite coordinate.
-      if (!off || !(off.distance > tolerance + off.rounding)) continue;
+      if (!off || !Number.isFinite(off.distance) || !Number.isFinite(off.rounding)) continue;
+      compared = true;
+      if (off.distance <= tolerance + off.rounding) continue;
       result.issues.push({
         severity: 'warning', rule: 'structural-axis-drift', entityId: member.expressId, globalId: member.globalId,
         target: fact.expressId, targetGlobalId: fact.globalId, distance: off.distance,
         message: `${label(member.expressId, member.type, member.globalId)} lies ${off.distance.toFixed(3)} m off the axis of ${label(fact.expressId, fact.type, fact.globalId)} (tolerance ${tolerance} m)`,
       });
     }
+    if (!compared) result.skipped.set(member.expressId, 'axis-unusable');
   }
   return result;
 }
@@ -266,25 +264,28 @@ function moved(now: StructuralLine, then: StructuralLine): number {
 /** The stale rule: each derived member whose recorded element is still linked, against that element's line now. */
 function staleItems(
   targets: readonly LinkedCurveMember[],
-  derivationRecords: ReadonlyMap<number, StructuralDerivationRecord> | undefined,
+  derivationRecords: ReadonlyMap<number, StructuralDerivationRecord | null> | undefined,
   tolerance: number,
   globalIdOf: (expressId: number) => string | undefined,
 ): RuleResult {
   const result: RuleResult = { issues: [], skipped: new Map() };
   for (const { member, elementIds, withAxis } of targets) {
     const record = derivationRecords?.get(member.expressId);
-    if (!record) { result.skipped.set(member.expressId, 'no-derivation-record'); continue; }
+    if (!record) {
+      result.skipped.set(member.expressId, record === null ? 'derivation-record-unreadable' : 'no-derivation-record');
+      continue;
+    }
     const recorded = withAxis.find(({ fact }) => fact.globalId === record.elementGlobalId);
     if (!recorded) {
-      // An element with no fact has an unknown GlobalId: it may be the recorded one, and it has no axis the rule can use.
-      const linked = elementIds.some((id) => (globalIdOf(id) ?? record.elementGlobalId) === record.elementGlobalId);
-      result.skipped.set(member.expressId, linked ? 'element-without-axis' : 'recorded-element-unlinked');
+      const globalIds = elementIds.map(globalIdOf);
+      result.skipped.set(member.expressId, globalIds.includes(record.elementGlobalId) ? 'element-without-axis'
+        : globalIds.some((id) => !id) ? 'linked-element-identity-unreadable' : 'recorded-element-unlinked');
       continue;
     }
     const { fact, axis } = recorded;
     const distance = moved(axis, record.axis);
-    // Not greater also skips NaN, from a non-finite coordinate.
-    if (!(distance > tolerance)) continue;
+    if (!Number.isFinite(distance)) { result.skipped.set(member.expressId, 'axis-unusable'); continue; }
+    if (distance <= tolerance) continue;
     result.issues.push({
       severity: 'warning', rule: 'structural-stale-item', entityId: member.expressId, globalId: member.globalId,
       target: fact.expressId, targetGlobalId: fact.globalId, distance,
@@ -308,6 +309,7 @@ export function checkStructuralConsistency(
   elements: readonly PhysicalElementFact[],
   options: StructuralConsistencyOptions = {},
   geometry?: StructuralGeometryFacts,
+  linkedGlobalId?: (expressId: number) => string | undefined,
 ): StructuralConsistencyReport {
   const unsetLoadBearing = options.unsetLoadBearing ?? true;
   const issues: StructuralConsistencyIssue[] = [];
@@ -369,7 +371,7 @@ export function checkStructuralConsistency(
   const { physicalAxes, memberLines, derivationRecords } = geometry ?? NO_GEOMETRY;
   const linked: LinkedCurveMember[] = structural.members.flatMap((member) => {
     const elementIds = isA(member.type, ['IfcStructuralCurveMember']) ? structuralCounterparts(structural, member.expressId)?.expressIds : undefined;
-    if (!elementIds) return [];
+    if (!elementIds?.length) return [];
     const withAxis = elementIds.flatMap((id) => {
       const fact = factById.get(id);
       const axis = physicalAxes.get(id);
@@ -380,7 +382,7 @@ export function checkStructuralConsistency(
   // A member none of whose elements has an axis is compared by neither rule.
   const targets = linked.filter(({ withAxis }) => withAxis.length > 0);
   const drift = axisDrift(targets, memberLines, tolerance);
-  const stale = staleItems(targets, derivationRecords, staleTolerance, (id) => factById.get(id)?.globalId);
+  const stale = staleItems(targets, derivationRecords, staleTolerance, (id) => factById.get(id)?.globalId || linkedGlobalId?.(id));
   issues.push(...drift.issues, ...stale.issues);
   const skipped = linked.flatMap(({ member, elementIds, withAxis }): StructuralSkippedMember[] => {
     const reasons = withAxis.length === 0

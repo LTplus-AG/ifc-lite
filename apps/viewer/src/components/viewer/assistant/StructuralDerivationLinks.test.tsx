@@ -8,7 +8,7 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, before, mock, test } from 'node:test';
-import { extractStructuralOnDemand, structuralCounterparts } from '@ifc-lite/parser';
+import { extractStructuralOnDemand, structuralCounterparts, STRUCTURAL_DERIVATION_PSET } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { registerLocale, setLocale, type Locale } from '@/i18n';
 import { structuralDeriveEn } from '@/i18n/catalogues/structural-derive.en';
@@ -210,13 +210,14 @@ test('#10605 a linked beam whose axis cannot be read is reported unchecked, neve
   assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: SAMPLE_MODEL, expressId: 65 });
 });
 
-test('#10640 a derived member whose own edge cannot be read is reported unchecked, though its beam has an axis', async () => {
+test('#10640 a curve member skipped by both rules occupies one row', async () => {
   const { dataStore, view } = await seed(false);
   commitStructuralDerivation(useViewerStore, prepareStructuralDerivationReview(useViewerStore, SAMPLE_MODEL), 'first');
   // The member derived from the beam B1 (#65): clear its Representation (attribute 6), so axis drift has no edge to compare.
   const [memberId] = structuralCounterparts(extractStructuralOnDemand(await parseIfc(editedModelBytes(dataStore, view))), 65)?.expressIds ?? [];
   assert.ok(memberId, 'B1 has a derived member');
   recordModellingCommit(useViewerStore, SAMPLE_MODEL, (editor) => { editor.setPositionalAttribute(memberId, 6, null); });
+  view.deletePropertySet(memberId, STRUCTURAL_DERIVATION_PSET);
   const root = render(<StructuralDerivationReview origin="test" />);
   await waitFor(() => button(root, /Derive and review/)?.disabled === false, 'the structural write path loads');
   click(button(root, /Derive and review/)!);
@@ -224,11 +225,15 @@ test('#10640 a derived member whose own edge cannot be read is reported unchecke
   assert.doesNotMatch(text(root), CONSISTENT);
   const rows = [...root.querySelectorAll('section[aria-label="Analysis model check"] li')];
   assert.equal(rows.length, 1, rows.map((li) => li.textContent).join('\n'));
-  assert.match(rows[0].textContent ?? '', /\(IfcStructuralCurveMember\): its edge could not be read, so axis drift was not checked$/);
+  assert.match(rows[0].textContent ?? '', /\(IfcStructuralCurveMember\): its edge could not be read, so axis drift was not checked/);
+  assert.match(rows[0].textContent ?? '', /it has no derivation record, so movement was not checked/);
   const member = rows[0].querySelector('button');
   assert.ok(member);
   click(member);
   assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: SAMPLE_MODEL, expressId: memberId });
+  registerLocale('ru-x-coverage-test', structuralDeriveRu);
+  setLocale('ru-x-coverage-test');
+  await waitFor(() => /Не проверены на смещение или отклонение от оси \(1\)/.test(text(root)), 'the Russian summary uses “or”');
 });
 
 const REFUSALS: Array<[Locale, Record<string, string>]> = [

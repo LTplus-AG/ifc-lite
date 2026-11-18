@@ -320,8 +320,25 @@ describe('geometry rule coverage', () => {
 
   it('recorded-element-unlinked: movement skips a member whose record names an element no longer linked to it', () => {
     expect(checkStructuralConsistency(linked, elements, {}, geometry({ record: 'P9' })).coverage).toEqual(skipped({ stale: 'recorded-element-unlinked' }));
-    // A linked element outside the fact classes may be the recorded one: only its axis is known to be missing.
-    expect(checkStructuralConsistency(linked, [fact(2, 'IfcBeam', true)], {}, geometry({ record: 'P1' })).coverage).toEqual(skipped({ stale: 'element-without-axis' }));
+    const beams = [fact(2, 'IfcBeam', true)];
+    const globalId = (id: number) => id === 1 ? 'P1' : undefined;
+    expect(checkStructuralConsistency(linked, beams, {}, geometry({ record: 'P9' }), globalId).coverage).toEqual(skipped({ stale: 'recorded-element-unlinked' }));
+    expect(checkStructuralConsistency(linked, beams, {}, geometry({ record: 'P1' }), globalId).coverage).toEqual(skipped({ stale: 'element-without-axis' }));
+    expect(checkStructuralConsistency(linked, beams, {}, geometry({ record: 'P1' })).coverage).toEqual(skipped({ stale: 'linked-element-identity-unreadable' }));
+  });
+
+  it('#10673 reports degenerate drift axes unless another axis yields a measurement', () => {
+    const facts = geometry();
+    facts.physicalAxes.set(1, [axis[0], axis[0]]);
+    expect(checkStructuralConsistency(linked, elements, {}, facts).coverage).toEqual({ linked: 1, skipped: [] });
+    facts.physicalAxes.delete(2);
+    expect(checkStructuralConsistency(linked, elements, {}, facts).coverage).toEqual(skipped({ axisDrift: 'axis-unusable' }));
+  });
+
+  it('#10673 reports non-finite movement even when a second axis allows drift to be checked', () => {
+    const facts = geometry();
+    facts.physicalAxes.set(1, [[Number.NaN, 0, 3], axis[1]]);
+    expect(checkStructuralConsistency(linked, elements, {}, facts).coverage).toEqual(skipped({ stale: 'axis-unusable' }));
   });
 
   it('element-without-axis: both rules skip a member none of whose elements has an axis, and every member without geometry', () => {

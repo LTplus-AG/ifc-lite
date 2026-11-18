@@ -98,7 +98,7 @@ ENDSEC;END-ISO-10303-21;`;
   });
 
   it('reports the curve members the movement and axis-drift rules did not compare, in text and JSON (#10640)', async () => {
-    // #37 is compared for axis drift but has no derivation record; #47 has no edge to read either.
+    // #37 has no derivation record. #47 has an incomplete record and no readable edge.
     const step = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCPROJECT('0Project0000000000000a',$,'Project',$,$,$,$,$,$);
 #10=IFCCARTESIANPOINT((0.,0.,0.));
@@ -123,10 +123,14 @@ ENDSEC;END-ISO-10303-21;`;
 #38=IFCRELASSIGNSTOPRODUCT('2Rel0000000000000000a',$,$,$,(#37),$,#27);
 #47=IFCSTRUCTURALCURVEMEMBER('2Curv000000000000000b',$,'N',$,$,#12,$,.RIGID_JOINED_MEMBER.,$);
 #48=IFCRELASSIGNSTOPRODUCT('2Rel0000000000000000b',$,$,$,(#47),$,#27);
+#49=IFCPROPERTYSINGLEVALUE('PhysicalElement',$,IFCLABEL('2Beam000000000000000a'),$);
+#50=IFCPROPERTYSET('2Pset000000000000000a',$,'IfcLite_StructuralDerivation',$,(#49));
+#51=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000c',$,$,$,(#47),#50);
 ENDSEC;END-ISO-10303-21;`;
     const dir = mkdtempSync(join(tmpdir(), 'validate-coverage-'));
     const file = join(dir, 'partial.ifc');
     writeFileSync(file, step);
+    const previousExitCode = process.exitCode;
     const out: string[] = [];
     const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
     try {
@@ -141,11 +145,12 @@ ENDSEC;END-ISO-10303-21;`;
         { severity: 'info', rule: 'structural-unchecked-member', entityId: 37, globalId: '2Curv000000000000000a',
           message: '#37 IfcStructuralCurveMember (2Curv000000000000000a): movement not checked: it has no derivation record' },
         { severity: 'warning', rule: 'structural-unchecked-member', entityId: 47, globalId: '2Curv000000000000000b',
-          message: '#47 IfcStructuralCurveMember (2Curv000000000000000b): axis drift not checked: its edge could not be read; movement not checked: it has no derivation record' },
+          message: '#47 IfcStructuralCurveMember (2Curv000000000000000b): axis drift not checked: its edge could not be read; movement not checked: its derivation record could not be read' },
       ]);
       expect(text).toContain('[INF] structural-unchecked-member: Movement or axis drift was not checked on 2 of 2 linked curve member(s)');
-      expect(text).toContain('[WRN] structural-unchecked-member: #47 IfcStructuralCurveMember (2Curv000000000000000b): axis drift not checked: its edge could not be read');
+      expect(text).toContain('[WRN] structural-unchecked-member: #47 IfcStructuralCurveMember (2Curv000000000000000b): axis drift not checked: its edge could not be read; movement not checked: its derivation record could not be read');
     } finally {
+      process.exitCode = previousExitCode;
       write.mockRestore();
       rmSync(dir, { recursive: true, force: true });
     }

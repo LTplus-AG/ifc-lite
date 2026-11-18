@@ -81,6 +81,9 @@ export const quantifiableTypes = (schemaVersion: string | undefined): readonly s
 
 /** Why a geometry rule passed over a member, as the end of a sentence. */
 const SKIP_REASON: Record<StructuralSkipReason, string> = {
+  'axis-unusable': 'the available axis data could not produce a usable measurement',
+  'derivation-record-unreadable': 'its derivation record could not be read',
+  'linked-element-identity-unreadable': 'a linked element has no readable GlobalId to match against its derivation record',
   'edge-unreadable': 'its edge could not be read',
   'no-derivation-record': 'it has no derivation record',
   'element-without-axis': 'no axis was read for its physical element',
@@ -92,7 +95,7 @@ const onlyRecordMissing = ({ axisDrift, stale }: StructuralSkippedMember) => !ax
 /**
  * One `structural-unchecked-member` issue for a curve member the axis-drift or
  * movement rule did not compare. A warning, except when the only gap is a
- * missing derivation record: an authored member never has one.
+ * missing derivation record.
  */
 function uncheckedMember(member: StructuralSkippedMember): ValidationIssue {
   const { memberId, globalId, type, axisDrift, stale } = member;

@@ -26,12 +26,16 @@ function FindingRow({ modelId, issue }: { modelId: string; issue: StructuralCons
 }
 
 /** `elementIds` only on `uncheckedRow`, which names them. */
-type UncheckedRow = { memberId: number; key: 'uncheckedRow' | 'uncheckedEdge' | 'uncheckedRecord' | 'uncheckedRecordAxis' | 'uncheckedRecordUnlinked'; elementIds?: readonly number[] };
+type UncheckedRow = { memberId: number; key: 'uncheckedRow' | 'uncheckedEdge' | 'uncheckedRecord' | 'uncheckedRecordAxis' | 'uncheckedRecordUnlinked' | 'uncheckedDriftMeasurement' | 'uncheckedMovementMeasurement' | 'uncheckedUnreadableRecord' | 'uncheckedLinkIdentity'; elementIds?: readonly number[] };
 
 /** Why a geometry rule passed over a member, one row per rule; one row when no linked element has an axis, since then neither rule ran. */
 function uncheckedRows({ memberId, elementIds, axisDrift, stale }: StructuralSkippedMember): UncheckedRow[] {
   if (axisDrift === 'element-without-axis') return [{ memberId, key: 'uncheckedRow', elementIds }];
   const rows: UncheckedRow[] = [];
+  if (axisDrift === 'axis-unusable') rows.push({ memberId, key: 'uncheckedDriftMeasurement' });
+  if (stale === 'axis-unusable') rows.push({ memberId, key: 'uncheckedMovementMeasurement' });
+  if (stale === 'derivation-record-unreadable') rows.push({ memberId, key: 'uncheckedUnreadableRecord' });
+  if (stale === 'linked-element-identity-unreadable') rows.push({ memberId, key: 'uncheckedLinkIdentity' });
   if (axisDrift === 'edge-unreadable') rows.push({ memberId, key: 'uncheckedEdge' });
   if (stale === 'no-derivation-record') rows.push({ memberId, key: 'uncheckedRecord' });
   if (stale === 'element-without-axis') rows.push({ memberId, key: 'uncheckedRecordAxis' });
@@ -82,10 +86,10 @@ export function StructuralConsistencyFindings({ modelId, prepared, existing }: {
         : t('structuralDerive.consistency.partial', { count: skipped.length, total: linked })}</output>
       : <Listing open summary={t('structuralDerive.consistency.findings', { count: result.issues.length })} rows={result.issues}
         row={(issue) => <FindingRow modelId={modelId} issue={issue} />} />}
-    <Listing open summary={t('structuralDerive.consistency.unchecked', { count: skipped.length })} rows={skipped.flatMap(uncheckedRows)}
-      row={(row) => linkedText(t, `structuralDerive.consistency.${row.key}`, {}, {
+    <Listing open summary={t('structuralDerive.consistency.unchecked', { count: skipped.length })} rows={skipped}
+      row={(member) => uncheckedRows(member).map((row) => <div key={row.key}>{linkedText(t, `structuralDerive.consistency.${row.key}`, {}, {
         item: <ElementLink modelId={modelId} expressId={row.memberId} />,
         ...(row.elementIds ? { elements: <ElementLinks modelId={modelId} ids={row.elementIds} /> } : {}),
-      })} />
+      })}</div>)} />
   </section>;
 }

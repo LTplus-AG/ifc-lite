@@ -106,21 +106,21 @@ export interface StructuralConsistencyIssuesOptions extends StructuralConsistenc
 function curveMemberGeometry(store: IfcDataStore, structural: StructuralExtraction, physicalAxes: ReadonlyMap<number, StructuralLine>): StructuralGeometryFacts {
   const reader = new ItemGeometryReader(store);
   const memberLines = new Map<number, StructuralLine>();
-  const derivationRecords = new Map<number, StructuralDerivationRecord>();
+  const derivationRecords = new Map<number, StructuralDerivationRecord | null>();
   for (const member of structural.members) {
     if (!isA(member.type, ['IfcStructuralCurveMember']) || !structuralCounterparts(structural, member.expressId)?.expressIds.some((id) => physicalAxes.has(id))) continue;
     const shape = reader.shape(member.expressId);
     if (shape?.kind === 'edge') memberLines.set(member.expressId, [shape.start, shape.end]);
     const record = derivationRecord(store, reader, member.expressId);
-    if (record) derivationRecords.set(member.expressId, record);
+    if (record !== undefined) derivationRecords.set(member.expressId, record);
   }
   return { physicalAxes, memberLines, derivationRecords };
 }
 
-/** The member's derivation record in IFC world metres, when it is complete (a GlobalId and six finite coordinates) and its placement readable. */
-function derivationRecord(store: IfcDataStore, reader: ItemGeometryReader, memberId: number): StructuralDerivationRecord | null {
+/** The member's record in IFC world metres. Undefined marks an absent set, null an unreadable record. */
+function derivationRecord(store: IfcDataStore, reader: ItemGeometryReader, memberId: number): StructuralDerivationRecord | null | undefined {
   const set = store.getProperties(memberId).find((pset) => pset.name === STRUCTURAL_DERIVATION_PSET);
-  if (!set) return null;
+  if (!set) return undefined;
   const value = (name: string) => set.properties.find((property) => property.name === name)?.value;
   const elementGlobalId = value(DERIVATION_ELEMENT_PROPERTY);
   const c = DERIVATION_AXIS_PROPERTIES.map(value);
@@ -140,7 +140,7 @@ export function structuralConsistencyReport(store: IfcDataStore, options: Struct
   const structural = extractStructuralOnDemand(store);
   const facts = hasAnalyticalModel(structural) ? structuralConsistencyFacts(store, structural) : [];
   const geometry = physicalAxes && curveMemberGeometry(store, structural, physicalAxes);
-  return checkStructuralConsistency(structural, facts, settings, geometry);
+  return checkStructuralConsistency(structural, facts, settings, geometry, (id) => store.entities.getGlobalId(id));
 }
 
 /** The issues of `structuralConsistencyReport`, without its coverage. */

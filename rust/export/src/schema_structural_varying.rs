@@ -149,6 +149,9 @@ impl StructuralVarying {
     /// The varying actions that convert and still need a configuration id, in id order.
     pub(crate) fn needs_ids(&self) -> impl Iterator<Item = u32> + '_ { self.planned.keys().copied() }
 
+    /// Whether `entity` is an IFC2X3 varying action.
+    pub(crate) fn is_varying(entity: &str) -> bool { KINDS.iter().any(|k| k.ifc2x3 == entity) }
+
     /// Whether this varying action converts and still needs a configuration id.
     pub(crate) fn plans(&self, id: u32) -> bool { self.planned.contains_key(&id) }
 
@@ -159,7 +162,7 @@ impl StructuralVarying {
 
     /// Whether this is an IFC2X3 varying action the upgrade leaves unconverted.
     pub(crate) fn stays_unconverted(&self, id: u32, entity: &str) -> bool {
-        self.upgrading && KINDS.iter().any(|k| k.ifc2x3 == entity) && !self.upgrades.contains_key(&id)
+        self.upgrading && Self::is_varying(entity) && !self.upgrades.contains_key(&id)
     }
 
     /// IFC4 -> IFC2X3: the actions that become varying actions and the configurations they consume.

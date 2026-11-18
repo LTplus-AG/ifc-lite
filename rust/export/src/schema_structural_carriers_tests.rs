@@ -144,3 +144,15 @@ fn a_converted_varying_action_gets_causes_before_its_configuration_9668() {
     assert!(tail[0].starts_with("#32=IFCSTRUCTURALLOADCONFIGURATION(") && tail[1].starts_with("#31="), "{tail:?}");
     assert!(warnings.contains("CausedBy is written as") && !warnings.contains("CausedBy has no slot"), "{warnings}");
 }
+
+#[test]
+fn reads_causes_and_unset_slots_with_step_comments_10248() {
+    // A comment around the Name: the source relationship is found, so no second one is written.
+    let rel = "#40=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5, /*n*/ 'Causes' ,$,(#20),$,#21);";
+    assert_eq!(relationships(&convert(&model("IFC2X3", &[REACTION, CAUSED, rel].join("\n")), "IFC4").0).len(), 1);
+    // And on the way down it fills CausedBy.
+    let source = model("IFC4", &[REACTION,
+        "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);",
+        "#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,/*n*/'Causes',$,(#20),$,#21);"].join("\n"));
+    assert!(record(&convert(&source, "IFC2X3").0, 21).ends_with(",.F.,#20,.TRUE_LENGTH.);"));
+}

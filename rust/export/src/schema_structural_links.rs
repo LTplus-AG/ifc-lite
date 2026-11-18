@@ -38,7 +38,7 @@ pub(crate) fn slot_ref(token: &str) -> Option<u32> {
 }
 
 /// Whether the slot is the unset marker `$`, with STEP whitespace and comments around it allowed (#10248).
-fn slot_unset(token: &str) -> bool {
+pub(crate) fn slot_unset(token: &str) -> bool {
     let bytes = token.as_bytes();
     skip_step_trivia(bytes, 0).is_some_and(|start| bytes.get(start) == Some(&b'$') && skip_step_trivia(bytes, start + 1) == Some(bytes.len()))
 }

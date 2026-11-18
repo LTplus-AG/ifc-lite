@@ -60,7 +60,10 @@ impl StructuralDiagnostics {
         // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
         if self.varying.stays_unconverted(id, entity) && self.carriers.cause(id).is_some() { self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into()); }
         let cause = self.cause(id, entity);
-        if let Some(message) = cause { self.record(message.into()); }
+        if let Some(message) = cause {
+            self.record(message.into());
+            self.carriers.write(id);
+        }
         let (body, losses) = match self.links.link(entity, args) {
             Some(attrs) => (format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()]),
             None => self.varying.rewrite(id, entity, args, cause.is_some())?,
@@ -78,19 +81,18 @@ impl StructuralDiagnostics {
     /// TypeScript twin allocates them while writing: per action in id order,
     /// its 'Causes' relationship, then its load configuration.
     pub(crate) fn allocate(&mut self, mut allocate: impl FnMut() -> Option<u32>) {
-        let causes: BTreeMap<u32, bool> = self.carriers.needs_ids().collect();
+        use crate::schema_structural_varying::StructuralVarying;
+        let causes: BTreeMap<u32, bool> = self.carriers.needs_ids().map(|(id, entity)| (id, StructuralVarying::is_varying(entity))).collect();
         let actions: BTreeSet<u32> = causes.keys().copied().chain(self.varying.needs_ids()).collect();
         for action in actions {
             let configured = self.varying.plans(action);
             // A varying action that stays unconverted gets no relationship.
-            if causes.get(&action).is_some_and(|&varying| !varying || configured) {
-                let Some(id) = allocate() else { return };
-                self.carriers.assign(action, id);
-            }
-            if configured {
-                let Some(id) = allocate() else { return };
-                self.varying.assign(action, id);
-            }
+            let caused = causes.get(&action).is_some_and(|&varying| !varying || configured);
+            // All of an action's ids or none, so a relationship never names an action left unconverted.
+            let Some(ids) = (0..usize::from(caused) + usize::from(configured)).map(|_| allocate()).collect::<Option<Vec<u32>>>() else { return };
+            let mut ids = ids.into_iter();
+            if caused { self.carriers.assign(action, ids.next().expect("allocated above")); }
+            if configured { self.varying.assign(action, ids.next().expect("allocated above")); }
         }
     }
 

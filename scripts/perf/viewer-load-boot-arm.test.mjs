@@ -94,10 +94,12 @@ test('waitShellQuiet arms from the in-page watcher and reports its late ticks', 
   const { waitShellQuiet } = await load('./viewer-load-boot.mjs');
   globalThis.__benchLongTasks = [];
   const page = { evaluate: (fn, arg) => fn(arg) };
-  setTimeout(() => blockFor(200), 50);
+  let blockEnd = null;
+  setTimeout(() => { blockEnd = blockFor(200); }, 50);
   const shell = await waitShellQuiet(page, { quietMs: 300, timeoutMs: 5000 });
   delete globalThis.__benchLongTasks;
   assert.equal(shell.timedOut, false);
   assert.ok(shell.lateTicks >= 1);
-  assert.equal(shell.armAbs, shell.shellQuietMs);
+  assert.ok(blockEnd !== null, 'the long task ran before the sample armed');
+  assert.ok(shell.shellQuietMs - blockEnd >= 300, 'the reported arm preserves the full quiet window');
 });

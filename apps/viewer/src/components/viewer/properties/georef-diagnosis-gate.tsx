@@ -5,6 +5,8 @@
 /**
  * Lazy mount of the Georeference panel's diagnosis (#10608): the checker, the
  * CRS engine and the EPSG extents load with it, never with the entry chunk.
+ * The IfcSite location rows (#10659) mount here too, after the diagnosis,
+ * because they write through the same SDK code.
  * Its own module because `GeoreferencingPanel.tsx` is at its size budget.
  */
 
@@ -12,11 +14,20 @@ import { lazy, Suspense } from 'react';
 import type { GeorefDiagnosisSectionProps } from './georef-diagnosis-section';
 
 const GeorefDiagnosisSection = lazy(() => import('./georef-diagnosis-section'));
+const GeorefSiteSection = lazy(() => import('./georef-site-section'));
 
 export function GeorefDiagnosis(props: GeorefDiagnosisSectionProps) {
   return (
     <Suspense fallback={null}>
       <GeorefDiagnosisSection {...props} />
+    </Suspense>
+  );
+}
+
+export function GeorefSiteLocation(props: { modelId: string; editable?: boolean }) {
+  return (
+    <Suspense fallback={null}>
+      <GeorefSiteSection {...props} />
     </Suspense>
   );
 }

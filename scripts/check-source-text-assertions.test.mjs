@@ -1098,10 +1098,12 @@ function check(text) { return text.includes('x'); }`;
   for (const write of ['', 'hooks.register(check);'])
     assert.equal(flagged(`import hooks from './hooks.mjs';\n${read}\n${write}\nhooks.check(readFileSync('a.ts', 'utf8'));`), true, `./hooks.mjs ${write}`);
   for (const write of [
-    'util.check = check;', "util['check'] = check;", 'Object.assign(util, { check });',
-    'const h = util; h.check = check;', 'function reg(o) { o.check = check; } reg(util);', '[util.check] = [check];',
+    'assert.check = check;', "assert['check'] = check;", 'Object.assign(assert, { check });',
+    'const h = assert; h.check = check;', 'function reg(o) { o.check = check; } reg(assert);', '[assert.check] = [check];',
+    "require('node:assert').check = check;", "import('assert').then((m) => { m.default.check = check; });",
+    "require('node:as' + 'sert').check = check;", "createRequire(import.meta.url)(name).check = check;",
   ])
-    assert.equal(flagged(`import util from 'node:util';\n${read}\n${write}\nutil.check(readFileSync('a.ts', 'utf8'));`), true, write);
+    assert.equal(flagged(`import assert from 'node:assert';\n${read}\n${write}\nassert.check(readFileSync('a.ts', 'utf8'));`), true, write);
   assert.equal(
     flagged(`import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -1140,18 +1142,65 @@ assert.ok(rows.includes('2'));
   assert.deepEqual(analyze(src).hits, []);
 });
 
-test('a builtin import handed a local function is still followed', () => {
-  // /code-review on #10667: an emitter stores the listener and calls it through another member.
-  for (const call of ['process.emit', 'process.stdout.emit'])
+test('an emitter import is never trusted, however the listener is spelled', () => {
+  // /code-review and CodeRabbit on #10667: an emitter keeps the listener and calls it through another
+  // member, and each rule over the listener's spelling (name, alias, wrapper, …) had a hole. Only
+  // `assert` and `path`, which keep no caller's function, are trusted.
+  for (const [listener, call] of [
+    ['emit', 'process.emit'], ['emit', 'process.stdout.emit'], ['(emit)', 'process.emit'],
+    ['(e, t) => emit(e, t)', 'process.emit'], ['h', 'process.emit'], ['hs[0]', 'process.emit'],
+    ["function emit(e, text) { return text.includes('x'); }", 'process.emit'], ['emit.bind(null)', 'process.emit'],
+  ])
     assert.equal(
       flagged(`import process from 'node:process';
 import { readFileSync } from 'node:fs';
-function emit(evt, text) { return text.includes('x'); }
-process.on('m', emit);
+let emit;
+emit = function (evt, text) { return text.includes('x'); };
+const h = emit;
+const hs = [emit];
+process.on('m', ${listener});
 ${call}('m', readFileSync('a.ts', 'utf8'));`),
       true,
-      call,
+      `${listener} / ${call}`,
     );
+});
+
+test('an assert import stays untrusted when exported or written through another binding of its family', () => {
+  const read = `import { readFileSync } from 'node:fs';
+function check(text) { return text.includes('x'); }`;
+  const cases = {
+    // CodeRabbit r4612042796: an exported import can be written by the importing module.
+    'export { assert }': `import assert from 'node:assert';\n${read}\nexport { assert };`,
+    // CodeRabbit r4612042804: bindings of one module share its object.
+    'second binding written': `import assert from 'node:assert';\nimport patch from 'assert';\n${read}\npatch.check = check;`,
+    // /code-review: `assert/strict` is `assert.strict`, one family.
+    'subpath binding written': `import assert from 'node:assert';\nimport strict from 'node:assert/strict';\n${read}\nstrict.check = check;`,
+  };
+  for (const [name, src] of Object.entries(cases))
+    assert.equal(flagged(`${src}\nassert.check(readFileSync('a.ts', 'utf8'));`), true, name);
+});
+
+test('mentioning a method name or the module name keeps assert trusted', () => {
+  // /code-review: earlier rules dropped trust for `assert.ok(res.ok)` and for a plain 'assert' string,
+  // bringing #10595 back.
+  for (const use of [
+    'assert.ok(res.ok);', 'assert.deepEqual(r, { ok: true });', 'assert.equal(ok(1), 1);',
+    // A string that only names the module is not a load of it.
+    "describe('assert', () => {});", "const k = { type: 'node:assert/strict' };",
+  ]) {
+    const src = `
+import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
+function ok(n) { return n; }
+const res = { ok: true }, r = {};
+const source = readFileSync('a.ts', 'utf8');
+assert.ok(source.length > 0); // @source-text-assertion-ok size only
+${use}
+const rows = [1, 2].map((n) => String(n));
+assert.ok(rows.includes('2'));
+`;
+    assert.deepEqual(analyze(src).hits, [], use);
+  }
 });
 
 test('a method of a builtin import does not resolve to a same-named local helper', () => {

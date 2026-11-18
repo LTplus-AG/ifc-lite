@@ -6,32 +6,50 @@
  * Sibling-extracted from source-text-assertion-detect.mjs to keep that file
  * under its module-size budget; imported there and nowhere else.
  *
- * TRUE when `callee` is a method of an imported Node builtin: `assert.ok`,
- * `assert.equal`, `path.join`. That function is defined in Node, so the call
- * lands in none of this file's parameters. Resolving it by method name reached
- * any local `ok`, `equal` or `match` instead, and the flat taint set spread
- * that to every same-named parameter in the file (#10595).
+ * TRUE when `callee` is a method of an imported `assert` or `path`: `assert.ok`,
+ * `assert.strict.equal`, `path.posix.join`. That function is defined in Node,
+ * so the call lands in none of this file's parameters. Resolving it by method
+ * name reached any local `ok`, `equal` or `match` instead, and the flat taint
+ * set spread that to every same-named parameter in the file (#10595).
  *
  * Trust is narrow on purpose (CodeRabbit and /code-review on #10667):
- * - Builtins only. A relative or package import is code that can hold, or
- *   be handed through `hooks.register(check)`, a function of this file.
+ * - Only the `assert` and `path` families. Neither keeps a caller's function
+ *   to call later through another member; `assert.throws(fn, validate)` does
+ *   call `validate` with the thrown value, which main does not follow either.
+ *   An emitter does keep it
+ *   (`process.on('m', emit)`, then `process.emit('m', source)`), and no rule
+ *   over the spellings of the listener held, so other modules are not trusted.
+ *   Neither is a relative or package import, which is code that can hold a
+ *   function of this file.
+ * - A family shares one object (`assert.strict` is `assert/strict`), so its
+ *   bindings lose trust together.
  * - Never when a declaration rebinds the name: with no scoping,
  *   `const assert = { ok: (text) => … }` inside a test would shadow the import.
- * - Never when the import escapes: aliased, passed, spread, or written through
- *   (`path.join = check`). Only calls (`x(…)`, `x.m(…)`, `x.a.m(…)`) and type
- *   positions keep it trusted; no list of escape shapes is complete.
- * - Never when a call through it is handed a local function by name:
- *   `process.on('m', emit)` lets `process.emit(…)` call the local `emit`.
+ * - Never when the import escapes: aliased, passed, exported, or written
+ *   through (`assert.ok = check`). Only calls (`x(…)`, `x.m(…)`, `x.a.m(…)`)
+ *   and type positions keep it trusted; no list of escape shapes is complete.
+ * - Never when the file loads a module other than by import: `require`,
+ *   `createRequire` or `import(…)` can reach the family's object
+ *   (`require('node:as' + 'sert').ok = check`), and a computed specifier
+ *   cannot be matched, so any of them drops trust for every family.
  * Over-eager stays the direction.
  */
-import { isBuiltin } from 'node:module';
 import ts from 'typescript';
+
+/** `assert`, `assert/strict`, `path`, `path/posix`, …, with or without `node:`, as its family. */
+const TRUSTED_FAMILY = /^(?:node:)?(assert|path)(?:\/(?:strict|posix|win32))?$/;
 
 const receiversByFile = new WeakMap();
 
-const DECLARES = (p) =>
-  ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isBindingElement(p) || ts.isFunctionDeclaration(p) ||
-  ts.isFunctionExpression(p) || ts.isClassLike(p) || ts.isModuleDeclaration(p) || ts.isImportEqualsDeclaration(p);
+/** TRUE when `n` is a key (`a.assert`, `{ assert: 1 }`, `{ assert: a } = …`), not a use of a binding. */
+function isKey(n) {
+  const p = n.parent;
+  if (ts.isBindingElement(p)) return p.propertyName === n;
+  if (ts.isQualifiedName(p)) return p.right === n;
+  return p.name === n && (ts.isPropertyAccessExpression(p) || ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) ||
+    ts.isPropertyDeclaration(p) || ts.isPropertySignature(p) || ts.isMethodSignature(p) || ts.isAccessor(p) ||
+    ts.isEnumMember(p) || ts.isJsxAttribute(p));
+}
 
 /** TRUE for a use that cannot put a local function behind a member: a call through it, or a type. */
 function isTrustedUse(id) {
@@ -49,41 +67,26 @@ function chainRoot(expr) {
   return ts.isIdentifier(root) ? root : null;
 }
 
-/** TRUE when `n` declares a local function: `function f`, `const f = (() => …) as T`. */
-function declaresFunction(n) {
-  if (ts.isFunctionDeclaration(n)) return true;
-  let init = ts.isVariableDeclaration(n) ? n.initializer : undefined;
-  while (init && (ts.isParenthesizedExpression(init) || ts.isAsExpression(init) || ts.isSatisfiesExpression(init))) init = init.expression;
-  return !!init && ts.isFunctionLike(init);
-}
-
-/** Names bound by a builtin import that the file never rebinds and only calls through. */
+/** Names bound by an `assert` or `path` import that the file never rebinds or lets escape, and only calls through. */
 function importReceivers(sourceFile) {
-  const imported = new Set();
-  for (const stmt of sourceFile.statements)
-    if (ts.isImportDeclaration(stmt) && isBuiltin(stmt.moduleSpecifier.text)) for (const n of importedNames(stmt)) imported.add(n);
-  const untrusted = new Set();
-  const localFunctions = new Set();
-  const handedFunctions = []; // [import name, argument name]: `process.on('m', emit)` can call `emit` later
+  const imported = new Map(); // local name -> family
+  for (const stmt of sourceFile.statements) {
+    const family = ts.isImportDeclaration(stmt) && TRUSTED_FAMILY.exec(stmt.moduleSpecifier.text)?.[1];
+    if (family) for (const n of importedNames(stmt)) imported.set(n, family);
+  }
+  const untrusted = new Set(); // families
+  let loadsModules = false;
   const visit = (n) => {
     if (ts.isImportDeclaration(n)) return;
-    if (declaresFunction(n) && n.name && ts.isIdentifier(n.name)) localFunctions.add(n.name.text);
-    const root = ts.isCallExpression(n) && chainRoot(n.expression);
-    if (root && imported.has(root.text))
-      for (const arg of n.arguments) if (ts.isIdentifier(arg)) handedFunctions.push([root.text, arg.text]);
-    if (ts.isIdentifier(n) && imported.has(n.text) && n.parent && !isTrustedUse(n)) {
-      const p = n.parent;
-      // A key (`a.assert`, `{ assert: 1 }`, `{ assert: a } = …`) is not a use; a declaration or any other use is.
-      const isKey = (p.name === n && !DECLARES(p) && !ts.isShorthandPropertyAssignment(p)) ||
-        (ts.isBindingElement(p) && p.propertyName === n);
-      if (!isKey) untrusted.add(n.text);
-    }
+    if ((ts.isIdentifier(n) && (n.text === 'require' || n.text === 'createRequire')) ||
+      (ts.isCallExpression(n) && n.expression.kind === ts.SyntaxKind.ImportKeyword)) loadsModules = true;
+    if (ts.isIdentifier(n) && imported.has(n.text) && n.parent && !isTrustedUse(n) && !isKey(n))
+      untrusted.add(imported.get(n.text));
     ts.forEachChild(n, visit);
   };
   visit(sourceFile);
-  for (const [name, fn] of handedFunctions) if (localFunctions.has(fn)) untrusted.add(name);
-  for (const name of untrusted) imported.delete(name);
-  return imported;
+  if (loadsModules) return new Set();
+  return new Set([...imported].filter(([, family]) => !untrusted.has(family)).map(([name]) => name));
 }
 
 function importedNames(decl) {

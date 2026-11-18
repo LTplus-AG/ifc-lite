@@ -20,6 +20,8 @@
  * - Never when the import escapes: aliased, passed, spread, or written through
  *   (`path.join = check`). Only calls (`x(…)`, `x.m(…)`, `x.a.m(…)`) and type
  *   positions keep it trusted; no list of escape shapes is complete.
+ * - Never when a call through it is handed a local function by name:
+ *   `process.on('m', emit)` lets `process.emit(…)` call the local `emit`.
  * Over-eager stays the direction.
  */
 import { isBuiltin } from 'node:module';
@@ -40,14 +42,35 @@ function isTrustedUse(id) {
   return false;
 }
 
+/** The identifier a member chain starts from: `path` for `path.posix.join`, else null. */
+function chainRoot(expr) {
+  let root = expr;
+  while (ts.isPropertyAccessExpression(root)) root = root.expression;
+  return ts.isIdentifier(root) ? root : null;
+}
+
+/** TRUE when `n` declares a local function: `function f`, `const f = (() => …) as T`. */
+function declaresFunction(n) {
+  if (ts.isFunctionDeclaration(n)) return true;
+  let init = ts.isVariableDeclaration(n) ? n.initializer : undefined;
+  while (init && (ts.isParenthesizedExpression(init) || ts.isAsExpression(init) || ts.isSatisfiesExpression(init))) init = init.expression;
+  return !!init && ts.isFunctionLike(init);
+}
+
 /** Names bound by a builtin import that the file never rebinds and only calls through. */
 function importReceivers(sourceFile) {
   const imported = new Set();
   for (const stmt of sourceFile.statements)
     if (ts.isImportDeclaration(stmt) && isBuiltin(stmt.moduleSpecifier.text)) for (const n of importedNames(stmt)) imported.add(n);
   const untrusted = new Set();
+  const localFunctions = new Set();
+  const handedFunctions = []; // [import name, argument name]: `process.on('m', emit)` can call `emit` later
   const visit = (n) => {
     if (ts.isImportDeclaration(n)) return;
+    if (declaresFunction(n) && n.name && ts.isIdentifier(n.name)) localFunctions.add(n.name.text);
+    const root = ts.isCallExpression(n) && chainRoot(n.expression);
+    if (root && imported.has(root.text))
+      for (const arg of n.arguments) if (ts.isIdentifier(arg)) handedFunctions.push([root.text, arg.text]);
     if (ts.isIdentifier(n) && imported.has(n.text) && n.parent && !isTrustedUse(n)) {
       const p = n.parent;
       // A key (`a.assert`, `{ assert: 1 }`, `{ assert: a } = …`) is not a use; a declaration or any other use is.
@@ -58,6 +81,7 @@ function importReceivers(sourceFile) {
     ts.forEachChild(n, visit);
   };
   visit(sourceFile);
+  for (const [name, fn] of handedFunctions) if (localFunctions.has(fn)) untrusted.add(name);
   for (const name of untrusted) imported.delete(name);
   return imported;
 }
@@ -73,8 +97,10 @@ function importedNames(decl) {
 }
 
 export function callsImportedModule(callee) {
-  if (!ts.isPropertyAccessExpression(callee) || !ts.isIdentifier(callee.expression)) return false;
+  // Down the chain to its root, as `isTrustedUse` walks up it: `assert.strict.equal` and `path.posix.join` too.
+  const root = ts.isPropertyAccessExpression(callee) && chainRoot(callee.expression);
+  if (!root) return false;
   const sourceFile = callee.getSourceFile();
   if (!receiversByFile.has(sourceFile)) receiversByFile.set(sourceFile, importReceivers(sourceFile));
-  return receiversByFile.get(sourceFile).has(callee.expression.text);
+  return receiversByFile.get(sourceFile).has(root.text);
 }

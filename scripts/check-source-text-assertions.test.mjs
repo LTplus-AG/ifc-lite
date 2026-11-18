@@ -1125,15 +1125,44 @@ namespace fixtures {
   );
 });
 
+test('a method reached through a builtin import chain does not resolve to a same-named local helper', () => {
+  // Claude review on #10667: `x.a.m(…)` was trusted as a use but not skipped as a call.
+  // `path.posix.join(source)` is pinned in the builtin-import test below.
+  const src = `
+import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
+function equal(n, m) { return n === m; }
+const source = readFileSync('a.ts', 'utf8');
+assert.strict.equal(source.length, 1);
+const rows = [1, 2].map((n) => String(n));
+assert.ok(rows.includes('2'));
+`;
+  assert.deepEqual(analyze(src).hits, []);
+});
+
+test('a builtin import handed a local function is still followed', () => {
+  // /code-review on #10667: an emitter stores the listener and calls it through another member.
+  for (const call of ['process.emit', 'process.stdout.emit'])
+    assert.equal(
+      flagged(`import process from 'node:process';
+import { readFileSync } from 'node:fs';
+function emit(evt, text) { return text.includes('x'); }
+process.on('m', emit);
+${call}('m', readFileSync('a.ts', 'utf8'));`),
+      true,
+      call,
+    );
+});
+
 test('a method of a builtin import does not resolve to a same-named local helper', () => {
   // Calls and types cannot put a local function behind a member, so they keep the import trusted.
-  for (const use of ['', 'path(1);', 'path.posix.join("a");', 'let p: path.ParsedPath;', 'type T = typeof path;']) {
+  for (const use of ['', 'path(1);', 'path.posix.join("a");', 'path.posix.join(source);', 'let p: path.ParsedPath;', 'type T = typeof path;']) {
     const src = `
 import * as path from 'node:path';
 import { readFileSync } from 'node:fs';
 function join(n) { return n; }
-${use}
 const source = readFileSync('a.ts', 'utf8');
+${use}
 path.join(source);
 const rows = [1, 2].map((n) => String(n));
 assert.ok(rows.includes('2'));

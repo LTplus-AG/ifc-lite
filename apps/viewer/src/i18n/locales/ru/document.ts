@@ -162,6 +162,7 @@ export const documentRu = {
   "document.panel.exportIdle": "Экспортировать PDF",
   "document.panel.emptyBlocks": "Пока нет блоков — нажмите \"Добавить блок\" выше.",
   "document.panel.unsavedWarning": "Документ не удалось сохранить в этом браузере (хранилище заблокировано или заполнено). Экспортируйте его как шаблон перед перезагрузкой.",
+  "document.panel.blockEditRefused": "Не удалось переместить или скопировать блок, поскольку полученный документ недействителен.",
   "document.panel.exportFailedWithMessage": "Экспорт документа не удался: {message}",
   "document.panel.exportFailedGeneric": "Экспорт документа не удался",
   "document.panel.exportSuccess": {

@@ -171,6 +171,7 @@ export const documentDe = {
   "document.panel.exportIdle": "PDF exportieren",
   "document.panel.emptyBlocks": "Noch keine Blöcke – oben „Block hinzufügen“.",
   "document.panel.unsavedWarning": "Das Dokument konnte in diesem Browser nicht gespeichert werden (Speicher blockiert oder voll). Exportieren Sie es als Vorlage, bevor Sie es neu laden.",
+  "document.panel.blockEditRefused": "Der Block konnte nicht verschoben oder kopiert werden, weil das resultierende Dokument ungültig ist.",
   "document.panel.exportFailedWithMessage": "Dokumentexport fehlgeschlagen: {message}",
   "document.panel.exportFailedGeneric": "Der Dokumentexport ist fehlgeschlagen",
   "document.panel.exportSuccess": {"one": "Exportiertes Dokument: Seite {countDisplay}", "other": "Exportiertes Dokument: {countDisplay} Seiten"},

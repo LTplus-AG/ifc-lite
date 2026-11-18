@@ -65,6 +65,7 @@ const idsOf = (m) => m[3].split(', ').map((id) => Number(id.slice(1)));
 const IFC2X3_AXIS = nonConformingOnly('\\w+', 'IFC4', 'Axis: required value empty');
 const OWNER_HISTORY = nonConformingOnly('\\w+', 'IFC2X3', 'OwnerHistory: required value empty');
 const LOST = /^(.+)#(\d+): lost$/;
+const AXIS_LOST = /^(.+)#(\d+): Axis null, was "#IFCDIRECTION"$/;
 
 const axisSchema = (entity, cite) => ({
   row: `IFC2X3/${entity}`, level: 'convert', kind: 'schema', problem: IFC2X3_AXIS, cite,
@@ -83,17 +84,13 @@ const reactionSchema = (entity, what) => ({
   holds: (f, m) => recordOf(f, m)?.type === entity.toUpperCase() && !f.has('IFC2X3', entity),
 });
 
-/**
- * IFC2X3 can hold an IFC4 curve member's Axis only as IfcRelAssociatesProfileProperties.ProfileOrientation,
- * whose RelatingProfileProperties is required. With no profile properties in the source, writing it means
- * pointing a required reference at a record made up for it (#10597).
- */
+/** #10597: the decision is in baseline/r13-notes.md. */
 const axisPolicy = (entity) => ({
-  row: `IFC4/${entity}`, level: 'convert', kind: 'policy', problem: /^(.+)#(\d+): Axis null, was "#IFCDIRECTION"$/,
+  row: `IFC4/${entity}`, level: 'convert', kind: 'policy', problem: AXIS_LOST,
   cite: 'IFC2X3 has no Axis (IFC2X3_TC1.exp:7281); its only slot is IfcRelAssociatesProfileProperties.ProfileOrientation (IFC2X3_TC1.exp:6548), whose RelatingProfileProperties is required. The source has no IfcProfileProperties, and the downgrade never points a required entity reference at a record it makes up (Ifc2x3SlotFill, #4714; #10597)',
   holds: (f, m) => recordOf(f, m)?.type === entity.toUpperCase() && f.slot('IFC2X3', entity, 'Axis') === null
     && f.required('IFC2X3', 'IfcRelAssociatesProfileProperties', 'RelatingProfileProperties')
-    && f.file(m[1]).count('IFCPROFILEPROPERTIES') === 0 && f.file(m[1]).count('IFCGENERALPROFILEPROPERTIES') === 0,
+    && f.file(m[1]).count('IFCPROFILEPROPERTIES') === 0,
 });
 
 const ownerHistoryPolicy = (row) => ({
@@ -146,7 +143,7 @@ export const LIMITS = [
   },
   {
     row: 'IFC4/IfcStructuralCurveConnection', level: 'convert', kind: 'schema',
-    problem: /^(.+)#(\d+): Axis null, was "#IFCDIRECTION"$/,
+    problem: AXIS_LOST,
     cite: 'IFC2X3 IfcStructuralCurveConnection declares no attribute (IFC2X3_TC1.exp:7277) and IFC2X3 gives a connection no orientation, so its Axis (IFC4_ADD2_TC1.exp:9415) cannot be held',
     holds: (f, m) => recordOf(f, m)?.type === 'IFCSTRUCTURALCURVECONNECTION' && f.slot('IFC2X3', 'IfcStructuralCurveConnection', 'Axis') === null,
   },

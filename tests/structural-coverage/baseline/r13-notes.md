@@ -23,4 +23,4 @@ The converter already has a rule for a required value the source does not give. 
 
 Three of the four members are also placed (beam_01 #86 by #74, generated #31 and #33 by #30 and #32). The upgrade reads `ProfileOrientation` back only on unplaced members (`StructuralAxes.axis`), so even with the record, those three would need a frame transform the upgrade does not undo. The edge-curve members (#16, #25) are unplaced, but their file is already policy-limited by OwnerHistory.
 
-A source that has an `IfcProfileProperties` for the member would not match this limit (`holds` checks that none exists), so the cell would come back as reachable.
+A source file with any `IfcProfileProperties` does not match the limit, so its cell would show as reachable again.

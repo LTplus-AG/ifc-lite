@@ -137,7 +137,7 @@ impl StructuralAxes {
         let candidates = AxisCarrierRecords::removable_associations(associations, properties, &plans, content, kept);
         let mut reusable = HashMap::new();
         if plans.iter().any(|plan| plan.turned) {
-            let consumed_directions: HashSet<_> = candidates.values().filter_map(|carrier| carrier.direction).collect();
+            let consumed_directions: HashSet<_> = candidates.iter().filter_map(|(_, carrier)| carrier.direction).collect();
             for (&id, &values) in &self.directions {
                 if consumed_directions.contains(&id) { continue; }
                 let key = direction_tuple(values, 12);
@@ -152,7 +152,10 @@ impl StructuralAxes {
                 new_id
             } else { continue; };
             self.placed_axes.insert(plan.member, axis);
-            if let Some(carrier) = candidates.get(&plan.member) {
+        }
+        // Several independent carriers can agree on the same restored Axis.
+        for (member, carrier) in &candidates {
+            if self.placed_axes.contains_key(member) {
                 self.carriers.consume(carrier);
             }
         }

@@ -106,7 +106,7 @@ impl AxisCarrierRecords {
         plans: &[AxisPlan],
         content: &[u8],
         kept: &dyn Fn(u32, usize) -> bool,
-    ) -> HashMap<u32, RemovableAssociation> {
+    ) -> Vec<(u32, RemovableAssociation)> {
         let by_member: HashMap<_, _> = plans.iter().map(|plan| (plan.member, plan)).collect();
         let candidates: Vec<_> = associations.iter().filter_map(|(relationship, args)| {
             if args[2].trim() != NAME || !unset(&args[3]) || !unset(&args[6]) { return None; }
@@ -118,7 +118,7 @@ impl AxisCarrierRecords {
                 *member, *relationship, props, plan.turned.then_some(plan.axis),
             ))
         }).collect();
-        if candidates.is_empty() { return HashMap::new(); }
+        if candidates.is_empty() { return Vec::new(); }
 
         let mut counts: HashMap<u32, usize> = candidates.iter()
             .flat_map(|&(_, rel, props, axis)| [Some(rel), Some(props), axis].into_iter().flatten())

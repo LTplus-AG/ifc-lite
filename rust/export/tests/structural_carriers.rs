@@ -145,3 +145,22 @@ fn placed_member_axis_round_trips_through_a_profile_carrier_9668() {
         assert_eq!(stats.ifc4_required_slots_unfilled, 0);
     }
 }
+
+#[test]
+fn restores_an_agreed_axis_and_consumes_both_exclusive_profile_carriers_9668() {
+    let original = source("IFC2X3", concat!(
+        "#50=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',$,$,$,$,$,$,.RIGID_JOINED_MEMBER.);\n",
+        "#80=IFCDIRECTION((0.,1.,0.));\n",
+        "#81=IFCGENERALPROFILEPROPERTIES($,$,$,$,$,$,$);\n",
+        "#82=IFCGENERALPROFILEPROPERTIES($,$,$,$,$,$,$);\n",
+        "#90=IFCRELASSOCIATESPROFILEPROPERTIES('3Npn749xX3h8J7ezZM_AKg',$,'IFC4 Axis',$,(#50),#81,$,#80);\n",
+        "#91=IFCRELASSOCIATESPROFILEPROPERTIES('2Npn749xX3h8J7ezZM_AKg',$,'IFC4 Axis',$,(#50),#82,$,#80);",
+    ));
+    for upgraded in [plain(&original, "IFC4"), logged(&original, "IFC4")] {
+        assert!(upgraded.contains(".RIGID_JOINED_MEMBER.,#80)"), "{upgraded}");
+        assert!(upgraded.contains("#80=IFCDIRECTION((0.,1.,0.));"), "{upgraded}");
+        for id in [81, 82, 90, 91] {
+            assert!(!upgraded.contains(&format!("#{id}=")), "{upgraded}");
+        }
+    }
+}

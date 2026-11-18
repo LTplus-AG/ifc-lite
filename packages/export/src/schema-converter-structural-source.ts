@@ -18,6 +18,28 @@ export type ConversionMode = 'upgrade' | 'downgrade' | null;
 export const conversionMode = (from: string, to: string): ConversionMode =>
   from === 'IFC2X3' && to === 'IFC4' ? 'upgrade' : from === 'IFC4' && to === 'IFC2X3' ? 'downgrade' : null;
 
+/** The IFC2X3 actions with a CausedBy slot (IFC2X3_TC1.exp:7237). */
+export const IFC2X3_ACTIONS: ReadonlySet<string> = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
+
+const CARRIED = {
+  // StructuralCarriers.noteCause, StructuralThickness.note.
+  upgrade: new Map<string, readonly string[]>([
+    ...[...IFC2X3_ACTIONS].map((t): [string, readonly string[]] => [t, ['CausedBy']]),
+    ['IFCSTRUCTURALSURFACEMEMBERVARYING', ['SubsequentThickness', 'VaryingThicknessLocation']],
+  ]),
+  // StructuralCarriers.rewrite.
+  downgrade: new Map<string, readonly string[]>([['IFCSTRUCTURALLOADCASE', ['SelfWeightCoefficients']]]),
+};
+
+/**
+ * Attributes of `type` the target has no slot for but a carrier holds
+ * elsewhere. `StructuralDiagnostics.inspect` and the conversion loss report
+ * both leave them out of what they report lost. A carrier holds them only for
+ * a record it can carry; the export reports any other one lost.
+ */
+export const carriedAttributes = (mode: ConversionMode, type: string): readonly string[] =>
+  (mode && CARRIED[mode].get(type)) || [];
+
 /** Whether any of `args` names an id this export withholds. */
 export const namesWithheld = (args: readonly string[] | undefined, withheld: ReadonlySet<number> | undefined): boolean =>
   !!withheld?.size && !!args?.some((a) => referencesAnyExpressId(a, withheld));

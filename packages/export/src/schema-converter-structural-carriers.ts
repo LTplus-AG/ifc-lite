@@ -30,7 +30,7 @@
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import {
-  bareMeasure, conversionMode, isSubtype, namesWithheld, readCarrierSets, slotRef, slotUnset, SourceRecords, stepString, writeCarrierSet,
+  bareMeasure, conversionMode, IFC2X3_ACTIONS, isSubtype, namesWithheld, readCarrierSets, slotRef, slotUnset, SourceRecords, stepString, writeCarrierSet,
   type ConversionMode, type StructuralRewrite,
 } from './schema-converter-structural-source.js';
 import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
@@ -43,7 +43,6 @@ const CAUSES = 'Causes';
 const CAUSED_BY = 10;
 /** IfcProduct.ObjectPlacement. */
 const OBJECT_PLACEMENT = 5;
-const IFC2X3_ACTIONS = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
 
 export const CAUSED_BY_AMONG = "IFC2X3 CausedBy is one of several reactions the action's 'Causes' relationships name in IFC4, so IFC2X3 CausedBy cannot be restored from them";
 export const CAUSED_BY_WRITTEN = "IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes' from the action to the reaction, as IFC4 holds it";

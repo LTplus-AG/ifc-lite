@@ -5,7 +5,7 @@ import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
 import { StructuralCarriers } from './schema-converter-structural-carriers.js';
-import { SourceRecords } from './schema-converter-structural-source.js';
+import { carriedAttributes, SourceRecords } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { StructuralVarying } from './schema-converter-structural-varying.js';
@@ -109,7 +109,7 @@ export class StructuralDiagnostics {
     const unconverted = this.varying.staysUnconverted(entity, args);
     if (unconverted && this.carriers.causeOf(entity, args, withheld) !== null) this.record(CAUSED_BY_UNCONVERTED);
     const cause = unconverted ? null : this.carriers.noteCause(id, entity, args, withheld);
-    const held = cause ? ['CausedBy'] : this.thickness.note(id, entity, args, withheld);
+    const held = cause ? carriedAttributes('upgrade', entity) : this.thickness.note(id, entity, args, withheld);
     let carried = NONE;
     if (held.length) {
       carried = new Set(held);

@@ -68,14 +68,11 @@ describeFixture(
       // IFC2X3 never defined a curve/surface reaction entity at all.
       expect(byType.get('IFCSTRUCTURALCURVEREACTION')).toMatchObject({ kind: 'proxied', count: 3 });
 
+      // A property set carries the load case's SelfWeightCoefficients (#10597).
+      expect(byType.has('IFCSTRUCTURALLOADCASE')).toBe(false);
+
       // Lossy (this PR's fix): renamed with a real IFC2X3 target, but not
       // every attribute survives.
-      expect(byType.get('IFCSTRUCTURALLOADCASE')).toMatchObject({
-        kind: 'lossy',
-        targetType: 'IFCSTRUCTURALLOADGROUP',
-        count: 1,
-        droppedAttributes: ['SelfWeightCoefficients'],
-      });
       expect(byType.get('IFCSTRUCTURALCURVEACTION')).toMatchObject({
         kind: 'lossy',
         targetType: 'IFCSTRUCTURALLINEARACTION',
@@ -84,12 +81,11 @@ describeFixture(
       });
 
       // The report is complete BEFORE any export is attempted -- it names all
-      // four offending types in one pass, not just the first one a full
+      // three offending types in one pass, not just the first one a full
       // export would have aborted on.
       const describedTypes = report.describe().join('\n');
       expect(describedTypes).toContain('IFCSTRUCTURALLOADCONFIGURATION');
       expect(describedTypes).toContain('IFCSTRUCTURALCURVEREACTION');
-      expect(describedTypes).toContain('IFCSTRUCTURALLOADCASE');
       expect(describedTypes).toContain('IFCSTRUCTURALCURVEACTION');
     });
 

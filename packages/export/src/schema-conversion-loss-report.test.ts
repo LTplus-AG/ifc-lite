@@ -19,11 +19,9 @@ describe('classifyEntityTypeConversion', () => {
     expect(info.kind).toBe('identity');
   });
 
-  it('is lossy for the structural load-case rename: SelfWeightCoefficients has no IFC2X3 slot', () => {
+  it('is renamed for the structural load-case rename: a property set carries SelfWeightCoefficients (#10597)', () => {
     const info = classifyEntityTypeConversion('IFCSTRUCTURALLOADCASE', 'IFC4', 'IFC2X3');
-    expect(info.targetType).toBe('IFCSTRUCTURALLOADGROUP');
-    expect(info.kind).toBe('lossy');
-    expect(info.droppedAttributes).toEqual(['SelfWeightCoefficients']);
+    expect(info).toEqual({ targetType: 'IFCSTRUCTURALLOADGROUP', kind: 'renamed', droppedAttributes: [] });
   });
 
   it('is lossy for the structural curve-action rename: PredefinedType has no IFC2X3 slot', () => {
@@ -131,7 +129,8 @@ describe('analyzeConversionLoss', () => {
       kind: 'lossy',
       droppedAttributes: ['SharedPlacement'],
     });
-    expect(byType.get('IFCSTRUCTURALLOADCASE')?.kind).toBe('lossy');
+    // A property set carries SelfWeightCoefficients (#10597).
+    expect(byType.has('IFCSTRUCTURALLOADCASE')).toBe(false);
     expect(byType.get('IFCSTRUCTURALCURVEACTION')?.kind).toBe('lossy');
     expect(byType.get('IFCSTRUCTURALLOADCONFIGURATION')).toMatchObject({
       kind: 'blocked',

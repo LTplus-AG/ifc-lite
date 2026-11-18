@@ -27,6 +27,7 @@
  */
 
 import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
+import { carriedAttributes, conversionMode } from './schema-converter-structural-source.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -80,7 +81,9 @@ export interface EntityConversionInfo {
  * Classify what converting entities of `entityType` from `fromSchema` to
  * `toSchema` will do, mirroring `schema-converter.ts`'s `convertRecord`
  * decision tree exactly (same helpers, same order) without needing a STEP
- * line to run it on.
+ * line to run it on. An attribute a structural carrier holds elsewhere in the
+ * target (`carriedAttributes`, #9668) is not dropped, as in the export's own
+ * warnings.
  */
 export function classifyEntityTypeConversion(
   entityType: string,
@@ -88,6 +91,19 @@ export function classifyEntityTypeConversion(
   toSchema: IfcSchemaVersion,
 ): EntityConversionInfo {
   const upper = entityType.toUpperCase();
+  const info = classifyByAttributeTables(upper, fromSchema, toSchema);
+  const carried = carriedAttributes(conversionMode(fromSchema, toSchema), upper);
+  if (info.kind !== 'lossy' || !info.droppedAttributes.some((a) => carried.includes(a))) return info;
+  const dropped = info.droppedAttributes.filter((a) => !carried.includes(a));
+  if (dropped.length > 0) return { ...info, droppedAttributes: dropped };
+  return { ...info, kind: info.targetType === upper ? 'identity' : 'renamed', droppedAttributes: [] };
+}
+
+function classifyByAttributeTables(
+  upper: string,
+  fromSchema: IfcSchemaVersion,
+  toSchema: IfcSchemaVersion,
+): EntityConversionInfo {
   if (fromSchema === toSchema) return { targetType: upper, kind: 'identity', droppedAttributes: [] };
 
   const newType = convertEntityType(upper, fromSchema, toSchema);

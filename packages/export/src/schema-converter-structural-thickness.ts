@@ -19,7 +19,7 @@
  * Reads the source store, so only an unedited full export arms it.
  */
 import { listItems } from './schema-converter-structural-axes.js';
-import { bareMeasure, conversionMode, readCarrierSets, slotRef, slotUnset, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { bareMeasure, carriedAttributes, conversionMode, readCarrierSets, slotRef, slotUnset, SourceRecords, writeCarrierSet, type ConversionMode, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { parseStepNumber } from './step-slot-grammar.js';
 
 const THICKNESS_PSET = 'Pset_StructuralSurfaceMemberVaryingThickness';
@@ -123,7 +123,7 @@ export class StructuralThickness {
       const properties = values.map((v, i) => `IFCPROPERTYSINGLEVALUE('${NAMES[i]}',$,IFCPOSITIVELENGTHMEASURE(${v}),$)`);
       this.pending.push(...writeCarrierSet(this.ids, `ifc2x3-thickness:${args[0].trim()}`, args[1], THICKNESS_PSET, id, properties));
     }
-    return ['SubsequentThickness', 'VaryingThicknessLocation'];
+    return carriedAttributes('upgrade', ENTITY);
   }
 
   /** IFC4 -> IFC2X3: why a member the generic path writes has no IFC2X3 thicknesses (`rewrite` leaves located members to it), or undefined. */

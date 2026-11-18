@@ -27,7 +27,8 @@ export function discoverNativeLensData(categories: LensDiscoveryCategories) {
 }
 export function releaseNativeLensRuleIsolation(): void {
   const s = useViewerStore.getState(); const claim = s.lensRuleIsolation;
-  if (claim && ruleIsolationOwnsChannel(s.isolatedEntities, claim.entityIds)) s.clearIsolation();
+  if (!claim) return;
+  if (ruleIsolationOwnsChannel(s.isolatedEntities, claim.entityIds)) s.clearIsolation();
   s.setLensRuleIsolation(null);
 }
 /** Switch lenses while releasing only isolation owned by the previous lens. */

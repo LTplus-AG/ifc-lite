@@ -35,7 +35,7 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
+import { releaseNativeLensRuleIsolation } from '@/lib/lens/native-controls';
 
 import { clearLensOutput, evaluateNativeLens, applyNativeLensResult, hasCurrentNativeLensResult, syncNativeLensHidden } from '@/lib/lens/native-lens';
 
@@ -158,11 +158,6 @@ export function useLens(): void {
   // here, panel or not; the channel is cleared only if the lens still owns it,
   // so an isolation the user applied since is left alone.
   useEffect(() => {
-    if (activeLensId !== null) return;
-    const state = useViewerStore.getState();
-    const isolation = state.lensRuleIsolation;
-    if (!isolation) return;
-    if (ruleIsolationOwnsChannel(state.isolatedEntities, isolation.entityIds)) state.clearIsolation();
-    state.setLensRuleIsolation(null);
+    if (activeLensId === null) releaseNativeLensRuleIsolation();
   }, [activeLensId]);
 }

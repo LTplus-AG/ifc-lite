@@ -201,7 +201,7 @@ fn emit<W: std::io::Write>(
     );
     // IFC4-required `$` slots (#5307) and enum members the target lacks (#5365).
     let mut ids = crate::step_ids::IdAllocator::after(max_id);
-    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_schema, &schema, opts, true, |id, start| index.is_kept(id, start), || ids.allocate());
+    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_schema, &schema, opts, true, &|id, start| index.is_kept(id, start), &mut || ids.allocate());
     // The synthesized property sets below are filled whenever the OUTPUT is
     // IFC2X3, not only when a conversion runs: an IFC2X3 source needs no
     // conversion, and the records this exporter writes for it still have to be
@@ -345,7 +345,7 @@ fn emit<W: std::io::Write>(
         written += 2;
     }
 
-    written = written.checked_add_signed(checks.finish(body)?).unwrap_or(written);
+    written = written.checked_add_signed(checks.finish(body, targets_ifc2x3.then_some(&mut slot_fill))?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     Ok((StepStats {

@@ -13,9 +13,23 @@ import { useViewerStore } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { render, click, type, cleanup, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { parseFixtureModel, FIXTURE_WALL_A } from './anonymized-export/anonymized-export-fixture.test-support';
+import { FIXTURE_MODEL, FIXTURE_WALL_A, parseFixtureModel as parseUnlocatedFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 import { CesiumIonExportDialog } from './CesiumIonExportDialog';
 import { initializeIonExportWasm } from './CesiumIonExportDialog.wasm.test-support';
+
+// #10647: export-capable ion fixtures need a real CRS and representation context.
+async function parseFixtureModel() {
+  const source = FIXTURE_MODEL.replace('DATA;', `DATA;
+#900=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#901,$);
+#901=IFCAXIS2PLACEMENT3D(#902,$,$);
+#902=IFCCARTESIANPOINT((0.,0.,0.));
+#903=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#905);
+#904=IFCMAPCONVERSION(#900,#903,2600000.,1200000.,0.,1.,0.,1.);
+#905=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#906=IFCUNITASSIGNMENT((#905));
+`).replace(/(#1=IFCPROJECT[^\n]*),\$,\$\);/, '$1,(#900),#906);');
+  return new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
+}
 
 before(initializeIonExportWasm);
 import { IonUploadError, uploadToCesiumIon, type IonUploadInput } from '@/lib/geo/cesium-ion-upload';
@@ -98,6 +112,30 @@ test('ion Cancel upload aborts the active request and exposes the partial asset 
   assert.equal(activityCanceller(job.id), null);
   assert.ok(document.querySelector('a[href="https://ion.cesium.com/assets/77"]'));
   assert.equal(button('Upload').disabled, false, 'the user can retry after cancellation');
+});
+
+test('#10647 georef notice cannot close the dialog while an upload runs', async () => {
+  const model = { ...fixtureModel('busy.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
+    scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
+  let started: IonUploadInput | undefined;
+  render(<CesiumIonExportDialog surface="ribbon" upload={async input => {
+    started = input;
+    return new Promise<{ assetId: number }>((_, reject) => {
+      input.signal.addEventListener('abort', () => reject(new IonUploadError('upload', 78)), { once: true });
+    });
+  }} />);
+  click(button('Upload to Cesium ion'));
+  type(document.querySelector<HTMLInputElement>('#ion-token')!, 'private-test-token');
+  click(button('Upload'));
+  await waitFor(() => !!started, 'upload did not start');
+  // The model loses its georeference mid-upload: the notice shows, but its action must not close a busy dialog.
+  const unlocated = { ...model, ifcDataStore: await parseUnlocatedFixtureModel() };
+  act(() => useViewerStore.setState(fixtureModels(unlocated)));
+  assert.equal(button('Open georeferencing').disabled, true);
+  click(button('Cancel upload'));
+  await waitFor(() => !!document.body.textContent?.includes('Upload cancelled'), 'cancellation was not reported');
+  assert.equal(button('Open georeferencing').disabled, false, 'the action returns once the dialog is idle');
 });
 
 test('ion shows request rejection without blaming token permissions and supports retry (#6587)', async () => {

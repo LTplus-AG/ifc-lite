@@ -135,6 +135,18 @@ test('excluding the engine core from batches is reported', () => {
   }
 });
 
+// CodeRabbit on #10629: a keep entry narrower than the exclusion matched the old probe path and passed.
+test('only a keep entry at or above an excluded engine directory covers it', () => {
+  for (const keep of ['rust/geometry/x/x', 'rust/geometry/x/**', 'rust/geometry/src/**', 'rust/geometry/**/*retained*']) {
+    assert.ok(audit(REPO, ['rust/geometry/**'], [keep]).some((f) => f.includes('BATCH_EXCLUDE drops rust/geometry/**')), keep);
+  }
+  // Conservative: a wildcard before /** never covers, even where it would match everything.
+  assert.ok(audit(REPO, ['rust/geometry/**'], ['rust/*/**']).some((f) => f.includes('BATCH_EXCLUDE drops rust/geometry/**')));
+  for (const keep of ['rust/geometry/**', 'rust/**', '**']) {
+    assert.ok(!audit(REPO, ['rust/geometry/**'], [keep]).some((f) => f.includes('BATCH_EXCLUDE drops rust/geometry/**')), keep);
+  }
+});
+
 test('a script the lane runs under node --test cannot be excluded from batches', () => {
   assert.ok(audit(REPO, ['scripts/cli-retained-engine/**']).some((f) => f.includes('BATCH_EXCLUDE drops it from merge-queue batches')));
 });

@@ -95,3 +95,61 @@ test('#9235 review: a job that times out is named, with how it ended', () => {
   assert.ok(body.includes('Failed steps:\n- measure › Measure large set (timed out)'), body);
   assert.ok(!body.includes('No failed job') && !body.includes('after'), body);
 });
+
+test('nightly-red: a labelled report creates a missing label, then labels a new issue', () => {
+  const calls = [];
+  const gh = (args) => {
+    calls.push(args);
+    if (isJobsLookup(args)) return jobsListing;
+    if (args[0] === 'label' && args[1] === 'list') return JSON.stringify([{ name: 'bug' }]);
+    return args[1] === 'list' ? '[]' : '';
+  };
+  reportScheduledFailure({ ...env, LABELS: ' nightly-red , bug ' }, gh);
+  assert.deepEqual(calls.filter((c) => c[0] === 'label' && c[1] === 'create').map((c) => c[2]), ['nightly-red']);
+  assert.deepEqual(calls.at(-1), ['issue', 'create', '--repo', 'owner/repo', '--title', title, '--body', expectedBody, '--label', 'nightly-red', '--label', 'bug']);
+});
+
+test('nightly-red: an existing issue gets the comment and its label back', () => {
+  const calls = [];
+  const gh = (args) => {
+    calls.push(args);
+    if (isJobsLookup(args)) return jobsListing;
+    if (args[0] === 'label') return JSON.stringify([{ name: 'nightly-red' }]);
+    return args[1] === 'list' ? JSON.stringify([{ number: 7, title }]) : '';
+  };
+  const result = reportScheduledFailure({ ...env, LABELS: 'nightly-red' }, gh);
+  assert.equal(result.number, 7);
+  assert.ok(!calls.some((c) => c[0] === 'label' && c[1] === 'create'));
+  assert.deepEqual(calls.slice(-2), [['issue', 'comment', '7', '--repo', 'owner/repo', '--body', expectedBody], ['issue', 'edit', '7', '--repo', 'owner/repo', '--add-label', 'nightly-red']]);
+});
+
+test('nightly-red: a label API failure files the report without the label instead of losing it', () => {
+  const calls = [];
+  const stderr = console.error;
+  console.error = () => {};
+  try {
+    const gh = (args) => {
+      calls.push(args);
+      if (isJobsLookup(args)) return jobsListing;
+      if (args[0] === 'label') throw new Error('HTTP 502');
+      return args[1] === 'list' ? '[]' : '';
+    };
+    assert.equal(reportScheduledFailure({ ...env, LABELS: 'nightly-red' }, gh).action, 'create');
+  } finally {
+    console.error = stderr;
+  }
+  assert.deepEqual(calls.at(-1), ['issue', 'create', '--repo', 'owner/repo', '--title', title, '--body', expectedBody]);
+});
+
+test('nightly-red: a label that exists in another case is reused, not re-created', () => {
+  const calls = [];
+  const gh = (args) => {
+    calls.push(args);
+    if (isJobsLookup(args)) return jobsListing;
+    if (args[0] === 'label') return JSON.stringify([{ name: 'Nightly-Red' }]);
+    return args[1] === 'list' ? '[]' : '';
+  };
+  reportScheduledFailure({ ...env, LABELS: 'nightly-red' }, gh);
+  assert.ok(!calls.some((c) => c[0] === 'label' && c[1] === 'create'));
+  assert.deepEqual(calls.at(-1).slice(-2), ['--label', 'Nightly-Red']);
+});

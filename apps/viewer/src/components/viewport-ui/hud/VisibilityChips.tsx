@@ -34,6 +34,7 @@ function reasonCounts(state: ViewerState) {
     hiddenTypes: hiddenTypeToggles(state.typeVisibility).length,
     hostTypes: state.hostHiddenIfcTypes?.size ?? 0,
     levelDisplayMode: state.levelDisplayMode,
+    structuralViewMode: state.structuralViewMode,
   };
 }
 
@@ -90,6 +91,9 @@ export function VisibilityChips() {
       );
       case 'typeVisibility': return t('visibilityChips.typeVisibilityCount', { count: counts.hiddenTypes });
       case 'hostTypes': return t('visibilityChips.hostTypesCount', { count: counts.hostTypes });
+      // Name the mode that is on, not just that one is (#10604).
+      case 'structuralViewMode': return t(counts.structuralViewMode === 'physical'
+        ? 'visibilityChips.structuralPhysicalOnly' : 'visibilityChips.structuralAnalyticalOnly');
       default: return t(reason.labelKey);
     }
   }

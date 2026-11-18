@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_links.rs (#9668). */
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { isSubtype, slotRef, slotUnset } from './schema-converter-structural-source.js';
+import { isSubtype, slotRef, slotUnset, type SourceStore } from './schema-converter-structural-source.js';
 import { convertEntityType } from './schema-converter.js';
 import { listItems } from './schema-converter-structural-axes.js';
 
@@ -24,7 +23,7 @@ const becomes = (keyword: string | undefined, parent: string): boolean =>
 export class StructuralLinks {
   private typeOf: ((id: number) => string | undefined) | null = null;
 
-  fromStore(store: IfcDataStore): void {
+  fromStore(store: SourceStore): void {
     // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export
     const byId = store.entityIndex.byId;
     this.typeOf = (id) => byId.get(id)?.type.toUpperCase();

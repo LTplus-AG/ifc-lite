@@ -35,6 +35,8 @@ export const visibilityReasonsEn = {
   'visibilityChips.modelHiddenSingleCount': 'Model hidden · {hidden} of {total} model',
   'visibilityChips.typeVisibilityCount': 'Hidden IFC classes · {count}',
   'visibilityChips.hostTypesCount': 'Classes hidden by host · {count}',
+  'visibilityChips.structuralAnalyticalOnly': 'Analytical only',
+  'visibilityChips.structuralPhysicalOnly': 'Physical only',
   'visibilityChips.clearAriaLabel': 'Clear {reason}',
   'visibilityChips.keptTooltip': 'Show all keeps this setting. Change it in its control.',
   'visibilityChips.resetEverything': 'Reset everything',

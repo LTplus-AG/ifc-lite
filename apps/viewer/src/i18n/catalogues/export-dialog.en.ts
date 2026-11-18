@@ -14,8 +14,7 @@ import type { TranslationValue } from '../types';
  * file extensions remain exact identifiers and stay out of this catalogue.
  */
 export const exportDialogEn = {
-  'exportDialog.warningsCount': {"one": "{count} warning", "other": "{count} warnings"},
-  'exportDialog.warningsMore': "and {count} more",
+  'exportDialog.warningsMore': "and {countDisplay} more",
   'exportDialog.trigger': 'Export IFC',
   'exportDialog.title': 'Export IFC File',
   'exportDialog.description.ifc5': 'Export model data and geometry, including current workspace placement',
@@ -64,6 +63,7 @@ export const exportDialogEn = {
   'exportDialog.noStepRecords.error': 'This model has no IFC records to write from. Choose IFC5 to export it as IFCX.',
   'exportDialog.mergeSkipped.noRecords': 'Left out of the merged file, no IFC records to write from: {models}.',
   'exportDialog.mergeSkipped.noData': 'Left out of the merged file, no data available for export: {models}.',
+  'exportDialog.sectionWarningsWholeModel': 'Warnings from models cropped at sections cover what was exported before the crop, not only the part the crop kept.',
   'exportDialog.landXml.title': 'LandXML cannot be exported as IFC',
   'exportDialog.landXml.description': 'Its terrain records remain in their original source format; no IFC entities are synthesized for export.',
   'exportDialog.landXml.error': 'LandXML is source geometry, not IFC. Export the original LandXML file instead.',

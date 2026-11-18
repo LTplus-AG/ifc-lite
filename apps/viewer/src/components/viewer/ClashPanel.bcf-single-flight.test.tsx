@@ -224,3 +224,18 @@ test('C-2 clash: a group viewpoint capture that resolves null toasts once and cr
   assert.equal(errors.mock.callCount(), 1, 'a null capture is reported, not silently dropped from the topic');
   assert.equal(useViewerStore.getState().bcfProject === null, true);
 });
+
+test('C-2 clash: a "BCF topic" that fails after capture toasts once', async () => {
+  const errors = mock.method(toast, 'error', () => undefined);
+  mock.method(console, 'error', () => undefined);
+  const addTopic = useViewerStore.getState().addTopic;
+  useViewerStore.setState({ addTopic: () => { throw new Error('BCF store refused the topic'); } });
+  try {
+    render(<ClashPanel />);
+    pressTogether(clashTopicButton());
+    capture.releaseAll();
+    await settle();
+    assert.equal(capture.frames(), 1);
+    assert.deepEqual(errors.mock.calls.map(call => call.arguments[0]), ['BCF store refused the topic'], 'the failure is reported once, not only logged');
+  } finally { useViewerStore.setState({ addTopic }); }
+});

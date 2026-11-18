@@ -15,4 +15,5 @@
 
 export { createStructuralStoreBackend } from '@ifc-lite/sdk';
 // The structural derivation (#9668) applies with these same builders, so it loads with them.
-export { applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts } from '@ifc-lite/create';
+// The consistency review (#10605) reads physical axes by the derivation's own rule.
+export { applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, structuralPhysicalAxes } from '@ifc-lite/create';

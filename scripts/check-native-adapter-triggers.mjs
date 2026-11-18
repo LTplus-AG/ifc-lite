@@ -24,7 +24,10 @@
  *     opt-in label `if`, the `labeled` type or the job-level per-PR concurrency;
  *   - the corpus is not its own scheduled/dispatch-only, sharded, bounded,
  *     judged job with a required aggregate, or the nightly failure reporter
- *     does not cover it.
+ *     does not cover it;
+ *   - the nightly route that covers what merge-queue batches skip loses its
+ *     coverage record, its range-carrying report or its bisect
+ *     (nightlyProblems in scripts/lib/native-adapter-nightly.mjs).
  *
  * Manifests are parsed by hand, so a shape this parser cannot read throws
  * (`[dependencies.foo]` sub-tables, multi-line inline tables) rather than
@@ -48,8 +51,10 @@ import { matchesAny } from './lib/ci-path-coverage.mjs';
 import { permissionBlocks, workflowAsks } from './lib/workflow-permissions.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { BATCH_EXCLUDE, BATCH_KEEP, batchGlobs, decideBatch, scriptImports } from './lib/native-adapter-batch.mjs';
+import { jobBlock, NIGHTLY_IF, nightlyProblems, WORKFLOW } from './lib/native-adapter-nightly.mjs';
 
-const WORKFLOW = '.github/workflows/geometry-platform.yml';
+export { jobBlock };
+
 const TEST_WORKFLOW = '.github/workflows/test.yml';
 /** Crates the lane builds or drives: the native consumer and the browser worker's wasm crate. */
 export const ROOT_CRATES = ['rust/retained-native', 'rust/wasm-bindings'];
@@ -158,13 +163,8 @@ export function eventPaths(text, event) {
   return paths;
 }
 
-const CORPUS_IF = "github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)";
-
-/** Text of one top-level job (from `  id:` to the next two-space key). */
-export function jobBlock(text, id) {
-  const m = text.match(new RegExp(`^ {2}${id}:\\n([\\s\\S]*?)(?=^ {2}[A-Za-z0-9_-]+:\\n|(?![\\s\\S]))`, 'm'));
-  return m ? m[1] : null;
-}
+// A bisect probe (native-adapter-bisect.yml) runs only the shards it names.
+const CORPUS_IF = `(inputs.bisect_sha && inputs.bisect_shards) || ${NIGHTLY_IF}`;
 
 /** The downloaded corpus lives in its own scheduled/dispatch job, sharded, with a required aggregate. */
 export function corpusJobProblems(text) {
@@ -179,9 +179,9 @@ export function corpusJobProblems(text) {
   const budget = corpus.match(/^ {4}timeout-minutes: (\d+)\s*$/m);
   if (!budget || Number(budget[1]) > 360) out.push(`${WORKFLOW}: native-corpus needs a literal timeout-minutes within GitHub's 360-minute limit`);
   if (!/^ {6}fail-fast: false\s*$/m.test(corpus)) out.push(`${WORKFLOW}: native-corpus matrix must set fail-fast: false so one slow shard does not hide the others`);
-  const matrix = corpus.match(/^ {8}shard: \[([0-9, ]+)\]\s*$/m);
+  const matrix = corpus.match(/^ {8}shard: \$\{\{ fromJSON\(inputs\.bisect_shards \|\| '\[([0-9, ]+)\]'\) \}\}\s*$/m);
   const shards = matrix ? matrix[1].split(',').map((s) => Number(s.trim())) : [];
-  if (shards.length === 0 || shards.some((s, i) => s !== i)) out.push(`${WORKFLOW}: native-corpus matrix shard must list 0..N-1 in order`);
+  if (shards.length === 0 || shards.some((s, i) => s !== i)) out.push(`${WORKFLOW}: native-corpus matrix shard must be \${{ fromJSON(inputs.bisect_shards || '[0, ..., N-1]') }}, listing 0..N-1 in order`);
   const select = corpus.match(/corpus-shards\.mjs shard [^\n]*--shards (\d+)/);
   if (shards.length > 0 && (!select || Number(select[1]) !== shards.length)) out.push(`${WORKFLOW}: the shard selection step's --shards must equal the matrix size (${shards.length})`);
   const compare = corpus.match(/id: compare\n([\s\S]*?)\n {6}(?:# |- )/);
@@ -203,8 +203,6 @@ export function corpusJobProblems(text) {
     }
     if (!/\[\[ "\$SHARDS_RESULT" == success \]\]/.test(result)) out.push(`${WORKFLOW}: native-corpus-result must fail when the matrix result is not success`);
   }
-  const reporter = jobBlock(text, 'report-scheduled-failure');
-  if (reporter !== null && !/^ {4}needs: \[native-adapter, native-corpus-result\]\s*$/m.test(reporter)) out.push(`${WORKFLOW}: report-scheduled-failure must need native-corpus-result so a corpus failure is reported`);
   const browser = jobBlock(text, 'browser-corpus');
   if (browser === null || !/^ {4}continue-on-error: true\s*$/m.test(browser)) out.push(`${WORKFLOW}: browser-corpus must exist and stay report-only (job-level continue-on-error)`);
   return out;
@@ -212,6 +210,20 @@ export function corpusJobProblems(text) {
 
 /** A path inside `glob`, to test coverage with a matcher. */
 const probe = (glob) => glob.replaceAll('**', 'x/x').replaceAll('*', 'x');
+
+/**
+ * Whether `globs` cover `glob`. A literal path: any matching entry. `<dir>/**`: only `**` or a literal `<base>/**` with `<dir>` at or under `<base>`,
+ * so `rust/geometry/x/x` does not cover `rust/geometry/**`. Any other wildcard: the identical entry. Conservative: an entry with a wildcard before `/**` covers no `<dir>/**`.
+ */
+function coversAll(glob, globs) {
+  if (!glob.endsWith('/**')) return /[*?]/.test(glob) ? globs.includes(glob) : matchesAny(glob, globs);
+  const dir = glob.slice(0, -3);
+  return globs.some((g) => {
+    if (!g.endsWith('/**')) return g === '**';
+    const base = g.slice(0, -3);
+    return !/[*?]/.test(base) && (dir === base || dir.startsWith(`${base}/`));
+  });
+}
 
 /** Crates a merge-queue batch must always run on. */
 const ENGINE_CRATES = [...ROOT_CRATES, 'rust/geometry', 'rust/geometry-runtime'];
@@ -236,8 +248,8 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
 
   // The opt-in label gate must not silently vanish (it would put the lane back on every PR).
   const mainJob = jobBlock(text, 'native-adapter') ?? '';
-  if (!/^ {4}if: >-\s*\n\s+inputs\.batch == true \|\|\s*\n\s+github\.event_name != 'pull_request' \|\|\s*\n\s+\(contains\(github\.event\.pull_request\.labels\.\*\.name, 'ci:native-adapter'\) &&\s*\n\s+\(github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'ci:native-adapter'\)\)\s*$/m.test(mainJob)) {
-    failures.push(`${WORKFLOW}: the native-adapter job must keep its opt-in gate: a merge-queue batch call and non-PR events run, a PR only with the ci:native-adapter label (and only that label's event restarts it)`);
+  if (!/^ {4}if: >-\s*\n\s+\(!inputs\.bisect_sha \|\| inputs\.bisect_adapter\) && \(\s*\n\s+inputs\.batch == true \|\|\s*\n\s+github\.event_name != 'pull_request' \|\|\s*\n\s+\(contains\(github\.event\.pull_request\.labels\.\*\.name, 'ci:native-adapter'\) &&\s*\n\s+\(github\.event\.action != 'labeled' \|\| github\.event\.label\.name == 'ci:native-adapter'\)\)\)\s*$/m.test(mainJob)) {
+    failures.push(`${WORKFLOW}: the native-adapter job must keep its opt-in gate: a merge-queue batch call and non-PR events run, a PR only with the ci:native-adapter label (and only that label's event restarts it), a bisect probe only with bisect_adapter`);
   }
   if (!/^ {4}types: \[[^\]]*\blabeled\b[^\]]*\]\s*$/m.test(text.slice(text.indexOf('  pull_request:'), text.indexOf('  schedule:')))) {
     failures.push(`${WORKFLOW}: on.pull_request.types must include labeled so applying the label starts the job`);
@@ -264,7 +276,7 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
       }
     }
     for (const extra of EXTRA_GLOBS) {
-      if (!matchesAny(probe(extra), pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
+      if (!coversAll(extra, pr)) failures.push(`${WORKFLOW}: ${extra} is not covered by on.pull_request.paths`);
     }
     for (const glob of exclude) {
       if (!pr.includes(glob)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE entry '${glob}' is not in on.pull_request.paths; drop it from scripts/lib/native-adapter-batch.mjs`);
@@ -280,10 +292,11 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
     // The engine core a batch must never skip: the engine crates, the native adapter, the Rust build inputs and the local actions.
     const batch = batchGlobs(pr, exclude, keep);
     for (const glob of [...ENGINE_CRATES.map((dir) => `${dir}/**`), 'native/**', ...EXTRA_GLOBS, ...[...actions].map((a) => `${a}/**`)]) {
-      if (!matchesAny(probe(glob), batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
+      if (!coversAll(glob, batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
     }
     // Every .mjs the lane runs with `node [--flags]`, and its scripts/ imports, must be able to trigger it, on a batch too.
-    for (const script of scriptImports(root, [...text.matchAll(/\bnode (?:--[\w-]+(?:=\S+)? )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {
+    // Only the job a labelled PR or a batch runs: the nightly-only jobs' scripts (nightly-range, the corpus) cannot change its verdict.
+    for (const script of scriptImports(root, [...(jobBlock(text, 'native-adapter') ?? text).matchAll(/\bnode (?:--[\w-]+(?:=\S+)? )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {
       if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
       else if (!matchesAny(script, batch)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but BATCH_EXCLUDE drops it from merge-queue batches`);
     }
@@ -291,7 +304,7 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
   const browser = jobBlock(text, 'browser-corpus');
   if (browser !== null && !/pnpm fixtures[\s\S]*browser\.mjs/.test(browser)) failures.push(`${WORKFLOW}: browser-corpus must download the corpus (pnpm fixtures) before comparing; the checkout does not hold the models`);
   failures.push(...corpusJobProblems(text));
-  if (!/^ {2}report-scheduled-failure:/m.test(text)) failures.push(`${WORKFLOW}: no report-scheduled-failure job for a failing nightly run`);
+  failures.push(...nightlyProblems(root, text));
   return failures;
 }
 

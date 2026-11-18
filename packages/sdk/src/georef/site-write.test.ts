@@ -16,6 +16,7 @@ import { HeadlessBackend } from '../headless.js';
 import { BimContext } from '../context.js';
 import { fromCompoundPlaneAngle, toCompoundPlaneAngle } from './site-angle.js';
 import { GeoreferencingError } from './types.js';
+import { planSiteWrite } from './site-write.js';
 
 function step(schema: string, data: string): Uint8Array {
   return new TextEncoder().encode(`ISO-10303-21;
@@ -53,7 +54,7 @@ async function session(schema: string, data = BASE) {
     const { store: written } = await parseModel(new TextEncoder().encode(text), { disableWorkerScan: true });
     return { text, info: extractGeoreferencingOnDemand(written) };
   };
-  return { bim, backend, reread, undo: (n: number) => undoRecordedMutationOperations(backend.getMutationView()!, n, revertRaw) };
+  return { bim, backend, store, reread, undo: (n: number) => undoRecordedMutationOperations(backend.getMutationView()!, n, revertRaw) };
 }
 
 /** IFC4 / IFC4X3 WHERE rules of IfcCompoundPlaneAngleMeasure, and IFC2X3 WR1-WR4. */
@@ -159,6 +160,17 @@ it('refuses an external positional location edit but allows repeated setSite wri
   const before = String(bim.export.ifc());
   expect(() => bim.georef.setSite({ RefLatitude: 49, RefLongitude: 10 })).toThrow(/outside setSite/);
   expect(String(bim.export.ifc())).toBe(before);
+});
+
+// #10659: a host whose undo history holds every view edit (the viewer) reads an earlier location edit as it stands.
+it("plans over an earlier positional location edit when the caller owns every edit ('all')", async () => {
+  const { backend, store } = await session('IFC4');
+  const view = backend.getOrCreateMutationView();
+  view.setPositionalAttribute(6, 9, [1, 0, 0, 0]);
+  const plan = planSiteWrite(store, view, { RefLongitude: 10 }, 'all');
+  expect(plan.result.before.RefLatitude).toBe(1);
+  expect(plan.edits).toEqual([[10, [10, 0, 0, 0]]]);
+  expect(() => planSiteWrite(store, view, { RefLongitude: 10 })).toThrow(/outside setSite/);
 });
 
 it('reports the first valid site in the same order as the exported reader (#10537)', async () => {

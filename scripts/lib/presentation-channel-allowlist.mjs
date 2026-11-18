@@ -54,6 +54,9 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // Assistant scene actions (#6907): hide routes its targets through resolvePresentationIds.
   'apps/viewer/src/lib/actions/scene-apply.ts',
   'apps/viewer/src/components/viewer/LensPanel.tsx',
+  // LensPanel's rule isolate moved into the shared native lens controls (#10525 follow-up); it still
+  // routes its rule matches through resolvePresentationIds.
+  'apps/viewer/src/lib/lens/native-controls.ts',
   // Site context card (#10481): shows/hides the model's own building among the neighbours.
   'apps/viewer/src/components/viewer/properties/SiteContextCard.tsx',
   'apps/viewer/src/components/viewer/PropertiesPanel.tsx',
@@ -71,6 +74,9 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // AUTHORING tool recorded, not guaranteed geometry-bearing in this
   // renderer.
   'apps/viewer/src/hooks/useBCF.ts',
+  // The viewpoint apply moved out of useBCF.ts into this shared native service (#10525 follow-up),
+  // with the same routing of visible-component exceptions.
+  'apps/viewer/src/hooks/bcf/apply-viewpoint.ts',
   // The validation row-focus isolate (`installFocusIsolation`) and set-level
   // isolate (`installSetIsolation`, the failed/passed/involved buttons),
   // shared by IDS and rule-set reports since #5138 split them out of
@@ -113,6 +119,15 @@ export const NO_MARKER_REQUIRED = new Map([
     'Routing both is a behaviour change that needs its own test, not a drive-by.' +
     ' The paired showEntities is the release half of that ledger: it must pass back exactly ' +
     'the ids planLensHiddenSync says the lens owns, or it would unhide something the user hid.',
+  ],
+  [
+    // The lens hidden-id sync's apply step moved here from useLens.ts (#10525 follow-up), and the same
+    // known gap moved with it.
+    'apps/viewer/src/lib/lens/native-lens.ts',
+    'KNOWN GAP, tracked on #3338 (moved from useLens.ts): showEntities/hideEntities apply the ' +
+    'planLensHiddenSync delta of the lens ownership ledger, whose ids are lens rule matches and can ' +
+    'name a geometry-less assembly. Expanding one half of the hide/show ledger without the other ' +
+    'corrupts it; routing both is a behaviour change that needs its own test.',
   ],
   [
     'apps/viewer/src/components/viewer/HierarchyPanel.tsx',

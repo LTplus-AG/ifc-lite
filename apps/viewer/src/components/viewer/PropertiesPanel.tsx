@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useViewerStore } from '@/store';
+import { revealUnderStructuralMode } from '@/lib/visibility/structural-view';
 import { mutationDenialKey, dataMutationPermission } from '@/store/mutation-permission';
 import { effectiveQuantitySets } from './properties/effectiveSets';
 import { readOccurrenceQuantityResult } from './properties/readOccurrenceQuantityResult';
@@ -64,7 +65,7 @@ import { EntityHeader } from './properties/EntityHeader';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
 import { EntityPositionSection } from './properties/EntityPositionSection';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
-import { attributesFromOverlayEntity } from './properties/overlayAttributes';
+import { attributesFromOverlayEntity, mergeAttributeMutations } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
 import { relationshipPopulationUnavailable } from './properties/effective-relationship-availability';
@@ -541,31 +542,10 @@ export function PropertiesPanel() {
         ? attributesFromOverlayEntity(overlayEntity)
         : [];
 
-    // Merge mutated attributes from bSDD
+    // Merge this session's attribute edits (bSDD, the attribute editor, numeric positional edits)
     let modelId = selectedEntity?.modelId;
-    const expressId = selectedEntity?.expressId;
     if (modelId === 'legacy') modelId = '__legacy__';
-    const mutationView = modelId ? mutationViews.get(modelId) : null;
-    if (mutationView && expressId) {
-      const mutatedAttrs = mutationView.getAttributeMutationsForEntity(expressId);
-      if (mutatedAttrs.length > 0) {
-        const baseNames = new Set(base.map(a => a.name));
-        const merged = [...base];
-        for (const ma of mutatedAttrs) {
-          if (baseNames.has(ma.name)) {
-            // Update existing attribute value
-            const idx = merged.findIndex(a => a.name === ma.name);
-            if (idx >= 0) merged[idx] = { name: ma.name, value: ma.value === '$' ? '' : ma.value };
-          } else {
-            // Add new attribute
-            merged.push({ name: ma.name, value: ma.value === '$' ? '' : ma.value });
-          }
-        }
-        return merged;
-      }
-    }
-
-    return base;
+    return mergeAttributeMutations(base, modelId ? mutationViews.get(modelId) : null, selectedEntity?.expressId, entityNode?.type ?? overlayEntity?.type);
   }, [entityNode, overlayEntity, selectedEntity, mutationViews, mutationVersion]);
 
   // Resolve the entity id used for parsed-store lookups. For overlay
@@ -636,18 +616,17 @@ export function PropertiesPanel() {
   // Select a related entity by express id (e.g. click an IfcZone in the
   // Relationships card to inspect its Name/attributes). Resolves in the same
   // model as the currently-selected entity. Frames geometric targets; a no-op
-  // frame for non-geometric ones like IfcZone (#1075).
+  // frame for non-geometric ones like IfcZone (#1075). A target the structural view mode hides shows both (#10604).
   const handleSelectRelatedEntity = useCallback((expressId: number) => {
     if (!selectedEntity) return;
     const globalId = toGlobalIdFromModels(models, selectedEntity.modelId, expressId);
     setSelectedEntityIds([globalId]);
     setSelectedEntity({ modelId: selectedEntity.modelId, expressId });
+    revealUnderStructuralMode(useViewerStore.getState(), selectedEntity.modelId, expressId);
     if (useViewerStore.getState().selectedEntitiesSet.size > 0) {
       useViewerStore.setState({ selectedEntitiesSet: new Set<string>() });
     }
-    if (cameraCallbacks.frameSelection) {
-      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-    }
+    if (cameraCallbacks.frameSelection) window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
   }, [selectedEntity, models, setSelectedEntity, setSelectedEntityIds, cameraCallbacks]);
 
   const handleSelectAssembly = useSelectAssembly();

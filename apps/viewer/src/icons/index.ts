@@ -87,3 +87,10 @@ export { default as Move } from '~icons/viewer/move';
 export { default as FollowWork } from '~icons/viewer/follow-work';
 export { default as Cost } from '~icons/viewer/cost';
 export { default as Settings } from '~icons/viewer/settings';
+export { default as StructuralBoth } from '~icons/viewer/structural-both';
+export { default as StructuralAnalytical } from '~icons/viewer/structural-analytical';
+export { default as StructuralPhysical } from '~icons/viewer/structural-physical';
+export { default as StructuralSupports } from '~icons/viewer/structural-supports';
+export { default as StructuralDerive } from '~icons/viewer/structural-derive';
+
+export { default as FileCityjson } from '~icons/viewer/file-cityjson';

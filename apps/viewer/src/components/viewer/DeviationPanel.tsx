@@ -24,8 +24,7 @@ import type { DeviationDistances } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { placementSnapshot, placementSnapshotIsCurrent } from '@/lib/model-placement/placement-snapshot';
-import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
+import { computeNativeDeviation, NativeDeviationError, NativeDeviationReadError } from '@/lib/point-cloud/compute-native-deviation';
 import { DEVIATION_RAMP_CSS_GRADIENT } from '@/lib/point-cloud/deviation-ramp';
 import { countDeviationWithinTolerance, withToleranceShare } from '@/lib/point-cloud/deviation-run-statistics';
 import { captureAnalysisStamp, type AnalysisStamp } from '@/hooks/useAnalysisStaleness';
@@ -58,7 +57,6 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   const setHalfRange = useViewerStore((s) => s.setPointCloudDeviationHalfRange);
   const computed = useViewerStore((s) => s.pointCloudDeviationComputed);
   const revision = useViewerStore((s) => s.pointCloudDeviationRevision);
-  const setComputed = useViewerStore((s) => s.setPointCloudDeviationComputed);
   const colorMode = useViewerStore((s) => s.pointCloudColorMode);
   const setColorMode = useViewerStore((s) => s.setPointCloudColorMode);
   const statistics = useViewerStore((s) => s.pointCloudDeviationStatistics);
@@ -109,7 +107,7 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
   const readRevisionRef = useRef<number | null>(computed ? (statistics?.withinTolerance ? revision : -1) : null);
   useEffect(() => {
     const readAt = readRevisionRef.current;
-    if (!computed || running || readAt === null || readAt === revision) return;
+    if (!computed || running || readAt === revision) return;
     const renderer = getGlobalRenderer();
     if (!renderer) return;
     readRevisionRef.current = revision;
@@ -205,60 +203,21 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
     setStatistics(null);
     setRunning(true);
     runStampRef.current = captureAnalysisStamp(true);
-    const t0 = performance.now();
-    const placement = placementSnapshot(useViewerStore.getState());
-    let readingAt: number | null = null;
     try {
-      noteDeviationWrite(renderer);
-      const result = await renderer.computeDeviations({ maxRange: DEVIATION_CLIP_RANGE_M });
-      if (!placementSnapshotIsCurrent(placement, useViewerStore.getState())) {
-        setError(t('deviationPanel.positionsChangedError')); return;
-      }
-      const dt = performance.now() - t0;
-      if (result.pointsProcessed === 0) {
-        setError(t('deviationPanel.noPointsError'));
-        setRunning(false);
-        return;
-      }
-      if (result.bvhTriangles === 0) {
-        setError(t('deviationPanel.noMeshError'));
-        setRunning(false);
-        return;
-      }
-      setStats({
-        triangles: result.bvhTriangles,
-        points: result.pointsProcessed,
-        durationMs: dt,
+      const { read } = await computeNativeDeviation(renderer, DEVIATION_CLIP_RANGE_M, ({ result, revision: readRevision, durationMs }) => {
+        setStats({ triangles: result.bvhTriangles, points: result.pointsProcessed, durationMs });
+        readRevisionRef.current = readRevision;
       });
-      setComputed(true);
-      // Default-pick a sensible half-range from the BVH's bbox if the
-      // user hasn't touched the slider yet (initial 5 cm is fine for
-      // small models but useless for a city-block scan).
-      if (halfRange === 0.05 && result.suggestedHalfRange !== 0.05) {
-        setHalfRange(result.suggestedHalfRange);
-      }
-      // Auto-switch the colour mode to deviation so the user sees
-      // the result immediately.
-      setColorMode('deviation');
-      // The heatmap is already on screen; the statistics follow the readback.
-      readingAt = readRevisionRef.current = useViewerStore.getState().pointCloudDeviationRevision;
-      const read = await renderer.readDeviationDistances();
-      const after = useViewerStore.getState();
-      // `computed` falls whenever the run is invalidated (placement, model
-      // removal, device loss); a readback that outlived its run is dropped.
-      if (!placementSnapshotIsCurrent(placement, after) || !after.pointCloudDeviationComputed) {
-        setError(t('deviationPanel.positionsChangedError')); return;
-      }
       setDistances(read);
     } catch (err) {
       // A COPC LOD re-run that landed during this readback superseded it
       // (#6880): the refresh below reads the new run, so this is not an error.
-      if (readingAt !== null && useViewerStore.getState().pointCloudDeviationRevision !== readingAt) return;
-      setError(err instanceof Error ? err.message : String(err));
+      if (err instanceof NativeDeviationReadError && useViewerStore.getState().pointCloudDeviationRevision !== err.revision) return;
+      setError(err instanceof NativeDeviationError ? t(err.key) : err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
     }
-  }, [halfRange, setHalfRange, setColorMode, setComputed, setStatistics, t]);
+  }, [setStatistics, t]);
 
   // Auto-compute when the user switches to the Deviation colour mode and a
   // result isn't ready. Selecting the mode alone only points the splat shader

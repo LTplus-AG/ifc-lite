@@ -108,12 +108,14 @@ fn remap_attrs_by_name(values: &[String], src_names: &[&str], tgt_names: &[&str]
 }
 
 /// Source values a by-name remap has no same-named target slot for.
-fn values_without_a_name(values: &[String], src_names: &[&str], tgt_names: &[&str]) -> usize {
-    src_names.iter().zip(values).filter(|(name, v)| !tgt_names.contains(name) && holds_value(v)).count()
+fn values_without_a_name(values: &[String], src_names: &[&str], tgt_names: &[&str], cause_carried: bool) -> usize {
+    src_names.iter().zip(values).filter(|(name, v)| {
+        !tgt_names.contains(name) && holds_value(v) && !(cause_carried && **name == "CausedBy")
+    }).count()
 }
 
 /// A slot that carries information: not `$`, `*` or empty.
-fn holds_value(slot: &str) -> bool {
+pub(crate) fn holds_value(slot: &str) -> bool {
     !matches!(slot.trim(), "" | "$" | "*")
 }
 
@@ -236,7 +238,13 @@ pub fn convert_step_line(
     let mut checks = checks;
     let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
     if let Some(checks) = checks {
+        if let Some(placement) = checks.structural.values.placement(express_id) {
+            if let Some(repointed) = crate::step_log::replace_argument(&converted, 5, &format!("#{placement}")) {
+                converted = repointed;
+            }
+        }
         converted = checks.enums.apply(converted, cto);
+        if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         (cto == "IFC4" && (cfrom != "IFC2X3" || converted.split('=').nth(1).is_some_and(|s| s.starts_with("IFCSTRUCTURAL")))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
@@ -253,31 +261,25 @@ fn convert_record(
     express_id: u32,
     mut checks: Option<&mut ConversionChecks>,
 ) -> Result<String, UnrepresentedEntityError> {
-    // Parse #ID=TYPE(attrs); (multi-line tolerant: rfind ')').
-    let trimmed = line.trim_end();
-    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
-    let eq = match body.find('=') {
-        Some(e) => e,
-        None => return Ok(line.to_string()),
+    // Comments can contain delimiters. Use the same frame as the source
+    // prepasses for commented records and keep the simple path for plain lines.
+    let (prefix, raw_type, attrs) = if let Some(frame) = line.contains("/*").then(|| crate::step_record_frame::record_frame(line)).flatten() {
+        (&line[..=frame.head.eq], frame.head.type_name(line), frame.args(line))
+    } else {
+        let trimmed = line.trim_end();
+        let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
+        let Some(eq) = body.find('=') else { return Ok(line.to_string()) };
+        let after = &body[eq + 1..];
+        let Some(open) = after.find('(') else { return Ok(line.to_string()) };
+        let Some(close) = after.rfind(')').filter(|&close| close > open) else { return Ok(line.to_string()) };
+        (&body[..=eq], after[..open].trim(), &after[open + 1..close])
     };
-    let prefix = &body[..=eq]; // "#123="
-    let after = &body[eq + 1..];
-    let popen = match after.find('(') {
-        Some(p) => p,
-        None => return Ok(line.to_string()),
-    };
-    let aclose = match after.rfind(')') {
-        Some(c) if c > popen => c,
-        _ => return Ok(line.to_string()),
-    };
-    let raw_type = after[..popen].trim();
     // Writers emit uppercase type names; only allocate for one that is not.
     let entity_type: Cow<'_, str> = if raw_type.bytes().any(|b| b.is_ascii_lowercase() || !b.is_ascii()) {
         Cow::Owned(raw_type.to_uppercase())
     } else {
         Cow::Borrowed(raw_type)
     };
-    let attrs = &after[popen + 1..aclose];
 
     // Validate before choosing any conversion branch. Otherwise a malformed
     // slot list can still receive a type rename, proxy replacement, trim, or
@@ -287,14 +289,20 @@ fn convert_record(
         return Ok(line.to_string());
     };
 
-    if let Some(body) = checks.as_deref_mut().and_then(|c| c.structural.rewrite(express_id, &entity_type, &args)) { return Ok(format!("{prefix}{body};")); }
+    if let Some(c) = checks.as_deref_mut() {
+        if let Some((body, cause_dropped)) = c.structural.rewrite(express_id, &entity_type, &args) {
+            c.attribute_values_dropped += usize::from(cause_dropped);
+            return Ok(format!("{prefix}{body};"));
+        }
+    }
+    let cause_carried = checks.as_ref().is_some_and(|c| c.structural.cause(express_id, &entity_type).is_some());
     let axis = checks.as_ref().filter(|_| cfrom == "IFC2X3" && cto == "IFC4").and_then(|c| c.structural.axes.axis(express_id, &entity_type, &args));
-    if let Some(c) = checks.as_deref_mut() { c.structural.inspect(&entity_type, &args, cfrom, cto, axis.is_some()); }
+    if let Some(c) = checks.as_deref_mut() { c.structural.inspect(express_id, &entity_type, &args, cfrom, cto, axis.is_some()); }
     if let Some(axis) = axis { return Ok(format!("{prefix}{entity_type}({},{});", args.join(","), axis)); }
     if let Some(attrs) = crate::schema_structural::attributes(&entity_type, &args, cfrom, cto) {
         if crate::schema_structural::constant_action(&entity_type) {
             if let (Some(c), Some(src), Some(tgt)) = (checks, schema_attribute_names(cfrom, &entity_type), schema_attribute_names(cto, &entity_type)) {
-                c.attribute_values_dropped += values_without_a_name(&args, src, tgt);
+                c.attribute_values_dropped += values_without_a_name(&args, src, tgt, cause_carried);
             }
         }
         return Ok(format!("{prefix}{}({attrs});", rename_type(&entity_type, cfrom, cto).unwrap_or(&entity_type)));
@@ -330,7 +338,8 @@ fn convert_record(
             let final_attrs: Cow<'_, str> = match adjust {
                 Adjust::Trim(n) if !args.is_empty() => {
                     let keep = n.min(args.len());
-                    lost = args[keep..].iter().filter(|v| holds_value(v)).count();
+                    let carried_slot = cause_carried.then_some(crate::schema_structural_carriers::CAUSED_BY);
+                    lost = args.iter().enumerate().skip(keep).filter(|(i, v)| Some(*i) != carried_slot && holds_value(v)).count();
                     Cow::Owned(args[..keep].join(","))
                 }
                 // An attribute-less record is left alone rather than fabricated
@@ -341,7 +350,7 @@ fn convert_record(
                 // `GridFrames` already wrote this one in the target's layout.
                 Adjust::ByName(_, tgt) if &*entity_type == crate::schema_grid_frames::GRID_PLACEMENT && args.len() == tgt.len() => Cow::Borrowed(attrs),
                 Adjust::ByName(src, tgt) => {
-                    lost = values_without_a_name(&args, src, tgt);
+                    lost = values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Keep => Cow::Borrowed(attrs),

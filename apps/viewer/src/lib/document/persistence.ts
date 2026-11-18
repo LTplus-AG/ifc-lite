@@ -28,7 +28,7 @@ export const documentContent: ContentDefinition<DocumentSpec> = {
   },
 };
 /** Successful raw decoding must also strip unknown nested receipt fields (#7242). */
-function portableGenerationReceipt(document: DocumentSpec): DocumentSpec | null {
+export function portableGenerationReceipt(document: DocumentSpec): DocumentSpec | null {
   if (document.aiReport?.generationReceipt === undefined) return document;
   const receipt = decodeUsageReceipt(document.aiReport.generationReceipt);
   return receipt && receipt.model === document.aiReport.model && receipt.outcome === 'completed' ? { ...document, aiReport: { ...document.aiReport, generationReceipt: receipt } } : null;

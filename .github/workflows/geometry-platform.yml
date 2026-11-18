@@ -2,14 +2,32 @@
 # Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
 # worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
 # this workflow is path-filtered to them and is intentionally NOT a required check.
-# It holds a hosted runner for about an hour per commit, so it runs nightly (the guard
-# for main, with the corpus), on demand, and on a PR only with the `ci:native-adapter`
-# label and a change it can observe. Add the label to a PR whose retained or native
-# change needs this evidence. It does not run on every push to main.
-# A merge-queue batch whose diff touches the native/retained engine also runs it,
-# through `workflow_call` from test.yml's `native-adapter` job, so a failure blocks the
-# merge via the required `Build + WASM + Rust + Node` aggregate. Which of the paths
-# below count for a batch: BATCH_EXCLUDE/BATCH_KEEP in scripts/lib/native-adapter-batch.mjs.
+# It holds a hosted runner for over an hour per commit, so it does not run on every
+# push to main.
+#
+# WHAT RUNS WHERE
+# - Merge queue (before merge, blocking): a batch whose diff touches the native/retained
+#   engine runs the native-adapter job through `workflow_call` from test.yml's
+#   `native-adapter` job, so a failure blocks the merge via the required
+#   `Build + WASM + Rust + Node` aggregate. Which of the paths below count for a batch:
+#   on.pull_request.paths less BATCH_EXCLUDE, plus BATCH_KEEP
+#   (scripts/lib/native-adapter-batch.mjs). BATCH_EXCLUDE (rust/core, the rest of
+#   rust/processing including src/style, non-retained packages/cli, packages/wasm/pkg,
+#   the viewer host, root config, ...) is checked NIGHTLY ONLY. No corpus.
+# - Labelled PR (before merge, opt-in): add the `ci:native-adapter` label to run the
+#   native-adapter job on a PR touching any path below, BATCH_EXCLUDE included. Do it for
+#   a change to an excluded path that could break retained parity. The corpus never runs
+#   on a PR; for it too: `gh workflow run geometry-platform.yml --ref <branch> -f corpus=true`.
+# - Nightly (after merge, 02:30 UTC, main's HEAD): the whole lane with no path filter:
+#   native-adapter (browser parity, the retained viewer), all corpus shards and the
+#   browser corpus. `nightly-range` lists every commit since the last green full run (the
+#   record is GitHub's own run history), so a cancelled, missing or red night widens the
+#   next range instead of dropping commits. A red night comments on one tracking issue
+#   (`ci: scheduled Geometry platform (native adapter) lane failed`, label nightly-red)
+#   with that range and the run, and native-adapter-bisect.yml then re-runs only the
+#   failed job or shards to name the first bad commit there.
+# scripts/check-native-adapter-triggers.mjs holds all of this, including that a path
+# BATCH_EXCLUDE takes off the queue is still covered nightly (lib/native-adapter-nightly.mjs).
 name: Geometry platform (native adapter)
 
 on:
@@ -118,7 +136,9 @@ on:
       - 'scripts/check-retained-corpus-summary.mjs'
       - 'scripts/lib/ci-path-coverage.mjs'
       - 'scripts/lib/native-adapter-batch.mjs'
+      - 'scripts/lib/native-adapter-nightly.mjs'
       - 'scripts/lib/is-main-entry.mjs'
+      - 'scripts/lib/workflow-job-condition.mjs'
       - 'scripts/lib/workflow-permissions.mjs'
       # check-viewer-retained-free.mjs --lazy reads the startup graph with its eagerScripts().
       - 'scripts/perf-ratchet/measure-bundle.mjs'
@@ -171,6 +191,19 @@ on:
         type: boolean
         default: false
         description: Called by a merge-queue batch's Test run
+      # native-adapter-bisect.yml: check out this commit and run only the parts named below.
+      bisect_sha:
+        type: string
+        default: ''
+        description: Bisect probe commit (full SHA)
+      bisect_adapter:
+        type: boolean
+        default: false
+        description: Bisect probe runs the native-adapter job
+      bisect_shards:
+        type: string
+        default: ''
+        description: Bisect probe runs these corpus shards (JSON array)
 
 permissions:
   contents: read
@@ -179,11 +212,13 @@ jobs:
   native-adapter:
     # A bot applying any other label must neither start nor restart this job.
     # A merge-queue batch calls it with `batch` (see on.workflow_call).
+    # A bisect probe (bisect_sha) runs it only when asked to.
     if: >-
+      (!inputs.bisect_sha || inputs.bisect_adapter) && (
       inputs.batch == true ||
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:native-adapter') &&
-      (github.event.action != 'labeled' || github.event.label.name == 'ci:native-adapter'))
+      (github.event.action != 'labeled' || github.event.label.name == 'ci:native-adapter')))
     # At job level, because a workflow-level group would let a skipped run cancel
     # this one. A new commit makes the PR's running job worthless; nightly and
     # manual runs are never cancelled. A batch run gets its own group (the caller's
@@ -197,6 +232,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
+          # Empty (the event's commit) except on a bisect probe.
+          ref: ${{ inputs.bisect_sha }}
           persist-credentials: false
       # Native witness enforcement also uses the repository's supported Node.
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -570,16 +607,18 @@ jobs:
   # below must equal every `--shards` in native-corpus-result.
   native-corpus:
     name: Native corpus (shard ${{ matrix.shard }}/8)
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)
+    # A bisect probe runs only the shards it names; native-corpus-result stays nightly and dispatch only.
+    if: (inputs.bisect_sha && inputs.bisect_shards) || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: ${{ fromJSON(inputs.bisect_shards || '[0, 1, 2, 3, 4, 5, 6, 7]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
+          ref: ${{ inputs.bisect_sha }}
           persist-credentials: false
       - name: Checkout pinned upstream SDK (fetched, never vendored)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
@@ -739,15 +778,50 @@ jobs:
           path: ${{ runner.temp }}/viewer-retained-corpus/
           if-no-files-found: error
 
-  # A red nightly or main run must not scroll by: open or update one issue.
+  # The coverage record: every first-parent commit on main since the last green full run,
+  # which this run covers. Not needed by the lane, so a broken record never stops it; it
+  # fails loudly on the tracking issue instead. The artifact is what the bisect reads.
+  nightly-range:
+    name: Nightly coverage range
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.corpus == true))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      detail: ${{ steps.range.outputs.detail }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - name: Name the commits this run covers
+        id: range
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/native-adapter-nightly.mjs range --out "$RUNNER_TEMP/nightly-range.json"
+      - name: Keep the coverage record for the bisect
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-range
+          path: ${{ runner.temp }}/nightly-range.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # One tracking issue for every red night, with the commit range since the last green
+  # full run; native-adapter-bisect.yml follows this run and posts the first bad commit there.
   report-scheduled-failure:
-    needs: [native-adapter, native-corpus-result]
-    if: always() && github.event_name == 'schedule' && (needs.native-adapter.result != 'success' || needs.native-corpus-result.result != 'success')
+    needs: [nightly-range, native-adapter, native-corpus-result]
+    if: always() && github.event_name == 'schedule' && (needs.nightly-range.result != 'success' || needs.native-adapter.result != 'success' || needs.native-corpus-result.result != 'success')
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
       workflow_name: Geometry platform (native adapter)
-      jobs: native-adapter, native-corpus-result
-      result: native-adapter=${{ needs.native-adapter.result }}, native-corpus=${{ needs.native-corpus-result.result }}
+      jobs: nightly-range, native-adapter, native-corpus-result
+      result: nightly-range=${{ needs.nightly-range.result }}, native-adapter=${{ needs.native-adapter.result }}, native-corpus=${{ needs.native-corpus-result.result }}
+      detail: ${{ needs.nightly-range.outputs.detail }}
+      labels: nightly-red
     permissions:
       actions: read
       contents: read

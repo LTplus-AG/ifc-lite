@@ -45,6 +45,22 @@ it('#10555 hosts a session\'s first windows without reference-slot queries and s
   } finally { slots.mockRestore(); }
 });
 
+it('#10555 returns only one host\'s voids (plus unresolved) for a small class, as for a large one', async () => {
+  const s = await newStorey();
+  const wall = (y: number) => addWallToStore(s.editor, s.anchor, { Start: [0, y, 0], End: [6, y, 0], Thickness: 0.2, Height: 3 }).wallId;
+  const [wall1, wall2] = [wall(0), wall(5)];
+  const window = (host: number) => addHostedElementInStore(s.store, s.editor, host, { kind: 'window', params: { Offset: 2, Sill: 0.9, Width: 1, Height: 1.2 } });
+  const [first, second] = [window(wall1), window(wall2)];
+  const voidOf = (opening: number) => [...new AnchorEntityReader(s.store, s.view).ids('IFCRELVOIDSELEMENT')]
+    .find(id => s.view.getNewEntity(id)!.attributes[5] === `#${opening}`)!;
+  expect([...hostOpeningCandidates(s.store, wall1, s.view)]).toEqual([voidOf(first.openingId)]);
+  expect([...hostOpeningCandidates(s.store, wall2, s.view)]).toEqual([voidOf(second.openingId)]);
+  expect(readHostOpeningExtents(s.store, wall1, s.view).cuts.map(cut => cut.openingId)).toEqual([first.openingId]);
+  expect(readHostOpeningExtents(s.store, wall2, s.view).cuts.map(cut => cut.openingId)).toEqual([second.openingId]);
+  const unresolved = s.view.createEntity('IfcRelVoidsElement', ['unresolved', null, null, null, null, '#999999']).expressId;
+  expect([...hostOpeningCandidates(s.store, wall1, s.view)]).toEqual([voidOf(first.openingId), unresolved]);
+});
+
 it('#10555 keeps bounded candidate queries for a large void class', async () => {
   const s = await sourceOverride();
   const crowd = crowdVoidClass(s);

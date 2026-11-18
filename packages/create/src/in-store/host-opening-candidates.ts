@@ -35,7 +35,8 @@ function openingOverrideIds(store: IfcDataStore, view: MutablePropertyView): num
  * the limit. Creations are counted lazily first, so the canonical walk never
  * copies a large authored class; a large source bucket stops at the limit.
  * Kept separate from the projection path: the first opening of a session
- * compiles and runs only this walk (#10555). */
+ * compiles and runs only this walk (#10555). It is NOT filtered by host:
+ * readHostOpeningExtents checks each RelatingBuildingElement itself. */
 export function smallVoidClass(reader: AnchorEntityReader, view?: MutablePropertyView | null): number[] | null {
   if (!view || typeof view.readNewEntityKinds !== 'function') return null;
   let authored = 0;
@@ -51,8 +52,10 @@ export function smallVoidClass(reader: AnchorEntityReader, view?: MutablePropert
 export function hostOpeningCandidates(store: IfcDataStore, host: number, view?: MutablePropertyView | null): Iterable<number> {
   const reader = new AnchorEntityReader(store, view);
   if (!view || typeof view.getNewEntityReferenceSlotIds !== 'function') return reader.ids(TYPE);
+  // Same contract as the projection path below: this host's voids plus
+  // unresolved targets, in canonical order. Unreadable rows stay candidates.
   const small = smallVoidClass(reader, view);
-  if (small) return small;
+  if (small) return small.filter(id => { const target = refId(reader.entity(id)?.attributes[4]); return target === null || target === host; });
   const signature = sourceInventorySignature(store);
   let source = sources.get(store);
   if (!source || signature.some((v, i) => v !== source!.signature[i])) {

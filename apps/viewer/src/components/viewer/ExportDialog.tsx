@@ -36,7 +36,7 @@ import { stepExportSummary } from '@/lib/export/step-export-summary';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
-import { formatLocaleNumber, getLocale, useTranslation } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -59,7 +59,7 @@ import { activeChangesJsonMutations, exportChangesJson } from './export-changes-
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
 import { hasRetainedSectionExport, RETAINED_EXACT_ONLY_REASON, hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
-import { stepExportResult } from './export-step-result';
+import { mergedExportSummary, stepExportResult } from './export-step-result';
 import { ExportDialogScopeOptions } from './export-dialog-scope-options';
 import { ExportDialogSchemaOptions } from './export-dialog-schema-options';
 import { ExportDialogToggleOptions } from './export-dialog-toggle-options';
@@ -373,16 +373,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         // Named for the first model: `keep-first` makes its IfcProject the merged file's.
         downloadFile(result.content, modelExportFilename(mergeInputs[0]?.name ?? '', 'ifc', '_merged'), 'text/plain');
 
-        const skipNotice = mergeSkipNotice(skipped, t);
-        // The cropped sources' warnings come from their export before the crop; they carry no
-        // entity ids to filter by, so the toast says they cover that export, not only what was kept.
-        const notes = [skipNotice, prepared.warnings.length > 0 ? t('exportDialog.sectionWarningsWholeModel') : '']
-          .filter(Boolean).join(' ');
-        const msg = `Merged ${result.stats.modelCount} models, ${formatLocaleNumber(getLocale(), result.stats.totalEntityCount)} entities`
-          + (result.stats.normalizedModelCount > 0
-            ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
-            : '')
-          + (notes ? `. ${notes}` : '');
+        const msg = mergedExportSummary(result.stats, mergeSkipNotice(skipped, t), prepared.warnings.length > 0, t);
         exportedFormat = 'ifc';
         return stepExportResult(msg, [...prepared.warnings, ...result.stats.warnings], t);
       }

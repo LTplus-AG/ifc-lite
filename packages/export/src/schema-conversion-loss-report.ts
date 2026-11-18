@@ -27,6 +27,7 @@
  */
 
 import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
+import { structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -178,7 +179,10 @@ export interface ConversionLossReport {
   fromSchema: IfcSchemaVersion;
   toSchema: IfcSchemaVersion;
   /** Every non-identity, non-plain-`renamed` entry: `lossy`, `proxied` and
-   *  `blocked` types the store actually contains at least one instance of. */
+   *  `blocked` types the store actually contains at least one instance of.
+   *  A type whose records lose different attributes, because an IFC2X3 <-> IFC4
+   *  structural carrier brings some of them back for some records, has one
+   *  entry per set of attributes lost (#9668). */
   entries: readonly ConversionLossEntry[];
   /** True when a full-fidelity export exists (no `blocked` entries) but at
    *  least one type is `lossy` or `proxied`. */
@@ -215,25 +219,60 @@ function describeEntry(entry: ConversionLossEntry): string {
 }
 
 /**
+ * One type's entries: its records grouped by the dropped attributes no carrier
+ * restores for them. A `lossy` record that loses nothing then has no entry.
+ */
+function splitByRestored(
+  sourceType: string,
+  expressIds: readonly number[],
+  info: EntityConversionInfo,
+  restored: ReadonlyMap<number, ReadonlySet<string>>,
+): ConversionLossEntry[] {
+  const groups = new Map<string, { dropped: string[]; ids: number[] }>();
+  for (const id of expressIds) {
+    const back = restored.get(id);
+    const dropped = back ? info.droppedAttributes.filter((a) => !back.has(a)) : [...info.droppedAttributes];
+    if (info.kind === 'lossy' && info.droppedAttributes.length && !dropped.length) continue;
+    const key = dropped.join(',');
+    const group = groups.get(key) ?? { dropped, ids: [] };
+    group.ids.push(id);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(({ dropped, ids }) => ({
+    ...info,
+    droppedAttributes: dropped,
+    sourceType,
+    count: ids.length,
+    expressIds: ids.length === expressIds.length ? expressIds : ids,
+  }));
+}
+
+/**
  * A complete, per-type loss report for converting every entity `store`
  * contains from `fromSchema` to `toSchema` — no export attempted, so this
  * never throws and always covers the whole file, not just the first record a
  * full export would have aborted on.
  */
 export function analyzeConversionLoss(
-  store: Pick<IfcDataStore, 'entityIndex'>,
+  store: Pick<IfcDataStore, 'entityIndex'> & Partial<Pick<IfcDataStore, 'source'>>,
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,
 ): ConversionLossReport {
   const entries: ConversionLossEntry[] = [];
   if (fromSchema !== toSchema) {
+    const typed: [string, readonly number[], EntityConversionInfo][] = [];
     // @raw-entity-enumeration-ok this report accepts only a source entityIndex and describes the parsed file's schema-conversion losses
     for (const [sourceType, expressIds] of store.entityIndex.byType) {
       if (expressIds.length === 0) continue;
       const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
-      if (info.kind === 'identity' || info.kind === 'renamed') continue;
-      entries.push({ ...info, sourceType: sourceType.toUpperCase(), count: expressIds.length, expressIds });
+      if (info.kind !== 'identity' && info.kind !== 'renamed') typed.push([sourceType.toUpperCase(), expressIds, info]);
     }
+    // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost. Needs the source bytes.
+    const { source } = store;
+    const restored = source
+      ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema, typed.flatMap(([, ids, info]) => (info.droppedAttributes.length ? ids : [])))
+      : new Map<number, ReadonlySet<string>>();
+    for (const [sourceType, expressIds, info] of typed) entries.push(...splitByRestored(sourceType, expressIds, info, restored));
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
   const hasBlocking = entries.some((e) => e.kind === 'blocked');

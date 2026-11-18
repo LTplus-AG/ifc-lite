@@ -14,6 +14,9 @@ import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 
 export type ConversionMode = 'upgrade' | 'downgrade' | null;
 
+/** What the prepasses read: the source index and bytes. */
+export type SourceStore = Pick<IfcDataStore, 'entityIndex' | 'source'>;
+
 /** IFC2X3 -> IFC4 is an upgrade, IFC4 -> IFC2X3 a downgrade; the prepasses run for nothing else. */
 export const conversionMode = (from: string, to: string): ConversionMode =>
   from === 'IFC2X3' && to === 'IFC4' ? 'upgrade' : from === 'IFC4' && to === 'IFC2X3' ? 'downgrade' : null;
@@ -22,8 +25,17 @@ export const conversionMode = (from: string, to: string): ConversionMode =>
 export const namesWithheld = (args: readonly string[] | undefined, withheld: ReadonlySet<number> | undefined): boolean =>
   !!withheld?.size && !!args?.some((a) => referencesAnyExpressId(a, withheld));
 
-/** A target record body, `null` for a source record the target leaves out, and what the change loses or moves. */
-export interface StructuralRewrite { readonly body: string | null; readonly losses: readonly string[] }
+/**
+ * A target record body, `null` for a source record the target leaves out, and
+ * what the change loses or moves. `restored` names, per source record id, the
+ * attributes the target holds elsewhere and the reverse conversion writes back;
+ * the loss report leaves them out (`structuralRoundTrip`).
+ */
+export interface StructuralRewrite {
+  readonly body: string | null;
+  readonly losses: readonly string[];
+  readonly restored?: readonly (readonly [number, readonly string[]])[];
+}
 
 const SUBTYPES = new Map<string, boolean>();
 /** Whether `keyword` names a subtype of `parent` in `schema`, memoized per triple. */
@@ -43,7 +55,7 @@ export function isSubtype(schema: 'IFC2X3' | 'IFC4', keyword: string | undefined
 /** Source records read by id, each decoded once. Lives only for one prepass. */
 export class SourceRecords {
   private readonly cache = new Map<number, readonly string[] | undefined>();
-  constructor(private readonly store: IfcDataStore) {}
+  constructor(private readonly store: SourceStore) {}
 
   /**
    * How many source records name each of `targets`, outside strings and

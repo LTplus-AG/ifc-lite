@@ -1,11 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_axes.rs (#9668). */
-import type { IfcDataStore } from '@ifc-lite/parser';
 import { readStepSlots } from './step-argument-parser.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { decodeRange } from './source-ref-bounds.js';
 // A cycle with the source module, which reads lists here; only functions cross it, called after load.
-import { slotRef, slotUnset } from './schema-converter-structural-source.js';
+import { slotRef, slotUnset, type SourceStore } from './schema-converter-structural-source.js';
 
 export function listItems(token: string | undefined): readonly string[] | null {
   if (token === undefined) return null;
@@ -36,7 +35,7 @@ export class StructuralAxes {
     }
   }
 
-  fromStore(store: IfcDataStore): void {
+  fromStore(store: SourceStore): void {
     for (const type of ['IFCRELASSOCIATESPROFILEPROPERTIES', 'IFCDIRECTION']) {
       // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export
       for (const id of store.entityIndex.byType.get(type) ?? []) {

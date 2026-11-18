@@ -5,6 +5,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::schema_structural_axes::{list_items, reference, unset};
 
 const OBJECT_PLACEMENT: usize = ifc_lite_core::slot::IfcProduct::OBJECT_PLACEMENT.index();
+const RELATED_OBJECTS: usize = ifc_lite_core::slot::IfcRelAssignsToGroup::RELATED_OBJECTS.index();
+const RELATING_GROUP: usize = ifc_lite_core::slot::IfcRelAssignsToGroup::RELATING_GROUP.index();
 const REP_ITEMS: usize = 3;
 const PROPERTY_VALUE: usize = 2;
 
@@ -150,8 +152,8 @@ impl StructuralValues {
         for rel in source.ids("IFCRELASSIGNSTOGROUP") {
             let Some(args) = source.slots(rel) else { continue; };
             // RelatedObjects and RelatingGroup, read at any arity as the TypeScript twin does.
-            let Some(model) = args.get(6).and_then(|group| reference(group)).filter(|&id| source.kind(id, ANALYSIS_MODEL)) else { continue; };
-            let listed = args.get(4).and_then(|related| list_items(related));
+            let Some(model) = args.get(RELATING_GROUP).and_then(|group| reference(group)).filter(|&id| source.kind(id, ANALYSIS_MODEL)) else { continue; };
+            let listed = args.get(RELATED_OBJECTS).and_then(|related| list_items(related));
             if listed.as_ref().is_none_or(|items| items.iter().any(|item| reference(item).is_none())) { unread.insert(model); }
             // The readable items of an unread grouping still count as grouped by this model.
             for item in listed.iter().flatten().filter_map(|item| reference(item)) {

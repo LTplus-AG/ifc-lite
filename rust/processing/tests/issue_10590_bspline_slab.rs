@@ -59,6 +59,29 @@ fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
+/// Strict separating-axis test in XY: touching edges/vertices have no area.
+fn projected_interiors_overlap(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> bool {
+    for triangle in [a, b] {
+        for i in 0..3 {
+            let edge = sub(triangle[(i + 1) % 3], triangle[i]);
+            let length = edge[0].hypot(edge[1]);
+            let axis = [-edge[1] / length, edge[0] / length];
+            let interval = |t: &[[f64; 3]; 3]| {
+                t.iter().map(|p| p[0] * axis[0] + p[1] * axis[1]).fold(
+                    (f64::INFINITY, f64::NEG_INFINITY),
+                    |(lo, hi), p| (lo.min(p), hi.max(p)),
+                )
+            };
+            let (a_min, a_max) = interval(a);
+            let (b_min, b_max) = interval(b);
+            if a_max.min(b_max) - a_min.max(b_min) <= 1e-9 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Signed volume by the divergence theorem: positive when closed and facing out.
 fn signed_volume(tris: &[[[f64; 3]; 3]]) -> f64 {
     tris.iter()
@@ -86,7 +109,7 @@ fn issue_10590_flat_bspline_bottom_is_trimmed_to_the_slab() {
         .collect();
     assert!(!bottom.is_empty(), "trimmed bottom must be present");
     let mut projected_area = 0.0;
-    for [a, b, c] in bottom {
+    for [a, b, c] in &bottom {
         let normal = cross(sub(*b, *a), sub(*c, *a));
         assert!(normal[2] < 0.0, "bottom triangle {a:?} {b:?} {c:?} faces up");
         projected_area -= normal[2] * 0.5;
@@ -95,6 +118,15 @@ fn issue_10590_flat_bspline_bottom_is_trimmed_to_the_slab() {
         (projected_area - 8.0).abs() < 1e-4,
         "trimmed bottom projected area is {projected_area} m2, not 8 m2"
     );
+    // Containment + full summed area + disjoint interiors proves coverage.
+    for (i, a) in bottom.iter().enumerate() {
+        for b in &bottom[i + 1..] {
+            assert!(
+                !projected_interiors_overlap(a, b),
+                "bottom triangles overlap in projection: {a:?}, {b:?}"
+            );
+        }
+    }
 }
 
 #[test]

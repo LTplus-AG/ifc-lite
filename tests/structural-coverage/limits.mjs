@@ -89,6 +89,7 @@ const axisPolicy = (entity) => ({
   row: `IFC4/${entity}`, level: 'convert', kind: 'policy', problem: AXIS_LOST,
   cite: 'IFC2X3 has no Axis (IFC2X3_TC1.exp:7281); its only slot is IfcRelAssociatesProfileProperties.ProfileOrientation (IFC2X3_TC1.exp:6548), whose RelatingProfileProperties is required. The source has no IfcProfileProperties, and the downgrade never points a required entity reference at a record it makes up (Ifc2x3SlotFill, #4714; #10597)',
   holds: (f, m) => recordOf(f, m)?.type === entity.toUpperCase() && f.slot('IFC2X3', entity, 'Axis') === null
+    && f.slot('IFC2X3', 'IfcRelAssociatesProfileProperties', 'ProfileOrientation') !== null
     && f.required('IFC2X3', 'IfcRelAssociatesProfileProperties', 'RelatingProfileProperties')
     && f.file(m[1]).count('IFCPROFILEPROPERTIES') === 0,
 });

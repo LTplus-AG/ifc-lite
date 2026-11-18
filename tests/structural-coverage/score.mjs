@@ -294,7 +294,7 @@ export async function main(argv, { evaluate = evaluateCorpus } = {}) {
   let summary;
   let limitIssues;
   try {
-    ({ summary, limitIssues } = await evaluate(catalogue, { offline: values.offline === true }));
+    ({ summary, limitIssues = [] } = await evaluate(catalogue, { offline: values.offline === true }));
   } catch (e) {
     console.error(`score: ${e.message}`);
     return 2;

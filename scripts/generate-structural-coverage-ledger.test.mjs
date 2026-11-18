@@ -152,22 +152,29 @@ test('score.mjs: a stale limit fails the run with exit 1 and names the label; th
   const stale = { row: two[0].id, level: 'convert', kind: 'schema', problem: /^never reported$/, cite: 'test', holds: () => true };
   const error = t.mock.method(console, 'error', () => {});
   t.mock.method(console, 'log', () => {});
-  const run = async (limits) => {
+  const run = async (limits, args = []) => {
     error.mock.resetCalls();
     const evaluate = async () => {
       const cells = cellsOf({});
       return { summary: score(two, cells), limitIssues: markLimits(cells, {}, limits) };
     };
-    const code = await main(['--quiet', '--out', out], { evaluate });
+    const code = await main(['--quiet', '--out', out, ...args], { evaluate });
     return { code, errors: error.mock.calls.map((c) => String(c.arguments[0])).join('\n') };
   };
   try {
     const failed = await run([stale]);
-    assert.equal(failed.code, 1);
+    assert.equal(failed.code, 1, failed.errors);
     assert.match(failed.errors, /Limits out of date \(tests\/structural-coverage\/limits\.mjs\)/);
     assert.match(failed.errors, new RegExp(`${two[0].id} convert \\(schema\\) labels no problem the probe reported`));
     assert.equal(JSON.parse(readFileSync(out, 'utf8')).total.max, 2, 'the summary is written for inspection');
     assert.deepEqual(await run([]), { code: 0, errors: '' }, 'without the stale label the same run exits 0');
+    // CI runs with --check: a ratchet that holds must not mask the stale label.
+    const baseline = join(dir, 'baseline.json');
+    writeFileSync(baseline, readFileSync(out, 'utf8'));
+    const checked = await run([stale], ['--check', baseline]);
+    assert.equal(checked.code, 1, checked.errors);
+    assert.match(checked.errors, /Limits out of date/);
+    assert.deepEqual(await run([], ['--check', baseline]), { code: 0, errors: '' }, 'the ratchet itself holds');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

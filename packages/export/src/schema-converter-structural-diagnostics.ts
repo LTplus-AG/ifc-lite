@@ -8,8 +8,8 @@ import { CAUSED_BY, StructuralCarriers } from './schema-converter-structural-car
 import { carriedAttributes, slotUnset, SourceRecords } from './schema-converter-structural-source.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
-import { StructuralVarying } from './schema-converter-structural-varying.js';
-import { readStepSlots } from './step-argument-parser.js';
+import { StructuralVarying, varyingTarget } from './schema-converter-structural-varying.js';
+import { readStepSlots, STEP_RECORD } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 
 const NONE: ReadonlySet<string> = new Set();
@@ -140,7 +140,7 @@ export class StructuralDiagnostics {
    * the export after `fromStore` (`analyzeConversionLoss`).
    */
   held(id: number, withheld: ReadonlySet<number> | undefined): readonly string[] {
-    const entity = this.source?.type(id), args = this.source?.slots(id);
+    const entity = this.source?.type(id), args = this.rewritten(id);
     if (!entity || !args) return [];
     if (this.causes(entity, args, withheld) || this.thickness.holds(id, entity, args, withheld)) return carriedAttributes('upgrade', entity);
     const downgrade = this.carriers.holdsLoadCase(entity, args, withheld) || this.axes.holds(id, args, withheld);
@@ -148,16 +148,25 @@ export class StructuralDiagnostics {
   }
 
   /**
-   * IFC2X3 -> IFC4: whether the export reports the CausedBy of varying action
-   * `id`: set, and held by no 'Causes' relationship, so a converted action
-   * loses it and an unconverted one keeps it only in its IFC2X3 record. The
-   * type classifier calls a varying action identity, so the preview asks here.
+   * IFC2X3 -> IFC4: the type the export writes varying action `id` as when it
+   * reports its CausedBy: set, and held by no 'Causes' relationship, so a
+   * converted action loses it and an unconverted one keeps it only in its
+   * IFC2X3 record. Null when it reports nothing. The type classifier calls a
+   * varying action identity, so the preview asks here.
    */
-  strandsCause(id: number, withheld: ReadonlySet<number> | undefined): boolean {
-    const entity = this.source?.type(id), args = this.source?.slots(id);
-    if (!entity || !args || slotUnset(args[CAUSED_BY])) return false;
+  strandedAs(id: number, withheld: ReadonlySet<number> | undefined): string | null {
+    const entity = this.source?.type(id), args = this.rewritten(id);
+    if (!entity || !args || slotUnset(args[CAUSED_BY])) return null;
+    const unconverted = this.varying.staysUnconverted(entity, args);
     // A converted action naming a point reaction is held by 'Causes'; an unconverted one naming none keeps it unreported.
-    return this.varying.staysUnconverted(entity, args) === (this.carriers.causeOf(entity, args, withheld) !== null);
+    if (unconverted !== (this.carriers.causeOf(entity, args, withheld) !== null)) return null;
+    return unconverted ? entity : varyingTarget(entity) ?? null;
+  }
+
+  /** The slots of source record `id` when the writer converts it at all (`STEP_RECORD`); it passes any other through untouched. */
+  private rewritten(id: number): readonly string[] | undefined {
+    const text = this.source?.text(id);
+    return text !== undefined && STEP_RECORD.test(text) ? this.source?.slots(id) : undefined;
   }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }

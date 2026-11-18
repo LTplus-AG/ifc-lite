@@ -97,12 +97,18 @@ export class SourceRecords {
     return id === null ? undefined : this.store.entityIndex.byId.get(id)?.type.toUpperCase();
   }
 
+  /** The source text of record `id`. */
+  text(id: number): string | undefined {
+    // @raw-entity-enumeration-ok same unedited source-only prepass
+    const entry = this.store.entityIndex.byId.get(id);
+    return entry ? decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength) : undefined;
+  }
+
   slots(id: number | null): readonly string[] | undefined {
     if (id === null) return undefined;
     if (!this.cache.has(id)) {
-      // @raw-entity-enumeration-ok same unedited source-only prepass
-      const entry = this.store.entityIndex.byId.get(id);
-      this.cache.set(id, entry ? readStepSlots(decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength))?.slots : undefined);
+      const text = this.text(id);
+      this.cache.set(id, text === undefined ? undefined : readStepSlots(text)?.slots);
     }
     return this.cache.get(id);
   }

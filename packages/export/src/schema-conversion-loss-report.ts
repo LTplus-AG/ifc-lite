@@ -219,8 +219,8 @@ function describeEntry(entry: ConversionLossEntry): string {
 interface StructuralPreview {
   /** The ids of `type` whose `dropped` attributes the export's carriers do not all keep. */
   uncarried(type: string, ids: readonly number[], dropped: readonly string[]): readonly number[];
-  /** The ids of an IFC2X3 varying action type, which classifies as identity, whose CausedBy the upgrade reports. */
-  stranded(type: string, ids: readonly number[]): readonly number[];
+  /** Target type -> the ids of an IFC2X3 varying action type, which classifies as identity, whose CausedBy the upgrade reports. */
+  stranded(type: string, ids: readonly number[]): ReadonlyMap<string, number[]>;
 }
 
 /**
@@ -242,8 +242,9 @@ function structuralPreview(
   const diagnostics = new StructuralDiagnostics();
   try {
     diagnostics.fromStore(full, fromSchema, toSchema);
-  } catch {
+  } catch (error) {
     // The export refuses this file (e.g. StructuralVarying's shared load configuration), so no carrier keeps anything.
+    console.warn(`[analyzeConversionLoss] structural prepass failed, reporting without carriers: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
   // Armed as the export arms it; `held` only asks, so no id is ever allocated.
@@ -255,8 +256,18 @@ function structuralPreview(
         const held = diagnostics.held(id, withheld);
         return !dropped.every((a) => held.includes(a));
       }),
-    stranded: (type, ids) => mode === 'upgrade' && carriedAttributes(mode, type).includes('CausedBy')
-      ? ids.filter((id) => diagnostics.strandsCause(id, withheld)) : [],
+    stranded: (type, ids) => {
+      const byTarget = new Map<string, number[]>();
+      if (mode !== 'upgrade' || !carriedAttributes(mode, type).includes('CausedBy')) return byTarget;
+      for (const id of ids) {
+        const target = diagnostics.strandedAs(id, withheld);
+        if (!target) continue;
+        const list = byTarget.get(target) ?? [];
+        list.push(id);
+        byTarget.set(target, list);
+      }
+      return byTarget;
+    },
   };
 }
 
@@ -281,8 +292,9 @@ export function analyzeConversionLoss(
       const type = sourceType.toUpperCase();
       const info = classifyEntityTypeConversion(type, fromSchema, toSchema);
       if (info.kind === 'identity' || info.kind === 'renamed') {
-        const expressIds = preview?.stranded(type, allIds) ?? [];
-        if (expressIds.length) entries.push({ ...info, kind: 'lossy', droppedAttributes: ['CausedBy'], sourceType: type, count: expressIds.length, expressIds });
+        for (const [targetType, expressIds] of preview?.stranded(type, allIds) ?? []) {
+          entries.push({ targetType, kind: 'lossy', droppedAttributes: ['CausedBy'], sourceType: type, count: expressIds.length, expressIds });
+        }
         continue;
       }
       const expressIds = preview && info.kind === 'lossy' ? preview.uncarried(type, allIds, info.droppedAttributes) : allIds;

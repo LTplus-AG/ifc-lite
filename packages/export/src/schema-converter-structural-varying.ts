@@ -33,6 +33,9 @@ const TO_IFC2X3 = 'an IFC4 curve or surface action with an IfcStructuralLoadConf
 
 type Kind = (typeof KINDS)[number];
 
+/** The IFC4 action an IFC2X3 varying action converts to. */
+export const varyingTarget = (ifc2x3: string): string | undefined => KINDS.find((k) => k.ifc2x3 === ifc2x3)?.ifc4;
+
 /**
  * Converts varying actions in both directions, and only those that convert
  * back: one test (`convertible`) decides both, so a configuration this writes

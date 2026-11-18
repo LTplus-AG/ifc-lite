@@ -268,21 +268,22 @@ impl GeometryRouter {
 
     /// Drain and return the per-host opening diagnostic map.
     pub fn take_host_opening_diagnostics(&self) -> FxHashMap<u32, HostOpeningDiagnostic> {
-        self.take_host_opening_report().0
+        std::mem::take(&mut *self.host_opening_diagnostics.borrow_mut())
     }
 
     /// Drain opening diagnostics and count successful rectangular cuts with unchanged area and volume.
+    /// Measurements survive a prior map-only drain.
     pub fn take_host_opening_report(&self) -> (FxHashMap<u32, HostOpeningDiagnostic>, u64) {
-        let diagnostics = std::mem::take(&mut *self.host_opening_diagnostics.borrow_mut());
+        let diagnostics = self.take_host_opening_diagnostics();
         let measurements = std::mem::take(&mut *self.unchanged_rectangular_cuts.borrow_mut());
-        let no_ops = measurements.into_iter().filter(|(id, unchanged)| {
-            *unchanged && diagnostics.get(id).is_some_and(|host| host.csg_failure_count == 0)
-        }).count() as u64;
+        let no_ops = measurements.into_values().filter(|unchanged| *unchanged).count() as u64;
         (diagnostics, no_ops)
     }
 
     pub(crate) fn record_rectangular_cut_measure(&self, host_id: u32, unchanged: bool) {
-        // A change to any accepted part rules out a silent no-op for the host.
+        // A failure or change to any accepted part rules out a silent no-op.
+        let unchanged = unchanged && self.host_opening_diagnostics.borrow().get(&host_id)
+            .is_some_and(|host| host.csg_failure_count == 0);
         self.unchanged_rectangular_cuts.borrow_mut().entry(host_id)
             .and_modify(|all_unchanged| *all_unchanged &= unchanged)
             .or_insert(unchanged);
@@ -391,3 +392,7 @@ pub(crate) enum ClassificationKind {
     Diagonal,
     NonRectangular,
 }
+
+#[cfg(test)]
+#[path = "diagnostics/recording_tests.rs"]
+mod recording_tests;

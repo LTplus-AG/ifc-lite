@@ -28,6 +28,9 @@ impl GeometryRouter {
         if failures.is_empty() {
             return;
         }
+        if let Some(unchanged) = self.unchanged_rectangular_cuts.borrow_mut().get_mut(&host_id) {
+            *unchanged = false;
+        }
         let mut log = self.host_opening_diagnostics.borrow_mut();
         let entry = log.entry(host_id).or_default();
         entry.csg_failure_count += failures.len();

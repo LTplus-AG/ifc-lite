@@ -9,6 +9,7 @@ import { setImmediate } from 'node:timers/promises';
 import type { Renderer } from '@ifc-lite/renderer';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { configuredView } from '@/test/agent-tools-fixture';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
@@ -139,9 +140,21 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const refused = await execute('exports.mergedStep', { ...options, model_ids: ['A', 'missing'], unit_reconciliation: 'assume-shared' });
     assert.equal(refused.isError, true);
     assert.deepEqual(data<{ artifacts: unknown[] }>(await dispatchMainViewerTool(host, 'viewer_artifacts', {})).artifacts, []);
-    const merged = data<{ result: { diagnostics_json: string } }>(await execute('exports.mergedStep', { ...options, model_ids: ['A', 'B'], unit_reconciliation: 'assume-shared' }));
+    // The fixture gives both models the same wall names and GlobalIds (the clash tests need that), and the
+    // merge de-duplicates by GlobalId. Give B's wall its own identity and mark one wall per model.
+    const views = new Map(['A', 'B'].map(id => {
+      const store = useViewerStore.getState().models.get(id)!.ifcDataStore!;
+      const view = configuredView(store, id);
+      view.setAttribute(1, 'Name', `Merged marker ${id}`);
+      if (id === 'B') view.setAttribute(1, 'GlobalId', '0001bbbbbbbbbbbbbbbbbb');
+      return [id, view] as const;
+    }));
+    useViewerStore.setState({ mutationViews: views });
+    const merged = data<{ result: { artifact: { artifact_id: string }; diagnostics_json: string } }>(await execute('exports.mergedStep', { ...options, model_ids: ['A', 'B'], unit_reconciliation: 'assume-shared' }));
     const diagnostics = JSON.parse(merged.result.diagnostics_json) as { stats: { modelCount: number }; skipped: unknown[] };
     assert.equal(diagnostics.stats.modelCount, 2); assert.deepEqual(diagnostics.skipped, []);
+    const mergedText = Buffer.from(data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: merged.result.artifact.artifact_id })).data, 'base64').toString('utf8');
+    for (const id of ['A', 'B']) assert.equal(mergedText.split(`Merged marker ${id}`).length - 1, 1, id);
   });
   it('runs native Rules filters, rejects stale configuration, and pages the published result', async () => {
     const state = data<{ result: { native_json: string } }>(await inspect('filters.state'));

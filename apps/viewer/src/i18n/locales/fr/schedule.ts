@@ -194,6 +194,7 @@ export const scheduleFr = {
   "schedule.animation.taskType.disposal": "Élimination",
   "schedule.animation.taskType.userDefined": "Défini par l’utilisateur",
   "schedule.animation.taskType.notDefined": "Non défini",
+  "schedule.panel.pendingSourceSchedule": "Le diagramme de Gantt affiche les modifications en attente. Les modifications du planning IFC de ce modèle doivent être rapprochées séparément.",
   "schedule.panel.importReplaceWarning": "Importer « {fileName} » remplacera le planning actuel et son historique d’annulation.",
   "schedule.panel.replace": "Remplacer",
   "schedule.panel.cancel": "Annuler",

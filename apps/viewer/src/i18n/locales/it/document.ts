@@ -171,6 +171,7 @@ export const documentIt = {
   "document.panel.exportIdle": "Esporta PDF",
   "document.panel.emptyBlocks": "Ancora nessun blocco: usa \"Aggiungi blocco\" qui sopra.",
   "document.panel.unsavedWarning": "Non è stato possibile salvare il documento in questo browser (archiviazione bloccata o piena). Esportalo come modello prima di ricaricare.",
+  "document.panel.blockEditRefused": "Impossibile spostare o copiare il blocco perché il documento risultante non è valido.",
   "document.panel.exportFailedWithMessage": "Esportazione del documento non riuscita: {message}",
   "document.panel.exportFailedGeneric": "Esportazione del documento non riuscita",
   "document.panel.exportSuccess": { one: "Documento esportato: {countDisplay} pagina", other: "Documento esportato: {countDisplay} pagine", many: "Documento esportato: {countDisplay} pagine" },

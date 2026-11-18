@@ -108,7 +108,8 @@ impl Source {
                 // An unreadable record keeps its type: an item with no placement, a model of no known shape.
                 let args = record(content, start, end);
                 if ty == MODEL { if args.as_ref().is_some_and(|a| a.len() == 9) { source.placed.insert(id, MODEL_WITH_NINE); } }
-                else if placed { source.placed.insert(id, args.as_ref().and_then(|a| a.get(OBJECT_PLACEMENT)).and_then(|a| slot_ref(a)).unwrap_or(0)); }
+                // An item placed by #4294967295 would read as a model, so its placement counts as unknown.
+                else if placed { source.placed.insert(id, args.as_ref().and_then(|a| a.get(OBJECT_PLACEMENT)).and_then(|a| slot_ref(a)).filter(|&p| p != MODEL_WITH_NINE).unwrap_or(0)); }
                 else if let Some(args) = args { source.actions.push((id, ty.clone(), args)); }
             }
             if structural { source.types.insert(id, ty); }

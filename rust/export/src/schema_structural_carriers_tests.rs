@@ -285,3 +285,12 @@ fn reads_no_placement_when_a_grouped_item_cannot_be_read_10597() {
     let (up, _) = convert(&unread, "IFC4");
     assert!(record(&up, 30).ends_with(",$);"), "{up}");
 }
+
+#[test]
+fn an_item_placed_by_the_highest_id_gives_its_model_no_shared_placement_10597() {
+    // u32::MAX marks a model internally; an item placed by #4294967295 must not read as one.
+    let source = shared("#4294967295", "(#20,#21)").replace("#20=", "#4294967295=IFCLOCALPLACEMENT($,#8);\n#20=");
+    let (up, _) = convert(&source, "IFC4");
+    assert!(record(&up, 30).ends_with(",$);"), "{up}");
+    assert!(record(&up, 21).contains(",'N',$,$,#4294967295,"), "{up}");
+}

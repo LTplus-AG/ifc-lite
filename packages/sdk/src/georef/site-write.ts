@@ -77,8 +77,13 @@ function chooseSite(store: IfcDataStore, view: MutablePropertyView | null, siteI
   return sites[0];
 }
 
-/** Validate a site write and plan it, or refuse with the missing input named. */
-export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | null, input: GeorefSiteInput, ownedEdits: ReadonlySet<string> = new Set()): SiteWritePlan {
+/**
+ * Validate a site write and plan it, or refuse with the missing input named.
+ * `ownedEdits` are the ids of the earlier site edits the caller made and can
+ * carry; `'all'` is for a host whose own undo history holds every edit of the
+ * view (the viewer), so an earlier location edit is read as it stands.
+ */
+export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | null, input: GeorefSiteInput, ownedEdits: ReadonlySet<string> | 'all' = new Set()): SiteWritePlan {
   rejectUnknownKeys(input, SITE_KEYS, '');
   if (!input) throw new GeoreferencingError('INVALID_INPUT', 'setSite needs an input object.');
   const schema = String(store.schemaVersion ?? '');
@@ -104,13 +109,15 @@ export function planSiteWrite(store: IfcDataStore, view: MutablePropertyView | n
     || (c.entityId === siteId && c.kind === 'attribute' && (Object.keys(SITE_SLOTS) as string[]).includes(c.name ?? '')))) {
     throw new GeoreferencingError('UNSUPPORTED_RECORD', 'IfcSite was created, retyped or its location edited outside setSite; its current values cannot be carried reliably. Nothing was written.');
   }
-  const history = view?.getMutations() ?? [];
-  for (const slot of Object.values(SITE_SLOTS)) {
-    const value = view?.getPositionalMutationsForEntity(siteId)?.get(slot);
-    if (value === undefined) continue;
-    const latest = [...history].reverse().find((m) => m.type === 'UPDATE_POSITIONAL_ATTRIBUTE' && m.entityId === siteId && m.attributeName === `@${slot}`);
-    if (!latest || !ownedEdits.has(latest.id) || JSON.stringify(latest.newValue) !== JSON.stringify(value)) {
-      throw new GeoreferencingError('UNSUPPORTED_RECORD', `IfcSite location slot ${slot} was edited outside setSite. Nothing was written.`);
+  if (ownedEdits !== 'all') {
+    const history = view?.getMutations() ?? [];
+    for (const slot of Object.values(SITE_SLOTS)) {
+      const value = view?.getPositionalMutationsForEntity(siteId)?.get(slot);
+      if (value === undefined) continue;
+      const latest = [...history].reverse().find((m) => m.type === 'UPDATE_POSITIONAL_ATTRIBUTE' && m.entityId === siteId && m.attributeName === `@${slot}`);
+      if (!latest || !ownedEdits.has(latest.id) || JSON.stringify(latest.newValue) !== JSON.stringify(value)) {
+        throw new GeoreferencingError('UNSUPPORTED_RECORD', `IfcSite location slot ${slot} was edited outside setSite. Nothing was written.`);
+      }
     }
   }
   const before = readSiteValues(store, view, siteId);

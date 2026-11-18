@@ -88,7 +88,7 @@ try {
 
 A check of a session with unsaved edits checks the model as it would be saved.
 
-The viewer's Georeference panel runs the same check offline on the model as edited, lists the findings by severity, and offers **Apply fix** for `ready` fixes that write fields the panel edits (one undo step). It warns when the map position lies outside the CRS's EPSG area of use, and the EPSG lookup shows each code's area of use. A host that holds its own edits can do the same with `@ifc-lite/sdk/georef-doctor`: `collectGeorefFacts(store)`, lay the edits over the facts, then `checkGeorefFacts(facts)` and `planGeorefFixes(report)`.
+The viewer's Georeference panel runs the same check offline on the model as edited, lists the findings by severity, and offers **Apply fix** for `ready` fixes that write fields the panel edits, IfcSite RefLatitude / RefLongitude / RefElevation included (one undo step). The panel also shows the site location as editable rows. It warns when the map position lies outside the CRS's EPSG area of use, and the EPSG lookup shows each code's area of use. A host that holds its own edits can do the same with `@ifc-lite/sdk/georef-doctor`: `collectGeorefFacts(store)`, lay the edits over the facts, then `checkGeorefFacts(facts)` and `planGeorefFixes(report)`. `planSiteWrite(store, view, input, ownedEdits)` plans a site fix as `setSite()` writes it (positional edits of IfcSite slots 9 to 11); pass `'all'` as `ownedEdits` when the host's undo history holds every edit of the view.
 
 ## Finding codes
 

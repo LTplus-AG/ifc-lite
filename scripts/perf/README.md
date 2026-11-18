@@ -7864,3 +7864,12 @@ Between the index and the prepass styles the gap grows by about 150 ms on Holter
 3. Re-measure.
 
 The spike's read-overlap pieces are kept on branch spike/streaming-scan: reader worker + watermark, slice scan with offset correction, and pool adoption.
+
+## Size optimization for the main WASM engine's export crate (#10707)
+
+The structural carriers exceeded the engine bundle ceiling even after the two
+STEP writers shared their conversion prepass. Compiling only the export crate
+for size recovers the space with byte-identical STEP and GLB output on the
+ArchiCAD FZK-Haus sample. STEP conversion trades some throughput for the
+smaller bundle. GLB export timing was comparable and native builds retain
+their existing optimization level.

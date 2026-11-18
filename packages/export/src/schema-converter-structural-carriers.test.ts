@@ -561,7 +561,7 @@ describe('carrier prepass on a truncated property set #9668', () => {
   });
 });
 
-// #10597: the conversion loss preview names an attribute lost exactly when the export does.
+// #10597: the conversion loss preview does not name lost what a carrier keeps, and still names what it declines.
 describe('conversion loss report and structural carriers #10597', () => {
   const preview = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') =>
     analyzeConversionLoss(await parse(text), from, to).entries.flatMap((e) => e.droppedAttributes.map((a) => `${e.sourceType}.${a}`));

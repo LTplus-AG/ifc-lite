@@ -266,37 +266,30 @@ function calleeName(expr) {
   return null;
 }
 
-const ASSERT_MODULES = new Set(['assert', 'node:assert', 'assert/strict', 'node:assert/strict']);
-
-/**
- * Local names bound to Node's assert module: `import assert from 'node:assert'`,
- * `import * as assert from …` and `import { strict as assert } from …`.
- */
-function assertNamespaces(sourceFile) {
+/** Every local name an `import` binds: default, namespace and named. */
+function importedNames(sourceFile) {
   const names = new Set();
   for (const st of sourceFile.statements) {
-    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
-    if (!ASSERT_MODULES.has(st.moduleSpecifier.text) || !st.importClause) continue;
+    if (!ts.isImportDeclaration(st) || !st.importClause) continue;
     const { name, namedBindings } = st.importClause;
     if (name) names.add(name.text);
     if (namedBindings && ts.isNamespaceImport(namedBindings)) names.add(namedBindings.name.text);
     if (namedBindings && ts.isNamedImports(namedBindings))
-      for (const el of namedBindings.elements)
-        if ((el.propertyName ?? el.name).text === 'strict') names.add(el.name.text);
+      for (const el of namedBindings.elements) names.add(el.name.text);
   }
   return names;
 }
 
 /**
- * TRUE for `assert.ok(…)` and `assert.strict.equal(…)` where `assert` is the
- * imported module. Such a call is Node's, so its bare method name says nothing
- * about a local function that happens to share it (`const facts = { ok: … }`).
+ * TRUE for `assert.ok(…)` or `path.posix.join(…)`: a dotted call whose root is
+ * an import. It runs another module's function, never a local one, so its bare
+ * method name says nothing about a local `ok` (`const facts = { ok: … }`, #10687).
  */
-function callsAssertModule(callee, namespaces) {
+function callsIntoImport(callee, imports) {
   if (!ts.isPropertyAccessExpression(callee)) return false;
-  let receiver = callee.expression;
-  if (ts.isPropertyAccessExpression(receiver) && receiver.name.text === 'strict') receiver = receiver.expression;
-  return ts.isIdentifier(receiver) && namespaces.has(receiver.text);
+  let root = callee.expression;
+  while (ts.isPropertyAccessExpression(root)) root = root.expression;
+  return ts.isIdentifier(root) && imports.has(root.text);
 }
 
 /** TRUE when the subtree PERFORMS a read, however the call is qualified. */
@@ -410,7 +403,7 @@ function enclosingStatement(node) {
  */
 function computeTainted(sourceFile) {
   const tainted = new Set(READ_NAMES);
-  const assertNames = assertNamespaces(sourceFile);
+  const imports = importedNames(sourceFile);
 
   const bindings = [];      // { names: string[], init: Node }
   const functions = [];     // { node, name, params: string[][] }
@@ -502,12 +495,9 @@ function computeTainted(sourceFile) {
         continue;
       }
 
-      // A tainted argument taints the parameter it lands in. Not for a call
-      // into the imported assert module: `assert.ok(source…)` once resolved by
-      // bare name to a local `ok`, and the taint spread from there (#10687).
-      const named = callsAssertModule(call.expression, assertNames)
-        ? undefined
-        : byName.get(calleeName(call.expression));
+      // A tainted argument taints the parameter it lands in, unless the call
+      // goes into an import and so cannot land in a local function.
+      const named = callsIntoImport(call.expression, imports) ? undefined : byName.get(calleeName(call.expression));
       if (named)
         for (const fn of named)
           args.forEach((arg, idx) => {

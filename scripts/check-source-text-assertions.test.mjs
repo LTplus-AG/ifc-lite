@@ -194,8 +194,7 @@ assert.ok(names.includes('a.tsx'));`),
   );
 });
 
-// `assert.ok(…)` once resolved by bare name to any local `ok`, so a tainted
-// argument tainted that function's parameter and the taint spread (#10687).
+// `assert.ok(…)` once resolved by bare name to any local `ok` (#10687).
 const LOCAL_OK = `import assert from 'node:assert/strict';
 ${READ}
 const facts = { ok: (n) => n.includes('x') };
@@ -205,7 +204,7 @@ test('assert.ok(file bytes) does not taint a local function named ok', () => {
   assert.deepEqual(analyze(`${LOCAL_OK}\nassert.ok(source.length > 0);\nassert.ok(facts.ok('x'));`).hits, []);
 });
 
-test('a local ok called with file bytes, or a non-imported assert, is still caught', () => {
+test('a local ok called with file bytes, or through a non-imported assert, is still caught', () => {
   assert.ok(flagged(`${LOCAL_OK}\nassert.ok(source.includes('x'));`));
   assert.ok(flagged(`${LOCAL_OK}\nfacts.ok(source);`));
   assert.ok(flagged(`${READ}

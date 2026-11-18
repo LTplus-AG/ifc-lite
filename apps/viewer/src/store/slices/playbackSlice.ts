@@ -70,7 +70,7 @@ export interface PlaybackSlice {
   setPlaybackSpeed: (speed: number) => void;
   setPlaybackLoop: (loop: boolean) => void;
   setRespectWorkCalendar: (respect: boolean) => void;
-  advancePlaybackBy: (deltaMs: number) => void;
+  advancePlaybackBy: (deltaMs: number, allowLoop?: boolean) => void;
 }
 
 /**
@@ -119,7 +119,7 @@ export const createPlaybackSlice: StateCreator<
   setPlaybackLoop: (playbackLoop) => set({ playbackLoop }),
   setRespectWorkCalendar: (respectWorkCalendar) => set({ respectWorkCalendar }),
 
-  advancePlaybackBy: (deltaMs) => {
+  advancePlaybackBy: (deltaMs, allowLoop = true) => {
     const s = get();
     if (!s.playbackIsPlaying || !s.scheduleRange) return;
     // Clamp the wall-clock delta before scaling. rAF pauses when the tab is
@@ -135,7 +135,7 @@ export const createPlaybackSlice: StateCreator<
     const simulated = clamped * s.playbackSpeed * 86_400;
     let next = s.playbackTime + simulated;
     if (next > s.scheduleRange.end) {
-      if (s.playbackLoop) {
+      if (allowLoop && s.playbackLoop) {
         next = s.scheduleRange.start;
       } else {
         set({ playbackTime: s.scheduleRange.end, playbackIsPlaying: false });
@@ -162,7 +162,7 @@ export const createPlaybackSlice: StateCreator<
         // mistaking a stale `next` for an already-working instant.
         const skipped = skipToNextWorkingInstant(calendar, next, s.scheduleRange.end);
         if (skipped === null) {
-          if (s.playbackLoop) {
+          if (allowLoop && s.playbackLoop) {
             // Loop back to the start — but the start itself can open on a
             // non-working day (a schedule that begins mid-shutdown), so
             // resolve THAT too rather than landing playback on a

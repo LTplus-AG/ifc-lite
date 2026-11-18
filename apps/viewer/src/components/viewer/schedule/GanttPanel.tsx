@@ -109,6 +109,10 @@ export function GanttPanel() {
       const s = useViewerStore.getState();
       const hasPendingSchedule = !!s.scheduleData && s.scheduleData.tasks.length > 0
         && (s.scheduleIsEdited || s.scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0));
+      if (hasPendingSchedule && s.scheduleSourceModelId === modelId) {
+        setExtractionError(null);
+        return;
+      }
       if (shouldApplyExtractedSchedule(extraction, hasPendingSchedule)) {
         // New extraction wins — this is the "fresh file with a real
         // schedule" case. Any generated tail in memory is replaced;

@@ -123,6 +123,11 @@ element's line now and reports `structural-stale-item` when the element moved
 more than `staleTolerance` (default 1 mm), including a move along its own
 axis. Members derived before this record existed, and
 surface members and nodes, are not checked.
+`structuralConsistencyReport(store, { physicalAxes })` returns the same issues
+plus `coverage`: the number of linked curve members, and each one the
+axis-drift or movement rule skipped, with the reason per rule
+(`edge-unreadable`, `no-derivation-record`, `element-without-axis`).
+`ifc-lite validate` reports them as `structural-unchecked-member`.
 
 ## Convert and known limits
 

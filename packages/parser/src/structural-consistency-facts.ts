@@ -23,6 +23,7 @@ import {
   type StructuralGeometryFacts,
   type StructuralConsistencyIssue,
   type StructuralConsistencyOptions,
+  type StructuralConsistencyReport,
   type StructuralLine,
 } from './structural-consistency.js';
 import { ItemGeometryReader } from './structural-item-geometry.js';
@@ -128,11 +129,21 @@ function derivationRecord(store: IfcDataStore, reader: ItemGeometryReader, membe
   return toWorld && { elementGlobalId, axis: [toWorld([c[0], c[1], c[2]]), toWorld([c[3], c[4], c[5]])] };
 }
 
-/** The consistency issues of a parsed file. Physical elements are read only when a rule can use them. */
-export function structuralConsistencyIssues(store: IfcDataStore, options: StructuralConsistencyIssuesOptions = {}): StructuralConsistencyIssue[] {
+/**
+ * The consistency issues of a parsed file, and which linked curve members the
+ * axis-drift and movement rules compared: each one they skipped is listed with
+ * the reason per rule. Without `physicalAxes` they compare none. Physical
+ * elements are read only when a rule can use them.
+ */
+export function structuralConsistencyReport(store: IfcDataStore, options: StructuralConsistencyIssuesOptions = {}): StructuralConsistencyReport {
   const { physicalAxes, ...settings } = options;
   const structural = extractStructuralOnDemand(store);
   const facts = hasAnalyticalModel(structural) ? structuralConsistencyFacts(store, structural) : [];
   const geometry = physicalAxes && curveMemberGeometry(store, structural, physicalAxes);
   return checkStructuralConsistency(structural, facts, settings, geometry);
+}
+
+/** The issues of `structuralConsistencyReport`, without its coverage. */
+export function structuralConsistencyIssues(store: IfcDataStore, options: StructuralConsistencyIssuesOptions = {}): StructuralConsistencyIssue[] {
+  return structuralConsistencyReport(store, options).issues;
 }

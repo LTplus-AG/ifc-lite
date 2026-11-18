@@ -9,7 +9,7 @@
  * and a way to show each analysis model.
  */
 import { Fragment, useEffect, useState } from 'react';
-import type { StructuralConsistencyIssue } from '@ifc-lite/parser';
+import type { StructuralConsistencyIssue, StructuralSkippedMember } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import type { StructuralConsistencyReview } from '@/lib/actions/structural-consistency-review';
@@ -23,6 +23,20 @@ function FindingRow({ modelId, issue }: { modelId: string; issue: StructuralCons
     ...(issue.target === undefined ? {} : { element: <ElementLink modelId={modelId} expressId={issue.target} /> }),
   };
   return <>{linkedText(t, `structuralDerive.consistency.rule.${issue.rule}`, { distance: issue.distance?.toFixed(3) ?? '' }, links)}</>;
+}
+
+type UncheckedRow =
+  | { memberId: number; key: 'uncheckedRow'; elementIds: readonly number[] }
+  | { memberId: number; key: 'uncheckedEdge' | 'uncheckedRecord' | 'uncheckedRecordAxis' };
+
+/** Why a geometry rule passed over a member, one row per rule; one row when no linked element has an axis, since then neither rule ran. */
+function uncheckedRows({ memberId, elementIds, axisDrift, stale }: StructuralSkippedMember): UncheckedRow[] {
+  if (axisDrift === 'element-without-axis') return [{ memberId, key: 'uncheckedRow', elementIds }];
+  const rows: UncheckedRow[] = [];
+  if (axisDrift === 'edge-unreadable') rows.push({ memberId, key: 'uncheckedEdge' });
+  if (stale === 'no-derivation-record') rows.push({ memberId, key: 'uncheckedRecord' });
+  if (stale === 'element-without-axis') rows.push({ memberId, key: 'uncheckedRecordAxis' });
+  return rows;
 }
 
 /**
@@ -46,7 +60,7 @@ export function StructuralConsistencyFindings({ modelId, prepared }: { modelId: 
   }, [modelId, prepared]);
   if (result === 'checking') return <output className="block">{t('structuralDerive.consistency.checking')}</output>;
   if ('failed' in result) return <p role="alert">{t('structuralDerive.consistency.failed', { error: result.failed })}</p>;
-  const { linked, skipped } = result.axisCoverage;
+  const { linked, skipped } = result.coverage;
   return <section aria-label={t('structuralDerive.consistency.title')} className="space-y-2">
     {result.analysisModels.map((model) => <div key={model.expressId} className="flex items-center gap-2">
       <ElementLink modelId={modelId} expressId={model.expressId} />
@@ -57,10 +71,10 @@ export function StructuralConsistencyFindings({ modelId, prepared }: { modelId: 
         : t('structuralDerive.consistency.partial', { count: skipped.length, total: linked })}</output>
       : <Listing open summary={t('structuralDerive.consistency.findings', { count: result.issues.length })} rows={result.issues}
         row={(issue) => <FindingRow modelId={modelId} issue={issue} />} />}
-    <Listing open summary={t('structuralDerive.consistency.unchecked', { count: skipped.length })} rows={skipped}
-      row={({ memberId, elementIds }) => linkedText(t, 'structuralDerive.consistency.uncheckedRow', {}, {
-        item: <ElementLink modelId={modelId} expressId={memberId} />,
-        elements: elementIds.map((id, index) => <Fragment key={id}>{index > 0 && ', '}<ElementLink modelId={modelId} expressId={id} /></Fragment>),
+    <Listing open summary={t('structuralDerive.consistency.unchecked', { count: skipped.length })} rows={skipped.flatMap(uncheckedRows)}
+      row={(row) => linkedText(t, `structuralDerive.consistency.${row.key}`, {}, {
+        item: <ElementLink modelId={modelId} expressId={row.memberId} />,
+        ...(row.key === 'uncheckedRow' ? { elements: row.elementIds.map((id, index) => <Fragment key={id}>{index > 0 && ', '}<ElementLink modelId={modelId} expressId={id} /></Fragment>) } : {}),
       })} />
   </section>;
 }

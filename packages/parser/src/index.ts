@@ -157,8 +157,8 @@ export {
   type BoundaryConditionInfo,
 } from './structural-extractor.js';
 export { structuralCounterparts, type StructuralCounterparts } from './structural-counterparts.js';
-export { DEFAULT_AXIS_DRIFT_TOLERANCE, type StructuralConsistencyIssue, type StructuralConsistencyOptions, type StructuralConsistencyRule, type StructuralLine } from './structural-consistency.js';
-export { DERIVATION_AXIS_PROPERTIES, DERIVATION_ELEMENT_PROPERTY, STRUCTURAL_DERIVATION_PSET, structuralConsistencyIssues, type StructuralConsistencyIssuesOptions } from './structural-consistency-facts.js';
+export { DEFAULT_AXIS_DRIFT_TOLERANCE, type StructuralConsistencyIssue, type StructuralConsistencyOptions, type StructuralConsistencyReport, type StructuralConsistencyRule, type StructuralLine, type StructuralSkippedMember, type StructuralSkipReason } from './structural-consistency.js';
+export { DERIVATION_AXIS_PROPERTIES, DERIVATION_ELEMENT_PROPERTY, STRUCTURAL_DERIVATION_PSET, structuralConsistencyIssues, structuralConsistencyReport, type StructuralConsistencyIssuesOptions } from './structural-consistency-facts.js';
 
 // IFC4 STEP serializer for schedule entities — produces ready-to-splice
 // `#N=IFC...(...)` lines from a `ScheduleExtraction`.

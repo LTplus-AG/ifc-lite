@@ -14004,7 +14004,7 @@ export const operationContracts: readonly OperationContract[] = [
     "features": [
       "export.files"
     ],
-    "description": "Produce native CityJSON (or CityJSONSeq with sequence=true) from the explicit model's current edited IFC source, through the same producer as the toolbar dialog. A model without georeferencing exports in local coordinates; producer warnings are returned, and package refusals (for example no IfcBuilding) are errors.",
+    "description": "Produce native CityJSON (or CityJSONSeq with sequence=true) from the explicit model's current edited IFC source, through the same producer as the toolbar dialog. Session georeferencing edits are written; a model without georeferencing exports in local coordinates; producer warnings are returned, and package refusals (for example no IfcBuilding) are errors.",
     "needs": "viewer",
     "effects": [
       "artifact"

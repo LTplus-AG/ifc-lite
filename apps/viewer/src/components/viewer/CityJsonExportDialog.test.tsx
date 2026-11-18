@@ -72,16 +72,39 @@ it('local fixture shows notice before export and surfaces producer warnings (#10
   assert.match(info[0], /not georeferenced/i);
 });
 
-it('session georeferencing is not written, so both notices stay and the output stays local (#10607 review)', { skip }, async () => {
+it('session georeferencing edits are written: edited CRS, offsets and extent (#10602)', { skip }, async () => {
   const blobs = await open('hello-wall.ifc');
-  useViewerStore.setState({ georefMutations: new Map([['m', { mapConversion: { eastings: 2_600_000, northings: 1_200_000 } }]]) });
+  // The store's georefMutations entry as the Georeferencing panel leaves it after an edit.
+  useViewerStore.setState({ georefMutations: new Map([['m', {
+    projectedCRS: { name: 'EPSG:2056', mapUnit: 'METRE' },
+    mapConversion: { eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 400 },
+  }]]) });
   await advance(1);
-  const text = () => document.body.textContent ?? '';
-  assert.ok(text().includes('local coordinates, not map coordinates'));
-  assert.ok(text().includes('Georeferencing changes made in this session are not included'));
+  const text = document.body.textContent ?? '';
+  assert.ok(!text.includes('local coordinates, not map coordinates'), 'no local notice once the session georeferences the model');
+  assert.ok(text.includes('Writes coordinates in EPSG:2056'), 'names the CRS that will be written');
   click(button('Export'));
   await waitFor(() => blobs.length === 1, 'CityJSON download');
-  assert.equal(JSON.parse(await blobs[0].text()).metadata.referenceSystem, undefined);
+  const doc = JSON.parse(await blobs[0].text());
+  assert.equal(doc.metadata.referenceSystem, 'https://www.opengis.net/def/crs/EPSG/0/2056');
+  const [tx, ty, tz] = doc.transform.translate;
+  const [minX, minY, minZ, maxX, maxY, maxZ] = doc.metadata.geographicalExtent;
+  // hello-wall's wall sits within metres of the IFC origin, so map coordinates are the edited offsets plus that.
+  for (const [v, base] of [[tx, 2_600_000], [ty, 1_200_000], [tz, 400], [minX, 2_600_000], [minY, 1_200_000], [minZ, 400], [maxX, 2_600_000], [maxY, 1_200_000], [maxZ, 400]] as const) {
+    assert.ok(Math.abs(v - base) < 50, `${v} near ${base}`);
+  }
+  assert.ok(minX <= maxX && minY <= maxY && minZ <= maxZ);
+  assert.ok(tx <= minX + 1e-6 && ty <= minY + 1e-6 && tz <= minZ + 1e-6, 'translate is consistent with the extent');
+});
+
+it('without session edits the output is the file\'s own export, byte for byte (#10602)', { skip }, async () => {
+  const blobs = await open('building-architecture.ifc');
+  click(button('Export'));
+  await waitFor(() => blobs.length === 1, 'CityJSON download');
+  const { exportCityJson } = await import('@ifc-lite/geometry');
+  const raw = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+  assert.equal(await blobs[0].text(), (await exportCityJson(new Uint8Array(raw), {})).text);
+  assert.ok(!(document.body.textContent ?? '').includes('Writes coordinates in'), 'no CRS line without session edits');
 });
 
 it('a failed geometry chunk load fails the export inline instead of escaping (#10607 review)', async () => {

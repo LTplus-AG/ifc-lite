@@ -16,33 +16,32 @@ import { useTranslation } from '@/i18n';
 import { GEOREF_FOCUS_CLASS, useGeorefSectionFocus } from '@/lib/site-context/georef-section-focus';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 
-export function GeorefCompleteRow({ modelId, missing, onEpsgSelect, onAddCoordinates }: {
-  modelId?: string;
-  missing: 'crs' | 'conversion';
-  onEpsgSelect: (result: EpsgResult) => void;
-  onAddCoordinates: () => void;
-}) {
+type GeorefCompleteRowProps = { modelId?: string } & (
+  | { missing: 'crs'; onEpsgSelect: (result: EpsgResult) => void }
+  | { missing: 'conversion'; onAddCoordinates: () => void }
+);
+
+export function GeorefCompleteRow(props: GeorefCompleteRowProps) {
   const { t } = useTranslation();
   const row = useRef<HTMLDivElement>(null);
-  useGeorefSectionFocus(modelId ?? '', 'addGeoref', row);
+  useGeorefSectionFocus(props.modelId ?? '', 'addGeoref', row);
   const linkClass = `flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`;
   return (
     <div ref={row} className={`px-3 py-2 border-b border-border flex items-center gap-2 ${GEOREF_FOCUS_CLASS}`}>
-      {missing === 'crs' ? <>
-        <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.missingCrsNotice')}</span>
-        <EpsgLookupDialog onSelect={onEpsgSelect}>
+      <span className="text-xs text-muted-foreground flex-1">{t(props.missing === 'crs' ? 'properties.georef.missingCrsNotice' : 'properties.georef.noConversionNotice')}</span>
+      {props.missing === 'crs' ? (
+        <EpsgLookupDialog onSelect={props.onEpsgSelect}>
           <button className={linkClass}>
             <Search className="h-2.5 w-2.5" />
             {t('properties.georef.addCrs')}
           </button>
         </EpsgLookupDialog>
-      </> : <>
-        <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noConversionNotice')}</span>
-        <button onClick={onAddCoordinates} className={linkClass}>
+      ) : (
+        <button onClick={props.onAddCoordinates} className={linkClass}>
           <MapPin className="h-2.5 w-2.5" />
           {t('properties.georef.addCoordinates')}
         </button>
-      </>}
+      )}
     </div>
   );
 }

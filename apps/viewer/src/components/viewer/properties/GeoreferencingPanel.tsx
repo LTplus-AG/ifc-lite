@@ -457,7 +457,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
-      {!mergedCRS && editable && mergedConversion && <GeorefCompleteRow modelId={modelId} missing="crs" onEpsgSelect={handleEpsgSelect} onAddCoordinates={() => initializeMapConversionDefaults()} />}
+      {!mergedCRS && editable && mergedConversion && <GeorefCompleteRow modelId={modelId} missing="crs" onEpsgSelect={handleEpsgSelect} />}
 
       {/* IfcMapConversion */}
       {mergedConversion && (
@@ -531,7 +531,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
-      {!mergedConversion && editable && mergedCRS && <GeorefCompleteRow modelId={modelId} missing="conversion" onEpsgSelect={handleEpsgSelect} onAddCoordinates={() => initializeMapConversionDefaults()} />}
+      {!mergedConversion && editable && mergedCRS && <GeorefCompleteRow modelId={modelId} missing="conversion" onAddCoordinates={() => initializeMapConversionDefaults()} />}
 
       {/* World-view settings — only when the Cesium overlay is active */}
       {cesiumEnabled && isActiveCesiumModel && mergedConversion && (

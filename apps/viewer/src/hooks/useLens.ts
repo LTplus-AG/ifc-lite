@@ -33,29 +33,11 @@
  */
 
 import { useEffect, useRef, useMemo } from 'react';
-import { evaluateLens, evaluateAutoColorLens, rgbaToHex, isGhostColor } from '@ifc-lite/lens';
-import type { AutoColorEvaluationResult, LensEvaluationResult } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
-import { posthog } from '@/lib/analytics';
-import { createLensDataProvider } from '@/lib/lens';
-import { evaluateLensGroups } from '@/lib/lens/evaluate-lens-groups';
-import { customGroupingsFromLenses } from '@/lib/lens/custom-groupings';
-import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { toast } from '@/components/ui/toast';
-import { planLensHiddenSync, ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
+import { ruleIsolationOwnsChannel } from '@/components/viewer/lens-visibility-ownership';
 
-const EMPTY_LENS_HIDDEN: ReadonlySet<number> = new Set<number>();
-
-function clearLensOutput(): void {
-  const state = useViewerStore.getState();
-  state.setLensColorMap(new Map());
-  state.setLensHiddenIds(new Set());
-  state.setLensRuleCounts(new Map());
-  state.setLensRuleEntityIds(new Map());
-  state.setLensAutoColorLegend([]);
-  state.setLensAppliedColors(null);
-  state.setPendingColorUpdates(new Map());
-}
+import { clearLensOutput, evaluateNativeLens, applyNativeLensResult, syncNativeLensHidden } from '@/lib/lens/native-lens';
 
 export function useLens(): void {
   const activeLensId = useViewerStore((s) => s.activeLensId);
@@ -125,7 +107,7 @@ export function useLens(): void {
     // Read data sources from getState() — NOT subscribed, so model loading
     // doesn't trigger re-evaluation
     const state = useViewerStore.getState();
-    const { models, ifcDataStore, mutationViews } = state;
+    const { models, ifcDataStore } = state;
     if (models.size === 0 && !ifcDataStore) {
       // Every model the last evaluation referenced is gone. Its
       // colorMap/hiddenIds/ruleEntityIds are not just dangling — after
@@ -143,70 +125,13 @@ export function useLens(): void {
 
     prevLensIdRef.current = activeLensId;
 
-    // Create data provider and evaluate lens using @ifc-lite/lens package
-    const provider = createLensDataProvider(
-      models, ifcDataStore, mutationViews,
-      (globalId) => useViewerStore.getState().resolveGlobalIdFromModels(globalId),
-    );
-
-    const isAutoColor = !!activeLens.autoColor;
-    const applyResult = (result: LensEvaluationResult | AutoColorEvaluationResult) => {
-      const { colorMap, hiddenIds, ruleCounts, ruleEntityIds } = result;
-
-      // Build hex color map for UI legend (exclude ghost entries)
-      const hexColorMap = new Map<number, string>();
-      for (const [id, rgba] of colorMap) {
-        if (!isGhostColor(rgba)) {
-          hexColorMap.set(id, rgbaToHex(rgba));
-        }
-      }
-      useViewerStore.getState().setLensColorMap(hexColorMap);
-      useViewerStore.getState().setLensHiddenIds(hiddenIds);
-      useViewerStore.getState().setLensRuleCounts(ruleCounts);
-      useViewerStore.getState().setLensRuleEntityIds(ruleEntityIds);
-
-      // Store auto-color legend entries for UI display.
-      useViewerStore.getState().setLensAutoColorLegend('legend' in result ? result.legend : []);
-
-    // Apply colors via overlay system — original batches are never modified.
-    // Remember the exact overlay so the compare overlay can restore it on
-    // teardown instead of blanking the channel the lens still owns.
-      useViewerStore.getState().setLensAppliedColors(colorMap.size > 0 ? colorMap : null);
-      useViewerStore.getState().setPendingColorUpdates(colorMap);
-
-      posthog.capture('lens_applied', {
-        mode: isAutoColor ? 'auto_color' : 'rules',
-        rule_count: activeLens.rules.length,
-        auto_color_source: isAutoColor ? activeLens.autoColor?.source : undefined,
-        matched_entity_count: colorMap.size,
-        hidden_entity_count: hiddenIds.size,
-      });
-    };
-
-    if (activeLens.autoColor) {
-      try { applyResult(evaluateAutoColorLens(activeLens.autoColor, provider, activeLens.capturedScope)); }
-      catch (error) {
-        clearLensOutput();
-        console.error('[useLens] Auto-color evaluation failed:', error);
-        toast.error(error instanceof Error ? error.message : 'Could not apply this lens.');
-      }
-      return;
-    }
-
-    // Group evaluation yields between rules. Never show a previous Lens while
-    // the replacement is pending or after a recoverable rule error.
     if (!modelSetChanged) clearLensOutput();
     const controller = new AbortController();
-    const evaluatorModels = models.size > 0
-      ? evaluatorModelsFromState(state)
-      : [{ id: 'legacy', store: ifcDataStore, mutationView: mutationViews.get('legacy'), customGroupings: customGroupingsFromLenses(state.savedLenses, []) }];
-    void evaluateLensGroups(
-      activeLens, evaluatorModels, models, definedModelTagIdsOf(state), controller.signal,
-    ).then((matched) => {
-      if (!controller.signal.aborted) applyResult(evaluateLens(activeLens, provider, matched));
+    void evaluateNativeLens(activeLens, controller.signal).then((result) => {
+      if (!controller.signal.aborted) applyNativeLensResult(activeLens, result);
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
-      console.error('[useLens] FilterGroup evaluation failed:', error);
+      console.error('[useLens] Evaluation failed:', error);
       clearLensOutput();
       toast.error(error instanceof Error ? error.message : 'Could not apply this lens.');
     });
@@ -222,19 +147,7 @@ export function useLens(): void {
   // before or during the lens stays hidden after teardown). Ownership is
   // persisted in the store, so a remount re-runs this as a no-op instead of
   // losing track of (or double-claiming) the lens's hides.
-  useEffect(() => {
-    const state = useViewerStore.getState();
-    const plan = planLensHiddenSync({
-      applied: state.lensAppliedHiddenIds,
-      hiddenEntities: state.hiddenEntities,
-      lensHiddenIds: activeLensId ? lensHiddenIds : EMPTY_LENS_HIDDEN,
-    });
-    if (plan.show.length > 0) state.showEntities(plan.show);
-    if (plan.hide.length > 0) state.hideEntities(plan.hide);
-    if (plan.nextApplied.length > 0 || state.lensAppliedHiddenIds.length > 0) {
-      state.setLensAppliedHiddenIds(plan.nextApplied);
-    }
-  }, [activeLensId, lensHiddenIds]);
+  useEffect(() => { syncNativeLensHidden(); }, [activeLensId, lensHiddenIds]);
 
   // A lens deactivated while its panel is closed (a flavor switch clears
   // activeLensId) leaves its recorded rule isolation with no owner. Release it

@@ -22,12 +22,11 @@ import {
   exportListDefinition,
 } from '@/lib/lists';
 import type { ListDefinition, ListGrouping } from '@/lib/lists';
-import { runListFederated } from '@/lib/lists/run-list';
-import { captureListRunModels, carryListRun, listResultGrouping, listRunDefinition, recordListRun } from '@/lib/lists/run-provenance';
+import { executeNativeList } from '@/lib/lists/execute-native-list';
+import { carryListRun, listResultGrouping, listRunDefinition } from '@/lib/lists/run-provenance';
 import { beginActivity, finishActivity } from '@/lib/activity/activity-journal';
-import { analysisStampOf, captureAnalysisStamp, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
+import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useAssistantAction } from '@/components/viewer/assistant/AssistantAction';
-import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { useListProviders } from './useListProviders';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
@@ -102,15 +101,11 @@ export function ListPanel() {
     requestAnimationFrame(() => { void (async () => {
       try {
         if (controller.signal.aborted) return;
-        const state = useViewerStore.getState();
-        // Stamped at run start, so an edit landing mid-run leaves the result stale (#6833).
-        const stamp = captureAnalysisStamp();
-        const runModels = captureListRunModels(definition, modelProviderPairs, state, t('lists.resultChrome.loadedModel'));
-        const result = await runListFederated(definition, modelProviderPairs, state, {
-          evaluatorModels: evaluatorModelsFromState(state), signal: controller.signal,
+        const result = await executeNativeList(definition, {
+          pairs: modelProviderPairs, signal: controller.signal, legacyName: t('lists.resultChrome.loadedModel'),
         });
         if (controller.signal.aborted) return;
-        setListResult(recordListRun(result, definition, stamp, runModels));
+        setListResult(result);
         setView('results');
         outcome = 'completed';
       } catch (err) {

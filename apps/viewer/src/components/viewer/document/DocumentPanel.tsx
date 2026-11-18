@@ -23,7 +23,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
-import { copyDocumentBlock, freshBlockId, freshListCopyId } from '@/lib/document/persistence';
+import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
 import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
@@ -34,12 +34,11 @@ import { AssistantAction } from '../assistant/AssistantAction';
 import { BlockEditor } from './BlockEditor';
 import { DocumentBlockList } from './DocumentBlockList';
 import { useBlockSelection } from './useBlockSelection';
-import { reorderDocumentBlocks } from '@/lib/document/reorder-blocks';
+import { patchNativeDocumentPage, moveNativeDocumentBlocks, copyNativeDocumentBlock } from '@/lib/document/native-edit';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
 import { AiReportRefresh } from './AiReportRefresh';
-import { detachAiProvenance } from '@/lib/document/ai-report-types';
 import { useDocumentData } from './useDocumentData';
 import { useReportSources } from './useReportSources';
 
@@ -96,6 +95,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const upsert = useCallback((next: DocumentSpec) => upsertDocument(next).then(warnUnsaved), [upsertDocument, warnUnsaved]);
   const remove = useCallback((id: string) => deleteDocument(id).then(warnUnsaved), [deleteDocument, warnUnsaved]);
   const update = upsert;
+  // Editors pass intermediate values (a cleared number field); validation belongs to save and the agent path, not each keystroke.
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
   const moveBlocks = (ids: ReadonlySet<string>, beforeId: string | null): boolean => {
@@ -103,9 +103,14 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     if (!document || live.activeDocumentId !== document.id) return false;
     const current = live.documents.find(entry => entry.id === document.id);
     if (!current) return false;
-    const blocks = reorderDocumentBlocks(current.blocks, ids, beforeId);
-    if (blocks === current.blocks) return false;
-    void update({ ...current, blocks });
+    let next: DocumentSpec;
+    try { next = moveNativeDocumentBlocks(current, ids, beforeId); } catch (error) {
+      console.warn('[document] block move refused', error);
+      toast.error(t('document.panel.blockEditRefused'));
+      return false;
+    }
+    if (next === current) return false;
+    void update(next);
     return true;
   };
 
@@ -115,9 +120,14 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     const index = current?.blocks.findIndex((block) => block.id === id) ?? -1;
     if (!current || index < 0) return;
     // The duplicate is the reviewer's own text; refresh only regenerates the original (#6918).
-    const copy = detachAiProvenance(copyDocumentBlock(current.blocks[index]));
+    let copy: ReturnType<typeof copyNativeDocumentBlock>;
+    try { copy = copyNativeDocumentBlock(current, id); } catch (error) {
+      console.warn('[document] block copy refused', error);
+      toast.error(t('document.panel.blockEditRefused'));
+      return;
+    }
     // Read current content so consecutive copies keep each other's staged durable writes.
-    void update({ ...current, blocks: [...current.blocks.slice(0, index + 1), copy, ...current.blocks.slice(index + 1)] });
+    void update(copy.document);
     selection.selectOnly(copy.id);
   };
 
@@ -228,10 +238,10 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         </select>
         <DocumentMenu document={document} onUpsert={upsert} onDelete={remove} onActivate={setActiveDocumentId} />
         <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.panel.pageLabel')}
-          <select className={select} value={document?.page.size ?? 'A4'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, size: e.target.value as ReportPageSetup['size'] } })} aria-label={t('document.panel.pageSizeAriaLabel')}>
+          <select className={select} value={document?.page.size ?? 'A4'} disabled={!document} onChange={(e) => document && update(patchNativeDocumentPage(document, { page: { size: e.target.value as ReportPageSetup['size'] } }))} aria-label={t('document.panel.pageSizeAriaLabel')}>
             <option value="A4">{t('document.panel.pageSizeA4')}</option><option value="A3">{t('document.panel.pageSizeA3')}</option>
           </select>
-          <select className={select} value={document?.page.orientation ?? 'portrait'} disabled={!document} onChange={(e) => document && update({ ...document, page: { ...document.page, orientation: e.target.value as ReportPageSetup['orientation'] } })} aria-label={t('document.panel.orientationAriaLabel')}>
+          <select className={select} value={document?.page.orientation ?? 'portrait'} disabled={!document} onChange={(e) => document && update(patchNativeDocumentPage(document, { page: { orientation: e.target.value as ReportPageSetup['orientation'] } }))} aria-label={t('document.panel.orientationAriaLabel')}>
             <option value="portrait">{t('document.panel.orientationPortrait')}</option><option value="landscape">{t('document.panel.orientationLandscape')}</option>
           </select>
         </label>

@@ -50,6 +50,8 @@ const TO_IFC2X3: &str = "an IFC4 curve or surface action with an IfcStructuralLo
 
 #[derive(Default)]
 pub(crate) struct StructuralVarying {
+    /// IFC2X3 -> IFC4: convertible varying action id -> (kind, loads), until [`Self::assign`] gives it a configuration id.
+    planned: BTreeMap<u32, (&'static Kind, Vec<u32>)>,
     /// IFC2X3 -> IFC4: varying action id -> (kind, loads, the id allocated for its configuration).
     upgrades: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
     /// Configuration records written so far, by id.
@@ -129,23 +131,29 @@ impl Source {
 }
 
 impl StructuralVarying {
-    /// IFC2X3 -> IFC4: one configuration id per convertible varying action, in
-    /// id order (the TypeScript twin's write order), from the writer's allocator.
-    pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool, mut allocate: impl FnMut() -> Option<u32>) -> Self {
+    /// IFC2X3 -> IFC4: the varying actions that convert, in id order, each still
+    /// without a configuration id ([`Self::assign`]).
+    pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
         let source = Source::scan(content, kept, true);
-        let mut convertible: Vec<_> = source.actions.iter().filter_map(|(id, kind, args)| {
-            let loads = varying_loads(args)?;
-            source.convertible(kind, &args[6], &loads, Some(ref_id(Some(&args[12]))?))?;
-            Some((*id, *kind, loads))
-        }).collect();
-        convertible.sort_unstable_by_key(|c| c.0);
         let mut result = Self::default();
-        for (id, kind, loads) in convertible {
-            let Some(config) = allocate() else { break };
-            result.upgrades.insert(id, (kind, loads, config));
+        for (id, kind, args) in &source.actions {
+            let Some(loads) = varying_loads(args) else { continue };
+            let Some(location) = ref_id(Some(&args[12])) else { continue };
+            if source.convertible(kind, &args[6], &loads, Some(location)).is_some() { result.planned.insert(*id, (*kind, loads)); }
         }
         result
     }
+
+    /// The varying actions that convert, in id order.
+    pub(crate) fn needs_ids(&self) -> impl Iterator<Item = u32> + '_ { self.planned.keys().copied() }
+
+    /// Write the configuration of `action` under `id`.
+    pub(crate) fn assign(&mut self, action: u32, id: u32) {
+        if let Some((kind, loads)) = self.planned.remove(&action) { self.upgrades.insert(action, (kind, loads, id)); }
+    }
+
+    /// Whether this IFC2X3 varying action becomes an IFC4 action.
+    pub(crate) fn converts(&self, id: u32) -> bool { self.planned.contains_key(&id) || self.upgrades.contains_key(&id) }
 
     /// IFC4 -> IFC2X3: the actions that become varying actions and the configurations they consume.
     pub(crate) fn scan_ifc4(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
@@ -177,12 +185,13 @@ impl StructuralVarying {
     }
 
     /// The target record body for a varying action of either schema, and what the change loses.
-    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, Vec<String>)> {
+    /// `cause_carried`: a 'Causes' relationship holds the action's CausedBy, so it is not lost.
+    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String], cause_carried: bool) -> Option<(String, Vec<String>)> {
         if let Some((kind, loads, config)) = self.upgrades.get(&id).filter(|(k, ..)| k.ifc2x3 == entity && args.len() == 14) {
             let values = loads.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join(",");
             self.pending.insert(*config, format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
             let mut losses = vec![FROM_IFC2X3.to_string()];
-            if args[10].trim() != "$" { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
+            if args[10].trim() != "$" && !cause_carried { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
             let body = [&args[..7], &[format!("#{config}"), args[8].clone(), args[9].clone(), args[11].clone(), ".NOTDEFINED.".into()]].concat();
             return Some((format!("{}({})", kind.ifc4, body.join(",")), losses));
         }
@@ -281,11 +290,14 @@ mod tests {
     }
 
     #[test]
-    fn caused_by_is_reported_9668() {
+    fn caused_by_is_written_as_causes_9668() {
+        // #10597: the 'Causes' carrier holds a converted varying action's CausedBy, as in the TypeScript twin.
         let line = LINE.replace(",.F.,$,", ",.F.,#40,");
         let source = model("IFC2X3", &format!("#40=IFCSTRUCTURALPOINTREACTION('2wmGMbnLPTYekiqaYJVorK',$,$,$,$,$,$,#20,.GLOBAL_COORDS.);\n{line}"));
-        let (_, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &to("IFC4")).unwrap();
-        assert!(warnings.iter().any(|w| w.contains("IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4")), "{warnings:?}");
+        let (out, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &to("IFC4")).unwrap();
+        assert!(out.lines().any(|l| l.ends_with("'Causes',$,(#40),$,#30);")), "{out}");
+        assert!(warnings.iter().any(|w| w.contains("IFC2X3 CausedBy is written as an IfcRelAssignsToProduct named 'Causes'")), "{warnings:?}");
+        assert!(!warnings.iter().any(|w| w.contains("CausedBy has no slot")), "{warnings:?}");
     }
 
     #[test]

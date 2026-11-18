@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit losses where the other structural schema has no semantic slot (#9668).
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use crate::schema_convert::{rename_type, schema_attribute_names};
 
 const LINK: &str = "IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link";
@@ -11,10 +11,14 @@ pub(crate) struct StructuralDiagnostics {
     pub(crate) axes: crate::schema_structural_axes::StructuralAxes,
     pub(crate) links: crate::schema_structural_links::StructuralLinks,
     pub(crate) varying: crate::schema_structural_varying::StructuralVarying,
+    pub(crate) carriers: crate::schema_structural_carriers::StructuralCarriers,
+    /// Actions whose CausedBy a 'Causes' relationship holds, which `inspect` does not report lost.
+    cause_carried: HashSet<u32>,
 }
 
 impl StructuralDiagnostics {
-    pub(crate) fn inspect(&mut self, entity: &str, args: &[String], from: &str, to: &str, axis_known: bool) {
+    pub(crate) fn inspect(&mut self, id: u32, entity: &str, args: &[String], from: &str, to: &str, axis_known: bool) {
+        let cause_carried = self.cause_carried.remove(&id);
         if crate::schema_structural::is_assignment_conversion(entity, from, to) {
             self.record("IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file".into());
             return;
@@ -35,6 +39,7 @@ impl StructuralDiagnostics {
             if *name == "DestabilizingLoad" && value.trim() == "$" && to == "IFC2X3" {
                 self.record(crate::schema_structural::destabilizing_unknown(entity));
             }
+            if *name == "CausedBy" && cause_carried { continue; }
             if !tgt.contains(name) && !matches!(value.trim(), "$" | "*" | "") {
                 let effect = if *name == "ConditionCoordinateSystem" { "; restraint directions in that coordinate system are not preserved" } else { "" };
                 self.record(format!("{entity}.{name} has no slot in {to}; its value is omitted{effect}"));
@@ -54,12 +59,35 @@ impl StructuralDiagnostics {
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
     /// pair): the target record body, reported because the class changes.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
+        if self.carriers.stays_unconverted(id) { self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into()); }
+        let cause = self.carriers.cause(id);
+        if let Some(message) = cause {
+            self.record(message.into());
+            self.cause_carried.insert(id);
+        }
         let (body, losses) = match self.links.link(entity, args) {
             Some(attrs) => (format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()]),
-            None => self.varying.rewrite(id, entity, args)?,
+            None => self.varying.rewrite(id, entity, args, cause.is_some())?,
         };
         losses.into_iter().for_each(|loss| self.record(loss));
+        // A rewritten record skips `inspect`, which would free this.
+        self.cause_carried.remove(&id);
         Some(body)
+    }
+
+    /// An already converted line with the values carriers fill in place (`StructuralCarriers::after`).
+    pub(crate) fn after(&mut self, id: u32, line: String) -> String {
+        match self.carriers.after(id, &line) {
+            Some(filled) => { self.record(crate::schema_structural_carriers::CAUSED_BY_READ.into()); filled }
+            None => line,
+        }
+    }
+
+    /// Records the conversion added: load configurations, then 'Causes' relationships, as the TypeScript twin appends them.
+    pub(crate) fn added(&mut self) -> Vec<String> {
+        let mut added = self.varying.added();
+        added.extend(self.carriers.added());
+        added
     }
 
     pub(crate) fn warnings(&self) -> Vec<String> {

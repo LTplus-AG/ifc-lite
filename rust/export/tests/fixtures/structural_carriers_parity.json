@@ -63,6 +63,17 @@
         "#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20),$,#21);",
         "#31=IFCRELASSIGNSTOPRODUCT('1bbbbbbbbbbbbbbbbbbbbb',#5,'Causes',$,(#20,#23),$,#22);"
       ]
+    },
+    {
+      "why": "a Causes relationship with a non-reference list item cannot restore CausedBy",
+      "from": "IFC4",
+      "to": "IFC2X3",
+      "data": "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);\n#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20,$),$,#21);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.);",
+        "#30=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#20,$),$,#21);"
+      ]
     }
   ]
 }

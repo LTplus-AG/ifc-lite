@@ -109,12 +109,7 @@ fn read_relationship(line: &str) -> Option<(u32, Vec<u32>)> {
     let [_, _, name, _, objects, _, product] = args.as_slice() else { return None };
     if !slot_is(name, b"'Causes'") { return None; }
     let action = slot_ref(product)?;
-    let mut reactions = Vec::new();
-    for item in list_items(objects)? {
-        if let Some(reaction) = slot_ref(&item) {
-            reactions.push(reaction);
-        }
-    }
+    let reactions = list_items(objects)?.iter().map(|item| slot_ref(item)).collect::<Option<Vec<_>>>()?;
     Some((action, reactions))
 }
 

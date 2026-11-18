@@ -311,10 +311,9 @@ function convertRecord(
   const frame = stepRecordFrame(line, { allowMissingSemicolon: true });
   if (frame === null) return line;
 
-  const { head } = frame;
   const id = /^#\d+/.exec(line.slice(skipStepTrivia(line, 0)))![0];
   const prefix = `${id}=`, expressId = Number(id.slice(1));
-  const entityType = line.slice(head.typeStart, head.typeEnd).toUpperCase();
+  const entityType = line.slice(frame.head.typeStart, frame.head.typeEnd).toUpperCase();
   const attrsRaw = frameArgs(line, frame);
 
   // Validate before choosing any conversion branch. A malformed slot list

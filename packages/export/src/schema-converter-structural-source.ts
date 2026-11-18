@@ -8,7 +8,8 @@ import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getCanonicalEntityName, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import { decodeRange } from './source-ref-bounds.js';
-import { readStepSlots, STEP_RECORD } from './step-argument-parser.js';
+import { readStepSlots } from './step-argument-parser.js';
+import { stepRecordHead } from './step-record-frame.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 
@@ -55,7 +56,6 @@ export function isSubtype(schema: 'IFC2X3' | 'IFC4', keyword: string | undefined
 /** Source records read by id, each decoded once. Lives only for one prepass. */
 export class SourceRecords {
   private readonly cache = new Map<number, readonly string[] | undefined>();
-  private readonly converted = new Map<number, boolean>();
   constructor(private readonly store: SourceStore) {}
 
   private decode(entry: { byteOffset: number; byteLength: number }): string {
@@ -68,13 +68,24 @@ export class SourceRecords {
    */
   referrers(targets: ReadonlySet<number>): Map<number, number> {
     const uses = new Map<number, number>();
-    // @raw-entity-enumeration-ok same unedited source-only prepass
-    for (const entry of this.store.entityIndex.byId.values()) {
-      const text = this.decode(entry);
-      const args = text.slice(Math.max(0, text.indexOf('(')));
-      for (const t of namedExpressIds(args, targets)) uses.set(t, (uses.get(t) ?? 0) + 1);
-    }
+    for (const { named } of this.naming(targets)) for (const t of named) uses.set(t, (uses.get(t) ?? 0) + 1);
     return uses;
+  }
+
+  /**
+   * Each source record naming any of `targets` outside strings and comments,
+   * and which ones. Reads every record and caches nothing, so callers ask only
+   * when they have targets.
+   */
+  *naming(targets: ReadonlySet<number>): Generator<{ id: number; named: ReadonlySet<number> }> {
+    if (targets.size === 0) return;
+    // @raw-entity-enumeration-ok same unedited source-only prepass
+    for (const [id, entry] of this.store.entityIndex.byId) {
+      const text = this.decode(entry);
+      const head = stepRecordHead(text);
+      const named = namedExpressIds(text.slice(head?.open ?? skipStepTrivia(text, 0) + 1), targets);
+      if (named.size) yield { id, named };
+    }
   }
 
   ids(type: string): readonly number[] {
@@ -95,18 +106,6 @@ export class SourceRecords {
       this.cache.set(id, entry ? readStepSlots(this.decode(entry))?.slots : undefined);
     }
     return this.cache.get(id);
-  }
-
-  /** The slots of record `id` when the writer converts it at all: `STEP_RECORD` takes only a record on one line, and it passes any other through. */
-  convertedSlots(id: number): readonly string[] | undefined {
-    let converted = this.converted.get(id);
-    if (converted === undefined) {
-      // @raw-entity-enumeration-ok same unedited source-only prepass
-      const entry = this.store.entityIndex.byId.get(id);
-      converted = !!entry && STEP_RECORD.test(this.decode(entry));
-      this.converted.set(id, converted);
-    }
-    return converted ? this.slots(id) : undefined;
   }
 }
 

@@ -55,7 +55,7 @@ export class StructuralDiagnostics {
    */
   fromStore(store: SourceStore, from: string, to: string, source = new SourceRecords(store)): void {
     if (from !== 'IFC2X3') this.links.fromStore(store);
-    this.varying.fromStore(store, from, to);
+    this.varying.fromStore(store, from, to, source);
     this.axes.fromStore(source, from, to);
     this.carriers.fromStore(source, from, to);
     this.thickness.fromStore(source, from, to);
@@ -203,8 +203,7 @@ export function structuralRoundTrip(store: SourceStore, from: string, to: string
     // Only an IFC2X3 target withholds ids.
     const withheld = to === 'IFC2X3' ? computeWithheldRefIds(store, to) : undefined;
     for (const id of records) {
-      // The writer passes a record it does not convert through untouched (`STEP_RECORD`), so no carrier acts on it.
-      const slots = source.convertedSlots(id);
+      const slots = source.slots(id);
       if (slots) run.rewrite(id, source.type(id)!, slots, withheld);
     }
     return run.roundTripResult();

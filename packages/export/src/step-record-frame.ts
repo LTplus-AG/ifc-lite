@@ -42,7 +42,7 @@ export interface StepRecordHead {
   readonly open: number;
 }
 
-/** A whole record: its head, the `)` closing the argument list, and the `;`. */
+/** A whole record: its head, the `)` closing the argument list, and the `;` (or text length if allowed to be missing). */
 export interface StepRecordFrame {
   readonly head: StepRecordHead;
   readonly close: number;
@@ -140,25 +140,29 @@ function triviaBack(text: string, k: number, nearest: boolean): number {
   }
 }
 
-function frameWith(text: string, head: StepRecordHead, nearest: boolean): StepRecordFrame | null {
-  const semi = triviaBack(text, text.length, nearest) - 1;
-  if (semi < 0 || text[semi] !== ';') return null;
+function frameWith(text: string, head: StepRecordHead, nearest: boolean, allowMissingSemicolon: boolean): StepRecordFrame | null {
+  let semi = triviaBack(text, text.length, nearest) - 1;
+  if (text[semi] !== ';') {
+    if (!allowMissingSemicolon) return null;
+    semi = text.length;
+  }
   const close = triviaBack(text, semi, nearest) - 1;
   if (close <= head.open || text[close] !== ')') return null;
   // The walk back is a guess about where the trailing comments begin; the
   // forward trivia rule is what decides it.
-  const verified = skipTrivia(text, close + 1) === semi && skipTrivia(text, semi + 1) === text.length;
+  const verified = skipTrivia(text, close + 1) === semi
+    && (semi === text.length || skipTrivia(text, semi + 1) === text.length);
   return verified ? { head, close, semi } : null;
 }
 
 /**
  * The record's frame, or null when `text` is not one whole record:
- * {@link stepRecordHead}, then a `)` that only trivia, one `;` and trivia follow.
+ * {@link stepRecordHead}, then a `)` that only trivia, one `;` and trivia follow. Schema conversion also accepts an omitted terminator.
  */
-export function stepRecordFrame(text: string): StepRecordFrame | null {
+export function stepRecordFrame(text: string, { allowMissingSemicolon = false } = {}): StepRecordFrame | null {
   const head = stepRecordHead(text);
   if (head === null) return null;
-  return frameWith(text, head, true) ?? frameWith(text, head, false);
+  return frameWith(text, head, true, allowMissingSemicolon) ?? frameWith(text, head, false, allowMissingSemicolon);
 }
 
 /** The text between the argument list's parentheses. */

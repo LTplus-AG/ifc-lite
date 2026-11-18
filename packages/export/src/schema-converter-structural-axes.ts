@@ -270,11 +270,11 @@ export class StructuralAxes {
   /**
    * Whether the target holds this member's Axis as planned: `hold` writes a new
    * association, the member's one already holds it, or the writer converts the
-   * one `rewrite` fills (`STEP_RECORD`), which it passes through otherwise.
+   * one `rewrite` fills.
    */
   fillWritten(id: number): boolean {
     const into = this.carried.get(id)?.into ?? null;
-    return into === null || !this.fills.has(into) || !!this.source?.convertedSlots(into);
+    return into === null || !this.fills.has(into) || !!this.source?.slots(into);
   }
 
   /** IFC4 -> IFC2X3: the message when this member's Axis travels in an association, writing a new one when it needs it; else null. */

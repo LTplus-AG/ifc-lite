@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { openGeorefSection } from '@/lib/site-context/site-context-command';
 
-export function ExportGeorefNotice({ modelId, onClose }: { modelId: string; onClose: () => void }) {
+/** `disabled` while an export runs: closing then would bypass the shell's busy guard and hide its progress. */
+export function ExportGeorefNotice({ modelId, onClose, disabled }: { modelId: string; onClose: () => void; disabled?: boolean }) {
   const { t } = useTranslation();
   return <Alert>
     <AlertDescription>{t('geometryExport.shared.georefRequired')}</AlertDescription>
-    <Button variant="outline" size="sm" className="mt-2" onClick={() => {
+    <Button variant="outline" size="sm" className="mt-2" disabled={disabled} onClick={() => {
       onClose();
       openGeorefSection(modelId, 'addGeoref', 'programmatic');
     }}>{t('geometryExport.shared.openGeoreferencing')}</Button>

@@ -11,7 +11,7 @@
  */
 
 import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { Globe, MapPin, Search, ChevronRight, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
@@ -48,6 +48,7 @@ import { SiteContextSection } from '../site-context/SiteContextSection';
 import { FloodCheckSection } from '../site-context/FloodCheckSection';
 import { CrsAssumedBadge } from './crs-assumed-badge';
 import { GeorefEmptyState } from './georef-empty-state';
+import { GEOREF_FOCUS_CLASS, useGeorefSectionFocus } from '@/lib/site-context/georef-section-focus';
 import { GeorefDiagnosis } from './georef-diagnosis-gate';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
@@ -95,6 +96,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const [crsOpen, setCrsOpen] = useState(false);
   const [conversionOpen, setConversionOpen] = useState(false);
   const [showReloadPrompt, setShowReloadPrompt] = useState(false);
+  // A model with only a CRS or only a conversion is not georeferenced either: "Open georeferencing" lands on the row that adds the missing half.
+  const completeRow = useRef<HTMLDivElement>(null);
+  useGeorefSectionFocus(modelId ?? '', 'addGeoref', completeRow);
 
   useViewerStore(s => s.mutationVersion);
 
@@ -457,7 +461,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       )}
 
       {!mergedCRS && editable && mergedConversion && (
-        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+        <div ref={completeRow} className={`px-3 py-2 border-b border-border flex items-center gap-2 ${GEOREF_FOCUS_CLASS}`}>
           <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.missingCrsNotice')}</span>
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
             <button className={`flex shrink-0 items-center gap-1 text-xs ${TEXT_LINK_CLASS}`}>
@@ -541,7 +545,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       )}
 
       {!mergedConversion && editable && mergedCRS && (
-        <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+        <div ref={completeRow} className={`px-3 py-2 border-b border-border flex items-center gap-2 ${GEOREF_FOCUS_CLASS}`}>
           <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noConversionNotice')}</span>
           <button
             onClick={() => initializeMapConversionDefaults()}

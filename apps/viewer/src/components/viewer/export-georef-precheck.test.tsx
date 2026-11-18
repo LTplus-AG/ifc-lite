@@ -12,6 +12,7 @@ import { render, cleanup, click, type, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { pendingGeorefSectionFocus, requestGeorefSectionFocus } from '@/lib/site-context/georef-section-focus';
 import { GeorefEmptyState } from './properties/georef-empty-state';
+import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 import { KmzExportDialog } from './KmzExportDialog';
 import { CesiumIonExportDialog } from './CesiumIonExportDialog';
@@ -77,3 +78,27 @@ for (const schemaNotice of [false, true]) {
     assert.equal(document.activeElement?.textContent?.includes(schemaNotice ? 'IFC2' : 'No georeferencing'), true);
   });
 }
+
+const HALF_GEOREF = {
+  crs: { projectedCRS: { id: 71, name: 'EPSG:2056' }, action: 'Add Coordinates' },
+  conversion: { mapConversion: { id: 73, sourceCRS: 41, targetCRS: 71, eastings: 2600000, northings: 1200000, orthogonalHeight: 0 }, action: 'Add CRS' },
+} as const;
+for (const [half, { action, ...georef }] of Object.entries(HALF_GEOREF)) {
+  test(`#10647 a model with only a ${half} routes to the row that completes it`, () => {
+    requestGeorefSectionFocus('half', 'addGeoref');
+    render(<GeoreferencingPanel georef={{ hasGeoreference: false, ...georef } as never} schemaVersion="IFC4" modelId="half" enableEditing />);
+    assert.equal(pendingGeorefSectionFocus() === null, true);
+    assert.equal(document.activeElement?.textContent?.trim(), action);
+  });
+}
+
+test('#10647 kmz legacy single-model path sees session edits stored under __legacy__', async () => {
+  useViewerStore.setState({ models: new Map(), ifcDataStore: await parseFixtureModel(), geometryResult, georefMutations: new Map([['__legacy__', {
+    mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
+    projectedCRS: { name: 'EPSG:2056' },
+  }]]) });
+  render(<KmzExportDialog surface="ribbon" />);
+  click(button('Export KMZ'));
+  assert.equal(document.body.textContent?.includes('This model has no georeferencing.'), false);
+  assert.equal(button('Export').disabled, false);
+});

@@ -137,7 +137,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
       return kmzSuggestsAbsoluteAltitude({
         geometryResult: selectedModel.geometryResult,
         dataStore: selectedModel.dataStore,
-        mutations: selectedModel.id === '__legacy__' ? undefined : georefMutations.get(selectedModel.id),
+        mutations: georefMutations.get(selectedModel.id),
       });
     } catch (err) {
       // A hint must never break the dialog — log and fall back to no hint.
@@ -161,7 +161,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
         geometryResult: selectedModel.geometryResult,
         instancedModelRange: selectedModel.instancedModelRange,
         dataStore: selectedModel.dataStore,
-        mutations: selectedModelId === '__legacy__' ? undefined : georefMutations.get(selectedModelId),
+        mutations: georefMutations.get(selectedModelId),
         name: baseName,
         altitudeMode,
       });
@@ -188,7 +188,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
   }, [selectedModel, selectedModelId, georefMutations, altitudeMode, t, surface]);
 
   const missingGeoref = useMemo(() => open && !!selectedModel && !modelHasGeoreference(
-    selectedModel.dataStore, selectedModel.id === '__legacy__' ? undefined : georefMutations.get(selectedModel.id),
+    selectedModel.dataStore, georefMutations.get(selectedModel.id),
   ), [open, selectedModel, georefMutations]);
 
   const filenamePreview = selectedModel ? modelExportFilename(selectedModel.name, 'kmz') : undefined;
@@ -219,8 +219,8 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
       onExport={handleExport}
       onOpenStateChange={setOpenMirror}
     >
-      <>
-        {missingGeoref && <ExportGeorefNotice modelId={selectedModel.id} onClose={() => setOpenMirror(false)} />}
+      {({ isExporting }) => <>
+        {missingGeoref && <ExportGeorefNotice modelId={selectedModel.id} disabled={isExporting} onClose={() => setOpenMirror(false)} />}
         {/* Google Earth Web does not support KML <Model>, so it cannot render a KMZ 3D
             model — only Earth Pro (desktop) can. Web users should export GLB instead. */}
         <Alert>
@@ -287,7 +287,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
             )}
           </div>
         </div>
-      </>
+      </>}
     </ExportDialogShell>
   );
 }

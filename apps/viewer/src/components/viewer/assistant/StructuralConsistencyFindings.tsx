@@ -8,12 +8,12 @@
  * compares with the physical model now, each finding's entities selectable,
  * and a way to show each analysis model.
  */
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { StructuralConsistencyIssue } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import type { StructuralConsistencyReview } from '@/lib/actions/structural-consistency-review';
-import { ElementLink, linkedText, ShowAnalyticalModelButton } from './StructuralReviewLinks';
+import { ElementLink, ElementLinks, linkedText, ShowAnalyticalModelButton } from './StructuralReviewLinks';
 import { Listing } from './StructuralReviewListing';
 
 function FindingRow({ modelId, issue }: { modelId: string; issue: StructuralConsistencyIssue }) {
@@ -37,7 +37,7 @@ function AnalysisModelRow({ modelId, expressId, memberIds }: { modelId: string; 
  * Runs the consistency checks for `modelId` and lists what they find. They run
  * again for each new `prepared` review, since the model may have changed in between.
  * If the check itself fails, the `existing` analysis models can still be shown,
- * though without their members, which only the check reads.
+ * though without their members: the derivation plan does not carry them.
  */
 export function StructuralConsistencyFindings({ modelId, prepared, existing }: {
   modelId: string; prepared: object; existing: readonly { expressId: number }[];
@@ -72,7 +72,7 @@ export function StructuralConsistencyFindings({ modelId, prepared, existing }: {
     <Listing open summary={t('structuralDerive.consistency.unchecked', { count: skipped.length })} rows={skipped}
       row={({ memberId, elementIds }) => linkedText(t, 'structuralDerive.consistency.uncheckedRow', {}, {
         item: <ElementLink modelId={modelId} expressId={memberId} />,
-        elements: elementIds.map((id, index) => <Fragment key={id}>{index > 0 && ', '}<ElementLink modelId={modelId} expressId={id} /></Fragment>),
+        elements: <ElementLinks modelId={modelId} ids={elementIds} />,
       })} />
   </section>;
 }

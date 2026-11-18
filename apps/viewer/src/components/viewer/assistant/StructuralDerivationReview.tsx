@@ -11,7 +11,7 @@ import { commitStructuralDerivation, derivationModelId, prepareStructuralDerivat
 import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { StructuralReviewControls, useStructuralReview } from './StructuralReviewFlow';
 import { StructuralConsistencyFindings } from './StructuralConsistencyFindings';
-import { ElementLink, linkedText, ShowAnalyticalModelButton } from './StructuralReviewLinks';
+import { ElementLink, ElementLinks, linkedText, ShowAnalyticalModelButton } from './StructuralReviewLinks';
 import { Listing } from './StructuralReviewListing';
 
 // The review's copy loads with this chunk (#6923), not at first load.
@@ -30,7 +30,7 @@ export function DerivationSummary({ review }: { review: Review }) {
   return <>
     <output className="block">{t('structuralDerive.counts', { ...counts, created: review.created })}</output>
     {plan.refusal !== null && <p role="alert">{linkedText(t, 'structuralDerive.existing', {}, {
-      ids: plan.existingAnalysisModels.map((m, index) => <Fragment key={m.expressId}>{index > 0 && ', '}{link(m.expressId)}</Fragment>),
+      ids: <ElementLinks modelId={modelId} ids={plan.existingAnalysisModels.map((m) => m.expressId)} />,
     })}</p>}
     {plan.refusal === null && review.created === 0 && <p role="alert">{t('structuralDerive.nothing')}</p>}
     {plan.existingAnalysisModels.length > 0 && review.created === 0 && <StructuralConsistencyFindings modelId={modelId} prepared={review}

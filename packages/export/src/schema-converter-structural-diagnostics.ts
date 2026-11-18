@@ -155,9 +155,9 @@ export class StructuralDiagnostics {
    */
   strandsCause(id: number, withheld: ReadonlySet<number> | undefined): boolean {
     const entity = this.source?.type(id), args = this.source?.slots(id);
-    if (!entity || !args || slotUnset(args[CAUSED_BY]) || this.causes(entity, args, withheld)) return false;
-    // An unconverted action naming no point reaction keeps CausedBy in its own record, and the export reports nothing.
-    return !this.varying.staysUnconverted(entity, args) || this.carriers.causeOf(entity, args, withheld) !== null;
+    if (!entity || !args || slotUnset(args[CAUSED_BY])) return false;
+    // A converted action naming a point reaction is held by 'Causes'; an unconverted one naming none keeps it unreported.
+    return this.varying.staysUnconverted(entity, args) === (this.carriers.causeOf(entity, args, withheld) !== null);
   }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }

@@ -279,14 +279,13 @@ export function analyzeConversionLoss(
     // @raw-entity-enumeration-ok this report accepts only a source entityIndex and describes the parsed file's schema-conversion losses
     for (const [sourceType, allIds] of store.entityIndex.byType) {
       const type = sourceType.toUpperCase();
-      let info = classifyEntityTypeConversion(type, fromSchema, toSchema);
-      let expressIds: readonly number[] = allIds;
+      const info = classifyEntityTypeConversion(type, fromSchema, toSchema);
       if (info.kind === 'identity' || info.kind === 'renamed') {
-        expressIds = preview?.stranded(type, allIds) ?? [];
-        info = { ...info, kind: 'lossy', droppedAttributes: ['CausedBy'] };
-      } else if (preview && info.kind === 'lossy') {
-        expressIds = preview.uncarried(type, allIds, info.droppedAttributes);
+        const expressIds = preview?.stranded(type, allIds) ?? [];
+        if (expressIds.length) entries.push({ ...info, kind: 'lossy', droppedAttributes: ['CausedBy'], sourceType: type, count: expressIds.length, expressIds });
+        continue;
       }
+      const expressIds = preview && info.kind === 'lossy' ? preview.uncarried(type, allIds, info.droppedAttributes) : allIds;
       if (expressIds.length === 0) continue;
       entries.push({ ...info, sourceType: type, count: expressIds.length, expressIds });
     }

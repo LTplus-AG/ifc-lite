@@ -582,8 +582,7 @@ describe('carrier prepass on a truncated property set #9668', () => {
 
 // #10597: the conversion loss preview does not name lost what a carrier keeps, and still names what it declines.
 describe('conversion loss report and structural carriers #10597', () => {
-  const preview = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') =>
-    analyzeConversionLoss(await parse(text), from, to).entries.flatMap((e) => e.droppedAttributes.map((a) => `${e.sourceType}.${a}`));
+  const preview = async (text: string, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4') => Object.keys(await lossIds(text, from, to));
   const cases = [
     ['IFCSTRUCTURALLINEARACTION.CausedBy', 'IFC2X3', 'IFC4', `#20=IFCSTRUCTURALPOINTREACTION('0KQ0efL39PrP5DeqBwaUNp',#5,'R',$,$,#9,$,#12,.GLOBAL_COORDS.);
 #21=IFCSTRUCTURALLINEARACTION('2CpCw3$DzVlut_KQsd7u6Y',#5,'A',$,$,#9,$,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);`],

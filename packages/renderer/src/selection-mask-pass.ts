@@ -34,14 +34,15 @@ import {
   createGeometricMaskPipelines,
   InstancedSelectionMask,
   isInstancedMaskEmpty,
+  maskVertexStage,
   MASK_ALL_FORMAT,
   MASK_VISIBLE_FORMAT,
   type InstancedMaskFrame,
   type MaskKind,
   type MaskPipelines,
+  type MaskVertexLayout,
 } from './selection-mask-pipelines.js';
 import { OPAQUE_VISIBILITY_GROUP } from './shaders/opaque-visibility.wgsl.js';
-import { MESH_VERTEX_BUFFERS, TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 
 export interface SelectableMesh {
   vertexBuffer: GPUBuffer;
@@ -49,6 +50,12 @@ export interface SelectableMesh {
   indexCount: number;
   bindGroup: GPUBindGroup;
   vertexStride?: 36;
+  /** A quantized colour batch drawn for the highlight (#10264 S3); its uniform names the entities kept. */
+  quantized?: true;
+}
+
+function vertexLayoutOf(mesh: Pick<SelectableMesh, 'vertexStride' | 'quantized'>): MaskVertexLayout {
+  return mesh.quantized ? 'quantized' : mesh.vertexStride === 36 ? 'textured' : 'flat';
 }
 
 /**
@@ -98,10 +105,12 @@ export class SelectionMaskPass {
   private readonly device: GPUDevice;
   private readonly meshBindGroupLayout: GPUBindGroupLayout;
   private readonly sampleCount: number;
-  private readonly pipelines: MaskPipelines;
-  private readonly texturedPipelines: MaskPipelines;
-  private texturedGeometricPipelines: MaskPipelines | null = null;
-  private geometricPipelines: MaskPipelines | null = null;
+  private readonly layout: GPUPipelineLayout;
+  private readonly vertexModule: GPUShaderModule;
+  private readonly fragmentModule: GPUShaderModule;
+  /** Per vertex layout; flat and textured built up front, quantized on its first draw. */
+  private readonly pipelines = new Map<MaskVertexLayout, MaskPipelines>();
+  private readonly geometricPipelines = new Map<MaskVertexLayout, MaskPipelines>();
   /** Built on the first frame with an instanced selection or hover. */
   private instanced: InstancedSelectionMask | null = null;
   private targets: MaskTargets | null = null;
@@ -115,16 +124,33 @@ export class SelectionMaskPass {
     this.meshBindGroupLayout = meshBindGroupLayout;
 
     this.sampleCount = sampleCount;
-    const layout = this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.meshBindGroupLayout]) });
-
-    const vertexModule = this.device.createShaderModule({ label: 'selection-mask-vs', code: mainShaderSource });
-    const fragmentModule = this.device.createShaderModule({
+    this.layout = this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.meshBindGroupLayout]) });
+    this.vertexModule = this.device.createShaderModule({ label: 'selection-mask-vs', code: mainShaderSource });
+    this.fragmentModule = this.device.createShaderModule({
       label: 'selection-mask-fs',
       code: selectionMaskFragmentSource(),
     });
-    const vertex: GPUVertexState = { module: vertexModule, entryPoint: 'vs_main', buffers: MESH_VERTEX_BUFFERS };
-    this.pipelines = createMaskPipelines(this.device, 'selection-mask', layout, vertex, fragmentModule, sampleCount);
-    this.texturedPipelines = createMaskPipelines(this.device, 'selection-mask-textured', layout, { ...vertex, buffers: TEXTURED_HIGHLIGHT_VERTEX_BUFFERS }, fragmentModule, sampleCount);
+    this.plain('flat');
+    this.plain('textured');
+  }
+
+  private plain(layout: MaskVertexLayout): MaskPipelines {
+    let pipelines = this.pipelines.get(layout);
+    if (!pipelines) {
+      const label = layout === 'flat' ? 'selection-mask' : `selection-mask-${layout}`;
+      pipelines = createMaskPipelines(this.device, label, this.layout, maskVertexStage(this.vertexModule, layout), this.fragmentModule, this.sampleCount);
+      this.pipelines.set(layout, pipelines);
+    }
+    return pipelines;
+  }
+
+  private geometric(layout: MaskVertexLayout): MaskPipelines {
+    let pipelines = this.geometricPipelines.get(layout);
+    if (!pipelines) {
+      pipelines = createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount, undefined, layout);
+      this.geometricPipelines.set(layout, pipelines);
+    }
+    return pipelines;
   }
 
   /** Nothing to draw this frame: caller skips the pass and the outline composite entirely. */
@@ -158,16 +184,13 @@ export class SelectionMaskPass {
       });
       // Group 1 is padding in both mesh mask layouts; group 2 is padding unless geometric (#9060).
       pass.setBindGroup(1, emptyBindGroup(this.device));
-      if (visible && frame.geometricVisibility) {
-        this.geometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount);
-        pass.setPipeline(this.geometricPipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, frame.geometricVisibility);
-      } else { pass.setPipeline(this.pipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device)); }
+      const geometric = visible && frame.geometricVisibility;
+      if (geometric) {
+        pass.setPipeline(this.geometric('flat')[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, frame.geometricVisibility!);
+      } else { pass.setPipeline(this.plain('flat')[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device)); }
       for (const mesh of meshes) {
-        const textured = mesh.vertexStride === 36;
-        if (visible && frame.geometricVisibility) {
-          if (textured) this.texturedGeometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount, undefined, true);
-          pass.setPipeline((textured ? this.texturedGeometricPipelines! : this.geometricPipelines!)[kind]);
-        } else pass.setPipeline((textured ? this.texturedPipelines : this.pipelines)[kind]);
+        const layout = vertexLayoutOf(mesh);
+        pass.setPipeline((geometric ? this.geometric(layout) : this.plain(layout))[kind]);
         pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
         pass.setBindGroup(0, mesh.bindGroup);
         pass.setVertexBuffer(0, mesh.vertexBuffer);
@@ -183,7 +206,7 @@ export class SelectionMaskPass {
     draw(targets.visibleView, 'selectedVisible', frame.selected);
     if (frame.hovered.length > 0 || (instancedFrame?.hovered.length ?? 0) > 0) {
       draw(targets.visibleView, 'hoverVisible', frame.hovered.map((h, i) => ({
-        vertexBuffer: h.vertexBuffer, indexBuffer: h.indexBuffer, indexCount: h.indexCount, bindGroup: this.hoverGroup(h, i), vertexStride: h.vertexStride,
+        vertexBuffer: h.vertexBuffer, indexBuffer: h.indexBuffer, indexCount: h.indexCount, bindGroup: this.hoverGroup(h, i), vertexStride: h.vertexStride, quantized: h.quantized,
       })));
     }
     draw(targets.allView, 'selectedAll', frame.selected);

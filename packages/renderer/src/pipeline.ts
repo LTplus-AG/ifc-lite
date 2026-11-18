@@ -11,7 +11,7 @@ import { WebGPUDevice } from './device.js';
 import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { ghostShaderSource } from './shaders/ghost.wgsl.js';
-import { INSTANCED_VERTEX_BUFFERS, MESH_VERTEX_BUFFERS, TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { INSTANCED_VERTEX_BUFFERS, MESH_VERTEX_BUFFERS, QUANTIZED_VERTEX_BUFFERS, TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { OpaqueDrawVariants, type OpaqueDrawKind, type OpaqueDrawMode } from './opaque-draw-variants.js';
 import { opaqueFastShaderSource } from './shaders/main-opaque-fast.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
@@ -43,8 +43,8 @@ export class RenderPipeline {
     private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
     private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); lazily built, null if unbuilt/rejected
     private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
-    private makeQuantizedPipelineAsync: ((kind: 'opaque' | 'transparent') => Promise<GPURenderPipeline>) | null = null;
-    private quantizedPipelines: Partial<Record<'opaque' | 'transparent' | 'overlay', GPURenderPipeline>> = {};
+    private makeQuantizedPipelineAsync: ((kind: 'opaque' | 'transparent' | 'selection') => Promise<GPURenderPipeline>) | null = null;
+    private quantizedPipelines: Partial<Record<'opaque' | 'transparent' | 'overlay' | 'selection', GPURenderPipeline>> = {};
     private makeGhostPipelineAsync: ((quantized: boolean) => Promise<GPURenderPipeline>) | null = null;
     private readonly ghostPipelines = new Map<boolean, GPURenderPipeline | null>();
     private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
@@ -429,26 +429,14 @@ export class RenderPipeline {
         // Created LAZILY on first use for the same SwiftShader-init
         // fragility reason as the instanced-transparent pipeline above —
         // a knob-off load never builds them.
-        const quantizedVertex: GPUVertexState = {
-            module: shaderModule,
-            entryPoint: 'vs_main_quantized',
-            buffers: [
-                {
-                    arrayStride: 12,
-                    attributes: [
-                        { shaderLocation: 0, offset: 0, format: 'uint16x4' }, // qpos.xyz + packed oct
-                        { shaderLocation: 2, offset: 8, format: 'uint32' },   // entityId lane
-                    ],
-                },
-            ],
-        };
+        const quantizedVertex: GPUVertexState = { module: shaderModule, entryPoint: 'vs_main_quantized', buffers: QUANTIZED_VERTEX_BUFFERS };
         this.opaqueVariants = new OpaqueDrawVariants(this.device, opaqueFastShaderSource, {
             flat: pipelineDescriptor,
             quantized: { ...pipelineDescriptor, vertex: quantizedVertex },
             instanced: { ...pipelineDescriptor, vertex: instancedVertex },
         });
         this.makeQuantizedPipelineAsync = (kind) => {
-            const base = kind === 'opaque' ? pipelineDescriptor : transparentPipelineDescriptor;
+            const base = kind === 'opaque' ? pipelineDescriptor : kind === 'selection' ? selectionPipelineDescriptor : transparentPipelineDescriptor;
             return this.visibility.createAsync({ ...base, vertex: quantizedVertex });
         };
         // X-Ray ghosts: the transparent descriptor with the ghost fragment stage
@@ -600,7 +588,7 @@ export class RenderPipeline {
     async ensureQuantizedPipelines(): Promise<boolean> {
         const factory = this.makeQuantizedPipelineAsync;
         if (this.destroyed || !factory) return false;
-        const kinds = ['opaque', 'transparent'] as const;
+        const kinds = ['opaque', 'transparent', 'selection'] as const;
         try {
             for (const kind of kinds) {
                 if (!this.quantizedPipelines[kind]) {
@@ -805,6 +793,11 @@ export class RenderPipeline {
 
     getSelectionPipeline(): GPURenderPipeline {
         return this.selectionPipeline;
+    }
+
+    /** The highlight draw of a colour batch (#10264 S3); null while a quantized one is not built. */
+    getBatchSelectionPipeline(quantized: boolean): GPURenderPipeline | null {
+        return quantized ? this.quantizedPipelines.selection ?? null : this.selectionPipeline;
     }
 
     getTransparentPipeline(): GPURenderPipeline {

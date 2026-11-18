@@ -14,9 +14,16 @@
  * Here a frame only asks whether an input changed: the selection, hide/isolate,
  * the model or item scope, the scene's pick geometry or its mesh list. While
  * none did, the highlight meshes of the last frame are the answer.
+ *
+ * Entities held by colour batches are highlighted from those batches on the
+ * GPU (#10264 S3, `batch-highlight.ts`); only the rest (an item filter, an
+ * evicted or ambiguous batch, a table that cannot be held yet) still get
+ * copies built from their CPU pieces.
  */
 
-import { TexturedSelection, isTexturedPiece, type TexturedSelectionResources } from './textured-selection.js';
+import { TexturedSelection, isTexturedPiece } from './textured-selection.js';
+import { BatchHighlight, type BatchHighlightResources } from './batch-highlight.js';
+import { entityHighlightImage } from './entity-highlight-table.js';
 import { selectionHydrationOrder } from './selection-hydration-order.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { hydrateSelectedEntities, retireStaleSelectionHydration, type MergedSelectionCoverage } from './selection-hydration.js';
@@ -142,7 +149,22 @@ export interface SelectionHighlightInputs {
 }
 
 type HighlightScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces' | 'getMeshDataPieceList' | 'getPickGeometryRevision'
-  | 'removeMeshesWhere' | 'disposeHydratedMeshesExcept' | 'setInstancedSelection'>;
+  | 'removeMeshesWhere' | 'disposeHydratedMeshesExcept' | 'setInstancedSelection' | 'getBatchedMeshes' | 'requestBatchResidency'>;
+
+/** The shared highlight table (`section-exclusions.ts`) as the selection writes it. */
+export interface HighlightTable {
+  writeHighlight(image: Uint32Array): boolean;
+  readonly highlightPending: Promise<boolean> | null;
+}
+
+/** What drawing the highlight from GPU resources needs: textured borrows, batch records and the table. */
+export interface HighlightResources extends BatchHighlightResources {
+  table: HighlightTable;
+  /** Called once a highlight table that could not be held yet is bound, so the frame is redrawn. */
+  onTableReady(): void;
+}
+
+const EMPTY_TABLE = entityHighlightImage([]);
 
 /** The selected ids that are neither hidden nor isolated away; the selection itself when no filter is on. */
 function visibleSelection(frame: SelectionHighlightInputs): ReadonlySet<number> {
@@ -183,7 +205,11 @@ export class SelectionHighlight {
   /** The copies were retired for a change and have not been rebuilt, or a rebuild failed and is owed. */
   private pending = false;
   private readonly textured = new TexturedSelection();
-  clear(): void { this.textured.clear(); this.pending = true; this.drawn = []; }
+  private readonly batches = new BatchHighlight();
+  /** The highlight table image the batch draws read; rewritten each frame, a no-op while unchanged. */
+  private table: Uint32Array = EMPTY_TABLE;
+  private awaitedTable: Promise<boolean> | null = null;
+  clear(): void { this.textured.clear(); this.batches.clear(); this.table = EMPTY_TABLE; this.pending = true; this.drawn = []; }
 
   /**
    * The scene meshes that draw this frame's highlight. While every input is
@@ -198,21 +224,28 @@ export class SelectionHighlight {
     frame: SelectionHighlightInputs,
     createPiece: (piece: MeshData) => boolean,
     createMerged: (pieces: readonly MeshData[], merged: MergedSelectionCoverage) => boolean,
-    resources?: TexturedSelectionResources,
+    resources?: HighlightResources,
   ): readonly Mesh[] {
-    if (this.changed(scene, frame)) this.retire(scene, frame);
+    if (this.changed(scene, frame) || this.batches.stale(scene)) this.retire(scene, frame);
+    // Every frame that draws from it: another renderer on the device may have written the shared table.
+    if (resources && this.table !== EMPTY_TABLE && !this.writeTable(resources, this.table)) this.pending = true;
     if (!this.pending) return this.drawn;
-    const { visible, modelIndex, itemFilterExpressId, itemFilterItemId } = this;
+    const { modelIndex, itemFilterExpressId, itemFilterItemId } = this;
+    let visible = this.visible;
     const owner = scene as Scene;
     const borrowed = resources ? this.textured.sync(owner, visible, resources, modelIndex, itemFilterExpressId, itemFilterItemId, frame.selected) : [];
+    const gpu = resources ? this.drawFromBatches(scene, resources) : null;
+    if (gpu && gpu.covered.size > 0) visible = new Set([...visible].filter((id) => !gpu.covered.has(id)));
     const merge: typeof createMerged = resources ? (pieces, coverage) => {
       let complete = true;
       for (const run of this.textured.runs(owner, pieces)) complete = createMerged(run, coverage) && complete;
       return complete;
     } : createMerged;
     const complete = hydrateSelectedEntities(scene, visible, modelIndex, itemFilterExpressId, itemFilterItemId, createPiece, merge, this.pool, resources ? isTexturedPiece : undefined);
-    this.drawn = visible.size > 0
-      ? scene.getMeshes().filter((mesh) => visible.has(mesh.expressId)
+    // Authored meshes of a batch-drawn entity are their own geometry: they still highlight themselves.
+    const all = this.visible;
+    this.drawn = all.size > 0
+      ? scene.getMeshes().filter((mesh) => (visible.has(mesh.expressId) || (mesh.hydrated !== true && all.has(mesh.expressId)))
         && (modelIndex === undefined || mesh.modelIndex === modelIndex)
         && (mesh.expressId !== itemFilterExpressId || mesh.geometryItemId === itemFilterItemId)) // #4382
       : [];
@@ -221,10 +254,49 @@ export class SelectionHighlight {
       order.retain(scene, frame.selected, modelIndex, itemFilterExpressId, itemFilterItemId);
       this.drawn = order.sortDraws([...this.drawn, ...borrowed]);
     }
+    if (gpu && gpu.draws.length > 0) this.drawn = [...this.drawn, ...gpu.draws];
     this.pending = !complete;
     this.sceneMeshes = scene.getMeshes();
     this.sceneMeshCount = this.sceneMeshes.length;
     return this.drawn;
+  }
+
+  /**
+   * Highlight what the colour batches can draw (`batch-highlight.ts`), once
+   * the table holding those ids is bound; free the copies those ids held.
+   * When the table cannot be held, nothing is drawn from the batches and the
+   * copies stand in, so no frame shows a partial highlight; a larger table
+   * that WebGPU later confirms makes the next frame decide again.
+   */
+  private drawFromBatches(scene: HighlightScene, resources: HighlightResources): { covered: ReadonlySet<number>; draws: readonly Mesh[] } {
+    if (this.visible.size === 0) { this.batches.clear(); this.table = EMPTY_TABLE; return { covered: new Set(), draws: [] }; }
+    const exact = new Set<number>();
+    // #4382: an item filter names one representation item, which the lane does not carry.
+    const item = this.itemFilterExpressId;
+    if (item !== undefined && this.visible.has(item) && (scene.getMeshDataPieces(item, this.modelIndex, this.itemFilterItemId)?.length ?? 0) > 0) exact.add(item);
+    const result = this.batches.sync(scene, this.visible, this.modelIndex, exact, resources);
+    if (result.covered.size === 0) { this.table = EMPTY_TABLE; return result; }
+    const image = entityHighlightImage(result.covered);
+    if (!this.writeTable(resources, image)) {
+      this.batches.clear();
+      this.table = EMPTY_TABLE; // nothing reads it without batch draws
+      return { covered: new Set(), draws: [] };
+    }
+    const covered = result.covered;
+    scene.removeMeshesWhere((mesh) => mesh.hydrated === true
+      && (mesh.mergedSelection?.ids ? [...mesh.mergedSelection.ids].some((id) => covered.has(id)) : covered.has(mesh.expressId) && mesh.expressId !== item));
+    return result;
+  }
+
+  /** Write `image` as the table; on success it becomes this frame's. False while it cannot be held. */
+  private writeTable(resources: HighlightResources, image: Uint32Array): boolean {
+    if (resources.table.writeHighlight(image)) { this.table = image; return true; }
+    const pending = resources.table.highlightPending;
+    if (pending && pending !== this.awaitedTable) {
+      this.awaitedTable = pending;
+      void pending.then((ready) => { if (ready) { this.pending = true; resources.onTableReady(); } });
+    }
+    return false;
   }
 
   private changed(scene: HighlightScene, frame: SelectionHighlightInputs): boolean {

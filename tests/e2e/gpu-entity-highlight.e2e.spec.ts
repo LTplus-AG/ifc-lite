@@ -36,6 +36,8 @@ const FIXTURES = {
 const LOAD_TIMEOUT = 300_000;
 
 interface Diff { width: number; height: number; differing: number; strong: number; maxChannel: number; diffPng: string }
+/** A vs B against the unhighlighted frame C: pixels highlighted in one frame only, and shade-only differences inside both. */
+interface Coverage { highlightedA: number; highlightedB: number; onlyA: number; onlyB: number; shadeInBoth: number; outside: number }
 interface PickRow { gpu: { expressId: number } | null; annotation: boolean }
 interface SceneHandle {
   getAllMeshDataExpressIds(): number[];
@@ -206,6 +208,30 @@ const CLEAR: Step[] = [['setSelectedEntityId', 'none'], ['setSelectedEntityIds',
 
 interface Scenario { name: string; steps: Step[]; ids: number[] }
 
+/** Which pixels each frame highlights (moved more than 48/255 from C), and where A and B differ. */
+async function coverage(page: Page, a: string, b: string, c: string): Promise<Coverage> {
+  return page.evaluate(async ([x, y, z]) => {
+    const pixels = async (url: string) => {
+      const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      return context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    };
+    const [p, q, r] = await Promise.all([pixels(x), pixels(y), pixels(z)]);
+    const d = (u: Uint8ClampedArray, v: Uint8ClampedArray, i: number) => Math.max(Math.abs(u[i]! - v[i]!), Math.abs(u[i + 1]! - v[i + 1]!), Math.abs(u[i + 2]! - v[i + 2]!));
+    const out = { highlightedA: 0, highlightedB: 0, onlyA: 0, onlyB: 0, shadeInBoth: 0, outside: 0 };
+    for (let i = 0; i < p.length; i += 4) {
+      const ha = d(p, r, i) > 48, hb = d(q, r, i) > 48;
+      if (ha) out.highlightedA++;
+      if (hb) out.highlightedB++;
+      if (d(p, q, i) <= 2) continue;
+      if (ha && hb) out.shadeInBoth++; else if (ha) out.onlyA++; else if (hb) out.onlyB++; else out.outside++;
+    }
+    return out;
+  }, [a, b, c] as const);
+}
+
 /** A (batches) vs B (copies) under the scenario; C is the frame without any highlight. */
 async function compare(page: Page, info: TestInfo, scenario: Scenario): Promise<Record<string, unknown>> {
   expect(scenario.ids.length, `${scenario.name}: the scenario has entities to highlight`).toBeGreaterThan(0);
@@ -221,15 +247,22 @@ async function compare(page: Page, info: TestInfo, scenario: Scenario): Promise<
   await route(page, false);
   const ab = await diff(page, a, b);
   const ac = await diff(page, a, c);
+  const cover = await coverage(page, a, b, c);
   await info.attach(`${scenario.name}-A-vs-B-diff.png`, { body: Buffer.from(ab.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
   const pixels = ab.width * ab.height;
-  const row = { scenario: scenario.name, ids: scenario.ids.length, copiesA, copiesB, pixels, differingAB: ab.differing, strongAB: ab.strong, maxChannelAB: ab.maxChannel, differingAC: ac.differing, strongAC: ac.strong };
+  const row = { scenario: scenario.name, ids: scenario.ids.length, copiesA, copiesB, pixels, differingAB: ab.differing, strongAB: ab.strong, maxChannelAB: ab.maxChannel, differingAC: ac.differing, strongAC: ac.strong, coverage: cover };
   await info.attach(`${scenario.name}.json`, { body: JSON.stringify(row, null, 2), contentType: 'application/json' });
   expect(copiesA, `${scenario.name}: the production frame holds no copy of any piece`).toBe(0);
   expect(copiesB, `${scenario.name}: the reference really drew copies`).toBeGreaterThan(0);
   expect(ac.strong, `${scenario.name}: the highlight changed the frame (not a vacuous comparison)`).toBeGreaterThan(50);
-  expect(ab.strong, `${scenario.name}: the batches highlight what the copies highlight`).toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
-  expect(ab.differing, `${scenario.name}: draw-order differences only`).toBeLessThanOrEqual(Math.ceil(pixels * 0.005));
+  // The same pixels are highlighted (edge pixels may flip at the 48/255 cut)...
+  expect(cover.onlyA + cover.onlyB, `${scenario.name}: the batches highlight the pixels the copies highlight`).toBeLessThanOrEqual(Math.ceil(pixels * 0.0001));
+  expect(cover.outside, `${scenario.name}: nothing outside the highlight changes`).toBeLessThanOrEqual(Math.ceil(pixels * 0.0001));
+  expect(ab.strong, `${scenario.name}: no large colour change`).toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
+  // ...and inside it only the shade of overlapping highlighted surfaces may differ: the
+  // highlight writes no depth, so where two overlap without opaque depth between them the
+  // one drawn last shows, and batches draw in batch order, copies in hydration order.
+  expect(cover.shadeInBoth, `${scenario.name}: shade differences stay inside the highlight's overlaps`).toBeLessThanOrEqual(Math.ceil(cover.highlightedA * 0.1));
   return row;
 }
 
@@ -259,7 +292,7 @@ for (const quantized of [true, false]) {
 
 test('instanced and flat entities selected together (#10264 S3)', async ({ page }, info) => {
   await open(page);
-  await load(page, FIXTURES.institute, 1);
+  await load(page, FIXTURES.tower, 1);
   const instanced = await spreadIds(page, 2, 0, true);
   test.skip(instanced.length === 0, 'no entity with instanced occurrences is on screen');
   const flat = await spreadIds(page, 3);

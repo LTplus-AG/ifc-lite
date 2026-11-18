@@ -4,6 +4,7 @@
 
 import '@/test/setup-dom.js';
 import { act } from 'react';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
@@ -25,7 +26,7 @@ const button = (text: string) => {
 
 for (const format of ['kmz', 'ion'] as const) {
   async function open() {
-    const model = { ...fixtureModel('unlocated'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+    const model = { ...fixtureModel('unlocated'), geometryResult: { meshes: [] } as GeometryResult, ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
     useViewerStore.setState({ ...fixtureModels(model), georefMutations: new Map() });
     render(format === 'kmz' ? <KmzExportDialog surface="ribbon" /> : <CesiumIonExportDialog surface="ribbon" />);
     click(button(format === 'kmz' ? 'Export KMZ' : 'Upload to Cesium ion'));

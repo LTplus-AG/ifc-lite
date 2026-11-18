@@ -36,7 +36,7 @@ import { stepExportSummary } from '@/lib/export/step-export-summary';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
-import { useTranslation } from '@/i18n';
+import { formatLocaleNumber, getLocale, useTranslation } from '@/i18n';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -374,11 +374,15 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         downloadFile(result.content, modelExportFilename(mergeInputs[0]?.name ?? '', 'ifc', '_merged'), 'text/plain');
 
         const skipNotice = mergeSkipNotice(skipped, t);
-        const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`
+        // The cropped sources' warnings come from their export before the crop; they carry no
+        // entity ids to filter by, so the toast says they cover that export, not only what was kept.
+        const notes = [skipNotice, prepared.warnings.length > 0 ? t('exportDialog.sectionWarningsWholeModel') : '']
+          .filter(Boolean).join(' ');
+        const msg = `Merged ${result.stats.modelCount} models, ${formatLocaleNumber(getLocale(), result.stats.totalEntityCount)} entities`
           + (result.stats.normalizedModelCount > 0
             ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
             : '')
-          + (skipNotice ? `. ${skipNotice}` : '');
+          + (notes ? `. ${notes}` : '');
         exportedFormat = 'ifc';
         return stepExportResult(msg, [...prepared.warnings, ...result.stats.warnings], t);
       }

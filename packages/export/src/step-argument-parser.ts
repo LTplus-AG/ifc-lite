@@ -291,5 +291,5 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   return parts;
 }
 
-/** `#ID=TYPE(attrs);` on one line: the only record `convertRecord` (schema-converter.ts) converts. It passes any other through. */
-export const STEP_RECORD = /^\s*(#\d+)\s*=\s*(\w+)\s*\((.*)?\);?\s*$/;
+/** `#ID=TYPE(attrs);` record, including arguments spread over multiple lines. */
+export const STEP_RECORD = /^\s*(#\d+)\s*=\s*(\w+)\s*\((.*)\)\s*;?\s*$/s;

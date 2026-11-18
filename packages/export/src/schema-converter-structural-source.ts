@@ -78,6 +78,7 @@ export class SourceRecords {
    * when they have targets.
    */
   *naming(targets: ReadonlySet<number>): Generator<{ id: number; named: ReadonlySet<number> }> {
+    if (targets.size === 0) return;
     // @raw-entity-enumeration-ok same unedited source-only prepass
     for (const [id, entry] of this.store.entityIndex.byId) {
       const text = this.decode(entry);
@@ -106,7 +107,7 @@ export class SourceRecords {
     return this.cache.get(id);
   }
 
-  /** The slots of record `id` when the writer converts it at all: `STEP_RECORD` takes only a record on one line, and it passes any other through. */
+  /** The slots of record `id` when it matches the writer’s record syntax. */
   convertedSlots(id: number): readonly string[] | undefined {
     let converted = this.converted.get(id);
     if (converted === undefined) {

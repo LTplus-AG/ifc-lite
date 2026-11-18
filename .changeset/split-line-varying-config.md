@@ -2,4 +2,4 @@
 "@ifc-lite/export": patch
 ---
 
-An IFC4 to IFC2X3 export now refuses a file where an `IfcStructuralLoadConfiguration` is named by a record split over several lines. The writer passes such a record through as it is, so it kept naming a configuration the IFC2X3 file never holds (#10715).
+Convert STEP entity records that span multiple lines. IFC4 to IFC2X3 export now converts split-line varying actions and their load configurations without leaving dangling references. The conversion loss preview accounts for the values carried by those actions (#10715).

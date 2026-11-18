@@ -49,23 +49,16 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(() => exportToStep(awaitedStore, { schema: 'IFC2X3' })).toThrow(/IFCSTRUCTURALLOADCONFIGURATION/);
   });
 
-  // #10715: the writer converts only a record on one line (STEP_RECORD) and passes a split one
-  // through as it is, still naming the configuration IFC2X3 cannot hold, so the export refuses.
-  it('refuses a configuration named by an action split over lines, its only referrer', async () => {
-    const config = '#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);';
-    const action = (sep: string, type = '.LINEAR.') => `#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,${sep}.GLOBAL_COORDS.,.F.,$,${type});`;
-    const point = "#30=IFCSTRUCTURALPOINTACTION('0d2HL$ILbNDhwyUI0qw12$',$,'P',$,$,$,$,#25,\n  .GLOBAL_COORDS.,.F.);";
-    // LINEAR would convert on one line, SINUS would not; a point action leaves the file with no curve or surface action.
-    for (const record of [action('\n  '), action('\n  ', '.SINUS.'), point]) {
-      const store = await parse(model('IFC4', `${SHARED}\n${config}\n${record}`));
-      expect(() => exportToStep(store, { schema: 'IFC2X3' }), record).toThrow(/IFCSTRUCTURALLOADCONFIGURATION shared/);
-    }
-    // The preview agrees: as for any file the export refuses (structuralRoundTrip), no carrier restores the
-    // configuration's Values, which the one-line action keeps.
-    const values = async (sep: string) => analyzeConversionLoss(await parse(model('IFC4', `${SHARED}\n${config}\n${action(sep)}`)), 'IFC4', 'IFC2X3')
-      .entries.find((e) => e.sourceType === 'IFCSTRUCTURALLOADCONFIGURATION')?.droppedAttributes;
-    expect(await values('\n  ')).toEqual(['Name', 'Values', 'Locations']);
-    expect(await values('')).toEqual(['Name', 'Locations']);
+  it('converts a split-line varying action and withholds its split-line configuration (#10715)', async () => {
+    const config = '#25=IFCSTRUCTURALLOADCONFIGURATION($,\n  (#20,#21),$);';
+    const action = "#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,\n  .GLOBAL_COORDS.,.F.,$,.LINEAR.);";
+    const store = await parse(model('IFC4', `${SHARED}\n${config}\n${action}`));
+    const exported = exportToStep(store, { schema: 'IFC2X3' });
+    expect(exported).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\([^;]*,#20,[^;]*,#11,\(#21\)\);$/m);
+    expect(exported).not.toContain('#25');
+    const configuration = analyzeConversionLoss(store, 'IFC4', 'IFC2X3')
+      .entries.find((entry) => entry.sourceType === 'IFCSTRUCTURALLOADCONFIGURATION');
+    expect(configuration?.droppedAttributes).toEqual(['Name', 'Locations']);
   });
 
   it('requires one aspect representation per load in both directions (B)', async () => {

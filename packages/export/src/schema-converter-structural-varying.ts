@@ -83,8 +83,6 @@ export class StructuralVarying {
 
   /** Rust scan_ifc4 keeps configurations referenced by any record that is not converted.
    * They have no IFC2X3 form, so refuse the export instead of silently proxying a referrer.
-   * The writer converts only a record on one line (`convertedSlots`) and passes any other
-   * through as it is, still naming its configuration, so such a referrer refuses too (#10715).
    */
   private checkSharedConfigurations(source: SourceRecords): void {
     const candidates = new Set<number>();
@@ -99,8 +97,8 @@ export class StructuralVarying {
         consumed.add(refId(args[7])!);
       }
     }
-    for (const { id, named } of source.naming(new Set(source.ids('IFCSTRUCTURALLOADCONFIGURATION')))) {
-      if (!candidates.has(id) && ([...named].some((c) => consumed.has(c)) || !source.convertedSlots(id))) throw new Error(SHARED_CONFIGURATION);
+    for (const { id } of source.naming(consumed)) {
+      if (!candidates.has(id)) throw new Error(SHARED_CONFIGURATION);
     }
   }
 

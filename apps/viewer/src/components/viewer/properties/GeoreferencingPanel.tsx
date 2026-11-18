@@ -6,8 +6,8 @@
  * Georeferencing panel - displays and allows editing of IfcProjectedCRS
  * and IfcMapConversion entities with field-specific editing assistance.
  *
- * Rows (`./georef-rows`, #5812), `TerrainHeightButton` and the georef-check diagnosis (`./georef-diagnosis-gate`,
- * #10608) live in their own modules so this file, over the ~400-line module guideline, does not grow.
+ * Rows (`./georef-rows`, #5812), `TerrainHeightButton`, the georef-check diagnosis and the IfcSite location rows
+ * (`./georef-diagnosis-gate`, #10608, #10659) live in their own modules so this file, over the ~400-line guideline, does not grow.
  */
 
 import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
@@ -48,7 +48,7 @@ import { SiteContextSection } from '../site-context/SiteContextSection';
 import { FloodCheckSection } from '../site-context/FloodCheckSection';
 import { CrsAssumedBadge } from './crs-assumed-badge';
 import { GeorefEmptyState } from './georef-empty-state';
-import { GeorefDiagnosis } from './georef-diagnosis-gate';
+import { GeorefDiagnosis, GeorefSiteLocation } from './georef-diagnosis-gate';
 
 // ── Main Panel ─────────────────────────────────────────────────────────
 
@@ -365,8 +365,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
       <GeorefReadOnlyNotices georef={georef} schemaNotice={!canUseStandardGeoreferencing && !mergedCRS && !mergedConversion} />
-      {/* Federation alignment badge + anchor / re-align controls.
-          Hidden when only one model is loaded — alignment is a federation concept. */}
+      {/* Federation alignment badge + anchor / re-align controls; hidden for one model (alignment is a federation concept). */}
       {modelId && models.size > 1 && <FederationAlignmentControls modelId={modelId} />}
       {/* CRS summary — always visible */}
       <div className="px-3 py-1.5 flex items-center gap-2">
@@ -540,6 +539,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         </div>
       )}
 
+      {modelId && <GeorefSiteLocation modelId={modelId} editable={editable} />}
       {!mergedConversion && editable && mergedCRS && (
         <div className="px-3 py-2 border-b border-border flex items-center gap-2">
           <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.noConversionNotice')}</span>

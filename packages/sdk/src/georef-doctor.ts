@@ -7,7 +7,8 @@
  * hosts that hold their georeference edits outside a `bim` session and load
  * the checker lazily (the viewer's Georeference panel, #10608): collect the
  * facts, patch the edits in, check, and plan the fixes with the same safety
- * rules as `bim.georef.planFixes`.
+ * rules as `bim.georef.planFixes`; and plan an IfcSite RefLatitude /
+ * RefLongitude / RefElevation write as `bim.georef.setSite` encodes it.
  */
 
 export { collectGeorefFacts } from '@ifc-lite/georef-check';
@@ -15,3 +16,7 @@ export type { CrsFact, GeorefFacts, GeorefFinding, GeorefFindingCode, OperationF
 export { checkGeorefFacts } from './georef/doctor/check.js';
 export { planGeorefFixes } from './georef/doctor/plan.js';
 export type { GeorefCheckReport, GeorefFixPlan, GeorefPlannedFix, GeorefPlannedWrite } from './georef/doctor/types.js';
+export { SITE_SLOTS, planSiteWrite, readSiteValues } from './georef/site-write.js';
+export type { SiteWritePlan } from './georef/site-write.js';
+export { GeoreferencingError } from './georef/types.js';
+export type { GeorefSiteInput } from './georef/types.js';

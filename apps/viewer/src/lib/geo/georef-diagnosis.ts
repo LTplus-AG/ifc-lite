@@ -11,7 +11,11 @@
  * follows every edit without re-reading the file. A fix is offered only when
  * the SDK's planner marks it `ready` (no caveat, no value only the user can
  * supply) and it writes only fields this panel itself edits; it is applied
- * through `setGeorefFields` as one undo step.
+ * through `setGeorefFields` as one undo step. An IfcSite RefLatitude /
+ * RefLongitude / RefElevation fix is planned by the SDK's `planSiteWrite`
+ * (the encoding `bim.georef.setSite` writes) and applied as positional
+ * attribute edits (#10659); this session's site edits are laid over the
+ * file's site location the same way.
  *
  * Loaded lazily (the section that imports it is behind `React.lazy`): the
  * checker, the CRS engine and the EPSG extents stay out of the entry chunk.
@@ -20,8 +24,13 @@
 import {
   checkGeorefFacts,
   collectGeorefFacts,
+  GeoreferencingError,
+  SITE_SLOTS,
   planGeorefFixes,
+  planSiteWrite,
+  readSiteValues,
   type CrsFact,
+  type GeorefSiteInput,
   type GeorefCheckReport,
   type GeorefFacts,
   type GeorefFinding,
@@ -31,6 +40,7 @@ import {
 } from '@ifc-lite/sdk/georef-doctor';
 import { getEpsgAreaOfUse, type EpsgAreaOfUse } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { GeorefMutationData } from '@/store/slices/mutationSlice';
 
 /** The `ProjectedCRS` fields the panel edits (camelCase, as `georefMutations` keys them). */
@@ -47,10 +57,11 @@ export interface GeorefFieldWrite {
   oldValue?: string | number;
 }
 
-/** What one fix writes, grouped as `setGeorefFields` takes it. */
+/** What one fix writes, grouped as `setGeorefFields` takes it; `site` is an IfcSite write (`planSiteWrite` input). */
 export interface GeorefFixWrites {
   projectedCRS: GeorefFieldWrite[];
   mapConversion: GeorefFieldWrite[];
+  site?: GeorefSiteInput;
 }
 
 export interface DiagnosisFix {
@@ -129,12 +140,50 @@ export function overlayGeorefEdits(facts: GeorefFacts, edits: GeorefMutationData
 const lowerFirst = (name: string): string => name.charAt(0).toLowerCase() + name.slice(1);
 
 /**
- * A ready fix as `setGeorefFields` writes, or undefined when the panel cannot
- * write it: not `ready`, an IfcSite write, or a field the panel does not edit.
- * `oldValue`s come from the georeferencing the check read (edits included).
+ * The site location as this session's edits leave it: undefined when no edit
+ * touched an IfcSite location slot or deleted a site, null when no live site
+ * is left with both coordinates. Picks the site as the SDK reader does
+ * (`withSiteEdits`): the first live IfcSite with both coordinates, elevation
+ * 0 when unset. Serializable, so the panel can compare it to decide when to
+ * re-check.
  */
-export function fixWrites(fix: GeorefPlannedFix, facts: GeorefFacts): GeorefFixWrites | undefined {
-  if (fix.status !== 'ready' || !fix.write || fix.write.via === 'georef.site') return undefined;
+export function editedSiteLocation(store: IfcDataStore, view: MutablePropertyView | null | undefined): GeorefFacts['siteLocation'] | null | undefined {
+  if (!view) return undefined;
+  // @raw-entity-enumeration-ok source IfcSite ids minus this session's tombstones
+  const all = store.entityIndex.byType.get('IFCSITE') ?? [];
+  const sites = all.filter((id) => !view.isDeleted(id));
+  const touched = sites.length < all.length || sites.some((id) => {
+    const edits = view.getPositionalMutationsForEntity(id);
+    return !!edits && Object.values(SITE_SLOTS).some((slot) => edits.has(slot));
+  });
+  if (!touched) return undefined;
+  for (const siteId of sites) {
+    const v = readSiteValues(store, view, siteId);
+    if (v.RefLatitude === null || v.RefLongitude === null) continue;
+    return { siteId, latitude: v.RefLatitude, longitude: v.RefLongitude, elevation: v.RefElevation ?? 0 };
+  }
+  return null;
+}
+
+/** The facts with this session's IfcSite location edits laid over the file's site location. */
+function overlaySiteEdits(facts: GeorefFacts, edited: GeorefFacts['siteLocation'] | null | undefined): GeorefFacts {
+  if (edited === undefined) return facts;
+  if (edited) return { ...facts, siteLocation: edited };
+  const { siteLocation: _cleared, ...rest } = facts;
+  return rest;
+}
+
+/**
+ * A ready fix as `setGeorefFields` (or, for IfcSite, `planSiteWrite`) writes,
+ * or undefined when the panel cannot write it: not `ready`, a field the panel
+ * does not edit, or a site write the SDK refuses on this model. `oldValue`s
+ * come from the georeferencing the check read (edits included).
+ */
+export function fixWrites(fix: GeorefPlannedFix, facts: GeorefFacts, canWriteSite: (input: GeorefSiteInput) => boolean = () => false): GeorefFixWrites | undefined {
+  if (fix.status !== 'ready' || !fix.write) return undefined;
+  if (fix.write.via === 'georef.site') {
+    return canWriteSite(fix.write.input) ? { projectedCRS: [], mapConversion: [], site: fix.write.input } : undefined;
+  }
   const current = facts[editedSourceKey(facts)];
   const writes: GeorefFixWrites = { projectedCRS: [], mapConversion: [] };
   for (const [name, value] of Object.entries(fix.write.input.ProjectedCRS ?? {})) {
@@ -164,19 +213,34 @@ function factsOf(store: IfcDataStore): GeorefFacts | null {
   return facts;
 }
 
+/** Whether the SDK would write this site input to the model as it stands (schema, site, range, both coordinates). */
+export function siteWriteAllowed(store: IfcDataStore, view: MutablePropertyView | null, input: GeorefSiteInput): boolean {
+  try {
+    planSiteWrite(store, view, input, 'all');
+    return true;
+  } catch (error) {
+    // A refused site write is not offered as a fix; the finding still shows.
+    if (error instanceof GeoreferencingError) return false;
+    throw error;
+  }
+}
+
 /**
  * Diagnose a model's georeferencing with its unsaved edits, offline (no
  * network: the bundled EPSG index and CRS engine only; what needed more is in
  * `report.skipped`). Null for a model with no STEP source (IFCX, tabular).
+ * `view` is the model's mutation view: its IfcSite location edits are checked
+ * too, and a site fix is offered only when it can be written.
  */
 export async function diagnoseModelGeoreference(
   store: IfcDataStore,
   edits: GeorefMutationData | undefined,
   mapUnitScale?: number,
+  view: MutablePropertyView | null = null,
 ): Promise<GeorefDiagnosis | null> {
   const fileFacts = factsOf(store);
   if (!fileFacts) return null;
-  const facts = overlayGeorefEdits(fileFacts, edits, mapUnitScale);
+  const facts = overlaySiteEdits(overlayGeorefEdits(fileFacts, edits, mapUnitScale), editedSiteLocation(store, view));
   const report = await checkGeorefFacts(facts, {}, facts !== fileFacts);
   const plan = planGeorefFixes(report);
   // The plan lists each finding's fixes in report order, so they are read off in step.
@@ -184,7 +248,7 @@ export async function diagnoseModelGeoreference(
   const items = report.findings.map((finding): DiagnosisItem => {
     const planned = plan.fixes.slice(cursor, cursor += finding.fixes.length);
     for (const candidate of planned) {
-      const writes = fixWrites(candidate, report.facts);
+      const writes = fixWrites(candidate, report.facts, (input) => siteWriteAllowed(store, view, input));
       if (writes) return { finding, fix: { id: candidate.id, summary: candidate.summary, writes } };
     }
     return { finding };

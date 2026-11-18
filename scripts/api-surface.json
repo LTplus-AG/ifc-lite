@@ -10944,11 +10944,17 @@
     "GeorefFixPlan: interface",
     "GeorefPlannedFix: interface",
     "GeorefPlannedWrite: type",
+    "GeorefSiteInput: interface",
+    "GeoreferencingError: class",
     "OperationFact: interface",
+    "SITE_SLOTS: const",
     "Severity: type",
+    "SiteWritePlan: interface",
     "checkGeorefFacts: function",
     "collectGeorefFacts: function",
-    "planGeorefFixes: function"
+    "planGeorefFixes: function",
+    "planSiteWrite: function",
+    "readSiteValues: function"
   ],
   "@ifc-lite/sdk/headless": [
     "CreatedEntity: interface",

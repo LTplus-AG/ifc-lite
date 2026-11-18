@@ -7,6 +7,7 @@ import { mock, test } from 'node:test';
 import { operationLoaders } from './operations/generated/loaders';
 import { viewerOperations, viewerOperation, describeOperation } from './operations/registry';
 import { publicOperationContract } from './operations/metadata';
+import { operationContracts } from './operations/generated/contracts';
 import type { OperationExecutionContext } from './operations/contract';
 
 test('catalogue discovery does not load handlers; execution loads and verifies only its native family', async () => {
@@ -32,4 +33,15 @@ test('catalogue discovery does not load handlers; execution loads and verifies o
     await assert.rejects(writes.execute({ value: 1 }, context), /contract changed/);
     assert.equal(executed, 2, 'stale capability metadata must refuse before a native side effect');
   } finally { loader.mock.restore(); }
+});
+
+test('analytics, presentation and document-edit operation families are catalogued', () => {
+  // check-viewer-operations.mjs proves each contract matches its native handler; this pins the families.
+  const families = ['analytics-chart-report', 'analytics-charts', 'analytics-cost-schedule', 'analytics-deviation',
+    'analytics-display', 'analytics-document', 'analytics-lens', 'analytics-lens-controls', 'analytics-list-controls',
+    'analytics-lists', 'analytics-measurement-settings', 'analytics-measurements', 'analytics-presentation',
+    'analytics-schedule-controls', 'analytics-schedule-edit', 'analytics-schedule-generate',
+    'analytics-schedule-playback', 'document-native-edit'];
+  const catalogued = new Set(operationContracts.map(contract => contract.module));
+  assert.deepEqual(families.filter(family => !catalogued.has(family)), []);
 });

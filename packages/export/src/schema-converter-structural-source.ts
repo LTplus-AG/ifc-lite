@@ -8,7 +8,7 @@ import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getCanonicalEntityName, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { listItems } from './schema-converter-structural-axes.js';
 import { decodeRange } from './source-ref-bounds.js';
-import { readStepSlots } from './step-argument-parser.js';
+import { readStepSlots, STEP_RECORD } from './step-argument-parser.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 
@@ -55,7 +55,12 @@ export function isSubtype(schema: 'IFC2X3' | 'IFC4', keyword: string | undefined
 /** Source records read by id, each decoded once. Lives only for one prepass. */
 export class SourceRecords {
   private readonly cache = new Map<number, readonly string[] | undefined>();
+  private readonly converted = new Map<number, boolean>();
   constructor(private readonly store: SourceStore) {}
+
+  private decode(entry: { byteOffset: number; byteLength: number }): string {
+    return decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
+  }
 
   /**
    * How many source records name each of `targets`, outside strings and
@@ -65,7 +70,7 @@ export class SourceRecords {
     const uses = new Map<number, number>();
     // @raw-entity-enumeration-ok same unedited source-only prepass
     for (const entry of this.store.entityIndex.byId.values()) {
-      const text = decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
+      const text = this.decode(entry);
       const args = text.slice(Math.max(0, text.indexOf('(')));
       for (const t of namedExpressIds(args, targets)) uses.set(t, (uses.get(t) ?? 0) + 1);
     }
@@ -87,9 +92,21 @@ export class SourceRecords {
     if (!this.cache.has(id)) {
       // @raw-entity-enumeration-ok same unedited source-only prepass
       const entry = this.store.entityIndex.byId.get(id);
-      this.cache.set(id, entry ? readStepSlots(decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength))?.slots : undefined);
+      this.cache.set(id, entry ? readStepSlots(this.decode(entry))?.slots : undefined);
     }
     return this.cache.get(id);
+  }
+
+  /** The slots of record `id` when the writer converts it at all: `STEP_RECORD` takes only a record on one line, and it passes any other through. */
+  convertedSlots(id: number): readonly string[] | undefined {
+    let converted = this.converted.get(id);
+    if (converted === undefined) {
+      // @raw-entity-enumeration-ok same unedited source-only prepass
+      const entry = this.store.entityIndex.byId.get(id);
+      converted = !!entry && STEP_RECORD.test(this.decode(entry));
+      this.converted.set(id, converted);
+    }
+    return converted ? this.slots(id) : undefined;
   }
 }
 

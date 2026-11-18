@@ -27,7 +27,8 @@
  */
 
 import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
-import { structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
+import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
+import { varyingTarget } from './schema-converter-structural-varying.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -173,8 +174,8 @@ export interface ConversionLossEntry extends EntityConversionInfo {
   sourceType: string;
   count: number;
   expressIds: readonly number[];
-  /** Record-level losses when instances of this type lose different attributes. */
-  recordGroups?: readonly Pick<ConversionLossEntry, 'expressIds' | 'droppedAttributes' | 'count'>[];
+  /** Record-level losses when instances of this type lose different attributes or are written as different types. */
+  recordGroups?: readonly (Pick<ConversionLossEntry, 'expressIds' | 'droppedAttributes' | 'count'> & Partial<Pick<ConversionLossEntry, 'targetType'>>)[];
 }
 
 export interface ConversionLossReport {
@@ -277,24 +278,44 @@ export function analyzeConversionLoss(
   const entries: ConversionLossEntry[] = [];
   if (fromSchema !== toSchema) {
     const typed: [string, readonly number[], EntityConversionInfo][] = [];
+    // An IFC2X3 varying action classifies as identity, but the upgrade can report its CausedBy (`strandedAs`).
+    const varying: [string, readonly number[]][] = [];
     // @raw-entity-enumeration-ok this report accepts only a source entityIndex and describes the parsed file's schema-conversion losses
     for (const [sourceType, expressIds] of store.entityIndex.byType) {
       if (expressIds.length === 0) continue;
       const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
       if (info.kind !== 'identity' && info.kind !== 'renamed') typed.push([sourceType.toUpperCase(), expressIds, info]);
+      else if (fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase())) varying.push([sourceType.toUpperCase(), expressIds]);
     }
     // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost.
     // Only IfcStructural* records carry anything, and reading them needs the source bytes.
     const carrying = (type: string, info: EntityConversionInfo) => type.startsWith('IFCSTRUCTURAL') && info.droppedAttributes.length > 0;
     const { source } = store;
-    const restored = source
-      ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema, typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])))
-      : new Map<number, ReadonlySet<string>>();
+    const { restored, stranded } = source
+      ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema,
+        [...typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])), ...varying.flatMap(([, ids]) => ids)])
+      : NO_ROUND_TRIP;
     for (const [sourceType, expressIds, info] of typed) {
       const entry = carrying(sourceType, info)
         ? entryAfterRestoration(sourceType, expressIds, info, restored)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);
+    }
+    for (const [sourceType, ids] of varying) {
+      const byTarget = new Map<string, number[]>();
+      for (const id of ids) {
+        const targetType = stranded.get(id);
+        if (!targetType) continue;
+        const list = byTarget.get(targetType) ?? [];
+        list.push(id);
+        byTarget.set(targetType, list);
+      }
+      const groups = [...byTarget].map(([targetType, expressIds]) => ({ targetType, droppedAttributes: ['CausedBy'], count: expressIds.length, expressIds }));
+      if (!groups.length) continue;
+      const expressIds = groups.flatMap((group) => group.expressIds);
+      // Several groups: each names its own target, and the entry keeps the classifier's (the source type).
+      const targetType = groups.length > 1 ? sourceType : groups[0].targetType;
+      entries.push({ targetType, kind: 'lossy', droppedAttributes: ['CausedBy'], sourceType, count: expressIds.length, expressIds, ...(groups.length > 1 ? { recordGroups: groups } : {}) });
     }
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }

@@ -73,9 +73,11 @@ it('local fixture shows notice before export and surfaces producer warnings (#10
 
 it('session georeferencing edits are written: edited CRS, offsets and extent (#10602)', { skip }, async () => {
   const blobs = await open('hello-wall.ifc');
-  const store = useViewerStore.getState();
-  store.setGeorefFields('m', 'projectedCRS', [{ field: 'name', value: 'EPSG:2056' }, { field: 'mapUnit', value: 'METRE' }]);
-  store.setGeorefFields('m', 'mapConversion', [{ field: 'eastings', value: 2_600_000 }, { field: 'northings', value: 1_200_000 }, { field: 'orthogonalHeight', value: 400 }]);
+  // The store's georefMutations entry as the Georeferencing panel leaves it after an edit.
+  useViewerStore.setState({ georefMutations: new Map([['m', {
+    projectedCRS: { name: 'EPSG:2056', mapUnit: 'METRE' },
+    mapConversion: { eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 400 },
+  }]]) });
   await advance(1);
   const text = document.body.textContent ?? '';
   assert.ok(!text.includes('local coordinates, not map coordinates'), 'no local notice once the session georeferences the model');

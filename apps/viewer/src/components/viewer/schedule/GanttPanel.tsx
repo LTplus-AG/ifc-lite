@@ -91,9 +91,9 @@ export function GanttPanel() {
       return;
     }
     const modelId = [...models].find(([, model]) => model.ifcDataStore === activeStore)?.[0]
-      ?? activeModelId ?? 'legacy';
+      ?? resolveScheduleSourceModelId(models, activeModelId, '__legacy__');
     const state = useViewerStore.getState();
-    const hasPendingSchedule = !!state.scheduleData && state.scheduleData.tasks.length > 0
+    const hasPendingSchedule = !!state.scheduleData
       && (state.scheduleIsEdited || state.scheduleData.tasks.some(t => !t.expressId || t.expressId <= 0));
     const keepPending = hasPendingSchedule && state.scheduleSourceModelId === modelId;
     try {

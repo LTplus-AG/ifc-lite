@@ -38,7 +38,6 @@ export function presentListIds(ids: readonly number[], channel: VisibilityChanne
     basketVisibilityOwned: null,
     chartVisibilityOwned: null,
     listVisibilityOwned: { channel, ids: installed },
-    lensRuleIsolation: null,
   });
 }
 

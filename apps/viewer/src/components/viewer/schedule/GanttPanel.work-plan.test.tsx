@@ -152,6 +152,25 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
     }
   });
 
+  it('#10584 preserves an edited legacy schedule after its last task is deleted', async () => {
+    const sourceSchedule = { ...control('WorkSchedule', 'legacy-source', 'Legacy IFC programme'), taskGlobalIds: ['legacy-task'] };
+    const task: ScheduleTaskInfo = {
+      expressId: 0, globalId: 'legacy-task', name: 'Deleted task', isMilestone: false,
+      childGlobalIds: [], productExpressIds: [], productGlobalIds: [], controllingScheduleGlobalIds: ['legacy-source'],
+    };
+    const store = await parseSchedule([sourceSchedule], [task]);
+    useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: store });
+    useViewerStore.getState().commitGeneratedSchedule({
+      hasSchedule: true, workSchedules: [sourceSchedule], tasks: [task], sequences: [], workCalendars: [],
+    }, '__legacy__');
+    useViewerStore.getState().deleteTask(task.globalId);
+    assert.equal(useViewerStore.getState().scheduleIsEdited, true);
+    const ui = render(<GanttPanel />);
+    assert.equal(useViewerStore.getState().scheduleSourceModelId, '__legacy__');
+    assert.deepEqual(useViewerStore.getState().scheduleData?.tasks, []);
+    assert.ok(ui.textContent?.includes(scheduleEn['schedule.panel.pendingSourceSchedule']));
+  });
+
   it('distinguishes an empty selected schedule from a model with no IfcTask records (#4834)', async () => {
     const scheduledTask: ScheduleTaskInfo = {
       expressId: 0,

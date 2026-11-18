@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { presentChartIds } from '@/components/viewer/charts/useChart3DLink';
 import { applyNativeLensResult, evaluateNativeLens, hasCurrentNativeLensResult } from '@/lib/lens/native-lens';
 import { beforeEach, describe, it } from 'node:test';
 import { EntityFlags, IfcTypeEnum } from '@ifc-lite/data';
@@ -166,6 +167,19 @@ describe('native analytics operations (#10525 deeper automation)', () => {
       assert.deepEqual(useViewerStore.getState().isolatedEntities, replacement ? new Set(replacement) : null);
     }
   });
+  it('#10584 a chart can take over the exact same Lens isolation without inheriting its claim', async () => {
+    const lens: Lens = { id: 'owned', name: 'Owned', rules: [{ id: 'walls', name: 'Walls', enabled: true, action: 'colorize', color: '#123456', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }] }] };
+    useViewerStore.setState({ savedLenses: [lens] });
+    await run('lens.apply', { id: lens.id });
+    await run('lens.ruleMembers', { id: 'walls', expected_lens_id: lens.id, action: 'isolate' });
+    const ids = useViewerStore.getState().isolatedEntities;
+    assert.ok(ids?.size);
+    presentChartIds([...ids], 'isolate');
+    assert.equal(useViewerStore.getState().lensRuleIsolation, null);
+    await run('lens.clear');
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, ids);
+  });
+
   it('#10584 deleting an active saved Lens clears its ID and output without a mounted hook', async () => {
     const lens: Lens = { id: 'delete-active', name: 'Delete active', rules: [{ id: 'walls', name: 'Walls', enabled: true, action: 'colorize', color: '#123456', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }] }] };
     const key = 'ifc-lite-custom-lenses';
@@ -199,11 +213,13 @@ describe('native analytics operations (#10525 deeper automation)', () => {
 
   it('#10584 keeps a cleared lens inactive when its pending evaluation completes', async () => {
     const lens: Lens = { id: 'pending', name: 'Pending', rules: [] };
-    useViewerStore.setState({ savedLenses: [lens], activeLensId: lens.id });
-    const pending = run('lens.apply', { id: lens.id });
-    await run('lens.clear');
-    await assert.rejects(pending, /active lens changed during evaluation/);
-    assert.equal(useViewerStore.getState().activeLensId, null);
+    for (const initialId of [lens.id, null]) {
+      useViewerStore.setState({ savedLenses: [lens], activeLensId: initialId });
+      const pending = run('lens.apply', { id: lens.id });
+      await run('lens.clear');
+      await assert.rejects(pending, /active lens changed during evaluation/);
+      assert.equal(useViewerStore.getState().activeLensId, null);
+    }
   });
 
   it('#10584 rejects a Lens result computed before a model tag assignment changed', async () => {

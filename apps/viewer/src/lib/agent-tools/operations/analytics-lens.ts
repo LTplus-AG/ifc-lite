@@ -6,7 +6,10 @@ import { evaluateNativeLens, applyNativeLensResult, clearLensOutput, syncNativeL
 import { releaseNativeLensRuleIsolation, switchNativeLens } from '@/lib/lens/native-controls';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { metadata, idSchema, jsonSchema, removedSchema, checkpoint } from './analytics-common';
+// An explicit clear also supersedes an apply that started with no active lens.
+let deactivationRevision = 0;
 function deactivateLens() {
+  deactivationRevision++;
   const state = useViewerStore.getState();
   if (state.activeLensId !== null) state.setActiveLens(null);
   releaseNativeLensRuleIsolation();
@@ -29,6 +32,7 @@ export const analyticsLensOperations = [
   }),
   operation<{ id: string }>(metadata('lens.apply', 'lens', 'Await the shared native rule evaluator, then apply exact renderer color/visibility output. Works with the Lens panel closed; refuses cancellation before committing.', ['read', 'configuration', 'view'], output), idSchema, async (i, c) => {
     const before = useViewerStore.getState();
+    const beforeDeactivation = deactivationRevision;
     const lens = before.savedLenses.find(row => row.id === i.id);
     if (!lens) throw new Error('Unknown lens.');
     const snapshot = structuredClone(lens);
@@ -37,7 +41,7 @@ export const analyticsLensOperations = [
     const now = useViewerStore.getState();
     if (now.models !== before.models || now.ifcDataStore !== before.ifcDataStore || now.mutationVersion !== before.mutationVersion
       || now.savedLenses !== before.savedLenses || now.modelTags !== before.modelTags || now.modelTagAssignments !== before.modelTagAssignments
-      || now.activeLensId !== before.activeLensId) throw new Error('Lens inputs or active lens changed during evaluation.');
+      || now.activeLensId !== before.activeLensId || beforeDeactivation !== deactivationRevision) throw new Error('Lens inputs or active lens changed during evaluation.');
     c.commit(() => { switchNativeLens(i.id); if (!applyNativeLensResult(snapshot, result)) throw new Error('Lens evaluation inputs changed before publication.'); syncNativeLensHidden(); }); return inspect();
   }),
   viewerOperation(metadata('lens.clear', 'lens', 'Deactivate the lens and release only its owned color/hide/isolation state.', ['configuration', 'view'], output), emptySchema, (_, c) => {

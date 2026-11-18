@@ -34,16 +34,15 @@ import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/re
 import { toast } from '@/components/ui/toast';
 import { isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
-import { exportRhino3dmInWorker, type RhinoExportProgress } from '@/lib/export/rhino-export-client';
-import { isStepSourceModel, resolveStepExportBytes } from './step-export-source';
+import { type RhinoExportProgress } from '@/lib/export/rhino-export-client';
+import { isStepSourceModel } from './step-export-source';
 import {
   DEFAULT_RHINO_EXPORT_SETTINGS,
-  resolveRhinoVisibility,
-  rhinoSceneOptions,
   type RhinoExportSettings,
 } from './rhino-export-options';
 import { RhinoExportFields, RhinoExportProgressRow } from './RhinoExportFields';
 import { useTranslation } from '@/i18n';
+import { produceNativeRhino } from '@/lib/export/native-scenes';
 import { isAbortError } from '@/lib/runs/abort';
 import { ExportDialogShell, type ExportDialogShellActivity, type ExportDialogShellResult } from './ExportDialogShell';
 
@@ -94,16 +93,7 @@ export function RhinoExportDialog({ surface, trigger }: RhinoExportDialogProps) 
     activity.registerCancellation(controller);
     setProgress({ phase: 'scene' });
     try {
-      const bytes = await resolveStepExportBytes(selectedModel, getMutationView);
-      // Read at click time, so the export matches what is on screen now.
-      const visibility = settings.visibleOnly
-        ? resolveRhinoVisibility(useViewerStore.getState(), selectedModel.id)
-        : undefined;
-      const result = await exportRhino3dmInWorker(
-        { content: bytes, options: rhinoSceneOptions(settings, visibility), version: settings.version },
-        setProgress,
-        controller.signal,
-      );
+      const result = await produceNativeRhino(selectedModel, settings, getMutationView, setProgress, controller.signal);
 
       downloadFile(result.bytes, modelExportFilename(selectedModel.name, '3dm'));
       const sizeKb = Math.round(result.bytes.byteLength / 1024);

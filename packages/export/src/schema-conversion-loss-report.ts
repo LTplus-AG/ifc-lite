@@ -27,7 +27,7 @@
  */
 
 import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
-import { structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
+import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
@@ -294,7 +294,7 @@ export function analyzeConversionLoss(
     const { restored, stranded } = source
       ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema,
         [...typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])), ...varying.flatMap(([, ids]) => ids)])
-      : { restored: new Map<number, ReadonlySet<string>>(), stranded: new Map<number, string>() };
+      : NO_ROUND_TRIP;
     for (const [sourceType, expressIds, info] of typed) {
       const entry = carrying(sourceType, info)
         ? entryAfterRestoration(sourceType, expressIds, info, restored)
@@ -313,7 +313,9 @@ export function analyzeConversionLoss(
       const groups = [...byTarget].map(([targetType, expressIds]) => ({ targetType, droppedAttributes: ['CausedBy'], count: expressIds.length, expressIds }));
       if (!groups.length) continue;
       const expressIds = groups.flatMap((group) => group.expressIds);
-      entries.push({ ...groups[0], kind: 'lossy', sourceType, count: expressIds.length, expressIds, ...(groups.length > 1 ? { recordGroups: groups } : {}) });
+      // Several groups: each names its own target, and the entry keeps the classifier's (the source type).
+      const targetType = groups.length > 1 ? sourceType : groups[0].targetType;
+      entries.push({ targetType, kind: 'lossy', droppedAttributes: ['CausedBy'], sourceType, count: expressIds.length, expressIds, ...(groups.length > 1 ? { recordGroups: groups } : {}) });
     }
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }

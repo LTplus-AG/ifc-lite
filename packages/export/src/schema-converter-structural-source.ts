@@ -54,7 +54,8 @@ export function isSubtype(schema: 'IFC2X3' | 'IFC4', keyword: string | undefined
 
 /** Source records read by id, each decoded once. Lives only for one prepass. */
 export class SourceRecords {
-  private readonly cache = new Map<number, { slots: readonly string[] | undefined; converted: boolean } | undefined>();
+  private readonly cache = new Map<number, readonly string[] | undefined>();
+  private readonly converted = new Map<number, boolean>();
   constructor(private readonly store: SourceStore) {}
 
   private decode(entry: { byteOffset: number; byteLength: number }): string {
@@ -86,24 +87,26 @@ export class SourceRecords {
     return id === null ? undefined : this.store.entityIndex.byId.get(id)?.type.toUpperCase();
   }
 
-  private read(id: number) {
+  slots(id: number | null): readonly string[] | undefined {
+    if (id === null) return undefined;
     if (!this.cache.has(id)) {
       // @raw-entity-enumeration-ok same unedited source-only prepass
       const entry = this.store.entityIndex.byId.get(id);
-      const text = entry && this.decode(entry);
-      this.cache.set(id, text === undefined ? undefined : { slots: readStepSlots(text)?.slots, converted: STEP_RECORD.test(text) });
+      this.cache.set(id, entry ? readStepSlots(this.decode(entry))?.slots : undefined);
     }
     return this.cache.get(id);
   }
 
-  slots(id: number | null): readonly string[] | undefined {
-    return id === null ? undefined : this.read(id)?.slots;
-  }
-
   /** The slots of record `id` when the writer converts it at all: `STEP_RECORD` takes only a record on one line, and it passes any other through. */
   convertedSlots(id: number): readonly string[] | undefined {
-    const record = this.read(id);
-    return record?.converted ? record.slots : undefined;
+    let converted = this.converted.get(id);
+    if (converted === undefined) {
+      // @raw-entity-enumeration-ok same unedited source-only prepass
+      const entry = this.store.entityIndex.byId.get(id);
+      converted = !!entry && STEP_RECORD.test(this.decode(entry));
+      this.converted.set(id, converted);
+    }
+    return converted ? this.slots(id) : undefined;
   }
 }
 

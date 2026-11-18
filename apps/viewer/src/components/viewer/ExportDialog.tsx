@@ -32,7 +32,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
-import { stepExportSummary } from '@/lib/export/step-export-summary';
+import { mergedExportSummary, stepExportSummary } from '@/lib/export/step-export-summary';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
@@ -59,7 +59,7 @@ import { activeChangesJsonMutations, exportChangesJson } from './export-changes-
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
 import { hasRetainedSectionExport, RETAINED_EXACT_ONLY_REASON, hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
-import { mergedExportSummary, stepExportResult } from './export-step-result';
+import { stepExportResult } from './export-step-result';
 import { ExportDialogScopeOptions } from './export-dialog-scope-options';
 import { ExportDialogSchemaOptions } from './export-dialog-schema-options';
 import { ExportDialogToggleOptions } from './export-dialog-toggle-options';

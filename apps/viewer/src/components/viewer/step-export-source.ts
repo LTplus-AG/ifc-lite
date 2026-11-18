@@ -8,7 +8,7 @@
  * containers use their parsed STEP payload rather than the raw archive.
  */
 
-import { StepExporter } from '@ifc-lite/export';
+import { StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel, SchemaVersion } from '@/store/types';
@@ -36,6 +36,47 @@ export interface StepExportModel {
   schemaVersion: SchemaVersion;
 }
 
+/** Session georeferencing edits for one model (the store's `georefMutations` entry). */
+export type StepExportGeorefMutations = NonNullable<StepExportOptions['georefMutations']>;
+
+/** Whether `gm` carries any edited field. */
+export function hasGeorefEdits(gm: StepExportGeorefMutations | undefined): gm is StepExportGeorefMutations {
+  return !!gm && (Object.keys(gm.mapConversion ?? {}).length > 0 || Object.keys(gm.projectedCRS ?? {}).length > 0);
+}
+
+/**
+ * The STEP bytes to feed the STEP geometry pipeline for `model`. Same as
+ * {@link resolveStepExportBytes}; with `georefMutations`, the session's
+ * georeferencing edits are written into the regenerated STEP exactly as the
+ * IFC export writes them, so an exporter that reads its CRS and map
+ * conversion from the bytes sees the effective georeferencing. `warnings`
+ * lists what the georeferencing phase refused or wrote only in part.
+ */
+export async function resolveStepExportSource(
+  model: StepExportModel,
+  getMutationView: (modelId: string) => MutablePropertyView | null,
+  georefMutations?: StepExportGeorefMutations,
+): Promise<{ bytes: Uint8Array; warnings: string[] }> {
+  const view = getMutationView(model.id);
+  const mutationSource = resolveEnergyExportMutationSource({
+    mutationView: view,
+    dataStore: model.ifcDataStore,
+    schemaVersion: model.schemaVersion,
+  });
+  // Georeferencing edits live outside the mutation view, so they regenerate on their own.
+  const georef = hasGeorefEdits(georefMutations) && model.ifcDataStore && model.ifcDataStore.source.byteLength > 0
+    && model.ifcDataStore.sourceKind !== 'tabular' && model.schemaVersion !== 'IFC5' ? georefMutations : undefined;
+  if (mutationSource || georef) {
+    const dataStore = mutationSource?.dataStore ?? model.ifcDataStore!;
+    const result = new StepExporter(dataStore, mutationSource?.mutationView ?? view ?? undefined).export({
+      schema: dataStore.schemaVersion,
+      ...(georef ? { georefMutations: georef } : {}),
+    });
+    return { bytes: result.content, warnings: result.stats.georeferencingWarnings ?? [] };
+  }
+  return { bytes: await rawStepBytes(model), warnings: [] };
+}
+
 /**
  * The STEP bytes to feed the STEP geometry pipeline for `model`, in order of
  * preference:
@@ -51,16 +92,10 @@ export async function resolveStepExportBytes(
   model: StepExportModel,
   getMutationView: (modelId: string) => MutablePropertyView | null,
 ): Promise<Uint8Array> {
-  const mutationSource = resolveEnergyExportMutationSource({
-    mutationView: getMutationView(model.id),
-    dataStore: model.ifcDataStore,
-    schemaVersion: model.schemaVersion,
-  });
-  if (mutationSource) {
-    return new StepExporter(mutationSource.dataStore, mutationSource.mutationView).export({
-      schema: mutationSource.dataStore.schemaVersion,
-    }).content;
-  }
+  return (await resolveStepExportSource(model, getMutationView)).bytes;
+}
+
+async function rawStepBytes(model: StepExportModel): Promise<Uint8Array> {
   if (model.ifcDataStore && model.ifcDataStore.source.byteLength > 0) {
     // Whole-file consumer: geometry export re-reads the raw STEP.
     return model.ifcDataStore.source.materialize();

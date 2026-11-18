@@ -234,6 +234,22 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await assert.rejects(run('schedule.generate', { ...input, expected_json: 'null' }), /changed since inspection/);
   });
 
+  it('#10584 refuses non-finite schedule seek and stop times before changing playback', async () => {
+    useViewerStore.setState({ editEnabled: true, scheduleData: null, scheduleSourceModelId: null, scheduleIsEdited: false });
+    await run('schedule.initialize');
+    await run('schedule.import', { format: 'csv', text: 'Name,Start,Finish\nBuild,2026-01-05,2026-01-06\n' });
+    const { playbackTime, scheduleRange } = useViewerStore.getState();
+    assert.ok(scheduleRange);
+    for (const time of [NaN, Infinity, -Infinity]) {
+      await assert.rejects(run('schedule.configureTimeline', {
+        work_schedule_id: '', scale: 'day', time, speed: 1, loop: false, animation: false,
+      }), /Invalid schedule.configureTimeline input/);
+      await assert.rejects(run('schedule.play', { until: time, max_real_seconds: 0.1 }), /Invalid schedule.play input/);
+      assert.equal(useViewerStore.getState().playbackTime, playbackTime);
+      assert.equal(useViewerStore.getState().playbackIsPlaying, false);
+    }
+  });
+
   it('awaits native 4D clock completion without mounting Gantt and releases the host runtime', async () => {
     const previousRequest = globalThis.requestAnimationFrame; const previousCancel = globalThis.cancelAnimationFrame;
     let next = 0; const frames = new Map<number, ReturnType<typeof setTimeout>>();

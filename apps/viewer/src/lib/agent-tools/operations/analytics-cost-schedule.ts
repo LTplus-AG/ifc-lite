@@ -62,7 +62,7 @@ export const analyticsCostScheduleOperations = [
     const s = useViewerStore.getState();
     if (!s.scheduleData || !s.scheduleRange) throw new Error('No native schedule timeline is loaded.');
     if (s.scheduleSourceModelId !== c.model.id) throw new Error('The timeline belongs to a different or unattributed model.');
-    if (i.time < s.scheduleRange.start || i.time > s.scheduleRange.end) throw new Error('Seek time lies outside the schedule range.');
+    if (!(i.time >= s.scheduleRange.start && i.time <= s.scheduleRange.end)) throw new Error('Seek time lies outside the schedule range.');
     if (i.work_schedule_id && !s.scheduleData.workSchedules.some(row => row.globalId === i.work_schedule_id)) throw new Error('Unknown work schedule.');
     checkpoint(c); c.commit(() => { s.setActiveWorkScheduleId(i.work_schedule_id); s.setGanttTimeScale(i.scale); s.seekSchedule(i.time); s.setPlaybackSpeed(i.speed); s.setPlaybackLoop(i.loop); s.setAnimationEnabled(i.animation); }); return timeline();
   }),

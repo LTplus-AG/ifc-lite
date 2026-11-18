@@ -21,7 +21,7 @@ export const analyticsSchedulePlaybackOperations = [
     const initial = useViewerStore.getState(); const data = initial.scheduleData;
     if (!data || !initial.scheduleRange || initial.scheduleSourceModelId !== c.model.id) throw new Error('Initialize the exact target-model native schedule first.');
     if (initial.playbackIsPlaying) throw new Error('A native schedule playback is already running.');
-    if (i.until <= initial.playbackTime || i.until > initial.scheduleRange.end) throw new Error('Choose a stop time after the current time and within the native schedule range.');
+    if (!(i.until > initial.playbackTime && i.until <= initial.scheduleRange.end)) throw new Error('Choose a stop time after the current time and within the native schedule range.');
     if (typeof requestAnimationFrame !== 'function') throw new Error('The native animation clock host is unavailable.');
     checkpoint(c); ensureRuntime(c.host);
     return new Promise<{ state: 'succeeded' | 'cancelled' | 'failed'; time: number; reason: string | null }>((resolve, reject) => {

@@ -27,7 +27,7 @@ fn becomes(entity: &str, parent: &str) -> bool {
 }
 
 /// An entity reference slot, with STEP whitespace and comments around it allowed (#10248).
-fn slot_ref(token: &str) -> Option<u32> {
+pub(crate) fn slot_ref(token: &str) -> Option<u32> {
     let bytes = token.as_bytes();
     let start = skip_step_trivia(bytes, 0)?;
     let rest = token.get(start..)?.strip_prefix('#')?;

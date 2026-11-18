@@ -52,6 +52,8 @@ const TO_IFC2X3: &str = "an IFC4 curve or surface action with an IfcStructuralLo
 pub(crate) struct StructuralVarying {
     /// IFC2X3 -> IFC4: convertible varying action id -> (kind, loads), until [`Self::assign`] gives it a configuration id.
     planned: BTreeMap<u32, (&'static Kind, Vec<u32>)>,
+    /// Armed for IFC2X3 -> IFC4.
+    upgrading: bool,
     /// IFC2X3 -> IFC4: varying action id -> (kind, loads, the id allocated for its configuration).
     upgrades: HashMap<u32, (&'static Kind, Vec<u32>, u32)>,
     /// Configuration records written so far, by id.
@@ -75,7 +77,7 @@ struct Source {
 }
 
 /// The record's top-level arguments, framed by the shared record reader.
-fn record(content: &[u8], start: usize, end: usize) -> Option<Vec<String>> {
+pub(crate) fn record(content: &[u8], start: usize, end: usize) -> Option<Vec<String>> {
     let text = String::from_utf8_lossy(&content[start..end]);
     split_top_level_args(record_frame(&text)?.args(&text))
 }
@@ -135,7 +137,7 @@ impl StructuralVarying {
     /// without a configuration id ([`Self::assign`]).
     pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
         let source = Source::scan(content, kept, true);
-        let mut result = Self::default();
+        let mut result = Self { upgrading: true, ..Self::default() };
         for (id, kind, args) in &source.actions {
             let Some(loads) = varying_loads(args) else { continue };
             let Some(location) = ref_id(Some(&args[12])) else { continue };
@@ -144,16 +146,21 @@ impl StructuralVarying {
         result
     }
 
-    /// The varying actions that convert, in id order.
+    /// The varying actions that convert and still need a configuration id, in id order.
     pub(crate) fn needs_ids(&self) -> impl Iterator<Item = u32> + '_ { self.planned.keys().copied() }
+
+    /// Whether this varying action converts and still needs a configuration id.
+    pub(crate) fn plans(&self, id: u32) -> bool { self.planned.contains_key(&id) }
 
     /// Write the configuration of `action` under `id`.
     pub(crate) fn assign(&mut self, action: u32, id: u32) {
         if let Some((kind, loads)) = self.planned.remove(&action) { self.upgrades.insert(action, (kind, loads, id)); }
     }
 
-    /// Whether this IFC2X3 varying action becomes an IFC4 action.
-    pub(crate) fn converts(&self, id: u32) -> bool { self.planned.contains_key(&id) || self.upgrades.contains_key(&id) }
+    /// Whether this is an IFC2X3 varying action the upgrade leaves unconverted.
+    pub(crate) fn stays_unconverted(&self, id: u32, entity: &str) -> bool {
+        self.upgrading && KINDS.iter().any(|k| k.ifc2x3 == entity) && !self.upgrades.contains_key(&id)
+    }
 
     /// IFC4 -> IFC2X3: the actions that become varying actions and the configurations they consume.
     pub(crate) fn scan_ifc4(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit losses where the other structural schema has no semantic slot (#9668).
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use crate::schema_convert::{rename_type, schema_attribute_names};
 
 const LINK: &str = "IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link";
@@ -12,13 +12,11 @@ pub(crate) struct StructuralDiagnostics {
     pub(crate) links: crate::schema_structural_links::StructuralLinks,
     pub(crate) varying: crate::schema_structural_varying::StructuralVarying,
     pub(crate) carriers: crate::schema_structural_carriers::StructuralCarriers,
-    /// Actions whose CausedBy a 'Causes' relationship holds, which `inspect` does not report lost.
-    cause_carried: HashSet<u32>,
 }
 
 impl StructuralDiagnostics {
     pub(crate) fn inspect(&mut self, id: u32, entity: &str, args: &[String], from: &str, to: &str, axis_known: bool) {
-        let cause_carried = self.cause_carried.remove(&id);
+        let cause_carried = self.cause(id, entity).is_some();
         if crate::schema_structural::is_assignment_conversion(entity, from, to) {
             self.record("IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file".into());
             return;
@@ -59,20 +57,41 @@ impl StructuralDiagnostics {
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
     /// pair): the target record body, reported because the class changes.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<String> {
-        if self.carriers.stays_unconverted(id) { self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into()); }
-        let cause = self.carriers.cause(id);
-        if let Some(message) = cause {
-            self.record(message.into());
-            self.cause_carried.insert(id);
-        }
+        // An IFC2X3 varying action that stays unconverted is no IFC4 product a 'Causes' relationship could name.
+        if self.varying.stays_unconverted(id, entity) && self.carriers.cause(id).is_some() { self.record(crate::schema_structural_carriers::CAUSED_BY_UNCONVERTED.into()); }
+        let cause = self.cause(id, entity);
+        if let Some(message) = cause { self.record(message.into()); }
         let (body, losses) = match self.links.link(entity, args) {
             Some(attrs) => (format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()]),
             None => self.varying.rewrite(id, entity, args, cause.is_some())?,
         };
         losses.into_iter().for_each(|loss| self.record(loss));
-        // A rewritten record skips `inspect`, which would free this.
-        self.cause_carried.remove(&id);
         Some(body)
+    }
+
+    /// The message for an action whose CausedBy a 'Causes' relationship holds, or None.
+    fn cause(&self, id: u32, entity: &str) -> Option<&'static str> {
+        if self.varying.stays_unconverted(id, entity) { None } else { self.carriers.cause(id) }
+    }
+
+    /// IFC2X3 -> IFC4: ids for the records the prepasses add, in the order the
+    /// TypeScript twin allocates them while writing: per action in id order,
+    /// its 'Causes' relationship, then its load configuration.
+    pub(crate) fn allocate(&mut self, mut allocate: impl FnMut() -> Option<u32>) {
+        let causes: BTreeMap<u32, bool> = self.carriers.needs_ids().collect();
+        let actions: BTreeSet<u32> = causes.keys().copied().chain(self.varying.needs_ids()).collect();
+        for action in actions {
+            let configured = self.varying.plans(action);
+            // A varying action that stays unconverted gets no relationship.
+            if causes.get(&action).is_some_and(|&varying| !varying || configured) {
+                let Some(id) = allocate() else { return };
+                self.carriers.assign(action, id);
+            }
+            if configured {
+                let Some(id) = allocate() else { return };
+                self.varying.assign(action, id);
+            }
+        }
     }
 
     /// An already converted line with the values carriers fill in place (`StructuralCarriers::after`).

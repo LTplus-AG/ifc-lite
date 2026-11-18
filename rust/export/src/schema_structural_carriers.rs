@@ -10,9 +10,10 @@
 //!   from it.
 //!
 //! Both directions read the source, so only an unedited full export arms them.
-use std::collections::{BTreeSet, HashMap, HashSet};
-use crate::schema_ifc2x3_records::ref_id;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use crate::schema_structural_axes::list_items;
+use crate::schema_structural_links::slot_ref;
+use crate::schema_structural_varying::record;
 use crate::step_record_frame::record_frame;
 use crate::step_slot::split_top_level_args;
 
@@ -31,14 +32,14 @@ struct Cause {
     /// The 'Causes' relationship to add, without its id, unless a source one already names the reaction.
     relationship: Option<String>,
     message: &'static str,
+    /// An IFC2X3 varying action, which only a converting `StructuralVarying` turns into an IFC4 product.
+    varying: bool,
 }
 
 #[derive(Default)]
 pub(crate) struct StructuralCarriers {
-    /// Upgrade: action id -> its carried CausedBy.
-    causes: HashMap<u32, Cause>,
-    /// Upgrade: varying actions that stay unconverted although their CausedBy names a point reaction.
-    unconverted: HashSet<u32>,
+    /// Upgrade: action id -> its CausedBy, for each action whose CausedBy names a point reaction.
+    causes: BTreeMap<u32, Cause>,
     /// Upgrade: the relationships written, in id order.
     pending: Vec<String>,
     /// Downgrade: action id -> the one point reaction that causes it.
@@ -50,12 +51,13 @@ pub(crate) struct StructuralCarriers {
 struct Source {
     /// Type of every structural record, for subtype tests.
     types: HashMap<u32, String>,
+    /// IFC2X3 actions with their arguments; collected for the upgrade only.
     actions: Vec<(u32, String, Vec<String>)>,
     relationships: Vec<Vec<String>>,
 }
 
 impl Source {
-    fn scan(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
+    fn scan(content: &[u8], kept: impl Fn(u32, usize) -> bool, upgrade: bool) -> Self {
         let mut source = Self::default();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, end)) = scanner.next_entity() {
@@ -63,10 +65,9 @@ impl Source {
             let relationship = ty.eq_ignore_ascii_case("IFCRELASSIGNSTOPRODUCT");
             if !(structural || relationship) || !kept(id, start) { continue; }
             let ty = ty.to_ascii_uppercase();
-            let action = IFC2X3_ACTIONS.contains(&ty.as_str());
+            let action = upgrade && IFC2X3_ACTIONS.contains(&ty.as_str());
             if action || relationship {
-                let text = String::from_utf8_lossy(&content[start..end]);
-                let Some(args) = record_frame(&text).and_then(|f| split_top_level_args(f.args(&text))) else { continue };
+                let Some(args) = record(content, start, end) else { continue };
                 if relationship { source.relationships.push(args); } else { source.actions.push((id, ty.clone(), args)); }
             }
             if structural { source.types.insert(id, ty); }
@@ -80,8 +81,8 @@ impl Source {
         let mut causes: HashMap<u32, BTreeSet<u32>> = HashMap::new();
         for args in &self.relationships {
             if args.len() != 7 || args[2].trim() != "'Causes'" { continue; }
-            let Some(action) = ref_id(Some(&args[6])).filter(|&a| is(a, "IfcStructuralAction")) else { continue };
-            for reaction in list_items(&args[4]).unwrap_or_default().iter().filter_map(|r| ref_id(Some(r))) {
+            let Some(action) = slot_ref(&args[6]).filter(|&a| is(a, "IfcStructuralAction")) else { continue };
+            for reaction in list_items(&args[4]).unwrap_or_default().iter().filter_map(|r| slot_ref(r)) {
                 if is(reaction, "IfcStructuralReaction") { causes.entry(action).or_default().insert(reaction); }
             }
         }
@@ -90,18 +91,15 @@ impl Source {
 }
 
 impl StructuralCarriers {
-    /// IFC2X3 -> IFC4: the CausedBy each action keeps as a 'Causes' relationship.
-    /// `converts` says whether a varying action becomes an IFC4 action; one that
-    /// stays IFC2X3 is no IFC4 product a relationship could name. Ids come from
-    /// [`Self::allocate`].
-    pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool, converts: impl Fn(u32) -> bool) -> Self {
-        let source = Source::scan(content, kept);
+    /// IFC2X3 -> IFC4: the CausedBy of each action that names a point reaction,
+    /// as a 'Causes' relationship. Ids come from [`Self::assign`].
+    pub(crate) fn scan_ifc2x3(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
+        let source = Source::scan(content, kept, true);
         let written = source.causes(ifc_lite_core::SchemaVersion::Ifc2x3);
         let mut result = Self::default();
         for (id, ty, args) in &source.actions {
             // IFC2X3 has only point reactions.
-            let Some(reaction) = args.get(CAUSED_BY).and_then(|a| ref_id(Some(a))).filter(|r| source.types.get(r).is_some_and(|t| t == "IFCSTRUCTURALPOINTREACTION")) else { continue };
-            if ty.ends_with("VARYING") && !converts(*id) { result.unconverted.insert(*id); continue; }
+            let Some(reaction) = args.get(CAUSED_BY).and_then(|a| slot_ref(a)).filter(|r| source.types.get(r).is_some_and(|t| t == "IFCSTRUCTURALPOINTREACTION")) else { continue };
             let named = written.get(id);
             let new = !named.is_some_and(|n| n.contains(&reaction));
             let relationship = new.then(|| {
@@ -110,27 +108,27 @@ impl StructuralCarriers {
             });
             // The downgrade restores CausedBy only for an action with exactly one cause.
             let total = named.map_or(0, BTreeSet::len) + usize::from(new);
-            result.causes.insert(*id, Cause { relationship, message: if total == 1 { CAUSED_BY_WRITTEN } else { CAUSED_BY_AMONG } });
+            let message = if total == 1 { CAUSED_BY_WRITTEN } else { CAUSED_BY_AMONG };
+            result.causes.insert(*id, Cause { relationship, message, varying: ty.ends_with("VARYING") });
         }
         result
     }
 
     /// IFC4 -> IFC2X3: the actions one 'Causes' relationship names one point reaction for.
     pub(crate) fn scan_ifc4(content: &[u8], kept: impl Fn(u32, usize) -> bool) -> Self {
-        let source = Source::scan(content, kept);
+        let source = Source::scan(content, kept, false);
         let mut result = Self::default();
         for (action, reactions) in source.causes(ifc_lite_core::SchemaVersion::Ifc4) {
-            let only = *reactions.first().expect("a cause names a reaction");
-            if reactions.len() == 1 && source.types.get(&only).is_some_and(|t| t == "IFCSTRUCTURALPOINTREACTION") { result.caused_by.insert(action, only); }
+            if reactions.len() != 1 { continue; }
+            let only = reactions.first().copied();
+            if let Some(only) = only.filter(|r| source.types.get(r).is_some_and(|t| t == "IFCSTRUCTURALPOINTREACTION")) { result.caused_by.insert(action, only); }
         }
         result
     }
 
-    /// The actions that need a relationship id, in id order.
-    pub(crate) fn needs_ids(&self) -> impl Iterator<Item = u32> + '_ {
-        let mut ids: Vec<u32> = self.causes.iter().filter(|(_, c)| c.relationship.is_some()).map(|(id, _)| *id).collect();
-        ids.sort_unstable();
-        ids.into_iter()
+    /// The actions that need a relationship id, in id order, each with whether it is a varying action.
+    pub(crate) fn needs_ids(&self) -> impl Iterator<Item = (u32, bool)> + '_ {
+        self.causes.iter().filter(|(_, c)| c.relationship.is_some()).map(|(id, c)| (*id, c.varying))
     }
 
     /// Write the relationship of `action` under `id`.
@@ -138,11 +136,8 @@ impl StructuralCarriers {
         if let Some(body) = self.causes.get(&action).and_then(|c| c.relationship.as_deref()) { self.pending.push(format!("#{id}={body};")); }
     }
 
-    /// The message for an action whose CausedBy IFC4 holds, or None.
+    /// The message for an action whose CausedBy names a point reaction, or None.
     pub(crate) fn cause(&self, id: u32) -> Option<&'static str> { self.causes.get(&id).map(|c| c.message) }
-
-    /// Whether this is a varying action whose CausedBy stays only in its IFC2X3 record.
-    pub(crate) fn stays_unconverted(&self, id: u32) -> bool { self.unconverted.contains(&id) }
 
     /// IFC4 -> IFC2X3: record `id`, already converted to `line`, with CausedBy
     /// filled from its one 'Causes' relationship. None when nothing changes.

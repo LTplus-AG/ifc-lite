@@ -1,0 +1,152 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Names the first bad commit after a red nightly run of geometry-platform.yml.
+# Each run probes ONE commit by calling geometry-platform.yml with bisect_*
+# inputs, which re-runs only what failed (the native-adapter job and/or the
+# failed corpus shards), then dispatches itself on the narrowed range. The
+# first round re-runs the red HEAD, so a flake is reported, not bisected.
+# Verdicts land on the nightly tracking issue (label nightly-red). Steps:
+# scripts/native-adapter-bisect.mjs. Audited by
+# scripts/check-native-adapter-triggers.mjs (lib/native-adapter-nightly.mjs).
+#
+# Resume or start by hand:
+#   gh workflow run native-adapter-bisect.yml -f good=<green sha> -f bad=<red sha> \
+#     -f adapter=true -f shards='[3]'
+name: Native adapter bisect
+
+on:
+  workflow_run:
+    workflows: ['Geometry platform (native adapter)']
+    types: [completed]
+    # Not every labelled PR's run: those would each start a skipped bisect run.
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      good:
+        description: A main commit the failing part passes on (full SHA)
+        required: true
+        type: string
+      bad:
+        description: A later main commit it fails on (full SHA)
+        required: true
+        type: string
+      phase:
+        description: confirm re-runs bad first; bisect probes the midpoint
+        type: choice
+        options: [confirm, bisect]
+        default: confirm
+      adapter:
+        description: Re-run the native-adapter job
+        type: boolean
+        default: true
+      shards:
+        description: JSON array of corpus shards to re-run, e.g. [3,5]; empty for none
+        type: string
+        default: ''
+      round:
+        description: Bisect round (set by the previous round)
+        type: number
+        default: 1
+      origin:
+        description: The last green nightly the bisect started from (set by the previous round)
+        type: string
+        default: ''
+
+permissions: {}
+
+jobs:
+  plan:
+    # A red scheduled run on main, or a dispatched round.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'schedule' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    outputs:
+      probe: ${{ steps.plan.outputs.probe }}
+      good: ${{ steps.plan.outputs.good }}
+      bad: ${{ steps.plan.outputs.bad }}
+      phase: ${{ steps.plan.outputs.phase }}
+      adapter: ${{ steps.plan.outputs.adapter }}
+      shards: ${{ steps.plan.outputs.shards }}
+      round: ${{ steps.plan.outputs.round }}
+      origin: ${{ steps.plan.outputs.origin }}
+      notice: ${{ steps.plan.outputs.notice }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - name: Plan the probe
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          NIGHTLY_RUN_ID: ${{ github.event.workflow_run.id }}
+          NIGHTLY_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          BISECT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GOOD: ${{ inputs.good }}
+          BAD: ${{ inputs.bad }}
+          PHASE: ${{ inputs.phase }}
+          ADAPTER: ${{ inputs.adapter }}
+          SHARDS: ${{ inputs.shards }}
+          ROUND: ${{ inputs.round }}
+          ORIGIN: ${{ inputs.origin }}
+        run: node scripts/native-adapter-bisect.mjs plan
+
+  probe:
+    needs: plan
+    if: needs.plan.outputs.probe != ''
+    uses: ./.github/workflows/geometry-platform.yml
+    with:
+      bisect_sha: ${{ needs.plan.outputs.probe }}
+      bisect_adapter: ${{ needs.plan.outputs.adapter == 'true' }}
+      bisect_shards: ${{ needs.plan.outputs.shards }}
+    # Everything geometry-platform.yml asks for, or GitHub refuses the run.
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+
+  next:
+    needs: [plan, probe]
+    if: always() && needs.plan.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Dispatching the next round.
+      actions: write
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - name: Narrow the range, then dispatch the next round or post the verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SERVER: ${{ github.server_url }}
+          BISECT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          PROBE_RESULT: ${{ needs.probe.result }}
+          PROBE: ${{ needs.plan.outputs.probe }}
+          GOOD: ${{ needs.plan.outputs.good }}
+          BAD: ${{ needs.plan.outputs.bad }}
+          PHASE: ${{ needs.plan.outputs.phase }}
+          ADAPTER: ${{ needs.plan.outputs.adapter }}
+          SHARDS: ${{ needs.plan.outputs.shards }}
+          ROUND: ${{ needs.plan.outputs.round }}
+          ORIGIN: ${{ needs.plan.outputs.origin }}
+          NOTICE: ${{ needs.plan.outputs.notice }}
+        run: node scripts/native-adapter-bisect.mjs next

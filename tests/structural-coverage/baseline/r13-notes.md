@@ -27,7 +27,17 @@ IFC4 gives `Axis` "relative to ... the SELF\IfcProduct.ObjectPlacement" (IFC4 If
 
 ## Regression evidence
 
-`schema-converter-structural-carriers.test.ts`, `curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668`. Before the change four of its six cases fail: the unplaced and unrotated carrier, the turned carrier (a frame turning +X to +Y, and a child frame under it), the exact round trip (sorted records of IFC4 -> IFC2X3 -> IFC4 equal the source's, for both files), and filling the orientation of an association the member already has. The other two pass before and after: an association that already holds the value or another one is left alone (the second reported lost), and an empty association an IFC2X3 source had is kept.
+`schema-converter-structural-carriers.test.ts`, `curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668`. Each case below failed before the change that added it:
+
+- the unplaced and unrotated carrier;
+- the turned carrier (a frame turning +X to +Y, and a child frame under it);
+- the exact round trip (sorted records of IFC4 -> IFC2X3 -> IFC4 equal the source's), also through a tilted frame with no float noise written;
+- a 2D placement whose RefDirection has two ratios;
+- an association orientation of another length holding the Axis;
+- filling the orientation of an association the member already has;
+- an association naming a withheld id: the Axis is reported lost and no direction is written.
+
+Two guards pass before and after: an association that already holds the value or another one is left alone (the second reported lost), and an empty association an IFC2X3 source had is kept.
 
 ## Deferred
 

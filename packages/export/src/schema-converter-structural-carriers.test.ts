@@ -627,6 +627,14 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     expect(data(up.step)).toEqual(data(tilted));
   });
 
+  it('reads a placement in the plane, whose RefDirection has two ratios', async () => {
+    const planar = ifc4(`#37=IFCDIRECTION((0.,1.));
+#38=IFCAXIS2PLACEMENT2D($,#37);
+#39=IFCLOCALPLACEMENT($,#38);
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#39,$,.RIGID_JOINED_MEMBER.,#36);`);
+    expect(carrier((await convert(planar, 'IFC2X3')).step, 20).orientation).toMatch(/=IFCDIRECTION\(\(0\.,1\.,0\.\)\);$/);
+  });
+
   it('carries an Axis an association holds at another length', async () => {
     const held = UNPLACED.replace('#20=', `#37=IFCDIRECTION((0.,0.,2.));
 #40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);

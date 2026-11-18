@@ -299,6 +299,10 @@ export class StructuralAxes {
  */
 function frameReader(source: SourceRecords, direction: (id: number | null) => Vec3 | null): (token: string | undefined) => Frame | null {
   const cache = new Map<number, Frame | null>();
+  const planar = (id: number | null): Vec3 | null => {
+    const values = source.type(id) === 'IFCDIRECTION' ? listItems(source.slots(id)?.[0])?.map(parseStepNumber) : undefined;
+    return values?.length === 2 && values.every(Number.isFinite) ? [values[0], values[1], 0] : null;
+  };
   const localSlots = (id: number) => (source.type(id) === 'IFCLOCALPLACEMENT' ? source.slots(id) : undefined);
   /** An axis placement's rotation by IfcBuildAxes: z, then x made orthogonal to it, then y = z x x. */
   const axes = (id: number | null): Frame | null => {
@@ -309,7 +313,8 @@ function frameReader(source: SourceRecords, direction: (id: number | null) => Ve
     const zu = z && unit(z);
     const refToken = s[type === 'IFCAXIS2PLACEMENT3D' ? 2 : 1];
     // An unset RefDirection is the renderer's (`firstProjAxis`), which also settles an Axis along world X.
-    const ref = zu && (slotUnset(refToken) ? firstProjAxis(zu) : direction(slotRef(refToken)));
+    // A 2D placement's RefDirection has two ratios.
+    const ref = zu && (slotUnset(refToken) ? firstProjAxis(zu) : type === 'IFCAXIS2PLACEMENT3D' ? direction(slotRef(refToken)) : planar(slotRef(refToken)));
     const xu = zu && ref && unit([0, 1, 2].map((i) => ref[i] - dot(ref, zu) * zu[i]) as Vec3);
     return zu && xu ? [xu, cross(zu, xu), zu] : null;
   };

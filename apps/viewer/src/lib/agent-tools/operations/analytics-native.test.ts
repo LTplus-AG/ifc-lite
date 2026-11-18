@@ -166,6 +166,29 @@ describe('native analytics operations (#10525 deeper automation)', () => {
       assert.deepEqual(useViewerStore.getState().isolatedEntities, replacement ? new Set(replacement) : null);
     }
   });
+  it('#10584 deleting an active saved Lens clears its ID and output without a mounted hook', async () => {
+    const lens: Lens = { id: 'delete-active', name: 'Delete active', rules: [{ id: 'walls', name: 'Walls', enabled: true, action: 'colorize', color: '#123456', groups: [{ combinator: 'AND', rules: [{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }] }] }] };
+    const key = 'ifc-lite-custom-lenses';
+    const previous = localStorage.getItem(key);
+    try {
+      await run('lens.import', { content_json: JSON.stringify([lens]) });
+      await run('lens.apply', { id: lens.id });
+      await run('lens.ruleMembers', { id: 'walls', expected_lens_id: lens.id, action: 'isolate' });
+      assert.ok(useViewerStore.getState().lensColorMap.size > 0);
+      assert.ok(useViewerStore.getState().isolatedEntities?.size);
+      await run('lens.delete', { id: lens.id });
+      const state = useViewerStore.getState();
+      assert.equal(state.activeLensId, null);
+      assert.equal(state.lensColorMap.size, 0);
+      assert.equal(state.lensRuleIsolation, null);
+      assert.equal(state.isolatedEntities, null);
+      assert.equal(state.savedLenses.some(row => row.id === lens.id), false);
+    } finally {
+      if (previous === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, previous);
+    }
+  });
+
   it('#10584 refuses to publish a list deleted while its query is running', async () => {
     useViewerStore.setState({ listDefinitions: [list] });
     const pending = run('lists.run', { id: list.id, offset: 0, limit: 10 });

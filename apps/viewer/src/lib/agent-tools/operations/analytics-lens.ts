@@ -6,6 +6,13 @@ import { evaluateNativeLens, applyNativeLensResult, clearLensOutput, syncNativeL
 import { releaseNativeLensRuleIsolation, switchNativeLens } from '@/lib/lens/native-controls';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { metadata, idSchema, jsonSchema, removedSchema, checkpoint } from './analytics-common';
+function deactivateLens() {
+  const state = useViewerStore.getState();
+  if (state.activeLensId !== null) state.setActiveLens(null);
+  releaseNativeLensRuleIsolation();
+  clearLensOutput();
+  syncNativeLensHidden();
+}
 function inspect() {
   const s = useViewerStore.getState();
   return { lenses: s.savedLenses, activeId: s.activeLensId, matched: s.lensColorMap.size,
@@ -34,10 +41,7 @@ export const analyticsLensOperations = [
     c.commit(() => { switchNativeLens(i.id); if (!applyNativeLensResult(snapshot, result)) throw new Error('Lens evaluation inputs changed before publication.'); syncNativeLensHidden(); }); return inspect();
   }),
   viewerOperation(metadata('lens.clear', 'lens', 'Deactivate the lens and release only its owned color/hide/isolation state.', ['configuration', 'view'], output), emptySchema, (_, c) => {
-    checkpoint(c); c.commit(() => {
-      useViewerStore.getState().setActiveLens(null); clearLensOutput(); syncNativeLensHidden();
-      releaseNativeLensRuleIsolation();
-    }); return inspect();
+    checkpoint(c); c.commit(deactivateLens); return inspect();
   }),
   viewerOperation<{ id: string }>(metadata('lens.delete', 'lens', 'Delete a saved native lens with explicit persistence-failure reporting.', ['configuration', 'view'], removedSchema), idSchema, (i, c) => {
     const lens = useViewerStore.getState().savedLenses.find(row => row.id === i.id);
@@ -47,11 +51,9 @@ export const analyticsLensOperations = [
     const result = c.commit(() => {
       const state = useViewerStore.getState();
       const deleted = state.deleteLens(i.id);
-      if (deleted.ok && state.activeLensId === i.id) {
-        releaseNativeLensRuleIsolation();
-        clearLensOutput();
-        syncNativeLensHidden();
-      }
+      // Deletion already clears the active ID in the slice. Compare the pre-write
+      // selection with the live one so a reconciled peer deletion is covered too.
+      if (deleted.ok && state.activeLensId !== null && useViewerStore.getState().activeLensId === null) deactivateLens();
       return deleted;
     });
     if (!result.ok) throw new Error(result.message); return { removed: i.id };

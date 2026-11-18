@@ -26,7 +26,8 @@ const BOSTON = { RefLatitude: 42 + 21 / 60 + 30.24 / 3600, RefLongitude: -(71 + 
 
 afterEach(() => {
   cleanup();
-  useViewerStore.setState(initialState, true);
+  // The store's editor and view maps are filled in place, so a reset to `initialState` alone keeps this test's editor.
+  useViewerStore.setState({ ...initialState, mutationViews: new Map(), storeEditors: new Map() }, true);
 });
 
 /** A fixture (default: the Revit default site position) with an LV95 map position (Bern) entered in the panel. */

@@ -10,6 +10,7 @@ import { retypedClasses } from '@/lib/visibility/structural-view';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { exportGlbFromGeometry } from './glb';
 import { withInstancedMeshes } from '@/utils/instancedExport';
+import { modelIndices } from '@/lib/model-placement/model-indices';
 import { resolveGlbSourceBytes } from '@/components/viewer/glb-export-source';
 import { resolve as t } from '@/i18n/registry';
 export interface NativeGlbSettings { visibleOnly: boolean; includeMetadata: boolean; lit: boolean; colorSource: 'rendering' | 'shading' }
@@ -79,7 +80,8 @@ export async function produceNativeGlb(selectedModelId: string, selectedModel: {
         const exportGeometry = withInstancedMeshes(
           selectedModel.geometryResult,
           federatedModel
-            ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
+            ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0,
+              rendererModelIndex: modelIndices(state.models).get(federatedModel.id) } // as model-ifcx-export: excludes an overlapping-id collab model
             : null,
         );
         const visibility = visibleOnly ? resolveExportVisibility(state, selectedModelId) : undefined;

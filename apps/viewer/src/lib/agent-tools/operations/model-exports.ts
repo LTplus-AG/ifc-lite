@@ -24,12 +24,15 @@ export const modelExportOperations = [
   }, emptySchema, async (_, c) => {
     if (!isFeatureEnabled('export.files')) throw new Error('Export is switched off in this viewer.');
     const state = useViewerStore.getState(), revision = state.mutationVersion;
+    // Schedule import/clear replaces scheduleData without bumping mutationVersion.
+    const schedule = [state.scheduleData, state.scheduleIsEdited, state.scheduleSourceModelId] as const;
     const models = [...state.models.entries()];
     const current = () => {
       c.checkpoint?.();
       const now = useViewerStore.getState();
       if (now.mutationVersion !== revision || now.models.size !== models.length
-        || models.some(([id, model]) => now.models.get(id) !== model)) throw new Error('Model/federation changed during export; discard and retry.');
+        || models.some(([id, model]) => now.models.get(id) !== model)
+        || [now.scheduleData, now.scheduleIsEdited, now.scheduleSourceModelId].some((value, index) => value !== schedule[index])) throw new Error('Model/federation changed during export; discard and retry.');
       if (!isFeatureEnabled('export.files')) throw new Error('Export was switched off.');
     };
     if (!collectChangedModels(state).models.length) throw new Error('No models have pending exportable changes.');

@@ -37,6 +37,12 @@ const proposal = () => JSON.stringify({ version: 1, kind: 'model.authoring', tit
 ] });
 describe('native reviewed authoring operations (full automation follow-up #10525)', () => {
   beforeEach(seed);
+  it('exports.modelIfcx refuses a changes-only export when the model has no pending changes', async () => {
+    useViewerStore.setState({ mutationViews: new Map() });
+    const result = await invoke('exports.modelIfcx', { changes_only: true, include_geometry: false, apply_mutations: true, visible_only: false, only_known_properties: false }, true);
+    assert.equal(result.isError, true);
+    assert.match(result.text, /no pending changes/);
+  });
   it('previews a real authoring model without writes, commits one native batch and exports a referentially valid IFC graph', async () => {
     const view = useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!, before = view.getNewEntities().length;
     const prepared = answer<{ token: string; preview_json: string }>(await invoke('authoring.prepare', { proposal_json: proposal() }));

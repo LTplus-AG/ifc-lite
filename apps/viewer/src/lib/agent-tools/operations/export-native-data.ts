@@ -34,7 +34,7 @@ export const exportNativeDataOperations = [
     const selection = resolveTerrainSelection({ refs: i.express_ids.map(expressId => ({ modelId: model.id === '__legacy__' ? 'legacy' : model.id, expressId })), models: s.models, legacyStore: s.ifcDataStore });
     if (selection.kind !== 'ready' || selection.skipped) throw new Error('Every requested product must be native-exportable IfcGeographicElement or IfcSite in the exact model.');
     if (new Set(i.surface_names.map(row => row.express_id)).size !== i.surface_names.length || i.surface_names.some(row => !selection.productIds.includes(row.express_id))) throw new Error('Duplicate or unrelated terrain surface name.');
-    const outcome = await runLandXmlTerrainExport(editedModelBytes(selection.store, s.getMutationView(selection.modelId)), selection.productIds, undefined, { linearUnit: i.linear_unit, decimals: i.decimals, surfaceNames: Object.fromEntries(i.surface_names.map(row => [row.express_id, row.name])) });
+    const outcome = await runLandXmlTerrainExport(editedModelBytes(selection.store, s.getMutationView(model.id)), selection.productIds, undefined, { linearUnit: i.linear_unit, decimals: i.decimals, surfaceNames: Object.fromEntries(i.surface_names.map(row => [row.express_id, row.name])) });
     check(); if (outcome.status !== 'ready') throw new Error(outcome.status === 'refused' ? outcome.reason : outcome.status === 'failed' ? outcome.message : 'Native terrain exporter unavailable.');
     const { xml, ...diagnostics } = outcome.result;
     return nativeArtifact(c, new Blob([xml], { type: 'application/xml' }), landXmlTerrainFilename(model.name), diagnostics, check);

@@ -24,6 +24,8 @@ export const ifcxExportOperations = [
     const state = useViewerStore.getState(), model = state.models.get(c.model.id), view = c.model.mutationView();
     if (model?.gaussianSplat) throw new Error('Gaussian captures are omitted by native model exporters.');
     if (i.include_geometry && !i.changes_only && model && hasRetainedShapeOnlyModel(new Map([[model.id, model]]))) throw new Error('Native retained geometry is incomplete or shape-only for IFCX export.');
+    // Without a mutation view there are no pending changes; a changes-only file must not fall back to the full model.
+    if (i.changes_only && !view) throw new Error('This model has no pending changes to export.');
     const visibility = resolveExportVisibility(state, c.model.id);
     const result = await exportModelIfcx({ modelId: c.model.id, dataStore: c.model.store, mutationView: view ?? undefined,
       geometryResult: model ? model.geometryResult : state.geometryResult, idOffset: model?.idOffset ?? 0,

@@ -81,12 +81,11 @@ impl StructuralDiagnostics {
     /// TypeScript twin allocates them while writing: per action in id order,
     /// its 'Causes' relationship, then its load configuration.
     pub(crate) fn allocate(&mut self, mut allocate: impl FnMut() -> Option<u32>) {
-        let causes: BTreeMap<u32, bool> = self.carriers.needs_ids().collect();
-        let actions: BTreeSet<u32> = causes.keys().copied().chain(self.varying.needs_ids()).collect();
+        let actions: BTreeSet<u32> = self.carriers.needs_ids().chain(self.varying.needs_ids()).collect();
         for action in actions {
             let configured = self.varying.plans(action);
             // A varying action that stays unconverted gets no relationship.
-            let caused = causes.get(&action).is_some_and(|&varying| !varying || configured);
+            let caused = self.carriers.needs_id(action, configured);
             // All of an action's ids or none, so a relationship never names an action left unconverted.
             let relationship = if caused { let Some(id) = allocate() else { return }; Some(id) } else { None };
             let configuration = if configured { let Some(id) = allocate() else { return }; Some(id) } else { None };

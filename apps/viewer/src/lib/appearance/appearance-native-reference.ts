@@ -66,8 +66,6 @@ export async function prepareNativeAppearanceReference(
   return { record, source, bitmap, corners, signal };
 }
 export type NativeAppearanceReference = Awaited<ReturnType<typeof prepareNativeAppearanceReference>>;
-/** Rendering is prepared before the synchronous native history publication.
- * Any refusal removes only the provisional reference, leaving an edit's old record. */
 /** Refuse a placement whose room, workspace frame or source changed since preparation. */
 export function assertReferencePlacementCurrent(prepared: Pick<NativeAppearanceReference, 'record' | 'source'>) {
   const state = useViewerStore.getState();
@@ -79,6 +77,8 @@ export function assertReferencePlacementCurrent(prepared: Pick<NativeAppearanceR
     throw new ReferenceAppearanceError('appearance.reference.sourceChanged');
 }
 
+/** Rendering is prepared before the synchronous native history publication.
+ * Any refusal removes only the provisional reference, leaving an edit's old record. */
 export async function placeNativeAppearanceReference(
   prepared: Pick<NativeAppearanceReference, 'record' | 'source' | 'bitmap'>,
   renderer: Renderer,

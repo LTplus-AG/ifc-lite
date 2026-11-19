@@ -30,6 +30,7 @@ const FIXTURES = {
   institute: 'tests/models/ara3d/C20-Institute-Var-2.ifc',
   duplex: 'tests/models/ara3d/duplex.ifc',
   georef: 'tests/models/ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC',
+  tower: 'tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc',
 };
 const LOAD_TIMEOUT = 300_000;
 
@@ -352,4 +353,79 @@ test('after the scene releases its CPU geometry, hide and isolate draw the same 
   await act(page, [['showAll'], ['isolateEntities', 'ids']], ids);
   await capture(page, info, 'released-isolate');
   await picksNeverHidden(page, info, 'released-isolate', await hiddenFlat(page), false);
+});
+
+/** A still frame: overlays (grid, dimensions) and residency settle a few frames after a change. */
+async function stillFrame(page: Page, info: TestInfo, name: string): Promise<string> {
+  let frame = (await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!()))!;
+  let still = false;
+  for (let i = 0; i < 20 && !still; i++) {
+    await settle(page);
+    const next = (await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!()))!;
+    still = (await diff(page, frame, next)).differing === 0;
+    frame = next;
+  }
+  expect(still, `${name}: the frame settles`).toBe(true);
+  await info.attach(`${name}.png`, { body: Buffer.from(frame.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  return frame;
+}
+
+test('a model move and rotation keep instanced hide, selection, colour override and X-Ray (#10767)', async ({ page }, info) => {
+  await open(page);
+  await load(page, FIXTURES.tower, 1);
+  await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
+  // Four instanced entities the pick grid hits most: on screen by construction.
+  const report = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_pick_parity__!({ columns: 40, rows: 24 }));
+  const hits = report.rows.flatMap((r) => (!r.annotation && r.gpu ? [r.gpu.expressId] : []));
+  const instanced = new Set(await page.evaluate(async (picked) => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    const scene = getGlobalRenderer()!.getScene();
+    return [...new Set(picked)].filter((id) => scene.isInstancedEntity(id));
+  }, hits));
+  const tally = new Map<number, number>();
+  for (const id of hits) if (instanced.has(id)) tally.set(id, (tally.get(id) ?? 0) + 1);
+  const ids = [...tally].sort((x, y) => y[1] - x[1]).slice(0, 4).map(([id]) => id);
+  expect(ids.length, 'four instanced entities on screen').toBe(4);
+  const [hidden, selected, coloured] = ids as [number, number, number, number];
+  const modelId = await page.evaluate(() => [...(globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().models.keys()][0]!);
+
+  const plain = await stillFrame(page, info, 'move-N-no-state');
+  // The instanced state the issue names, through the viewer's own store actions.
+  await page.evaluate(([h, s, c]) => {
+    const st = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState() as unknown as Record<string, (...a: unknown[]) => void>;
+    st.hideEntities!([h]);
+    st.setSelectedEntityId!(s);
+    st.setClashHighlightColors!(new Map([[c, [1, 0, 0, 1]]]));
+    st.setGhostExceptEntities!(new Set([s, c])); // X-Ray: everything else ghosted, the fourth entity included
+  }, [hidden, selected, coloured] as const);
+  const before = await stillFrame(page, info, 'move-A-state-before');
+  const shown = await diff(page, before, plain);
+  expect(shown.strong, 'the state is on screen (not a vacuous comparison)').toBeGreaterThan(500);
+
+  const placement = (calls: Array<[string, ...unknown[]]>) => page.evaluate((list) => {
+    const st = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState() as unknown as Record<string, (...a: unknown[]) => void>;
+    for (const [method, ...args] of list) st[method]!(...args);
+  }, calls);
+  // Move through the reposition tool, then undo: the model is back where it was.
+  await placement([['openReposition', [modelId]], ['previewModelTranslation', [5, 0, 0]], ['applyModelTranslation'], ['closeReposition']]);
+  await stillFrame(page, info, 'move-M-moved');
+  await placement([['undoModelTranslation']]);
+  const afterMove = await stillFrame(page, info, 'move-B-after-move-back');
+  // Rotate a quarter turn, then undo.
+  await placement([['setModelRotation', [modelId], { angle: Math.PI / 2, pivot: [0, 0, 0] }]]);
+  await stillFrame(page, info, 'move-R-rotated');
+  await placement([['undoModelTranslation']]);
+  const afterRotate = await stillFrame(page, info, 'move-C-after-rotate-back');
+
+  const moved = await diff(page, afterMove, before);
+  const rotated = await diff(page, afterRotate, before);
+  await info.attach('move-B-vs-A-diff.png', { body: Buffer.from(moved.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  await info.attach('move-C-vs-A-diff.png', { body: Buffer.from(rotated.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  const row = { ids, stateShownStrong: shown.strong, afterMoveStrong: moved.strong, afterMoveDiffering: moved.differing,
+    afterRotateStrong: rotated.strong, afterRotateDiffering: rotated.differing, pixels: moved.width * moved.height };
+  await info.attach('move.json', { body: JSON.stringify(row, null, 2), contentType: 'application/json' });
+  // Losing the state puts all of `shown` back; allow a few edge pixels of float drift from move-and-back.
+  expect(moved.strong, 'hide, selection, colour and X-Ray survive the move').toBeLessThanOrEqual(Math.floor(shown.strong * 0.02));
+  expect(rotated.strong, 'and the rotation').toBeLessThanOrEqual(Math.floor(shown.strong * 0.02));
 });

@@ -369,20 +369,24 @@ test('deleted instanced occurrences stay off the frame and the picks with nothin
   });
   expect(ids.length, 'the fixture has instanced-only entities').toBeGreaterThan(0);
   // Overlays (grid, dimensions) arrive a few frames after load: wait for a still frame.
-  let c = await capture(page, info, 'delete-C-before');
-  for (let i = 0; i < 20; i++) {
+  const frame = () => page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!());
+  let c = (await frame())!;
+  let still = false;
+  for (let i = 0; i < 20 && !still; i++) {
     await settle(page);
-    const next = await capture(page, info, 'delete-C-before');
-    const moved = (await diff(page, c, next)).differing;
+    const next = (await frame())!;
+    still = (await diff(page, c, next)).differing === 0;
     c = next;
-    if (moved === 0) break;
   }
+  expect(still, 'the frame settles before the reference is taken').toBe(true);
+  await info.attach('delete-C-before.png', { body: Buffer.from(c.split(',')[1]!, 'base64'), contentType: 'image/png' });
   // B: the same occurrences hidden through the ordinary instanced hide path.
   await act(page, [['hideEntities', 'ids']], ids);
   const b = await capture(page, info, 'delete-B-hidden');
   const bc = await diff(page, b, c);
   await act(page, [['showAll']]);
-  // A: delete them with nothing else hidden, the state #10639 drew them again in.
+  // A: delete them with nothing else hidden, the state #10639 drew them again in. This drives the
+  // renderer's removal directly; the viewer's delete action reaches the same removeMeshesForEntities.
   await page.evaluate(async (deleted) => {
     const module = '/src/hooks/useBCF.ts';
     const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);

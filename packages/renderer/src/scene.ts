@@ -1352,7 +1352,7 @@ export class Scene {
       this.instancedHidden.add(expressId);
       this.writeInstanceFlags(device, expressId);
     }
-    // After the GPU write, which can throw and leave the entity live.
+    // After the GPU write: if it throws, the entity stays registered and its CPU records stay unmarked.
     tombstoneInstanceRecords(this.instancedTemplateCpu, occurrences);
     for (const o of occurrences) this.tombstonedTemplates.add(o.templateIndex);
     // Release the contribution-cull exemption BEFORE forgetting the occurrence
@@ -3321,7 +3321,9 @@ export class Scene {
    * occurrence carries the hidden bit (hide/isolate, an appearance
    * suppression, or a deleted entity's tombstone) or is translucent (the
    * opacity routing). While false the renderer may draw that pass with the
-   * discard-free shader (opaque-draw-variants.ts). Conservative: any retained suppression counts.
+   * discard-free shader (opaque-draw-variants.ts). Conservative: any retained
+   * suppression counts, and a tombstone keeps the discard path until its
+   * model's templates are removed (slots are not reclaimed).
    */
   instancedMayDiscard(): boolean {
     return this.instancedHidden.size > 0 || this.tombstonedTemplates.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();

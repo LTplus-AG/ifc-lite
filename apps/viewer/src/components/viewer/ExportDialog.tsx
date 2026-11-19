@@ -336,7 +336,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
-        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView });
+        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView, georefMutations });
         const refusal = emptyMergeRefusal(mergeInputs, t);
         if (refusal) { toast.error(refusal); return { success: false, message: refusal }; }
 

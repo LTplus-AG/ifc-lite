@@ -74,12 +74,14 @@ export async function sectionMergeInputs(
     if (!options) { result.push(input); continue; }
     const source = await new StepExporter(input.dataStore, input.mutationView).exportAsync({
       schema, visibleOnly: true, hiddenEntityIds: visibility.hidden.get(input.id), isolatedEntityIds: visibility.isolated.get(input.id),
+      georefMutations: input.georefMutations,
     });
     for (const warning of source.stats.warnings) warnings.push(`${input.name}: ${warning}`);
     const cropped = await exportSectionedStep(source.content, options);
     const buffer = new ArrayBuffer(cropped.content.byteLength);
     new Uint8Array(buffer).set(cropped.content);
-    result.push({ ...input, mutationView: undefined, dataStore: await new IfcParser().parseColumnar(buffer, { disableWorkerScan: true }) });
+    // The cropped bytes carry the edits, so the merge must not apply them again.
+    result.push({ ...input, mutationView: undefined, georefMutations: undefined, dataStore: await new IfcParser().parseColumnar(buffer, { disableWorkerScan: true }) });
     // The cropped store may reuse a removed product id for new geometry.
     // Its original selection was applied above and cannot filter this namespace.
     remainingVisibility.hidden.delete(input.id);

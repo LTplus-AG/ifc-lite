@@ -63,7 +63,7 @@ export const stepExportOperations = [
     assertPortableMergeSupported(i.model_ids);
     const hydrated = [];
     for (const model of models) { hydrated.push({ model, dataStore: await ensureModelExportReady(model.id) }); current(); }
-    const { inputs, portableByModel, skipped } = buildMergeInputs(hydrated, { applyMutations: i.apply_mutations, getMutationView: state.getMutationView });
+    const { inputs, portableByModel, skipped } = buildMergeInputs(hydrated, { applyMutations: i.apply_mutations, getMutationView: state.getMutationView, georefMutations: state.georefMutations });
     if (!inputs.length) throw new Error(`No native STEP input was writable: ${JSON.stringify(skipped)}`);
     const resolved = new Map<string, ReturnType<typeof resolveExportVisibility>>();
     const visibilityFor = (id: string) => { let v = resolved.get(id); if (!v) { v = resolveExportVisibility(state, id); resolved.set(id, v); } return v; };

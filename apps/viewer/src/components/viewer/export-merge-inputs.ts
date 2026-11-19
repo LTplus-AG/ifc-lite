@@ -68,6 +68,8 @@ export function buildMergeInputs(
   options: {
     applyMutations: boolean;
     getMutationView: (modelId: string) => MutablePropertyView | null;
+    /** Pending georeference edits by model, applied like the single-model export does (#10669). */
+    georefMutations: ReadonlyMap<string, MergeModelInput['georefMutations']>;
   },
 ): MergeInputs {
   const inputs: MergeModelInput[] = [];
@@ -82,7 +84,7 @@ export function buildMergeInputs(
     const roomView = options.applyMutations ? (options.getMutationView(model.id) ?? undefined) : undefined;
     const { input, portable } = roomMergeInput({
       id: model.id, name: model.name, store: dataStore,
-      roomView, applyMutations: options.applyMutations,
+      roomView, applyMutations: options.applyMutations, georefMutations: options.georefMutations.get(model.id),
     });
     if (portable) portableByModel.set(model.id, portable);
     inputs.push(input);

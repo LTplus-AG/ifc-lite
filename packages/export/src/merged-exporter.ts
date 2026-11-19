@@ -11,7 +11,7 @@
  */
 
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
-import { IfcParser, asSourceBytes } from '@ifc-lite/parser';
+import { asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { buildMergedHeader } from './merged-header.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -26,7 +26,8 @@ import { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
-import { StepExporter } from './step-exporter.js';
+import { bakeMutatedModels, needsBake } from './merged-bake.js';
+import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
 import { remapEntityText } from './merged-remap.js';
@@ -222,26 +223,12 @@ export interface MergeModelInput {
    * throws if any model carries pending edits.
    */
   mutationView?: MutablePropertyView;
-}
 
-/**
- * True when a mutation view carries pending edits the exporter would bake.
- *
- * Keys off the view's *current overlay footprint* (`hasPendingChanges`), not the
- * append-only mutation history: the history never shrinks, so an
- * edited-then-undone model would keep reporting changes and force a redundant
- * re-bake. `hasPendingChanges` is a conservative over-approximation (the safe
- * direction here — under-reporting would silently drop edits). Falls back to the
- * legacy history/new-entity check for views that predate the method.
- */
-function viewHasMutations(view: MutablePropertyView | undefined): boolean {
-  if (!view) return false;
-  if (typeof view.hasPendingChanges === 'function') return view.hasPendingChanges();
-  // Legacy fallback (older MutablePropertyView without hasPendingChanges).
-  const muts = typeof view.getMutations === 'function' ? view.getMutations() : [];
-  if (muts.length > 0) return true;
-  const created = typeof view.getNewEntities === 'function' ? view.getNewEntities() : [];
-  return created.length > 0;
+  /**
+   * Pending georeference edits for this model, as {@link StepExporter} takes them.
+   * Baked like {@link mutationView}, so the same async-only rule applies.
+   */
+  georefMutations?: StepGeoreferencingOptions['georefMutations'];
 }
 
 /**
@@ -488,7 +475,7 @@ export class MergedExporter {
 
     // Baking edits into source bytes needs the async parser, so the sync path
     // cannot honour them. Fail loudly rather than silently dropping the edits.
-    if (this.models.some(m => viewHasMutations(m.mutationView))) {
+    if (this.models.some(needsBake)) {
       throw new Error(
         'MergedExporter.export() cannot apply pending edits — baking needs the async parser. ' +
         'Use exportAsync() for merged export with mutations.',
@@ -620,7 +607,8 @@ export class MergedExporter {
     // Bake each model's pending edits into its source bytes before merging, so
     // federated export round-trips mutations like single-model export. Models
     // without edits pass through unchanged (no export/parse cost).
-    const models = withUsableSource(await this.bakeMutatedModels());
+    const baked = await bakeMutatedModels(this.models);
+    const models = withUsableSource(baked.models);
     const setup = this.buildMergeSetup(options, models);
     const containerDrops = this.planContainerDrops(options, models, setup);
 
@@ -637,7 +625,7 @@ export class MergedExporter {
     let entitiesProcessed = 0;
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
-    const normalizeWarnings = new Set<string>();
+    const normalizeWarnings = new Set<string>(baked.warnings);
     const YIELD_INTERVAL = 2000;
     const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation()]; // #4714, #5202, #5365
 
@@ -714,50 +702,6 @@ export class MergedExporter {
     await new Promise(r => setTimeout(r, 0));
 
     return { header, allEntityLines: placeObjectsForSchema(schema, allEntityLines), federatedModelCount, normalizedModelCount, normalizeWarnings, droppedContainerCount: containerDrops?.count ?? 0, totalEntities };
-  }
-
-  /**
-   * Bake each model's pending edits into its source bytes before merging.
-   *
-   * A model with a non-empty {@link MergeModelInput.mutationView} is run through
-   * {@link StepExporter} in its own source schema (mutations applied, geometry +
-   * quantities kept), and the resulting bytes are re-parsed into a fresh data
-   * store. The merge pipeline then sees the edited entities as ordinary source,
-   * so unit-aware federation, GlobalId reconciliation and id offsetting are
-   * unaffected. Models without edits pass through untouched (no export/parse cost).
-   */
-  private async bakeMutatedModels(): Promise<MergeModelInput[]> {
-    const baked: MergeModelInput[] = [];
-    let parser: IfcParser | null = null;
-    for (const model of this.models) {
-      if (!viewHasMutations(model.mutationView)) {
-        baked.push(model);
-        continue;
-      }
-      const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
-      // Export in the SOURCE schema so no schema conversion happens here — the
-      // merge loop still converts to the requested target schema per entity.
-      const exported = new StepExporter(model.dataStore, model.mutationView).export({
-        schema: sourceSchema,
-        applyMutations: true,
-        includeGeometry: true,
-        includeQuantities: true,
-      });
-      parser = parser ?? new IfcParser();
-      // slice() yields an exact-length ArrayBuffer-backed copy for the parser.
-      const reparsed = await parser.parseColumnar(exported.content.slice().buffer, {
-        disableWorkerScan: true,
-      });
-      baked.push({
-        id: model.id,
-        name: model.name,
-        dataStore: reparsed,
-        // Keep the caller's explicit unit scale (else the original store's) so
-        // unit-aware federation is unaffected by the bake round-trip.
-        lengthUnitScale: model.lengthUnitScale ?? model.dataStore.lengthUnitScale,
-      });
-    }
-    return baked;
   }
 
   /**

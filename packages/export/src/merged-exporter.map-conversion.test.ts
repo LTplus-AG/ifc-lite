@@ -114,6 +114,17 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expect([...projectContexts(content)].sort()).toEqual(contexts.filter(id => id !== library).sort());
   });
 
+  it('leaves a federated model\'s contexts on its own project, which the merge keeps', async () => {
+    // A millimetre model in a metre merge is federated: its IfcProject stays, so its context is not the primary's.
+    const inputs = [await input('a', null, 'IFC4'), await input('b', { raw: '', projectUnit: '#3' }, 'IFC4')];
+    const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema: 'IFC4' })).content);
+    const projects = [...content.matchAll(/^#\d+=IFCPROJECT\(.*,\((#[\d,#]*)\),#\d+\);$/gm)].map(match => match[1].split(','));
+    const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
+    expect(projects).toHaveLength(2);
+    expect(projects.map(listed => listed.length)).toEqual([1, 1]);
+    expect(projects.flat().sort()).toEqual([...contexts].sort());
+  });
+
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {
     expect((await merge([at(X), at(X)])).contexts).toHaveLength(1);
     expect((await merge([at(X), null])).contexts).toHaveLength(1);

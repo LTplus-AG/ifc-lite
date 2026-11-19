@@ -7,7 +7,8 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 const RegistrySource = lazy(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
 const OciPushTo = lazy(() => import('./OciPushTo').then(module => ({ default: module.OciPushTo })));
 
-export function RegistrySources({ expanded, navigationDisabled, onBusyChange, onToggle }: {
+export function RegistrySources({ catalogEnabled, expanded, navigationDisabled, onBusyChange, onToggle }: {
+  catalogEnabled: boolean;
   expanded: boolean;
   navigationDisabled: boolean;
   onBusyChange: (busy: boolean) => void;
@@ -21,10 +22,10 @@ export function RegistrySources({ expanded, navigationDisabled, onBusyChange, on
     return () => onBusyChange(false);
   }, [busy, onBusyChange]);
   return <Suspense fallback={null}>
-    <RegistrySource expanded={expanded} navigationDisabled={navigationDisabled || publicationBusy}
-      onBusyChange={setBrowserBusy} onToggle={onToggle} />
-    {import.meta.env.VITE_REGISTRY_CONNECTIONS && <li className="rounded border p-3">
+    {catalogEnabled && <RegistrySource expanded={expanded} navigationDisabled={navigationDisabled || publicationBusy}
+      onBusyChange={setBrowserBusy} onToggle={onToggle} />}
+    <li className="rounded border p-3">
       <OciPushTo disabled={navigationDisabled || browserBusy} onBusyChange={setPublicationBusy} />
-    </li>}
+    </li>
   </Suspense>;
 }

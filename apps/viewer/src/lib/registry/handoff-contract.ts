@@ -7,6 +7,8 @@ import { repositoryName, RegistryError } from './protocol';
 export const HANDOFF_PROTOCOL = 'oci-handoff/1';
 export const HANDOFF_PATH = '/open-artifact';
 export const HANDOFF_CALLBACK = '/open-artifact/callback';
+const CONNECTIONS_KEY = 'ifc-lite:oci-file-stores:v1';
+const MAX_CONNECTIONS = 32;
 export interface TokenExchangeSettings {
   endpoint: string;
   authorization_resource: string;
@@ -50,26 +52,64 @@ function tokenExchangeSettings(value: unknown): TokenExchangeSettings {
   return { endpoint: value.endpoint, authorization_resource: value.authorization_resource,
     read_scope: value.read_scope, write_scope: value.write_scope };
 }
-export function registryConnections(input = import.meta.env?.VITE_REGISTRY_CONNECTIONS): RegistryConnection[] {
-  if (!input) return [];
+function parseConnection(entry: unknown): RegistryConnection {
+  if (!entry || typeof entry !== 'object' || !('registry' in entry) || typeof entry.registry !== 'string' ||
+      !('authorization_server' in entry) || typeof entry.authorization_server !== 'string' ||
+      !('client_id' in entry) || typeof entry.client_id !== 'string' || !entry.client_id.trim()) {
+    throw new RegistryError('Enter a registry address, authorization issuer, and client ID.');
+  }
+  const registry = webAddress(entry.registry.trim());
+  if (registry.pathname !== '/' || registry.search) throw new RegistryError('Enter the registry origin without a folder or query.');
+  const authorization_server = entry.authorization_server.trim();
+  if (webAddress(authorization_server).search) throw new RegistryError('Enter the exact authorization issuer without a query.');
+  return {
+    registry: registry.origin, authorization_server, client_id: entry.client_id.trim(),
+    name: 'name' in entry && typeof entry.name === 'string' ? entry.name : undefined,
+    token_exchange: 'token_exchange' in entry && entry.token_exchange !== undefined ? tokenExchangeSettings(entry.token_exchange) : undefined,
+  };
+}
+
+function parseConnections(input: string): RegistryConnection[] {
   const value: unknown = JSON.parse(input);
-  if (!Array.isArray(value) || !value.length || value.length > 32) throw new RegistryError('Configure the available file stores for this application.');
-  const seen = new Set<string>();
-  return value.map((entry: unknown) => {
-    if (!entry || typeof entry !== 'object' || !('registry' in entry) || typeof entry.registry !== 'string' ||
-      !('authorization_server' in entry) || typeof entry.authorization_server !== 'string' || !('client_id' in entry) || typeof entry.client_id !== 'string' || !entry.client_id) throw new RegistryError('Invalid file-store connection configuration.');
-    const registry = registryOrigin(entry.registry);
-    const issuer = webAddress(entry.authorization_server);
-    if (issuer.search || seen.has(registry)) throw new RegistryError('Configure a unique file store and an exact authorization issuer.');
-    seen.add(registry);
-    return { registry, authorization_server: entry.authorization_server, client_id: entry.client_id,
-      name: 'name' in entry && typeof entry.name === 'string' ? entry.name : undefined,
-      token_exchange: 'token_exchange' in entry ? tokenExchangeSettings(entry.token_exchange) : undefined };
-  });
+  if (!Array.isArray(value) || value.length > MAX_CONNECTIONS) throw new RegistryError('Invalid saved file stores.');
+  const connections = value.map(parseConnection);
+  if (new Set(connections.map(connection => connection.registry)).size !== connections.length) {
+    throw new RegistryError('Save one file store per registry origin.');
+  }
+  return connections;
+}
+
+export function registryConnections(input?: string): RegistryConnection[] {
+  if (input !== undefined) return parseConnections(input);
+  try {
+    const stored = globalThis.localStorage?.getItem(CONNECTIONS_KEY);
+    return stored ? parseConnections(stored) : [];
+  } catch {
+    console.warn('Could not load saved file stores from browser storage.');
+    return [];
+  }
+}
+
+export function saveRegistryConnection(value: RegistryConnection, replace?: boolean) {
+  const connection = parseConnection(value);
+  const existing = registryConnections();
+  const duplicate = existing.some(store => store.registry === connection.registry);
+  if (duplicate && !replace) throw new RegistryError('This registry already has a file store. Select it and choose Edit file store.');
+  if (replace && !duplicate) throw new RegistryError('This file store changed. Open the file-store settings again.');
+  if (!duplicate && existing.length >= MAX_CONNECTIONS) throw new RegistryError('This browser already has 32 file stores.');
+  const connections = duplicate
+    ? existing.map(store => store.registry === connection.registry ? connection : store)
+    : [...existing, connection];
+  try {
+    globalThis.localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(connections));
+  } catch {
+    throw new RegistryError('Could not save the file store. Check that browser storage is available.');
+  }
+  return { connection, connections };
 }
 export function connectionFor(registry: string, connections = registryConnections()): RegistryConnection {
   const connection = connections.find(c => c.registry === registryOrigin(registry));
-  if (!connection) throw new RegistryError('Ask your administrator to configure this file store before opening it.');
+  if (!connection) throw new RegistryError('Add this file store in File → Cloud Sources, then reopen the link.');
   return connection;
 }
 export function handoffContext(value: unknown, connections = registryConnections()): OciHandoff {

@@ -5,12 +5,16 @@
 import { createAuthorizationRequest, waitForOAuthCallback } from '@ifc-lite/oauth-pkce';
 
 import { RegistryError, repositoryName, responseBytes } from './protocol';
-import { connectionFor, HANDOFF_CALLBACK, handoffContext, readHandoff, registryConnections, webAddress, type OciHandoff, type RegistryConnection } from './handoff-contract';
+import { connectionFor, HANDOFF_CALLBACK, handoffContext, readHandoff, registryConnections, webAddress, type OciHandoff, type RegistryConnection, type TokenExchangeSettings } from './handoff-contract';
 
 export interface ResourceSession { accessToken: string; expiresAt: number; registry: string; scope: string }
 interface Metadata { authorization_endpoint: string; token_endpoint: string; issuerInCallback: boolean }
 interface AuthorizationRequest { scope: string; resource: string }
-interface Pending { handoff: OciHandoff; registry: string; issuer: string; issuerRequired: boolean; clientId: string; redirectUri: string; state: string; verifier: string; scope: string; created: number }
+interface Pending {
+  handoff: OciHandoff; registry: string; issuer: string; issuerRequired: boolean;
+  clientId: string; tokenExchange?: TokenExchangeSettings;
+  redirectUri: string; state: string; verifier: string; scope: string; created: number;
+}
 const PENDING = 'ifc-lite:oci-handoff:pkce';
 export const PUSH_CALLBACK = '/oauth/registry/callback';
 const TIMEOUT = 5 * 60 * 1000;
@@ -132,6 +136,7 @@ export async function prepareHandoff(href: string, signal: AbortSignal, connecti
   signal.throwIfAborted();
   const pending: Pending = { handoff, registry: connection.registry, issuer: connection.authorization_server, clientId: connection.client_id,
     issuerRequired: metadata.issuerInCallback || hasOtherIssuer(connection, connections),
+    tokenExchange: connection.token_exchange,
     redirectUri, scope, state: request.state, verifier: request.codeVerifier, created: Date.now() };
   sessionStorage.setItem(PENDING, JSON.stringify(pending));
   return request.url;
@@ -145,7 +150,12 @@ export async function finishHandoff(href: string, signal: AbortSignal, connectio
     !('state' in p) || typeof p.state !== 'string' || !('verifier' in p) || typeof p.verifier !== 'string' || !/^[A-Za-z0-9._~-]{43,128}$/.test(p.verifier) ||
     !('scope' in p) || typeof p.scope !== 'string' || !('created' in p) || typeof p.created !== 'number' || Date.now() < p.created || Date.now() - p.created > TIMEOUT) throw new RegistryError('The opening request expired or could not be verified.');
   const handoff = handoffContext(p.handoff, connections), connection = connectionFor(p.registry, connections);
-  if (connection.registry !== handoff.source.registry || connection.authorization_server !== p.issuer || connection.client_id !== p.clientId || p.scope !== `repository:${handoff.source.repository}:pull`) throw new RegistryError('The file-store configuration changed. Open the file again.');
+  const tokenExchange = 'tokenExchange' in p ? p.tokenExchange : undefined;
+  if (connection.registry !== handoff.source.registry || connection.authorization_server !== p.issuer ||
+      connection.client_id !== p.clientId || JSON.stringify(tokenExchange) !== JSON.stringify(connection.token_exchange) ||
+      p.scope !== `repository:${handoff.source.repository}:pull`) {
+    throw new RegistryError('The file-store configuration changed. Open the file again.');
+  }
   const issuerRequired = !('issuerRequired' in p) || p.issuerRequired !== false || hasOtherIssuer(connection, connections);
   const code = validateRegistryCallback(href, p.redirectUri, p.state, p.issuer, issuerRequired);
   const metadata = await authorizationMetadata(connection, signal);

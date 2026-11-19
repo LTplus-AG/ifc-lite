@@ -9,20 +9,18 @@ import { act } from 'react';
 import { cleanup, click, render, type } from '@/test/render';
 import { editedRegistryModel } from '@/test/registry-model-fixture';
 import { fixtureModel } from '@/test/store-fixture';
-import { registerEnglish } from '@/i18n';
-import { registryEn } from '@/i18n/catalogues/registry.en';
 import { useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
 import { authorizeRepository, finishHandoff, prepareHandoff, resourceSession } from '@/lib/registry/handoff-auth';
 import { pullHandoff } from '@/lib/registry/handoff-client';
-import { HANDOFF_PROTOCOL, readHandoff } from '@/lib/registry/handoff-contract';
+import { HANDOFF_PROTOCOL, readHandoff, registryConnections } from '@/lib/registry/handoff-contract';
 import { startServer, closeAll, send, type Handler } from '../../../../../packages/oci/test/fake-registry.js';
 import { pushRegistry } from '../../../../../packages/oci/test/push-registry.js';
 import { installRegistryPopup, registryCallback } from '@/test/registry-oauth-fixture';
 import { useViewerStore } from '@/store';
 import { OciPushTo } from './OciPushTo';
-registerEnglish(registryEn);
 afterEach(async () => {
   cleanup();
+  localStorage.clear();
   useHandoffWorkspace.setState(useHandoffWorkspace.getInitialState(), true);
   await closeAll();
 });
@@ -36,6 +34,22 @@ function allowBrowser(handler: Handler): Handler {
     res.setHeader('Access-Control-Expose-Headers', 'Location,Docker-Content-Digest,Link');
     if (req.method === 'OPTIONS') return send(res, { status: 204 });
     return handler(req, res);
+  };
+}
+
+function fileStoreForm(ui: HTMLElement, label: string) {
+  const action = [...ui.querySelectorAll('button')].find(button => button.textContent === label);
+  assert(action);
+  click(action);
+  const form = ui.querySelector('form');
+  assert(form);
+  return {
+    fill(name: string, value: string) {
+      const field = form.elements.namedItem(name);
+      assert(field instanceof HTMLInputElement);
+      type(field, value);
+    },
+    save() { act(() => form.requestSubmit()); },
   };
 }
 
@@ -61,8 +75,15 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
     access_token: 'repository-token', token_type: 'Bearer', expires_in: 300, scope,
   }, registry.origin, scope);
   useHandoffWorkspace.setState({ repositorySession: session });
-  const connections = [{ registry: registry.origin, authorization_server: 'https://identity.example.test', client_id: 'ifc-lite' }];
-  const ui = render(<OciPushTo connections={connections} onBusyChange={() => {}} />);
+  let ui = render(<OciPushTo onBusyChange={() => {}} />);
+  const add = fileStoreForm(ui, 'Add file store');
+  add.fill('registry', registry.origin + '/');
+  add.fill('issuer', 'https://identity.example.test');
+  add.fill('client', 'ifc-lite');
+  add.save();
+  assert.equal(ui.querySelector('form'), null);
+  cleanup();
+  ui = render(<OciPushTo onBusyChange={() => {}} />);
   const button = (label: string) => {
     const element = Array.from(ui.querySelectorAll('button')).find(button => button.textContent === label);
     assert(element, label);
@@ -75,7 +96,7 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
   };
   const link = (label: string) => Array.from(ui.querySelectorAll('a')).find(anchor => anchor.textContent === label);
   async function openVersion(href: string) {
-    const { source } = readHandoff(href, connections);
+    const { source } = readHandoff(href);
     const received = await pullHandoff(source, session);
     const parsed = await model.parser.parseColumnar(received.bytes.buffer, { disableWorkerScan: true });
     return { source, name: parsed.entities.getName(model.wall) };
@@ -86,7 +107,7 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
   click(button('Push to…'));
   await waitFor(() => Boolean(link('Open saved version')));
   const first = link('Open saved version')!.href;
-  assert.equal(readHandoff(first, connections).source.digest, fixture.store.tags.get('model-v1'));
+  assert.equal(readHandoff(first).source.digest, fixture.store.tags.get('model-v1'));
   assert.equal((await openVersion(first)).name, 'Registry persisted wall');
 
   await act(async () => {
@@ -149,6 +170,19 @@ test('OCI handoff requires callback issuer identification when advertised or whe
   const handoff = { protocol: HANDOFF_PROTOCOL, source, intent: 'edit' };
   const launch = window.location.origin + '/open-artifact#handoff=' + Buffer.from(JSON.stringify(handoff)).toString('base64url');
   const signal = new AbortController().signal;
+  await assert.rejects(prepareHandoff(launch, signal), /Add this file store/);
+  assert.equal(provider.requests.length, 0);
+  const ui = render(<OciPushTo onBusyChange={() => {}} />);
+  const add = fileStoreForm(ui, 'Add file store');
+  add.fill('registry', origin);
+  add.fill('issuer', 'http://issuer.example.test');
+  add.fill('client', 'ifc-lite');
+  add.save();
+  assert.match(ui.querySelector('[role=alert]')?.textContent ?? '', /trusted HTTPS address/);
+  assert.deepEqual(registryConnections(), []);
+  add.fill('issuer', origin);
+  add.save();
+  assert.equal(ui.querySelector('form'), null);
   let callbackIssuer: string | undefined;
   function callback(request: URL) {
     const url = new URL(registryCallback(request));
@@ -166,8 +200,9 @@ test('OCI handoff requires callback issuer identification when advertised or whe
     ]) {
       advertisesIssuer = scenario.advertise;
       callbackIssuer = scenario.issuer;
-      const url = await prepareHandoff(launch, signal, scenario.connections);
-      const opening = finishHandoff(callback(new URL(url)), signal, scenario.connections);
+      const handoffConnections = scenario.connections.length === 1 ? undefined : scenario.connections;
+      const url = await prepareHandoff(launch, signal, handoffConnections);
+      const opening = finishHandoff(callback(new URL(url)), signal, handoffConnections);
       const browsing = authorizeRepository(connection, source.repository, 'pull', signal, scenario.connections);
       const saving = authorizeRepository(connection, source.repository, 'push', signal, scenario.connections);
       if (scenario.succeeds) {
@@ -183,6 +218,13 @@ test('OCI handoff requires callback issuer identification when advertised or whe
         ]);
       }
     }
+
+    const pending = await prepareHandoff(launch, signal);
+    const edit = fileStoreForm(ui, 'Edit file store');
+    edit.fill('client', 'replacement-client');
+    edit.save();
+    assert.equal(registryConnections()[0].client_id, 'replacement-client');
+    await assert.rejects(finishHandoff(callback(new URL(pending)), signal), /configuration changed/);
   } finally {
     popup.restore();
   }

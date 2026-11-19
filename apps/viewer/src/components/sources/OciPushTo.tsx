@@ -7,13 +7,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useTranslation } from '@/i18n';
+import { registerEnglish, useTranslation } from '@/i18n';
+import { registryEn } from '@/i18n/catalogues/registry.en';
 import { useViewerStore } from '@/store';
 import { exportRegistryModel } from '@/lib/registry/export-model';
 import { authorizeRepository, resourceAllows, type ResourceSession } from '@/lib/registry/handoff-auth';
 import { browseRepositoryVersions, pushHandoff } from '@/lib/registry/handoff-client';
 import { connectionFor, HANDOFF_PATH, HANDOFF_PROTOCOL, registryConnections, type ArtifactSource, type OciHandoff, type RegistryConnection } from '@/lib/registry/handoff-contract';
-import { useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
+import { clearFileStoreSessions, useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
+import { FileStoreConnectionForm } from './FileStoreConnectionForm';
+
+registerEnglish(registryEn);
 
 function versionLink(source: ArtifactSource, intent: OciHandoff['intent']): string {
   const context = { protocol: HANDOFF_PROTOCOL, source, intent };
@@ -23,16 +27,17 @@ function versionLink(source: ArtifactSource, intent: OciHandoff['intent']): stri
 }
 
 /** Browse and publish versions in a known OCI repository. */
-export function OciPushTo({ disabled = false, onBusyChange, connections: configuredConnections }: {
+export function OciPushTo({ disabled = false, onBusyChange }: {
   disabled?: boolean;
   onBusyChange: (busy: boolean) => void;
-  connections?: RegistryConnection[];
 }) {
   const { t } = useTranslation();
   const id = useId();
-  const [connections] = useState(() => configuredConnections ?? registryConnections());
+  const [connections, setConnections] = useState(registryConnections);
+  const [form, setForm] = useState<'add' | 'edit'>();
   const { handoff, saved: savedResult } = useHandoffWorkspace();
   const [registry, setRegistry] = useState(handoff?.destination?.registry ?? handoff?.source.registry ?? connections[0]?.registry ?? '');
+  const selectedConnection = connections.find(connection => connection.registry === registry);
   const [repository, setRepository] = useState(handoff?.destination?.repository ?? handoff?.source.repository ?? '');
   const [tag, setTag] = useState('revision-2');
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseRepositoryVersions>>>();
@@ -61,6 +66,16 @@ export function OciPushTo({ disabled = false, onBusyChange, connections: configu
     clearSaved();
   }
 
+  function storeSaved(result: { connection: RegistryConnection; connections: RegistryConnection[] }) {
+    const origin = result.connection.registry;
+    if (form === 'edit') clearFileStoreSessions(origin);
+    if (origin !== registry) setRepository('');
+    setRegistry(origin);
+    setConnections(result.connections);
+    setForm(undefined);
+    clearRepositoryResults();
+  }
+
   async function run(action: 'pull' | 'push', operation: (session: ResourceSession, signal: AbortSignal) => Promise<void>) {
     if (pending.current) return;
     const controller = new AbortController();
@@ -68,12 +83,15 @@ export function OciPushTo({ disabled = false, onBusyChange, connections: configu
     setBusy(true);
     setError('');
     try {
-      const connection = connectionFor(registry, connections);
+      const storedConnections = registryConnections();
+      const connection = connectionFor(registry, storedConnections);
+      if (JSON.stringify(connection) !== JSON.stringify(selectedConnection)) clearFileStoreSessions(registry);
       const { repositorySession, sourceSession } = useHandoffWorkspace.getState();
+      setConnections(storedConnections);
       const previous = [repositorySession, sourceSession].find(session =>
         session?.registry === registry && resourceAllows(session, repository, 'pull') &&
         (action === 'pull' || resourceAllows(session, repository, 'push')));
-      const session = previous ?? await authorizeRepository(connection, repository, action, controller.signal, connections);
+      const session = previous ?? await authorizeRepository(connection, repository, action, controller.signal, storedConnections);
       controller.signal.throwIfAborted();
       if (!previous) useHandoffWorkspace.setState({ repositorySession: session });
       await operation(session, controller.signal);
@@ -109,10 +127,21 @@ export function OciPushTo({ disabled = false, onBusyChange, connections: configu
     });
   }
 
-  if (!connections.length) return null;
+  if (form) return <FileStoreConnectionForm connection={form === 'edit' ? selectedConnection : undefined}
+    onSaved={storeSaved} onCancel={() => setForm(undefined)} />;
+  const addStore = <Button variant="outline" disabled={busy || disabled} onClick={() => setForm('add')}>
+    {t('registry.connections.add')}
+  </Button>;
+  if (!connections.length) return addStore;
   const repositoryDisabled = busy || disabled || !registry || !repository;
   return <div className="grid gap-3">
     <p className="text-sm">{t('registry.push.explain')}</p>
+    <div className="flex flex-wrap gap-2">
+      {addStore}
+      {selectedConnection && <Button variant="outline" disabled={busy || disabled} onClick={() => setForm('edit')}>
+        {t('registry.connections.edit')}
+      </Button>}
+    </div>
     <Label htmlFor={`${id}-store`}>{t('registry.push.store')}</Label>
     <Select value={registry} disabled={busy || disabled} onValueChange={value => {
       setRegistry(value);
@@ -124,7 +153,7 @@ export function OciPushTo({ disabled = false, onBusyChange, connections: configu
       </SelectContent>
     </Select>
     <Label htmlFor={`${id}-folder`}>{t('registry.push.folder')}</Label>
-    <Input id={`${id}-folder`} value={repository} disabled={busy || disabled} autoComplete="off" placeholder="project/model"
+    <Input id={`${id}-folder`} value={repository} disabled={busy || disabled} autoComplete="off" placeholder={t('registry.push.folderExample')}
       onChange={e => { setRepository(e.target.value); clearRepositoryResults(); }} />
     <Button variant="outline" disabled={repositoryDisabled} onClick={() => void browse()}>
       {t(page ? 'registry.refresh' : 'registry.browseVersions')}

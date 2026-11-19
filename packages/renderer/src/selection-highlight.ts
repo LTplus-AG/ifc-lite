@@ -285,7 +285,7 @@ export class SelectionHighlight {
     }
     const covered = result.covered;
     scene.removeMeshesWhere((mesh) => mesh.hydrated === true
-      && (mesh.mergedSelection?.ids ? [...mesh.mergedSelection.ids].some((id) => covered.has(id)) : covered.has(mesh.expressId) && mesh.expressId !== item));
+      && (mesh.mergedSelection?.ids ? hasAny(mesh.mergedSelection.ids, covered) : covered.has(mesh.expressId) && mesh.expressId !== item));
     return result;
   }
 
@@ -335,4 +335,9 @@ export class SelectionHighlight {
     retireStaleSelectionHydration(scene, frame.selected, frame.modelIndex, frame.itemFilterExpressId, frame.itemFilterItemId, this.visible);
     this.pending = true;
   }
+}
+
+function hasAny(ids: Iterable<number>, set: ReadonlySet<number>): boolean {
+  for (const id of ids) if (set.has(id)) return true;
+  return false;
 }

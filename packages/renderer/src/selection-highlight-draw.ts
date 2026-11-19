@@ -62,7 +62,7 @@ export function drawSelectionHighlights(meshes: readonly Mesh[], f: HighlightDra
     tpl.set(mesh.transform.m, 16);
     // A batch's origin moves in place with model placement: read it live, never from the record.
     const batchOrigin: [number, number, number] | undefined = batch ? (batch.origin ? [batch.origin[0], batch.origin[1], batch.origin[2]] : [0, 0, 0]) : undefined;
-    if (batchOrigin) { tpl[28] = batchOrigin[0]; tpl[29] = batchOrigin[1]; tpl[30] = batchOrigin[2]; }
+    if (batchOrigin) tpl.set(batchOrigin, MESH_UNIFORM_OFFSET.model + 12); // the model matrix's translation column
     tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
     tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
     packMeshMaterial(tpl, mesh.color[3], mesh.finish ?? mesh.material);
@@ -76,7 +76,8 @@ export function drawSelectionHighlights(meshes: readonly Mesh[], f: HighlightDra
     if (!f.relativeToEyeFrame.tryPackDrawableOrigin(origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE | (batch ? MESH_FLAG_HIGHLIGHTED_ENTITIES : 0);
     const q = batch?.quantized;
-    tpl[56] = q ? q.min[0] : 0; tpl[57] = q ? q.min[1] : 0; tpl[58] = q ? q.min[2] : 0; tpl[59] = q ? q.step : 0;
+    const quant = MESH_UNIFORM_OFFSET.quantParams;
+    tpl[quant] = q ? q.min[0] : 0; tpl[quant + 1] = q ? q.min[1] : 0; tpl[quant + 2] = q ? q.min[2] : 0; tpl[quant + 3] = q ? q.step : 0;
 
     // A copy names its entity; a batch names its lane anchor, from which the shader rebuilds full ids.
     f.overrideU32[0] = batch ? batchEntityIdAnchor(batch) ?? 0xFFFFFFFF : mesh.expressId;

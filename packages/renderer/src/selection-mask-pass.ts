@@ -184,9 +184,9 @@ export class SelectionMaskPass {
       });
       // Group 1 is padding in both mesh mask layouts; group 2 is padding unless geometric (#9060).
       pass.setBindGroup(1, emptyBindGroup(this.device));
-      const geometric = visible && frame.geometricVisibility;
+      const geometric = visible ? frame.geometricVisibility : undefined;
       if (geometric) {
-        pass.setPipeline(this.geometric('flat')[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, frame.geometricVisibility!);
+        pass.setPipeline(this.geometric('flat')[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, geometric);
       } else { pass.setPipeline(this.plain('flat')[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device)); }
       for (const mesh of meshes) {
         const layout = vertexLayoutOf(mesh);

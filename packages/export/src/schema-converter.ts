@@ -22,6 +22,7 @@ import { skipStepTrivia } from './step-slot-grammar.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
+import { MaterialReferents } from './schema-converter-material-referent.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
@@ -30,7 +31,6 @@ import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-con
 import { retypeInPlace } from './schema-converter-retyped.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
-
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 /**
  * Entity type name mappings between schema versions.
@@ -291,7 +291,7 @@ export function convertStepLine(
   enums?: EnumReconciliation,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  const kept = enums ? enums.materials.apply(line, fromSchema, toSchema) : line; // #10763: null when Material names no one IfcMaterial
+  const kept = (enums?.materials ?? new MaterialReferents()).apply(line, fromSchema, toSchema); // #10763: null when Material names no one IfcMaterial
   let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural), fromSchema, toSchema);
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);

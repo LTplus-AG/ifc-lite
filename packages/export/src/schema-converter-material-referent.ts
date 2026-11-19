@@ -23,6 +23,7 @@ import { listItems } from './schema-converter-structural-axes.js';
 import { SourceRecords, slotRef, slotUnset, type SourceStore } from './schema-converter-structural-source.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
+import { remapEntityText } from './merged-remap.js';
 
 /** The member lists of the IFC4 material sets. */
 const MEMBERS = ['MaterialLayers', 'MaterialProfiles', 'MaterialConstituents'];
@@ -162,4 +163,10 @@ export function mergedMaterialSource(store: SourceStore, written: (id: number) =
       return read.get(id);
     },
   };
+}
+
+/** Arms `materials` with a merged model's records (#10763) and returns its `written` predicate, for the merge loop. */
+export function armMergedModel(materials: MaterialReferents, store: SourceStore, written: (id: number) => boolean, offset: number, sharedRemap: ReadonlyMap<number, number>): (id: number) => boolean {
+  materials.rearm(mergedMaterialSource(store, written, offset, (text) => remapEntityText(text, offset, sharedRemap)));
+  return written;
 }

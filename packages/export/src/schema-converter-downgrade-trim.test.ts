@@ -80,8 +80,9 @@ function makeLine(type: string, n: number): string {
  * an IFCPROXY placeholder.
  */
 function isDivertedByConversion(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
-  const out = convertStepLine(makeLine(type, 1), from, to)!;
-  return !out.startsWith(`#1=${type}(`);
+  const out = convertStepLine(makeLine(type, 1), from, to);
+  // A record the conversion does not write (#10763) is diverted too.
+  return out === null || !out.startsWith(`#1=${type}(`);
 }
 
 describe.each([

@@ -37,7 +37,7 @@ fn a_definition_of_one_material_names_that_material_10763() {
     // IFC2X3 has no constituent set, so an export holding one is refused before
     // this runs; the scan still resolves it.
     let src = model("IFC4X3", "#9=IFCMATERIAL('Steel',$,$);\n#20=IFCMATERIALCONSTITUENT('c',$,#9,0.5,$);\n#21=IFCMATERIALCONSTITUENTSET('s',$,(#20));\n#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#21);");
-    let mut scanned = super::MaterialReferents::scan(src.as_bytes(), "IFC4X3", "IFC2X3", &|_, _| true);
+    let mut scanned = super::MaterialReferents::scan(src.as_bytes(), "IFC4X3", "IFC2X3", false, &|_, _| true);
     assert_eq!(scanned.apply(5, "#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#21);", "IFC4X3", &mut 0).as_deref(), Some("#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#9);"));
 }
 

@@ -233,3 +233,11 @@ fn an_unterminated_comment_is_refused() {
     assert_eq!(split_top_level_args("'a',$ /* open"), None);
     assert_eq!(split_top_level_args("'a',$ /* ( ' */ /* open"), None);
 }
+
+/// #10763/#10779: comments read as spaces, never inside a literal.
+#[test]
+fn without_comments_reads_each_comment_as_a_space() {
+    assert_eq!(without_comments(" 'a/*b*/' /* c */"), "'a/*b*/'", "a string keeps its text");
+    assert_eq!(without_comments("#3/**/#6"), "#3 #6", "a comment still parts two tokens");
+    assert_eq!(without_comments("/* x */$"), "$");
+}

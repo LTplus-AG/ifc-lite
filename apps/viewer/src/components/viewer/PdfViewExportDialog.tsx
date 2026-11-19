@@ -43,9 +43,9 @@
  * not a behaviour any test relied on (a failure was, and still is, toasted).
  */
 
-import { geometryReleased, withReleasedExportGeometry } from '@/utils/instancedExport';
+import { useViewPdfSource } from './useViewPdfSource';
 import type { ExportSurface } from '@/lib/analytics-export-events';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -149,27 +149,9 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
     if (next) setPhase(null);
   }, []);
 
-  const sourceTriggers = [open, models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
-    sectionPlane, selectedStoreys, classFilter, projectionMode, mutationVersion, mutationViews];
-  const residentSource = useMemo(
-    () => (open && !geometryReleased() ? readViewPdfSource(useViewerStore.getState()) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- these are invalidation triggers; the values are read from getState() above.
-    sourceTriggers,
-  );
-  // Released CPU geometry (#10264): the source's meshes are read back first.
-  const [releasedSource, setReleasedSource] = useState<ReturnType<typeof readViewPdfSource> | null>(null);
-  useEffect(() => {
-    setReleasedSource(null);
-    if (!open || !geometryReleased()) return;
-    let cancelled = false;
-    withReleasedExportGeometry(() => readViewPdfSource(useViewerStore.getState())).then(
-      (prepared) => { if (!cancelled) setReleasedSource(prepared); },
-      (error: unknown) => console.error('[PdfViewExport] released geometry could not be read back', error),
-    );
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- same invalidation triggers as the resident source.
-  }, sourceTriggers);
-  const source = residentSource ?? releasedSource;
+  // Released CPU geometry (#10264) is read back first; resident geometry reads synchronously.
+  const source = useViewPdfSource(open, [models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
+    sectionPlane, selectedStoreys, classFilter, projectionMode, mutationVersion, mutationViews]);
 
   const camera = source?.camera ?? null;
   const drawnMeshes = useMemo(() => (source ? collectViewMeshes(source.view) : []), [source]);

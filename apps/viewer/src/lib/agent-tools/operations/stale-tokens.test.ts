@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { refuseContentWrites } from '@/test/content-fixture';
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock, type TestContext } from 'node:test';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -162,15 +162,17 @@ describe('reviewed model candidates (#10792)', () => {
   it('#20: a receipt saved while the Changes panel writes it again still reports persisted', async () => {
     const token = await prepareRename();
     const put = modelChangeLibrary.put;
+    let undo: Promise<boolean> | undefined;
     modelChangeLibrary.put = (id, value, ...rest) => {
       modelChangeLibrary.put = put;
       const first = put(id, value, ...rest);
       // The panel marks it undone before our write lands; the library's status now follows the newer write.
-      void put(id, { ...(value as ModelChangeReceipt), status: 'undone', undoneAt: new Date(0).toISOString() });
+      undo = put(id, { ...(value as ModelChangeReceipt), status: 'undone', undoneAt: new Date(0).toISOString() });
       return first;
     };
     try { assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true); }
     finally { modelChangeLibrary.put = put; }
+    assert.equal(await undo, true);
   });
 
   it('#20: a replay never puts back a receipt draft that a library restore dropped', async () => {
@@ -184,7 +186,11 @@ describe('reviewed model candidates (#10792)', () => {
     } finally { refused.mock.restore(); }
     assert.equal(await modelChangeLibrary.restore(), true); // the user restores what storage holds, without this draft
     assert.equal(storedReceipt(receipt!.id), undefined);
-    for (let i = 0; i < 2; i++) assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false);
+    const retry = mock.method(modelChangeLibrary, 'retry');
+    try {
+      for (let i = 0; i < 2; i++) assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false);
+      assert.equal(retry.mock.callCount(), 0, 'a replay does not flush the library\'s other drafts for a receipt it no longer has');
+    } finally { retry.mock.restore(); }
     assert.equal(storedReceipt(receipt!.id), undefined, 'the dropped receipt stays dropped');
   });
 

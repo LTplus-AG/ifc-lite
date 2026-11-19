@@ -53,7 +53,8 @@ export function candidateStillApplies(host?: ToolHost) {
 export type ReceiptPersistence = { state: 'writing'; write: Promise<boolean> } | { state: 'handed-off' } | { state: 'saved' };
 export interface ReceiptHolder { persistence?: ReceiptPersistence }
 const SAVED: ReceiptPersistence = { state: 'saved' }, HANDED_OFF: ReceiptPersistence = { state: 'handed-off' };
-/** Admission may evict a candidate once the library holds its receipt, because the receipt survives it. */
+/** Admission may evict a candidate once the library took its receipt: the library owns it from then on, and a replay
+ * would never write it again. A write still in flight keeps its candidate until it settles. */
 export const libraryHoldsReceipt = (holder: ReceiptHolder) => holder.persistence?.state === 'handed-off' || holder.persistence?.state === 'saved';
 
 /**
@@ -77,7 +78,8 @@ export function persistReceipt(holder: ReceiptHolder, receipt: ModelChangeReceip
     };
     try {
       if (before?.state !== 'handed-off') return settle(await modelChangeLibrary.put(receipt.id, receipt));
-      if (status() !== 'saved') await modelChangeLibrary.retry(); // the panel's Retry may have saved it already
+      // Retry only a draft the library still has (a restore may have dropped it); the panel's Retry may have saved it.
+      if (status() !== undefined && status() !== 'saved') await modelChangeLibrary.retry();
       return settle();
     } catch (error) { settle(); throw error; }
   }, (error: unknown) => { holder.persistence = before; throw error; });

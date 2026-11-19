@@ -83,15 +83,31 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
   });
 
-  it('a background prepare refused when collected leaves no candidate either', async () => {
+  it('a background prepare refused when collected, before any poll delivered it, leaves no candidate', async () => {
     const proposal_json = await groupProposal();
+    // The job validates its result and is marked succeeded in one step; the edit lands right after, before any poll.
+    const entry = viewerOperation('authoring.group.prepare'), validate = entry.validateResult.bind(entry);
+    mock.method(entry, 'validateResult', (value: unknown) => {
+      validate(value); queueMicrotask(() => useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })));
+    });
     for (let i = 0; i < 32; i++) {
       const { job } = (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured as { job: { id: string } };
-      assert.equal((await settled(job.id)).state, 'succeeded');
-      useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })); // an edit before the caller collects it
+      for (let tick = 0; tick < 50; tick++) await new Promise(resolve => setTimeout(resolve, 0));
       assert.throws(() => operationJob(host, job.id), /Model replaced, closed, or edited during the operation/);
       assert.equal(operationJob(host, job.id).state, 'failed', 'refused once, then reported failed');
     }
+    mock.restoreAll();
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+  });
+
+  it('a delivered background result stays the caller\'s after a later refused poll', async () => {
+    const proposal_json = await groupProposal();
+    const { job } = (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured as { job: { id: string } };
+    const delivered = await settled(job.id);
+    assert.equal(delivered.state, 'succeeded');
+    const { token } = delivered.result as { token: string };
+    useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })); // e.g. the agent applied another token
+    assert.throws(() => operationJob(host, job.id), /Model replaced, closed, or edited during the operation/);
+    answer(await invoke('authoring.graph.apply', { token }, true));
   });
 });

@@ -82,8 +82,8 @@ export const graphAuthoringOperations = [
   ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput,
     // A result the executor refuses never reaches the caller, so its candidate must not keep a place under the cap.
     discard: (result, c) => {
-      const token = (result as { token?: unknown } | null)?.token, entries = owned(c);
-      if (typeof token === 'string' && entries.get(token)?.receipt === undefined) release(entries, token);
+      const token = (result as { token?: unknown } | null)?.token, entries = hosts.get(c.host);
+      if (entries && typeof token === 'string' && entries.get(token)?.receipt === undefined) release(entries, token);
     } }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {

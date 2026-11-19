@@ -22,7 +22,7 @@ export interface OperationJob {
   result?: unknown;
   error?: string;
 }
-interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void }
+interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; delivered?: boolean }
 const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
 const MAX_JOBS = 32;
 interface AppliedRequest { signature: string; store: ReadyModel['store'] | undefined; result: Promise<unknown> }
@@ -202,12 +202,17 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
   if (!job) invalid('Unknown job for this viewer host.');
   if (cancel && job.snapshot.state === 'running') job.abort.abort();
   if (job.snapshot.state === 'succeeded') {
-    // A result refused when it is collected is never delivered: discard what its handler stored, once.
     try { job.current(); } catch (error) {
-      job.discard();
-      Object.assign(job.snapshot, { state: 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+      // A result never delivered and refused for good (the model changed, the host closed) never will be: discard
+      // what its handler stored, once. A delivered result is the caller's; a passing refusal keeps the job as it is.
+      const aborted = error instanceof DOMException && error.name === 'AbortError';
+      if (!job.delivered && (aborted || (error instanceof ToolExecutionError && error.code === ToolErrorCode.STATE_CHANGED))) {
+        job.discard();
+        Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+      }
       throw error;
     }
+    job.delivered = true;
   }
   // A cancellation request is observable, but terminal cancellation awaits runner settlement.
   return { ...job.snapshot, ...(cancel && job.snapshot.state === 'running' ? { cancellationRequested: true } : {}) };

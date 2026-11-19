@@ -257,3 +257,26 @@ fn no_same_named_type_passes_a_different_attribute_through_by_position_10763_108
     bad.dedup();
     assert!(bad.is_empty(), "{} same-named type(s) pass an attribute through by position into another:\n{}", bad.len(), bad.join("\n"));
 }
+
+/// #10856: the enum reconciliation generator checks every enum slot of a type
+/// a conversion renames a record into, from a list it keeps by hand. That list
+/// must be exactly the types `rename_type` produces, per target schema.
+#[test]
+fn rename_targets_are_the_converters_10856() {
+    let schemas = ["IFC2X3", "IFC4", "IFC4X3"];
+    let mut produced = std::collections::BTreeSet::new();
+    for from in schemas {
+        for to in schemas.into_iter().filter(|to| *to != from) {
+            for ty in ifc_lite_core::IFC_TYPES.iter() {
+                let name = ty.name().to_ascii_uppercase();
+                if super::schema_attribute_names(from, &name).is_none() { continue; }
+                if let Some(target) = super::rename_type(&name, from, to).filter(|t| super::schema_attribute_names(to, t).is_some()) {
+                    produced.insert((to, target));
+                }
+            }
+        }
+    }
+    let listed: std::collections::BTreeSet<(&str, &str)> = crate::generated::enum_reconciliation::RENAME_TARGETS.iter().copied().collect();
+    assert!(produced.len() > 20, "anti-vacuity: {}", produced.len());
+    assert_eq!(listed, produced, "update RENAME_TARGETS in scripts/generate-enum-reconciliation.mjs and regenerate");
+}

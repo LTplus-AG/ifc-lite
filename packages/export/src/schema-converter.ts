@@ -151,12 +151,8 @@ const IFC4X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCELECTRICFLOWTREATMENTDEVICE', 'IFCFLOWTREATMENTDEVICE'],
 ]);
 /**
- * Convert an entity type name from one IFC schema version to another.
- *
- * @param entityType - UPPERCASE entity type name (e.g., 'IFCWALL')
- * @param fromSchema - Source schema version
- * @param toSchema - Target schema version
- * @returns The mapped entity type name, or the original if no mapping needed
+ * Convert an UPPERCASE entity type name (e.g. 'IFCWALL') from one IFC schema
+ * version to another; the original when no mapping is needed.
  */
 export function convertEntityType(
   entityType: string,
@@ -293,9 +289,9 @@ export function convertStepLine(
 ): string | null {
   if (fromSchema === toSchema) return line;
   let converted = retypeInPlace(convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural), fromSchema, toSchema); // #10778
-  converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema); // #10824
   if (converted === null) return null;
-  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);
+  converted = carryUserDefinedLabel(line, enums && toSchema !== 'IFC5' ? enums.apply(converted, toSchema) : converted, fromSchema, toSchema); // #10824: after enums, which can write .USERDEFINED.
+  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(converted, withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
   if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
   return converted;

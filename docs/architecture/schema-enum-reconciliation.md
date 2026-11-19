@@ -18,8 +18,8 @@ enum lost members in that direction (#5365).
 
 | Direction | Entity attributes | Missing member entries | Refused |
 | --- | --- | --- | --- |
-| IFC4X3 → IFC4 | 103 | 402 | 0 |
-| IFC4X3 → IFC2X3 | 64 | 216 | 5 |
+| IFC4X3 → IFC4 | 108 | 407 | 0 |
+| IFC4X3 → IFC2X3 | 80 | 232 | 11 |
 | IFC4 → IFC2X3 | 46 | 111 | 4 |
 | IFC2X3 → IFC4 | 20 | 71 | 0 |
 | IFC2X3 → IFC4X3 | 20 | 71 | 0 |
@@ -132,6 +132,11 @@ enum lost members in that direction (#5365).
 | IfcWallElementedCase.PredefinedType | IfcWallTypeEnum | RETAININGWALL, WAVEWALL | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWallStandardCase.PredefinedType | IfcWallTypeEnum | RETAININGWALL, WAVEWALL | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWallType.PredefinedType | IfcWallTypeEnum | RETAININGWALL, WAVEWALL | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcFooting.PredefinedType | IfcFootingTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 
 ## IFC4X3 → IFC2X3
 
@@ -201,6 +206,22 @@ enum lost members in that direction (#5365).
 | IfcUnitaryEquipmentType.PredefinedType | IfcUnitaryEquipmentTypeEnum | DEHUMIDIFIER | `.USERDEFINED.`, name in `ElementType` |
 | IfcVibrationIsolatorType.PredefinedType | IfcVibrationIsolatorTypeEnum | BASE | `.USERDEFINED.`, name in `ElementType` |
 | IfcWallType.PredefinedType | IfcWallTypeEnum | MOVABLE, PARAPET, PARTITIONING, RETAININGWALL, SOLIDWALL, WAVEWALL | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcBuildingElementProxy.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcGasTerminalType.PredefinedType | IfcGasTerminalTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcStructuralLinearAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralLinearAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcStructuralLoadGroup.ActionType | IfcActionTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcStructuralLoadGroup.ActionSource | IfcActionSourceTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcStructuralPlanarAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralPlanarAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcWindowStyle.ConstructionType | IfcWindowStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcWindowStyle.OperationType | IfcWindowStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 
 ## IFC4 → IFC2X3
 

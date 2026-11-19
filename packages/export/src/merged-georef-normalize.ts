@@ -16,7 +16,6 @@
 
 import { extractGeoreferenceCandidatesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { COORDINATE_OPERATION_STEP_TYPES, MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
-import { CRS_TYPES } from './merged-context.js';
 import { getStepAttr } from './merged-subcontext.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
@@ -36,7 +35,7 @@ export interface GeorefNormalizePlan {
 }
 
 /** 0-based index of the CRS's length unit: `IfcProjectedCRS.MapUnit` (IFC4, IFC4X3), `IfcGeographicCRS.HeightUnit`. */
-const CRS_UNIT_ATTR: Record<string, number> = { IFCPROJECTEDCRS: 6, IFCGEOGRAPHICCRS: 5 };
+const CRS_UNIT_ATTR = { IFCPROJECTEDCRS: 6, IFCGEOGRAPHICCRS: 5 };
 /** 0-based index of `IfcMapConversion.Scale`. */
 const SCALE_ATTR = 7;
 
@@ -50,8 +49,7 @@ export const hasCoordinateOperation = (dataStore: IfcDataStore): boolean => idsO
 export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit, modelScale: number, primaryScale: number): GeorefNormalizePlan {
   const records = new Map<number, GeorefRecord>();
   for (const id of idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES)) records.set(id, { kind: 'operation' });
-  for (const type of CRS_TYPES) {
-    const unitAttr = CRS_UNIT_ATTR[type];
+  for (const [type, unitAttr] of Object.entries(CRS_UNIT_ATTR)) {
     for (const id of idsOf(dataStore, [type])) if ((getStepAttr(dataStore, id, unitAttr) ?? '$') === '$') records.set(id, { kind: 'unitless', unitAttr });
   }
   // The Scale that keeps the viewer's scale: divided by the length factor (the spec reading), else as written.

@@ -9,18 +9,22 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { IfcParser, extractGeoreferenceCandidatesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractGeoreferenceCandidatesOnDemand, type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import { viewerAxisScales, viewerMapUnitScale } from './viewer-georef-scale.js';
 // The viewer's own scale rule is the oracle. Its file re-exports from `@ifc-lite/geo/proj4`, which export does not
-// depend on, so that one module is served from geo's source.
+// depend on, so that one module is served from geo's source, and the file is imported by a path tsc does not follow.
 vi.mock('@ifc-lite/geo/proj4', () => import('../../geo/src/map-unit.js'));
-import { getEffectiveAxisScales } from '../../../apps/viewer/src/lib/geo/geo-scale.js';
+const VIEWER_GEO_SCALE = '../../../apps/viewer/src/lib/geo/geo-scale.ts';
+type ScaleFields = Pick<MapConversion, 'scale' | 'factorX' | 'factorY' | 'factorZ'>;
+const { getEffectiveAxisScales } = await import(/* @vite-ignore */ new URL(VIEWER_GEO_SCALE, import.meta.url).href) as {
+  getEffectiveAxisScales: (conversion: ScaleFields, mapUnitScale: number, lengthUnitScale: number) => { x: number; y: number; z: number };
+};
 
-type Unit = 'm' | 'mm';
+type Unit = 'm' | 'mm' | 'ft';
 interface Spec { unit: Unit; mapUnit: Unit | '$'; easting: number; scale?: string; schema?: 'IFC4' | 'IFC4X3'; operation?: string }
 
-const UNIT_REF: Record<Unit, string> = { m: '#2', mm: '#3' };
+const UNIT_REF: Record<Unit, string> = { m: '#2', mm: '#3', ft: '#4' };
 
 const model = (name: string, { unit, mapUnit, easting, scale = '1.', schema = 'IFC4', operation }: Spec) => `ISO-10303-21;
 HEADER;
@@ -32,6 +36,9 @@ DATA;
 #1=IFCPROJECT('0Project${name.toUpperCase()}000000000000${name}',$,'${name}',$,$,$,$,(#14),#9);
 #2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#4=IFCCONVERSIONBASEDUNIT(#5,.LENGTHUNIT.,'FOOT',#6);
+#5=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
+#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#2);
 #9=IFCUNITASSIGNMENT((${UNIT_REF[unit]}));
 #10=IFCCARTESIANPOINT((0.,0.,0.));
 #11=IFCDIRECTION((0.,0.,1.));
@@ -98,7 +105,7 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
     expect(crsUnits(merged)[1]).toMatch(/^#\d+$/);
   });
 
-  const SCALE: Record<Unit | '$', number> = { m: 1, mm: 0.001, $: 1 };
+  const SCALE: Record<Unit | '$', number> = { m: 1, mm: 0.001, ft: 0.3048, $: 1 };
   const scaleCases: Array<[string, Spec, Spec]> = [];
   for (const [primary, later] of [['m', 'mm'], ['mm', 'm']] as const) {
     for (const mapUnit of [later, primary, '$'] as const) {
@@ -136,11 +143,11 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
     }
   });
 
-  it.each([['factors bridging feet', 'ft'], ['grid factors', 'grid']])('keeps the viewer\'s scale with %s', async (_, kind) => {
-    const factors = kind === 'ft' ? '0.3048,0.3048,1.' : '0.9996,0.9996,1.';
+  it.each([['Factors bridging feet to metres', 'ft', '0.3048,0.3048,1.'], ['grid Factors', 'mm', '0.9996,0.9996,1.']] as const)(
+    'keeps the viewer\'s scale with %s', async (_, unit, factors) => {
     const operation = `#21=IFCMAPCONVERSIONSCALED(#14,#20,2600100.,1200000.,500.,1.,0.,$,${factors});`;
     const primary: Spec = { unit: 'm', mapUnit: 'm', easting: 2600000, schema: 'IFC4X3' };
-    const later: Spec = { unit: 'mm', mapUnit: 'm', easting: 0, schema: 'IFC4X3', operation };
+    const later: Spec = { unit, mapUnit: 'm', easting: 0, schema: 'IFC4X3', operation };
     const alone = [...viewerScales(await parse(model('a', primary))), ...viewerScales(await parse(model('b', later)))];
     expect(viewerScales(await parse(await merge([primary, later])))).toEqual(alone);
   });

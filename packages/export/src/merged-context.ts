@@ -205,7 +205,7 @@ function recordValue(dataStore: IfcDataStore, id: number, depth: number, skip: r
 }
 
 /** The CRS record types a coordinate operation's TargetCRS can be. */
-export const CRS_TYPES = new Set(['IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS']);
+const CRS_TYPES = new Set(['IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS']);
 
 /** The first coordinate operation whose SourceCRS is `contextId`, with its TargetCRS, or null when none is. */
 function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOperation | null {

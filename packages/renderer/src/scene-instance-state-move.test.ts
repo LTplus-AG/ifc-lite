@@ -39,15 +39,15 @@ function fixture(modelIndex = 3) {
   const flags = (i: number) => view().getUint32(i * INSTANCE_STRIDE_BYTES + INSTANCE_FLAGS_OFFSET, true);
   const color = (i: number) => [0, 1, 2, 3].map((c) => Math.round(view().getFloat32(i * INSTANCE_STRIDE_BYTES + INSTANCE_COLOR_OFFSET + c * 4, true) * 100) / 100);
   const move = () => {
-    assert.equal(scene.setModelTranslation(3, [10, 0, 0]), true, 'the move re-uploads');
-    assert.equal(scene.setModelRotation(3, Math.PI / 2, [0, 0, 0]), true, 'the rotation re-uploads');
+    assert.equal(scene.setModelTranslation(modelIndex, [10, 0, 0]), true, 'the move re-uploads');
+    assert.equal(scene.setModelRotation(modelIndex, Math.PI / 2, [0, 0, 0]), true, 'the rotation re-uploads');
   };
-  return { scene, flags, color, move, device };
+  return { scene, flags, color, move, device, modelIndex };
 }
 
 describe('live instance state survives a model move or rotation (#10767)', () => {
   it('keeps hide/isolate and selection flags', () => {
-    const { scene, flags, move } = fixture();
+    const { scene, flags, move, modelIndex } = fixture();
     scene.setInstancedVisibility(new Set([42]), null);
     scene.setInstancedSelection(new Set([41]));
     move();
@@ -56,13 +56,13 @@ describe('live instance state survives a model move or rotation (#10767)', () =>
     // A later change reaches the re-uploaded record too.
     scene.setInstancedVisibility(null, null);
     scene.setInstancedSelection(new Set());
-    scene.setModelTranslation(3, [20, 0, 0]);
+    scene.setModelTranslation(modelIndex, [20, 0, 0]);
     assert.equal(flags(0), 0);
     assert.equal(flags(1), 0);
   });
 
   it('keeps colour overrides and the X-Ray fade, and restores the original after them', () => {
-    const { scene, color, move } = fixture();
+    const { scene, color, move, modelIndex } = fixture();
     scene.setInstancedColorOverrides(new Map([[41, [1, 0, 0, 1]]]));
     scene.setInstancedGhosting(new Set([41]), null, 0.2);
     move();
@@ -70,19 +70,19 @@ describe('live instance state survives a model move or rotation (#10767)', () =>
     assert.deepEqual(color(1), [0.4, 0.5, 0.6, 0.2], 'ghost fade kept');
     scene.setInstancedColorOverrides(null);
     scene.setInstancedGhosting(null, null, 0.2);
-    scene.setModelTranslation(3, [20, 0, 0]);
+    scene.setModelTranslation(modelIndex, [20, 0, 0]);
     assert.deepEqual(color(0), [0.4, 0.5, 0.6, 1], 'the original colour after the override clears');
     assert.deepEqual(color(1), [0.4, 0.5, 0.6, 1]);
   });
 
   it('keeps an appearance suppression, and its release', () => {
-    const { scene, flags, move } = fixture();
-    const lease = scene.retainInstancedOccurrence(41, 3);
+    const { scene, flags, move, modelIndex } = fixture();
+    const lease = scene.retainInstancedOccurrence(41, modelIndex);
     lease.setSuppressed(true);
     move();
     assert.equal(flags(0) & INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_HIDDEN, 'the suppressed original stays hidden beside its replacement');
     lease.release();
-    scene.setModelTranslation(3, [20, 0, 0]);
+    scene.setModelTranslation(modelIndex, [20, 0, 0]);
     assert.equal(flags(0) & INSTANCE_FLAG_HIDDEN, 0);
   });
 
@@ -95,5 +95,17 @@ describe('live instance state survives a model move or rotation (#10767)', () =>
     scene.restoreGpuResourcesAfterRecovery(device, {} as RenderPipeline);
     assert.equal(flags(1) & INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_HIDDEN);
     assert.deepEqual(color(0), [1, 0, 0, 1]);
+  });
+
+  it('keeps a deleted entity hidden while live state on its template changes and the model moves', () => {
+    const { scene, flags, move } = fixture();
+    scene.setInstancedVisibility(new Set([41]), null);
+    scene.setInstancedSelection(new Set([41, 42]));
+    scene.removeMeshesForEntity(41);
+    scene.setInstancedVisibility(null, null); // the hidden set no longer names 41
+    scene.setInstancedSelection(new Set([42]));
+    move();
+    assert.equal(flags(0) & INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_HIDDEN, 'the #10639 tombstone survives the #10767 re-upload');
+    assert.equal(flags(1), INSTANCE_FLAG_SELECTED, 'and the survivor keeps its live state');
   });
 });

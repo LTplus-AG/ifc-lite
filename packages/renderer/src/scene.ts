@@ -1353,7 +1353,7 @@ export class Scene {
       this.instancedHidden.add(expressId);
       this.writeInstanceFlags(device, expressId);
     }
-    // After the GPU write: if it throws, the entity stays registered and its CPU records stay unmarked.
+    // Also with no device, where no flag write ran: the CPU record must carry the tombstone (#10639).
     tombstoneInstanceRecords(this.instancedTemplateCpu, occurrences);
     for (const o of occurrences) this.tombstonedTemplates.add(o.templateIndex);
     // Release the contribution-cull exemption BEFORE forgetting the occurrence

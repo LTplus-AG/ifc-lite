@@ -56,8 +56,44 @@ const digest = (text) => createHash('sha256').update(text).digest('hex');
 export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : typeof v === 'string' ? stripVolatileText(v) : v && typeof v === 'object'
   ? Object.fromEntries(Object.entries(v).filter(([k]) => !VOLATILE_KEY.test(k)).map(([k, x]) => [k, stripVolatile(x)])) : v);
 
+/**
+ * m11-n-native.json, ORDER-INSENSITIVE (owner decision 2026-11-19). Two runs of
+ * one commit emitted the same meshes with triangles in a different order (run
+ * 44547513676); a separate investigation into that non-deterministic native
+ * producer is open, and this PR does not change it. Every value is kept: each
+ * triangle carries its three corners (position and corner normal) and its
+ * per-triangle revisionLocalFaces and surfaceIndices entries; its corners are
+ * rotated to the smallest first, never sorted, so the winding still counts.
+ * The triangles of a part are then sorted, and positions no triangle uses are
+ * kept, sorted. Parts, rows, frames and every other field compare exactly.
+ */
+export function canonicalM11N(reference) {
+  const part = (p) => {
+    if (!Array.isArray(p?.indices) || !Array.isArray(p?.positions)) return p;
+    const { positions, indices, normals, revisionLocalFaces, surfaceIndices, ...rest } = p;
+    const xyz = (list, i) => (Array.isArray(list) ? list.slice(i * 3, i * 3 + 3) : null);
+    const used = new Set(indices);
+    const triangles = [];
+    for (let t = 0; t * 3 < indices.length; t += 1) {
+      const corners = [0, 1, 2].map((k) => JSON.stringify([xyz(positions, indices[t * 3 + k]), xyz(normals, t * 3 + k)]));
+      const first = corners.indexOf([...corners].sort()[0]);
+      const rotated = [...corners.slice(first), ...corners.slice(0, first)].map((c) => JSON.parse(c));
+      triangles.push(JSON.stringify([rotated, revisionLocalFaces?.[t] ?? null, surfaceIndices?.[t] ?? null]));
+    }
+    const unused = [];
+    for (let v = 0; v * 3 < positions.length; v += 1) if (!used.has(v)) unused.push(JSON.stringify(xyz(positions, v)));
+    return { ...rest, triangles: triangles.sort().map((x) => JSON.parse(x)), unreferencedPositions: unused.sort().map((x) => JSON.parse(x)), listLengths: [positions.length, indices.length, normals?.length ?? null, revisionLocalFaces?.length ?? null, surfaceIndices?.length ?? null] };
+  };
+  return reference.map((model) => ({ ...model, rows: model.rows?.map((row) => (Array.isArray(row.parts) ? { ...row, parts: row.parts.map(part) } : row)) }));
+}
+
+/** References compared without their order; named one by one (see canonicalM11N). */
+export const ORDER_INSENSITIVE = { 'm11-n-native.json': canonicalM11N };
+
 /** sha256 of a reference or output with its volatile fields (columns, keys) removed. */
 export function timingFreeHash(name, bytes) {
+  const canonical = ORDER_INSENSITIVE[name.split('/').at(-1)];
+  if (canonical) return digest(JSON.stringify(stripVolatile(canonical(JSON.parse(bytes.toString('utf8'))))));
   if (name.endsWith('.tsv')) {
     const rows = bytes.toString('utf8').split('\n').map((l) => l.split('\t'));
     const keep = rows[0].map((h, i) => (VOLATILE_KEY.test(h) ? -1 : i)).filter((i) => i >= 0);

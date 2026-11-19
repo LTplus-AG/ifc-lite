@@ -137,6 +137,45 @@ test('timings inside text (Rust Instant, *_ms fields, Durations) do not count, t
   assert.notDeepEqual([...markers(line(1), []).keys()], [...markers(line(1).replace('Some(2.5)', 'Some(2.6)'), []).keys()]);
 });
 
+/** One m11-n model with one published product: a unit square as two triangles (and one unused vertex). */
+const m11n = ({ order = [0, 1], rotate = 0, positions = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 9, 9, 9], extra = false, drop = false } = {}) => {
+  const tris = [[0, 1, 2], [0, 2, 3]];
+  const normals = [[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]];
+  let picked = order.map((t) => ({ idx: tris[t], nrm: normals.slice(t * 3, t * 3 + 3), face: t, surface: 7 }));
+  if (drop) picked = picked.slice(0, 1);
+  if (extra) picked.push({ idx: [1, 2, 3], nrm: normals.slice(0, 3), face: 2, surface: 7 });
+  const r = (list) => [...list.slice(rotate), ...list.slice(0, rotate)];
+  const part = {
+    frame: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], positions,
+    indices: picked.flatMap((p) => r(p.idx)), normals: picked.flatMap((p) => r(p.nrm).flat()),
+    revisionLocalFaces: picked.map((p) => p.face), surfaceIndices: picked.map((p) => p.surface),
+  };
+  return Buffer.from(JSON.stringify([{ model: 'm.ifc', ids: null, source: 'x', rows: [{ id: 5, status: 'published', sourceSurfaces: [], parts: [part] }, { id: 6, status: 'refused', code: 'c' }] }]));
+};
+
+test('m11-n compares order-insensitively and nothing else is relaxed', () => {
+  const h = (b) => timingFreeHash('temp/m11-n-native.json', b);
+  // Reordered triangles, or each triangle's corners rotated (same winding): a match.
+  assert.equal(h(m11n()), h(m11n({ order: [1, 0] })));
+  assert.equal(h(m11n()), h(m11n({ rotate: 1 })));
+  // A moved vertex, an extra or a missing triangle, a changed unused vertex: a mismatch.
+  assert.notEqual(h(m11n()), h(m11n({ positions: [0, 0, 0, 1, 0, 0, 1, 1.5, 0, 0, 1, 0, 9, 9, 9] })));
+  assert.notEqual(h(m11n()), h(m11n({ extra: true })));
+  assert.notEqual(h(m11n()), h(m11n({ drop: true })));
+  assert.notEqual(h(m11n()), h(m11n({ positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 9, 9, 8] })));
+  // Reversed winding is a different surface orientation, not an order: a mismatch.
+  const flipped = JSON.parse(m11n().toString());
+  const idx = flipped[0].rows[0].parts[0].indices;
+  [idx[1], idx[2]] = [idx[2], idx[1]];
+  assert.notEqual(h(m11n()), h(Buffer.from(JSON.stringify(flipped))));
+  // A per-triangle attribute travels with its triangle.
+  const relabelled = JSON.parse(m11n().toString());
+  relabelled[0].rows[0].parts[0].surfaceIndices = [7, 8];
+  assert.notEqual(h(m11n()), h(Buffer.from(JSON.stringify(relabelled))));
+  // Only m11-n is order-insensitive: the same reorder in any other reference still differs.
+  assert.notEqual(timingFreeHash('temp/m11-t-native-surface.json', m11n()), timingFreeHash('temp/m11-t-native-surface.json', m11n({ order: [1, 0] })));
+});
+
 test('markers reads native witness lines and registered cli/viewer records, through reporter decoration', () => {
   const text = '\u001b[32m# sdk witness executed: m8 real browser Worker parity\u001b[0m\nℹ cli-witness-x {"a":1}\nnoise\n';
   const found = markers(text, ['cli-witness-x', 'absent-one']);

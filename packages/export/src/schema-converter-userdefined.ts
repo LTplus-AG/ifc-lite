@@ -15,10 +15,10 @@
 import type { SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { attrNameTable } from './schema-converter.js';
 
-export const LABELS: readonly string[] = ['ObjectType', 'ElementType', 'ProcessType', 'ResourceType'];
+const LABELS: readonly string[] = ['ObjectType', 'ElementType', 'ProcessType', 'ResourceType'];
 
 /** Entities with both attributes but no USERDEFINED rule, per schema. */
-export const EXEMPT: Readonly<Record<SchemaVersionWithRegistry, readonly string[]>> = {
+const EXEMPT: Readonly<Record<SchemaVersionWithRegistry, readonly string[]>> = {
   IFC2X3: [
     'IFCACTUATORTYPE', 'IFCALARMTYPE', 'IFCBEAMTYPE', 'IFCBUILDINGELEMENTPROXYTYPE',
     'IFCCABLECARRIERSEGMENTTYPE', 'IFCCABLESEGMENTTYPE', 'IFCCOLUMNTYPE', 'IFCCONTROLLERTYPE',

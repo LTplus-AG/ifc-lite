@@ -322,18 +322,20 @@ export function planInfrastructureUnify(
     sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);
     skipEntityIds.add(thisIds[0]);
   }
-  // A context an IfcProjectLibrary owns stays the library's; every other kept one joins the merged project.
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current libraries
-  const libraries = dataStore.entityIndex.byType.get('IFCPROJECTLIBRARY') ?? [];
-  const libraryOwned = new Set(libraries.flatMap(id => refsIn(getStepAttr(dataStore, id, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '')
+  // One rule: a kept context follows its own project, which folds into the primary. Listed by one of this model's
+  // IfcProjects, it joins the merged project (a library listing it too keeps it as well: IFC allows both); listed
+  // only by a library, or by nothing, it stays as it was.
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current projects
+  const projects = dataStore.entityIndex.byType.get('IFCPROJECT') ?? [];
+  const projectListed = new Set(projects.flatMap(id => refsIn(getStepAttr(dataStore, id, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '')
     .map(ref => Number(ref.slice(1)))));
-  return modelContextIds.filter(id => !sharedRemap.has(id) && !libraryOwned.has(id));
+  return modelContextIds.filter(id => !sharedRemap.has(id) && projectListed.has(id));
 }
 
 /**
  * List `contextIds` in the merged project's RepresentationContexts (#10798). A compatible later model's IfcProject
  * folds into the primary's, so a top-level context of it that was kept rather than unified (a different frame or
- * georeference, or a second context, unless an IfcProjectLibrary owns it) belongs to no project otherwise. Only
+ * georeference, or a second context its own project listed) belongs to no project otherwise. Only
  * ids written to `lines` are listed.
  */
 export function listKeptContexts(lines: string[], projectId: number | undefined, contextIds: readonly number[]): void {

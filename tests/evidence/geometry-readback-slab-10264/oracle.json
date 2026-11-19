@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "why": "Keep the new store-mesh readback loadable while reintroducing wrong cut input: the slab limit is ignored and backed records are mapped to the wrong store index.",
+  "why": "Keep the new store-mesh readback loadable while reintroducing the reviewed wrong cut input: released copies (federation, placement) resolved only by store identity, and the slab limit ignored.",
   "key": "apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts",
   "mutation": "tests/evidence/geometry-readback-slab-10264/behaviour.oracle.patch",
   "test": "apps/viewer/src/lib/geometry-backing/store-mesh-readback.test.ts"

@@ -18,6 +18,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { MeshLease, ReadOptions } from './backing-reader';
 import type { Vec3 } from './backing-directory';
+import { releasedAncestry } from '@/lib/released-mesh-provenance';
 import { type BackingSource, GeometryUnavailableError, meshIsResident } from './geometry-readback';
 
 /** Points with `min <= dot(p, normal) <= max`, in the mesh frame (`origin + positions`). */
@@ -34,13 +35,55 @@ export function boxMeetsSlab(min: Vec3, max: Vec3, slab: Slab): boolean {
 
 export interface StoreModelMeshes { modelId: string; meshes: readonly MeshData[] }
 
+/** Fields that live in the backed record, not on a released store mesh or a copy of one. */
+const RECORD_FIELDS = new Set<keyof MeshData>(['positions', 'normals', 'indices', 'appearanceSource', 'texture']);
+
 /**
- * `wanted`, with every released member replaced by its backed copy (dropped
- * when `slab` is given and its chunk does not meet it), in `wanted` order.
+ * A released mesh (or a copy of one: a recolour, a federation `modelIndex`
+ * re-home, a placement) answered by its backed record: the record's arrays
+ * under the copy's own current scalars, so placement and model identity are
+ * reapplied exactly as on the resident copy.
+ */
+export function mergeReleased(copy: MeshData, record: MeshData): MeshData {
+  const merged: MeshData = { ...record };
+  for (const key of Object.keys(copy) as Array<keyof MeshData>) {
+    if (RECORD_FIELDS.has(key)) continue;
+    const value = copy[key];
+    // Lanes a release leaves on the mesh (entityIds, uvs) are current there.
+    if (value === undefined) continue;
+    (merged as unknown as Record<string, unknown>)[key] = value;
+  }
+  return merged;
+}
+
+/** The canonical store mesh a released mesh or copy descends from. */
+export function canonicalStoreMesh<T>(mesh: MeshData, known: ReadonlyMap<MeshData, T>): { source: MeshData; at: T } | undefined {
+  const own = known.get(mesh);
+  if (own !== undefined) return { source: mesh, at: own };
+  for (const source of releasedAncestry(mesh)) {
+    const at = known.get(source);
+    if (at !== undefined) return { source, at };
+  }
+  return undefined;
+}
+
+/** The read-back answer for a released store mesh or any copy of one, under the copy's scalars. */
+export function releasedCopyFrom(readBack: ReadonlyMap<MeshData, MeshData>, mesh: MeshData): MeshData | undefined {
+  const found = canonicalStoreMesh(mesh, readBack);
+  return found ? mergeReleased(mesh, found.at) : undefined;
+}
+
+export const DEFAULT_STORE_READBACK_BYTES = 256 * 1024 * 1024;
+
+/**
+ * `wanted`, with every released member (store mesh or copy) replaced by its
+ * backed record under its own scalars, dropped when `slab` is given and its
+ * chunk does not meet it, in `wanted` order. Bounded by `budgetBytes` of
+ * leased chunks; above it this fails rather than pin the model.
  */
 export async function leaseStoreMeshes(
   source: BackingSource | undefined, models: Iterable<StoreModelMeshes>, wanted: readonly MeshData[],
-  options: ReadOptions & { slab?: Slab } = {},
+  options: ReadOptions & { slab?: Slab; budgetBytes?: number } = {},
 ): Promise<MeshLease> {
   if (wanted.every(meshIsResident)) return { meshes: wanted, release: () => undefined };
   const owner = new Map<MeshData, { modelId: string; index: number }>();
@@ -49,19 +92,30 @@ export async function leaseStoreMeshes(
     lists.set(model.modelId, model.meshes);
     model.meshes.forEach((mesh, index) => owner.set(mesh, { modelId: model.modelId, index }));
   }
-  const needed = new Map<string, Set<number>>();
-  for (const mesh of wanted) {
-    if (meshIsResident(mesh)) continue;
-    const at = owner.get(mesh);
-    if (!at) throw new GeometryUnavailableError(`Released mesh of entity ${mesh.expressId} belongs to no model`);
-    const set = needed.get(at.modelId) ?? new Set<number>();
-    set.add(at.index);
-    needed.set(at.modelId, set);
-  }
   const leases: MeshLease[] = [];
-  const answered = new Map<MeshData, MeshData>();
+  const release = () => { for (const lease of leases.splice(0)) lease.release(); };
   try {
-    for (const [modelId, indices] of needed) {
+    // Released members by model: store index -> the wanted meshes it answers.
+    const needed = new Map<string, Map<number, MeshData[]>>();
+    const offsets = new Map<string, number[]>();
+    for (const mesh of wanted) {
+      if (meshIsResident(mesh)) continue;
+      const found = canonicalStoreMesh(mesh, owner);
+      if (!found) throw new GeometryUnavailableError(`Released mesh of entity ${mesh.expressId} belongs to no model`);
+      const { modelId, index } = found.at;
+      const byIndex = needed.get(modelId) ?? new Map<number, MeshData[]>();
+      byIndex.set(index, [...(byIndex.get(index) ?? []), mesh]);
+      needed.set(modelId, byIndex);
+      // A placed copy's frame differs from the backed (store) frame by its origin shift.
+      if (!offsets.has(modelId)) {
+        const o = mesh.origin ?? [0, 0, 0], so = found.source.origin ?? [0, 0, 0];
+        offsets.set(modelId, [o[0] - so[0], o[1] - so[1], o[2] - so[2]]);
+      }
+    }
+    const budget = options.budgetBytes ?? DEFAULT_STORE_READBACK_BYTES;
+    let leasedBytes = 0;
+    const answered = new Map<MeshData, MeshData>();
+    for (const [modelId, byIndex] of needed) {
       const backing = source?.backing(modelId);
       if (!backing?.isCurrent || !backing.isComplete) throw new GeometryUnavailableError(`Model ${modelId} has no complete current backing`);
       const chunks = backing.directory.chunks;
@@ -69,38 +123,41 @@ export async function leaseStoreMeshes(
       if (total !== lists.get(modelId)!.length) {
         throw new GeometryUnavailableError(`Model ${modelId}'s backing holds ${total} meshes, its store list ${lists.get(modelId)!.length}`);
       }
-      // Chunk k holds store indices [start_k, start_k + meshCount_k).
-      const picks: Array<{ chunk: number; start: number }> = [];
+      const delta = offsets.get(modelId)!;
+      const slab = options.slab && (() => {
+        const shift = options.slab.normal[0] * delta[0] + options.slab.normal[1] * delta[1] + options.slab.normal[2] * delta[2];
+        return { normal: options.slab.normal, min: options.slab.min - shift, max: options.slab.max - shift };
+      })();
       let start = 0;
       for (const chunk of chunks) {
         const end = start + chunk.meshCount;
         let hit = false;
-        for (const index of indices) if (index >= start && index < end) { hit = true; break; }
-        if (hit && (!options.slab || boxMeetsSlab(chunk.min, chunk.max, options.slab))) picks.push({ chunk: chunk.index, start });
+        for (const index of byIndex.keys()) if (index >= start && index < end) { hit = true; break; }
+        if (hit && (!slab || boxMeetsSlab(chunk.min, chunk.max, slab))) {
+          leasedBytes += chunk.bytes;
+          if (leasedBytes > budget) throw new GeometryUnavailableError(`Released geometry readback exceeds its ${budget}-byte bound`);
+          const lease = await backing.reader.leaseChunks([chunk.index], options);
+          leases.push(lease);
+          lease.meshes.forEach((record, offset) => {
+            for (const copy of byIndex.get(start + offset) ?? []) answered.set(copy, mergeReleased(copy, record));
+          });
+        }
         start = end;
       }
-      for (const pick of picks) {
-        const lease = await backing.reader.leaseChunks([pick.chunk], options);
-        leases.push(lease);
-        lease.meshes.forEach((mesh, offset) => {
-          const index = pick.start + offset;
-          if (indices.has(index)) answered.set(lists.get(modelId)![index], mesh);
-        });
+    }
+    const meshes: MeshData[] = [];
+    for (const mesh of wanted) {
+      if (meshIsResident(mesh)) meshes.push(mesh);
+      else {
+        const copy = answered.get(mesh);
+        if (copy) meshes.push(copy);
+        else if (!options.slab) throw new GeometryUnavailableError(`Mesh of entity ${mesh.expressId} was not read back`);
       }
     }
+    let done = false;
+    return { meshes, release: () => { if (done) return; done = true; release(); } };
   } catch (error) {
-    for (const lease of leases) lease.release();
+    release();
     throw error;
   }
-  const meshes: MeshData[] = [];
-  for (const mesh of wanted) {
-    if (meshIsResident(mesh)) meshes.push(mesh);
-    else {
-      const copy = answered.get(mesh);
-      if (copy) meshes.push(copy);
-      else if (!options.slab) throw new GeometryUnavailableError(`Mesh of entity ${mesh.expressId} was not read back`);
-    }
-  }
-  let released = false;
-  return { meshes, release: () => { if (released) return; released = true; for (const lease of leases) lease.release(); } };
 }

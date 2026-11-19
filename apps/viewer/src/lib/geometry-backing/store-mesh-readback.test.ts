@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { MeshData } from '@ifc-lite/geometry';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
+import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 import { GeometryBackingRegistry } from './geometry-backing-registry';
 import { GeometryUnavailableError } from './geometry-readback';
 import { boxMeetsSlab, leaseStoreMeshes } from './store-mesh-readback';
@@ -79,6 +80,40 @@ describe('store mesh readback for cut and export tools', () => {
     await assert.rejects(leaseStoreMeshes(source, [{ modelId: 'm', meshes: grown }], [grown[0]]), GeometryUnavailableError);
     await assert.rejects(leaseStoreMeshes(undefined, [{ modelId: 'm', meshes: list }], [list[0]]), GeometryUnavailableError);
     await assert.rejects(leaseStoreMeshes(source, [], [list[0]]), GeometryUnavailableError, 'an unowned released mesh');
+    await registry.close();
+  });
+
+  it('answers federated and placed copies by provenance, with their own modelIndex and placement', async () => {
+    const list = [mesh(1, 0), mesh(2, 10)];
+    const originals = list.map(copy);
+    const { registry, backing, source } = await released(list);
+    // useFederatedGeometry's re-home and placedViewGeometry's shift, made after release.
+    const federated = list.map((m) => carryReleasedMesh(m, { ...m, modelIndex: 3 }));
+    const placed = federated.map((m) => carryReleasedMesh(m, { ...m, origin: [100, 0, 0] as [number, number, number] }));
+    const all = await leaseStoreMeshes(source, [{ modelId: 'm', meshes: list }], placed);
+    assert.deepEqual(all.meshes.map((m) => [m.modelIndex, m.origin, [...m.positions]]),
+      originals.map((m) => [3, [100, 0, 0], [...m.positions]]));
+    all.release();
+    // A cut in the placed frame selects by the same geometry it would cut while resident.
+    const cut = await leaseStoreMeshes(source, [{ modelId: 'm', meshes: list }], placed,
+      { slab: { normal: [1, 0, 0], min: 100.2, max: 100.4 } });
+    assert.deepEqual(cut.meshes.map((m) => m.expressId), [1, 2], 'x 0..1 shifted by +100 meets 100.2..100.4');
+    cut.release();
+    const missed = await leaseStoreMeshes(source, [{ modelId: 'm', meshes: list }], placed,
+      { slab: { normal: [1, 0, 0], min: 0.2, max: 0.4 } });
+    assert.deepEqual(missed.meshes, [], 'the unplaced frame is not where the copies are');
+    missed.release();
+    backing.reader.clear();
+    assert.equal(backing.reader.retainedBytes, 0);
+    await registry.close();
+  });
+
+  it('releases every lease when a read fails part way', async () => {
+    const list = [mesh(1, 0), mesh(2, 10), mesh(3, 20)];
+    const { registry, backing, source } = await released(list);
+    await assert.rejects(leaseStoreMeshes(source, [{ modelId: 'm', meshes: list }], list, { budgetBytes: 200 }), GeometryUnavailableError);
+    backing.reader.clear();
+    assert.equal(backing.reader.retainedBytes, 0, 'no chunk stays pinned by the failed read');
     await registry.close();
   });
 });

@@ -56,7 +56,7 @@ export async function prepareReleasedExport(
     const meshes = state.models.get(modelId)?.geometryResult?.meshes ?? [];
     const released = meshes.filter((mesh) => !meshIsResident(mesh));
     if (released.length > 0) {
-      const lease = await leaseStoreMeshes(tap, [{ modelId, meshes }], released);
+      const lease = await leaseStoreMeshes(tap, [{ modelId, meshes }], released, { budgetBytes });
       released.forEach((mesh, i) => flat.set(mesh, lease.meshes[i]));
       // The copies live on through the map; the lease only pinned the decode cache.
       lease.release();

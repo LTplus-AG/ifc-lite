@@ -41,6 +41,7 @@ import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
 import { getViewerState } from '@/store/viewerStoreHandle';
 import { GeometryUnavailableError } from '@/lib/geometry-backing/geometry-readback';
+import { releasedCopyFrom } from '@/lib/geometry-backing/store-mesh-readback';
 import type { ReleasedExportGeometry } from '@/lib/geometry-backing/export-readback';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { hasRetainedShapeOnlyModel, type RetainedGeometrySummary } from '@/store/retainedGeometry';
@@ -83,7 +84,8 @@ export function withInstancedMeshes(
   if (prepared) {
     geometryResult = { ...geometryResult, meshes: geometryResult.meshes.map((mesh) => {
       if (meshIsResident(mesh)) return mesh;
-      const copy = prepared.flat.get(mesh);
+      // Consumers pass copies (federation modelIndex, placement): resolve by provenance, keep their scalars.
+      const copy = releasedCopyFrom(prepared.flat, mesh);
       if (!copy) throw new GeometryUnavailableError(`Mesh of entity ${mesh.expressId} was not read back for export`);
       return copy;
     }) };

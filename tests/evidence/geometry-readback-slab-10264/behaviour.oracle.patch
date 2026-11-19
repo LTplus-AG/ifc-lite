@@ -1,21 +1,25 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts b/apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts
-index 84cf198acd..6febfece77 100644
+index ce68b15cff..8ef1b30635 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts
-@@ -76,14 +76,14 @@ export async function leaseStoreMeshes(
+@@ -60,7 +60,10 @@ export function mergeReleased(copy: MeshData, record: MeshData): MeshData {
+ export function canonicalStoreMesh<T>(mesh: MeshData, known: ReadonlyMap<MeshData, T>): { source: MeshData; at: T } | undefined {
+   const own = known.get(mesh);
+   if (own !== undefined) return { source: mesh, at: own };
+-  void releasedAncestry;
++  for (const source of releasedAncestry(mesh)) {
++    const at = known.get(source);
++    if (at !== undefined) return { source, at };
++  }
+   return undefined;
+ }
+ 
+@@ -130,7 +133,7 @@ export async function leaseStoreMeshes(
          const end = start + chunk.meshCount;
          let hit = false;
-         for (const index of indices) if (index >= start && index < end) { hit = true; break; }
--        if (hit) picks.push({ chunk: chunk.index, start });
-+        if (hit && (!options.slab || boxMeetsSlab(chunk.min, chunk.max, options.slab))) picks.push({ chunk: chunk.index, start });
-         start = end;
-       }
-       for (const pick of picks) {
-         const lease = await backing.reader.leaseChunks([pick.chunk], options);
-         leases.push(lease);
-         lease.meshes.forEach((mesh, offset) => {
--          const index = pick.start + offset + (offset > 0 ? 1 : 0);
-+          const index = pick.start + offset;
-           if (indices.has(index)) answered.set(lists.get(modelId)![index], mesh);
-         });
-       }
+         for (const index of byIndex.keys()) if (index >= start && index < end) { hit = true; break; }
+-        if (hit) {
++        if (hit && (!slab || boxMeetsSlab(chunk.min, chunk.max, slab))) {
+           leasedBytes += chunk.bytes;
+           if (leasedBytes > budget) throw new GeometryUnavailableError(`Released geometry readback exceeds its ${budget}-byte bound`);
+           const lease = await backing.reader.leaseChunks([chunk.index], options);

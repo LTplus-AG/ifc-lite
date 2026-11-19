@@ -34,8 +34,17 @@ export function retainReleasedMeshProvenance(
  * (e.g. `updateMeshColors`' `{ ...mesh, color }`), whose buffers are just as
  * empty but which the WeakMaps would not otherwise know. Returns `copy`.
  */
+/** Released copy -> the mesh it was copied from (weak); buffers no longer link them. */
+const releasedSources = new WeakMap<MeshData, MeshData>();
+
+/** The meshes a released copy descends from, nearest first (#10264 readback provenance). */
+export function* releasedAncestry(mesh: MeshData): Iterable<MeshData> {
+  for (let at = releasedSources.get(mesh); at; at = releasedSources.get(at)) yield at;
+}
+
 export function carryReleasedMesh(source: MeshData, copy: MeshData): MeshData {
   registerCpuMeshCopy(source, copy);
+  if (source !== copy && isReleasedMesh(source)) releasedSources.set(copy, source);
   const provenance = released.get(source);
   if (provenance) released.set(copy, provenance);
   const counts = releasedCounts.get(source);

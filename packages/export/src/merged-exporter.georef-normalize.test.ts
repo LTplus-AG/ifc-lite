@@ -249,23 +249,29 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
 
 /** An IFC2X3 model, georeferenced through `ePSet_MapConversion` unless `easting` is null (#10915). */
 interface EPSetSpec {
-  unit: 'm' | 'mm'; easting: number | null; scale?: string;
+  unit: 'm' | 'mm'; easting: number | null;
+  /** The Scale property: a real, or a whole NominalValue such as `IFCLABEL('0.5x')`. */
+  scale?: string;
   /** The `ePSet_ProjectedCRS` MapUnit label, `$` for an unset value, or none for no MapUnit property. */
   mapUnit?: string;
+  /** False for a model with no `ePSet_ProjectedCRS`. */
+  crsSet?: false;
+  /** Parse the model with its property atoms in the deferred index. */
+  deferAtoms?: true;
 }
 
-const epsetModel = (name: string, { unit, easting, scale, mapUnit }: EPSetSpec) => {
+const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet }: EPSetSpec) => {
   const guid = (n: number) => `'0${name.toUpperCase()}EPSet${String(n).padStart(15, '0')}'`;
   const georef = easting === null ? '' : `#30=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(${easting}.),$);
 #31=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(1200000.),$);
 #32=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(500.),$);
-${scale === undefined ? '' : `#33=IFCPROPERTYSINGLEVALUE('Scale',$,IFCREAL(${scale}),$);`}
+${scale === undefined ? '' : `#33=IFCPROPERTYSINGLEVALUE('Scale',$,${scale.startsWith('IFC') ? scale : `IFCREAL(${scale})`},$);`}
 #34=IFCPROPERTYSET(${guid(2)},#8,'ePSet_MapConversion',$,(#30,#31,#32${scale === undefined ? '' : ',#33'}));
 #35=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);
 ${mapUnit === undefined ? '' : `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnit === '$' ? '$' : `IFCLABEL('${mapUnit}')`},$);`}
-#37=IFCPROPERTYSET(${guid(3)},#8,'ePSet_ProjectedCRS',$,(#35${mapUnit === undefined ? '' : ',#36'}));
 #38=IFCRELDEFINESBYPROPERTIES(${guid(4)},#8,$,$,(#1),#34);
-#39=IFCRELDEFINESBYPROPERTIES(${guid(5)},#8,$,$,(#1),#37);`;
+${crsSet === false ? '' : `#37=IFCPROPERTYSET(${guid(3)},#8,'ePSet_ProjectedCRS',$,(#35${mapUnit === undefined ? '' : ',#36'}));
+#39=IFCRELDEFINESBYPROPERTIES(${guid(5)},#8,$,$,(#1),#37);`}`;
   return `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -296,7 +302,9 @@ END-ISO-10303-21;
 async function mergeEPSets(specs: EPSetSpec[]) {
   const inputs: MergeModelInput[] = await Promise.all(specs.map(async (spec, index) => {
     const id = String.fromCharCode(97 + index);
-    return { id, name: id, dataStore: await parse(epsetModel(id, spec)) };
+    const bytes = new TextEncoder().encode(epsetModel(id, spec)).buffer as ArrayBuffer;
+    const options = spec.deferAtoms ? { disableWorkerScan: true, deferPropertyAtomIndex: true } : undefined;
+    return { id, name: id, dataStore: await new IfcParser().parseColumnar(bytes, options) };
   }));
   const { content, stats } = await new MergedExporter(inputs).exportAsync({ schema: 'IFC2X3', unitReconciliation: 'normalize' });
   return { merged: new TextDecoder().decode(content), warnings: stats.warnings };
@@ -335,6 +343,25 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     const { merged } = await mergeEPSets([{ unit: 'm', easting: 2600000, mapUnit: 'METRE' }, { unit: 'mm', easting: 2600100 }]);
     expect(merged).toContain("IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(2600100.),$)");
     expect(merged.match(/IFCPROPERTYSINGLEVALUE\('MapUnit',\$,IFCLABEL\('METRE'\),\$\)/g)).toHaveLength(2);
+  });
+
+  it.each([
+    ['its property atoms are deferred', { unit: 'mm', easting: 2600100, mapUnit: 'MILLIMETRE', deferAtoms: true }],
+    ['its Scale is a string the viewer does not read as a number', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: "IFCLABEL('0.5x')" }],
+    ['its Scale is a numeric string', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: "IFCLABEL('0.001')" }],
+  ] as const)('puts a millimetre model where the viewer puts it alone when %s', async (_, later) => {
+    const alone = viewerEPSet(await parse(epsetModel('b', later)));
+    const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, later]);
+    expect(viewerEPSet(await parse(merged))).toEqual(alone);
+    expect(merged.match(/IFCPROPERTYSINGLEVALUE\('MapUnit',/g)).toHaveLength(1);
+  });
+
+  it('names an ePSet_MapConversion whose map unit stays implicit, with no ePSet_ProjectedCRS', async () => {
+    const { merged, warnings } = await mergeEPSets([{ unit: 'm', easting: null }, { unit: 'mm', easting: 2600100, crsSet: false }]);
+    expect(merged).toContain("IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(2600100.),$)");
+    expect(warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('Its ePSet_MapConversion #34 (an id in "b") has no ePSet_ProjectedCRS, so its map unit stays implicit'),
+    ]));
   });
 
   it('names an ePSet_MapConversion whose viewer scale no Scale keeps', async () => {

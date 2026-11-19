@@ -22,7 +22,7 @@
 import { extractGeoreferenceCandidatesOnDemand, type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { COORDINATE_OPERATION_STEP_TYPES, MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
 import { refsIn } from './merged-project-contexts.js';
-import { getStepAttr } from './merged-subcontext.js';
+import { decodeEntity, getStepAttr } from './merged-subcontext.js';
 import { slotUnset, stepString } from './schema-converter-structural-source.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
@@ -59,6 +59,8 @@ export interface GeorefNormalizePlan {
   minted: MintedRecords;
   /** Map conversions (or `ePSet_MapConversion` sets) whose viewer scale no Scale keeps; written with the spec Scale. */
   unkept: readonly number[];
+  /** `ePSet_MapConversion` sets of a model with no `ePSet_ProjectedCRS`, whose map unit stays implicit. */
+  implicitUnit: readonly number[];
 }
 
 /** 0-based index of the CRS's length unit: `IfcProjectedCRS.MapUnit` (IFC4, IFC4X3), `IfcGeographicCRS.HeightUnit`. */
@@ -68,22 +70,34 @@ const SCALE_ATTR = 7;
 /** 0-based `IfcPropertySet.Name` and `.HasProperties`, `IfcPropertySingleValue.Name` and `.NominalValue`. */
 const PSET_NAME_ATTR = 2, PSET_PROPERTIES_ATTR = 4, PROPERTY_NAME_ATTR = 0, PROPERTY_VALUE_ATTR = 2;
 const METRE_UNIT = 'IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)';
-const EPSET_OFFSETS = new Set(['eastings', 'northings', 'orthogonalheight']);
+/** The ePSet properties normalize leaves as written, by the exact name the parser reads (`georef-epset.ts`). */
+const EPSET_OFFSETS = new Set(['Eastings', 'Northings', 'OrthogonalHeight']);
 
 // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
 const idsOf = (dataStore: IfcDataStore, types: Iterable<string>) => [...types].flatMap(type => dataStore.entityIndex.byType.get(type) ?? []);
-/** A STEP string slot's text, lower-cased, or '' when it is no string. */
-const label = (raw: string | null) => stepString(raw ?? undefined)?.toLowerCase() ?? '';
+/** A STEP string slot's text, or '' when it is no string. */
+const label = (raw: string | null) => stepString(raw ?? undefined) ?? '';
+/**
+ * A property's NominalValue as a number the way the parser reads it (`getNumber`): the whole typed or string value
+ * must be a numeric literal, so `IFCLABEL('0.5x')` is no number.
+ */
+function nominalNumber(raw: string | null): number | undefined {
+  const inner = raw?.match(/^\s*\w+\s*\(([\s\S]*)\)\s*$/)?.[1] ?? raw ?? '';
+  const literal = (stepString(inner) ?? inner).trim();
+  return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(literal) && Number.isFinite(Number(literal)) ? Number(literal) : undefined;
+}
 
 /** The normalize advisory for a model's georeference, or null when it carries none. */
 export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, plan: GeorefNormalizePlan | undefined): string | null {
   if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0 && !plan?.records.size) return null;
+  const implicit = plan?.implicitUnit.length ? ` Its ePSet_MapConversion ${plan.implicitUnit.map(id => `#${id}`).join(', ')} ` +
+    `(an id in "${name}") has no ePSet_ProjectedCRS, so its map unit stays implicit; the viewer reads it as metres.` : '';
   const unkeptIds = plan?.unkept ?? [], ids = unkeptIds.map(id => `#${id}`).join(', ');
   const unkept = unkeptIds.length === 0 ? '' : unkeptIds.length === 1
     ? ` The viewer cannot show its map conversion ${ids} (an id in "${name}") at its own scale in the merged unit, so its Scale is written as the IFC specification reads it.`
     : ` The viewer cannot show its map conversions ${ids} (ids in "${name}") at their own scale in the merged unit, so their Scale is written as the IFC specification reads it.`;
   return `Model "${name}" carries georeferencing, whose offsets normalize leaves in the CRS unit (a CRS without one ` +
-    `is written in metres). If the model was georeferenced in its own unit, review the merged coordinate operation.${unkept}`;
+    `is written in metres). If the model was georeferenced in its own unit, review the merged georeference.${unkept}${implicit}`;
 }
 
 /**
@@ -103,7 +117,7 @@ function chooseScale(conversion: Pick<MapConversion, 'scale' | 'factorX' | 'fact
 
 /** The {@link GeorefNormalizePlan} of a model in length unit `modelScale` normalized into `primaryScale`. */
 export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecords, modelScale: number, primaryScale: number): GeorefNormalizePlan {
-  const records = new Map<number, GeorefRecord>(), unkept: number[] = [];
+  const records = new Map<number, GeorefRecord>(), unkept: number[] = [], implicitUnit: number[] = [];
   for (const id of idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES)) records.set(id, { kind: 'keep' });
   for (const [type, attr] of Object.entries(CRS_UNIT_ATTR)) {
     for (const id of idsOf(dataStore, [type])) {
@@ -111,9 +125,8 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
       records.set(id, { kind: 'edit', attr, value: minted.refOf(METRE_UNIT), mint: METRE_UNIT });
     }
   }
-  // The parser's reading, whose ePSet scan is prefiltered, decides whether the property sets need a look of their own.
-  const candidates = idsOf(dataStore, [...MAP_CONVERSION_STEP_TYPES, 'IFCPROPERTYSET']).length
-    ? extractGeoreferenceCandidatesOnDemand(dataStore) : null;
+  const psets = planEPSets(dataStore);
+  const candidates = idsOf(dataStore, MAP_CONVERSION_STEP_TYPES).length || psets.length ? extractGeoreferenceCandidatesOnDemand(dataStore) : null;
   for (const { conversion, targetCRS } of candidates?.mapConversions ?? []) {
     // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot
     const source = dataStore.entityIndex.byId.get(conversion.sourceCRS);
@@ -122,13 +135,13 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
     if (choice.scale !== undefined) records.set(conversion.id, { kind: 'edit', attr: SCALE_ATTR, value: toStepRealScaled(choice.scale) });
     if (choice.unkept) unkept.push(conversion.id);
   }
-  const psets = candidates?.ePSetMapConversion ? planEPSets(dataStore) : [];
   // The ePSet sets, read as the viewer reads them: the first ePSet_ProjectedCRS gives the map unit.
+  const hasCrsSet = psets.some(({ kind }) => kind === 'epset_projectedcrs');
   const mapUnitScale = candidates?.ePSetMapConversion?.projectedCRS?.mapUnitScale;
   for (const { id, kind, properties } of psets) {
     const append = (text: string) => { minted.refOf(text); records.set(id, { kind: 'append', attr: PSET_PROPERTIES_ATTR, mint: text }); };
     if (kind === 'epset_projectedcrs') {
-      const unit = properties.get('mapunit');
+      const unit = properties.get('MapUnit');
       const metreLabel = "IFCLABEL('METRE')";
       if (unit === undefined) append(`IFCPROPERTYSINGLEVALUE('MapUnit',$,${metreLabel},$)`);
       else if (slotUnset(getStepAttr(dataStore, unit, PROPERTY_VALUE_ATTR) ?? '$')) {
@@ -136,25 +149,28 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
       }
       continue;
     }
+    if (!hasCrsSet) implicitUnit.push(id);
     for (const [name, property] of properties) if (EPSET_OFFSETS.has(name)) records.set(property, { kind: 'keep' });
-    const scaleProperty = properties.get('scale');
-    // The written Scale, bare, typed (`IFCREAL(0.001)`) or a string as some writers store it; unset when absent or `$`.
-    const raw = scaleProperty === undefined ? null : getStepAttr(dataStore, scaleProperty, PROPERTY_VALUE_ATTR);
-    const written = Number(raw?.match(/^(?:\w+\s*\(\s*)?'?\s*([-+.\dEe]+)/)?.[1] ?? NaN);
-    const choice = chooseScale({ scale: Number.isFinite(written) ? written : undefined }, mapUnitScale, modelScale, primaryScale);
+    const scaleProperty = properties.get('Scale');
+    const written = scaleProperty === undefined ? undefined : nominalNumber(getStepAttr(dataStore, scaleProperty, PROPERTY_VALUE_ATTR));
+    const choice = chooseScale({ scale: written }, mapUnitScale, modelScale, primaryScale);
     if (choice.unkept) unkept.push(id);
     if (choice.scale === undefined) continue;
     const value = `IFCREAL(${toStepRealScaled(choice.scale)})`;
     if (scaleProperty === undefined) append(`IFCPROPERTYSINGLEVALUE('Scale',$,${value},$)`);
     else records.set(scaleProperty, { kind: 'edit', attr: PROPERTY_VALUE_ATTR, value });
   }
-  return { records, minted, unkept };
+  return { records, minted, unkept, implicitUnit };
 }
 
-/** A model's `ePSet_MapConversion` and `ePSet_ProjectedCRS` sets, with their properties by lower-cased name. */
+/**
+ * A model's `ePSet_MapConversion` and `ePSet_ProjectedCRS` sets (any casing, as the parser finds them), with their
+ * properties by name. A set whose record does not contain `epset_` is passed over before any attribute is parsed.
+ */
 function planEPSets(dataStore: IfcDataStore) {
   return idsOf(dataStore, ['IFCPROPERTYSET']).flatMap(id => {
-    const kind = label(getStepAttr(dataStore, id, PSET_NAME_ATTR));
+    if (!decodeEntity(dataStore, id)?.toLowerCase().includes('epset_')) return [];
+    const kind = label(getStepAttr(dataStore, id, PSET_NAME_ATTR)).toLowerCase();
     if (kind !== 'epset_mapconversion' && kind !== 'epset_projectedcrs') return [];
     const properties = new Map(refsIn(getStepAttr(dataStore, id, PSET_PROPERTIES_ATTR) ?? '')
       .map(ref => Number(ref.slice(1)))
@@ -174,8 +190,7 @@ export function normalizeGeorefRecord(text: string, sourceId: number, plan: Geor
   const { attr, mint } = record;
   return withArgs(text, attr, args => {
     const list = args[attr].trim();
-    args[attr] = record.kind === 'edit' ? record.value
-      : `${list.slice(0, list.lastIndexOf(')'))}${list.length > 2 ? ',' : ''}${plan.minted.refOf(record.mint)})`;
+    args[attr] = record.kind === 'edit' ? record.value : `(${[...refsIn(list), plan.minted.refOf(record.mint)].join(',')})`;
     if (mint !== undefined) plan.minted.use(mint);
   });
 }

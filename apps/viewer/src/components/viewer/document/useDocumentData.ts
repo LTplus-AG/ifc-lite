@@ -10,6 +10,7 @@
  */
 import { useMemo } from 'react';
 import { type Aggregation, type ChartSpec } from '@ifc-lite/charts';
+import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -36,6 +37,7 @@ export interface DocumentData {
   /** Failure identities classified once with chartMessages; provenance captions stay informational. */
   chartErrors?: ReadonlySet<string>;
   topics: Map<string, BCFTopic>;
+  qualityGateReports: readonly SavedClashReport[];
   /** Table block id → its list run (#5142); preview and PDF print the same rows. */
   tables: ReadonlyMap<string, TableState>;
 }
@@ -72,5 +74,5 @@ export function useDocumentData(document: DocumentSpec | null): DocumentData {
   const topics = useMemo(() => bcfProject?.topics ?? new Map<string, BCFTopic>(), [bcfProject]);
   const tables = useDocumentTables(document);
 
-  return { bindings, aggregations, chartMessages, chartErrors, topics, tables, labels };
+  return { bindings, aggregations, chartMessages, chartErrors, topics, tables, labels, qualityGateReports: savedContent.clashReports };
 }

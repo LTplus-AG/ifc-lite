@@ -287,7 +287,8 @@ describe('IDS candidates and validation runs (#10792)', () => {
   it('#36: an IDS run, which reads no tags or lenses, survives a lens edit', async () => {
     const { content } = answer<{ content: string }>(await invoke('ids.document.xml'));
     const { run_id } = answer<{ run_id: string }>(await invoke('validation.ids.run', { xml: content, scope: 'whole', entity_ids: [] }));
-    useViewerStore.setState(s => ({ savedLenses: [...s.savedLenses] }));
+    // A grouping edit that would refuse a rules run (see above).
+    useViewerStore.setState(s => ({ savedLenses: s.savedLenses.map(lens => isGroupingLens(lens) ? { ...lens, name: `${lens.name} (edited)` } : lens) }));
     answer(await invoke('validation.publish', { run_id }, true));
   });
 });

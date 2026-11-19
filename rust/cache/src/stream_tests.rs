@@ -125,8 +125,11 @@ fn issue_9584_a_leftover_staging_name_is_skipped_not_fatal() {
     fs::write(dir.join(".model.ifclite.1.1.tmp"), b"killed build").unwrap();
     let mut sequence = 0..;
     let next = || format!("1.{}", sequence.next().unwrap());
-    let (staging, _spool) = Staging::create_unused(&dir, "model.ifclite", next).unwrap();
+    let (staging, spool) = Staging::create_unused(&dir, "model.ifclite", next).unwrap();
     assert_eq!(staging.spool, dir.join(".model.ifclite.1.2.spool"), "the first free sequence");
+    // Close the spool before the staging guard removes it: Windows keeps an
+    // open file's directory entry until its last handle closes.
+    drop(spool);
     drop(staging);
     let leftovers = vec![".model.ifclite.1.0.spool".to_owned(), ".model.ifclite.1.1.tmp".to_owned()];
     assert_eq!(listing(&dir), leftovers, "the leftovers are not ours to remove; ours are gone");

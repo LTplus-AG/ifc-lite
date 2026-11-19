@@ -82,8 +82,10 @@ impl ValueForms {
     /// form the target accepts; each value dropped is added to `dropped`.
     pub(crate) fn apply(&mut self, line: String, cfrom: &str, cto: &str, dropped: &mut usize) -> String {
         let Some(frame) = crate::step_record_frame::record_frame(&line) else { return line };
-        let ty = frame.head.type_name(&line).to_ascii_uppercase();
-        let Ok(at) = VALUE_FORM_SLOTS.binary_search_by(|(f, t, name, _)| (*f, *t, *name).cmp(&(cfrom, cto, ty.as_str()))) else { return line };
+        let written = frame.head.type_name(&line);
+        // The converter writes the type in upper case; anything else is copied once.
+        let ty: std::borrow::Cow<str> = if written.bytes().any(|b| b.is_ascii_lowercase()) { written.to_ascii_uppercase().into() } else { written.into() };
+        let Ok(at) = VALUE_FORM_SLOTS.binary_search_by(|(f, t, name, _)| (*f, *t, *name).cmp(&(cfrom, cto, &*ty))) else { return line };
         let slots: &[ValueFormSlot] = VALUE_FORM_SLOTS[at].3;
         let Some(mut args) = split_top_level_args(frame.args(&line)) else { return line };
         // A record whose arity is not the target's is left alone: slot i need not be attribute i.

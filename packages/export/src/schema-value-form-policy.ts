@@ -222,14 +222,14 @@ export function valueFormSlotsOf(source: Registry, target: Registry, from: strin
   const map = from === 'IFC2X3' || to === 'IFC2X3' ? maps.find((m) => m.ifc2x3 === type && m.ifc4 === type) : undefined;
   const srcAttrs = s.allAttributes ?? s.attributes, tgtAttrs = t.allAttributes ?? t.attributes;
   const out: ValueFormSlot[] = [];
-  tgtAttrs.forEach((to, index) => {
-    const pair = map?.renamed.find((p) => p[up ? 1 : 0] === to.name);
-    const name = pair ? pair[up ? 0 : 1] : to.name;
+  tgtAttrs.forEach((tgt, index) => {
+    const pair = map?.renamed.find((p) => p[up ? 1 : 0] === tgt.name);
+    const name = pair ? pair[up ? 0 : 1] : tgt.name;
     if (map && (map.retyped.includes(name) || map.setOfOne?.includes(name) || (!up && map.upOnly.includes(name)))) return;
-    if (DECIDED_ELSEWHERE.includes(`${type}.${to.name}`)) return;
-    const from = srcAttrs.find((a) => a.name === name);
-    const rejected = from ? rejectedForms(source, from, target, to) : [];
-    if (rejected.length) out.push({ type, entity, index, attribute: to.name, sourceType: from!.type, targetType: to.type, rejected });
+    if (DECIDED_ELSEWHERE.includes(`${type}.${tgt.name}`)) return;
+    const src = srcAttrs.find((a) => a.name === name);
+    const rejected = src ? rejectedForms(source, src, target, tgt) : [];
+    if (rejected.length) out.push({ type, entity, index, attribute: tgt.name, sourceType: src!.type, targetType: tgt.type, rejected });
   });
   return out;
 }

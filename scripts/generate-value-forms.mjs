@@ -74,8 +74,9 @@ for (const [from, to] of DIRECTIONS) {
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 rows.sort((a, b) => cmp(a.from, b.from) || cmp(a.to, b.to) || cmp(a.type, b.type) || a.index - b.index);
 
+const inDirection = new Map(DIRECTIONS.map(([from, to]) => [`${from} → ${to}`, rows.filter((r) => r.from === from && r.to === to)]));
 const sections = DIRECTIONS.map(([from, to]) => {
-  const here = rows.filter((r) => r.from === from && r.to === to);
+  const here = inDirection.get(`${from} → ${to}`);
   const lines = [`## ${from} → ${to}`, ''];
   if (!here.length) return [...lines, 'Every same-named attribute keeps a value form the target accepts.', ''].join('\n');
   lines.push('| Entity.Attribute | Source type | Target type | Forms the target rejects |', '| --- | --- | --- | --- |');
@@ -100,7 +101,7 @@ const text = [
   '',
   '| Direction | Slots |',
   '| --- | --- |',
-  ...DIRECTIONS.map(([from, to]) => `| ${from} → ${to} | ${rows.filter((r) => r.from === from && r.to === to).length} |`),
+  ...[...inDirection].map(([direction, here]) => `| ${direction} | ${here.length} |`),
   '',
   ...sections,
 ].join('\n');
@@ -140,7 +141,7 @@ function renderRs() {
 }
 
 const outputs = [[OUT_REL, text], [RS_REL, renderRs()]];
-const totals = DIRECTIONS.map(([from, to]) => `${from} → ${to}: ${rows.filter((r) => r.from === from && r.to === to).length}`).join(', ');
+const totals = [...inDirection].map(([direction, here]) => `${direction}: ${here.length}`).join(', ');
 if (process.argv.includes('--check')) {
   for (const [rel, content] of outputs) {
     let committed = '';

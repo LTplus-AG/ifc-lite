@@ -12,19 +12,19 @@
  * `generated/value_forms.rs` (`scripts/generate-value-forms.mjs --check`).
  */
 
-import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
+import { getCanonicalEntityName, getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { valueForm, valueFormSlotsOf } from './schema-value-form-policy.js';
 import { ATTR_MAPS } from './schema-converter-attr-maps.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
+import { stepRecordHead } from './step-record-frame.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
 
 interface Rule {
   readonly index: number;
   readonly where: string;
-  readonly rejected: ReadonlySet<string>;
-  /** Form -> `T:NAME` (wrap), `U` (unwrap) or an integer form (`I`, `AI`). */
-  readonly convert: ReadonlyMap<string, string>;
+  /** Form -> null (drop), `T:NAME` (wrap), `U` (unwrap) or an integer form (`I`, `AI`). */
+  readonly forms: ReadonlyMap<string, string | null>;
 }
 
 const SCHEMAS = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);
@@ -42,14 +42,13 @@ function rulesFor(from: string, to: string, type: string): Rules {
   if (rules) return rules;
   const source = getSchemaRegistryForVersion(from as SchemaVersionWithRegistry);
   const target = getSchemaRegistryForVersion(to as SchemaVersionWithRegistry);
-  const entity = Object.keys(target.entities).find((name) => name.toUpperCase() === type);
+  const entity = getCanonicalEntityName(target, type);
   const slots = entity === undefined ? [] : valueFormSlotsOf(source, target, from, to, ATTR_MAPS, entity);
   const meta = entity === undefined ? undefined : target.entities[entity];
   rules = !meta || !slots.length ? NONE : { arity: (meta.allAttributes ?? meta.attributes).length, rules: slots.map((slot) => ({
     index: slot.index,
     where: `${type}.${slot.attribute}`,
-    rejected: new Set(slot.rejected.filter((f) => !f.includes('>'))),
-    convert: new Map(slot.rejected.flatMap((f) => (f.includes('>') ? [f.split('>') as [string, string]] : []))),
+    forms: new Map(slot.rejected.map((f) => [f.split('>')[0], f.split('>')[1] ?? null])),
   })) };
   byType.set(type, rules);
   return rules;
@@ -75,14 +74,15 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   }
   const form = valueForm(body);
   if (form === null) return { value, dropped: 0 };
-  const to = rule.convert.get(prefix + form);
+  const to = rule.forms.get(prefix + form);
+  if (to === undefined) return { value, dropped: 0 };
+  if (to === null) return { value: null, dropped: 0 };
   if (to === 'U') return { value: body.slice(body.indexOf('(') + 1, body.lastIndexOf(')')).trim(), dropped: 0 };
-  if (to?.endsWith('I')) {
+  if (to.endsWith('I')) {
     const n = Number(body.trim());
     return { value: Number.isSafeInteger(n) ? String(n) : null, dropped: 0 };
   }
-  if (to) return { value: `${to.slice(2)}(${body.trim()})`, dropped: 0 };
-  return rule.rejected.has(prefix + form) ? { value: null, dropped: 0 } : { value, dropped: 0 };
+  return { value: `${to.slice(2)}(${body.trim()})`, dropped: 0 };
 }
 
 /** Value-form reconciliation for one export: rewrites, and names what it dropped. */
@@ -92,11 +92,12 @@ export class ValueForms {
   /** `line`, already converted from `from` to `to`, with every slot in a form the target accepts. */
   apply(line: string, from: string, to: string): string {
     if (!SCHEMAS.has(from) || !SCHEMAS.has(to) || from === to) return line;
-    const record = readStepSlots(line);
-    const type = record ? /^\s*#\s*\d+\s*=\s*([A-Za-z0-9_]+)/.exec(line)?.[1]?.toUpperCase() : undefined;
-    const { arity, rules } = type ? rulesFor(from, to, type) : NONE;
+    // The head names the type; most records stop before their slots are split.
+    const head = stepRecordHead(line);
+    const { arity, rules } = head ? rulesFor(from, to, line.slice(head.typeStart, head.typeEnd).toUpperCase()) : NONE;
+    const record = rules.length ? readStepSlots(line) : null;
     // A record whose arity is not the target's is left alone: slot i need not be attribute i.
-    if (!record || !rules.length || record.slots.length !== arity) return line;
+    if (!record || record.slots.length !== arity) return line;
     const slots = [...record.slots];
     let changed = false;
     for (const rule of rules) {

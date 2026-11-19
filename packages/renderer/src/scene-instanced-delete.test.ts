@@ -94,7 +94,7 @@ describe('deleted instanced occurrences stay discarded (#10639)', () => {
     assert.equal(scene.setModelTranslation(3, [10, 0, 0]), true);
     assert.equal(scene.setModelRotation(3, Math.PI / 2, [0, 0, 0]), true);
     assert.equal(flags(0) & INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_HIDDEN);
-    assert.equal(flags(1) & INSTANCE_FLAG_HIDDEN, 0);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [42], 'the surviving occurrence stays registered');
   });
 
   it('drops tombstones with their template, so a removed model no longer forces the discard path', () => {

@@ -1337,21 +1337,24 @@ export class Scene {
 
   /**
    * Tombstone a GPU-instanced entity on delete/split: set its HIDDEN flag on the
-   * GPU (both render + pick shaders discard it) before forgetting its occurrence
-   * locations, then drop all instanced state for it. The occurrence's buffer slots
-   * are not reclaimed (delete/split is rare) — hiding them is sufficient and never
-   * touches other entities' slots. Returns true if the id was instanced. (#1238)
+   * GPU (both render + pick shaders discard it) and in the CPU instance records
+   * that recovery and model moves re-upload, then drop all instanced state for
+   * it. The slots are not reclaimed (delete/split is rare) and never touch other
+   * entities' slots; `tombstonedTemplates` keeps the discarding shader on while
+   * they exist (#10639). Returns true if the id was instanced. (#1238)
    */
   private removeInstancedEntity(expressId: number): boolean {
     const occurrences = this.instancedEntityMap.get(expressId);
     if (!occurrences) return false;
-    tombstoneInstanceRecords(this.instancedTemplateCpu, occurrences, this.tombstonedTemplates);
     const device = this.instancedDevice;
     if (device && !this.instanceSuppression.has(expressId)) {
       // Must set the flag while the occurrence locations are still in the map.
       this.instancedHidden.add(expressId);
       this.writeInstanceFlags(device, expressId);
     }
+    // After the GPU write, which can throw and leave the entity live.
+    tombstoneInstanceRecords(this.instancedTemplateCpu, occurrences);
+    for (const o of occurrences) this.tombstonedTemplates.add(o.templateIndex);
     // Release the contribution-cull exemption BEFORE forgetting the occurrence
     // locations — deleting the map entry first would leak selectedCount and
     // leave the templates permanently uncullable.

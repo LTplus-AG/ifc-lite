@@ -6,20 +6,16 @@ import { INSTANCE_FLAGS_OFFSET, INSTANCE_FLAG_HIDDEN } from './instanced-render.
 import type { InstancedOccurrence, InstancedTemplateCpu } from './scene-instance-types.js';
 
 /**
- * Tombstone a deleted entity's instance records in the CPU instance data
- * (#10639). Its slots are not reclaimed, and device recovery and model
- * placement re-upload whole instance buffers from this data, so a flag set
- * only on the GPU would be lost and the occurrences would draw again. Adds
- * each record's template slot to `holders`: while a live template holds a
- * tombstone, the opaque instanced pass must keep its discarding shader.
+ * Set HIDDEN on a deleted entity's records in the CPU instance data (#10639).
+ * Its slots are not reclaimed, and device recovery and model placement
+ * re-upload whole instance buffers from this data, so a flag set only on the
+ * GPU would be lost and the occurrences would draw again.
  */
 export function tombstoneInstanceRecords(
   cpu: readonly (InstancedTemplateCpu | undefined)[],
   occurrences: readonly InstancedOccurrence[],
-  holders: Set<number>,
 ): void {
   for (const { templateIndex, byteOffset } of occurrences) {
-    holders.add(templateIndex);
     const data = cpu[templateIndex]?.instanceData;
     if (!data) continue;
     const view = new DataView(data), at = byteOffset + INSTANCE_FLAGS_OFFSET;

@@ -56,6 +56,15 @@ export function remeshAfterCommit(
   void requestRemesh(get, modelId, expressIds, cause);
 }
 
+/**
+ * True when `batchId`'s command publishes its own undo and redo to the collab room (an after-replay effect, as the
+ * roof definition does, with its own rollback), so history replay must not mirror its edits a second time (#10695).
+ */
+export function publishesOwnHistory(get: Get, modelId: string, batchId: string | undefined): boolean {
+  const entry = batchId === undefined ? undefined : entries(get).get(batchId);
+  return entry?.modelId === modelId && (entry.afterReplay?.length ?? 0) > 0;
+}
+
 /** Re-mesh what `batchId` re-shaped, after undo or redo restored its view. */
 export function remeshForBatch(get: Get, modelId: string, batchId: string | undefined): void {
   const entry = batchId === undefined ? undefined : entries(get).get(batchId);

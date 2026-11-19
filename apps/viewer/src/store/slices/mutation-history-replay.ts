@@ -23,7 +23,7 @@ import { hasAppearanceHistoryEntry, replayAppearanceHistory } from '@/lib/appear
 import { applyRedoToView, applyUndoToView } from './mutation-history-apply.js';
 import { inverseMutationTargets, pruneInverseMutationTargets, revertedMutationIds } from './mutation-inverse-registry.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
-import { remeshForBatch } from '@/lib/remesh/remesh-registry.js';
+import { publishesOwnHistory, remeshForBatch } from '@/lib/remesh/remesh-registry.js';
 import { moveChangeSetEntries, recordHistory } from './mutation-history-record.js';
 import { isGeorefMutation } from './mutation-history-prune.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
@@ -99,6 +99,7 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
     const tag = get().mutationBatchTags.get(mutation.id);
     if (!first && (batchId === undefined || tag !== batchId)) break;
     batchId = tag;
+    const mirror = !publishesOwnHistory(get, modelId, tag);
 
     const inverseTarget = inverseMutationTargets(api).get(mutation.id);
     if (inverseTarget) {
@@ -129,8 +130,8 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
     }
     const view = get().mutationViews.get(modelId);
     if (!view) break;
-    if (direction === 'undo') applyUndoToView(get, set, modelId, view, mutation);
-    else applyRedoToView(get, set, modelId, view, mutation);
+    if (direction === 'undo') applyUndoToView(get, set, modelId, view, mutation, mirror);
+    else applyRedoToView(get, set, modelId, view, mutation, mirror);
     moved.push(mutation);
   }
   flush();

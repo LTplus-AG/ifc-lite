@@ -76,6 +76,17 @@ export const STATS = [
 ];
 
 /**
+ * The file one run writes its cache to. With `--keep-outputs` every run's
+ * output is kept side by side, so the name carries the fixture (its index,
+ * which is unique, and its name, which is readable) as well as the variant
+ * and round: a second model must not overwrite the first model's outputs.
+ */
+export function outputName({ fixtureIndex, model, variant, round }) {
+  const stem = model.split('/').pop().replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9_-]+/g, '_');
+  return `${String(fixtureIndex).padStart(2, '0')}-${stem}-${variant}-r${round}.ifclite`;
+}
+
+/**
  * Within-round execution order, balanced across rounds.
  *
  * ab-order.mjs solves this for TWO sides; three variants need the same
@@ -216,7 +227,12 @@ export function summarize(rows, { minRounds = 5 } = {}) {
       rounds: Math.min(...variants.map((v) => v.rounds)),
       identity: {
         hashes,
-        agrees: hashes.length === 1,
+        // Three-way identity needs an output from all three writers, and a
+        // disagreement needs two different outputs to disagree. A model with
+        // a writer missing and the rest agreeing (or no output at all) is
+        // neither: it is unverified, and `incomplete` already fails the run.
+        agrees: measured.length === VARIANT_KEYS.length && hashes.length === 1,
+        disagrees: hashes.length >= 2,
         // Non-constant WITHIN one variant is non-determinism; the variants
         // disagreeing is a changed output. They are different defects.
         unstable: measured.some((v) => v.hashes.length > 1),
@@ -225,7 +241,7 @@ export function summarize(rows, { minRounds = 5 } = {}) {
       meshCounts: [...new Set(measured.flatMap((v) => v.stats.meshCount))],
     });
   }
-  const identityBroken = models.some((m) => !m.identity.agrees);
+  const identityBroken = models.some((m) => m.identity.disagrees);
   const unstable = models.some((m) => m.identity.unstable);
   const incomplete = models.some((m) => m.incomplete);
   const underSampled = models.some((m) => m.rounds > 0 && m.rounds < minRounds);
@@ -289,10 +305,17 @@ function modelLines(m) {
   if (m.identity.unstable) {
     lines.push('');
     lines.push('- ⚠️ one variant wrote **different bytes between rounds** — the writer is not deterministic on this host, and no delta above is like-for-like.');
-  } else if (!m.identity.agrees) {
+  } else if (m.identity.disagrees) {
     const detail = Object.entries(m.identity.perVariant).map(([k, h]) => `${k} ${h[0].slice(0, 12)}`).join(' · ');
     lines.push('');
     lines.push(`- ⚠️ the three writers **disagree on the bytes**: ${detail}. A peak that moved while the output moved is not a saving.`);
+  } else if (!m.identity.agrees) {
+    const wrote = m.variants.filter((v) => v.rounds > 0).map((v) => v.variant);
+    lines.push('');
+    lines.push(
+      `- ⚠️ byte identity is **not established**: only ${wrote.length} of ${VARIANT_KEYS.length} writers produced output` +
+      `${wrote.length ? ` (${wrote.join(', ')})` : ''}, so there is nothing to compare the missing ones against.`
+    );
   } else {
     lines.push(`- ✓ all three writers wrote **byte-identical** output (sha256 \`${m.identity.hashes[0].slice(0, 16)}…\`), mesh count ${list(m.meshCounts)}.`);
   }

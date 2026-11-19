@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { seededRand } from './ab-order.mjs';
-import { InvalidRuns, VARIANT_KEYS, formatReport, groupRuns, summarize, variantOrder } from './cache-stream-report.mjs';
+import { InvalidRuns, VARIANT_KEYS, formatReport, groupRuns, outputName, summarize, variantOrder } from './cache-stream-report.mjs';
 
 const MODEL = 'ara3d/AC20-FZK-Haus.ifc';
 const run = (variant, round, peakMiB, { hash = 'aaaa', elapsedMs = 1000, model = MODEL, stats } = {}) => ({
@@ -192,4 +192,52 @@ test('two models are summarized independently', () => {
   const summary = summarize(rows);
   assert.deepEqual(summary.models.map((m) => m.model), [MODEL, other]);
   assert.equal(summary.identityBroken, false);
+});
+
+test('kept outputs from different models never share a name', () => {
+  // louistrue on 8e6872d457: two fixtures, one round, --keep-outputs kept
+  // three files, all the second fixture's, because the name was only the
+  // variant and round.
+  const models = ['various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc', 'ara3d/AC20-FZK-Haus.ifc', 'other/AC20-FZK-Haus.ifc'];
+  const names = models.flatMap((model, fixtureIndex) =>
+    VARIANT_KEYS.flatMap((variant) => [0, 1, 2].map((round) => outputName({ fixtureIndex, model, variant, round }))));
+  assert.equal(new Set(names).size, names.length, 'one file per fixture, variant and round');
+  assert.equal(outputName({ fixtureIndex: 0, model: models[0], variant: 'head-streamed', round: 3 }),
+    '00-O-S1-BWK-BIM_architectural_-_BIM_bouwkundig-head-streamed-r3.ifclite');
+});
+
+test('a model where no writer produced output is incomplete, not a disagreement', () => {
+  const failed = (variant) => ({ model: MODEL, variant, round: 1, status: 'failed', error: 'exit 1' });
+  const summary = summarize(VARIANT_KEYS.map(failed));
+  assert.equal(summary.incomplete, true);
+  assert.equal(summary.identityBroken, false, 'no digests, so nothing disagrees');
+  const report = formatReport(summary).join('\n');
+  assert.doesNotMatch(report, /disagree on the bytes/);
+  assert.doesNotMatch(report, /byte-identical/);
+  assert.match(report, /not established\*\*: only 0 of 3 writers/);
+  assert.match(report, /Incomplete/);
+});
+
+test('two in-memory writers agreeing with the streamed one failed is not three-way identity', () => {
+  const rows = [
+    ...matrix({ 'base-inmem': [100, 100], 'head-inmem': [100, 100], 'head-streamed': [] }),
+    { model: MODEL, variant: 'head-streamed', round: 1, status: 'failed', error: 'exit 1' },
+  ];
+  const summary = summarize(rows, { minRounds: 2 });
+  assert.equal(summary.incomplete, true);
+  assert.equal(summary.identityBroken, false);
+  assert.equal(summary.models[0].identity.agrees, false);
+  const report = formatReport(summary).join('\n');
+  assert.doesNotMatch(report, /byte-identical/);
+  assert.match(report, /only 2 of 3 writers produced output \(base-inmem, head-inmem\)/);
+});
+
+test('two writers that wrote different bytes disagree even with the third missing', () => {
+  const rows = matrix(
+    { 'base-inmem': [100, 100], 'head-inmem': [100, 100], 'head-streamed': [] },
+    { 'head-inmem': { hash: 'bbbb' } }
+  );
+  const summary = summarize(rows, { minRounds: 2 });
+  assert.equal(summary.identityBroken, true);
+  assert.match(formatReport(summary).join('\n'), /disagree on the bytes/);
 });

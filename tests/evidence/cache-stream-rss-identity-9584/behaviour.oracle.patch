@@ -1,12 +1,12 @@
 diff --git a/scripts/perf/cache-stream-report.mjs b/scripts/perf/cache-stream-report.mjs
 --- a/scripts/perf/cache-stream-report.mjs
 +++ b/scripts/perf/cache-stream-report.mjs
-@@ -216,7 +216,7 @@ export function summarize(rows, { minRounds = 5 } = {}) {
-       rounds: Math.min(...variants.map((v) => v.rounds)),
-       identity: {
-         hashes,
--        agrees: true,
-+        agrees: hashes.length === 1,
+@@ -232,7 +232,7 @@
+         // a writer missing and the rest agreeing (or no output at all) is
+         // neither: it is unverified, and `incomplete` already fails the run.
+         agrees: measured.length === VARIANT_KEYS.length && hashes.length === 1,
+-        disagrees: false,
++        disagrees: hashes.length >= 2,
          // Non-constant WITHIN one variant is non-determinism; the variants
          // disagreeing is a changed output. They are different defects.
          unstable: measured.some((v) => v.hashes.length > 1),

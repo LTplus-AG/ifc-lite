@@ -1,7 +1,7 @@
 diff --git a/scripts/perf/cache-stream-report.mjs b/scripts/perf/cache-stream-report.mjs
 --- a/scripts/perf/cache-stream-report.mjs
 +++ b/scripts/perf/cache-stream-report.mjs
-@@ -185,7 +185,7 @@ function comparisons(variants) {
+@@ -196,7 +196,7 @@
        const deltaPct = pctDelta(toStat.rawMedian, fromStat.rawMedian);
        // The noisier of the two sides, never below 3%: a delta smaller than
        // the swing of either side it was computed from is not a reading.

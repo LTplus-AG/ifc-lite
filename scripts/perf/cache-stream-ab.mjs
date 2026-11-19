@@ -63,7 +63,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { seededRand } from './ab-order.mjs';
-import { VARIANT_KEYS, formatReport, parsePeakRss, summarize, variantOrder } from './cache-stream-report.mjs';
+import { VARIANT_KEYS, formatReport, outputName, parsePeakRss, summarize, variantOrder } from './cache-stream-report.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -235,8 +235,8 @@ mkdirSync(outDir, { recursive: true });
 const loads = [];
 const env = { ...process.env, RAYON_NUM_THREADS: String(threads) };
 
-async function measure({ model, variant, round, input }) {
-  const out = join(outDir, `${variant}-r${round}.ifclite`);
+async function measure({ model, fixtureIndex, variant, round, input }) {
+  const out = join(outDir, outputName({ fixtureIndex, model, variant, round }));
   const loadBefore = loadavg()[0];
   loads.push(loadBefore);
   const started = performance.now();
@@ -271,7 +271,7 @@ console.error(
   `threads=${threads} iters=${iters} models=${fixtures.length}`
 );
 const rows = [];
-for (const fixture of fixtures) {
+for (const [fixtureIndex, fixture] of fixtures.entries()) {
   console.error(`\ncache-stream-ab: ${fixture.path} (${(fixture.sizeBytes / 1e6).toFixed(0)} MB)`);
   if (!opts['no-warmup']) {
     // Each variant, not just one: the first build of a model pays the cold
@@ -281,14 +281,14 @@ for (const fixture of fixtures) {
     // entirely inside round 1 and that balanced ordering cannot split.
     console.error('    warm-up (discarded)…');
     for (const variant of VARIANT_KEYS) {
-      await measure({ model: fixture.path, variant, round: 0, input: fixture.absolute });
+      await measure({ model: fixture.path, fixtureIndex, variant, round: 0, input: fixture.absolute });
     }
   }
   for (const [index, order] of variantOrder(iters, VARIANT_KEYS, rand).entries()) {
     const round = index + 1;
     console.error(`    round ${round}/${iters} (${order.join(' → ')})`);
     for (const variant of order) {
-      const row = await measure({ model: fixture.path, variant, round, input: fixture.absolute });
+      const row = await measure({ model: fixture.path, fixtureIndex, variant, round, input: fixture.absolute });
       rows.push(row);
       console.error(
         row.status === 'ok'

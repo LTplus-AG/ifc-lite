@@ -72,7 +72,7 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     const entries = Array.from({ length: 300 }, (_, i) => ({ version: 1, id: `w${i}`, name: `Workspace ${i} ${pad(4000)}`, groups: [] }));
     useClashGroupLibrary.setState({ entries: entries as never });
     const { items, token } = await readAll<{ id: string }>('clash.groups.read', 'entries');
-    assert.equal(items.length, entries.length); assert.ok(token.length <= 64);
+    assert.deepEqual(items.map(row => row.id), entries.map(row => row.id), 'every workspace once, in order'); assert.ok(token.length <= 64);
     assert.match((await run('clash.groups.library', { action: 'select', workspace_id: 'w1', expected_library: '1:0' })).text, /Group library changed/);
     assert.doesNotMatch((await run('clash.groups.library', { action: 'select', workspace_id: 'w1', expected_library: token })).text, /Group library changed/);
   });
@@ -81,7 +81,7 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     const reports = Array.from({ length: 400 }, (_, i) => ({ id: `v${i}`, name: `Validation ${i}`, snapshot: pad(4000) }));
     useViewerStore.setState({ savedValidationReports: reports as never, initializeValidationReports: async () => true });
     const { items, token } = await readAll<{ id: string }>('validation.reports.read', 'reports');
-    assert.equal(items.length, reports.length); assert.ok(token.length <= 64);
+    assert.deepEqual(items.map(row => row.id), reports.map(row => row.id), 'every report once, in order'); assert.ok(token.length <= 64);
     assert.match((await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports: '1:0' })).text, /library changed/);
     assert.match((await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports: token })).text, /Unknown saved native report/);
   });
@@ -103,7 +103,7 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     const record = { [setId]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };
     useViewerStore.setState({ zoneAssignments: new Map(Array.from({ length: 12000 }, (_, i) => [i + 1, record])) });
     const { of, token } = await zoneRows();
-    assert.equal(of('assignment').length, 12000); assert.ok(token.length <= 64);
+    assert.deepEqual(of('assignment').map(row => row.global_id), Array.from({ length: 12000 }, (_, i) => i + 1), 'every assignment once, in order'); assert.ok(token.length <= 64);
     const made = json<{ set_id: string; configuration_revision: string }>(await run('zones.set.create', { name: 'Next', expected_configuration: token }));
     assert.match((await run('zones.set.create', { name: 'Again', expected_configuration: token })).text, /configuration changed/);
     // The edit hands back the revision the next edit needs.
@@ -164,7 +164,8 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
       await write('zones.box.write', { set_id, zone_id, name: 'Moved', center: [1, 1, 1], size: [2, 2, 2], rotationY: 0 });
       await write('zones.box.remove', { set_id, zone_id });
       // The receipts point at zones.read, and it can read this set back; zones.apportion on it stays small too.
-      assert.equal((await zoneRows()).of('zone').filter(row => row.set_id === set_id).length, 250);
+      assert.deepEqual((await zoneRows()).of('zone').filter(row => row.set_id === set_id).map(row => row.zone!.id),
+        useViewerStore.getState().zoneSets.find(row => row.id === set_id)!.zones.map(zone => zone.id), 'every zone of the set once, in order');
       const apportioned = await run('zones.apportion', { set_id });
       assert.equal(apportioned.isError, false, apportioned.text); assert.ok(bytes(apportioned.structured) < 4096, `zones.apportion returned ${bytes(apportioned.structured)} bytes`);
       await write('zones.set.create', { name: 'Another' });

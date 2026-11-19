@@ -9178,7 +9178,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.assign",
     "version": 1,
     "owner": "zones",
-    "description": "Recompute native assignments using the live renderer’s canonical entity bounds; returns how many elements were assigned and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.",
+    "description": "Recompute native assignments using the live renderer’s canonical entity bounds; returns element_count (every element evaluated, assigned or not) and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -19089,7 +19089,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.groups.read",
     "version": 1,
     "owner": "clash",
-    "description": "Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the whole library revision, also the expected_groups of clash.drafts.create.",
+    "description": "Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create.",
     "needs": "viewer",
     "effects": [
       "read"

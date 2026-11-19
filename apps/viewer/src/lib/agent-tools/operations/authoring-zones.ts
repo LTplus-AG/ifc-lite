@@ -97,7 +97,7 @@ export const zoneOperations = [
     type: 'object', properties: { ...idInput.properties, expected_configuration: revisionInput }, required: ['set_id', 'expected_configuration'], additionalProperties: false,
   }, async (i, c) => { const { generateZonesFromStoreys } = await import('@/hooks/useZoneStoreyGeneration'); assertToolActive(c); const result = generateZonesFromStoreys(); if (!result.ok) throw new Error(result.error);
     return zoneWrite(c, i.expected_configuration, () => { set(i.set_id); useViewerStore.getState().replaceZonesInSet(i.set_id, result.zones); return { set_id: i.set_id, zone_count: set(i.set_id).zones.length }; }); }),
-  operation(meta('zones.assign', 'Recompute native assignments using the live renderer’s canonical entity bounds; returns how many elements were assigned and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.'), emptySchema, async (_, c) => {
+  operation(meta('zones.assign', 'Recompute native assignments using the live renderer’s canonical entity bounds; returns element_count (every element evaluated, assigned or not) and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.'), emptySchema, async (_, c) => {
     const [{ getGlobalRenderer }, { recomputeZoneAssignmentsNow }] = await Promise.all([import('@/hooks/useBCF'), import('@/hooks/useZoneAssignmentSync')]);
     assertToolActive(c); if (!getGlobalRenderer()?.getScene()) throw new Error('A mounted native renderer is required for zone evaluation.');
     recomputeZoneAssignmentsNow(); const s = useViewerStore.getState(); return out({ element_count: s.zoneAssignments.size, timing: s.zoneAssignmentTiming });

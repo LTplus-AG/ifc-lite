@@ -49,11 +49,12 @@ export class MintedRecords {
 
 /**
  * How normalize writes one georeference record: as written (no rescale); with argument `attr` set to `value`, which
- * may name the {@link MintedRecords} record `mint`; or with the list at `attr` given a reference to `mint`.
+ * may name the {@link MintedRecords} record `mint`; or with the list at `attr` given a reference to `mint`, in place
+ * of its entry `at` or appended.
  */
 type GeorefRecord = { kind: 'keep' }
   | { kind: 'edit'; attr: number; value: string; mint?: string }
-  | { kind: 'append'; attr: number; mint: string };
+  | { kind: 'list'; attr: number; mint: string; at?: number };
 
 /** How normalize treats one model's georeference records, by source id. */
 export interface GeorefNormalizePlan {
@@ -71,8 +72,8 @@ export interface GeorefNormalizePlan {
 const CRS_UNIT_ATTR = { IFCPROJECTEDCRS: 6, IFCGEOGRAPHICCRS: 5 };
 /** 0-based index of `IfcMapConversion.Scale`. */
 const SCALE_ATTR = 7;
-/** 0-based `IfcPropertySet.Name` and `.HasProperties`, `IfcPropertySingleValue.Name`, `.NominalValue` and `.Unit`. */
-const PSET_NAME_ATTR = 2, PSET_PROPERTIES_ATTR = 4, PROPERTY_NAME_ATTR = 0, PROPERTY_VALUE_ATTR = 2, PROPERTY_UNIT_ATTR = 3;
+/** 0-based `IfcPropertySet.Name` and `.HasProperties`, `IfcPropertySingleValue.Name` and `.Unit`. */
+const PSET_NAME_ATTR = 2, PSET_PROPERTIES_ATTR = 4, PROPERTY_NAME_ATTR = 0, PROPERTY_UNIT_ATTR = 3;
 const METRE_UNIT = 'IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)';
 /** The ePSet_MapConversion placement properties, by the names the parser reads (`EPSET_TRANSFORM_PROPERTIES`). */
 const EPSET_PLACEMENT = new Set(['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale']);
@@ -167,18 +168,19 @@ function planEPSets(dataStore: IfcDataStore): number[][] {
 }
 
 /**
- * A set's properties by name, `editable` when a single value without its own Unit; null when the set's property list
- * cannot be read. A property that cannot be read is passed over, as the parser passes it over.
+ * A set's properties with their names and positions in its list, `editable` when a single value without its own
+ * Unit; null when the set's property list cannot be read. A property that cannot be read is passed over, as the
+ * parser passes it over.
  */
-function propertiesOf(dataStore: IfcDataStore, setId: number): Array<{ id: number; name: string; editable: boolean }> | null {
+function propertiesOf(dataStore: IfcDataStore, setId: number): Array<{ at: number; name: string; editable: boolean }> | null {
   const list = getStepAttr(dataStore, setId, PSET_PROPERTIES_ATTR);
   if (list === null) return null;
   const properties = [];
-  for (const ref of refsIn(list)) {
+  for (const [at, ref] of refsIn(list).entries()) {
     const id = Number(ref.slice(1)), name = getStepAttr(dataStore, id, PROPERTY_NAME_ATTR);
     if (name === null) continue;
     const editable = typeOf(dataStore, id) === 'IFCPROPERTYSINGLEVALUE' && slotUnset(getStepAttr(dataStore, id, PROPERTY_UNIT_ATTR) ?? '$');
-    properties.push({ id, name: label(name), editable });
+    properties.push({ at, name: label(name), editable });
   }
   return properties;
 }
@@ -188,18 +190,17 @@ function planViewerEPSet(dataStore: IfcDataStore, conversion: MapConversion, crs
   plan: { records: Map<number, GeorefRecord>; minted: MintedRecords; unkept: number[]; implicitUnit: number[]; scaleLeft: number[] },
   modelScale: number, primaryScale: number): void {
   const { records, minted, unkept, implicitUnit, scaleLeft } = plan;
-  // Writes `value` into the last property named `name` (the one the parser reads), or appends one when the set has
-  // none; false when that property is no editable single value, or the set cannot be read, and is left as it is.
+  // Gives the set a new `name` property of `value` in place of the last one so named (the one the parser reads), or
+  // appended when it has none. The old record is left as it is, for any other set that lists it too. False when the
+  // property is no editable single value, or the set cannot be read, and the set is left as it is.
   const write = (setId: number, name: string, value: string): boolean => {
     const of = propertiesOf(dataStore, setId);
-    if (!of) return false;
-    const last = of.filter(property => property.name === name).at(-1);
-    if (last === undefined) {
-      const text = `IFCPROPERTYSINGLEVALUE('${name}',$,${value},$)`;
-      minted.refOf(text);
-      records.set(setId, { kind: 'append', attr: PSET_PROPERTIES_ATTR, mint: text });
-    } else if (last.editable) records.set(last.id, { kind: 'edit', attr: PROPERTY_VALUE_ATTR, value });
-    return last === undefined || last.editable;
+    const last = of?.filter(property => property.name === name).at(-1);
+    if (!of || (last !== undefined && !last.editable)) return false;
+    const text = `IFCPROPERTYSINGLEVALUE('${name}',$,${value},$)`;
+    minted.refOf(text);
+    records.set(setId, { kind: 'list', attr: PSET_PROPERTIES_ATTR, mint: text, at: last?.at });
+    return true;
   };
   const hasCrsSet = crs !== undefined && crs.id !== conversion.id;
   const unitExplicit = hasCrsSet && (crs.mapUnit !== undefined || write(crs.id, 'MapUnit', "IFCLABEL('METRE')"));
@@ -221,8 +222,13 @@ export function normalizeGeorefRecord(text: string, sourceId: number, plan: Geor
   if (record.kind === 'keep') return text;
   const { attr, mint } = record;
   return withArgs(text, attr, args => {
-    const list = args[attr].trim();
-    args[attr] = record.kind === 'edit' ? record.value : `(${[...refsIn(list), plan.minted.refOf(record.mint)].join(',')})`;
+    if (record.kind === 'edit') args[attr] = record.value;
+    else {
+      const refs = refsIn(args[attr]), ref = plan.minted.refOf(record.mint);
+      if (record.at === undefined) refs.push(ref);
+      else refs[record.at] = ref;
+      args[attr] = `(${refs.join(',')})`;
+    }
     if (mint !== undefined) plan.minted.use(mint);
   });
 }

@@ -271,9 +271,11 @@ interface EPSetSpec {
   danglingProperty?: true;
   /** Add a length that is no placement property, `SourceLength`, to the ePSet_MapConversion. */
   extraLength?: true;
+  /** List the Scale property in a second property set, `Pset_Shared`, too. */
+  sharedScale?: true;
 }
 
-const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord, mapUnitRecord = 'IFCPROPERTYSINGLEVALUE', danglingProperty, extraLength }: EPSetSpec) => {
+const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord, mapUnitRecord = 'IFCPROPERTYSINGLEVALUE', danglingProperty, extraLength, sharedScale }: EPSetSpec) => {
   const guid = (n: number) => `'0${name.toUpperCase()}EPSet${String(n).padStart(15, '0')}'`;
   // `\X\65` is `e`, `\X\45` is `E`, `\X\4E` is `N`, `\X\4F` is `O`.
   const [eps, east, north, height] = escapedNames ? ['\\X\\65PSet', '\\X\\45astings', '\\X\\4Eorthings', '\\X\\4FrthogonalHeight']
@@ -285,6 +287,7 @@ ${scaleRecord !== undefined ? `#33=${scaleRecord};`
     : scale === undefined ? '' : `#33=IFCPROPERTYSINGLEVALUE('Scale',$,${scale.startsWith('IFC') ? scale : `IFCREAL(${scale})`},$);`}
 #34=IFCPROPERTYSET(${guid(2)},#8,'${eps}_MapConversion',$,(#30,#31,#32${scale === undefined && scaleRecord === undefined ? '' : ',#33'}${danglingProperty ? ',#99' : ''}${extraLength ? ',#40' : ''}));
 ${extraLength ? "#40=IFCPROPERTYSINGLEVALUE('SourceLength',$,IFCLENGTHMEASURE(1000.),$);" : ''}
+${sharedScale ? `#41=IFCPROPERTYSET(${guid(6)},#8,'Pset_Shared',$,(#33));\n#42=IFCRELDEFINESBYPROPERTIES(${guid(7)},#8,$,$,(#1),#41);` : ''}
 #35=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);
 ${mapUnitSlots !== undefined ? `#36=${mapUnitRecord}('MapUnit',$,${mapUnitSlots});`
     : mapUnit === undefined ? '' : `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnit === '$' ? '$' : `IFCLABEL('${mapUnit}')`},$);`}
@@ -326,6 +329,14 @@ async function mergeEPSets(specs: EPSetSpec[]) {
   }));
   const { content, stats } = await new MergedExporter(inputs).exportAsync({ schema: 'IFC2X3', unitReconciliation: 'normalize' });
   return { merged: new TextDecoder().decode(content), warnings: stats.warnings };
+}
+
+/** The MapUnit properties the merged `ePSet_ProjectedCRS` sets list (a replaced one stays in the file, unlisted). */
+function listedMapUnits(merged: string): string[] {
+  const records = new Map([...merged.matchAll(/^(#\d+)=(.*);$/gm)].map(match => [match[1], match[2]]));
+  return [...merged.matchAll(/^#\d+=IFCPROPERTYSET\([^;]*'ePSet_ProjectedCRS',\$,\(([^)]*)\)\);$/gm)]
+    .flatMap(match => match[1].split(','))
+    .filter(ref => records.get(ref)?.startsWith("IFCPROPERTYSINGLEVALUE('MapUnit'"));
 }
 
 /** Where and at what scale the viewer puts the first `ePSet_MapConversion`, by the viewer's own rule. */
@@ -393,7 +404,7 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     expect(alone === 'none').toBe(!placed);
     const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, later]);
     expect(viewerEPSet(await parse(merged))).toEqual(alone);
-    expect(merged.match(/IFCPROPERTYSINGLEVALUE\('MapUnit',/g)).toHaveLength(1);
+    expect(listedMapUnits(merged)).toHaveLength(1);
   });
 
   it('leaves a Scale property that is no single value as it is, and names its set only when that moves the model', async () => {
@@ -409,6 +420,15 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     expect(bounded.warnings).toEqual(expect.arrayContaining([
       expect.stringContaining('Normalize could not rewrite the Scale property of ePSet_MapConversion #34 (an id in "b")'),
     ]));
+  });
+
+  it('gives the ePSet a new Scale property and leaves one another set shares as it is', async () => {
+    const later: EPSetSpec = { unit: 'mm', easting: 2600100, mapUnit: 'MILLIMETRE', scale: '0.5', sharedScale: true };
+    const alone = viewerEPSet(await parse(epsetModel('b', later)));
+    const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, later]);
+    expect(viewerEPSet(await parse(merged))).toEqual(alone);
+    const shared = merged.match(/^#\d+=IFCPROPERTYSET\([^;]*'Pset_Shared',\$,\((#\d+)\)\);$/m)?.[1];
+    expect(merged).toMatch(new RegExp(`^${shared}=IFCPROPERTYSINGLEVALUE\\('Scale',\\$,IFCREAL\\(0\\.5\\),\\$\\);$`, 'm'));
   });
 
   it('rescales a length in the ePSet_MapConversion that is no placement property', async () => {

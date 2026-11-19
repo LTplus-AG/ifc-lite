@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyProcessingConfig, getProcessingServerUrl, linksProcessedModel, openProcessedModelFromUrl, pageUrlModelAllowed, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
+import { applyProcessingConfig, getProcessingServerUrl, openProcessedModelFromUrl, pageUrlModelAllowed, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
 import { isServerReachable } from '@/hooks/ingest/serverAvailability';
 
 const initial = getProcessingServerUrl();
@@ -84,11 +84,6 @@ describe('processedModelRequested', () => {
     assert.equal(processedModelRequested(), true);
     takeProcessedModelRequest();
     assert.equal(processedModelRequested(), true, 'stays on after the viewer took the request');
-  });
-
-  it('counts a ?processed= link only when it names a valid hash', () => {
-    assert.equal(linksProcessedModel(`?processed=${'A'.repeat(64)}`), true);
-    for (const search of ['', '?processed=', '?processed=abc', '?model=x.ifc']) assert.equal(linksProcessedModel(search), false, search);
   });
 
   it('trims the name of every request, and falls back to model.ifc for a blank one', () => {

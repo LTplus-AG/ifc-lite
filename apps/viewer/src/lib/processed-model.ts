@@ -17,7 +17,7 @@
  * a host has asked for a model: the host's model wins over the page URL.
  */
 
-import { assertProcessedModelHash, normalizeProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
+import { assertProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
 import { SERVER_URL, USE_SERVER } from '@/utils/ifcConfig';
 import type { ViewerRuntimeConfig } from './features/runtime-config';
 
@@ -121,21 +121,13 @@ function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest 
   return { sha256, bytes: processedModelSize(model.bytes), name: (typeof model.name === 'string' && model.name.trim()) || 'model.ifc' };
 }
 
-/** Whether a page query names a processed model by a valid hash; a malformed value files nothing. */
-export function linksProcessedModel(search: string): boolean {
-  return normalizeProcessedModelHash(new URLSearchParams(search).get('processed')) !== null;
-}
-
 /**
- * The page was opened with such a link. Read once, at load: the viewer files that request only
- * after mount, later than the fast path's idle check, and the app may rewrite the URL in between.
- * Not cleared by `resetProcessedModelRequestsForTests`.
+ * A processed model was asked for on this page: it is meshed on the server, so nothing needs
+ * warming in the browser. A host's start model is filed before the fast path's idle check; a
+ * `?processed=` link is filed only after mount and may still find the fast path warmed.
  */
-const linkedProcessedModel = typeof location !== 'undefined' && linksProcessedModel(location.search);
-
-/** A processed model was asked for on this page: it is meshed on the server, so nothing needs warming in the browser. */
 export function processedModelRequested(): boolean {
-  return anyRequested || linkedProcessedModel;
+  return anyRequested;
 }
 
 function fileRequest(request: FiledProcessedModelRequest): void {

@@ -57,9 +57,9 @@ function stringList(value: unknown, where: string): string[] | undefined {
 }
 
 const SAME_ORIGIN = 'https://viewer.invalid';
-// One message per member keeps the eager bundle small; the rules are in docs/guide/viewer-deployment-config.md.
-const BAD_SERVER = 'server.url must be a same-origin path or an https URL (http from an http page), without query, fragment or credentials';
-const BAD_OPEN = 'open.processedModel needs a SHA-256 sha256, whole-number bytes (0 when unknown) and a name';
+// The member's name only, to keep the eager bundle small; the rules are in docs/guide/viewer-deployment-config.md.
+const BAD_SERVER = 'server.url';
+const BAD_OPEN = 'open.processedModel';
 
 /**
  * A same-origin path (`/…`, not `//…`) or an absolute `https:` URL; `http:` only

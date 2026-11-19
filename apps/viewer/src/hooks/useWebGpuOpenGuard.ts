@@ -10,12 +10,17 @@
  * autoload in `ViewerLayout.tsx` returned silently instead. `guard` shows
  * the load-error card with an explanation and, when the caller supplies one,
  * a Retry closing over the same attempt.
+ *
+ * It also refuses a browser without WebAssembly SIMD (#10784), which cannot
+ * compile the engine binary. That check is synchronous and permanent, so it
+ * shows its card with no Retry and never enters the WebGPU notice below.
  */
 
 import { useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { clearLoadError, showLoadError } from '@/lib/analytics';
+import { supportsWasmSimd } from '@/lib/wasm-simd-support';
 import { getWebGPUStatus, retryWebGPU, useWebGPU, type WebGPUStatus } from './useWebGPU';
 
 /**
@@ -49,6 +54,7 @@ export interface WebGpuOpenGuard {
 
 const CHECKING_KEY = 'viewportLighting.container.loadErrorCard.webgpuChecking';
 const UNSUPPORTED_KEY = 'viewportLighting.container.loadErrorCard.webgpuUnsupported';
+const SIMD_UNSUPPORTED_KEY = 'viewportLighting.container.loadErrorCard.wasmSimdUnsupported';
 
 type Translate = ReturnType<typeof useTranslation>['t'];
 
@@ -144,11 +150,15 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
   }, []);
 
   const guard = useCallback((retry?: () => void, options?: WebGpuOpenGuardOptions): boolean => {
+    const { setError, setLastLoadRetry } = useViewerStore.getState();
+    if (!supportsWasmSimd()) {
+      showLoadError(setError, setLastLoadRetry, t(SIMD_UNSUPPORTED_KEY), 'wasm_simd_unsupported', null);
+      return false;
+    }
     const status = getWebGPUStatus();
     if (status.supported) return true;
     // Explains a drop/open even while the adapter check is still pending,
     // instead of a silent no-op — the caller has no separate "wait" path.
-    const { setError, setLastLoadRetry } = useViewerStore.getState();
     const replay = options?.replay ?? 'activation';
     const retryAfterProbe: (() => void) | null = retry ? () => {
       const { error, lastLoadRetry } = useViewerStore.getState();

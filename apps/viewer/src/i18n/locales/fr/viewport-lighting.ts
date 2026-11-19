@@ -54,6 +54,7 @@ export const viewportLightingFr = {
   "viewportLighting.container.loadErrorCard.dismiss": "Ignorer",
   "viewportLighting.container.loadErrorCard.webgpuChecking": "La prise en charge de WebGPU est encore en cours de vérification. Réessayez d'ouvrir le modèle dans un instant.",
   "viewportLighting.container.loadErrorCard.webgpuUnsupported": "Ce navigateur ne peut pas exécuter le moteur de rendu WebGPU dont cette visionneuse a besoin. Essayez une version récente de Chrome, Edge, Firefox ou Safari ; consultez le lien sur la compatibilité des navigateurs en haut de la visionneuse.",
+  "viewportLighting.container.loadErrorCard.wasmSimdUnsupported": "Ce navigateur ne peut pas exécuter les instructions WebAssembly SIMD dont le moteur de géométrie a besoin. Mettez-le à jour, ou essayez une version récente de Chrome, Edge, Firefox ou Safari. Certains paramètres de sécurité et des processeurs anciens désactivent aussi SIMD.",
   "viewportLighting.container.modelUrlAutoload.malformedUrl": "L'adresse du modèle lié n'est pas une URL valide.",
   "viewportLighting.container.processedModelAutoload.malformedLink": "Le lien vers le modèle est incomplet ou endommagé.",
   "viewportLighting.container.processedModel.notPrimary": "Un modèle traité ne peut être ouvert que comme premier modèle.",

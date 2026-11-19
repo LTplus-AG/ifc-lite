@@ -92,6 +92,8 @@ export const viewportLightingEn = {
   'viewportLighting.container.loadErrorCard.webgpuChecking': 'WebGPU support is still being checked. Try opening the model again in a moment.',
   'viewportLighting.container.loadErrorCard.webgpuUnsupported':
     "This browser can't run the WebGPU renderer this viewer needs. Try a recent Chrome, Edge, Firefox or Safari — see the browser-support link at the top of the viewer.",
+  'viewportLighting.container.loadErrorCard.wasmSimdUnsupported':
+    "This browser can't run the WebAssembly SIMD instructions the geometry engine needs. Update it, or try a recent Chrome, Edge, Firefox or Safari. Some security settings and older processors also turn SIMD off.",
   'viewportLighting.container.modelUrlAutoload.malformedUrl': 'The linked model address is not a valid URL.',
   'viewportLighting.container.processedModelAutoload.malformedLink': 'The model link is incomplete or damaged.',
   'viewportLighting.container.processedModel.notPrimary': 'A processed model can only be opened as the first model.',

@@ -555,10 +555,10 @@ const stampFingerprint = (
 // throw would arrive here benign; the guard is the thing keeping this honest.
 //
 // `file_unreadable` is safe here because its ambiguous WebKit wording is
-// context-gated (./file-not-found-errors.ts). `invalid_archive` only claims
-// anchored parser content/size refusals (./invalid-archive-errors.ts).
+// context-gated (./file-not-found-errors.ts). `invalid_archive` only claims anchored parser content/size
+// refusals (./invalid-archive-errors.ts). `wasm_simd_unsupported` is a device limit, like WebGL (#10784).
 const BENIGN_ERROR_KINDS = new Set<string>([
-  'network_unavailable', 'cancelled', 'webgl_unavailable', 'file_unreadable', 'invalid_archive', 'invalid_input',
+  'network_unavailable', 'cancelled', 'webgl_unavailable', 'file_unreadable', 'invalid_archive', 'invalid_input', 'wasm_simd_unsupported',
 ]);
 
 const downgradeBenignExceptions = (

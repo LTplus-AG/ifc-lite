@@ -30,6 +30,7 @@ import { isFileNotFoundMessage } from './file-not-found-errors.js';
 import { isInvalidInputError } from './invalid-input-errors.js';
 import { isInvalidArchiveError } from './invalid-archive-errors.js';
 import { isWebglUnavailable } from './webgl-unavailable.js';
+import { isWasmSimdUnsupportedMessage } from './wasm-simd-support.js';
 import { isWorkerScriptSkewMessage } from '@ifc-lite/geometry';
 
 /** Stable, analytics-friendly classification of a load failure. */
@@ -42,6 +43,8 @@ export type LoadErrorKind =
    * A reload fixes it; a lower tessellation tier cannot.
    */
   | 'wasm_engine_load'
+  /** The browser cannot compile WebAssembly SIMD, so no engine can start here (#10784). */
+  | 'wasm_simd_unsupported'
   /** Out-of-memory / WASM heap exhaustion during processing. */
   | 'out_of_memory'
   /**
@@ -306,16 +309,16 @@ export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKin
   ) {
     return 'file_unreadable';
   }
-  // Same stable-`.name` argument as NotReadableError above: an aborted fetch
-  // rejects with a DOMException whose `.message` is engine-specific prose that
-  // need not contain the word "abort" at all (WebKit: "Fetch is aborted",
-  // Chromium: "The user aborted a request."). Only `.name` is guaranteed.
+  // Same stable-`.name` argument as NotReadableError above: an aborted fetch's DOMException
+  // `.message` is engine-specific prose that need not contain the word "abort" at all
+  // (WebKit: "Fetch is aborted", Chromium: "The user aborted a request."). Only `.name` is guaranteed.
   if (name === 'AbortError') return 'cancelled';
   // BEFORE the memory/network buckets: MapLibre's failure carries the driver's
   // own `statusMessage`, vendor prose we do not control and free to contain the
   // words those matchers key on ("allocation failed"). Safe to claim first —
   // every arm of it is anchored or structural (see ./webgl-unavailable.ts).
   if (isWebglUnavailable(err, message)) return 'webgl_unavailable';
+  if (isWasmSimdUnsupportedMessage(message)) return 'wasm_simd_unsupported'; // before the worker/OOM buckets
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   // BEFORE the worker-crash bucket (#4886): "Geometry worker failed: worker
   // script failed to load" matched it, so a stale tab was told the model was

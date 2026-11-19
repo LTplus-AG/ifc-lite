@@ -39,6 +39,10 @@ inputs:
     description: 'Swatinem/rust-cache save-if; by default only a push to main or a merge_group batch writes the cache'
     required: false
     default: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
+  pinned-rust-cache:
+    description: 'Key the cache on the pinned Rust toolchain and Cargo files, ignoring other toolchains installed on the runner'
+    required: false
+    default: 'false'
 
 outputs:
   cache-hit:
@@ -62,7 +66,8 @@ runs:
       uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       with:
         prefix-key: ${{ inputs.cache-prefix }}
-        shared-key: ${{ inputs.shared-key }}
+        shared-key: ${{ inputs.pinned-rust-cache == 'true' && format('{0}-{1}', inputs.shared-key, hashFiles('rust-toolchain.toml', 'Cargo.lock', 'Cargo.toml', 'rust/**/Cargo.toml', 'apps/**/Cargo.toml', '.cargo/config.toml')) || inputs.shared-key }}
+        add-rust-environment-hash-key: ${{ inputs.pinned-rust-cache != 'true' }}
         save-if: ${{ inputs.save-if }}
 
     # Downloaded directly rather than via jetli/wasm-pack-action, which always

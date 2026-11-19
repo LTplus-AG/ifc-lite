@@ -21,6 +21,8 @@ import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { blockScale, CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
 import { layoutTable, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
+import { layoutQualityGate, type QualityGateRingItem } from './compose-quality-gate';
+import type { ResolvedQualityGate } from './quality-gate-block';
 import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
 import { blockTitle, blockTitleStyle, BLOCK_TITLE_HEIGHT, BLOCK_TITLE_SIZE_DEFAULT, type BlockHeaderStyleFields } from './block-title.js';
 import { blockTitleItems, CHART_TITLE_RESERVE } from './compose-block-title.js';
@@ -48,13 +50,15 @@ export type ResolvedBlock =
   | { kind: 'spacer'; id: string; height: number }
   | ({ kind: 'table' } & TableLayoutBlock)
   | ({ kind: 'ids-report' } & IdsReportLayoutBlock)
-  | ({ kind: 'manual-report' } & ManualReportLayoutBlock);
+  | ({ kind: 'manual-report' } & ManualReportLayoutBlock)
+  | ResolvedQualityGate;
 
 export type DrawnItem =
   | TableDrawnItem
   | { kind: 'text-background'; x: number; y: number; w: number; h: number; color: string }
   /** A manual-validation ring chart (#6401), drawn from its counts. */
   | RingDrawnItem
+  | QualityGateRingItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
   /** `scale` is the block's size factor (#6548): the chart is rendered at `w / scale` by `h / scale`, then placed into `w` by `h`. */
   | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number; scale?: number }
@@ -332,6 +336,11 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           const scale = blockScale(block);
           const f = frame(scale);
           layoutManualReport(block, f, contentW / scale, BLOCK_GAP / scale, wrap, (ring) => { f.push(ring); }, labels);
+          break;
+        }
+        case 'quality-gate': {
+          const scale = blockScale(block);
+          layoutQualityGate(block, frame(scale), contentW / scale, BLOCK_GAP / scale, wrap);
           break;
         }
         case 'topic': {

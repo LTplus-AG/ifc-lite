@@ -44,11 +44,13 @@ function callbacks(click: HierarchyRowCallbacks['click']): HierarchyRowCallbacks
     removeModel: noop, syncSourceModel: noop, modelHeaderClick: noop };
 }
 
+type PanelState = { tick: number; isSelected: boolean; click: HierarchyRowCallbacks['click'] };
+
 /** Mount one row inside a panel-like host that owns its handlers and whose re-render the test controls. */
 function mountRow(node: TreeNode, click: HierarchyRowCallbacks['click'] = noop) {
-  let update: Dispatch<SetStateAction<{ tick: number; isSelected: boolean; click: HierarchyRowCallbacks['click'] }>> = noop;
+  let update: Dispatch<SetStateAction<PanelState>> = noop;
   function Panel() {
-    const [state, set] = useState({ tick: 0, isSelected: false, click });
+    const [state, set] = useState<PanelState>({ tick: 0, isSelected: false, click });
     update = set;
     const handlers = useStableRowHandlers(callbacks(state.click));
     return <HierarchyRow node={node} section="storeys" index={3} start={84} size={28} handlers={handlers}

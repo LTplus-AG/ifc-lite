@@ -287,7 +287,7 @@ export function useIfcServer() {
         allMeshes = parquetResult.meshes.map(convertServerMesh);
       } else {
         // Fallback to JSON endpoint
-        if (processed) throw new ProcessedModelUnavailable('unsupported');
+        if (processed) throw new ProcessedModelUnavailable('parquet-init');
         result = await client.parse(file);
         if (isStale?.()) return false;
 

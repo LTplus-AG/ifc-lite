@@ -183,11 +183,11 @@ export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, leng
   };
 }
 
-/** A context's coordinate operation, its target CRS (null when the target is no CRS), and that CRS's WKT records. */
-export interface ContextOperation { operation: number; crs: number | null; wkt: number[] }
+/** A context's coordinate operation and its target CRS (null when the target is no CRS). */
+export interface ContextOperation { operation: number; crs: number | null }
 
 /** A coordinate operation's TargetCRS that is a CRS record; IFC4X3 also allows another context there. */
-const CRS_TYPE = /^IFC(PROJECTED|GEOGRAPHIC)CRS$/;
+const CRS_TYPES = new Set(['IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS']);
 
 /** The first coordinate operation whose SourceCRS is `contextId`, with its TargetCRS, or null when none is. */
 function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOperation | null {
@@ -197,9 +197,7 @@ function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOp
     for (const id of byType.get(type) ?? []) {
       if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
       const target = refId(getStepAttr(dataStore, id, 1));
-      const crs = target !== null && CRS_TYPE.test(byId.get(target)?.type?.toUpperCase() ?? '') ? target : null;
-      const wkt = crs === null ? [] : (byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === crs);
-      return { operation: id, crs, wkt };
+      return { operation: id, crs: target !== null && CRS_TYPES.has(byId.get(target)?.type?.toUpperCase() ?? '') ? target : null };
     }
   }
   return null;
@@ -241,7 +239,7 @@ export function resolvePrimaryContextState(
 }
 
 const offsetOperation = (operation: ContextOperation | null, offset: number): ContextOperation | null =>
-  operation && { operation: operation.operation + offset, crs: operation.crs === null ? null : operation.crs + offset, wkt: [] };
+  operation && { operation: operation.operation + offset, crs: operation.crs === null ? null : operation.crs + offset };
 
 /**
  * True when two resolved WCS frames are the same within tolerance, OR
@@ -341,7 +339,9 @@ export function planInfrastructureUnify(
     sharedRemap.set(own.operation, shared.operation);
     sharedRemap.set(own.crs, shared.crs);
     // The CRS's WKT goes with it (IfcCoordinateReferenceSystem.WellKnownText is SET [0:1]).
-    for (const id of [own.operation, own.crs, ...own.wkt]) skipEntityIds.add(id);
+    // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
+    const wkt = (dataStore.entityIndex.byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === own.crs);
+    for (const id of [own.operation, own.crs, ...wkt]) skipEntityIds.add(id);
   } else if (own && !shared) firstModelContext.contextOperation = offsetOperation(own, modelOffset);
   for (const [type, firstIds] of firstModelInfraMap) {
     const thisIds = modelInfra.get(type);

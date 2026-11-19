@@ -8,10 +8,10 @@
 # scripts/perf/oom-load-probe.mjs generates a synthetic dense IFC
 # (gen-dense-ifc.mjs, nothing committed), opens it in the built viewer with
 # navigator.deviceMemory overridden, and runs only Chrome inside a cgroup v2
-# scope with MemoryMax and no swap. `--expect not-killed` passes on loaded,
-# refused, awaiting-decision or cancelled, and fails on a killed tab, an error
-# or a timeout. A missing cgroup or systemd user manager exits 2: the lane
-# goes red rather than skipping.
+# scope with MemoryMax and no swap. Each case pins its exact outcome with
+# `--expect`; a killed tab, an error or a timeout never passes. A missing
+# cgroup or systemd user manager exits 2: the lane goes red rather than
+# skipping.
 #
 # Cases (the issue's acceptance):
 # - dense tfs, 300 MB, reported 4 GB, 3 GiB cap: refused (#10264 A1).
@@ -113,7 +113,7 @@ jobs:
       - name: Dense 300 MB at a reported 4 GB under a 3 GiB cap (expect refused)
         timeout-minutes: 20
         run: |
-          node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
+          node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect refused \
             --kind tfs --target-mb 300 --device-memory 4 --cores 4 --cap 3G \
             --out test-results/oom-load-probe/tfs-300-4g
 
@@ -121,27 +121,9 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 20
         run: |
-          node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
+          node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect awaiting-decision \
             --kind tfs --target-mb 1100 --device-memory 8 --cores 4 --cap 6G \
             --out test-results/oom-load-probe/tfs-1100-8g
-
-      # not-killed also accepts `loaded`; pin the outcome each case is for.
-      - name: Check each case's outcome
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: |
-          node --input-type=module - <<'OUTCOMES'
-          import { readFileSync } from 'node:fs';
-          const expected = { 'tfs-300-4g': 'refused', 'tfs-1100-8g': 'awaiting-decision' };
-          let failed = false;
-          for (const [name, outcome] of Object.entries(expected)) {
-            let got;
-            try { got = JSON.parse(readFileSync(`test-results/oom-load-probe/${name}/result.json`, 'utf8')).outcome; }
-            catch (error) { got = `no result (${error.message})`; }
-            console.log(`${name}: ${got} (expected ${outcome})`);
-            if (got !== outcome) failed = true;
-          }
-          if (failed) process.exit(1);
-          OUTCOMES
 
       - name: Upload probe results
         if: always()

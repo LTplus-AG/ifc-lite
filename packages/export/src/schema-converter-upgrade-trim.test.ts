@@ -24,6 +24,7 @@ import { describe, it, expect } from 'vitest';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { isStrictAttrPrefix } from './schema-converter-renames.js';
+import { attrMapFor } from './schema-converter-attr-maps.js';
 
 // Derived from `@ifc-lite/parser`'s EXPRESS-derived schema registries —
 // deliberately NOT from `@ifc-lite/data`'s `ENTITIES_IFC2X3`/`ENTITIES_IFC4`/
@@ -150,13 +151,15 @@ describe.each([
     expect(wrong).toEqual([]);
   });
 
-  it('never trims an entity whose attributes were inserted mid-list, not appended', () => {
+  // #10763: a type with a reviewed attribute map is written at the target's arity instead.
+  it('never trims an entity whose attributes were inserted mid-list, unless an attribute map reconciles it', () => {
     const wrong = notPrefix
       // Reconciled by name instead (#9026 item 14), see schema-grid-frames.parity.test.ts.
       .filter(([type]) => type !== 'IFCGRIDPLACEMENT')
-      .map(([type, srcN]) => {
+      .map(([type, srcN, tgtN]) => {
+        const want = attrMapFor(type, type, from, to) ? tgtN : srcN;
         const got = argCount(convertStepLine(makeLine(type, srcN), from, to)!);
-        return got === srcN ? null : `${type}: expected ${srcN} args untouched, got ${got}`;
+        return got === want ? null : `${type}: expected ${want} args, got ${got}`;
       })
       .filter((x): x is string => x !== null);
     expect(wrong).toEqual([]);

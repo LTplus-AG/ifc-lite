@@ -151,3 +151,43 @@ fn sweep_fixture_names_every_trimmed_and_padded_type_7683() {
         .collect();
     assert!(missing.is_empty(), "the sweep fixture names no case for {} adjusted type(s): {missing:?}", missing.len());
 }
+
+/// Same-named types whose lists differ in a way that no plan reconciles, with
+/// why each may stay. Abstract types have no instances; the structural actions
+/// are rewritten by `schema_structural` before any plan runs.
+const SOURCE_LAYOUT_EXEMPT: &[(&str, &str)] = &[
+    ("IFCCONSTRUCTIONRESOURCE", "abstract in both schemas"),
+    ("IFCWORKCONTROL", "abstract in both schemas"),
+    ("IFCSURFACETEXTURE", "abstract in both schemas"),
+    ("IFCMATERIALPROPERTIES", "abstract in IFC2X3, so only the IFC4 downgrade (renamed) has instances"),
+    ("IFCPROFILEPROPERTIES", "abstract in IFC2X3, so only the IFC4 downgrade (renamed) has instances"),
+    ("IFCSTRUCTURALLINEARACTION", "schema_structural::attributes"),
+    ("IFCSTRUCTURALPLANARACTION", "schema_structural::attributes"),
+];
+
+/// #10763: a type that keeps its name but whose lists differ in length, or
+/// hold one name at two indexes, is either reconciled by a plan or exempt with
+/// a reason. Before #10763 every one of these kept its source layout.
+#[test]
+fn no_same_named_type_keeps_a_shifted_source_layout_10763() {
+    use crate::schema_plan::{plan_for, Adjust, Plan};
+    let schemas = ["IFC2X3", "IFC4", "IFC4X3"];
+    let mut bad = Vec::new();
+    let mut mapped = 0usize;
+    for from in schemas {
+        for to in schemas.into_iter().filter(|to| *to != from) {
+            for ty in ifc_lite_core::IFC_TYPES.iter() {
+                let name = ty.name().to_ascii_uppercase();
+                let Plan::Write { renamed: None, adjust, .. } = plan_for(&name, from, to) else { continue };
+                mapped += usize::from(matches!(adjust, Adjust::Mapped(..)));
+                let (Some(src), Some(tgt)) = (super::schema_attribute_names(from, &name), super::schema_attribute_names(to, &name)) else { continue };
+                let shifted = src.len() != tgt.len() || src.iter().enumerate().any(|(i, n)| tgt.iter().position(|t| t == n).is_some_and(|j| j != i));
+                if shifted && adjust == Adjust::Keep && !SOURCE_LAYOUT_EXEMPT.iter().any(|(t, _)| *t == name) {
+                    bad.push(format!("{from}->{to} {name}"));
+                }
+            }
+        }
+    }
+    assert!(mapped >= 4 * 20, "anti-vacuity: {mapped} mapped plans");
+    assert!(bad.is_empty(), "{} same-named type(s) keep a shifted source layout:\n{}", bad.len(), bad.join("\n"));
+}

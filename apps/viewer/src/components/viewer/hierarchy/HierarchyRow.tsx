@@ -4,58 +4,47 @@
 
 import { memo, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { HierarchyNode, type HierarchyNodeProps } from './HierarchyNode';
-import type { HierarchyRowAction } from './HierarchyRowActions';
 import type { TreeNode } from './types';
 
 export type HierarchyRowSection = 'filtered' | 'storeys' | 'models';
 type ActivationEvent = React.MouseEvent | React.KeyboardEvent;
 
+type NodeHandlers = Pick<HierarchyNodeProps, 'onToggleExpand' | 'onVisibilityToggle' | 'onModelVisibilityToggle'
+  | 'onRemoveModel' | 'onModelHeaderClick'> & Required<Pick<HierarchyNodeProps, 'onAction' | 'onSyncSourceModel'>>;
+
 /** The panel's current row callbacks, read at call time. */
-export interface HierarchyRowCallbacks {
+export interface HierarchyRowCallbacks extends NodeHandlers {
   click: (node: TreeNode, event: ActivationEvent, section: HierarchyRowSection, index: number) => void;
-  toggleExpand: HierarchyNodeProps['onToggleExpand'];
-  visibilityToggle: HierarchyNodeProps['onVisibilityToggle'];
-  action: (node: TreeNode, action: HierarchyRowAction) => void;
-  modelVisibilityToggle: HierarchyNodeProps['onModelVisibilityToggle'];
-  removeModel: HierarchyNodeProps['onRemoveModel'];
-  syncSourceModel: NonNullable<HierarchyNodeProps['onSyncSourceModel']>;
-  modelHeaderClick: HierarchyNodeProps['onModelHeaderClick'];
 }
 
 /**
- * Handlers with one identity for the panel's lifetime that call the latest
- * callbacks, so a row re-renders only when what it shows changes (#10535).
+ * Row handlers for the panel's lifetime, calling the callbacks of the last
+ * committed render, so a row re-renders only when what it shows changes (#10535).
  */
-function stableRowHandlers(latest: { readonly current: HierarchyRowCallbacks }): HierarchyRowCallbacks {
-  return {
-    click: (node, event, section, index) => latest.current.click(node, event, section, index),
-    toggleExpand: (nodeId) => latest.current.toggleExpand(nodeId),
-    visibilityToggle: (node) => latest.current.visibilityToggle(node),
-    action: (node, action) => latest.current.action(node, action),
-    modelVisibilityToggle: (modelId, e) => latest.current.modelVisibilityToggle(modelId, e),
-    removeModel: (modelId, e) => latest.current.removeModel(modelId, e),
-    syncSourceModel: (modelId, e) => latest.current.syncSourceModel(modelId, e),
-    modelHeaderClick: (modelId, nodeId, hasChildren) => latest.current.modelHeaderClick(modelId, nodeId, hasChildren),
-  };
-}
-
-/** Row handlers for the panel's lifetime, calling the callbacks of the last committed render. */
 export function useStableRowHandlers(callbacks: HierarchyRowCallbacks): HierarchyRowCallbacks {
   const latest = useRef(callbacks);
   // Published at commit, so a discarded render never leaves rows calling its callbacks.
   useLayoutEffect(() => { latest.current = callbacks; });
-  return useState(() => stableRowHandlers(latest))[0];
+  return useState((): HierarchyRowCallbacks => ({
+    click: (node, event, section, index) => latest.current.click(node, event, section, index),
+    onToggleExpand: (nodeId) => latest.current.onToggleExpand(nodeId),
+    onVisibilityToggle: (node) => latest.current.onVisibilityToggle(node),
+    onAction: (node, action) => latest.current.onAction(node, action),
+    onModelVisibilityToggle: (modelId, e) => latest.current.onModelVisibilityToggle(modelId, e),
+    onRemoveModel: (modelId, e) => latest.current.onRemoveModel(modelId, e),
+    onSyncSourceModel: (modelId, e) => latest.current.onSyncSourceModel(modelId, e),
+    onModelHeaderClick: (modelId, nodeId, hasChildren) => latest.current.onModelHeaderClick(modelId, nodeId, hasChildren),
+  }))[0];
 }
 
-type RowValues = Omit<HierarchyNodeProps, 'virtualRow' | 'onNodeClick' | 'rowRef' | 'onRowFocus' | 'onToggleExpand'
-  | 'onVisibilityToggle' | 'onAction' | 'onModelVisibilityToggle' | 'onRemoveModel' | 'onSyncSourceModel' | 'onModelHeaderClick'>;
+type RowValues = Omit<HierarchyNodeProps, 'virtualRow' | 'onNodeClick' | 'rowRef' | 'onRowFocus' | keyof NodeHandlers>;
 
 export interface HierarchyRowProps extends RowValues {
   section: HierarchyRowSection;
   index: number;
   start: number;
   size: number;
-  /** Stable for the panel's lifetime (`stableRowHandlers`). */
+  /** Stable for the panel's lifetime (`useStableRowHandlers`). */
   handlers: HierarchyRowCallbacks;
   /** The section keyboard's stable row registration and focus callbacks. */
   registerRow: (nodeId: string, el: HTMLElement | null) => void;
@@ -64,13 +53,11 @@ export interface HierarchyRowProps extends RowValues {
 
 function Row({ section, index, start, size, handlers, registerRow, focusRow, ...values }: HierarchyRowProps) {
   const { node } = values;
+  const { click, ...nodeHandlers } = handlers;
   // Stable so a re-render does not unregister and re-register the row element.
   const rowRef = useCallback((el: HTMLElement | null) => registerRow(node.id, el), [registerRow, node.id]);
-  return <HierarchyNode {...values} virtualRow={{ start, size }} rowRef={rowRef} onRowFocus={() => focusRow(node.id)}
-    onNodeClick={(_: TreeNode, event: ActivationEvent) => handlers.click(node, event, section, index)}
-    onToggleExpand={handlers.toggleExpand} onVisibilityToggle={handlers.visibilityToggle} onAction={handlers.action}
-    onModelVisibilityToggle={handlers.modelVisibilityToggle} onRemoveModel={handlers.removeModel}
-    onSyncSourceModel={handlers.syncSourceModel} onModelHeaderClick={handlers.modelHeaderClick} />;
+  return <HierarchyNode {...values} {...nodeHandlers} virtualRow={{ start, size }} rowRef={rowRef} onRowFocus={() => focusRow(node.id)}
+    onNodeClick={(_: TreeNode, event: ActivationEvent) => click(node, event, section, index)} />;
 }
 
 /**

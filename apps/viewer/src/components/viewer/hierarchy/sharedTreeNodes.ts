@@ -4,25 +4,6 @@
 
 import type { TreeNode } from './types';
 
-/** Plain-data equality for tree rows: primitives, arrays and plain objects. */
-function sameData(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-  if (Array.isArray(a)) {
-    // Comparing a rebuilt member list costs no more than building it did.
-    if (!Array.isArray(b) || a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) if (!sameData(a[i], b[i])) return false;
-    return true;
-  }
-  if (Array.isArray(b) || Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false;
-  const keys = Object.keys(a);
-  if (keys.length !== Object.keys(b).length) return false;
-  for (const key of keys) {
-    if (!Object.hasOwn(b, key) || !sameData((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) return false;
-  }
-  return true;
-}
-
 /**
  * Keep the previous object for every row whose data did not change, and the
  * previous array when no row did (#10535). Tree builders and the expansion
@@ -34,13 +15,12 @@ export function shareUnchangedNodes(
   next: TreeNode[],
 ): TreeNode[] {
   if (previous === next) return next;
-  // Rows usually keep their positions; index by id only when one moved.
-  let byId: Map<string, TreeNode> | undefined;
+  const byId = new Map(previous.map((row) => [row.id, row]));
   let unchanged = previous.length === next.length;
   const shared = next.map((node, i) => {
-    const prior = previous[i]?.id === node.id ? previous[i]
-      : (byId ??= new Map(previous.map((row) => [row.id, row]))).get(node.id);
-    const kept = prior && sameData(prior, node) ? prior : node;
+    const prior = byId.get(node.id);
+    // Rows are plain data (strings, numbers, booleans, arrays, plain objects): their JSON is their content.
+    const kept = prior && (prior === node || JSON.stringify(prior) === JSON.stringify(node)) ? prior : node;
     if (kept !== previous[i]) unchanged = false;
     return kept;
   });

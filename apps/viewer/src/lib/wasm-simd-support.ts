@@ -37,14 +37,13 @@ export function assertWasmSimdSupported(): void {
 }
 
 /**
- * A failure caused by missing SIMD: our own refusal (by `.name`, which survives
- * a realm hop, or its message prefix on the text-only analytics path), else the
- * engines' framed wordings (V8 `Compiling function #N failed: Wasm SIMD
- * unsupported`, SpiderMonkey `at offset N: SIMD support is not enabled`).
- * Framed because load messages carry user-controlled file names and this kind
- * is claimed ahead of the worker and memory buckets.
+ * A failure caused by missing SIMD: our own refusal (by its message prefix,
+ * which the text-only analytics path also sees), else the engines' framed
+ * wordings (V8 `Compiling function #N failed: Wasm SIMD unsupported`,
+ * SpiderMonkey `at offset N: SIMD support is not enabled`). Framed because
+ * load messages carry user-controlled file names and this kind is claimed
+ * ahead of the worker and memory buckets.
  */
-export function isWasmSimdUnsupported(err: unknown, message: string): boolean {
-  return (typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'WasmSimdUnsupportedError')
-    || /^Wasm SIMD unsupported: |failed: Wasm SIMD unsupported\b|at offset \d+: SIMD support is not enabled\b/i.test(message);
+export function isWasmSimdUnsupportedMessage(message: string): boolean {
+  return /^Wasm SIMD unsupported: |failed: Wasm SIMD unsupported\b|at offset \d+: SIMD support is not enabled\b/i.test(message);
 }

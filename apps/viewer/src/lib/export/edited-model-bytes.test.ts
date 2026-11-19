@@ -99,6 +99,7 @@ it('LandXML preflight sees pending edits in the legacy single-model session (#10
     const prior = new MutablePropertyView(store.properties ?? null, 'default');
     configureMutationView(prior, store);
     prior.setAttribute(10, 'Name', 'Earlier terrain', 'Terrain');
+    prior.setAttribute(11, 'Name', 'Distinct historical edit', 'Wall B');
     useViewerStore.getState().registerMutationView('default', prior);
     const read = async (modelId: string, expressId = 10): Promise<string> => {
       const current = useViewerStore.getState().getMutationView(modelId);
@@ -106,10 +107,11 @@ it('LandXML preflight sees pending edits in the legacy single-model session (#10
     };
     assert.equal(await read('default'), 'Edited terrain', 'the canonical overlay wins over an earlier alias');
     assert.equal(await read('legacy'), 'Edited terrain');
-    useViewerStore.getState().setAttribute('default', 11, 'Name', 'Visible with both overlays', 'Wall B');
+    assert.equal(await read('default', 11), 'Distinct historical edit', 'nonoverlapping alias edits must survive export');
+    useViewerStore.getState().setAttribute('default', 11, 'Name', 'Visible with both overlays', 'Distinct historical edit');
     assert.equal(await read('legacy', 11), 'Visible with both overlays');
     useViewerStore.getState().undo('default');
-    assert.equal(await read('legacy', 11), 'Wall B');
+    assert.equal(await read('legacy', 11), 'Distinct historical edit');
     useViewerStore.getState().clearMutationView('legacy');
     assert.equal(await read('legacy'), 'Terrain', 'clear discards the canonical overlay through an alias');
     assert.equal(await read('default'), 'Terrain', 'clear also discards the earlier alias overlay');
@@ -147,6 +149,84 @@ it('LandXML preflight sees pending edits in the legacy single-model session (#10
     }
   } finally {
     useViewerStore.setState(snapshot);
+  }
+});
+
+it('an older legacy overlay survives registration of the canonical overlay and remains undoable (#10676)', async () => {
+  assert.ok(mod);
+  const store = await parse(new TextEncoder().encode(FIXTURE));
+  const initial = useViewerStore.getState();
+  const historical = new MutablePropertyView(store.properties, 'default');
+  const canonical = new MutablePropertyView(store.properties, '__legacy__');
+  configureMutationView(historical, store);
+  configureMutationView(canonical, store);
+  useViewerStore.setState({ models: new Map(), ifcDataStore: store, mutationViews: new Map(), undoStacks: new Map() });
+  try {
+    useViewerStore.getState().registerMutationView('default', historical);
+    useViewerStore.getState().setAttribute('default', 11, 'Name', 'Historical wall', 'Wall B');
+    canonical.setAttribute(10, 'Name', 'Canonical wall', 'Wall A');
+    useViewerStore.getState().registerMutationView('__legacy__', canonical);
+
+    const bake = async () => parse(mod!.editedModelBytes(store, useViewerStore.getState().getMutationView('legacy')));
+    const exported = await bake();
+    assert.equal(exported.entities.getName(10), 'Canonical wall');
+    assert.equal(exported.entities.getName(11), 'Historical wall');
+    assert.equal(useViewerStore.getState().getMutationView('default'), canonical);
+    useViewerStore.getState().undo('default');
+    assert.equal((await bake()).entities.getName(11), 'Wall B');
+    assert.equal((await bake()).entities.getName(10), 'Canonical wall');
+  } finally {
+    useViewerStore.setState(initial);
+  }
+});
+
+it('undoing an obsolete historical field cannot overwrite the winning legacy edit (#10676)', async () => {
+  assert.ok(mod);
+  const store = await parse(new TextEncoder().encode(FIXTURE));
+  const initial = useViewerStore.getState();
+  const historical = new MutablePropertyView(store.properties, 'default');
+  const canonical = new MutablePropertyView(store.properties, '__legacy__');
+  configureMutationView(historical, store);
+  configureMutationView(canonical, store);
+  useViewerStore.setState({ models: new Map(), ifcDataStore: store, mutationViews: new Map(), undoStacks: new Map() });
+  try {
+    const s = useViewerStore.getState();
+    s.registerMutationView('default', historical);
+    s.setAttribute('default', 10, 'Name', 'Obsolete wall rename', 'Wall A');
+    canonical.setAttribute(10, 'Name', 'Canonical wall rename', 'Wall A');
+    s.registerMutationView('__legacy__', canonical);
+    const read = async () => {
+      const view = s.getMutationView('legacy');
+      return (await parse(mod!.editedModelBytes(store, view))).entities.getName(10);
+    };
+    assert.equal(await read(), 'Canonical wall rename');
+    s.undo('default');
+    assert.equal(await read(), 'Canonical wall rename', 'obsolete alias history cannot erase the winning edit');
+  } finally {
+    useViewerStore.setState(initial);
+  }
+});
+
+it('registration with an overlapping allocated EXPRESS ID preserves both input views (#10676)', async () => {
+  const store = await parse(new TextEncoder().encode(FIXTURE));
+  const initial = useViewerStore.getState();
+  const historical = new MutablePropertyView(store.properties, 'default');
+  const canonical = new MutablePropertyView(store.properties, '__legacy__');
+  configureMutationView(historical, store);
+  configureMutationView(canonical, store);
+  const legacyEntity = historical.createEntity('IfcWall', ['0Wall00000000000000012', null, 'Legacy allocation']);
+  const canonicalEntity = canonical.createEntity('IfcWall', ['0Wall00000000000000013', null, 'Canonical allocation']);
+  assert.equal(legacyEntity.expressId, canonicalEntity.expressId);
+  useViewerStore.setState({ models: new Map(), ifcDataStore: store, mutationViews: new Map() });
+  try {
+    const s = useViewerStore.getState();
+    s.registerMutationView('default', historical);
+    assert.throws(() => s.registerMutationView('__legacy__', canonical), /Conflicting overlay edits on entity/);
+    assert.equal(s.getMutationView('legacy'), historical);
+    assert.equal(historical.getNewEntity(legacyEntity.expressId)?.attributes[2], 'Legacy allocation');
+    assert.equal(canonical.getNewEntity(canonicalEntity.expressId)?.attributes[2], 'Canonical allocation');
+  } finally {
+    useViewerStore.setState(initial);
   }
 });
 

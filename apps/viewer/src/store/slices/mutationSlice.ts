@@ -6,6 +6,7 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
+import { registerOverlayView } from './register-overlay-view.js';
 import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
 import { createRoofIn } from './mutation-roof-create.js';
 import { modelEditTarget, readModelEditTarget } from './mutation-modelling-records.js';
@@ -1066,13 +1067,7 @@ export const createMutationSlice: StateCreator<
     return view ?? null;
   },
 
-  registerMutationView: (modelId, view) => {
-    set((state) => {
-      const newViews = new Map(state.mutationViews);
-      newViews.set(modelId, view);
-      return { mutationViews: newViews };
-    });
-  },
+  registerMutationView: (modelId, view) => set(state => registerOverlayView(state, modelId, view)),
 
   clearMutationView: (modelIds, options) => {
     set((initial) => {

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "mesh.hpp"
 #include "empty.hpp"
+#include "mesh_canonical.hpp"
 #include "mesh_diagonals.hpp"
 #include <SmApiBrep.h>
 #include <SmBrep.h>
 #include <SmCone.h>
+#include <SmPlane.h>
 #include <SmPoly.h>
 #include <array>
 #include <cmath>
@@ -82,14 +84,23 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
         mesh->faces.push_back(source->second);
     }
     std::vector<std::optional<CylinderPatch>> cylinders(source_faces.GetSize());
+    std::vector<bool> planar(source_faces.GetSize());
     for (ULONG i=0;i<source_faces.GetSize();++i) {
         auto* surface=source_faces[i]->GetSurface();
+        planar[i]=surface->IsKindOf(SmPlane_TYPE);
         if (!surface->IsKindOf(SmCone_TYPE)) continue;
         CylinderPatch patch; double semi_angle=0;
         if (static_cast<SmCone*>(surface)->GetCanonical(patch.frame,patch.radius,semi_angle)==SM_SUCCESS &&
             semi_angle==0 && std::isfinite(patch.radius) && patch.radius>0) cylinders[i]=patch;
     }
+    // The SDK enumerates polygons, vertices and corners in heap-address order,
+    // which varies between runs on the same input. Order first, so the
+    // cylinder flips walk canonical IDs; then fix planar-quad diagonals and
+    // order again. Positions and source-face IDs are unchanged.
+    order_mesh(*mesh);
     normalize_mesh_diagonals(*mesh,angle,chord,cylinders);
+    canonical_planar_quads(*mesh,planar);
+    order_mesh(*mesh);
     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
     mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);
     ensure(mesh->info.vertex_count && mesh->info.triangle_count,"nonempty solid produced empty tessellation");

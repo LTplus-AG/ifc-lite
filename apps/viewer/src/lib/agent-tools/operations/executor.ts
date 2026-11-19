@@ -46,6 +46,13 @@ function boundedResult(result: unknown): unknown {
   return JSON.parse(text) as unknown;
 }
 
+/** A model entry a remesh replaced: the same entry apart from its geometry and the pre-alignment tail it carries. */
+const GEOMETRY_FIELDS = new Set(['geometryResult', 'preAlignment']);
+function geometryOnly(before: object, after: object): boolean {
+  const a = before as Record<string, unknown>, b = after as Record<string, unknown>;
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].every(key => GEOMETRY_FIELDS.has(key) || a[key] === b[key]);
+}
+
 /** Native services perform writes synchronously after this final live grant check. */
 export async function executeOperation(
   host: ToolHost, model: ReadyModel | undefined, args: Record<string, unknown>, context: ToolCallContext, readOnly: boolean,
@@ -134,7 +141,15 @@ export async function executeOperation(
     if (!entry.effects.includes('artifact')) throw new Error('The operation did not declare artifact creation.');
     return commit(write);
   });
-  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, artifacts };
+  const ownGeometry = async <T>(work: () => Promise<T>): Promise<T> => {
+    check();
+    const value = await work();
+    const now = model ? useViewerStore.getState().models.get(model.id) : undefined;
+    if (nativeModel && now && useViewerStore.getState().mutationVersion === activeRevision && geometryOnly(nativeModel, now)) nativeModel = now;
+    check();
+    return value;
+  };
+  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, ownGeometry, artifacts };
   check();
   if (!args.background) {
     const run = async () => {

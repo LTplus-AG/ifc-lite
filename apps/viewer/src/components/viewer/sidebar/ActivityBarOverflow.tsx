@@ -64,6 +64,8 @@ export function ActivityBarOverflow({ ids, locationOf, onSelect, waiting = [] }:
             <button
               type="button"
               data-rail-overflow=""
+              // aria-description is a global WAI-ARIA 1.3 property.
+              // eslint-disable-next-line jsx-a11y/role-supports-aria-props
               aria-description={label}
               className={cn(
                 'relative h-9 w-10 shrink-0 inline-flex flex-col items-center justify-center gap-0.5 rounded-md transition-colors',

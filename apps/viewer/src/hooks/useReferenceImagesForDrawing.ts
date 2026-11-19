@@ -7,28 +7,31 @@ import { useViewerStore } from '@/store';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { referenceDrawingCorners, drawingWithReferenceBounds, type DrawingReferenceImage } from '@/lib/appearance/references/drawing';
 
+export function projectDrawingReferences(plane: SectionPlaneConfig | undefined, state = useViewerStore.getState()) {
+  if (!plane) return [];
+  return [...state.appearanceReferences.values()].flatMap(record => {
+    const corners = referenceDrawingCorners(record, state, plane);
+    return corners && appearanceAssets.get(record.assetId) ? [{ record, corners }] : [];
+  });
+}
+export function prepareDrawingWithReferences(source: Drawing2D | null, references = projectDrawingReferences(source?.config.plane)) {
+  return { drawing: source ? drawingWithReferenceBounds(source, references.map(reference => reference.corners)) : null,
+    hasReferences: references.length > 0, referenceCount: references.length, referenceCorners: references.map(reference => reference.corners) };
+}
+
 function useProjectedReferences(plane: SectionPlaneConfig | undefined) {
   const references = useViewerStore(state => state.appearanceReferences);
   const revision = useViewerStore(state => state.referenceRevision);
   const models = useViewerStore(state => state.models), geometry = useViewerStore(state => state.geometryResult);
   const placement = useViewerStore(state => state.modelPlacement);
-  return useMemo(() => {
-    if (!plane) return [];
-    const state = useViewerStore.getState();
-    return [...references.values()].flatMap(record => {
-      const corners = referenceDrawingCorners(record, state, plane);
-      return corners && appearanceAssets.get(record.assetId) ? [{record,corners}] : [];
-    });
-  }, [references, revision, plane, models, geometry, placement]);
+  return useMemo(() => projectDrawingReferences(plane), [references, revision, plane, models, geometry, placement]);
 }
 
 /** Display bounds only: do not write reference extents into generated geometry
  * or the stored drawing. Fit and sheet layout use this same derived drawing. */
 export function useDrawingWithReferences(source: Drawing2D | null) {
   const references = useProjectedReferences(source?.config.plane);
-  return useMemo(() => ({ drawing: source ? drawingWithReferenceBounds(source, references.map(r => r.corners)) : null,
-    hasReferences: references.length > 0, referenceCount: references.length,
-    referenceCorners: references.map(r => r.corners) }), [source, references]);
+  return useMemo(() => prepareDrawingWithReferences(source, references), [source, references]);
 }
 
 /** Each canvas owns a lease until unmount/replacement; shared ImageBitmaps must

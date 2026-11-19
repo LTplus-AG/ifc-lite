@@ -2,12 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** #10778: slots IFC4 retyped in place, held to the table the Rust twin also compares. */
+/**
+ * #10778: slots IFC4 retyped in place, held to the shared fixture by behaviour
+ * through `convertStepLine` (so the test loads with the change reverted).
+ */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { convertStepLine } from './schema-converter.js';
-import { RETYPED_SLOTS } from './schema-converter-retyped.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 
 const fixture: { slots: { type: string; index: number; members: string[] }[] } = JSON.parse(
@@ -15,9 +17,17 @@ const fixture: { slots: { type: string; index: number; members: string[] }[] } =
 );
 
 describe('retyped slots (#10778)', () => {
-  it('is the shared fixture, entry for entry', () => {
-    expect(RETYPED_SLOTS.map(([type, index, members]) => ({ type, index, members: [...members] })))
-      .toEqual(fixture.slots.map(({ type, index, members }) => ({ type, index, members })));
+  it('retypes exactly the shared fixture: every member both ways, a non-member to $', () => {
+    expect(fixture.slots.map(({ type, index }) => [type, index])).toEqual([['IFCMONETARYUNIT', 0]]);
+    const { members } = fixture.slots[0];
+    expect(members.length, 'anti-vacuity').toBeGreaterThan(80);
+    for (const m of members) {
+      expect(convertStepLine(`#5=IFCMONETARYUNIT(.${m}.);`, 'IFC2X3', 'IFC4'), m).toBe(`#5=IFCMONETARYUNIT('${m}');`);
+      expect(convertStepLine(`#5=IFCMONETARYUNIT('${m}');`, 'IFC4', 'IFC2X3'), m).toBe(`#5=IFCMONETARYUNIT(.${m}.);`);
+    }
+    for (const label of ['XBT', 'BTC', 'EURO']) {
+      expect(convertStepLine(`#5=IFCMONETARYUNIT('${label}');`, 'IFC4', 'IFC2X3'), label).toBe('#5=IFCMONETARYUNIT($);');
+    }
   });
 
   it('writes a currency member as a label and back', () => {

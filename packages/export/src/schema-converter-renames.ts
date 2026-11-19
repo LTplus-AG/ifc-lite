@@ -56,9 +56,9 @@ export const POSITIONAL_REPLACEMENTS: Readonly<Record<string, readonly [string, 
 
 function newerName(entityType: string | undefined, name: string): string {
   if (entityType === undefined) return name;
+  const renamed = POSITIONAL_RENAMES[entityType]?.find(([older]) => older === name)?.[1];
   const replaced = POSITIONAL_REPLACEMENTS[entityType];
-  if (replaced?.[0] === name) return replaced[1];
-  return POSITIONAL_RENAMES[entityType]?.find(([older]) => older === name)?.[1] ?? name;
+  return renamed ?? (replaced?.[0] === name ? replaced[1] : name);
 }
 
 /**

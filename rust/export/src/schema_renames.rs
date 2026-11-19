@@ -55,7 +55,7 @@ pub(crate) const POSITIONAL_REPLACEMENTS: &[(&str, (&str, &str))] =
 /// `name` as the newer schema spells it, for `entity_type`.
 fn newer_name<'a>(entity_type: &str, name: &'a str) -> &'a str {
     let renames = POSITIONAL_RENAMES.iter().find(|(ty, _)| *ty == entity_type).map_or(&[][..], |(_, pairs)| *pairs);
-    let replaced = POSITIONAL_REPLACEMENTS.iter().filter(|(ty, _)| *ty == entity_type).map(|(_, pair)| pair);
+    let replaced = POSITIONAL_REPLACEMENTS.iter().find(|(ty, _)| *ty == entity_type).map(|(_, pair)| pair);
     renames.iter().chain(replaced).find(|(older, _)| *older == name).map_or(name, |(_, newer)| newer)
 }
 

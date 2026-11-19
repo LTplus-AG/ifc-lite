@@ -337,9 +337,9 @@ fn convert_record(
             let new_type = renamed.unwrap_or(&entity_type);
             // #10758: a slot a schema replaced in place keeps no value across.
             let rebuilt;
-            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| holds_value(v))) {
+            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| v.trim() != "$")) {
                 Some(i) => {
-                    lost += 1;
+                    lost += usize::from(holds_value(&args[i]));
                     args[i] = "$".to_owned();
                     rebuilt = args.join(",");
                     rebuilt.as_str()

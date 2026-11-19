@@ -30,7 +30,7 @@ import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.j
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
-import { appendMetreUnit, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan, type MetreUnit } from './merged-georef-normalize.js';
+import { appendMetreUnit, hasCoordinateOperation, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan, type MetreUnit } from './merged-georef-normalize.js';
 import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
@@ -804,7 +804,7 @@ export class MergedExporter {
    * Record advisories for a model being normalized. The rescaler derives its
    * length-attribute map from the IFC4 schema registry, so it may not cover
    * length attributes introduced by newer schemas (IFC4X3 alignment / linear
-   * referencing), and it deliberately leaves georeferencing untouched.
+   * referencing), and it keeps georeferencing offsets in the CRS unit (#10886).
    */
   private collectNormalizeCaveats(model: MergeModelInput, warnings: Set<string>): void {
     const schema = (model.dataStore.schemaVersion ?? '').toUpperCase(), label = mergeWarningLabel(model, this.models);
@@ -815,11 +815,11 @@ export class MergedExporter {
         `lengths and radii) may not have been rescaled. Verify infrastructure geometry.`,
       );
     }
-    if (this.findEntitiesByType(model.dataStore, 'IFCMAPCONVERSION').length > 0) {
+    if (hasCoordinateOperation(model.dataStore)) {
       warnings.add(
-        `Model "${label}" carries georeferencing (IfcMapConversion), which normalize leaves ` +
-        `untouched. If the model was georeferenced in its own unit, review the merged coordinate ` +
-        `operation.`,
+        `Model "${label}" carries georeferencing, whose offsets normalize leaves in the CRS unit ` +
+        `(a CRS without one is written in metres). If the model was georeferenced in its own unit, ` +
+        `review the merged coordinate operation.`,
       );
     }
   }
@@ -900,7 +900,7 @@ export class MergedExporter {
         volumeFactor: computeNormalizeFactor(modelVolume, setup.primaryVolumeScale),
         effectiveScale: setup.primaryScale,
         normalized: true,
-        georef: planGeorefNormalize(model.dataStore, setup.metreUnit),
+        georef: planGeorefNormalize(model.dataStore, setup.metreUnit, modelScale, setup.primaryScale),
       };
     }
     // auto: federate the differing-unit model, coordinates untouched.

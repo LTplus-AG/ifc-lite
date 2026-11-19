@@ -13,11 +13,11 @@ import { IfcParser, extractGeoreferenceCandidatesOnDemand, type IfcDataStore } f
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
 type Unit = 'm' | 'mm';
-interface Spec { unit: Unit; mapUnit: Unit | '$'; easting: number; schema?: 'IFC4' | 'IFC4X3'; operation?: string }
+interface Spec { unit: Unit; mapUnit: Unit | '$'; easting: number; scale?: string; schema?: 'IFC4' | 'IFC4X3'; operation?: string }
 
 const UNIT_REF: Record<Unit, string> = { m: '#2', mm: '#3' };
 
-const model = (name: string, { unit, mapUnit, easting, schema = 'IFC4', operation }: Spec) => `ISO-10303-21;
+const model = (name: string, { unit, mapUnit, easting, scale = '1.', schema = 'IFC4', operation }: Spec) => `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
 FILE_NAME('${name}.ifc','',(''),(''),'','','');
@@ -34,7 +34,7 @@ DATA;
 #13=IFCAXIS2PLACEMENT3D(#10,#11,#12);
 #14=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#13,$);
 #20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,${mapUnit === '$' ? '$' : UNIT_REF[mapUnit]});
-${operation ?? `#21=IFCMAPCONVERSION(#14,#20,${easting}.,1200000.,500.,1.,0.,1.);`}
+${operation ?? `#21=IFCMAPCONVERSION(#14,#20,${easting}.,1200000.,500.,1.,0.,${scale});`}
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -61,6 +61,20 @@ function viewerOrigins(store: IfcDataStore): number[][] {
   });
 }
 
+/**
+ * The scale the viewer gives each map conversion's model geometry (`getEffectiveAxisScales`,
+ * `apps/viewer/src/lib/geo/geo-scale.ts`, Factors 1): `Scale · mapUnit / projectUnit`, or 1 when Scale is unset or
+ * 1 and the two units differ.
+ */
+function viewerScales(store: IfcDataStore): number[] {
+  const projectUnit = store.lengthUnitScale ?? 1;
+  return (extractGeoreferenceCandidatesOnDemand(store)?.mapConversions ?? []).map(({ conversion: { scale }, targetCRS }) => {
+    const mapUnit = targetCRS?.mapUnitScale && targetCRS.mapUnitScale > 0 ? targetCRS.mapUnitScale : 1;
+    const unset = !(scale != null && Math.abs(scale - 1) > 1e-9);
+    return unset && Math.abs(mapUnit - projectUnit) > 1e-9 ? 1 : (scale ?? 1) * mapUnit / projectUnit;
+  });
+}
+
 const sorted = (origins: number[][]) => origins.map(origin => origin.join(',')).sort();
 /** Each IfcProjectedCRS's map unit, in file order. */
 const crsUnits = (content: string) => [...content.matchAll(/=IFCPROJECTEDCRS\([^;]*,([^,;]+)\);/g)].map(match => match[1]);
@@ -83,6 +97,24 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
     expect(sorted(viewerOrigins(await parse(merged)))).toEqual(sorted(alone));
     // The later model's CRS is not left for a reader to resolve through the merged project's unit.
     expect(crsUnits(merged)[1]).toMatch(/^#\d+$/);
+  });
+
+  const SCALE: Record<Unit | '$', number> = { m: 1, mm: 0.001, $: 1 };
+  const scaleCases: Array<[string, Spec, Spec]> = [];
+  for (const [primary, later] of [['m', 'mm'], ['mm', 'm']] as const) {
+    for (const mapUnit of [later, primary, '$'] as const) {
+      const bridging = SCALE[later] / SCALE[mapUnit];
+      for (const scale of new Set(['$', '1.', Number.isInteger(bridging) ? `${bridging}.` : `${bridging}`])) {
+        scaleCases.push([`${later} into ${primary}, map unit ${mapUnit}, Scale ${scale}`,
+          { unit: primary, mapUnit: primary, easting: 2600000 }, { unit: later, mapUnit, easting: 2600100, scale }]);
+      }
+    }
+  }
+
+  it.each(scaleCases)('keeps the scale the viewer gives each model: %s', async (_, primary, later) => {
+    const alone = [...viewerScales(await parse(model('a', primary))), ...viewerScales(await parse(model('b', later)))];
+    const merged = viewerScales(await parse(await merge([primary, later])));
+    expect(merged.map(scale => scale.toPrecision(9))).toEqual(alone.map(scale => scale.toPrecision(9)));
   });
 
   it('gives a CRS without a map unit one explicit metre unit, and none when no CRS needs it', async () => {

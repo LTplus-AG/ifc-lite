@@ -4,6 +4,7 @@
 
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { releasedGeometryMetadata } from '@/lib/geometry-backing/released-geometry-metadata';
+import { useReleasedGeometryRevision } from '@/lib/geometry-backing/use-released-geometry-revision';
 import { effectiveTypeProperties, liveTypeOccurrences } from './properties/effectiveTypeProperties';
 import { lazy, Suspense, useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
@@ -315,6 +316,7 @@ export function PropertiesPanel() {
   // the frame any more than they can about which axis is up.
   const renderFrame = useRenderFrameOffsets();
 
+  const releasedRevision = useReleasedGeometryRevision(); // backed bounds change availability in place (#10264)
   const entityCoordinates = useMemo(() => {
     if (!selectedEntity) return null;
 
@@ -384,7 +386,7 @@ export function PropertiesPanel() {
       worldZup: { center: worldCenterZup },
       hasLargeCoordinates: (coordInfo?.hasLargeCoordinates ?? false) || !!renderFrame.wasmRtcOffsetIfc,
     };
-  }, [selectedEntity, model, geometryResult, models, renderFrame]);
+  }, [selectedEntity, model, geometryResult, models, renderFrame, releasedRevision]);
 
   // Get entity node - must be computed before early return to maintain hook order
   // IMPORTANT: Use selectedEntity.expressId (original ID) for IfcDataStore lookups

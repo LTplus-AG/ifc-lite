@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
+import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
@@ -17,7 +18,7 @@ import { geometryBackingCommand } from '@/lib/geometry-backing/backing-debug-hoo
 import type { TapState } from '@/lib/geometry-backing/store-backing-tap';
 import { PropertiesPanel } from './PropertiesPanel';
 
-it('#10887 a legacy selection keeps its displayed centre after CPU geometry release', async () => {
+it('#10887 a legacy selection keeps its displayed centre after CPU geometry release, and drops it when the backing is superseded', async () => {
   const initial = useViewerStore.getState();
   const bytes = new TextEncoder().encode(`ISO-10303-21;
 HEADER;
@@ -59,7 +60,12 @@ END-ISO-10303-21;`);
     const before = position(render(<PropertiesPanel />));
     cleanup();
     releaseCpuMeshBuffers(geometry.meshes);
-    assert.equal(position(render(<PropertiesPanel />)), before, 'same coordinates from backed bounds under __legacy__');
+    const ui = render(<PropertiesPanel />);
+    assert.equal(position(ui), before, 'same coordinates from backed bounds under __legacy__');
+    // A content-only bump supersedes the sealed backing; the MOUNTED panel must not keep the old centre.
+    act(() => useViewerStore.getState().bumpGeometryContentVersion());
+    const row = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Position'));
+    assert.ok(!row || !/5\.000/.test(row.textContent ?? ''), `stale backed centre after a content-only bump: ${row?.textContent}`);
   } finally {
     cleanup();
     await geometryBackingCommand(store, undefined, { action: 'stop' });

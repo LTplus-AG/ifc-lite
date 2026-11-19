@@ -134,3 +134,64 @@ it('#10887 in-place release invalidates an already mounted area without a backin
     useViewerStore.setState(initial, true);
   }
 });
+
+function wallGeometry(): { meshes: MeshData[]; geometry: GeometryResult } {
+  const piece = (width: number): MeshData => ({ expressId: 42, ifcType: 'IfcWall',
+    positions: Float32Array.from([0, 0, 0, width, 0, 0, 0, 2, 0]),
+    normals: new Float32Array(9), indices: Uint32Array.from([0, 1, 2]), color: [1, 1, 1, 1] });
+  const meshes = [piece(3), piece(6)];
+  return { meshes, geometry: { meshes, totalTriangles: 2, totalVertices: 6,
+    coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 6, y: 2, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 6, y: 2, z: 0 } } } } };
+}
+
+it('#10887 a `legacy` selection of a model stored under __legacy__ reports its area, resident and released', async () => {
+  const initial = useViewerStore.getState();
+  const { meshes, geometry } = wallGeometry();
+  useViewerStore.setState({ models: new Map([['__legacy__', { ...fixtureModel('__legacy__'), geometryResult: geometry, ifcDataStore: null }]]),
+    geometryResult: geometry, ifcDataStore: null, activeModelId: null,
+    selectedEntity: { modelId: 'legacy', expressId: 42 }, selectedEntitiesSet: new Set() });
+  const store = useViewerStore as unknown as StoreApi<TapState>;
+  let ui: HTMLElement;
+  const area = () => JSON.parse(ui.querySelector('output')!.textContent!);
+  try {
+    await geometryBackingCommand(store, undefined, { action: 'start', options: {
+      database: { name: `legacy-key-area-${process.pid}`, locks: null } } as never });
+    await geometryBackingCommand(store, undefined, { action: 'seal' });
+    ui = render(<Summary />);
+    assert.deepEqual(area(), { total: 9, withMesh: 1, withoutMesh: 0 }, 'resident');
+    act(() => releaseCpuMeshBuffers(meshes));
+    assert.deepEqual(area(), { total: 9, withMesh: 1, withoutMesh: 0 }, 'released, from the backed areas');
+  } finally {
+    cleanup();
+    await geometryBackingCommand(store, undefined, { action: 'stop' });
+    useViewerStore.setState(initial, true);
+  }
+});
+
+it('#10887 a content-version-only bump withdraws a mounted released area at once', async () => {
+  const initial = useViewerStore.getState();
+  const { meshes, geometry } = wallGeometry();
+  useViewerStore.setState({ models: new Map([['cv', { ...fixtureModel('cv'), geometryResult: geometry, ifcDataStore: null }]]),
+    geometryResult: geometry, ifcDataStore: null, activeModelId: 'cv',
+    selectedEntity: { modelId: 'cv', expressId: 42 }, selectedEntitiesSet: new Set() });
+  const store = useViewerStore as unknown as StoreApi<TapState>;
+  let ui: HTMLElement;
+  const area = () => JSON.parse(ui.querySelector('output')!.textContent!);
+  try {
+    await geometryBackingCommand(store, undefined, { action: 'start', options: {
+      database: { name: `content-bump-area-${process.pid}`, locks: null } } as never });
+    await geometryBackingCommand(store, undefined, { action: 'seal' });
+    ui = render(<Summary />);
+    act(() => releaseCpuMeshBuffers(meshes));
+    assert.deepEqual(area(), { total: 9, withMesh: 1, withoutMesh: 0 });
+    // Same models, same lists: only the content version moves, superseding the sealed backing.
+    act(() => useViewerStore.getState().bumpGeometryContentVersion());
+    assert.deepEqual(area(), { total: 0, withMesh: 0, withoutMesh: 1 }, 'the superseded backing no longer answers');
+  } finally {
+    cleanup();
+    await geometryBackingCommand(store, undefined, { action: 'stop' });
+    useViewerStore.setState(initial, true);
+  }
+});

@@ -40,7 +40,7 @@ import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
 import { collectMeshAreas, type MeshAreaEntry } from '@/components/viewer/tools/measure-modes/mesh-area';
-import { setReleasedGeometryMetadata } from './released-geometry-metadata';
+import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
 import type { BackingDatabaseOptions } from './backing-database';
 
@@ -122,7 +122,7 @@ export class StoreGeometryBackingTap {
   private completeBacking(modelId: string): ModelGeometryBacking | undefined {
     const tracked = this.tracked.get(modelId);
     const backing = tracked?.backing;
-    return backing && !tracked.failure && backing.isCurrent && backing.isComplete ? backing : undefined;
+    return backing && !tracked.failure && !tracked.stale && backing.isCurrent && backing.isComplete ? backing : undefined;
   }
 
   /** The model's current backing generation, for readback consumers. */
@@ -148,6 +148,7 @@ export class StoreGeometryBackingTap {
         if (meshes?.some(isReleasedMesh)) {
           tracked.stale = new Error('The store list changed after a CPU release; its backing no longer answers');
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
+          notifyReleasedGeometryMetadataChanged(); // its bounds and areas stop answering in place
           continue;
         }
         const hadShards = tracked.shards > 0 || tracked.instancedLost;
@@ -158,6 +159,7 @@ export class StoreGeometryBackingTap {
         if (meshes.slice(tracked.consumed).some(isReleasedMesh)) {
           tracked.stale = new Error('Released meshes were appended; they have no arrays to back');
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
+          notifyReleasedGeometryMetadataChanged();
           continue;
         }
         this.appendSuffix(tracked, meshes);

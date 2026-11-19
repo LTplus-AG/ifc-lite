@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // Canonical native selection/summary lifetime retained from MeasureQuantities (#7184).
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
@@ -14,7 +14,8 @@ import { pickElementQuantities, rollupQuantities, rollupGeometryVolumes, rollupM
 import { collectMeshAreas, type MeshAreaEntry } from './mesh-area';
 import type { MeshData } from '@ifc-lite/geometry';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
-import { releasedGeometryMetadata, releasedGeometryMetadataVersion, subscribeReleasedGeometryMetadata } from '@/lib/geometry-backing/released-geometry-metadata';
+import { releasedGeometryMetadata } from '@/lib/geometry-backing/released-geometry-metadata';
+import { useReleasedGeometryRevision } from '@/lib/geometry-backing/use-released-geometry-revision';
 import { pickIfcDensity, resolveElementWeight, rollupWeights, classifyWeightUnitKind, type WeightOutcome } from './weight';
 import { siConverterFor, densitySiConverterFor, quantitySetsFor } from './quantity-source';
 
@@ -62,11 +63,11 @@ export function useSelectionQuantitySummary() {
       areas: collectMeshAreas([model.geometryResult?.meshes]),
     }]));
   }, [models, geometryResult]);
-  const metadataVersion = useSyncExternalStore(subscribeReleasedGeometryMetadata,
-    releasedGeometryMetadataVersion, releasedGeometryMetadataVersion);
+  // Moves on metadata notifications AND content-only bumps, which supersede the sealed backing in place.
+  const releasedRevision = useReleasedGeometryRevision();
   const meshAreasByModel = useMemo(() => new Map([...residentAreasByModel].map(([id, source]) => [id,
     withReleasedMeshAreas(new Map(source.areas), id, source.meshes),
-  ])), [residentAreasByModel, metadataVersion]);
+  ])), [residentAreasByModel, releasedRevision]);
 
   const summary = useMemo(() => {
     if (refs.length === 0) return null;
@@ -121,7 +122,8 @@ export function useSelectionQuantitySummary() {
     // it again. `meshAreasByModel` needs no store to build or to read.
     let meshAreaIncomplete = 0;
     const meshAreas: Array<number | undefined> = refs.map((ref) => {
-      const entry = meshAreasByModel.get(models.size === 0 ? '__legacy__' : ref.modelId)
+      // The legacy slot is stored as `__legacy__`; a selection names it `legacy` (as PropertiesPanel normalizes).
+      const entry = meshAreasByModel.get(models.size === 0 || ref.modelId === 'legacy' ? '__legacy__' : ref.modelId)
         ?.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId));
       if (!entry) return undefined;
       if (entry.incomplete) meshAreaIncomplete += 1;

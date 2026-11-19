@@ -72,7 +72,7 @@ export const zoneOperations = [
     type: 'object', properties: { ...idInput.properties, basis, format: { type: 'string', enum: ['csv', 'parquet'] } }, required: ['set_id', 'basis', 'format'], additionalProperties: false,
   }, async (i, c) => {
     const { exportZoneTable } = await import('@/hooks/useZoneTableExport'); assertToolActive(c); const zoneSet = set(i.set_id), identity = JSON.stringify(zoneSet);
-    // The table reads models, geometry and assignments, not only the set: Parquet encoding awaits, so check them all, as zones.geometry.export does.
+    // The table reads models, geometry and assignments, not only the set, and Parquet encoding awaits: check them all.
     const before = useViewerStore.getState(), assignments = zoneAssignmentSignature(before.zoneAssignments, i.set_id);
     let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
     const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });

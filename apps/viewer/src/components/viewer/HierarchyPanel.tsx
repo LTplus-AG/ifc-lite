@@ -369,7 +369,7 @@ export function HierarchyPanel() {
     }
   }, [getNodeElements, isolateEntities, setClassFilter, upsertSearchRule]);
 
-  const rowActions = useCallback((node: TreeNode): HierarchyRowAction[] => {
+  const rowActions = useCallback((node: TreeNode): readonly HierarchyRowAction[] => {
     return hierarchyRowActions(node, getNodeElements(node).length > 0);
   }, [getNodeElements]);
 
@@ -384,8 +384,7 @@ export function HierarchyPanel() {
   });
 
   // Rows call these through one stable object, so a panel render re-renders only rows whose state changed (#10535).
-  const rowCallbacks = useLatestRef({ click: handleNodeClick, keyboards: { storeys: storeysTreeKeyboard, models: modelsTreeKeyboard, filtered: legacyTreeKeyboard },
-    toggleExpand, visibilityToggle: handleVisibilityToggle, action: handleRowAction, modelVisibilityToggle: handleModelVisibilityToggle,
+  const rowCallbacks = useLatestRef({ click: handleNodeClick, toggleExpand, visibilityToggle: handleVisibilityToggle, action: handleRowAction, modelVisibilityToggle: handleModelVisibilityToggle,
     removeModel: handleRemoveModel, syncSourceModel: handleSyncSourceModel, modelHeaderClick: handleModelHeaderClick });
   const [rowHandlers] = useState(() => stableRowHandlers(rowCallbacks));
 
@@ -451,6 +450,7 @@ export function HierarchyPanel() {
   }
 
   // Each virtualized section has its own selection rows and ARIA keyboard state.
+  const searchActive = Boolean(searchQuery.trim());
   const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }, section: SelectionSection, keyboard: UseTreeKeyboardResult, ariaAttrs: AriaTreeAttrs[]) => {
     const { isSelected, nodeHidden, visibilityAction, modelVisible, outsideIsolation } = computeNodeState(node, selectionRows[section][virtualRow.index] ?? []);
     const modelId = node.type === 'model-header' && node.id.startsWith('model-')
@@ -469,13 +469,13 @@ export function HierarchyPanel() {
         visibilityAction={visibilityAction}
         isMultiModel={isMultiModel}
         modelsCount={models.size}
-        searchActive={Boolean(searchQuery.trim())}
+        searchActive={searchActive}
         modelVisible={modelVisible}
         actions={rowActions(node)}
         sourceBacked={modelId ? sourceTags.has(modelId) : false}
         sourceSyncing={modelId ? syncingSourceModelIds.has(modelId) : false}
         ariaLevel={attrs.level} ariaSetSize={attrs.setSize} ariaPosInSet={attrs.posInSet}
-        tabIndex={keyboard.getTabIndex(node.id)}
+        tabIndex={keyboard.getTabIndex(node.id)} registerRow={keyboard.registerRow} focusRow={keyboard.onRowFocus}
       />
     );
   };

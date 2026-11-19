@@ -99,9 +99,8 @@ export function createNodeElementsResolver(inputs: NodeElementsInputs): (node: T
   const resolved = new Map<string, number[]>();
   return (node) => {
     if (!resolvesMembership(node)) return resolveNodeElements(node, inputs);
-    const key = `${node.type}\u0000${node.id}`;
-    let elements = resolved.get(key);
-    if (!elements) resolved.set(key, elements = resolveNodeElements(node, inputs));
+    let elements = resolved.get(node.id);
+    if (!elements) resolved.set(node.id, elements = resolveNodeElements(node, inputs));
     return elements;
   };
 }

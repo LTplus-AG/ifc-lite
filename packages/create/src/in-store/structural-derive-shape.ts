@@ -178,14 +178,25 @@ const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown,
 };
 
 /**
- * An L profile's stated `CentreOfGravityInX/Y` (#10377), which carries the fillets the sharp-cornered shape lacks. EXPRESS
- * gives only a non-negative distance, with no origin or direction; AxisVM states the distance from the bounds centre
- * toward the legs (the centroid of its 75 x 75 x 6 angle with 10 mm fillets is 17.085 mm off in IfcOpenShell, the file
- * states 17.07184). So the stated value is used only when its magnitude is within 10% of the computed offset, with the
- * computed sign, and only when that reading is distinguishable from a distance measured from the outer edge (on a thin
- * angle the two are within 20%): a value measured from another origin disagrees by far more and is ignored. T, U and C are not read:
- * no authoring file in the repository states them.
+ * A section's stated IFC2X3 `CentreOfGravityInX/Y` (#10377), which carries the fillets the sharp-cornered shape lacks.
+ * EXPRESS types it as a non-negative distance only; the IFC2x3 TC1 definition of every one of these types measures it
+ * "from the center of the bounding box" (the profile origin since IFC2x Edition 3), and AxisVM's L agrees (IfcOpenShell
+ * puts the centroid of its 75 x 75 x 6 angle with fillets 17.085 mm off; the file states 17.07184). So the stated value
+ * is used only when its magnitude is within 10% of the computed offset, with the computed sign (the TC1 text fixes a
+ * direction for the asymmetric I that a wider top flange reverses), and only when that reading is distinguishable from
+ * a distance measured from the outer edge (within 20% when the centroid lies near the quarter point): a value measured
+ * from another origin disagrees by far more and is ignored. Only AxisVM's L is known to state one; T, U, C and the
+ * asymmetric I rest on the TC1 text. Read at the IFC2X3 arity only: IFC4 deleted the attribute, and reused the
+ * asymmetric I's slot for BottomFlangeEdgeRadius.
  */
+const STATED_CENTRE: Record<string, { arity: number; x?: number; y?: number }> = {
+  IFCLSHAPEPROFILEDEF: { arity: 11, x: 9, y: 10 },
+  IFCTSHAPEPROFILEDEF: { arity: 13, y: 12 },
+  IFCUSHAPEPROFILEDEF: { arity: 11, x: 10 },
+  IFCCSHAPEPROFILEDEF: { arity: 9, x: 8 },
+  IFCASYMMETRICISHAPEPROFILEDEF: { arity: 12, y: 11 },
+};
+
 function statedOffset(stated: unknown, computed: number, halfExtent: number): number {
   const value = num(stated);
   const offset = Math.abs(computed);
@@ -236,7 +247,9 @@ function sectionCentroidOffset(type: string, a: readonly unknown[], x: number, y
   if (!parts || parts.some(([, , w, h]) => !(w > 0) || !(h > 0)) || !(x > 0) || !(y > 0)) return null;
   const area = parts.reduce((sum, [, , w, h]) => sum + w * h, 0);
   const offset: Flat = [parts.reduce((sum, [cx, , w, h]) => sum + cx * w * h, 0) / area, parts.reduce((sum, [, cy, w, h]) => sum + cy * w * h, 0) / area];
-  return type === 'IFCLSHAPEPROFILEDEF' ? [statedOffset(a[9], offset[0], x / 2), statedOffset(a[10], offset[1], y / 2)] : offset;
+  const stated = STATED_CENTRE[type];
+  if (stated?.arity !== a.length) return offset;
+  return [stated.x === undefined ? offset[0] : statedOffset(a[stated.x], offset[0], x / 2), stated.y === undefined ? offset[1] : statedOffset(a[stated.y], offset[1], y / 2)];
 }
 
 /** A closed ring's points from a polyline, composite or indexed poly curve; a reason when the curve is not read. */

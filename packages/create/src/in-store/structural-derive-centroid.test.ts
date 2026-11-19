@@ -80,6 +80,15 @@ ${beam(33, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.,0.02,$,0.1,0.0
 ${beam(34, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,$,$,0.1,0.015,$,$,$,$,$)')}
 ${beam(35, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.035,0.01,0.02,$,0.1,0.015,$,$,$,$,$)')}
 ${beam(36, "IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,$,0.1,'x',$,$,$,$,$)")}
+${beam(37, 'IFCTSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.1,0.006,0.015,0.008,0.004,$,$,$,0.0298391)')}
+${beam(38, 'IFCTSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.08,0.006,0.01,0.008,0.004,$,$,$,0.0250445)')}
+${beam(39, 'IFCUSHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.075,0.0085,0.0115,0.012,0.006,$,0.0159503)')}
+${beam(40, 'IFCUSHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.075,0.0085,0.0115,0.012,0.006,$,0.0215497)')}
+${beam(41, 'IFCCSHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.1,0.003,0.025,0.003,0.0169171)')}
+${beam(42, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,0.015,0.1,0.015,0.01,0.0507456)')}
+${beam(43, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.3,0.008,0.012,0.01,0.16,0.018,0.01,0.0357961)')}
+${beam(44, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,0.015,0.1,0.015,0.01,0.0507456,$,$,$)')}
+${beam(45, 'IFCTSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.1,0.006,0.015,0.008,0.004,$,$,$)')}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -103,6 +112,17 @@ const ORACLE: Record<number, [number, number]> = {
   264: [0, 0], // equal flanges are symmetric
   274: [0, 12.0838], // equal widths, a thicker top flange (120 x 14 below, 120 x 20 above), depth 240
   284: [0, -39.5833], // TopFlangeThickness omitted is the bottom flange's (schema rule WR3): 20 mm on both
+  // Stated IFC2X3 CentreOfGravityInX/Y on T, U, C and asymmetric I (#10377): each states IfcOpenShell 0.8.4's centroid of the
+  // filleted section, measured from the bounds centre as the IFC2x3 TC1 text defines it.
+  374: [0, 29.8391], // T, flange 100 x 15, 8 mm fillet: stated and used (sharp corners give 29.813)
+  384: [0, 24.851], // T, flange 80 x 10: the centroid sits near the quarter point, so a distance from the flange face reads alike; computed kept
+  394: [-15.9503, 0], // U 200 x 75, 12 mm fillet: stated and used (sharp corners give -15.490)
+  404: [-15.490, 0], // the same U stating 21.55, the distance from the web back: 39% off, ignored
+  414: [-16.9171, 0], // lipped C 200 x 100 x 3, girth 25, 3 mm fillet: stated and used (sharp corners give -16.610)
+  424: [0, -50.7456], // asymmetric I of #244 with fillets: stated and used, toward the wider bottom flange
+  434: [0, 35.7961], // asymmetric I with the wider flange on top: the TC1 text says negative y, the computed sign (+y) is kept
+  444: [0, -50.5055], // IFC4 arity: slot 11 is BottomFlangeEdgeRadius, never a centre of gravity
+  454: [0, 29.813], // the T of #374 without a stated value
   204: [-3.553, 0], // the same square with a 20 mm radius circular void 25 mm right of the centre (IfcOpenShell tessellates the circle; the exact disc gives -3.593)
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.

@@ -12,6 +12,8 @@ import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAGS_OFFSET, INSTANCE_FLAG_HIDDEN, INS
 // #10767: a model move or rotation re-uploads the whole instance buffer from the CPU record
 // (`placeSceneInstances`). State the scene wrote to the GPU alone was lost there.
 
+const AUTHORED: [number, number, number, number][] = [[0.4, 0.5, 0.6, 1], [0.2, 0.7, 0.3, 1]];
+
 function fixture(modelIndex = 3) {
   const buffers = new WeakMap<GPUBuffer, ArrayBuffer>();
   const device = {
@@ -31,8 +33,9 @@ function fixture(modelIndex = 3) {
     carriesItemIds: false,
     templates: [{ positions: new Float32Array([-1, 0, -1, 1, 0, -1, 0, 0, 1]),
       normals: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]), indices: new Uint32Array([0, 1, 2]), origin: [0, 0, 0] }],
+    // Distinct authored colours, so a restore that writes the wrong occurrence's original is caught.
     instances: [41, 42].map((entityId, index) => ({ templateIndex: 0, entityId,
-      color: [0.4, 0.5, 0.6, 1], transform: new Float32Array([1, 0, 0, index * 5, 0, 1, 0, 5, 0, 0, 1, 0, 0, 0, 0, 1]) })),
+      color: AUTHORED[index]!, transform: new Float32Array([1, 0, 0, index * 5, 0, 1, 0, 5, 0, 0, 1, 0, 0, 0, 0, 1]) })),
   };
   const scene = new Scene(); scene.addInstancedShard(device, shard, modelIndex);
   const view = () => new DataView(buffers.get(scene.getInstancedTemplates()[0].instanceBuffer)!);
@@ -67,12 +70,12 @@ describe('live instance state survives a model move or rotation (#10767)', () =>
     scene.setInstancedGhosting(new Set([41]), null, 0.2);
     move();
     assert.deepEqual(color(0), [1, 0, 0, 1], 'override kept');
-    assert.deepEqual(color(1), [0.4, 0.5, 0.6, 0.2], 'ghost fade kept');
+    assert.deepEqual(color(1), [0.2, 0.7, 0.3, 0.2], 'ghost fade kept, on its own authored RGB');
     scene.setInstancedColorOverrides(null);
     scene.setInstancedGhosting(null, null, 0.2);
     scene.setModelTranslation(modelIndex, [20, 0, 0]);
-    assert.deepEqual(color(0), [0.4, 0.5, 0.6, 1], 'the original colour after the override clears');
-    assert.deepEqual(color(1), [0.4, 0.5, 0.6, 1]);
+    assert.deepEqual(color(0), [0.4, 0.5, 0.6, 1], 'each occurrence gets its own authored colour back');
+    assert.deepEqual(color(1), [0.2, 0.7, 0.3, 1]);
   });
 
   it('keeps an appearance suppression, and its release', () => {

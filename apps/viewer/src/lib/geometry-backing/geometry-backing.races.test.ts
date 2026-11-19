@@ -223,6 +223,57 @@ it('#10868 concurrent acknowledgements name the same complete generation', async
   } finally { await registry.close(); }
 });
 
+it('#10868 cached chunk and iterator reads recheck the generation after awaiting acquisition', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  try {
+    for (const kind of ['chunks', 'iterator'] as const) {
+      const backing = await registry.begin(kind);
+      await backing.writer.append([fullMesh(1, new Uint32Array(3))]);
+      await backing.acknowledge();
+      const warm = await backing.reader.leaseChunks([0]);
+      warm.release();
+      const pending = kind === 'chunks' ? backing.reader.leaseChunks([0]) : backing.reader.meshes().next();
+      const invalidation = registry.invalidate(kind);
+      await assert.rejects(pending, StaleGeometryGenerationError);
+      await invalidation;
+      assert.equal(backing.reader.retainedBytes, 0, 'the failed read must release its cache pin');
+    }
+  } finally { await registry.close(); }
+});
+
+it('#10868 entity leases check invalidation between chunk readback and entity filtering', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  try {
+    const backing = await registry.begin('m');
+    await backing.writer.append([fullMesh(1, new Uint32Array(3))]);
+    await backing.acknowledge();
+    const original = backing.reader.leaseChunks.bind(backing.reader);
+    let invalidation: Promise<void> | undefined;
+    backing.reader.leaseChunks = async (indices, options) => {
+      const lease = await original(indices, options);
+      invalidation = registry.invalidate('m');
+      return lease;
+    };
+    await assert.rejects(backing.reader.leaseEntity(1), StaleGeometryGenerationError);
+    await invalidation;
+    assert.equal(backing.reader.retainedBytes, 0);
+  } finally { await registry.close(); }
+});
+
+it('#10868 releasing a disposed lease drops its decoded chunk even below the cache budget', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  try {
+    const backing = await registry.begin('m');
+    await backing.writer.append([fullMesh(1, new Uint32Array(3))]);
+    await backing.acknowledge();
+    const lease = await backing.reader.leaseEntity(1);
+    await registry.invalidate('m');
+    assert.ok(backing.reader.retainedBytes > 0, 'an outstanding lease still owns the chunk');
+    lease.release();
+    assert.equal(backing.reader.retainedBytes, 0);
+  } finally { await registry.close(); }
+});
+
 it('#10868 an append issued after close began is refused, never silently acknowledged', async () => {
   const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
   const db = databaseOf(registry);

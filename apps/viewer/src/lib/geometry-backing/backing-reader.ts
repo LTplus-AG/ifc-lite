@@ -176,7 +176,8 @@ export class BackingReader {
 
   private release(entry: Decoded): void {
     entry.leases--;
-    this.trim();
+    if (this.current()) this.trim();
+    else this.clear();
   }
 
   private trim(): void {
@@ -201,6 +202,7 @@ export class BackingReader {
     };
     try {
       for (const index of indices) held.push(await this.acquire(index, options.signal));
+      this.fence(options.signal);
     } catch (error) {
       release();
       throw error;
@@ -211,8 +213,14 @@ export class BackingReader {
   /** Every backed flat mesh of one entity (as owner or colour-merged host). */
   async leaseEntity(expressId: number, options: ReadOptions = {}): Promise<MeshLease> {
     const lease = await this.leaseChunks(this.directory.chunksOf(expressId), options);
-    const meshes = lease.meshes.filter((mesh) => mesh.expressId === expressId || mesh.entityIds?.includes(expressId));
-    return { meshes, release: lease.release };
+    try {
+      this.fence(options.signal);
+      const meshes = lease.meshes.filter((mesh) => mesh.expressId === expressId || mesh.entityIds?.includes(expressId));
+      return { meshes, release: lease.release };
+    } catch (error) {
+      lease.release();
+      throw error;
+    }
   }
 
   /** Stream every backed flat mesh, optionally limited to chunks meeting a box. */
@@ -225,6 +233,7 @@ export class BackingReader {
     for (const index of indices) {
       const entry = await this.acquire(index, options.signal);
       try {
+        this.fence(options.signal);
         yield entry.meshes;
       } finally {
         this.release(entry);

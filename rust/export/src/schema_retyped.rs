@@ -30,7 +30,8 @@ const CURRENCY: &[&str] = &[
 /// `line`, already converted from `cfrom` to `cto`, with every retyped slot in
 /// the target's type, adding to `dropped` each value that has none.
 pub(crate) fn apply(line: String, cfrom: &str, cto: &str, dropped: Option<&mut usize>) -> String {
-    let ifc4_like = |s: &str| matches!(s, "IFC4" | "IFC4X3");
+    // IFC5 holds Currency as IFC4X3 does; the retype reads values, not attribute lists.
+    let ifc4_like = |s: &str| matches!(s, "IFC4" | "IFC4X3" | "IFC5");
     let up = match (cfrom, cto) {
         ("IFC2X3", to) if ifc4_like(to) => true,
         (from, "IFC2X3") if ifc4_like(from) => false,
@@ -47,7 +48,7 @@ pub(crate) fn apply(line: String, cfrom: &str, cto: &str, dropped: Option<&mut u
         format!("'{member}'")
     } else {
         let Some(label) = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) else { return line };
-        match members.iter().find(|m| m.eq_ignore_ascii_case(label)) {
+        match members.iter().find(|m| m.eq_ignore_ascii_case(label.trim())) {
             Some(member) => format!(".{member}."),
             None => {
                 if let Some(dropped) = dropped { *dropped += 1; }

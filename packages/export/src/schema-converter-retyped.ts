@@ -32,7 +32,8 @@ const CURRENCY: readonly string[] = [
 /** One retyped slot: `[type, index, IFC2X3 enumeration members]`. */
 export const RETYPED_SLOTS: readonly (readonly [string, number, readonly string[]])[] = [['IFCMONETARYUNIT', 0, CURRENCY]];
 
-const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
+// IFC5 holds Currency as IFC4X3 does; the retype reads values, not attribute lists.
+const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3' || s === 'IFC5';
 
 /** `line`, already converted from `fromSchema` to `toSchema`, with every
  *  retyped slot in the target's type. `null` passes through. */
@@ -47,7 +48,7 @@ export function retypeInPlace(line: string | null, fromSchema: IfcSchemaVersion,
   const slots = [...record.slots];
   const value = slots[slot[1]].trim();
   if (value.length < 2) return line;
-  const inner = value.slice(1, -1);
+  const inner = value.slice(1, -1).trim();
   if (up) {
     if (!value.startsWith('.') || !value.endsWith('.')) return line;
     slots[slot[1]] = `'${inner}'`;

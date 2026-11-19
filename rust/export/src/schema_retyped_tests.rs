@@ -43,6 +43,9 @@ fn a_currency_member_becomes_a_label_and_back_10778() {
     }
     assert_eq!(convert("#5=IFCMONETARYUNIT('EUR');", "IFC4", "IFC2X3"), ("#5=IFCMONETARYUNIT(.EUR.);".to_owned(), 0));
     assert_eq!(convert("#5=IFCMONETARYUNIT('chf');", "IFC4X3", "IFC2X3"), ("#5=IFCMONETARYUNIT(.CHF.);".to_owned(), 0));
+    assert_eq!(convert("#5=IFCMONETARYUNIT(' gbp ');", "IFC4", "IFC2X3").0, "#5=IFCMONETARYUNIT(.GBP.);");
+    assert_eq!(convert("#5=IFCMONETARYUNIT(.USD.);", "IFC2X3", "IFC5").0, "#5=IFCMONETARYUNIT('USD');");
+    assert_eq!(convert("#5=IFCMONETARYUNIT('USD');", "IFC5", "IFC2X3").0, "#5=IFCMONETARYUNIT(.USD.);");
 }
 
 /// A label IFC2X3 has no member for is dropped and counted, and the required

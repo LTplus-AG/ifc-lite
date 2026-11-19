@@ -70,6 +70,29 @@ console.log(`${hatchLines.length} hatch lines`);
 generator.dispose();
 ```
 
+## Streamed geometry
+
+When the meshes are not one resident array (for example read back from local
+storage in chunks), give `generateFromSource` a `DrawingMeshSource`. The
+generator reads it in at most two passes (`'geometry'`, then `'occlusion'`
+when hidden lines or an open surface need it) and keeps no mesh: each batch
+can be released as soon as the generator asks for the next. Every pass must
+yield the same meshes in the same order. The drawing equals `generate` over
+one pass's meshes; an error thrown by the source, or an aborted
+`options.signal`, rejects it.
+
+```typescript
+const source: DrawingMeshSource = {
+  async *pass() {
+    for (const chunk of chunks) {
+      const lease = await lease(chunk);
+      try { yield lease.meshes; } finally { lease.release(); }
+    }
+  },
+};
+const drawing = await generator.generateFromSource(source, config, { signal });
+```
+
 ## Graphic overrides
 
 Apply named graphic presets (architectural, fire-safety, structural, MEP, monochrome) via the override engine:

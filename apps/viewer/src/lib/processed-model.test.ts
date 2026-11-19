@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyProcessingConfig, getProcessingServerUrl, openProcessedModelFromUrl, pageUrlModelAllowed, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
+import { applyProcessingConfig, getProcessingServerUrl, openProcessedModel, openProcessedModelFromUrl, pageUrlModelAllowed, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
 import { isServerReachable } from '@/hooks/ingest/serverAvailability';
 
 const initial = getProcessingServerUrl();
@@ -99,6 +99,28 @@ describe('applyProcessingConfig', () => {
       setProcessingServerUrl(initial);
     }
   });
+});
+
+it('applies host precedence to a malformed processed link before reporting it (#10469)', () => {
+  const info = console.info;
+  const logged: string[] = [];
+  console.info = (message: string) => { logged.push(message); };
+  resetProcessedModelRequestsForTests();
+  try {
+    assert.equal(openProcessedModelFromUrl('malformed'), 'malformed');
+    assert.equal(takeProcessedModelRequest(), null);
+    assert.equal(processedModelRequested(), false);
+
+    const host = { sha256: 'a'.repeat(64), bytes: 0, name: 'Host.ifc' };
+    openProcessedModel(host);
+    assert.equal(openProcessedModelFromUrl('malformed'), undefined);
+    assert.equal(openProcessedModelFromUrl('malformed'), undefined);
+    assert.deepEqual(takeProcessedModelRequest(), host);
+    assert.equal(logged.length, 1);
+  } finally {
+    console.info = info;
+    resetProcessedModelRequestsForTests();
+  }
 });
 
 describe('processedModelRequested', () => {

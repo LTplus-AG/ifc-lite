@@ -57,7 +57,8 @@ import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { armColdSceneCapture, coldCaptureEligible } from './sceneSnapshotLoad.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
-import { serverUploadsEnabled, type FiledProcessedModelRequest } from '../lib/processed-model.js';
+import type { FiledProcessedModelRequest } from '../lib/processed-model.js';
+import { serverUploadsEnabled } from '../lib/processing-server.js';
 import { CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,

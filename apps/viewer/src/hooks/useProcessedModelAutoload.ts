@@ -26,7 +26,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { markLoadIntent } from '@/lib/load-intent';
 import { normalizeProcessedModelHash, processedModelSize } from '@ifc-lite/server-client';
-import { onProcessedModelRequest, openProcessedModelFromUrl, pageUrlModelAllowed, takeProcessedModelRequest, type ProcessedModelRequest } from '@/lib/processed-model';
+import { onProcessedModelRequest, openProcessedModelFromUrl, takeProcessedModelRequest, type ProcessedModelRequest } from '@/lib/processed-model';
 
 /** The model `?processed=` names, `'malformed'` when the hash is not one, `null` when the parameter is absent. */
 export function processedModelFromQuery(search: string): ProcessedModelRequest | 'malformed' | null {
@@ -52,15 +52,9 @@ export function useProcessedModelAutoload(): void {
     if (webgpu.checking) return;
     const query = queryRef.current;
     queryRef.current = null; // the URL is read once per mount
-    // A host's model wins over the page URL (pageUrlModelAllowed): a malformed link is then not reported either.
-    if (query === 'malformed') {
-      if (pageUrlModelAllowed('processed')) {
-        // The same string on every attempt: no Retry.
-        const { setError, setLastLoadRetry } = useViewerStore.getState();
-        showLoadError(setError, setLastLoadRetry, t('viewportLighting.container.processedModelAutoload.malformedLink'), 'processed_model_malformed', null);
-      }
-    } else if (query) {
-      openProcessedModelFromUrl(query);
+    if (query && openProcessedModelFromUrl(query) === 'malformed') {
+      const { setError, setLastLoadRetry } = useViewerStore.getState();
+      showLoadError(setError, setLastLoadRetry, t('viewportLighting.container.processedModelAutoload.malformedLink'), 'processed_model_malformed', null);
     }
     const loadWaiting = () => {
       const request = takeProcessedModelRequest();

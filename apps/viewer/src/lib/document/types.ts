@@ -307,7 +307,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         break;
       case 'image':
         if (!isDocumentImageDataUrl(block.dataUrl)) errors.push({ path: `${at}.dataUrl`, message: 'expected a PNG or JPEG data URL' });
-        if (typeof block.height !== 'number' || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
+        if (typeof block.height !== 'number' || !Number.isFinite(block.height) || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
         if (block.align !== 'left' && block.align !== 'center' && block.align !== 'right') errors.push({ path: `${at}.align`, message: 'expected left | center | right' });
         if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });
         checkWidth(block, at);

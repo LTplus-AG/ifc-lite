@@ -23,7 +23,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
-import { copyDocumentBlock, freshBlockId, freshListCopyId } from '@/lib/document/persistence';
+import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
 import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
@@ -34,12 +34,11 @@ import { AssistantAction } from '../assistant/AssistantAction';
 import { BlockEditor } from './BlockEditor';
 import { DocumentBlockList } from './DocumentBlockList';
 import { useBlockSelection } from './useBlockSelection';
-import { reorderDocumentBlocks } from '@/lib/document/reorder-blocks';
+import { moveNativeDocumentBlocks, copyNativeDocumentBlock } from '@/lib/document/native-edit';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
 import { AiReportRefresh } from './AiReportRefresh';
-import { detachAiProvenance } from '@/lib/document/ai-report-types';
 import { useDocumentData } from './useDocumentData';
 import { useReportSources } from './useReportSources';
 
@@ -96,6 +95,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const upsert = useCallback((next: DocumentSpec) => upsertDocument(next).then(warnUnsaved), [upsertDocument, warnUnsaved]);
   const remove = useCallback((id: string) => deleteDocument(id).then(warnUnsaved), [deleteDocument, warnUnsaved]);
   const update = upsert;
+  // Editors pass intermediate values (a cleared number field); validation belongs to save and the agent path, not each keystroke.
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
   const moveBlocks = (ids: ReadonlySet<string>, beforeId: string | null): boolean => {
@@ -103,21 +103,20 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     if (!document || live.activeDocumentId !== document.id) return false;
     const current = live.documents.find(entry => entry.id === document.id);
     if (!current) return false;
-    const blocks = reorderDocumentBlocks(current.blocks, ids, beforeId);
-    if (blocks === current.blocks) return false;
-    void update({ ...current, blocks });
+    const next = moveNativeDocumentBlocks(current, ids, beforeId, true);
+    if (next === current) return false;
+    void update(next);
     return true;
   };
 
   const copyBlock = (id: string): void => {
     const live = useViewerStore.getState();
     const current = live.documents.find((entry) => entry.id === live.activeDocumentId);
-    const index = current?.blocks.findIndex((block) => block.id === id) ?? -1;
-    if (!current || index < 0) return;
+    if (!current || !current.blocks.some(block => block.id === id)) return;
     // The duplicate is the reviewer's own text; refresh only regenerates the original (#6918).
-    const copy = detachAiProvenance(copyDocumentBlock(current.blocks[index]));
+    const copy = copyNativeDocumentBlock(current, id, true);
     // Read current content so consecutive copies keep each other's staged durable writes.
-    void update({ ...current, blocks: [...current.blocks.slice(0, index + 1), copy, ...current.blocks.slice(index + 1)] });
+    void update(copy.document);
     selection.selectOnly(copy.id);
   };
 

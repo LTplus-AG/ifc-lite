@@ -448,7 +448,9 @@ ENDSEC;\nEND`);
     const report = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4');
     const entries = report.entries.filter((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING');
     expect(entries).toHaveLength(1);
-    expect(entries[0].recordGroups?.map((g) => [g.targetType, g.expressIds])).toEqual([['IFCSTRUCTURALCURVEACTION', [30]], ['IFCSTRUCTURALLINEARACTIONVARYING', [31]]]);
+    expect(entries[0].recordGroups?.map((g) => [g.targetType, g.expressIds, g.droppedAttributes])).toEqual([
+      ['IFCSTRUCTURALCURVEACTION', [30], ['CausedBy']], ['IFCSTRUCTURALLINEARACTIONVARYING', [31], ['CausedBy']],
+    ]);
     expect(report.describe().filter((d) => d.includes('CausedBy'))).toEqual([
       expect.stringContaining('IFCSTRUCTURALLINEARACTIONVARYING → IFCSTRUCTURALCURVEACTION (#30)'),
       expect.stringContaining('IFCSTRUCTURALLINEARACTIONVARYING → IFCSTRUCTURALLINEARACTIONVARYING (#31)'),
@@ -655,15 +657,13 @@ ${cases[2][3].replace('#20=', '#21=').replace('1gUSy$', '2gUSy$').replace('(0.,0
     expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([21]);
   });
 
-  // The writer converts only a record on one line (convertRecord), so a load case split over lines gets no carrier.
-  it('reports SelfWeightCoefficients lost for a load case the writer passes through', async () => {
+  it('carries SelfWeightCoefficients from a split-line load case', async () => {
     const split = cases[2][3].replace(',.LOAD_CASE.,', ',.LOAD_CASE.,\n  ');
     const text = model('IFC4', `${OWNER}\n${split}`);
     const { step } = await convert(text, 'IFC2X3');
-    // Kept whole, coefficients included, and given no carrier.
-    expect(step).toContain(split);
-    expect(step).not.toContain("'IFC4 IfcStructuralLoadCase'");
-    expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toEqual([20]);
+    expect(line(step, 20)).toContain('=IFCSTRUCTURALLOADGROUP(');
+    expect(step).toContain("'IFC4 IfcStructuralLoadCase'");
+    expect((await lossIds(text, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALLOADCASE.SelfWeightCoefficients']).toBeUndefined();
   });
 
   // The export refuses this file (StructuralVarying.checkSharedConfigurations); the preview reports it without the carriers.
@@ -784,17 +784,18 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     expect(line(up.step, 40)).toBe(line(own, 40));
   });
 
-  it('reports the Axis lost in the preview when the association it would fill is split over lines', async () => {
-    // The writer converts only a record on one line (STEP_RECORD), so it passes this association through unfilled.
+  it('fills the Axis orientation in a split-line association and keeps it in the preview', async () => {
     const split = PLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
 #41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,
   (#20),#40,$,$);
 #20=`);
-    expect((await convert(split, 'IFC2X3')).step).toContain('(#20),#40,$,$);');
-    expect((await lossIds(split, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALCURVEMEMBER.Axis']).toEqual([20]);
+    const { step } = await convert(split, 'IFC2X3');
+    const [, orientation] = /^#41=IFCRELASSOCIATESPROFILEPROPERTIES\([^;]*\(#20\),#40,\$,#(\d+)\);$/m.exec(step) ?? [];
+    expect(line(step, Number(orientation))).toMatch(/=IFCDIRECTION\(\(0\.,1\.,0\.\)\);$/);
+    expect((await lossIds(split, 'IFC4', 'IFC2X3'))['IFCSTRUCTURALCURVEMEMBER.Axis']).toBeUndefined();
   });
 
-  it('keeps the Axis in the preview when a split association already holds it, which the writer leaves as it is', async () => {
+  it('keeps the Axis in the preview when a split association already holds it', async () => {
     const split = UNPLACED.replace('#20=', `#40=IFCGENERALPROFILEPROPERTIES('HEA 200',$,$,$,$,$,$);
 #41=IFCRELASSOCIATESPROFILEPROPERTIES('2XciGbSFPUkgAKmWK4M6tc',#5,$,$,
   (#20),#40,$,#30);

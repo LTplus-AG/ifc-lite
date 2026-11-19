@@ -82,23 +82,26 @@ describe('TypeHiddenIndex', () => {
     assert.ok(index.update(meshes, s).ids.has(1_000_001), 'a wall retyped to a space hides with the spaces');
   });
 
-  it('grows with streamed batches, in place, without re-reading earlier meshes', () => {
+  it('grows with streamed batches as a new set each time, leaving the previous one as it was', () => {
     const index = new TypeHiddenIndex();
     const stream: MeshData[] = [];
     const s = settings({ typeVisibility: { ...allOn, spaces: false, openings: false } });
     let previous = index.update(stream, s);
-    const ids = previous.ids;
     for (let i = 0; i < meshes.length; i += 4) {
+      const before = sorted(previous.ids);
       stream.push(...meshes.slice(i, i + 4));
       const next = index.update(stream, s);
-      assert.equal(next.ids, ids, 'the same set grows as batches land');
       assert.deepEqual(sorted(next.ids), referenceHidden(stream, s));
-      assert.ok(next.version >= previous.version);
+      if (next.ids.size > before.length) {
+        assert.notEqual(next.ids, previous.ids, 'a batch that hides more is a new set (identity-keyed memos see it)');
+        assert.ok(next.version > previous.version);
+      }
+      assert.deepEqual(sorted(previous.ids), before, 'the set a consumer holds is never written');
       previous = next;
     }
     assert.equal(index.update(stream, s), previous, 'an unchanged list and settings return the same object');
     const toggled = index.update(stream, settings());
-    assert.notEqual(toggled.ids, ids, 'a toggle builds a new set');
+    assert.notEqual(toggled.ids, previous.ids, 'a toggle builds a new set');
     assert.deepEqual(sorted(toggled.ids), referenceHidden(stream, settings()), 'only the type library stays hidden in Model view');
   });
 

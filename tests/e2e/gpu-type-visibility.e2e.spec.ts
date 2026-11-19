@@ -184,18 +184,32 @@ async function picksNeverHidden(page: Page, info: TestInfo, name: string, hidden
   return mesh.filter((r) => r.gpu).length;
 }
 
-/** The frame of the visible pieces alone: drop the type-hidden pieces and rebuild, the old upload's scene. */
-async function visiblePiecesOnly(page: Page, info: TestInfo, name: string, hidden: number[]): Promise<string> {
-  await page.evaluate(async (ids) => {
+/**
+ * The frame of the visible pieces alone, without the GPU hide table: drop
+ * every flat piece the viewport hides (the scene the old filtered upload
+ * built), rebuild, then show the classes again so type visibility hides
+ * nothing that is left. A wrongly hidden batchmate would then be drawn here
+ * and missing from the frame under test.
+ */
+async function visiblePiecesOnly(page: Page, info: TestInfo, name: string): Promise<string> {
+  await page.evaluate(async () => {
     const module = '/src/hooks/useBCF.ts';
     const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
     const renderer = getGlobalRenderer()!;
     const scene = renderer.getScene();
-    scene.removeMeshesForEntities(ids.filter((id) => !scene.isInstancedEntity(id)));
+    const hidden = new Set((globalThis as ProbeWindow).__ifc_lite_render_visibility__!().hiddenIds);
+    scene.removeMeshesForEntities([...new Set(scene.getAllMeshDataExpressIds())].filter((id) => hidden.has(id) && !scene.isInstancedEntity(id)));
     scene.rebuildPendingBatches(renderer.device.getDevice(), renderer.pipeline);
     renderer.requestRender();
-  }, hidden);
-  await settle(page);
+  });
+  await store(page, [['toggleTypeVisibility', 'spaces'], ['toggleTypeVisibility', 'openings']]);
+  const stillHidden = await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    const hidden = new Set((globalThis as ProbeWindow).__ifc_lite_render_visibility__!().hiddenIds);
+    return getGlobalRenderer()!.getScene().getAllMeshDataExpressIds().filter((id) => hidden.has(id));
+  });
+  expect(stillHidden, `${name}: no piece left in the reference is hidden by the GPU table`).toEqual([]);
   return stillFrame(page, info, name);
 }
 
@@ -246,7 +260,7 @@ test('C20-Institute: spaces and openings toggle on the GPU over one upload, with
   const hidden = await flatOfClasses(page, SPACES_AND_OPENINGS);
   expect(hidden.length, 'the initially hidden spaces and openings are in the scene').toBeGreaterThan(0);
   const { off, row } = await roundTrip(page, info, 'institute', hidden);
-  const reference = await visiblePiecesOnly(page, info, 'institute-4-visible-pieces-only', hidden);
+  const reference = await visiblePiecesOnly(page, info, 'institute-4-visible-pieces-only');
   const oracle = await diff(page, off, reference);
   await info.attach('institute-hidden-vs-pieces-diff.png', { body: Buffer.from(oracle.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
   const pixels = oracle.width * oracle.height;
@@ -267,7 +281,7 @@ test('federation (two models): spaces and openings of both toggle over one uploa
   expect(second.length, 'the second model contributes hidden spaces or openings').toBeGreaterThan(0);
   expect(hidden.length - second.length, 'the first model contributes hidden spaces or openings').toBeGreaterThan(0);
   const { off, row } = await roundTrip(page, info, 'federation', hidden);
-  const reference = await visiblePiecesOnly(page, info, 'federation-4-visible-pieces-only', hidden);
+  const reference = await visiblePiecesOnly(page, info, 'federation-4-visible-pieces-only');
   const oracle = await diff(page, off, reference);
   const pixels = oracle.width * oracle.height;
   await info.attach('federation.json', { body: JSON.stringify({ ...row, offsets, secondModelHidden: second.length, pixels,

@@ -39,8 +39,9 @@ export interface TypeHiddenSettings {
 
 /**
  * The ids type visibility hides, global ids as every mesh list carries them.
- * `ids` may grow in place while meshes stream in; `version` moves whenever its
- * content does. Consumers read it and never write it.
+ * A change of content is a new `ids` Set and a new `version`, so consumers
+ * memoised on the Set's identity see a streamed batch's hidden ids too.
+ * Consumers read it and never write it.
  */
 export interface TypeHiddenIds {
   readonly ids: Set<number>;
@@ -105,18 +106,21 @@ export class TypeHiddenIndex {
       rebuild = true;
     }
     this.settings = settings;
-    const from = this.scanned;
-    let grew = false;
-    for (let i = from; i < list.length; i++) {
+    const added: number[] = [];
+    for (let i = this.scanned; i < list.length; i++) {
       const mesh = list[i]!;
       const bucket = this.bucketFor(mesh);
       meshIds(mesh, (id) => {
         this.push(bucket, id);
-        if (!rebuild && !this.entityVisible(bucket, id, settings) && !this.hidden.has(id)) {
-          this.hidden.add(id);
-          grew = true;
-        }
+        if (!rebuild && !this.entityVisible(bucket, id, settings) && !this.hidden.has(id)) added.push(id);
       });
+    }
+    let grew = false;
+    if (added.length > 0) {
+      // Copy on write: the previous Set stays as it was for whoever holds it.
+      this.hidden = new Set(this.hidden);
+      for (const id of added) this.hidden.add(id);
+      grew = true;
     }
     this.scanned = list.length;
     if (rebuild) {

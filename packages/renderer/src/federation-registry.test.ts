@@ -510,6 +510,28 @@ it('keeps retained allocator headroom through progressive publication and hydrat
   assert.deepEqual(reg.fromGlobalId(neighborOffset + 1), { modelId: 'neighbor', expressId: 1 });
 });
 
+for (const progressive of [false, true]) it(
+  `leaves room for a neighbor when retained headroom crosses the ID ceiling (progressive=${progressive}) (#10469)`,
+  () => {
+    const reg = new FederationRegistry();
+    reg.registerModel('earlier', 10);
+    const nextRetained = 1_998_500_000;
+    if (progressive) {
+      reg.reserveModel('reloaded', 10, 0, nextRetained);
+      reg.publishRange('reloaded', 1, 10);
+      reg.extendModel('reloaded', 20);
+    } else {
+      reg.registerModel('reloaded', 10, 0, nextRetained);
+    }
+
+    const neighborOffset = reg.registerModel('neighbor', 1);
+    assert.equal(reg.canPublishOverlayFrom('reloaded', nextRetained), true);
+    reg.publishOverlayRange('reloaded', nextRetained, nextRetained);
+    assert.deepEqual(reg.fromGlobalId(reg.toGlobalId('reloaded', nextRetained)), { modelId: 'reloaded', expressId: nextRetained });
+    assert.deepEqual(reg.fromGlobalId(neighborOffset + 1), { modelId: 'neighbor', expressId: 1 });
+  },
+);
+
 it('no-op ownership refresh emits no notification (#10139)', () => {
   const reg = new FederationRegistry();
   reg.registerModel('x', 300);

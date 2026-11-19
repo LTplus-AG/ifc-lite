@@ -39,8 +39,12 @@ export function reserveRetainedRange(offset: number, sourceMax: number, firstRet
   const safeLocalEnd = MAX_SAFE_OFFSET - offset;
   // A source edit can carry the old source watermark. Preserve its allocator without
   // increasing the normal limit for retained creations, which have their own claims.
-  const retainedEnd = firstRetained === 0 && nextRetained <= safeLocalEnd ? nextRetained - 1 : 0;
-  const overlayMaxExpressId = Math.max(sourceMax, retainedEnd) + OVERLAY_ID_HEADROOM;
+  const retainedFloor = firstRetained === 0 && nextRetained <= safeLocalEnd ? nextRetained : 0;
+  const paddedRetainedEnd = retainedFloor + OVERLAY_ID_HEADROOM - 1;
+  // If the full optional padding cannot fit, leave the remaining IDs available
+  // to other models and reserve only through the retained allocator's next ID.
+  const retainedEnd = paddedRetainedEnd <= safeLocalEnd ? paddedRetainedEnd : retainedFloor;
+  const overlayMaxExpressId = Math.max(sourceMax + OVERLAY_ID_HEADROOM, retainedEnd);
   const firstOverlay = firstRetained || (nextRetained > sourceMax ? nextRetained : 0);
   const ownedEnd = retainedCreationEnd(sourceMax, sourceMax, Math.min(overlayMaxExpressId, safeLocalEnd), firstOverlay);
   return { ownedEnd, overlayMaxExpressId };

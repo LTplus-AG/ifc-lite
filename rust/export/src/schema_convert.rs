@@ -28,7 +28,7 @@ fn map_2x3_to_4(t: &str) -> Option<&'static str> {
         "IFCGASTERMINALTYPE" => "IFCBURNERTYPE",
         "IFCEQUIPMENTELEMENT" => "IFCBUILDINGELEMENTPROXY",
         "IFCRELCONNECTSSTRUCTURALELEMENT" => "IFCRELASSIGNSTOPRODUCT",
-        _ => return None,
+        _ => return crate::schema_attr_maps::upgrade_type(t),
     })
 }
 

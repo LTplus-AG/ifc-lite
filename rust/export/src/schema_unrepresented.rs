@@ -29,7 +29,7 @@ use crate::schema_convert::{placeholder_guid, schema_attribute_names};
 /// direction, IFC4X3-only resources that readers drop. IFC2X3 and IFC4 sources
 /// keep main's behaviour for IFC4/IFC4X3 targets (D59): their IFC2X3-only or
 /// IFC4-only non-rooted records (`IfcCalendarDate` on an `IfcClassification`,
-/// `IfcGeneralMaterialProperties`) are written as they are, because refusing
+/// an IFC4-only resource) are written as they are, because refusing
 /// them failed real files that export on main. IFC5 has no registry and
 /// accepts everything. A name neither schema knows passes through.
 ///

@@ -259,7 +259,8 @@ const refsIn = (slot: string): string[] => slot.replace(/\/\*[\s\S]*?\*\//g, '')
  * the parent means every child must be retained too, not just remapped in
  * isolation. Mutates `sharedRemap`/`skipEntityIds`, and records a unified
  * model's georeference on `firstModelContext.contextGeoref` when it had none.
- * Returns the model's top-level contexts it kept, for {@link listKeptContexts}.
+ * Returns the top-level contexts it kept that one of the model's IfcProjects
+ * listed (directly or through a subcontext), for {@link listKeptContexts}.
  *
  * `lengthUnitScale` is the scale THIS model's raw WCS coordinates resolve
  * under. Under assume-shared the caller asserts raw coordinates are already
@@ -327,8 +328,10 @@ export function planInfrastructureUnify(
   // only by a library, or by nothing, it stays as it was.
   // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current projects
   const projects = dataStore.entityIndex.byType.get('IFCPROJECT') ?? [];
-  const projectListed = new Set(projects.flatMap(id => refsIn(getStepAttr(dataStore, id, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '')
-    .map(ref => Number(ref.slice(1)))));
+  const listed = projects.flatMap(id => refsIn(getStepAttr(dataStore, id, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '')
+    .map(ref => Number(ref.slice(1))));
+  // A project that lists a subcontext lists its root too (a root context has no ParentContext slot, so reads null).
+  const projectListed = new Set([...listed, ...listed.map(id => refId(getStepAttr(dataStore, id, SUBCONTEXT_PARENT_CONTEXT_ATTR)))]);
   return modelContextIds.filter(id => !sharedRemap.has(id) && projectListed.has(id));
 }
 

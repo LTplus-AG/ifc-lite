@@ -81,8 +81,8 @@ describe('merged STEP export and map conversions (#10798)', () => {
   });
 
   // One rule for a kept context: it follows its own project. Model b's context is kept (its frame is moved).
-  const slots = (content: string, type: string) => [...content.matchAll(new RegExp(`^#\\d+=${type}\\(.*,(\\(#[\\d,#]*\\)|\\$),#\\d+\\);$`, 'gm'))]
-    .map(match => match[1] === '$' ? [] : match[1].slice(1, -1).split(','));
+  const slots = (content: string, type: string) => [...content.matchAll(new RegExp(`^#\\d+=${type}\\(.*,\\s*(\\([#\\d,\\s]*\\)|\\$)\\s*,\\s*(#\\d+|\\$)\\s*\\);$`, 'gm'))]
+    .map(match => match[1] === '$' ? [] : match[1].slice(1, -1).split(',').map(ref => ref.trim()));
   for (const [owner, project, library] of [['project only', true, false], ['library only', false, true], ['both', true, true], ['neither', false, false]] as const) {
     for (const folded of [true, false]) {
       it(`a kept context listed by ${owner}, ${folded ? 'its project folded' : 'its project retained'}`, async () => {
@@ -94,6 +94,7 @@ describe('merged STEP export and map conversions (#10798)', () => {
         const inputs = [await input('a', null, 'IFC4'), { id: 'b', name: 'b', dataStore: await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer) }];
         const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema: 'IFC4' })).content);
         const [ownContext, keptContext] = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
+        expect(keptContext, 'b keeps its moved context').toBeDefined();
         const projects = slots(content, 'IFCPROJECT'), libraries = slots(content, 'IFCPROJECTLIBRARY');
         // Folded: b's project is the primary's. Retained (federated): b keeps its own, listed as in the source.
         expect(projects).toEqual(folded
@@ -103,6 +104,18 @@ describe('merged STEP export and map conversions (#10798)', () => {
       });
     }
   }
+
+  it('counts a project that lists a subcontext as listing its root', async () => {
+    const moved = model('b', '0ProjectB000000000000b', null, 'IFC4').replace('#10=IFCCARTESIANPOINT((0.,0.,0.))', '#10=IFCCARTESIANPOINT((10.,0.,0.))')
+      .replace(',$,$,$,$,(#14),#9);', ',$,$,$,$,(#20),#9);')
+      .replace('ENDSEC;\nEND-ISO', "#20=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#14,$,.MODEL_VIEW.,$);\nENDSEC;\nEND-ISO");
+    const bytes = new TextEncoder().encode(moved);
+    const inputs = [await input('a', null, 'IFC4'), { id: 'b', name: 'b', dataStore: await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer) }];
+    const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema: 'IFC4' })).content);
+    const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
+    expect(contexts).toHaveLength(2);
+    expect(projectContexts(content)).toContain(contexts[1]);
+  });
 
   it('lists a context kept for a different frame in the merged project too', async () => {
     const moved = model('b', '0ProjectB000000000000b', null, 'IFC4').replace('#10=IFCCARTESIANPOINT((0.,0.,0.))', '#10=IFCCARTESIANPOINT((10.,0.,0.))');

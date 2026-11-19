@@ -15,7 +15,8 @@ export interface FramedCamera {
 const LEVEL_DISPLAY_SETTLE_FRAME_LIMIT = 120;
 
 /** Frame only after an Exploded -> Stacked translation has reached the renderer.
- * On abort the pending frame is cancelled and `resolve(null)` runs, so a cancelled caller never moves the camera. */
+ * On abort a pending animation frame is cancelled and `resolve(null)` runs, so a caller cancelled before framing
+ * starts never moves the camera; a `frameSelection` already called is not undone. */
 export function scheduleClashFrame(
   waitForLevelDisplayReset: boolean,
   waitForPresentationReset: boolean,

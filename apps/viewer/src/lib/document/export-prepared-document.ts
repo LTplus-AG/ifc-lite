@@ -12,7 +12,7 @@ export async function exportPreparedDocument(input: DocumentPdfInput,
 ): Promise<DocumentPdfResult> {
   options.signal?.throwIfAborted();
   const captureNeeded = input.document.blocks.some((block) => block.kind === 'chart' && block.snapshot && !isRecordedChart(block.chart));
-  const snapshot = options.seams || !captureNeeded ? null : createSnapshotCapture();
+  const snapshot = options.seams || !captureNeeded ? null : createSnapshotCapture(options.signal);
   try {
     const seams = options.seams ?? { ...await browserReportSeams(snapshot?.capture ?? null), imageSize: browserImageSize };
     options.signal?.throwIfAborted();

@@ -14,7 +14,12 @@ import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { clearGlobalRefs, setGlobalCanvasRef, setGlobalRendererRef } from '@/hooks/useBCF';
 import { captureNativeBcfViewpoint } from '@/hooks/bcf/capture-viewpoint';
 import { captureViewportFrame, registerViewportCapture } from '@/lib/viewport-capture';
-import { createSnapshotCapture } from '@/lib/export/report/snapshots';
+import { exportPreparedChartReport } from '@/lib/export/report/export-prepared-chart-report';
+import { exportPreparedDocument } from '@/lib/document/export-prepared-document';
+import { DOCUMENT_VERSION } from '@/lib/document/types';
+import * as jspdf from 'jspdf';
+import { installSvgCdataEnvironmentConversion } from '@/test/svg-cdata';
+import { aggregate } from '@ifc-lite/charts';
 import { cityJsonEngine } from '@/lib/export/native-cityjson';
 import { runIdsBcfExport } from '@/hooks/ids/idsBcfExport';
 import { wallFixture } from '@/test/ids-studio-fixture';
@@ -94,15 +99,31 @@ describe('viewer operations: no effects after cancel and no stale captures (#107
     assert.equal(viewport.state.renders, 1, 'the cancelled capture rendered no frame');
   });
 
-  it('#71: a report snapshot capture after cancel renders nothing', async () => {
-    const controller = new AbortController();
-    const snapshot = createSnapshotCapture(controller.signal);
-    assert.ok(snapshot);
-    assert.ok(await snapshot.capture([1]));
-    controller.abort();
-    assert.equal(await snapshot.capture([1]), undefined);
-    assert.equal(viewport.state.renders, 1);
-  });
+  for (const kind of ['chart report', 'document'] as const)
+    it(`#71: a cancelled ${kind} export takes no further snapshot frames`, async () => {
+      const dataset = { source: 'elements' as const, columns: [{ id: 'T', label: 'Type', kind: 'category' as const }],
+        rows: [{ ids: [1], values: ['Wall'] }], fingerprint: 't' };
+      const specs = ['a', 'b', 'c'].map(id => ({ id, title: `Chart ${id}`, source: 'elements' as const, type: 'bar' as const, dimension: 'T', measure: { agg: 'count' as const } }));
+      const aggregations = new Map(specs.map(spec => [spec.id, aggregate(spec, dataset)]));
+      const controller = new AbortController();
+      viewport.state.submit = false; // a frame without pixels: the export draws its placeholder
+      viewport.state.onRender = () => controller.abort();
+      const previous = Reflect.get(window, 'jspdf');
+      Reflect.set(window, 'jspdf', jspdf);
+      const restoreSvg = installSvgCdataEnvironmentConversion();
+      try {
+        const page = { size: 'A4' as const, orientation: 'portrait' as const };
+        const exported = kind === 'chart report'
+          ? exportPreparedChartReport({ name: 'Report', page, titleBlock: {}, snapshots: true,
+            charts: specs.map(spec => ({ id: spec.id, title: spec.title, snapshot: true, aggregation: aggregations.get(spec.id)! })), snapshotIds: () => [1] }, { signal: controller.signal })
+          : exportPreparedDocument({ document: { version: DOCUMENT_VERSION, id: 'd', name: 'Document', page,
+            blocks: specs.map(spec => ({ kind: 'chart' as const, id: spec.id, chart: spec, snapshot: true })) },
+          bindings: { models: [], activeModelId: null, today: new Date(0) }, aggregations, chartMessages: new Map(), topics: new Map(), tables: new Map(), snapshotIds: () => [1] },
+          { signal: controller.signal });
+        await assert.rejects(exported, { name: 'AbortError' });
+      } finally { restoreSvg(); Reflect.set(window, 'jspdf', previous); }
+      assert.equal(viewport.state.renders, 1, 'charts after the cancel took no frame');
+    });
 
   it('#6: a cancelled group topic never frames the camera when its animation frame resumes', async () => {
     await seedCoincidentWalls(1);

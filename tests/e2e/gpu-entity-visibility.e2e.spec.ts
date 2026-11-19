@@ -462,13 +462,14 @@ test('deleted instanced occurrences stay off the frame and the picks with nothin
   await info.attach('delete.json', { body: JSON.stringify(row, null, 2), contentType: 'application/json' });
   // Only instanced-occurrence pixels count toward "on screen" (#10853): hiding them must change
   // their own pixels, and so must deleting them.
+  expect(shown.mask, 'the occurrence mask is non-empty').toBeGreaterThan(100);
   // The "nothing" frame must really draw nothing: then the mask is the occurrences' own footprint
-  // (plus their lighting), a small part of the frame.
-  expect(shown.mask, 'the occurrence mask is non-empty and not the whole model').toBeGreaterThan(100);
-  expect(shown.mask, 'the occurrence mask is non-empty and not the whole model').toBeLessThan(pixels * 0.25);
+  // (plus their lighting), a small part of the frame (4.8 % on Institute).
+  expect(shown.mask, 'the occurrence mask is not the whole model (the empty isolation drew nothing)').toBeLessThan(pixels * 0.1);
   expect(shown.strong, 'the occurrences are on screen (hiding them strongly changes their pixels)').toBeGreaterThan(50);
   expect(ac.strong, 'deleting them strongly changes their pixels (not a vacuous comparison)').toBeGreaterThan(50);
   expect(abInside.differing, 'a deleted occurrence draws nothing a hidden one does not').toBeLessThanOrEqual(Math.floor(shown.differing * 0.05));
+  // Same whole-frame bound as the S2 scenarios (compareScenario): geometry appearing moves pixels > 48/255.
   expect(ab.strong, 'and nothing else in the frame moves').toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
   await picksNeverHidden(page, info, 'deleted', ids);
   // A later visibility change must not bring them back: hide surviving instanced entities (a frame

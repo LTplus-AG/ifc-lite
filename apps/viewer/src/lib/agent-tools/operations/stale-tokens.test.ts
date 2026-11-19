@@ -221,6 +221,7 @@ describe('saved clash report deletion (#10792)', () => {
     const s = useViewerStore.getState();
     s.clearClashExclusions(); s.setClashMode('hard'); s.setClashTolerance(0.002); s.setClashReportTouch(false);
     newHost();
+    answer(await invoke('document.initialize', {}, true));
   });
   async function savedReport(): Promise<string> {
     const input = { kind: 'all', preset_id: '', expected_model_ids: [...useViewerStore.getState().models.keys()], expected_settings: JSON.stringify(clashSettings()) };
@@ -231,7 +232,6 @@ describe('saved clash report deletion (#10792)', () => {
 
   it('#2: deletion prepare refuses while documents are unopened or dashboards cannot be read', async () => {
     const id = await savedReport();
-    answer(await invoke('document.initialize', {}, true));
     const opened = useViewerStore.getState().documentsStorage;
     useViewerStore.setState({ documentsStorage: { ...opened, phase: 'loading' } }); // as before the library is opened
     const unopened = await invoke('clash.reports.delete.prepare', { id });
@@ -247,7 +247,6 @@ describe('saved clash report deletion (#10792)', () => {
 
   it('#1: a storage retry after the deleting call lost its grant restores the report', async () => {
     const id = await savedReport();
-    answer(await invoke('document.initialize', {}, true));
     const { token } = answer<{ token: string }>(await invoke('clash.reports.delete.prepare', { id }));
     let grant = true;
     const refused = refuseContentWrites();

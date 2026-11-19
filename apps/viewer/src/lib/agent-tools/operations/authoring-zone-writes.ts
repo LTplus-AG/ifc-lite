@@ -8,17 +8,13 @@ import { operation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
-import type { ZoneAssignmentsByElement } from '@/lib/zones/types';
+import { zoneAssignmentSignature } from '@/lib/zones/assignment';
 import { evictOldest } from './host-handles';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, effect: 'read' | 'model' | 'artifact' = 'read') => ({ id, owner: 'zones', description, effects: [effect],
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema,
   policy: effect === 'model' ? { model: 'native-reviewed' as const } : effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
-/** The set's assignments by content: the assignment sync rebuilds an identical Map after every geometry tick, a recolour included. */
-export function zoneAssignmentSignature(assignments: ZoneAssignmentsByElement, setId: string): string {
-  return JSON.stringify([...assignments].flatMap(([id, sets]) => sets[setId] ? [[id, sets[setId]]] : []));
-}
 interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ReturnType<typeof useViewerStore.getState>['models']; revision: number; geometry: unknown; configuration: string;
   /** The assignments the preview table showed; a refresh after prepare would write other elements. */
   assignments: string; result?: unknown }

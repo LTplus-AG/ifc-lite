@@ -7,7 +7,7 @@ import { viewerOperation as operation, emptySchema, pointSchema, type ViewerOper
 import { assertToolActive } from '../cancellation';
 import type { ZoneSet } from '@/lib/zones/types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
-import { zoneAssignmentSignature } from './authoring-zone-writes';
+import { zoneAssignmentSignature } from '@/lib/zones/assignment';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const artifactOutput = { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer' } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };

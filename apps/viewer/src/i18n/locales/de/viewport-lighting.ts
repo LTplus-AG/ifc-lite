@@ -59,7 +59,7 @@ export const viewportLightingDe = {
   "viewportLighting.container.processedModel.notPrimary": "Ein verarbeitetes Modell kann nur als erstes Modell geöffnet werden.",
   "viewportLighting.container.processedModel.noServer": "Für diesen Viewer ist kein Verarbeitungsserver eingerichtet, daher können verarbeitete Modelle nicht geöffnet werden.",
   "viewportLighting.container.processedModel.unreachable": "Der eingerichtete Verarbeitungsserver ist von dieser Seite aus nicht erreichbar.",
-  "viewportLighting.container.processedModel.unsupported": "Dieser Browser kann verarbeitete Modelle nicht öffnen: Ihm fehlt die nötige Parquet-Unterstützung.",
+  "viewportLighting.container.processedModel.unsupported": "Der Parquet-Decoder für dieses verarbeitete Modell konnte nicht initialisiert werden.",
   "viewportLighting.container.processedModel.notStored": "Dieses Modell ist auf dem Server (noch) nicht verfügbar.",
   "viewportLighting.container.processedModel.forbidden": "Sie haben keinen Zugriff auf dieses Modell.",
   "viewportLighting.container.processedModel.busy": "Der Verarbeitungsserver ist ausgelastet. Versuchen Sie es gleich noch einmal.",

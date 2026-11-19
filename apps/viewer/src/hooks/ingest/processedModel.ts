@@ -25,7 +25,7 @@ export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedMo
 
 /** A cause found in the viewer, before or instead of a server answer. */
 export class ProcessedModelUnavailable extends Error {
-  constructor(readonly reason: 'not-primary' | 'no-server' | 'unreachable' | 'unsupported') {
+  constructor(readonly reason: 'not-primary' | 'no-server' | 'unreachable' | 'parquet-init') {
     super(`Processed model unavailable: ${reason}`);
     this.name = 'ProcessedModelUnavailable';
   }
@@ -35,7 +35,7 @@ export interface ProcessedModelFailure {
   message: string;
   /** Load-error code for analytics; a fixed vocabulary, never user data. */
   code: string;
-  /** Only a transient cause (network, timeout, server error, server busy) offers Retry. */
+  /** Retry is available when the underlying operation may succeed on another attempt. */
   retryable: boolean;
 }
 
@@ -46,7 +46,7 @@ const VIEWER_CAUSES: Record<ProcessedModelUnavailable['reason'], () => Processed
   'not-primary': () => failure('viewportLighting.container.processedModel.notPrimary', 'not_primary', false),
   'no-server': () => failure('viewportLighting.container.processedModel.noServer', 'no_server', false),
   unreachable: () => failure('viewportLighting.container.processedModel.unreachable', 'server_unreachable', false),
-  unsupported: () => failure('viewportLighting.container.processedModel.unsupported', 'unsupported', false),
+  'parquet-init': () => failure('viewportLighting.container.processedModel.unsupported', 'unsupported', true),
 };
 
 /** `error` is what the load threw; `null` when it ended without saying why. */

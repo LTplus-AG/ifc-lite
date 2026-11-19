@@ -57,6 +57,13 @@ function rulesFor(from: string, to: string, type: string): Rules {
   return rules;
 }
 
+/** Whether a STEP real is a whole number, read from its digits: float rounding would make
+ *  `2.0000000000000001` whole. Every digit after the point, once the exponent moves it, is 0. */
+function wholeDecimal(token: string): boolean {
+  const m = /^[+-]?(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(token);
+  return !!m && /^0*$/.test(`${m[1]}${m[2] ?? ''}`.slice(Math.max(m[1].length + Number(m[3] ?? 0), 0)));
+}
+
 /** `value` in the target's form (null to drop it), and how many values that lost. */
 function fix(value: string, prefix: string, rule: Rule): { value: string | null; lost: number } {
   const start = skipStepTrivia(value, 0);
@@ -83,7 +90,7 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   const fixed = to === null ? null
     : to.startsWith('T:') ? `${to.slice(2)}(${body})`
     : to === 'U' ? (close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim())
-    : Number.isSafeInteger(n) ? String(n) : null; // an integer form, `I` or `AI`
+    : wholeDecimal(body) && Number.isSafeInteger(n) ? String(n) : null; // an integer form, `I` or `AI`
   return { value: fixed, lost: fixed === null ? 1 : 0 };
 }
 

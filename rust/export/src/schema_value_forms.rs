@@ -43,6 +43,19 @@ fn rule<'a>(rows: &'a [&'a str], form: &str) -> Option<Option<&'a str>> {
     })
 }
 
+/// Whether a STEP real is a whole number, read from its digits: float rounding
+/// would make `2.0000000000000001` whole. Every digit after the point, once the
+/// exponent moves it, is 0. Twin of `wholeDecimal`.
+fn whole_decimal(token: &str) -> bool {
+    let unsigned = token.strip_prefix(['+', '-']).unwrap_or(token);
+    let (mantissa, exponent) = unsigned.split_once(['e', 'E']).map_or((unsigned, Some(0)), |(m, e)| (m, e.parse::<i64>().ok()));
+    let (int, frac) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let Some(exponent) = exponent else { return false };
+    if int.is_empty() || !int.bytes().chain(frac.bytes()).all(|b| b.is_ascii_digit()) { return false; }
+    let point = (int.len() as i64).saturating_add(exponent).max(0) as usize;
+    int.bytes().chain(frac.bytes()).skip(point).all(|b| b == b'0')
+}
+
 /// `value` in the target's form (`None` to drop it), and how many values that lost.
 fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     let Some(start) = skip_step_trivia(value.as_bytes(), 0) else { return (Some(value.to_owned()), 0) };
@@ -64,7 +77,7 @@ fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
         None => None,
         Some(to) if to.starts_with("T:") => Some(format!("{}({body})", &to[2..])),
         Some("U") => body.find('(').zip(body.rfind(')')).map(|(open, close)| body[open + 1..close].trim().to_owned()),
-        Some(_) => body.parse::<f64>().ok().filter(|n| n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64)),
+        Some(_) => body.parse::<f64>().ok().filter(|n| whole_decimal(&body) && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64)),
     };
     let lost = usize::from(fixed.is_none());
     (fixed, lost)

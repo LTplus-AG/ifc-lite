@@ -27,6 +27,8 @@ import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
 import { BlockScaleEditor, ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
+import { QualityGateBlockEditor } from './QualityGateBlockEditor';
+import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { ManualReportBlockEditor, ManualReportPresentation } from './ManualReportBlockEditor';
 import { TextColorEditor } from './TextColorEditor';
 import { FieldPicker } from './FieldPicker';
@@ -43,6 +45,7 @@ export interface BlockEditorProps {
   charts: Array<{ dashboard: string; chart: ChartSpec }>;
   /** The live IDS/rule-set report an `ids-report` block can refresh its snapshot from. */
   idsValidationReport: ValidationReport | null;
+  qualityGateReports?: readonly SavedClashReport[];
   onChange: (block: DocumentBlock) => void;
   onMove: (delta: -1 | 1) => void;
   /** Jumps to the document's start or end; a missing jump renders aria-disabled (#8227). */
@@ -65,6 +68,7 @@ const KIND_LABEL_KEY = {
   table: 'document.block.kindTable',
   'ids-report': 'document.block.kindIdsReport',
   'manual-report': 'manualValidation.report.kind',
+  'quality-gate': 'document.block.kindQualityGate',
 } as const satisfies Record<DocumentBlock['kind'], TranslationKey>;
 
 /**
@@ -212,7 +216,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
   );
 }
 
-export function BlockEditor({ block, index, count, bindings, topics, charts, idsValidationReport, onChange, onMove, edges, onCopy, onRemove }: BlockEditorProps) {
+export function BlockEditor({ block, index, count, bindings, topics, charts, idsValidationReport, qualityGateReports, onChange, onMove, edges, onCopy, onRemove }: BlockEditorProps) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const topKey = edges?.group ? 'document.block.moveSelectedToTopAriaLabel' : 'document.block.moveToTopAriaLabel';
@@ -332,6 +336,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
       {block.kind === 'ids-report' && !block.savedReportId && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
 
       {block.kind === 'manual-report' && <ManualReportPresentation block={block} onChange={onChange} />}
+      {block.kind === 'quality-gate' && <QualityGateBlockEditor block={block} reports={qualityGateReports ?? []} onChange={onChange} />}
       {block.kind === 'manual-report' && !block.savedReportId && <ManualReportBlockEditor block={block} onChange={onChange} />}
 
       {block.kind === 'topic' && (

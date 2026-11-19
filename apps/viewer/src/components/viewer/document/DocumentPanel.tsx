@@ -65,7 +65,11 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const { t, locale } = useTranslation();
   const documents = useViewerStore((s) => s.documents);
   const storage = useViewerStore((s) => s.documentsStorage);
-  useEffect(() => { void useViewerStore.getState().initializeDocuments(); }, []);
+  useEffect(() => {
+    const state = useViewerStore.getState();
+    void state.initializeDocuments();
+    void state.initializeSavedClashReports();
+  }, []);
   const activeDocumentId = useViewerStore((s) => s.activeDocumentId);
   const upsertDocument = useViewerStore((s) => s.upsertDocument);
   const deleteDocument = useViewerStore((s) => s.deleteDocument);
@@ -120,7 +124,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     selection.selectOnly(copy.id);
   };
 
-  const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report'>): void => {
+  const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report' | 'quality-gate'>): void => {
     if (!document) return;
     const id = freshBlockId();
     // A table starts as a copy of the first saved list, else the first preset (#5142). The copy cannot
@@ -146,6 +150,14 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     selection.selectOnly(block.id);
   };
 
+  const firstQualityReport = data.qualityGateReports.find(report => report.qualityGates?.rows.length);
+  const addQualityGate = (): void => {
+    if (!document || !firstQualityReport) return;
+    const id = freshBlockId();
+    setBlocks([...document.blocks, { kind: 'quality-gate', id, clashReportId: firstQualityReport.id, row: 0 }]);
+    selection.selectOnly(id);
+  };
+
   const addComparison = (): void => {
     if (!document || !savedComparisons[0]) return;
     const id = freshBlockId();
@@ -166,6 +178,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         aggregations: data.aggregations,
         chartMessages: data.chartMessages,
         chartErrors: data.chartErrors,
+        qualityGateReports: data.qualityGateReports,
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
         tables: data.tables,
@@ -180,6 +193,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         result.imageFailures.length > 0 ? t('document.panel.problemImageFailures', localeCount(locale, result.imageFailures.length)) : '',
         result.tableFailures.length > 0 ? t('document.panel.problemTables', localeCount(locale, result.tableFailures.length)) : '',
         (result.chartFailures?.length ?? 0) > 0 ? t('document.panel.problemCharts', localeCount(locale, result.chartFailures?.length ?? 0)) : '',
+        result.qualityGateFailures?.length ? t('document.panel.problemQualityGates', localeCount(locale, result.qualityGateFailures.length)) : '',
       ].filter(Boolean);
       finishActivity(job, problems.length ? 'partial' : 'completed', problems.length ? { detail: problems.join(', ') } : {});
       const pages = localeCount(locale, result.pages);
@@ -250,6 +264,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={addComparison} disabled={savedComparisons.length === 0}>{t('document.block.tableSourceComparison')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={addQualityGate} disabled={!firstQualityReport}
+              title={firstQualityReport ? undefined : t('document.qualityGate.saveFirst')}>{t('document.block.kindQualityGate')}</DropdownMenuItem>
             {/* One entry for IDS, information-validation and manual reports (#6553); the block's source picker chooses which. */}
             <DropdownMenuItem onSelect={addValidationReport} disabled={!reportSources.available} title={reportSources.available ? undefined : t('document.addBlock.validationReportDisabledTitle')}>{t('document.addBlock.validationReport')}</DropdownMenuItem>
           </DropdownMenuContent>
@@ -275,6 +291,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
                   topics={data.topics}
                   charts={charts}
                   idsValidationReport={idsValidationReport}
+                  qualityGateReports={data.qualityGateReports}
                   onChange={(next) => setBlocks(document.blocks.map((b) => (b.id === block.id ? next : b)))}
                   onMove={(delta) => {
                     const target = index + delta;
@@ -289,7 +306,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockIds={selection.ids} onSelectBlock={selection.toggle} />
+            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} qualityGateReports={data.qualityGateReports} topics={data.topics} tables={data.tables} selectedBlockIds={selection.ids} onSelectBlock={selection.toggle} />
           </div>
         </div>
       )}

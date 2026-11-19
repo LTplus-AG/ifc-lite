@@ -8864,7 +8864,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.set.edit",
     "version": 1,
     "owner": "zones",
-    "description": "Remove/rename/show a native zone set through the exact panel store handlers.",
+    "description": "Remove/rename/show a native zone set through the exact panel store handlers. Returns a receipt and the next configuration_revision; read sets with zones.read.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -9087,7 +9087,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.import",
     "version": 1,
     "owner": "zones",
-    "description": "Import complete zone sets through the authoritative native parser. Supports native box/prism footprints and colors without a second geometry implementation.",
+    "description": "Import complete zone sets through the authoritative native parser. Supports native box/prism footprints and colors without a second geometry implementation. Returns the set count and the next configuration_revision; read sets with zones.read.",
     "needs": "viewer",
     "effects": [
       "configuration"

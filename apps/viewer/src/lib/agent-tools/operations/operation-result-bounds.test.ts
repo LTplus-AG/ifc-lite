@@ -101,7 +101,10 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     assert.ok(bytes(useViewerStore.getState().zoneSets) > MAX_RESULT_BYTES, 'the sets alone exceed the limit');
     const { items, token } = await readAll<{ id: string }>('zones.read', 'sets', value => value.page as { next_offset: number | null });
     assert.deepEqual(items.map(row => row.id), useViewerStore.getState().zoneSets.map(row => row.id)); assert.ok(token.length <= 64);
-    assert.ok(json<{ set_id: string }>(await run('zones.set.create', { name: 'Next', expected_configuration: token })).set_id);
+    const made = json<{ set_id: string; configuration_revision: string }>(await run('zones.set.create', { name: 'Next', expected_configuration: token }));
+    // An edit's own result stays small however large the configuration is, so a committed edit never reports failure.
+    const renamed = json<{ configuration_revision: string }>(await run('zones.set.edit', { set_id: made.set_id, action: 'rename', name: 'Renamed', visible: true, expected_configuration: made.configuration_revision }));
+    assert.equal(useViewerStore.getState().zoneSets.at(-1)!.name, 'Renamed'); assert.ok(renamed.configuration_revision.length <= 64);
   });
 
   it('#29 zones.read pages straddle sets, apportionment and assignments without dropping or repeating a row', async () => {

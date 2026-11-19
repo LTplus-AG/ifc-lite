@@ -124,6 +124,8 @@ async function oracleDrawing(page: Page, plane: Plane) {
     const { drawingWithMaterialLayerFills } = await import('/src/lib/drawing/material-layer-fills.ts') as typeof import('../../apps/viewer/src/lib/drawing/material-layer-fills');
     const { createMeshOutlineProvider } = await import('/src/hooks/meshOutlineProvider.ts') as typeof import('../../apps/viewer/src/hooks/meshOutlineProvider');
     const { modelIndices } = await import('/src/lib/model-placement/model-indices.ts') as typeof import('../../apps/viewer/src/lib/model-placement/model-indices');
+    const { placedMesh } = await import('/src/lib/model-placement/placed-geometry.ts') as typeof import('../../apps/viewer/src/lib/model-placement/placed-geometry');
+    const { displayedTranslation } = await import('/src/lib/model-placement/state.ts') as typeof import('../../apps/viewer/src/lib/model-placement/state');
     const { resolveEntityRef } = await import('/src/store/resolveEntityRef.ts') as typeof import('../../apps/viewer/src/store/resolveEntityRef');
     const { getGlobalRenderer } = await import('/src/hooks/useBCF.ts') as typeof import('../../apps/viewer/src/hooks/useBCF');
     // The SAME wasm module instance the viewer initialised (same URL).
@@ -134,7 +136,9 @@ async function oracleDrawing(page: Page, plane: Plane) {
     for (const [id, model] of state.models) {
       if (!model.visible || !model.geometryResult) continue;
       const modelIndex = indices.get(id) ?? 0;
-      for (const mesh of model.geometryResult.meshes) flat.push(mesh.modelIndex === modelIndex ? mesh : { ...mesh, modelIndex });
+      // The viewer's placed view geometry: index stamped, model placement applied.
+      const translation = displayedTranslation(state.modelPlacement, id);
+      for (const mesh of model.geometryResult.meshes) flat.push(placedMesh(mesh.modelIndex === modelIndex ? mesh : { ...mesh, modelIndex }, translation));
     }
     const typeOf = (globalId: number) => {
       const ref = resolveEntityRef(globalId);

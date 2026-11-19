@@ -117,6 +117,12 @@ export class DrawingGeometry {
     return this.abort.signal;
   }
 
+  private owned(globalId: number, modelId: string): void {
+    if (this.deps.modelOf(globalId) !== modelId) {
+      throw new GeometryUnavailableError(`Backed id ${globalId} of model ${modelId} is not in its global id range`);
+    }
+  }
+
   private occurrenceMeta(globalId: number) {
     return { expressId: globalId, ifcType: this.deps.typeOf(globalId) };
   }
@@ -181,6 +187,9 @@ export class DrawingGeometry {
       read += chunk.length;
       const kept: MeshData[] = [];
       for (const mesh of chunk) {
+        // Backed meshes carry global ids, as the store list does (federation
+        // re-homes them at ingest); one that resolves elsewhere is not this model's.
+        this.owned(mesh.expressId, modelId);
         if (!keep(mesh)) continue;
         kept.push(placedMesh(withIndex(mesh, modelIndex), translation));
       }
@@ -200,7 +209,9 @@ export class DrawingGeometry {
         const meta = this.occurrenceMeta(id);
         if (!keep(meta)) continue;
         const pieces = deps.scene?.getInstancedMeshDataPieces(id);
-        if (pieces?.length) yield pieces.map((piece) => ({ ...piece, ifcType: meta.ifcType }));
+        // Listed but not materializable (CPU templates gone): never draw without it.
+        if (!pieces?.length) throw new GeometryUnavailableError(`Instanced entity ${id} has no resident occurrence geometry`);
+        yield pieces.map((piece) => ({ ...piece, ifcType: meta.ifcType }));
       }
       return;
     }
@@ -212,6 +223,7 @@ export class DrawingGeometry {
       for await (const group of materializeBackedOccurrences(usableBacking(backing, modelId), deps.modelIndexOf(modelId), wanted,
         { signal: this.fence() })) {
         this.fence();
+        for (const piece of group) this.owned(piece.expressId, modelId);
         yield group.map((piece) => placedMesh({ ...piece, ifcType: deps.typeOf(piece.expressId) }, translation));
       }
     }

@@ -263,4 +263,23 @@ describe('drawing geometry source over released geometry', () => {
     assert.equal(geometry.isEmpty((mesh) => mesh.expressId === 202, { instanced: false }), true);
     await w.registry.close();
   });
+
+  it('refuses backed geometry whose ids resolve to another model, and scene ids without pieces', async () => {
+    const w = await world();
+    // Model b's backing replaced by one holding model a's (local-range) ids.
+    const foreign = await w.registry.begin('b', { chunkBytes: 512 });
+    await foreign.writer.append(flatModel('a').map(({ modelIndex: _index, ...mesh }) => mesh));
+    await foreign.writer.appendInstancedShard(w.shards.b);
+    await foreign.writer.close();
+    w.backings.set('b', foreign);
+    release(w);
+    const geometry = new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true }));
+    await assert.rejects(new Drawing2DGenerator().generateFromSource(geometry.source(keepAll, { instanced: true }), CONFIGS[0][1], OPTIONS),
+      /not in its global id range/);
+    const listedOnly: InstancedScene = { getInstancedEntityIds: () => [101][Symbol.iterator](), getInstancedMeshDataPieces: () => undefined };
+    const resident = new DrawingGeometry([], deps(w, { scene: listedOnly }));
+    await assert.rejects(new Drawing2DGenerator().generateFromSource(resident.source(keepAll, { instanced: true }), CONFIGS[0][1], OPTIONS),
+      /no resident occurrence geometry/);
+    await w.registry.close();
+  });
 });

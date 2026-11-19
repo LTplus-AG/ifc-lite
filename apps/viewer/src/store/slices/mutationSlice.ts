@@ -12,7 +12,7 @@ import { modelEditTarget, readModelEditTarget } from './mutation-modelling-recor
 import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
-import { isLegacyMutationRef, LEGACY_MUTATION_MODEL_IDS, normalizeMutationModelId } from '@/sdk/adapters/model-compat';
+import { isLegacyMutationRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
@@ -1060,8 +1060,14 @@ export const createMutationSlice: StateCreator<
   // Mutation View Management
   getMutationView: (modelId) => {
     const state = get();
-    const canonicalId = normalizeMutationModelId(state, modelId);
-    return state.mutationViews.get(canonicalId) ?? state.mutationViews.get(modelId) ?? null;
+    if (isLegacyMutationRef(state, modelId)) {
+      for (const id of LEGACY_MUTATION_MODEL_IDS) {
+        const view = state.mutationViews.get(id);
+        if (view) return view;
+      }
+      return null;
+    }
+    return state.mutationViews.get(modelId) ?? null;
   },
 
   registerMutationView: (modelId, view) => {
@@ -1115,7 +1121,8 @@ export const createMutationSlice: StateCreator<
     // Apply the shared edit-mode, role, and model gate before touching the
     // overlay, undo/redo, dirty state, or collaboration mirror (#5901).
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const state = get();
+    const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
     if (!view) return null;
 
     if (dataType !== undefined) {
@@ -1140,7 +1147,8 @@ export const createMutationSlice: StateCreator<
   deleteProperty: (modelId, entityId, psetName, propName) => {
     // Shared mutation gate before the local commit — see setProperty.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const state = get();
+    const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.deleteProperty(entityId, psetName, propName);
@@ -1228,7 +1236,8 @@ export const createMutationSlice: StateCreator<
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
     // Shared mutation gate before the local commit — see setProperty.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const state = get();
+    const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.setAttribute(entityId, attrName, value, oldValue);

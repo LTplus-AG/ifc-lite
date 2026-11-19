@@ -15,6 +15,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
+import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 import { resolveTerrainSelection } from './landXmlTerrainExport';
 import { configureMutationView } from '@/utils/configureMutationView';
 
@@ -96,15 +97,35 @@ it('LandXML preflight sees pending edits in the legacy single-model session (#10
     configureMutationView(prior, store);
     prior.setAttribute(10, 'Name', 'Earlier terrain', 'Terrain');
     useViewerStore.getState().registerMutationView('default', prior);
-    const read = async (modelId: string) => {
+    const read = async (modelId: string, expressId = 10): Promise<string> => {
       const current = useViewerStore.getState().getMutationView(modelId);
-      return (await parse(mod!.editedModelBytes(selection.store, current))).entities.getName(10);
+      return (await parse(mod!.editedModelBytes(selection.store, current))).entities.getName(expressId);
     };
     assert.equal(await read('default'), 'Edited terrain', 'the canonical overlay wins over an earlier alias');
     assert.equal(await read('legacy'), 'Edited terrain');
     useViewerStore.getState().clearMutationView('legacy');
     assert.equal(await read('legacy'), 'Terrain', 'clear discards the canonical overlay through an alias');
     assert.equal(await read('default'), 'Terrain', 'clear also discards the earlier alias overlay');
+
+    for (const storedId of ['default', 'legacy']) {
+      const existing = new MutablePropertyView(store.properties ?? null, storedId);
+      configureMutationView(existing, store);
+      existing.setAttribute(10, 'Name', 'Pending terrain', 'Terrain');
+      useViewerStore.getState().registerMutationView(storedId, existing);
+      const alias = storedId === 'default' ? 'legacy' : 'default';
+      assert.equal(await read(alias), 'Pending terrain', 'all aliases read the pending rename');
+      useViewerStore.setState({ editEnabled: true });
+      const mutate = createMutateAdapter(useViewerStore);
+      const ref = { modelId: alias, expressId: 11 };
+      await mutate.setAttribute(ref, 'Name', 'Second edit');
+      assert.equal(await read(alias), 'Pending terrain', 'the SDK write preserves the earlier edit');
+      assert.equal(await read(alias, 11), 'Second edit');
+      assert.equal(await mutate.undo(alias), true);
+      assert.equal(await read(alias, 11), 'Wall B');
+      assert.equal(await mutate.redo(alias), true);
+      assert.equal(await read(alias, 11), 'Second edit');
+      useViewerStore.getState().clearMutationView(alias);
+    }
   } finally {
     useViewerStore.setState(snapshot);
   }

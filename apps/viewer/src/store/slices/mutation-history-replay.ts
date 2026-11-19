@@ -109,7 +109,8 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
         flush();
         set((s) => georefPatch(s, modelId, inverseTarget, direction === 'undo' ? 'redo' : 'undo'));
       } else {
-        const view = get().mutationViews.get(modelId);
+        const state = get();
+        const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
         if (!view) break;
         if (direction === 'undo') applyRedoToView(get, set, modelId, view, inverseTarget);
         else applyUndoToView(get, set, modelId, view, inverseTarget);
@@ -127,7 +128,9 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
       replayGeorefStep(set, modelId, mutation, direction);
       continue;
     }
-    const view = get().mutationViews.get(modelId);
+    // A history entry addresses its own overlay when it is still registered.
+    const state = get();
+    const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
     if (!view) break;
     if (direction === 'undo') applyUndoToView(get, set, modelId, view, mutation);
     else applyRedoToView(get, set, modelId, view, mutation);

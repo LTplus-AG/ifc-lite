@@ -44,6 +44,7 @@ interface SceneHandle {
   rebuildPendingBatches(device: unknown, pipeline: unknown): void;
   releaseGeometryData(): void;
   getMeshDataPieces(id: number): unknown[] | undefined;
+  getInstancedEntityIds(): Iterable<number>;
 }
 interface RendererHandle { getScene(): SceneHandle; requestRender(): void; device: { getDevice(): unknown }; pipeline: unknown }
 type Store = { getState(): Record<string, unknown> & {
@@ -352,4 +353,72 @@ test('after the scene releases its CPU geometry, hide and isolate draw the same 
   await act(page, [['showAll'], ['isolateEntities', 'ids']], ids);
   await capture(page, info, 'released-isolate');
   await picksNeverHidden(page, info, 'released-isolate', await hiddenFlat(page), false);
+});
+
+test('deleted instanced occurrences stay off the frame and the picks with nothing else hidden (#10639)', async ({ page }, info) => {
+  await open(page);
+  await load(page, FIXTURES.institute, 1);
+  await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
+  // Instanced-only entities: deleting them leaves no flat piece, so only the
+  // instance flag (and the discarding shader) can keep them off the frame.
+  const ids = await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    const scene = getGlobalRenderer()!.getScene();
+    return [...scene.getInstancedEntityIds()].filter((id) => !scene.getMeshDataPieces(id)?.length);
+  });
+  expect(ids.length, 'the fixture has instanced-only entities').toBeGreaterThan(0);
+  // Overlays (grid, dimensions) arrive a few frames after load: wait for a still frame.
+  const frame = () => page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!());
+  let c = (await frame())!;
+  let still = false;
+  for (let i = 0; i < 20 && !still; i++) {
+    await settle(page);
+    const next = (await frame())!;
+    still = (await diff(page, c, next)).differing === 0;
+    c = next;
+  }
+  expect(still, 'the frame settles before the reference is taken').toBe(true);
+  await info.attach('delete-C-before.png', { body: Buffer.from(c.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  // B: the same occurrences hidden through the ordinary instanced hide path.
+  await act(page, [['hideEntities', 'ids']], ids);
+  const b = await capture(page, info, 'delete-B-hidden');
+  const bc = await diff(page, b, c);
+  await act(page, [['showAll']]);
+  // A: delete them with nothing else hidden, the state #10639 drew them again in. This drives the
+  // renderer's removal directly; the viewer's delete action reaches the same removeMeshesForEntities.
+  await page.evaluate(async (deleted) => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    const renderer = getGlobalRenderer()!;
+    renderer.getScene().removeMeshesForEntities(deleted);
+    renderer.requestRender();
+  }, ids);
+  await settle(page);
+  const a = await capture(page, info, 'delete-A-deleted');
+  const ab = await diff(page, a, b);
+  const ac = await diff(page, a, c);
+  await info.attach('delete-A-vs-B-diff.png', { body: Buffer.from(ab.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  const pixels = ab.width * ab.height;
+  const row = { deleted: ids.length, pixels, differingAB: ab.differing, strongAB: ab.strong, strongAC: ac.strong, strongBC: bc.strong };
+  await info.attach('delete.json', { body: JSON.stringify(row, null, 2), contentType: 'application/json' });
+  // Institute's instanced-only occurrences are small on screen (~150 strong px), so bound A against
+  // that signal: drawing the deleted occurrences again would put all of it back.
+  expect(bc.strong, 'the occurrences are on screen (hiding them changes the frame)').toBeGreaterThan(50);
+  expect(ac.strong, 'deleting them changed the frame (not a vacuous comparison)').toBeGreaterThan(50);
+  expect(ab.strong, 'a deleted occurrence draws nothing a hidden one does not').toBeLessThanOrEqual(Math.floor(bc.strong * 0.05));
+  await picksNeverHidden(page, info, 'deleted', ids);
+  // A later visibility change must not bring them back: hide surviving instanced entities (a frame
+  // renders with the instanced hidden set non-empty), then show all again, which empties it.
+  const survivors = await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    return [...getGlobalRenderer()!.getScene().getInstancedEntityIds()].slice(0, 3);
+  });
+  expect(survivors.length, 'instanced entities survive the delete').toBeGreaterThan(0);
+  await act(page, [['hideEntities', 'ids']], survivors);
+  await capture(page, info, 'delete-A2-survivors-hidden');
+  await act(page, [['showAll']]);
+  const again = await diff(page, await capture(page, info, 'delete-A3-after-visibility-change'), b);
+  expect(again.strong, 'still absent after a visibility change').toBeLessThanOrEqual(Math.floor(bc.strong * 0.05));
 });

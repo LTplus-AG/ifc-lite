@@ -1,0 +1,12 @@
+diff --git a/packages/renderer/src/released-geometry-replay.ts b/packages/renderer/src/released-geometry-replay.ts
+index d17363e..86fcb4b 100644
+--- a/packages/renderer/src/released-geometry-replay.ts
++++ b/packages/renderer/src/released-geometry-replay.ts
+@@ -53,6 +53,7 @@ export async function replayReleasedGeometry(
+   try {
+     for await (const batch of batches) {
+       if (options.signal?.aborted) { stopped = 'cancelled'; break; }
++      if (!current()) { stopped = 'superseded'; break; }
+       if (batch.length === 0) continue;
+       scene.appendToBatches([...batch], device, pipeline, true);
+       count++; meshes += batch.length;

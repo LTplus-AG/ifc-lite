@@ -517,6 +517,29 @@ new point, and prepare again when it is false. Instanced occurrences read back a
 decoded shards are expanded with `materializeShardOccurrences(shard, modelIndex, keyPrefix)`,
 the same preparation an upload uses, then placed like flat pieces.
 
+### Rebuilding a released scene
+
+When the scene must be rebuilt (a content reload: realign, rebase, collaboration),
+a host that released CPU geometry cannot upload the arrays again. It streams them
+back from its own storage instead, one bounded batch at a time:
+
+```typescript
+import { replayReleasedGeometry } from '@ifc-lite/renderer';
+
+async function* batches() {
+  for (const slice of storedSlices) yield await readBack(slice); // model-local, as stored
+}
+const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => token === latest });
+if (result.status !== 'complete') retryLater(); // superseded, cancelled or unavailable
+```
+
+Each batch is uploaded through the ephemeral streaming path (GPU fragments only)
+and can be dropped as soon as the generator resumes. The scene keeps per-entity
+bounds, so picking and framing still work, and it ends in the released state it
+started from. A replay that a newer one supersedes, or that a device loss
+interrupts, still leaves a consistent scene. Its result is not `complete`, so
+replay again.
+
 ### Magnetic Snap Configuration
 
 ```typescript

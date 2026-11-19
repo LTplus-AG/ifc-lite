@@ -6,6 +6,7 @@
  * Scene graph and mesh management
  */
 
+import { unionEntityWorldBounds } from './released-entity-bounds.js';
 import { GeometryChangeSignal } from './geometry-change-signal.js';
 import { SceneTriangleCounts } from './triangle-counts.js';
 import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
@@ -1187,6 +1188,7 @@ export class Scene {
       }
     }
 
+    if (isStreaming && !retainStreamingGeometry) { unionEntityWorldBounds(this.boundingBoxes, meshDataArray); this.modelTranslations.unionReleasedEntityBounds(meshDataArray); }
     if (isStreaming) {
       // STREAMING: Create small fragment batches from ONLY the new meshes.
       // Avoids the O(N²) cost of re-merging all accumulated data every batch.

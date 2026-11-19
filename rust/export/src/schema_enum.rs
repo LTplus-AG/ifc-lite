@@ -180,7 +180,10 @@ fn enum_member(slot: &str) -> Option<String> {
 /// required-slot count (#5307) and enum reconciliation (#5365); plus the
 /// per-type conversion plans and the values a conversion had no target slot
 /// for (#7683).
-#[derive(Default)]
+///
+/// Built only by [`ConversionChecks::new`], which takes the export's material
+/// referents (#10763), so no converter holds checks that cannot resolve them.
+#[cfg_attr(test, derive(Default))]
 pub(crate) struct ConversionChecks {
     pub(crate) structural: crate::schema_structural_diagnostics::StructuralDiagnostics,
     pub(crate) ifc4_slots: Ifc4SlotCheck,
@@ -196,8 +199,16 @@ pub(crate) struct ConversionChecks {
 }
 
 impl ConversionChecks {
-    pub(crate) fn new() -> Self {
-        Self::default()
+    /// The checks for one export, with the material records it writes.
+    pub(crate) fn new(materials: crate::schema_material_referent::MaterialReferents) -> Self {
+        Self {
+            structural: Default::default(),
+            ifc4_slots: Default::default(),
+            enums: Default::default(),
+            materials,
+            plans: Default::default(),
+            attribute_values_dropped: 0,
+        }
     }
 
     /// Source-derived orientations, link types and varying actions are safe only
@@ -205,9 +216,8 @@ impl ConversionChecks {
     #[inline(never)]
     pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: &dyn Fn(u32, usize) -> bool, allocate: &mut dyn FnMut() -> Option<u32>) -> Self {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
-        let mut checks = Self::new();
         // Read from the source's types alone, so it runs for every export (#10763).
-        checks.materials = crate::schema_material_referent::MaterialReferents::scan(content, from, to, kept);
+        let mut checks = Self::new(crate::schema_material_referent::MaterialReferents::scan(content, from, to, kept));
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }

@@ -232,20 +232,8 @@ fn emit<W: std::io::Write>(
     let copies_refused = resolved.refused;
     let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id); flatten.retain_grids(|id| included.contains(&id));
     let repointed = resolved.repointed;
-    // #10763: the material records as this export writes them: edits, repointings and copies applied.
-    if checks.materials.armed() {
-        // Typed from the head before the line is copied: most edited records are not materials.
-        let material = |id: &u32| line_of.get(id).map(|&(s, e)| String::from_utf8_lossy(&content[s..e])).filter(|l| crate::schema_material_referent::is_material(l));
-        let edited_ids: HashSet<&u32> = muts_by_id.keys().chain(repointed.keys()).collect();
-        let edited = edited_ids.into_iter().filter_map(|id| Some((*id, crate::step_text::apply_attr_mutations_counted(&material(id)?, &*crate::step_text::merge_edits(muts_by_id.get(id), repointed.get(id))?, &mut 0))));
-        let copied = copies.iter().filter_map(|(copy, source, edits)| {
-            let mut muts = muts_by_id.get(source).cloned().unwrap_or_default();
-            muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
-            Some((*copy, crate::step_text::renumber(&crate::step_text::apply_attr_mutations_counted(&material(source)?, &muts, &mut 0), *copy)))
-        });
-        let copy_ids: HashSet<u32> = copies.iter().map(|c| c.0).collect();
-        checks.materials.with_effective(|id| included.contains(&id) || copy_ids.contains(&id), edited.chain(copied).collect::<Vec<_>>(), []);
-    }
+    // #10763: the material records as this export writes them.
+    checks.materials.note_step(crate::schema_convert::canon(&source_schema), content, line_of, &included, &muts_by_id, &repointed, &copies);
 
     // 3. Emit header + filtered entities (source order) + footer.
     // The FILE_SCHEMA token, by the TypeScript twin's rule: keep the source's

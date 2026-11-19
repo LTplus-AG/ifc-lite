@@ -241,7 +241,9 @@ pub fn convert_step_line(
         return Ok(line.to_string());
     }
     let mut checks = checks;
-    let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
+    // #10763: a downgraded IfcMaterialProperties names one IfcMaterial, or is not written (empty).
+    let Some(line) = checks.as_deref_mut().map_or(Some(line.into()), |c| c.materials.apply(express_id, line, cfrom, &mut c.attribute_values_dropped)) else { return Ok(String::new()) };
+    let mut converted = convert_record(&line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
     if let Some(checks) = checks {
         if let Some(placement) = checks.structural.values.placement(express_id) {
@@ -250,11 +252,10 @@ pub fn convert_step_line(
             }
         }
         converted = checks.enums.apply(converted, cto);
-        if cto == "IFC2X3" { converted = checks.materials.apply(express_id, checks.structural.after(express_id, converted), &mut checks.attribute_values_dropped); }
+        if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
     }
-    // An empty line is a record not written (#10763); the writers skip it.
-    Ok(if cto == "IFC2X3" && !converted.is_empty() { slots.apply(converted) } else { converted })
+    Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
 
 /// [`convert_step_line`] before the IFC2X3 required-slot fills, between two

@@ -66,3 +66,30 @@ fn a_renamed_list_is_a_prefix_only_for_a_listed_type_7739() {
     assert!(!is_strict_attr_prefix("IFCSTAIR", old, new), "an unlisted type name does not rename");
     assert!(!old.starts_with(&new[..old.len()]), "by name alone it is not a prefix");
 }
+
+/// #10758: the replacement table is the shared fixture's `replaced` block,
+/// and each pair sits at one index of core's registry, with every other index
+/// of the common length matching once renames are read as one name.
+#[test]
+fn every_replacement_is_the_shared_fixture_and_a_same_index_pair_10758() {
+    let doc: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/fixtures/schema_positional_renames.json")).expect("valid JSON");
+    let fixture: Vec<(String, String, String)> = doc["replaced"]
+        .as_array()
+        .expect("replaced")
+        .iter()
+        .map(|r| (r["type"].as_str().unwrap().into(), r["pair"][0].as_str().unwrap().into(), r["pair"][1].as_str().unwrap().into()))
+        .collect();
+    let table: Vec<(String, String, String)> =
+        POSITIONAL_REPLACEMENTS.iter().map(|(ty, (a, b))| (ty.to_string(), a.to_string(), b.to_string())).collect();
+    assert!(!table.is_empty(), "anti-vacuity");
+    assert_eq!(table, fixture);
+    for (ty, _) in POSITIONAL_REPLACEMENTS {
+        let old = attribute_names_for_schema("IFC2X3", ty).unwrap();
+        let new = attribute_names_for_schema("IFC4", ty).unwrap();
+        assert!(is_strict_attr_prefix(ty, old, new), "{ty}: IFC2X3 is a prefix of IFC4 once read as one name");
+        let slot = replaced_slot(ty, old, new).expect("the pair sits at one index");
+        assert_eq!(replaced_slot(ty, new, old), Some(slot), "either direction");
+        assert_eq!(replaced_slot("IFCISHAPEPROFILEDEF", old, new), None, "an unlisted type replaces nothing");
+    }
+}

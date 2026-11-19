@@ -30,6 +30,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 
 interface SweepCase {
   why: string;
@@ -37,6 +38,8 @@ interface SweepCase {
   to: IfcSchemaVersion;
   line: string;
   expect: string;
+  /** What the conversion reports lost (#10758); absent on rows that do not pin it. */
+  lost?: string[];
 }
 
 // The fixture lives in the Rust crate so `include_str!` can reach it; this side
@@ -58,6 +61,17 @@ describe('convertStepLine matches the shared cross-language upconversion sweep',
       .filter(({ c, got }) => got !== c.expect)
       .map(({ c, got }) => `${c.from}->${c.to} [${c.why}]\n  in     ${c.line}\n  expect ${c.expect}\n  got    ${got}`);
     expect(mismatches).toEqual([]);
+  });
+
+  it('every row with `lost` names what the loss report drops (#10758)', () => {
+    const rows = fixture.cases.filter((c) => c.lost !== undefined);
+    expect(rows.length).toBeGreaterThanOrEqual(8);
+    for (const c of rows) {
+      const type = /=([A-Z0-9]+)\(/.exec(c.line)![1];
+      const info = classifyEntityTypeConversion(type, c.from, c.to);
+      expect(info.droppedAttributes, `${c.from}->${c.to} [${c.why}]`).toEqual(c.lost);
+      expect(info.kind, `${c.from}->${c.to} [${c.why}]`).toBe(c.lost!.length > 0 ? 'lossy' : 'identity');
+    }
   });
 
   it('a reordered attribute list is never padded (negative control)', () => {

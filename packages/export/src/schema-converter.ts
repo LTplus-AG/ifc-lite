@@ -25,7 +25,7 @@ import type { EnumReconciliation } from './schema-converter-enums.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
-import { isStrictAttrPrefix } from './schema-converter-renames.js';
+import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
@@ -379,8 +379,7 @@ function convertRecord(
   // `ControlElementId` from IfcDistributionControlElement and both
   // `CentreOfGravity*` from IfcLShapeProfileDef; IFC4X3 dropped IfcReferent's
   // `PredefinedType`. Gating the trim on the rank comparison left every one of
-  // those upgrades untouched, so 6-argument `IFCRELDECOMPOSES` lines — the
-  // entity takes 4 in IFC4 — went into files whose header declares IFC4.
+  // those upgrades untouched (6-argument `IFCRELDECOMPOSES` in IFC4 files).
   //
   // The prefix rule is what makes either adjustment safe: many entities INSERT
   // attributes mid-list rather than appending them (IFC2X3 IfcApproval is
@@ -391,8 +390,7 @@ function convertRecord(
   // Those types are left alone. The appended attributes are optional, so `$` is
   // a valid pad.
   //
-  // The two branches cannot both apply: each requires ITS OWN list to be
-  // strictly shorter than the other, which no pair of lists can satisfy at once.
+  // The two branches cannot both apply: each needs ITS OWN list strictly shorter.
   // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
   let finalAttrs = attrsRaw;
   const targetTable = attrNameTable(toSchema);
@@ -408,6 +406,8 @@ function convertRecord(
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
+    const replaced = replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
+    if (replaced !== undefined && replaced < args.length) { args[replaced] = '$'; finalAttrs = args.join(','); }
     if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);
     } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs, entityType)) {

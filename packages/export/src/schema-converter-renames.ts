@@ -34,11 +34,44 @@ export const POSITIONAL_RENAMES: Readonly<Record<string, ReadonlyArray<readonly 
   IFCWORKSCHEDULE: [['Identifier', 'Identification'], ['WorkControlType', 'PredefinedType']],
   IFCPROPERTYBOUNDEDVALUE: [['Description', 'Specification']],
   IFCPROPERTYTABLEVALUE: [['Description', 'Specification']],
+  IFCASYMMETRICISHAPEPROFILEDEF: [
+    ['OverallWidth', 'BottomFlangeWidth'], ['FlangeThickness', 'BottomFlangeThickness'], ['FilletRadius', 'BottomFlangeFilletRadius'],
+  ],
+  IFCTRANSPORTELEMENT: [['OperationType', 'PredefinedType']],
+};
+
+/**
+ * Attributes a schema REPLACED IN PLACE (#10758): same index, different
+ * concept. Entity type -> `[older name, newer name]`.
+ *
+ * IfcAsymmetricIShapeProfileDef's slot 11 went from `CentreOfGravityInY` to
+ * `BottomFlangeEdgeRadius` (IFC4 ADD2 TC1: "Name changed"). The pair is read as
+ * one name for the prefix test, so the record still reaches the target's arity,
+ * but {@link replacedSlot} has the converter write `$` there and the loss report
+ * name the source attribute. Twin of Rust `POSITIONAL_REPLACEMENTS`.
+ */
+export const POSITIONAL_REPLACEMENTS: Readonly<Record<string, readonly [string, string]>> = {
+  IFCASYMMETRICISHAPEPROFILEDEF: ['CentreOfGravityInY', 'BottomFlangeEdgeRadius'],
 };
 
 function newerName(entityType: string | undefined, name: string): string {
-  const pairs = entityType === undefined ? undefined : POSITIONAL_RENAMES[entityType];
-  return pairs?.find(([older]) => older === name)?.[1] ?? name;
+  if (entityType === undefined) return name;
+  const replaced = POSITIONAL_REPLACEMENTS[entityType];
+  if (replaced?.[0] === name) return replaced[1];
+  return POSITIONAL_RENAMES[entityType]?.find(([older]) => older === name)?.[1] ?? name;
+}
+
+/**
+ * The index at which `src` and `tgt` hold the two sides of `entityType`'s
+ * {@link POSITIONAL_REPLACEMENTS} pair, when the conversion trims or pads (one
+ * list a strict prefix of the other). Twin of Rust `replaced_slot`, which the
+ * plan asks only for a trim or pad.
+ */
+export function replacedSlot(entityType: string, src: readonly string[], tgt: readonly string[]): number | undefined {
+  const pair = POSITIONAL_REPLACEMENTS[entityType];
+  if (!pair || !(isStrictAttrPrefix(src, tgt, entityType) || isStrictAttrPrefix(tgt, src, entityType))) return undefined;
+  const slot = src.findIndex((name, i) => (name === pair[0] && tgt[i] === pair[1]) || (name === pair[1] && tgt[i] === pair[0]));
+  return slot < 0 ? undefined : slot;
 }
 
 /**

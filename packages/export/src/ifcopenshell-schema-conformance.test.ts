@@ -548,3 +548,44 @@ describe.skipIf(!ifcopenshellAvailable())('MEP downgrade schema oracle (#8019)',
     runValidateOrThrow([source, output]);
   }, IFCOPENSHELL_TEST_TIMEOUT_MS);
 });
+
+/** #10758: a profile and a transport element whose attributes a schema renamed or replaced in place. */
+const PREAMBLE_10758 = [
+  "#1=IFCPERSON($,$,'author',$,$,$,$,$);", "#2=IFCORGANIZATION($,'author',$,$,$);",
+  '#3=IFCPERSONANDORGANIZATION(#1,#2,$);', "#4=IFCAPPLICATION(#2,'1','author','author');",
+  '#5=IFCOWNERHISTORY(#3,#4,$,.NOCHANGE.,$,$,$,0);', '#8=IFCCARTESIANPOINT((0.,0.));', '#9=IFCAXIS2PLACEMENT2D(#8,$);',
+];
+const stepFile10758 = (schema: string, lines: string[]): string => [
+  'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+  "FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'t','t','');", `FILE_SCHEMA(('${schema}'));`,
+  'ENDSEC;', 'DATA;', ...PREAMBLE_10758, ...lines, 'ENDSEC;', 'END-ISO-10303-21;',
+].join('\n');
+
+describe.skipIf(!ifcopenshellAvailable())('records renamed or replaced in place convert schema-conformant (#10758)', () => {
+  it('validates both sources as controls and both StepExporter conversions', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ifc-lite-10758-'));
+    const cases = [
+      ['IFC2X3', 'IFC4', [
+        "#10=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'A',#9,0.3,0.4,0.01,0.02,0.015,0.2,0.012,0.01,0.05);",
+        "#11=IFCTRANSPORTELEMENT('0YvctVUKr0kugbFTf53O9L',#5,'Lift',$,$,$,$,$,.ELEVATOR.,1000.,8.);",
+      ], ['0.01,$,$,$,$);', ".ELEVATOR.);"]],
+      ['IFC4', 'IFC2X3', [
+        "#10=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'A',#9,0.3,0.4,0.01,0.02,0.015,0.2,0.012,0.01,0.005,$,$,$);",
+        "#11=IFCTRANSPORTELEMENT('0YvctVUKr0kugbFTf53O9L',#5,'Lift',$,$,$,$,$,.ELEVATOR.);",
+      ], ['0.01,$);', '.ELEVATOR.,$,$);']],
+    ] as const;
+    const files: string[] = [];
+    for (const [from, to, lines, tails] of cases) {
+      const source = join(directory, `${from}.ifc`);
+      writeFileSync(source, stepFile10758(from, [...lines]));
+      const store = await new IfcParser().parseColumnar(toArrayBuffer(readFileSync(source)), { disableWorkerScan: true });
+      const text = new TextDecoder().decode(new StepExporter(store).export({ schema: to }).content);
+      const records = text.split('\n').filter((line) => /^#1[01]=/.test(line));
+      expect(records.map((line, i) => line.endsWith(tails[i])), records.join('\n')).toEqual([true, true]);
+      const output = join(directory, `${from}-to-${to}.ifc`);
+      writeFileSync(output, text);
+      files.push(source, output);
+    }
+    runValidateOrThrow(files);
+  }, IFCOPENSHELL_TEST_TIMEOUT_MS);
+});

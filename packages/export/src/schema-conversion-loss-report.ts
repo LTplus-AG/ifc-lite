@@ -37,7 +37,7 @@ import {
   type IfcSchemaVersion,
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
-import { isStrictAttrPrefix } from './schema-converter-renames.js';
+import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { isRootedEntityType } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
@@ -143,8 +143,11 @@ export function classifyEntityTypeConversion(
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
 
+  // #10758: the converter writes `$` where a schema replaced an attribute in place.
+  const replaced = replacedSlot(upper, srcAttrs, tgtAttrs);
+  const replacedName = replaced === undefined ? [] : [srcAttrs[replaced]];
   if (isStrictAttrPrefix(tgtAttrs, srcAttrs, upper)) {
-    const dropped = srcAttrs.slice(tgtAttrs.length);
+    const dropped = [...replacedName, ...srcAttrs.slice(tgtAttrs.length)];
     return {
       targetType: newType,
       kind: dropped.length > 0 ? 'lossy' : upper === newType ? 'identity' : 'renamed',
@@ -152,6 +155,7 @@ export function classifyEntityTypeConversion(
     };
   }
   if (isStrictAttrPrefix(srcAttrs, tgtAttrs, upper)) {
+    if (replacedName.length > 0) return { targetType: newType, kind: 'lossy', droppedAttributes: replacedName };
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
   if (upper !== newType && BY_NAME_ATTR_REMAP_TYPES.has(upper)) {

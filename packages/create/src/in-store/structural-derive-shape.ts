@@ -181,7 +181,7 @@ const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown,
  * Where each profile type states its IFC2X3 `CentreOfGravityInX/Y` (#10377): the attribute count of its IFC2X3 layout and
  * the slot per axis. Read at that arity only: IFC4 deleted the attribute, and reused the asymmetric I's slot for
  * BottomFlangeEdgeRadius. The IFC2x3 TC1 definition of every one of these types measures it "from the center of the
- * bounding box" (the profile origin since IFC2x Edition 3). Only AxisVM's L is known to state one; T, U, C and the
+ * bounding box" (the profile origin since IFC2x Edition 3). Only AxisVM's L is known to state a positive one; T, U, C and the
  * asymmetric I rest on the TC1 text.
  */
 const STATED_CENTRE: Record<string, { arity: number; x?: number; y?: number }> = {
@@ -196,16 +196,17 @@ const STATED_CENTRE: Record<string, { arity: number; x?: number; y?: number }> =
  * The offset along one axis from a stated centre of gravity, which carries the fillets the sharp-cornered shape lacks,
  * or the computed one. EXPRESS types the value as a non-negative distance only. AxisVM's L agrees with the TC1 reading
  * (IfcOpenShell puts the centroid of its 75 x 75 x 6 angle with fillets 17.085 mm off; the file states 17.07184). So it
- * is used only when its magnitude is within 10% of the computed offset, and with the computed sign: TC1 fixes -y for
+ * is used only when its magnitude is within 10% of the computed offset (which also rejects zero or negative values), and with the computed sign: TC1 fixes -y for
  * the asymmetric I because it assumes the wider flange at the bottom, which a wider top flange reverses.
  */
 function statedOffset(a: readonly unknown[], slot: number | undefined, computed: number, halfExtent: number): number {
   const value = slot === undefined ? null : num(a[slot]);
   const offset = Math.abs(computed);
-  // Measured from the near outer fibre instead (an L or T flange face, a U or C web back), the same centroid is
+  // Measured from the near outer fibre instead (an L leg or T flange face, a U or C web back, an asymmetric I's
+  // wider flange face), the same centroid is
   // `halfExtent - offset` away. Near the quarter point the two readings are within 20%, so a stated value cannot say
   // which one it is: keep the computed offset. From the far fibre it is `halfExtent + offset`, never within 10%.
-  if (value === null || value <= 0 || Math.abs(halfExtent - offset - offset) <= 0.2 * offset) return computed;
+  if (value === null || Math.abs(halfExtent - offset - offset) <= 0.2 * offset) return computed;
   return Math.abs(value - offset) <= 0.1 * offset ? Math.sign(computed) * value : computed;
 }
 

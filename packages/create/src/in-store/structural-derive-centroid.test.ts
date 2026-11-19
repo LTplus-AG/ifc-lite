@@ -5,7 +5,7 @@
 // #9934: an asymmetric section is idealised through its centroid, not the centre of its bounds.
 // Expected offsets (mm, from the centre of the bounds) come from an IfcOpenShell pass over the
 // same profiles (ifcopenshell 0.8.2, volume-weighted centroid of the extruded body), not from
-// this module's formulas. IfcOpenShell builds no mesh for IfcAsymmetricIShapeProfileDef, so those
+// this module's formulas; the #10377 cases further down use 0.8.4. IfcOpenShell 0.8.2 builds no mesh for IfcAsymmetricIShapeProfileDef, so those
 // beams (#244 to #284) are measured on the same twelve-point outline written as an
 // IfcArbitraryClosedProfileDef (origin at the centre of the bounds, bottom flange at -y: the frame
 // rust/geometry/src/profiles/shapes.rs draws it in). That fixes the numbers, not the frame: no tool
@@ -125,7 +125,7 @@ const ORACLE: Record<number, [number, number]> = {
   434: [0, 35.7961], // asymmetric I with the wider flange on top: the TC1 text says negative y, the computed sign (+y) is kept
   444: [0, -50.5055], // IFC4 arity: slot 11 is BottomFlangeEdgeRadius, never a centre of gravity
   454: [0, 29.813], // the T of #374 without a stated value
-  464: [-15.490, 0], // the U of #394 stating 0., as StruCad writes it: not a positive length, ignored
+  464: [-15.490, 0], // the U of #394 stating 0. (StruCad v16.4 writes 0.,0. on an L: XbimEssentials Tests/TestFiles/NewlinesInStrings.ifc #315817): outside 10%, ignored
   204: [-3.553, 0], // the same square with a 20 mm radius circular void 25 mm right of the centre (IfcOpenShell tessellates the circle; the exact disc gives -3.593)
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.

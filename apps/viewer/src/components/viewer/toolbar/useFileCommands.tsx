@@ -9,7 +9,7 @@
  */
 
 import { isFeatureEnabled } from '@/lib/features';
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { lazy, Suspense, useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useViewerStore, isIfcxDataStore, type FederatedModel } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
 import { useIfcFederation } from '@/hooks/useIfcFederation';
@@ -27,11 +27,12 @@ import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { useFileHostRegistration } from './useFileHostRegistration';
-import { ShareDialog } from '../ShareDialog';
 import { FederationSetupControls } from '../FederationSetupControls';
 
 import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
+
+const ShareDialog = lazy(() => import('../ShareDialog').then(module => ({ default: module.ShareDialog })));
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
 // files are 2D reference underlays, not models, and split off to the DXF
@@ -86,7 +87,9 @@ export function useFileCommands(): FileCommands {
   // `ifc-lite:open-share-dialog` event (RoomPanel's "Create a room") must
   // always find a live listener.
   const collabEnabled = useMemo(() => isCollabEnabled(), []);
-  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  // Defer the first mount until a user or agent requests sharing. Keep the
+  // dialog mounted after that so its close effects and room state still run.
+  const [shareDialogOpen, setShareDialogOpen] = useState<boolean | null>(null);
   const openShareDialog = useCallback(() => setShareDialogOpen(true), []);
   useEffect(() => {
     if (!collabEnabled) return;
@@ -349,7 +352,11 @@ export function useFileCommands(): FileCommands {
         onChange={handleAddModelSelect}
         className="hidden"
       /></>}
-      {collabEnabled && <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />}
+      {collabEnabled && shareDialogOpen !== null && (
+        <Suspense fallback={null}>
+          <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+        </Suspense>
+      )}
       <FederationSetupControls />
     </>
   );

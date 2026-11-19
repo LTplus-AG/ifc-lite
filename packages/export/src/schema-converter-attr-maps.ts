@@ -138,7 +138,7 @@ function firstMember(value: string): string {
   return members.find(holdsValue)?.trim() ?? '$';
 }
 
-/** `value` without its `/* ... *\/` comments, trimmed. Literals and comments
+/** `value` with each `/* ... *\/` comment read as a space, trimmed. Literals and comments
  *  end by the shared rules; an unclosed one runs to the end. Twin of Rust
  *  `without_comments`. */
 function withoutComments(value: string): string {
@@ -149,7 +149,7 @@ function withoutComments(value: string): string {
       const end = stepStringLiteralEnd(value, i);
       i = end === -1 ? value.length : end;
     } else if (value.startsWith('/*', i)) {
-      out += value.slice(kept, i);
+      out += `${value.slice(kept, i)} `; // a space keeps the tokens the comment parted apart
       i = kept = skipStepComment(value, i);
     } else i++;
   }

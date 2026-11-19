@@ -121,4 +121,5 @@ fn comments_around_a_set_are_dropped_when_it_is_rebuilt_10763() {
     assert_eq!(up("#5=IFCAPPROVALRELATIONSHIP(/* c */(#3),#4,'d','n');"), "#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
     assert_eq!(up("#5=IFCAPPROVALRELATIONSHIP(#3 /* x */,#4,'d','n');"), "#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
     assert_eq!(without_comments(" 'a/*b*/' /* c */"), "'a/*b*/'", "a string keeps its text");
+    assert_eq!(without_comments("#3/**/#6"), "#3 #6", "a comment still parts two tokens");
 }

@@ -71,7 +71,7 @@ describe('convertStepLine matches the shared cross-language upconversion sweep',
       const type = readStepSlots(c.line)!.type;
       const info = classifyEntityTypeConversion(type, c.from, c.to);
       expect(info.droppedAttributes, `${c.from}->${c.to} [${c.why}]`).toEqual(c.lost);
-      const target = readStepSlots(c.expect)?.type.toUpperCase();
+      const target = readStepSlots(c.expect)!.type.toUpperCase();
       expect(info.targetType, `${c.from}->${c.to} [${c.why}]`).toBe(target);
       const unlost = target === type.toUpperCase() ? 'identity' : 'renamed';
       expect(info.kind, `${c.from}->${c.to} [${c.why}]`).toBe(c.lost!.length > 0 ? 'lossy' : unlost);

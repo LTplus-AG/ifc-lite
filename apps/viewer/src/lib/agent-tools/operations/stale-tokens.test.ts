@@ -496,6 +496,14 @@ describe('multi-batch IDS corrections (#10792)', () => {
     }
   });
 
+  it('#10894: undoing an applied batch refuses the rest of its correction', async () => {
+    const [first, second] = await prepareCorrection();
+    const receipt = await applyBatch(first);
+    const { undoModelChanges } = await import('@/lib/actions/model-change-commit');
+    assert.deepEqual(undoModelChanges(useViewerStore, receipt), { ok: true });
+    assert.match((await invoke('authoring.apply', { token: second }, true)).text, /Model changed since preview/);
+  });
+
   it('#10894: an edit outside the correction between its batches still refuses the rest', async () => {
     const [first, second] = await prepareCorrection();
     await applyBatch(first);

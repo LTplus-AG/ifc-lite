@@ -31,11 +31,13 @@ const owned = new WeakMap<ToolHost, Map<string, Candidate>>();
 function candidates(c: OperationContext) {
   let found = owned.get(c.host); if (!found) { found = new Map(); owned.set(c.host, found); } return found;
 }
-/** The permanent half of apply's check: the model has not changed since the preview. */
+/** The permanent half of apply's check: the model has not changed since the preview, except by applying a sibling
+ * batch of the same change. */
 const previewCurrent = (entry: Pick<Candidate, 'binding'>) => entry.binding.revision === useViewerStore.getState().mutationVersion;
 /** Admit `inputs` as new candidates in one synchronous step: room for all of them is made (refusing before any
  * candidate that can still apply is evicted) and all are stored, or none are. Nothing awaits between the two, so a
- * concurrent prepare cannot take the room. They share one binding: they are the batches of one change. */
+ * concurrent prepare cannot take the room. They share one binding, so the inputs must be the batches of one change,
+ * touching distinct values: a sibling is previewed again once another applied. */
 function rememberAll<T extends object>(c: OperationContext, inputs: ReadonlyArray<{ input: Omit<Candidate, 'modelId' | 'store' | 'binding'>; preview: T }>) {
   const entries = candidates(c), stillApplies = candidateStillApplies(c.host);
   admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !libraryHoldsReceipt(entry),
@@ -58,6 +60,10 @@ function candidate(c: OperationContext, token: string) {
   if (!saved.receipt && !previewCurrent(saved)) throw stale('Model changed since preview; prepare again.');
   return saved;
 }
+function selectedModel(c: OperationContext, preview: ModelChangePreview) {
+  if (preview.rows.some(row => row.modelId !== null && row.modelId !== c.model.id)) throw invalidInput('wrong-target', 'All reviewed properties must belong to the selected model.');
+  return preview;
+}
 async function persist(saved: Candidate, receipt: ModelChangeReceipt) {
   return { receipt_json: JSON.stringify(receipt), persisted: await persistReceipt(saved, receipt) };
 }
@@ -68,8 +74,7 @@ export async function preparePropertyCandidates(c: OperationContext, proposals: 
   assertToolActive(c);
   const previews = proposals.map(proposal => {
     const batch = decodedInput(field, () => parseModelChangeBatch(proposal), { json: true });
-    const preview = previewModelChanges(useViewerStore.getState(), batch);
-    if (preview.rows.some(row => row.modelId !== null && row.modelId !== c.model.id)) throw invalidInput('wrong-target', 'All reviewed properties must belong to the selected model.');
+    const preview = selectedModel(c, previewModelChanges(useViewerStore.getState(), batch));
     return { input: { properties: preview }, preview };
   });
   return rememberAll(c, previews);
@@ -104,9 +109,10 @@ export const authoringOperations = [
       import('@/lib/actions/model-change-commit'), import('@/lib/actions/model-change-preview')]);
     candidate(c, i.token); assertToolActive(c);
     // A property preview made before a sibling batch of the same change applied is previewed again at the current
-    // revision, as the Changes panel's review does: the same batch, with every expected value checked again.
+    // revision, as the Changes panel's review does: the same batch, with every expected value and the selected model
+    // checked again. Siblings apply one at a time: a concurrent apply is refused by the executor's revision check.
     const properties = saved.properties && (saved.properties.mutationVersion === useViewerStore.getState().mutationVersion
-      ? saved.properties : previewModelChanges(useViewerStore.getState(), saved.properties.batch));
+      ? saved.properties : selectedModel(c, previewModelChanges(useViewerStore.getState(), saved.properties.batch)));
     const preview = saved.authoring ?? properties!;
     if (preview.rows.some(row => row.status !== 'ready' && row.status !== 'unchanged')) throw invalidInput('refused', 'The preview contains refused/conflicting rows. Prepare a complete valid candidate.');
     const approved = new Set(preview.rows.filter(row => row.status === 'ready').map(row => row.index));

@@ -19,6 +19,7 @@ import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 import { resolveTerrainSelection } from './landXmlTerrainExport';
 import { storesWithMutationViews } from '@/components/viewer/lists/list-builder-discovery';
+import { zoneQuantitySources } from '@/lib/assistant/adapters/zone-volume-bases';
 import { configureMutationView } from '@/utils/configureMutationView';
 
 // Loaded at runtime: the changed-test oracle removes new production files, and
@@ -144,6 +145,26 @@ it('LandXML preflight sees pending edits in the legacy single-model session (#10
       assert.doesNotMatch(bytesWithoutSet, /'Pset_Alias'/);
       useViewerStore.getState().clearMutationView(alias);
     }
+  } finally {
+    useViewerStore.setState(snapshot);
+  }
+});
+
+it('legacy zone evidence sees quantities stored under the default alias (#10676)', async () => {
+  const store = await parse(new TextEncoder().encode(FIXTURE));
+  const snapshot = useViewerStore.getState();
+  const view = new MutablePropertyView(store.properties ?? null, 'default');
+  configureMutationView(view, store);
+  view.createQuantitySet(10, 'Qto_WallBaseQuantities', [
+    { name: 'GrossVolume', value: 8, quantityType: QuantityType.Volume },
+  ]);
+  useViewerStore.setState({
+    models: new Map(), ifcDataStore: store, mutationViews: new Map([['default', view]]),
+  });
+  try {
+    const evidence = zoneQuantitySources(useViewerStore.getState())({ modelId: 'legacy', expressId: 10 });
+    const quantities = evidence.quantities.find(qset => qset.name === 'Qto_WallBaseQuantities')?.quantities;
+    assert.equal(quantities?.find(quantity => quantity.name === 'GrossVolume')?.value, 8);
   } finally {
     useViewerStore.setState(snapshot);
   }

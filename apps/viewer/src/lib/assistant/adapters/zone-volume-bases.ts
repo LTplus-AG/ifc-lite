@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { getModelForRef } from '@/sdk/adapters/model-compat';
 import { RelationshipType } from '@ifc-lite/data';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractTypeQuantitiesOnDemand, readCurrentTypeQuantities, type CurrentProjectUnitResult, type IfcDataStore } from '@ifc-lite/parser';
@@ -41,11 +42,10 @@ export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySe
 export function zoneQuantitySources(s: ViewerState) {
   const models = new Map<string, { store: IfcDataStore | null; query: IfcQuery | null; units: CurrentProjectUnitResult }>();
   return (ref: EntityRef) => {
-    const legacy = ref.modelId === 'legacy' || ref.modelId === '__legacy__';
-    const view = s.mutationViews.get(legacy ? '__legacy__' : ref.modelId);
+    const view = s.getMutationView(ref.modelId);
     let source = models.get(ref.modelId);
     if (!source) {
-      const store = (s.models.get(ref.modelId)?.ifcDataStore ?? (legacy ? s.ifcDataStore : null)) as IfcDataStore | null;
+      const store = getModelForRef(s, ref.modelId)?.ifcDataStore ?? null;
       const units = currentProjectUnitContext(store, view);
       source = { store, query: store ? new IfcQuery(store) : null, units };
       models.set(ref.modelId, source);

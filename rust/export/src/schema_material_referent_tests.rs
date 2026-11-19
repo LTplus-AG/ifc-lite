@@ -196,5 +196,5 @@ fn an_unreadable_record_is_left_out_10763() {
     let mut lost = 0;
     assert_eq!(scanned.apply(7, "#7=IFCMATERIALPROPERTIES('P',$,(#6,#8);", "IFC4", &mut lost), None);
     assert_eq!(lost, 1, "an unread record counts");
-    assert!(scanned.warnings().concat().contains("#7 (an unread record)"));
+    assert!(scanned.warnings().concat().contains("#7 (unreadable)"));
 }

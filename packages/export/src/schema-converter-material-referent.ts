@@ -115,10 +115,11 @@ export class MaterialReferents {
       out[at] = `#${material}`;
       return withFrameArgs(line, frame, out.join(','));
     }
-    // Named as Rust names it: a material record by its type, anything else as unread.
-    const type = named === null ? undefined : this.source.typeOf(named);
+    // Named as Rust names it: the record unreadable, without a Material, or by the type its Material names.
+    const referent = named === null ? undefined : this.source.typeOf(named);
+    const why = !slots ? 'unreadable' : named === null ? 'no Material' : referent?.startsWith('IFCMATERIAL') ? referent : 'an unread record';
     const id = slotRef(line.slice(0, head.eq)); // past a leading comment, as the head is read
-    if (id !== null) this.dropped.set(id, type?.startsWith('IFCMATERIAL') ? type : 'an unread record');
+    if (id !== null) this.dropped.set(id, why);
     return null;
   }
 
@@ -146,7 +147,7 @@ export function materialPropertiesNotWritten(store: Pick<SourceStore, 'entityInd
   // Without the bytes (none, or a sourceless store's empty buffer) no record can be checked: the report is
   // pessimistic and names each, as a bare `convertStepLine` leaves each out. An export needs the bytes.
   if (!bytes?.byteLength) return { ids: [...all], attributes };
-  // The writer's own decision: each record through the `apply` the export runs.
+  // The writer's own decision for the source as parsed: each record through the `apply` the export runs.
   const source = new SourceRecords({ entityIndex, source: bytes });
   const referents = new MaterialReferents({ typeOf: (id) => source.type(id), slots: (id) => source.slots(id) });
   return { ids: all.filter((id) => { const text = source.text(id); return text === undefined || referents.apply(text, from, to) === null; }), attributes };

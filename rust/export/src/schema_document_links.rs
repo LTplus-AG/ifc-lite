@@ -71,7 +71,9 @@ impl DocumentLinks {
                 for reference in listed.iter().map(|m| slot_ref(m)) {
                     match reference.filter(|r| targets.contains(r)).map(|r| links.fill.entry(r)) {
                         Some(Entry::Vacant(e)) => drop(e.insert(format!("#{doc}"))),
-                        Some(Entry::Occupied(_)) => { links.listed_again += 1; whole = false; }
+                        // A repeat inside one list is not a second document.
+                        Some(Entry::Occupied(e)) if *e.get() != format!("#{doc}") => { links.listed_again += 1; whole = false; }
+                        Some(Entry::Occupied(_)) => {}
                         None => whole = false,
                     }
                 }

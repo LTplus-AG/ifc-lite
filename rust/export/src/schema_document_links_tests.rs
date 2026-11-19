@@ -43,6 +43,16 @@ fn a_reference_listed_by_two_documents_keeps_the_first_10846() {
     assert!(warnings.iter().any(|w| w.starts_with("1 IfcDocumentReference listing(s) past")), "{warnings:?}");
 }
 
+/// A reference repeated inside one list is not a second document.
+#[test]
+fn a_repeat_inside_one_list_is_not_reported_10846() {
+    let source = model("IFC2X3", &IFC2X3.replace("(#6,#7)", "(#6,#6,#7)"));
+    let (out, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &to("IFC4")).unwrap();
+    assert_eq!(record(&out, "#6="), "#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);");
+    assert_eq!(stats.attribute_values_dropped, 0);
+    assert!(!warnings.iter().any(|w| w.contains("IfcDocumentReference listing")), "{warnings:?}");
+}
+
 /// A subset has no source links to read, so the slot stays `$` and the
 /// listing stays counted, as before.
 #[test]
@@ -52,3 +62,4 @@ fn a_subset_export_arms_nothing_10846() {
     assert_eq!(record(&out, "#6="), "#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,$);");
     assert_eq!(dropped, 1);
 }
+

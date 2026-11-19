@@ -33,6 +33,8 @@ export class DocumentLinks {
   private at = -1;
   /** Converted record id -> the value its link slot takes. */
   private readonly fill = new Map<number, string>();
+  /** Source records whose link attribute this writes on the other side, by that attribute (the loss report). */
+  readonly restored = new Map<number, ReadonlySet<string>>();
   private listedAgain = 0;
 
   fromSource(source: SourceRecords, from: string, to: string): void {
@@ -50,20 +52,27 @@ export class DocumentLinks {
       const slots = source.slots(id);
       return slots && slots.length === names(from, holder)!.length ? [{ id, link: slots[readAt] }] : [];
     });
+    const link = new Set([up ? 'DocumentReferences' : 'ReferencedDocument']);
     if (up) {
-      for (const { id: doc, link } of holders) {
-        for (const member of listItems(link) ?? []) {
+      for (const { id: doc, link: listed } of holders) {
+        const members = listItems(listed) ?? [];
+        let whole = members.length > 0;
+        for (const member of members) {
           const ref = slotRef(member);
-          if (ref === null || !targets.has(ref)) continue;
-          if (this.fill.has(ref)) this.listedAgain++;
-          else this.fill.set(ref, `#${doc}`);
+          const first = ref === null ? undefined : this.fill.get(ref);
+          if (ref === null || !targets.has(ref)) whole = false;
+          else if (first === undefined) this.fill.set(ref, `#${doc}`);
+          // A repeat inside one list is not a second document.
+          else if (first !== `#${doc}`) { this.listedAgain++; whole = false; }
         }
+        if (whole) this.restored.set(doc, link);
       }
     } else {
       const lists = new Map<number, string[]>();
-      for (const { id: ref, link } of holders) {
-        const doc = slotRef(link);
+      for (const { id: ref, link: named } of holders) {
+        const doc = slotRef(named);
         if (doc === null || !targets.has(doc)) continue;
+        this.restored.set(ref, link);
         const list = lists.get(doc) ?? [];
         list.push(`#${ref}`);
         lists.set(doc, list);

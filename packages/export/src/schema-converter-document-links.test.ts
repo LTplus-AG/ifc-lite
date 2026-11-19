@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter, exportToStep } from './step-exporter.js';
+import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 
 const model = (schema: string, data: string): string =>
   `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;\n${data}\nENDSEC;\nEND-ISO-10303-21;\n`;
@@ -32,6 +33,21 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     const result = new StepExporter(await parse(model('IFC2X3', source))).export({ schema: 'IFC4' });
     expect(record(new TextDecoder().decode(result.content), 6)).toBe("#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);");
     expect(result.stats.warnings.join('\n')).toContain("1 IfcDocumentReference listing(s) past a reference's first IfcDocumentInformation");
+  });
+
+  it('reports no loss of a link the export moves, and none for a repeat inside one list', async () => {
+    const dropped = (store: IfcDataStore, from: 'IFC2X3' | 'IFC4', to: 'IFC2X3' | 'IFC4', type: string) =>
+      analyzeConversionLoss(store, from, to).entries.find((e) => e.sourceType === type)?.droppedAttributes ?? [];
+    const store = await parse(model('IFC2X3', IFC2X3));
+    expect(dropped(store, 'IFC2X3', 'IFC4', 'IFCDOCUMENTINFORMATION')).not.toContain('DocumentReferences');
+    const ifc4 = await parse(exportToStep(store, { schema: 'IFC4' }));
+    expect(dropped(ifc4, 'IFC4', 'IFC2X3', 'IFCDOCUMENTREFERENCE')).not.toContain('ReferencedDocument');
+    // Control: a reference no document lists keeps its loss.
+    const unlisted = await parse(model('IFC2X3', IFC2X3.replace('(#6,#7)', '(#6,#9)')));
+    expect(dropped(unlisted, 'IFC2X3', 'IFC4', 'IFCDOCUMENTINFORMATION')).toContain('DocumentReferences');
+    const repeat = new StepExporter(await parse(model('IFC2X3', IFC2X3.replace('(#6,#7)', '(#6,#6,#7)')))).export({ schema: 'IFC4' });
+    expect(record(new TextDecoder().decode(repeat.content), 6)).toBe("#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);");
+    expect(repeat.stats.warnings.join('\n')).not.toContain('IfcDocumentReference listing');
   });
 
   it('arms nothing for a subset, which has no source links to read', async () => {

@@ -44,7 +44,7 @@ function candidates(c: ViewerOperationContext) {
   let entries = hosts.get(c.host); if (!entries) { entries = new Map(); hosts.set(c.host, entries); const captured = entries; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return entries;
 }
 function remember(c: ViewerOperationContext, candidate: Candidate) {
-  admitCandidate(candidates(c), 64, 'IDS candidate capacity reached; apply or discard a pending candidate.', entry => entry.result === undefined);
+  admitCandidate(candidates(c), { cap: 64, refusal: 'IDS candidate capacity reached; apply or discard a pending candidate.', pending: entry => entry.result === undefined });
   const token = crypto.randomUUID(); candidates(c).set(token, candidate); return token;
 }
 const tokenSchema: JSONSchemaType<{ token: string }> = { type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false };

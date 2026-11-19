@@ -85,8 +85,8 @@ export const graphAuthoringOperations = [
     // A review of a closed or replaced model can never apply; dropping it releases its native handles.
     const admit = () => {
       const live = new Map(c.host.models().map(model => [model.id, model.store]));
-      admitCandidate(owned(c), 32, 'At most 32 graph review candidates may be retained.', entry => !entry.receipt,
-        entry => live.get(entry.modelId) !== entry.store, entry => entry.review?.dispose?.());
+      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.receipt,
+        gone: entry => live.get(entry.modelId) !== entry.store, release: entry => entry.review?.dispose?.() });
     };
     admit();
     const review = await prepare(kind, i.proposal_json, c);

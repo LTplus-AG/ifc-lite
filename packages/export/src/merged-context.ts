@@ -39,7 +39,7 @@ import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
 import { BARE_REF_RE } from './reference-collector.js';
 import { getStepAttr, groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
-import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
+import { PROJECT_REPRESENTATION_CONTEXTS_ATTR, refsIn } from './merged-project-contexts.js';
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {
@@ -254,12 +254,6 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
   return a.placement === b.placement && a.unitScale !== null && b.unitScale !== null && unitScalesEqual(a.unitScale, b.unitScale);
 }
 
-/** 0-based attribute index of `IfcContext.RepresentationContexts` (IfcProject in IFC2X3 and IFC4, IfcProjectLibrary). */
-const PROJECT_REPRESENTATION_CONTEXTS_ATTR = 7;
-
-/** The `#N` references in an attribute slot of references (`$` has none); its comments are not read. */
-const refsIn = (slot: string): string[] => slot.replace(/\/\*[\s\S]*?\*\//g, '').match(/#\d+/g) ?? [];
-
 /**
  * Plan the whole shared-infrastructure dedup for one model — `MergedExporter`
  * delegates its entire "remap and skip duplicate infrastructure" step here.
@@ -368,41 +362,4 @@ export function planInfrastructureUnify(
   // A project that lists a subcontext lists its root too (a root context has no ParentContext slot, so reads null).
   const projectListed = new Set([...listed, ...listed.map(id => refId(getStepAttr(dataStore, id, SUBCONTEXT_PARENT_CONTEXT_ATTR)))]);
   return modelContextIds.filter(id => !sharedRemap.has(id) && projectListed.has(id));
-}
-
-/**
- * List `contextIds` in the merged project's RepresentationContexts (#10798). A compatible later model's IfcProject
- * folds into the primary's, so a top-level context of it that was kept rather than unified (a different frame or
- * georeference, or a second context its own project listed) belongs to no project otherwise. Only
- * ids written to `lines` are listed.
- */
-export function listKeptContexts(lines: string[], projectId: number | undefined, contextIds: readonly number[]): void {
-  if (projectId === undefined || contextIds.length === 0) return;
-  const wanted = new Set(contextIds), written: number[] = [];
-  let projectIndex = -1;
-  // Stops once the project and every kept context are found.
-  for (let index = 0; index < lines.length && (projectIndex < 0 || written.length < wanted.size); index++) {
-    const id = leadingId(lines[index]);
-    if (id === projectId) projectIndex = index;
-    else if (wanted.has(id)) written.push(id);
-  }
-  if (projectIndex < 0 || written.length === 0) return;
-  const text = lines[projectIndex], frame = stepRecordFrame(text, { allowMissingSemicolon: true });
-  const args = frame && splitTopLevelStepArguments(frameArgs(text, frame));
-  if (!frame || !args || args.length <= PROJECT_REPRESENTATION_CONTEXTS_ATTR) return;
-  // The slot holds references only, so it is rewritten from them: `(#2) /* c */` and `$ /* c */` read as the list.
-  args[PROJECT_REPRESENTATION_CONTEXTS_ATTR] = `(${[...refsIn(args[PROJECT_REPRESENTATION_CONTEXTS_ATTR]), ...written.map(id => `#${id}`)].join(',')})`;
-  lines[projectIndex] = withFrameArgs(text, frame, args.join(','));
-}
-
-/** The `#N` a STEP line starts with, or -1; read by char code, as it runs over every line of a merge. */
-function leadingId(line: string): number {
-  if (line.charCodeAt(0) !== 35) return -1;
-  let id = 0, index = 1;
-  for (; index < line.length; index++) {
-    const digit = line.charCodeAt(index) - 48;
-    if (digit < 0 || digit > 9) break;
-    id = id * 10 + digit;
-  }
-  return index > 1 ? id : -1;
 }

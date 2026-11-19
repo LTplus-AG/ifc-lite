@@ -81,8 +81,9 @@ export const graphAuthoringOperations = [
   ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
-    // Unchanged by the review's own source check: the loaded models and edit revisions it bound (the permanent half of
-    // its validate()). A review that fails it is dropped and its native handles released.
+    // Unchanged by the review's own source check, the permanent half of its validate(): loaded models and edit
+    // revisions for Group, Structural and Room, source owners only for Zone. A review that fails it is dropped and its
+    // native handles released. Zone's evaluation snapshot and Room's geometry lease are left to apply's validate().
     const admit = () => {
       const stillApplies = candidateStillApplies(c.host);
       admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.settled,

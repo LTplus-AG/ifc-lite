@@ -94,6 +94,8 @@ fn only_a_type_with_the_rule_is_reported_10780() {
     assert_eq!(refused("#5=IFCWALL('g',$,$,$,$,$,$,$,.USERDEFINED.);", "IFC4X3", "IFC4").1, 1);
     assert_eq!(refused("#5=IFCWALL('g',$,$,$,'Mine',$,$,$,.USERDEFINED.);", "IFC4X3", "IFC4").1, 0);
     assert_eq!(refused("#5=IFCWALL('g',$,$,$,$,$,$,$,.STANDARD.);", "IFC4X3", "IFC4").1, 0);
+    assert_eq!(refused("#5=IFCWALL('g',$,$,$,/* none */$,$,$,$,.USERDEFINED. /* x */);", "IFC4X3", "IFC4").1, 1, "comments are trivia");
+    assert_eq!(refused("#5=IFCWALL('g',$,$,$,'Mine' /* x */,$,$,$,.USERDEFINED.);", "IFC4X3", "IFC4").1, 0);
     // IFC4 IfcDoor's PredefinedType has no such rule.
     assert_eq!(refused("#5=IFCDOOR('g',$,$,$,$,$,$,$,$,$,.USERDEFINED.,$,$);", "IFC4X3", "IFC4").1, 0);
 }

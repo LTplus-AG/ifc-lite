@@ -63,8 +63,16 @@ pub(crate) fn rule(schema: &str, entity_type: &str) -> Option<(usize, usize)> {
 /// and leave the label unset.
 pub(crate) fn breaks(args: &[String], (predefined, label): (usize, usize)) -> bool {
     args.len() > predefined.max(label)
-        && args[predefined].trim().eq_ignore_ascii_case(".USERDEFINED.")
-        && args[label].trim() == "$"
+        && is_token(&args[predefined], ".USERDEFINED.")
+        && is_token(&args[label], "$")
+}
+
+/// True when `slot` is `token` (any case) with only whitespace and comments around it.
+fn is_token(slot: &str, token: &str) -> bool {
+    let bytes = slot.as_bytes();
+    let Some(start) = ifc_lite_core::parser::skip_step_trivia(bytes, 0) else { return false };
+    slot.get(start..start + token.len()).is_some_and(|t| t.eq_ignore_ascii_case(token))
+        && ifc_lite_core::parser::skip_step_trivia(bytes, start + token.len()) == Some(bytes.len())
 }
 
 #[cfg(test)]

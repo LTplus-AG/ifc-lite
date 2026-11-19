@@ -14,6 +14,7 @@
 
 import type { SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { attrNameTable } from './schema-converter.js';
+import { skipStepTrivia } from './step-slot-grammar.js';
 
 const LABELS: readonly string[] = ['ObjectType', 'ElementType', 'ProcessType', 'ResourceType'];
 
@@ -63,6 +64,13 @@ export function userDefinedRule(schema: SchemaVersionWithRegistry, entityType: s
 /** True when converted `args` under `rule` say `.USERDEFINED.` and leave the label unset. */
 export function breaksUserDefinedRule(args: readonly string[], [predefined, label]: readonly [number, number]): boolean {
   return args.length > Math.max(predefined, label)
-    && args[predefined].trim().toUpperCase() === '.USERDEFINED.'
-    && args[label].trim() === '$';
+    && isToken(args[predefined], '.USERDEFINED.')
+    && isToken(args[label], '$');
+}
+
+/** True when `slot` is `token` (any case) with only whitespace and comments around it. */
+function isToken(slot: string, token: string): boolean {
+  const start = skipStepTrivia(slot, 0);
+  return start !== -1 && slot.slice(start, start + token.length).toUpperCase() === token
+    && skipStepTrivia(slot, start + token.length) === slot.length;
 }

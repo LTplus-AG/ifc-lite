@@ -56,5 +56,6 @@ describe('the USERDEFINED rule (#10780)', () => {
     expect(warned("#5=IFCWALL('g',$,$,$,'Mine',$,$,$,.USERDEFINED.);", 'IFC4X3', 'IFC4')).toEqual([]);
     expect(warned("#5=IFCWALL('g',$,$,$,$,$,$,$,.STANDARD.);", 'IFC4X3', 'IFC4')).toEqual([]);
     expect(warned("#5=IFCDOOR('g',$,$,$,$,$,$,$,$,$,.USERDEFINED.,$,$);", 'IFC4X3', 'IFC4')).toEqual([]);
+    expect(warned("#5=IFCWALL('g',$,$,$,/* none */$,$,$,$,.USERDEFINED. /* x */);", 'IFC4X3', 'IFC4'), 'comments are trivia').toHaveLength(1);
   });
 });

@@ -170,6 +170,7 @@ const SOURCE_LAYOUT_EXEMPT: &[(&str, &str)] = &[
 /// a reason. Before #10763 every one of these kept its source layout.
 #[test]
 fn no_same_named_type_keeps_a_shifted_source_layout_10763() {
+    use crate::schema_plan::{plan_for, Adjust, Plan};
     let schemas = ["IFC2X3", "IFC4", "IFC4X3"];
     let mut bad = Vec::new();
     let mut mapped = 0usize;
@@ -177,11 +178,11 @@ fn no_same_named_type_keeps_a_shifted_source_layout_10763() {
         for to in schemas.into_iter().filter(|to| *to != from) {
             for ty in ifc_lite_core::IFC_TYPES.iter() {
                 let name = ty.name().to_ascii_uppercase();
-                let crate::schema_plan::Plan::Write { renamed: None, adjust, .. } = crate::schema_plan::plan_for(&name, from, to) else { continue };
-                mapped += usize::from(matches!(adjust, crate::schema_plan::Adjust::Mapped(..)));
+                let Plan::Write { renamed: None, adjust, .. } = plan_for(&name, from, to) else { continue };
+                mapped += usize::from(matches!(adjust, Adjust::Mapped(..)));
                 let (Some(src), Some(tgt)) = (super::schema_attribute_names(from, &name), super::schema_attribute_names(to, &name)) else { continue };
                 let shifted = src.len() != tgt.len() || src.iter().enumerate().any(|(i, n)| tgt.iter().position(|t| t == n).is_some_and(|j| j != i));
-                if shifted && adjust == crate::schema_plan::Adjust::Keep && !SOURCE_LAYOUT_EXEMPT.iter().any(|(t, _)| *t == name) {
+                if shifted && adjust == Adjust::Keep && !SOURCE_LAYOUT_EXEMPT.iter().any(|(t, _)| *t == name) {
                     bad.push(format!("{from}->{to} {name}"));
                 }
             }

@@ -19,7 +19,7 @@
  */
 
 import type { IfcSchemaVersion } from './schema-converter.js';
-import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { list } from './schema-ifc2x3-records.js';
 
 /** One reviewed IFC2X3 <-> IFC4 map. A same-named attribute in both lists is
  *  carried unless listed in `retyped` or, on a downgrade, `upOnly`. */
@@ -37,9 +37,11 @@ export interface AttrMap {
   readonly setOfOne: readonly [string, string] | null;
 }
 
-function same(type: string, extra: Partial<AttrMap> = {}): AttrMap {
-  return { ifc2x3: type, ifc4: type, renamed: [], retyped: [], upOnly: [], setOfOne: null, ...extra };
+function map(ifc2x3: string, ifc4: string, extra: Partial<AttrMap> = {}): AttrMap {
+  return { ifc2x3, ifc4, renamed: [], retyped: [], upOnly: [], setOfOne: null, ...extra };
 }
+
+const same = (type: string, extra: Partial<AttrMap> = {}): AttrMap => map(type, type, extra);
 
 /** IfcResource gained `Identification` and `LongDescription` (the renamed
  *  `ResourceGroup`); `BaseQuantity` became an IfcPhysicalQuantity. */
@@ -50,6 +52,7 @@ function resource(type: string): AttrMap {
 export const ATTR_MAPS: readonly AttrMap[] = [
   same('IFCAPPROVAL', { renamed: [['ApprovalStatus', 'Status'], ['ApprovalLevel', 'Level'], ['ApprovalQualifier', 'Qualifier']] }),
   same('IFCAPPROVALRELATIONSHIP', { setOfOne: ['RelatedApproval', 'RelatedApprovals'] }),
+  // IFC4 replaced IfcSurfaceTexture's `TextureType` enum with a `Mode` string of another meaning.
   same('IFCBLOBTEXTURE', { retyped: ['RasterCode'] }),
   same('IFCIMAGETEXTURE', { renamed: [['UrlReference', 'URLReference']] }),
   same('IFCPIXELTEXTURE'),
@@ -67,22 +70,20 @@ export const ATTR_MAPS: readonly AttrMap[] = [
   same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
   // IFC4 deleted these IFC2X3 subtypes for its now-concrete supertype, so a
   // downgrade writes the deleted subtype (`IFC4_TO_IFC2X3`).
-  { ...same('IFCEXTENDEDMATERIALPROPERTIES', { renamed: [['ExtendedProperties', 'Properties']] }), ifc4: 'IFCMATERIALPROPERTIES' },
-  { ...same('IFCGENERALPROFILEPROPERTIES'), ifc4: 'IFCPROFILEPROPERTIES' },
+  map('IFCEXTENDEDMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES', { renamed: [['ExtendedProperties', 'Properties']] }),
+  map('IFCGENERALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
   same('IFCPERFORMANCEHISTORY'),
   same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
   same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
 ];
 
-const MAPPED_IFC4_TYPES: ReadonlySet<string> = new Set(ATTR_MAPS.map((m) => m.ifc4));
+const BY_IFC2X3: ReadonlyMap<string, AttrMap> = new Map(ATTR_MAPS.map((m) => [m.ifc2x3, m]));
+const BY_IFC4: ReadonlyMap<string, AttrMap> = new Map(ATTR_MAPS.map((m) => [m.ifc4, m]));
 
-/** True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
- *  counted: a structural record, or one a map wrote, which can leave a
- *  required slot with no source value (#10763). Twin of the check in Rust
- *  `convert_step_line`. */
-export function upgradeCountsIfc4Slots(line: string): boolean {
-  const type = /=\s*([A-Z0-9_]+)/i.exec(line)?.[1].toUpperCase() ?? '';
-  return type.startsWith('IFCSTRUCTURAL') || MAPPED_IFC4_TYPES.has(type);
+/** True when an IFC4 `line` has a type a map writes, which can leave a required
+ *  slot with no source value, so an IFC2X3 upgrade counts its required slots. */
+export function isMappedIfc4Record(line: string): boolean {
+  return BY_IFC4.has(/=\s*([A-Z0-9_]+)/i.exec(line)?.[1].toUpperCase() ?? '');
 }
 
 /** The map for writing `entityType` as `newType`, and whether it runs upward. */
@@ -92,24 +93,26 @@ export function attrMapFor(
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,
 ): { map: AttrMap; up: boolean } | undefined {
-  const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
-  const up = fromSchema === 'IFC2X3' && ifc4Like(toSchema);
-  if (!up && !(toSchema === 'IFC2X3' && ifc4Like(fromSchema))) return undefined;
-  const [src, tgt] = up ? [entityType, newType] : [newType, entityType];
-  const map = ATTR_MAPS.find((m) => m.ifc2x3 === src && m.ifc4 === tgt);
-  return map && { map, up };
+  if (fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3')) {
+    const found = BY_IFC2X3.get(entityType);
+    return found?.ifc4 === newType ? { map: found, up: true } : undefined;
+  }
+  if (toSchema === 'IFC2X3' && (fromSchema === 'IFC4' || fromSchema === 'IFC4X3')) {
+    const found = BY_IFC4.get(entityType);
+    return found?.ifc2x3 === newType ? { map: found, up: false } : undefined;
+  }
+  return undefined;
 }
 
 type Source = { name: string; how: 'value' | 'wrap' | 'unwrap' };
 
 /** The source attribute (in the source list `src`) that fills target `name`. */
 function sourceOf(map: AttrMap, up: boolean, name: string, src: readonly string[]): Source | undefined {
-  // A pair read from the target's side: [target name, source name].
-  const fromTarget = ([older, newer]: readonly [string, string]) => (up ? [newer, older] : [older, newer]);
-  const renamed = map.renamed.map(fromTarget).find(([target]) => target === name);
-  if (renamed) return { name: renamed[1], how: 'value' };
-  const set = map.setOfOne && fromTarget(map.setOfOne);
-  if (set && set[0] === name) return { name: set[1], how: up ? 'wrap' : 'unwrap' };
+  // Pairs are [IFC2X3 name, IFC4 name]; the target's side is the second on an upgrade.
+  const [target, source] = up ? [1, 0] : [0, 1];
+  const renamed = map.renamed.find((pair) => pair[target] === name);
+  if (renamed) return { name: renamed[source], how: 'value' };
+  if (map.setOfOne?.[target] === name) return { name: map.setOfOne[source], how: up ? 'wrap' : 'unwrap' };
   const carried = !map.retyped.includes(name) && (up || !map.upOnly.includes(name));
   return carried && src.includes(name) ? { name, how: 'value' } : undefined;
 }
@@ -122,8 +125,7 @@ function holdsValue(slot: string): boolean {
 
 /** The first member of a STEP list, or the value itself when it is not one. */
 function firstMember(value: string): string {
-  const v = value.trim();
-  const members = v.startsWith('(') && v.endsWith(')') ? splitTopLevelStepArguments(v.slice(1, -1)) : null;
+  const members = list(value);
   if (members === null) return value;
   return members.find(holdsValue)?.trim() ?? '$';
 }

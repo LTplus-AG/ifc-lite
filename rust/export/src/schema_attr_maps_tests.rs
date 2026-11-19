@@ -5,44 +5,16 @@ use crate::schema_enum::ConversionChecks;
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use ifc_lite_core::attribute_names_for_schema;
 
-type Row = (String, String, Vec<(String, String)>, Vec<String>, Vec<String>, Option<(String, String)>);
-
-fn strings(v: &serde_json::Value) -> Vec<String> {
-    v.as_array().expect("array").iter().map(|s| s.as_str().expect("string").to_owned()).collect()
-}
-
-fn pair(v: &serde_json::Value) -> (String, String) {
-    (v[0].as_str().expect("name").to_owned(), v[1].as_str().expect("name").to_owned())
-}
-
 /// The table is the shared fixture, entry for entry (the TypeScript twin runs
 /// the same comparison).
 #[test]
 fn the_table_is_the_shared_fixture_10763() {
-    let doc: serde_json::Value =
+    let mut doc: serde_json::Value =
         serde_json::from_str(include_str!("../tests/fixtures/schema_attribute_maps.json")).expect("valid JSON");
-    let fixture: Vec<Row> = doc["maps"]
-        .as_array()
-        .expect("maps")
-        .iter()
-        .map(|m| {
-            let s = |k: &str| m[k].as_str().expect(k).to_owned();
-            let renamed = m["renamed"].as_array().expect("renamed").iter().map(pair).collect();
-            let set = (!m["setOfOne"].is_null()).then(|| pair(&m["setOfOne"]));
-            (s("ifc2x3"), s("ifc4"), renamed, strings(&m["retyped"]), strings(&m["upOnly"]), set)
-        })
-        .collect();
-    let own = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let table: Vec<Row> = ATTR_MAPS
-        .iter()
-        .map(|m| {
-            let renamed = m.renamed.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
-            let set = m.set_of_one.map(|(a, b)| (a.to_string(), b.to_string()));
-            (m.ifc2x3.into(), m.ifc4.into(), renamed, own(m.retyped), own(m.up_only), set)
-        })
-        .collect();
-    assert!(table.len() >= 20, "anti-vacuity");
-    assert_eq!(table, fixture);
+    let fixture = doc["maps"].as_array_mut().expect("maps");
+    fixture.iter_mut().for_each(|m| drop(m.as_object_mut().expect("map").remove("why")));
+    assert!(ATTR_MAPS.len() >= 20, "anti-vacuity");
+    assert_eq!(serde_json::to_value(ATTR_MAPS).expect("serializes"), doc["maps"]);
 }
 
 /// Every name a map lists sits on the side it is listed for in core's

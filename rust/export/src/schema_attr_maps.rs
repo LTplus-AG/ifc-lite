@@ -18,11 +18,11 @@
 //! `tests/fixtures/schema_upconvert_sweep.json`.
 
 use crate::schema_convert::holds_value;
-use crate::step_slot::split_top_level_args;
 
 /// One reviewed IFC2X3 <-> IFC4 attribute map. A same-named attribute in both
 /// lists is carried unless listed in `retyped` or, on a downgrade, `up_only`.
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Serialize), serde(rename_all = "camelCase"))]
 pub(crate) struct AttrMap {
     /// The IFC2X3 type.
     pub(crate) ifc2x3: &'static str,
@@ -58,14 +58,15 @@ const fn resource(ty: &'static str) -> AttrMap {
     }
 }
 
-/// IFC4 replaced IfcSurfaceTexture's `TextureType` enum with a `Mode` string
-/// of another meaning, so neither carries into the other.
+/// Every reviewed map; the fixture's `why` gives the change note behind each.
 pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     AttrMap {
         renamed: &[("ApprovalStatus", "Status"), ("ApprovalLevel", "Level"), ("ApprovalQualifier", "Qualifier")],
         ..same("IFCAPPROVAL")
     },
     AttrMap { set_of_one: Some(("RelatedApproval", "RelatedApprovals")), ..same("IFCAPPROVALRELATIONSHIP") },
+    // IFC4 replaced IfcSurfaceTexture's `TextureType` enum with a `Mode` string
+    // of another meaning, so neither carries into the other.
     AttrMap { retyped: &["RasterCode"], ..same("IFCBLOBTEXTURE") },
     AttrMap { renamed: &[("UrlReference", "URLReference")], ..same("IFCIMAGETEXTURE") },
     same("IFCPIXELTEXTURE"),
@@ -107,36 +108,34 @@ pub(crate) fn attr_map(entity_type: &str, new_type: &str, cfrom: &str, cto: &str
     ATTR_MAPS.iter().find(|m| m.ifc2x3 == src && m.ifc4 == tgt).map(|m| (m, up))
 }
 
-/// True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
-/// counted: a structural record, or one a map wrote, which can leave a
-/// required slot with no source value (#10763). Twin of the TypeScript
-/// `upgradeCountsIfc4Slots`.
-pub(crate) fn upgrade_counts_ifc4_slots(line: &str) -> bool {
-    let ty = line.split('=').nth(1).and_then(|s| s.split('(').next()).unwrap_or_default().trim();
-    ty.starts_with("IFCSTRUCTURAL") || ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
+/// True when IFC4 `ty` is written by a map, which can leave a required slot
+/// with no source value, so an IFC2X3 upgrade counts its required slots.
+pub(crate) fn is_mapped_ifc4_type(ty: &str) -> bool {
+    ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
 }
 
-/// How a target slot is filled from the source.
-enum From {
-    Value(&'static str),
-    Wrap(&'static str),
-    Unwrap(&'static str),
+/// How a target slot is filled from its source value.
+#[derive(Clone, Copy)]
+enum How {
+    Value,
+    Wrap,
+    Unwrap,
 }
 
 impl AttrMap {
-    /// The source attribute (named in the source schema's list `src`) that fills
-    /// the target attribute `name`.
-    fn source_of(&self, up: bool, name: &str, src: &[&'static str]) -> Option<From> {
+    /// The source attribute (as named in the source list `src`) that fills the
+    /// target attribute `name`, and how.
+    fn source_of(&self, up: bool, name: &str, src: &[&'static str]) -> Option<(&'static str, How)> {
         // A pair read from the target's side: (target name, source name).
         let from_target = |&(older, newer): &(&'static str, &'static str)| if up { (newer, older) } else { (older, newer) };
         if let Some((_, source)) = self.renamed.iter().map(from_target).find(|(target, _)| *target == name) {
-            return Some(From::Value(source));
+            return Some((source, How::Value));
         }
         if let Some((_, source)) = self.set_of_one.as_ref().map(from_target).filter(|(target, _)| *target == name) {
-            return Some(if up { From::Wrap(source) } else { From::Unwrap(source) });
+            return Some((source, if up { How::Wrap } else { How::Unwrap }));
         }
         let carried = !self.retyped.contains(&name) && (up || !self.up_only.contains(&name));
-        src.iter().copied().find(|s| *s == name).filter(|_| carried).map(From::Value)
+        src.iter().copied().find(|s| *s == name).filter(|_| carried).map(|s| (s, How::Value))
     }
 }
 
@@ -148,10 +147,7 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
     let out: Vec<String> = tgt
         .iter()
         .map(|name| {
-            let Some(from) = map.source_of(up, name, src) else { return "$".to_owned() };
-            let source = match from {
-                From::Value(s) | From::Wrap(s) | From::Unwrap(s) => s,
-            };
+            let Some((source, how)) = map.source_of(up, name, src) else { return "$".to_owned() };
             let Some(i) = src.iter().position(|s| *s == source).filter(|&i| i < values.len()) else {
                 return "$".to_owned();
             };
@@ -160,15 +156,14 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
             if !holds_value(value) {
                 return "$".to_owned();
             }
-            match from {
-                From::Value(_) => value.to_owned(),
-                From::Wrap(_) if value.trim_start().starts_with('(') => value.to_owned(),
-                From::Wrap(_) => format!("({})", value.trim()),
-                From::Unwrap(_) => {
+            match how {
+                How::Wrap if !value.trim_start().starts_with('(') => format!("({})", value.trim()),
+                How::Unwrap => {
                     let (first, extra) = first_member(value);
                     *lost += extra;
                     first
                 }
+                How::Value | How::Wrap => value.to_owned(),
             }
         })
         .collect();
@@ -179,9 +174,8 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
 /// The first member of a STEP list `value`, and how many more members hold a
 /// value. A value that is not a list is its own first member.
 fn first_member(value: &str) -> (String, usize) {
-    let inner = value.trim().strip_prefix('(').and_then(|v| v.strip_suffix(')'));
-    let Some(members) = inner.and_then(split_top_level_args) else { return (value.to_owned(), 0) };
-    let mut held = members.iter().filter(|m| holds_value(m));
+    let Some(members) = crate::schema_ifc2x3_records::list(Some(value)) else { return (value.to_owned(), 0) };
+    let mut held = members.into_iter().filter(|m| holds_value(m));
     match held.next() {
         Some(first) => (first.trim().to_owned(), held.count()),
         None => ("$".to_owned(), 0),

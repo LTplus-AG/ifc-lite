@@ -26,7 +26,7 @@ import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
-import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-converter-attr-maps.js';
+import { attrMapFor, isMappedIfc4Record, remapByAttrMap } from './schema-converter-attr-maps.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
@@ -295,7 +295,7 @@ export function convertStepLine(
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  if (toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots?.apply(converted);
+  if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || /=\s*IFCSTRUCTURAL/i.test(converted) || isMappedIfc4Record(converted))) ifc4Slots.apply(converted);
   return converted;
 }
 
@@ -407,7 +407,7 @@ function convertRecord(
   if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
-  const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
+  const mapped = srcAttrs && tgtAttrs && args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
   if (mapped && srcAttrs && tgtAttrs) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
   else if (srcAttrs && tgtAttrs) {
     const replaced = replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there

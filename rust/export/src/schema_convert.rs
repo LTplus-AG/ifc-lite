@@ -248,7 +248,8 @@ pub fn convert_step_line(
         }
         converted = checks.enums.apply(converted, cto);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
-        (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
+        let ty = converted.split_once('=').and_then(|(_, s)| s.split_once('(')).map_or("", |(t, _)| t.trim());
+        (cto == "IFC4" && (cfrom != "IFC2X3" || ty.starts_with("IFCSTRUCTURAL") || crate::schema_attr_maps::is_mapped_ifc4_type(ty))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }

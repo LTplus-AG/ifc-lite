@@ -9,14 +9,18 @@
  * here and replayed from the model's ACKNOWLEDGED backing generation through
  * the renderer's bounded replay: one chunk lease and one slice at a time.
  *
- * Each replay is fenced: a newer reload (or device swap) supersedes it. A
- * replay that fails or is superseded hands its meshes back (`unclaim`) so the
- * next pass retries them; nothing is ever silently left out of the scene.
+ * Each replay is fenced: a newer reload (or device swap) supersedes it, and
+ * the newer pass owns those meshes. A replay that fails in its own epoch keeps
+ * them: it retries (bounded), then parks and retries whenever the backing's
+ * availability changes (a seal acknowledges, a generation fails or is
+ * replaced) until it completes or a reshape supersedes it. It never hands
+ * meshes back to an incremental pass that would not select them again.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
+import { subscribeReleasedGeometryMetadata } from './released-geometry-metadata';
 
 const SLICE = 256;
 const RETRIES = 3;
@@ -25,16 +29,21 @@ let epoch = 0;
 /** Replays of one epoch run one after another: each owns the scene's streaming pass while it runs. */
 let chain: Promise<unknown> = Promise.resolve();
 
+/** Parked replays of the current epoch, waiting for the backing's availability to change. */
+const parked = new Set<() => void>();
+
 /** A flat reshape supersedes every replay in flight: it must not upload into the reshaped scene. */
-export function supersedeReleasedReplays(): void { epoch++; }
+export function supersedeReleasedReplays(): void {
+  epoch++;
+  for (const stop of [...parked]) stop();
+}
 
 /**
  * Resident meshes for the normal upload; released ones are replayed from the backing.
- * A replay that fails in its own epoch is retried, then handed back (`unclaim`) for
- * the next rebuild; one a reshape superseded is dropped (the newer pass owns them).
+ * A replay that fails in its own epoch retries, then parks until the backing changes;
+ * one a reshape superseded is dropped (the newer pass owns its meshes).
  */
-export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], unclaim: (meshes: readonly MeshData[]) => void,
-  replayOnce: typeof replay = replay): MeshData[] {
+export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], replayOnce: typeof replay = replay): MeshData[] {
   if (!meshes.some(isReleasedMesh)) return meshes;
   const released = meshes.filter(isReleasedMesh);
   const mine = epoch;
@@ -48,7 +57,26 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], u
       }
       if (attempt < RETRIES && isCurrent()) await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
     }
-    if (isCurrent()) unclaim(released);
+    if (isCurrent()) park();
+  };
+  const attempt = async (): Promise<boolean> => {
+    try {
+      return isCurrent() && await replayOnce(renderer, released, isCurrent);
+    } catch (error) {
+      console.error('[GeometryBacking] parked released geometry replay failed', error);
+      return false;
+    }
+  };
+  const park = () => {
+    let queued = false;
+    const stop = () => { unsubscribe(); parked.delete(stop); };
+    const unsubscribe = subscribeReleasedGeometryMetadata(() => {
+      if (!isCurrent()) { stop(); return; }
+      if (queued) return;
+      queued = true;
+      chain = chain.then(async () => { queued = false; if (await attempt()) stop(); });
+    });
+    parked.add(stop);
   };
   chain = chain.then(run, run);
   return meshes.filter((mesh) => !isReleasedMesh(mesh));

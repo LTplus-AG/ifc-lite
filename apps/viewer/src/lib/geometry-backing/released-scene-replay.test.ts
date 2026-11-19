@@ -10,6 +10,7 @@ import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import type { SceneContents } from '@ifc-lite/renderer';
 import { reshapeSceneKeepingPresentInstanced } from '@/components/viewer/geometry-rebuild';
 import { releasedReplaysIdle, splitReleasedForReplay } from './released-scene-replay';
+import { notifyReleasedGeometryMetadataChanged } from './released-geometry-metadata';
 
 const renderer = {} as Renderer;
 function mesh(expressId: number): MeshData {
@@ -25,22 +26,46 @@ describe('released scene replay (content reload)', () => {
   it('#10903 a failed replay of the same list is retried in its epoch, not left waiting for a length change', async () => {
     const list = releasedList();
     let attempts = 0;
-    const unclaimed: MeshData[][] = [];
-    const resident = splitReleasedForReplay(renderer, list, (gone) => unclaimed.push([...gone]), async () => ++attempts >= 2);
+    const resident = splitReleasedForReplay(renderer, list, async () => ++attempts >= 2);
     assert.deepEqual(resident, [list[0]], 'only resident meshes take the normal upload');
     await releasedReplaysIdle();
     assert.equal(attempts, 2, 'the replay ran again without a new store pass');
-    assert.deepEqual(unclaimed, [], 'a replay that eventually completes keeps its claim');
   });
 
-  it('a replay that keeps failing is handed back for the next rebuild after its bounded retries', async () => {
+  it('#10903 after its bounded retries a replay parks, and completes when the backing recovers, with no store pass', async () => {
+    const list = releasedList();
+    let attempts = 0, available = false;
+    const uploaded: MeshData[][] = [];
+    splitReleasedForReplay(renderer, list, async (_r, released) => {
+      attempts++;
+      if (!available) throw new Error('backing unavailable');
+      uploaded.push([...released]);
+      return true;
+    });
+    await releasedReplaysIdle();
+    assert.equal(attempts, 3, 'bounded retries are exhausted');
+    assert.deepEqual(uploaded, []);
+    // A same-length geometry pass selects nothing new, so the hook would never hand these back:
+    // the replay itself must come back when the backing does (a seal acknowledges a generation).
+    available = true;
+    notifyReleasedGeometryMetadataChanged();
+    await releasedReplaysIdle();
+    assert.deepEqual(uploaded, [[list[1]]], 'the parked replay uploaded the released mesh');
+    notifyReleasedGeometryMetadataChanged();
+    await releasedReplaysIdle();
+    assert.equal(attempts, 4, 'and stopped listening once complete');
+  });
+
+  it('a parked replay is dropped by the next reshape and never uploads into it', async () => {
     const list = releasedList();
     let attempts = 0;
-    const unclaimed: MeshData[][] = [];
-    splitReleasedForReplay(renderer, list, (gone) => unclaimed.push([...gone]), async () => { attempts++; throw new Error('backing unavailable'); });
+    splitReleasedForReplay(renderer, list, async () => { attempts++; throw new Error('backing unavailable'); });
     await releasedReplaysIdle();
-    assert.equal(attempts, 3);
-    assert.deepEqual(unclaimed, [[list[1]]]);
+    reshapeSceneKeepingPresentInstanced({ clearFlatGeometry: () => undefined, getInstancedModelIndices: () => [] } as unknown as SceneContents,
+      undefined, [mesh(9)]);
+    notifyReleasedGeometryMetadataChanged();
+    await releasedReplaysIdle();
+    assert.equal(attempts, 3, 'the newer pass owns those meshes');
   });
 
   it('#10903 a reshape with no released meshes still supersedes the replay in flight, which then uploads nothing', async () => {
@@ -48,8 +73,7 @@ describe('released scene replay (content reload)', () => {
     let allowed!: () => void;
     const gate = new Promise<void>((resolve) => { allowed = resolve; });
     const uploads: string[] = [];
-    const unclaimed: MeshData[][] = [];
-    splitReleasedForReplay(renderer, list, (gone) => unclaimed.push([...gone]), async (_r, _m, isCurrent) => {
+    splitReleasedForReplay(renderer, list, async (_r, _m, isCurrent) => {
       await gate;
       if (!isCurrent()) return false; // replayReleasedGeometry's fence: nothing more is uploaded
       uploads.push('old model');
@@ -59,10 +83,9 @@ describe('released scene replay (content reload)', () => {
     reshapeSceneKeepingPresentInstanced({ clearFlatGeometry: () => undefined, getInstancedModelIndices: () => [] } as unknown as SceneContents,
       undefined, [mesh(9)]);
     const replacement = [mesh(9)];
-    assert.equal(splitReleasedForReplay(renderer, replacement, () => undefined), replacement, 'resident-only: nothing to replay');
+    assert.equal(splitReleasedForReplay(renderer, replacement), replacement, 'resident-only: nothing to replay');
     allowed();
     await releasedReplaysIdle();
     assert.deepEqual(uploads, [], 'the removed model is never uploaded into the reshaped scene');
-    assert.deepEqual(unclaimed, [], 'and its keys are not unclaimed over the newer pass');
   });
 });

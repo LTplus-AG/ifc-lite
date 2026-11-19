@@ -21,7 +21,7 @@ import { blankDocument } from '@/lib/document/presets';
 import { parseDocumentFile } from '@/lib/document/persistence';
 import { rebindContentDocument, rebindCommittedDocument } from '@/lib/storage/content-backup-references';
 import { reportChartDependencies } from '@/lib/reports/chart-dependencies';
-import type { DocumentSpec } from '@/lib/document/types';
+import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { DocumentPanel } from './DocumentPanel';
 
 const original = useViewerStore.getState();
@@ -171,9 +171,17 @@ it('places, refreshes, prints, and reports deletion of a saved quality gate insi
   assert.deepEqual(missing.failures, [gate.id]);
 });
 
-it('migrates existing documents and retains the selected quality gate row when a backup remaps its report (#10458)', () => {
-  const old = { ...blankDocument(), version: 13 };
-  assert.deepEqual(parseDocumentFile(JSON.stringify(old)).blocks.map(block => ({ ...block, id: '' })), old.blocks.map(block => ({ ...block, id: '' })));
+it('preserves v13 text and retains the selected quality gate row when a backup remaps its report (#10458)', () => {
+  const old = { ...blankDocument(), version: 13, blocks: [
+    { kind: 'text', id: 'legacy-paragraph', style: 'body', text: 'Existing inspection notes' },
+  ] };
+  const migrated = parseDocumentFile(JSON.stringify(old));
+  assert.equal(migrated.version, DOCUMENT_VERSION);
+  assert.equal(migrated.blocks.length, 1);
+  const paragraph = migrated.blocks[0];
+  assert.ok(paragraph.kind === 'text');
+  assert.equal(paragraph.text, 'Existing inspection notes');
+  assert.equal(paragraph.style, 'body');
   const prior: DocumentSpec = { ...blankDocument(), blocks: [{ kind: 'quality-gate', id: 'gate', clashReportId: 'source', row: 2 }] };
   const parsed = parseDocumentFile(JSON.stringify(prior));
   const imported = parsed.blocks[0];

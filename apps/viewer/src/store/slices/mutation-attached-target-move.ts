@@ -7,7 +7,7 @@ import { resolvePlacementChain, setProductPosition } from '@/lib/placement-edit'
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from './mutation-modelling-records';
 import { prepareWallRoomUpdate } from './mutation-placement-rooms';
-/** `mutation` is one entry of the committed batch, for the room's record of the move. */
+/** `mutation` is the element's placement write (else the batch's last), for the room's record of the move. */
 type Outcome = { ok: true; newCoordinates: [number, number, number]; mutation?: Mutation } | { ok: false; reason: string };
 /** Roof/slab moves and their attached tops are one reversible edit, including gizmo batches. */
 export function moveAttachedTargetIn(store: ModellingStore, modelId: string, id: number, native: [number, number, number], batchId?: string): Outcome | null {
@@ -23,21 +23,17 @@ export function moveAttachedTargetIn(store: ModellingStore, modelId: string, id:
   try {
     const result = recordModellingEdit(store, modelId, (_methods, draft) => {
       const update = rooms?.(draft);
-      const result = setProductPosition(target.dataStore, draft.getMutationView(), draft, id, native);
+      const view = draft.getMutationView(), cursor = view.getMutationCount();
+      const result = setProductPosition(target.dataStore, view, draft, id, native);
       if (!result.ok) throw new Error(result.reason);
-      return { ...result, rooms: update ? update() : [] };
+      // The element's own placement write, before refits of attached elements: the room's record of the move goes on
+      // it, since a peer's edit of another element can drop that element's writes from history.
+      const placed = view.getMutations(cursor).find(entry => entry.type === 'UPDATE_POSITIONAL_ATTRIBUTE' && entry.entityId === pointId);
+      return { ...result, rooms: update ? update() : [], placed };
     }, batchId);
-    const stack = store.getState().undoStacks.get(modelId) ?? [], undo = stack.at(-1);
+    const undo = store.getState().undoStacks.get(modelId)?.at(-1);
     const batch = undo ? store.getState().mutationBatchTags.get(undo.id) ?? null : null;
-    // The room's record of the move goes on the element's own placement write, not a later refit in the batch, which
-    // a peer's edit of that other element can drop from history.
-    let placed: Mutation | undefined;
-    for (let index = stack.length - 1; pointId !== undefined && index >= 0 && !placed; index--) {
-      const entry = stack[index];
-      if (store.getState().mutationBatchTags.get(entry.id) !== batch) break;
-      if (entry.type === 'UPDATE_POSITIONAL_ATTRIBUTE' && entry.entityId === pointId) placed = entry;
-    }
     remeshAfterCommit(store.getState, modelId, batch, [id, ...(result.remesh ?? []), ...result.rooms], 'shape');
-    return { ok: true, newCoordinates: native, mutation: placed ?? undo };
+    return { ok: true, newCoordinates: native, mutation: result.placed ?? undo };
   } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : String(error) }; }
 }

@@ -18,7 +18,7 @@ use super::super::frame_snap::closed_and_consistently_wound;
 use super::super::geom::mesh_signed_volume;
 use super::vertex_dedup::{dedup_cut_vertices_within, weld_tolerance};
 use super::Mesh;
-use crate::mesh_check::{Degenerate, EdgeLedger, Key3, VertexKey};
+use crate::mesh_check::{Degenerate, surface_area, EdgeLedger, Key3, VertexKey};
 
 /// The 0.1 mm lattice the closure audits key on.
 const LATTICE: VertexKey = VertexKey::GridMul(1.0e4);
@@ -32,7 +32,7 @@ pub(super) fn close_seams(cut: &Mesh, host: &Mesh) -> Option<Mesh> {
     // The split moves nothing; the weld moves each vertex by at most `tol`, so
     // the enclosed volume can move by at most `tol` times the surface area.
     let (before, after) = (mesh_signed_volume(cut), mesh_signed_volume(&closed));
-    ((after - before).abs() <= tol * surface_area(cut)).then_some(closed)
+    ((after - before).abs() <= tol * surface_area(cut)?).then_some(closed)
 }
 
 /// `cut` with its open edges split at the collinear open-edge endpoints within
@@ -136,22 +136,6 @@ fn close_t_junctions(cut: &Mesh, tol: f64) -> Option<Mesh> {
     // Per-triangle plane tags no longer line up with the new index buffer.
     closed.plane_tags = None;
     closed_and_consistently_wound(&closed).then_some(closed)
-}
-
-fn surface_area(mesh: &Mesh) -> f64 {
-    let p = |i: u32| {
-        let b = i as usize * 3;
-        [mesh.positions[b] as f64, mesh.positions[b + 1] as f64, mesh.positions[b + 2] as f64]
-    };
-    mesh.indices
-        .chunks_exact(3)
-        .map(|t| {
-            let (a, b, c) = (p(t[0]), p(t[1]), p(t[2]));
-            let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
-            let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-            0.5 * (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt()
-        })
-        .sum()
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@
 
 use super::GeometryRouter;
 use crate::BoolFailure;
+#[cfg(test)]
 use rustc_hash::FxHashMap;
 
 pub(crate) use super::diagnostics_recording::ClassificationKind;
@@ -27,6 +28,9 @@ impl GeometryRouter {
     pub(crate) fn record_host_failure_summary(&self, host_id: u32, failures: &[BoolFailure]) {
         if failures.is_empty() {
             return;
+        }
+        if let Some(unchanged) = self.unchanged_rectangular_cuts.borrow_mut().get_mut(&host_id) {
+            *unchanged = false;
         }
         let mut log = self.host_opening_diagnostics.borrow_mut();
         let entry = log.entry(host_id).or_default();
@@ -144,7 +148,11 @@ pub struct WorstHost {
 /// - 3: added `total_unsupported_items` / `unsupported_items_by_type` (previously uncounted drops).
 /// - 4: total_unsupported_items / unsupported_items_by_type also count openings whose id does not decode or whose body fails/meshes empty (ROUTER-37, #8385).
 /// - 5: work-budget refusals carry budget, demand and product/source identity separately from unsupported items.
-pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 5;
+/// - 6: silent_no_ops uses measured area and volume instead of equal triangle counts (#10510).
+pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = MEASURED_CUT_SCHEMA_VERSION;
+
+const LEGACY_CUT_SCHEMA_VERSION: u32 = 5;
+const MEASURED_CUT_SCHEMA_VERSION: u32 = 6;
 
 /// Aggregate CSG / opening diagnostics for one geometry pass — the public
 /// diagnostics contract. Built by [`aggregate_diagnostics`] from drained router
@@ -170,9 +178,8 @@ pub struct GeometryDiagnostics {
     pub classification: ClassificationSummary,
     /// Failure counts by stable reason label, sorted desc by count.
     pub failures_by_reason: Vec<ReasonCount>,
-    /// Hosts where rectangular cutters ran but the triangle count was unchanged
-    /// (cut attempted, geometry not modified) — the highest-signal "looks wrong
-    /// but did not error" indicator.
+    /// Hosts where rectangular cutters ran clean and left the area and volume
+    /// unchanged within tolerance (v6 onward). Earlier producers used equal triangle counts.
     pub silent_no_ops: u64,
     /// rect_fast fast-path engagement.
     pub rect_fast: RectFastSummary,
@@ -230,6 +237,18 @@ impl Default for GeometryDiagnostics {
 }
 
 impl GeometryDiagnostics {
+    /// Attach the measured rectangular cut count and advertise its compatibility version.
+    pub fn with_measured_silent_no_ops(mut self, count: u64) -> Self {
+        self.schema_version = GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION;
+        self.silent_no_ops = count;
+        self
+    }
+
+    /// Whether this producer measured area and volume for the silent no-op count.
+    pub fn has_measured_silent_no_ops(&self) -> bool {
+        self.schema_version >= MEASURED_CUT_SCHEMA_VERSION
+    }
+
     /// Whether any CSG failure, silent no-op, or dropped item was recorded.
     pub fn has_issues(&self) -> bool {
         self.total_budget_refusals > 0 || !self.budget_refusals.is_empty() || self.total_csg_failures > 0 || self.silent_no_ops > 0 || self.total_unsupported_items > 0
@@ -251,121 +270,8 @@ impl GeometryDiagnostics {
     }
 }
 
-/// Build a [`GeometryDiagnostics`] from drained router data. wasm-free so both
-/// the wasm/viewer path and a future native path can produce the same contract.
-/// The caller owns draining: the router accessors are destructive (`mem::take`),
-/// so drain once and pass the results here — do not double-`take`.
-/// `budget_refusals` is [`GeometryRouter::take_budget_refusal_report`]'s
-/// (total, details). It is required, so a caller cannot build diagnostics
-/// without deciding what refusals to pass; like the other inputs, take it
-/// once (a second take, or an earlier `take_budget_refusals`, finds it empty).
-///
-/// [`GeometryRouter::take_budget_refusal_report`]: crate::GeometryRouter::take_budget_refusal_report
-#[allow(clippy::too_many_arguments)] // one argument per drained router collector
-pub fn aggregate_diagnostics(
-    classification: ClassificationStats,
-    csg_failures: &FxHashMap<u32, Vec<BoolFailure>>,
-    host_diags: &FxHashMap<u32, HostOpeningDiagnostic>,
-    rect_fast: crate::rect_fast::RectFastStats,
-    worst_hosts_limit: usize,
-    oversized_ref_drops: u64,
-    unsupported_items: &FxHashMap<String, u64>,
-    budget_refusals: (u64, Vec<BudgetRefusal>),
-) -> GeometryDiagnostics {
-    let (total_budget_refusals, budget_refusals) = budget_refusals;
-    let total_csg_failures = csg_failures.values().map(Vec::len).sum::<usize>() as u64;
-    let products_with_failures = count_attributed_products(csg_failures);
-    let hosts_with_openings = host_diags.len() as u64;
-
-    let classification = ClassificationSummary {
-        rectangular: classification.rectangular as u64,
-        diagonal: classification.diagonal as u64,
-        non_rectangular: classification.non_rectangular as u64,
-        total: (classification.rectangular
-            + classification.diagonal
-            + classification.non_rectangular) as u64,
-    };
-
-    let mut by_reason: FxHashMap<&'static str, u64> = FxHashMap::default();
-    for fails in csg_failures.values() {
-        for f in fails {
-            *by_reason.entry(f.reason.label()).or_insert(0) += 1;
-        }
-    }
-    let mut failures_by_reason: Vec<ReasonCount> = by_reason
-        .into_iter()
-        .map(|(reason, count)| ReasonCount { reason: reason.to_string(), count })
-        .collect();
-    failures_by_reason
-        .sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.reason.cmp(&b.reason)));
-
-    let (total_unsupported_items, unsupported_items_by_type) =
-        unsupported_items::summarize(unsupported_items);
-
-    let silent_no_ops = host_diags
-        .values()
-        .filter(|hd| {
-            // A TRUE silent no-op: rect cutters ran, the triangle count was
-            // unchanged, AND the kernel recorded no failure. A host that already
-            // failed is a loud failure, not a silent one — excluding it keeps this
-            // the precise "ran clean but produced no change" signal (so it is not
-            // double-reported alongside total_csg_failures).
-            matches!((hd.tris_before, hd.tris_after), (Some(b), Some(a)) if b == a)
-                && hd.rect_boxes_processed > 0
-                && hd.csg_failure_count == 0
-        })
-        .count() as u64;
-
-    let mut worst: Vec<(&u32, &HostOpeningDiagnostic)> = host_diags
-        .iter()
-        .filter(|(_, hd)| hd.csg_failure_count > 0)
-        .collect();
-    worst.sort_by(|a, b| {
-        b.1.csg_failure_count.cmp(&a.1.csg_failure_count).then_with(|| a.0.cmp(b.0))
-    });
-    let worst_hosts: Vec<WorstHost> = worst
-        .into_iter()
-        .take(worst_hosts_limit)
-        .map(|(pid, hd)| WorstHost {
-            product_id: *pid,
-            ifc_type: hd.host_type.clone(),
-            openings: hd.openings.len() as u64,
-            csg_failures: hd.csg_failure_count as u64,
-            first_failure_label: hd.first_failure_label.clone(),
-            bbox: hd.host_bounds.map(|(min, max)| HostBbox {
-                min: [min.0, min.1, min.2],
-                max: [max.0, max.1, max.2],
-            }),
-            triangle_count: hd.tris_after.or(hd.tris_before).map(|t| t as u64),
-        })
-        .collect();
-
-    GeometryDiagnostics {
-        schema_version: GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
-        total_csg_failures,
-        products_with_failures,
-        hosts_with_openings,
-        classification,
-        failures_by_reason,
-        silent_no_ops,
-        rect_fast: RectFastSummary {
-            fired: rect_fast.fired,
-            openings_cut: rect_fast.openings_cut,
-            defer_host_not_box: rect_fast.defer_host_not_box,
-            defer_not_through: rect_fast.defer_not_through,
-            defer_off_face: rect_fast.defer_off_face,
-            defer_near_edge: rect_fast.defer_near_edge,
-            defer_no_openings: rect_fast.defer_no_openings,
-            defer_too_many_openings: rect_fast.defer_too_many_openings,
-        },
-        worst_hosts,
-        oversized_ref_drops,
-        total_unsupported_items,
-        unsupported_items_by_type,
-        budget_refusals,
-        total_budget_refusals,
-    }
-}
+mod aggregate;
+pub use aggregate::aggregate_diagnostics;
 
 mod budget;
 pub use budget::BudgetRefusal;

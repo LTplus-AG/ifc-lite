@@ -126,10 +126,10 @@ async function act(page: Page, steps: Step[], ids: number[] = []): Promise<void>
   await settle(page);
 }
 
-async function capture(page: Page, info: TestInfo, name: string): Promise<string> {
+async function capture(page: Page, info: TestInfo, name: string, attach = true): Promise<string> {
   const png = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!());
   expect(png, `${name}: the renderer returned its colour frame`).toBeTruthy();
-  await info.attach(`${name}.png`, { body: Buffer.from(png!.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  if (attach) await info.attach(`${name}.png`, { body: Buffer.from(png!.split(',')[1]!, 'base64'), contentType: 'image/png' });
   return png!;
 }
 
@@ -363,11 +363,7 @@ test('after the scene releases its CPU geometry, hide and isolate draw the same 
 
 /** A still frame: overlays (grid, dimensions) and residency settle a few frames after a change. */
 async function stillFrame(page: Page, info: TestInfo, name: string): Promise<string> {
-  const grab = async () => {
-    const png = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!());
-    expect(png, `${name}: the renderer returned its colour frame`).toBeTruthy();
-    return png!;
-  };
+  const grab = () => capture(page, info, name, false);
   let frame = await grab();
   let still = false;
   for (let i = 0; i < 20 && !still; i++) {
@@ -431,12 +427,11 @@ test('a model move and rotation keep instanced hide, selection, colour override 
       clear: [['removeOverlayLayer', 'e2e-10767']] },
     { name: 'xray', set: [['setGhostExceptEntities', new Set<number>()]], clear: [['setGhostExceptEntities', null]] },
   ];
-  const moves: Record<string, StoreCall[]> = {
-    // A preview frame is drawn before the move is applied, as during a drag.
-    move: [['openReposition', [modelId]], ['previewModelTranslation', [5, 0, 0]]],
-    rotate: [['setModelRotation', [modelId], { angle: Math.PI / 2, pivot: [0, 0, 0] }]],
+  // A move draws a preview frame before it is applied, as during a drag.
+  const moves: Record<'move' | 'rotate', { preview: StoreCall[]; apply: StoreCall[] }> = {
+    move: { preview: [['openReposition', [modelId]], ['previewModelTranslation', [5, 0, 0]]], apply: [['applyModelTranslation'], ['closeReposition']] },
+    rotate: { preview: [['setModelRotation', [modelId], { angle: Math.PI / 2, pivot: [0, 0, 0] }]], apply: [] },
   };
-  const applyMove: Record<string, StoreCall[]> = { move: [['applyModelTranslation'], ['closeReposition']], rotate: [] };
   const rows: Record<string, unknown>[] = [];
   const check = async (name: string, state: { set: StoreCall[]; clear: StoreCall[] }, kind: 'move' | 'rotate') => {
     const plain = await stillFrame(page, info, `${name}-0-plain`);
@@ -444,9 +439,9 @@ test('a model move and rotation keep instanced hide, selection, colour override 
     try {
       const before = await stillFrame(page, info, `${name}-1-state`);
       const shown = await diff(page, before, plain);
-      await storeCalls(page, moves[kind]!);
+      await storeCalls(page, moves[kind].preview);
       await settle(page);
-      await storeCalls(page, applyMove[kind]!);
+      await storeCalls(page, moves[kind].apply);
       const carried = await stillFrame(page, info, `${name}-2-moved-carried`);
       const moved = await diff(page, carried, before);
       await storeCalls(page, state.clear);

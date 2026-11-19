@@ -11,50 +11,88 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
-const model = (name: string, project: string, conversion: string | null) => `ISO-10303-21;
+/**
+ * `values` for an IFCMAPCONVERSION into a CRS in map unit `unit` (#2 metre, #3 millimetre, $ the project's), or a
+ * whole record line when `raw`; `projectUnit` is the model's length unit.
+ */
+interface Georef { values?: string; unit?: '#2' | '#3' | '$'; raw?: string; projectUnit?: '#2' | '#3' }
+const georefLines = ({ values, unit = '#2', raw }: Georef) => `#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,${unit});
+${raw ?? `#21=IFCMAPCONVERSION(#14,#20,${values});`}`;
+
+const model = (name: string, project: string, georef: Georef | null, schema: string) => `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
 FILE_NAME('${name}.ifc','',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
+FILE_SCHEMA(('${schema}'));
 ENDSEC;
 DATA;
 #1=IFCPROJECT('${project}',$,'${name}',$,$,$,$,(#14),#9);
 #2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#9=IFCUNITASSIGNMENT((#2));
+#9=IFCUNITASSIGNMENT((${georef?.projectUnit ?? '#2'}));
 #10=IFCCARTESIANPOINT((0.,0.,0.));
 #11=IFCDIRECTION((0.,0.,1.));
 #12=IFCDIRECTION((1.,0.,0.));
 #13=IFCAXIS2PLACEMENT3D(#10,#11,#12);
 #14=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#13,$);
-${conversion === null ? '' : `#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);\n#21=IFCMAPCONVERSION(#14,#20,${conversion});`}
+${georef === null ? '' : georefLines(georef)}
 ENDSEC;
 END-ISO-10303-21;
 `;
 
-async function input(id: string, conversion: string | null): Promise<MergeModelInput> {
-  const bytes = new TextEncoder().encode(model(id, `0Project${id.toUpperCase()}000000000000${id}`, conversion));
+async function input(id: string, georef: Georef | null, schema: 'IFC4' | 'IFC4X3'): Promise<MergeModelInput> {
+  const bytes = new TextEncoder().encode(model(id, `0Project${id.toUpperCase()}000000000000${id}`, georef, schema));
   return { id, name: id, dataStore: await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer) };
 }
 
-async function merge(a: string | null, b: string | null) {
-  const content = new TextDecoder().decode((await new MergedExporter([await input('a', a), await input('b', b)]).exportAsync({ schema: 'IFC4' })).content);
+const X = '2600000.,1200000.,500.,1.,0.,1.';
+const Y = '2700000.,1200000.,500.,1.,0.,1.';
+const at = (values: string): Georef => ({ values });
+
+async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IFC4', unitReconciliation?: 'normalize') {
+  const inputs = await Promise.all(georefs.map((georef, index) => input(String.fromCharCode(97 + index), georef, schema)));
+  const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation })).content);
   const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
-  const sources = [...content.matchAll(/=IFCMAPCONVERSION\((#\d+),/g)].map(match => match[1]);
+  const sources = [...content.matchAll(/=IFC(?:MAPCONVERSION|RIGIDOPERATION)\((#\d+),/g)].map(match => match[1]);
   return { contexts, sources };
+}
+
+/** Every georeference sits on its own context, each a context of the file. */
+function expectApart({ contexts, sources }: Awaited<ReturnType<typeof merge>>, count: number) {
+  expect(contexts).toHaveLength(count);
+  expect(sources).toHaveLength(count);
+  expect(new Set(sources).size).toBe(count);
+  expect(sources.every(source => contexts.includes(source))).toBe(true);
 }
 
 describe('merged STEP export and map conversions (#10798)', () => {
   it('keeps a second model with a different map conversion on its own context', async () => {
-    const { contexts, sources } = await merge('2600000.,1200000.,500.,1.,0.,1.', '2700000.,1200000.,500.,1.,0.,1.');
-    expect(contexts).toHaveLength(2);
-    expect(sources).toHaveLength(2);
-    expect(new Set(sources).size).toBe(2);
-    expect(sources.every(source => contexts.includes(source))).toBe(true);
+    expectApart(await merge([at(X), at(Y)]), 2);
   });
 
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {
-    expect((await merge('2600000.,1200000.,500.,1.,0.,1.', '2600000.,1200000.,500.,1.,0.,1.')).contexts).toHaveLength(1);
-    expect((await merge('2600000.,1200000.,500.,1.,0.,1.', null)).contexts).toHaveLength(1);
-    expect((await merge(null, '2600000.,1200000.,500.,1.,0.,1.')).contexts).toHaveLength(1);
+    expect((await merge([at(X), at(X)])).contexts).toHaveLength(1);
+    expect((await merge([at(X), null])).contexts).toHaveLength(1);
+    expect((await merge([null, at(X)])).contexts).toHaveLength(1);
+  });
+
+  it('checks each later model against a georeference an earlier one gave the shared context', async () => {
+    // The primary has none, so the second model's conversion lands on its context: the third's must agree with it.
+    const result = await merge([null, at(X), at(Y)]);
+    expect(result.contexts).toHaveLength(2);
+    expect(new Set(result.sources).size).toBe(2);
+  });
+
+  it('tells apart the same numbers in different map units', async () => {
+    expectApart(await merge([at(X), { values: X, unit: '#3' }]), 2);
+    // A CRS without a map unit uses the project's.
+    expectApart(await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'normalize'), 2);
+    expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$' }])).contexts).toHaveLength(1);
+  });
+
+  it('tells apart two different rigid operations', async () => {
+    const rigid = (eastings: number): Georef => ({ raw: `#21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(${eastings}.),IFCLENGTHMEASURE(1200000.),500.);` });
+    expectApart(await merge([rigid(2600000), rigid(2700000)], 'IFC4X3'), 2);
+    expect((await merge([rigid(2600000), rigid(2600000)], 'IFC4X3')).contexts).toHaveLength(1);
   });
 });

@@ -404,10 +404,13 @@ describe('review regressions (#10264 S3)', () => {
       texture: { width: 1, height: 1, rgba: new Uint8Array([255, 255, 255, 255]), repeatS: false, repeatT: false } } as MeshData;
     load(h, [...model(range(1, 6), 1), textured]);
     assert.ok(h.scene.getTexturedMeshes().some((m) => m.expressId === 5), 'precondition: entity 5 has a textured piece');
-    const before = h.stats.buffers.filter((b) => (b.usage & (GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX)) !== 0).length;
-    h.render({ hoverOutline: { id: 5 } });
-    const after = h.stats.buffers.filter((b) => (b.usage & (GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX)) !== 0).length;
-    assert.equal(after - before, 4, 'one vertex and one index buffer per piece: the flat and the textured one');
+    const geometry = () => h.stats.buffers.filter((b) => (b.usage & (GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX)) !== 0);
+    const before = geometry().length;
+    const frame = h.render({ hoverOutline: { id: 5 } });
+    const copies = geometry().slice(before);
+    assert.equal(copies.length, 4, 'one vertex and one index buffer per piece: the flat and the textured one');
+    const drawnCopies = new Set(frame.flatMap((d) => [d.vertexBuffer, d.indexBuffer]).filter((b) => copies.includes(b)));
+    assert.equal(drawnCopies.size, 4, 'the hover mask draws both pieces');
   });
 });
 

@@ -33,7 +33,7 @@ import type { RenderPipeline } from './pipeline.js';
 import type { Scene } from './scene.js';
 import type { BatchedMesh, Mesh } from './types.js';
 
-export type BatchHighlightScene = Pick<Scene, 'getBatchedMeshes' | 'requestBatchResidency' | 'getTexturedMeshes'>;
+export type BatchHighlightScene = Pick<Scene, 'getBatchedMeshes' | 'requestBatchResidency' | 'getTexturedMeshes' | 'getPickGeometryRevision'>;
 
 export interface BatchHighlightResources {
   device: GPUDevice;
@@ -234,9 +234,9 @@ export class HoverBatches {
   private readonly watch = new BatchWatch();
 
   resolve(scene: BatchHighlightScene, id: number, modelIndex: number | undefined, resources: BatchHighlightResources): readonly BatchedMesh[] | null {
-    // The list itself is in the key: an entity not yet in any batch is found once its batch arrives.
+    // The list and pick geometry are in the key: a batch or a textured piece arriving for the entity re-decides it.
     const list = scene.getBatchedMeshes();
-    const key = `${modelIndex ?? 'any'}:${id}:${list.length}`;
+    const key = `${modelIndex ?? 'any'}:${id}:${list.length}:${scene.getPickGeometryRevision()}`;
     if (key === this.key && list === this.list && !this.watch.stale(scene)) return this.batches;
     this.list = list;
     const { batches, evicted, blocked, found, awaitsPipeline } = batchesHolding(scene, new Set([id]), modelIndex, resources);

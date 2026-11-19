@@ -3,45 +3,26 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { INSTANCE_FLAGS_OFFSET, INSTANCE_FLAG_HIDDEN } from './instanced-render.js';
-import type { InstancedOccurrence, InstancedTemplateGPU } from './scene-instance-types.js';
+import type { InstancedOccurrence, InstancedTemplateCpu } from './scene-instance-types.js';
 
 /**
- * Instance-buffer slots of deleted entities (#10639).
- *
- * Deleting an instanced entity does not reclaim its slots; it writes their
- * HIDDEN flag on the GPU and forgets the entity. The scene must still know
- * those slots exist: the opaque instanced pass may only use its discard-free
- * shader while no slot can be discarded, and a replacement device's instance
- * buffers are rebuilt from the decoded shard bytes, which never carried the
- * flag.
+ * Tombstone a deleted entity's instance records in the CPU instance data
+ * (#10639). Its slots are not reclaimed, and device recovery and model
+ * placement re-upload whole instance buffers from this data, so a flag set
+ * only on the GPU would be lost and the occurrences would draw again. Adds
+ * each record's template slot to `holders`: while a live template holds a
+ * tombstone, the opaque instanced pass must keep its discarding shader.
  */
-export class InstancedTombstones {
-  private readonly slots = new Map<number, number[]>();
-
-  /** True while any live template holds a tombstoned slot. */
-  get any(): boolean { return this.slots.size > 0; }
-
-  add(occurrences: readonly InstancedOccurrence[]): void {
-    for (const { templateIndex, byteOffset } of occurrences) {
-      const offsets = this.slots.get(templateIndex);
-      if (offsets) offsets.push(byteOffset);
-      else this.slots.set(templateIndex, [byteOffset]);
-    }
-  }
-
-  /** Templates whose GPU buffers were destroyed take their slots with them. */
-  forgetTemplates(templateIndices: Iterable<number>): void {
-    for (const index of templateIndices) this.slots.delete(index);
-  }
-
-  clear(): void { this.slots.clear(); }
-
-  /** Re-hide every tombstoned slot after the instance buffers were rebuilt. */
-  write(device: GPUDevice, templates: readonly (InstancedTemplateGPU | undefined)[]): void {
-    const flag = new Uint32Array([INSTANCE_FLAG_HIDDEN]);
-    for (const [templateIndex, offsets] of this.slots) {
-      const buffer = templates[templateIndex]?.instanceBuffer;
-      if (buffer) for (const offset of offsets) device.queue.writeBuffer(buffer, offset + INSTANCE_FLAGS_OFFSET, flag);
-    }
+export function tombstoneInstanceRecords(
+  cpu: readonly (InstancedTemplateCpu | undefined)[],
+  occurrences: readonly InstancedOccurrence[],
+  holders: Set<number>,
+): void {
+  for (const { templateIndex, byteOffset } of occurrences) {
+    holders.add(templateIndex);
+    const data = cpu[templateIndex]?.instanceData;
+    if (!data) continue;
+    const view = new DataView(data), at = byteOffset + INSTANCE_FLAGS_OFFSET;
+    view.setUint32(at, (view.getUint32(at, true) | INSTANCE_FLAG_HIDDEN) >>> 0, true);
   }
 }

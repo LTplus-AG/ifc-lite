@@ -23,8 +23,9 @@ function fixture(modelIndex = 3) {
       const buffer = { size: desc.size, getMappedRange: () => data, unmap() {}, destroy() {} } as unknown as GPUBuffer;
       buffers.set(buffer, data); return buffer;
     },
-    queue: { writeBuffer: (buffer: GPUBuffer, offset: number, data: ArrayBufferView) => {
-      new Uint8Array(buffers.get(buffer)!, offset, data.byteLength).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    queue: { writeBuffer: (buffer: GPUBuffer, offset: number, data: ArrayBufferView | ArrayBuffer) => {
+      const bytes = ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : new Uint8Array(data);
+      new Uint8Array(buffers.get(buffer)!, offset, bytes.byteLength).set(bytes);
     } },
   } as unknown as GPUDevice;
   const shard: DecodedInstancedShard = {
@@ -74,7 +75,7 @@ describe('deleted instanced occurrences stay discarded (#10639)', () => {
     assert.equal(scene.instancedMayDiscard(), true, 'the suppression is forgotten; the tombstone is not');
   });
 
-  it('re-hides the slot after device recovery rebuilds the instance buffer from shard bytes', () => {
+  it('stays hidden after device recovery rebuilds the instance buffer', () => {
     const { scene, flags, device } = fixture();
     scene.removeMeshesForEntity(41);
     const before = scene.getInstancedTemplates()[0];
@@ -85,6 +86,15 @@ describe('deleted instanced occurrences stay discarded (#10639)', () => {
     assert.equal(flags(0) & INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_HIDDEN);
     assert.equal(flags(1), 0);
     assert.equal(scene.instancedMayDiscard(), true);
+  });
+
+  it('stays hidden after a model move re-uploads the instance buffer', () => {
+    const { scene, flags } = fixture();
+    scene.removeMeshesForEntity(41);
+    assert.equal(scene.setModelTranslation(3, [10, 0, 0]), true);
+    assert.equal(scene.setModelRotation(3, Math.PI / 2, [0, 0, 0]), true);
+    assert.equal(flags(0) & INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_HIDDEN);
+    assert.equal(flags(1) & INSTANCE_FLAG_HIDDEN, 0);
   });
 
   it('drops tombstones with their template, so a removed model no longer forces the discard path', () => {

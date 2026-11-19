@@ -24,7 +24,8 @@ export const ifcxExportOperations = [
   }, async (i, c) => {
     // As exports.modelStep: the export services key a legacy model as '__legacy__', and a visible-only export reads the view.
     const id = normalizeMutationModelId(useViewerStore.getState(), c.model.id);
-    const current = exportGuard(c, [id], i.visible_only); current();
+    // A changes-only file is scoped by the pending changes, not the view.
+    const current = exportGuard(c, [id], i.visible_only && !i.changes_only); current();
     const state = useViewerStore.getState(), model = state.models.get(id), view = c.model.mutationView();
     if (model?.gaussianSplat) throw new Error('Gaussian captures are omitted by native model exporters.');
     if (i.include_geometry && !i.changes_only && model && hasRetainedShapeOnlyModel(new Map([[model.id, model]]))) throw new Error('Native retained geometry is incomplete or shape-only for IFCX export.');
@@ -48,8 +49,8 @@ export const ifcxExportOperations = [
   viewerOperation<{ target_model_id: string }>(exportMetadata('exports.changesJson', 'Produce the exact native source-independent JSON mutation delta for an explicit Export dialog model ID. Uses its active history/revert/georeference filter, including models without parsed IFC. No download and no source replacement.'), {
     type: 'object', properties: { target_model_id: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['target_model_id'], additionalProperties: false,
   }, async (i, c) => {
-    refuseComposedLayer(i.target_model_id);
     const current = exportCheckpoint(c, [i.target_model_id]); current();
+    refuseComposedLayer(i.target_model_id);
     const state = useViewerStore.getState();
     const model = resolveExportModel(state.models, i.target_model_id, state.ifcDataStore, state.geometryResult);
     if (!model || ('gaussianSplat' in model && model.gaussianSplat)) throw new Error('Unknown native Export dialog model ID.');

@@ -22,9 +22,11 @@ export function nativeExportTarget(id: string): NativeExportTarget {
  * A composed IFCX layer shares its composition's store: exporting it would write the whole composition under the
  * layer's id, without the edits keyed to the owner (#10695).
  */
-export function refuseComposedLayer(id: string): void {
+export function refuseComposedLayer(id: string, input: 'target_model_id' | 'model_ids' = 'target_model_id'): void {
   const s = useViewerStore.getState(), owner = compositionOwners([...s.models], s).get(id);
-  if (owner) throw new Error(`Model '${s.models.get(id)?.name ?? id}' is one layer of a composed model. Pass target_model_id '${owner}' instead.`);
+  if (!owner) return;
+  const fix = input === 'model_ids' ? `List '${owner}' in model_ids in its place.` : `Pass target_model_id '${owner}' instead.`;
+  throw new Error(`Model '${s.models.get(id)?.name ?? id}' is one layer of a composed model. ${fix}`);
 }
 export function nativeStepTarget(id: string) {
   const model = nativeExportTarget(id);

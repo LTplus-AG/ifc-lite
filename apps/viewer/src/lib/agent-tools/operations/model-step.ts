@@ -60,8 +60,8 @@ export const stepExportOperations = [
     type: 'object', properties: { ...properties, model_ids: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 200 } }, unit_reconciliation: { type: 'string', enum: ['auto', 'normalize', 'assume-shared'] } }, required: [...Object.keys(properties), 'model_ids', 'unit_reconciliation'], additionalProperties: false,
   } as unknown as JSONSchemaType<Options & { model_ids: string[]; unit_reconciliation: 'auto' | 'normalize' | 'assume-shared' }>, async (i, c) => {
     if (!i.include_geometry) throw new Error('The native merged STEP workflow always includes its source geometry; use the single-model geometry option instead.');
-    for (const id of i.model_ids) refuseComposedLayer(id);
     const current = exportGuard(c, i.model_ids, i.visible_only); current();
+    for (const id of i.model_ids) refuseComposedLayer(id, 'model_ids');
     const state = useViewerStore.getState();
     const models = i.model_ids.map(id => { const model = state.models.get(id); if (!model || model.gaussianSplat) throw new Error(`No exportable native model: ${id}`); return model; });
     retainedGuard(i.model_ids, i.visible_only, i.include_geometry);

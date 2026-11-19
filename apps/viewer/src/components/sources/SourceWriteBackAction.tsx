@@ -7,6 +7,7 @@ import { useViewerStore } from '@/store';
 import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { openSourceWriteBack } from '@/services/sources/source-writeback-command';
 import { useTranslation } from '@/i18n';
+import '@/i18n/catalogues/source-writeback.en';
 
 export function SourceWriteBackAction({ modelId }: { modelId: string }) {
   const host = useOptionalSourceHost();

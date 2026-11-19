@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useTranslation } from '@/i18n';
+import '@/i18n/catalogues/source-writeback.en';
 import { SourceWriteBackFolder } from './SourceWriteBackFolder';
 import { SourceWriteBackHistory } from './SourceWriteBackHistory';
 

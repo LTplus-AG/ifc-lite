@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { sourceWriteBackEn } from './catalogues/source-writeback.en';
+import type { sourcesPanelEn } from './catalogues/sources-panel.en';
 import { influxEn } from './catalogues/influx.en';
 import { errorReportEn } from './catalogues/error-report.en';
 import { structuralReviewEn } from './catalogues/structural-review.en';
@@ -331,7 +333,7 @@ export const en = {
 } as const;
 
 /** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */
-type LazyEnglish = typeof semanticAssistEn & typeof landXmlGeorefAssumptionsEn & typeof ifcFederationAssumptionsEn;
+type LazyEnglish = typeof semanticAssistEn & typeof landXmlGeorefAssumptionsEn & typeof ifcFederationAssumptionsEn & typeof sourceWriteBackEn & typeof sourcesPanelEn;
 export type TranslationKey = keyof typeof en | keyof LazyEnglish | LazyTranslationKey | keyof typeof reviewWorkspaceEn;
 /** The live English catalogue: `en` plus whatever lazy catalogues have registered. */
 export const englishCatalogue: Partial<Record<TranslationKey, TranslationValue>> = en;

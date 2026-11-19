@@ -54,6 +54,9 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
         "IFCSTRUCTURALLOADCASE" => "IFCSTRUCTURALLOADGROUP",
         "IFCSTRUCTURALCURVEACTION" => "IFCSTRUCTURALLINEARACTION",
         "IFCSTRUCTURALSURFACEACTION" => "IFCSTRUCTURALPLANARACTION",
+        // #10763: IFC4 deleted these subtypes for the now-concrete supertype (`schema_attr_maps`).
+        "IFCMATERIALPROPERTIES" => "IFCEXTENDEDMATERIALPROPERTIES",
+        "IFCPROFILEPROPERTIES" => "IFCGENERALPROFILEPROPERTIES",
         _ => return None,
     })
 }
@@ -245,7 +248,7 @@ pub fn convert_step_line(
         }
         converted = checks.enums.apply(converted, cto);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
-        (cto == "IFC4" && (cfrom != "IFC2X3" || converted.split('=').nth(1).is_some_and(|s| s.starts_with("IFCSTRUCTURAL")))).then(|| checks.ifc4_slots.count(&converted));
+        (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
@@ -364,7 +367,8 @@ fn convert_record(
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
-                Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Keep => Cow::Borrowed(attrs),
+                Adjust::Mapped(map, up, src, tgt) if !args.is_empty() => Cow::Owned(crate::schema_attr_maps::remap(map, up, &args, src, tgt, &mut lost)),
+                Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Mapped(..) | Adjust::Keep => Cow::Borrowed(attrs),
             };
             format!("{prefix}{new_type}({final_attrs});")
         }

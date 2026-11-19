@@ -62,6 +62,7 @@ mod parquet_bos;
 mod rooms;
 pub mod rooted_type;
 mod scene_input;
+mod schema_attr_maps;
 mod schema_convert;
 mod schema_structural;
 mod schema_structural_diagnostics;

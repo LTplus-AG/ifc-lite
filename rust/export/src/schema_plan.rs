@@ -14,6 +14,7 @@
 
 use rustc_hash::FxHashMap;
 
+use crate::schema_attr_maps::{attr_map, AttrMap};
 use crate::schema_convert::{rename_type, schema_attribute_names, should_skip_entity, BY_NAME_ATTR_REMAP_TYPES};
 use crate::schema_renames::{is_strict_attr_prefix, replaced_slot};
 use crate::schema_unrepresented::has_representation;
@@ -29,6 +30,9 @@ pub(crate) enum Adjust {
     Pad(usize),
     /// A renamed type in `BY_NAME_ATTR_REMAP_TYPES`: source names, target names.
     ByName(&'static [&'static str], &'static [&'static str]),
+    /// A type IFC4 inserted, reordered or retyped attributes in (#10763): the
+    /// reviewed map, whether it runs upward, source names, target names.
+    Mapped(&'static AttrMap, bool, &'static [&'static str], &'static [&'static str]),
 }
 
 /// What `convert_record` does with every record of one source type.
@@ -62,16 +66,17 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
     // The two prefix branches cannot both apply: each needs its own list
     // strictly shorter.
     let tgt_names = schema_attribute_names(cto, new_type);
-    let adjust = match (src_names, tgt_names) {
-        (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
-        (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),
-        (Some(src), Some(tgt)) if new_type != entity_type
+    let adjust = match (src_names, tgt_names, attr_map(entity_type, new_type, cfrom, cto)) {
+        (Some(src), Some(tgt), Some((map, up))) => Adjust::Mapped(map, up, src, tgt),
+        (Some(src), Some(tgt), _) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
+        (Some(src), Some(tgt), _) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),
+        (Some(src), Some(tgt), _) if new_type != entity_type
             && (BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) || (cto == "IFC2X3" && crate::schema_mep::ifc2x3_type(entity_type).is_some())) => {
             Adjust::ByName(src, tgt)
         }
         // The name stays, but IFC4X3 puts the inherited `PlacementRelTo` first,
         // so neither list is a positional prefix of the other (#9026 item 14).
-        (Some(src), Some(tgt)) if entity_type == crate::schema_grid_frames::GRID_PLACEMENT && src != tgt => Adjust::ByName(src, tgt),
+        (Some(src), Some(tgt), _) if entity_type == crate::schema_grid_frames::GRID_PLACEMENT && src != tgt => Adjust::ByName(src, tgt),
         _ => Adjust::Keep,
     };
     let replaced = src_names.zip(tgt_names).and_then(|(src, tgt)| replaced_slot(entity_type, src, tgt));

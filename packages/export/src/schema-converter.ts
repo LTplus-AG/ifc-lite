@@ -26,6 +26,7 @@ import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
+import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-converter-attr-maps.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
@@ -88,6 +89,9 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // of the other — `BY_NAME_ATTR_REMAP_TYPES` reconciles both by name.
   ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
   ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
+  // #10763: IFC4 deleted these subtypes for the now-concrete supertype (`ATTR_MAPS`).
+  ['IFCMATERIALPROPERTIES', 'IFCEXTENDEDMATERIALPROPERTIES'],
+  ['IFCPROFILEPROPERTIES', 'IFCGENERALPROFILEPROPERTIES'],
   // IFC4X3 spatial structure → IFC2X3 equivalents
   ['IFCFACILITY', 'IFCBUILDING'],
   ['IFCFACILITYPART', 'IFCBUILDINGSTOREY'],
@@ -200,9 +204,7 @@ function getConversionMap(
   return null;
 }
 
-/**
- * Chain two conversion maps: apply map1 first, then map2 on the result.
- */
+/** Chain two conversion maps: apply map1 first, then map2 on the result. */
 function chainMaps(
   map1: Map<string, string>,
   map2: Map<string, string>,
@@ -293,7 +295,7 @@ export function convertStepLine(
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  if (toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || /=\s*IFCSTRUCTURAL/i.test(converted))) ifc4Slots?.apply(converted);
+  if (toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots?.apply(converted);
   return converted;
 }
 
@@ -387,8 +389,8 @@ function convertRecord(
   // [Identifier, Name, Description, …]; IfcMaterialProperties [Material] →
   // [Name, Description, Properties, Material]), and trimming the tail or
   // appending `$` there would leave values in the wrong, type-invalid slots.
-  // Those types are left alone. The appended attributes are optional, so `$` is
-  // a valid pad.
+  // Those take a reviewed `ATTR_MAPS` entry (#10763) or are left alone.
+  // Appended attributes are optional, so `$` is a valid pad.
   //
   // The two branches cannot both apply: each needs ITS OWN list strictly shorter.
   // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
@@ -405,7 +407,9 @@ function convertRecord(
   if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
-  if (srcAttrs && tgtAttrs) {
+  const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
+  if (mapped && srcAttrs && tgtAttrs) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
+  else if (srcAttrs && tgtAttrs) {
     const replaced = replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
     if (replaced !== undefined && replaced < args.length && args[replaced].trim() !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
     if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
@@ -448,21 +452,15 @@ export function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion)
   return toSchema !== 'IFC4X3' && toSchema !== 'IFC5' && SKIP_TYPES.has(entityType);
 }
 
-/**
- * Trim a STEP attribute list to a maximum number of attributes.
- *
- * Keeps the first `maxCount` of `args`, the record's already-validated split
- * (one split per record, #7683).
- */
+/** Keep the first `maxCount` of `args`, the record's already-validated split
+ *  (one split per record, #7683). */
 function trimAttributes(attrsRaw: string, args: readonly string[], maxCount: number): string {
   if (!attrsRaw.trim()) return attrsRaw;
   // An entity with no attributes in the target schema keeps none.
   return args.slice(0, Math.max(0, maxCount)).join(',');
 }
 
-/**
- * Check if a conversion between two schema versions requires entity type changes.
- */
+/** Check if a conversion between two schema versions requires entity type changes. */
 export function needsConversion(
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,

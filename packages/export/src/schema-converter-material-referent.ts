@@ -144,29 +144,24 @@ export function materialPropertiesNotWritten(store: SourceStore, from: string, t
 }
 
 /**
- * A merged model's material records in the merge's id space: its `written`
- * local ids under `offset`, their text remapped by `remap` as the merge
- * remaps it. Material records are never shared infrastructure, so a record's
- * merged id is its local id plus the offset.
+ * Arms `materials` with a merged model's records (#10763) and returns the
+ * model's `written` predicate, for the merge loop: its `written` local ids
+ * under `offset`, their text remapped as the merge remaps it. Material records
+ * are never shared infrastructure, so a merged id is the local id plus the offset.
  */
-export function mergedMaterialSource(store: SourceStore, written: (id: number) => boolean, offset: number, remap: (text: string) => string): MaterialSource {
+export function armMergedModel(materials: MaterialReferents, store: SourceStore, written: (id: number) => boolean, offset: number, sharedRemap: ReadonlyMap<number, number>): (id: number) => boolean {
   const source = new SourceRecords(store);
   const local = (id: number) => (id > offset && written(id - offset) ? id - offset : null);
   const read = new Map<number, readonly string[] | undefined>();
-  return {
+  materials.rearm({
     typeOf: (id) => { const l = local(id); return l === null ? undefined : source.type(l); },
     slots: (id) => {
       if (!read.has(id)) {
         const l = local(id), text = l === null ? undefined : source.text(l);
-        read.set(id, text === undefined ? undefined : readStepSlots(remap(text))?.slots);
+        read.set(id, text === undefined ? undefined : readStepSlots(remapEntityText(text, offset, sharedRemap))?.slots);
       }
       return read.get(id);
     },
-  };
-}
-
-/** Arms `materials` with a merged model's records (#10763) and returns its `written` predicate, for the merge loop. */
-export function armMergedModel(materials: MaterialReferents, store: SourceStore, written: (id: number) => boolean, offset: number, sharedRemap: ReadonlyMap<number, number>): (id: number) => boolean {
-  materials.rearm(mergedMaterialSource(store, written, offset, (text) => remapEntityText(text, offset, sharedRemap)));
+  });
   return written;
 }

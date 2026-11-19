@@ -49,7 +49,8 @@ export function candidateStillApplies(host?: ToolHost) {
 
 /** Where an applied candidate's receipt is. Absent: nothing the library holds (not applied, or its write failed
  * before the library recorded it), so a replay puts it. `writing`: a write in flight, which a replay shares.
- * `handed-off`: the library took it (kept as an unsaved draft, which only its `retry` writes again). `saved`: done. */
+ * `handed-off`: the library took it, as an unsaved draft only its `retry` writes again, or dropped it since (a restore),
+ * and then a replay writes nothing. `saved`: done. */
 export type ReceiptPersistence = { state: 'writing'; write: Promise<boolean> } | { state: 'handed-off' } | { state: 'saved' };
 export interface ReceiptHolder { persistence?: ReceiptPersistence }
 const SAVED: ReceiptPersistence = { state: 'saved' }, HANDED_OFF: ReceiptPersistence = { state: 'handed-off' };
@@ -68,7 +69,11 @@ export function persistReceipt(holder: ReceiptHolder, receipt: ModelChangeReceip
   if (before?.state === 'writing') return before.write;
   if (before?.state === 'saved') return Promise.resolve(true);
   const write = import('@/lib/actions/receipts').then(async ({ modelChangeLibrary, useModelChangeReceipts }) => {
-    const status = () => useModelChangeReceipts.getState().status.items[receipt.id];
+    // A restore resets every item status, so a receipt with none that the library lists was read back from storage.
+    const status = () => {
+      const { status: { items }, entries } = useModelChangeReceipts.getState();
+      return items[receipt.id] ?? (entries.some(entry => entry.id === receipt.id) ? 'saved' : undefined);
+    };
     // A write that saved is done, even while a newer write of the same row (the panel's undo) is still in flight.
     // Once handed off, the library owns the receipt: if it later drops it (a restore), a replay never puts it back.
     const settle = (saved = false) => {
@@ -79,7 +84,8 @@ export function persistReceipt(holder: ReceiptHolder, receipt: ModelChangeReceip
     try {
       if (before?.state !== 'handed-off') return settle(await modelChangeLibrary.put(receipt.id, receipt));
       // Retry only a draft the library still has (a restore may have dropped it); the panel's Retry may have saved it.
-      if (status() !== undefined && status() !== 'saved') await modelChangeLibrary.retry();
+      const now = status();
+      if (now !== undefined && now !== 'saved') await modelChangeLibrary.retry();
       return settle();
     } catch (error) { settle(); throw error; }
   }, (error: unknown) => { holder.persistence = before; throw error; });

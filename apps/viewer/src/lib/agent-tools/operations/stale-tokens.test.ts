@@ -171,8 +171,7 @@ describe('reviewed model candidates (#10792)', () => {
       return first;
     };
     try { assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true); }
-    finally { modelChangeLibrary.put = put; }
-    assert.equal(await undo, true);
+    finally { modelChangeLibrary.put = put; assert.equal(await undo, true); }
   });
 
   it('#20: a replay never puts back a receipt draft that a library restore dropped', async () => {
@@ -192,6 +191,21 @@ describe('reviewed model candidates (#10792)', () => {
       assert.equal(retry.mock.callCount(), 0, 'a replay does not flush the library\'s other drafts for a receipt it no longer has');
     } finally { retry.mock.restore(); }
     assert.equal(storedReceipt(receipt!.id), undefined, 'the dropped receipt stays dropped');
+  });
+
+  it('#20: a replay after a library restore reports a receipt storage holds as saved', async () => {
+    const token = await prepareRename();
+    let receipt: ModelChangeReceipt;
+    const refused = refuseContentWrites();
+    try {
+      const applied = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token }, true));
+      assert.equal(applied.persisted, false);
+      receipt = JSON.parse(applied.receipt_json) as ModelChangeReceipt;
+    } finally { refused.mock.restore(); }
+    assert.equal(await modelChangeLibrary.retry(), true); // the panel's Retry saves it
+    assert.equal(await modelChangeLibrary.restore(), true); // a restore rereads storage and resets item statuses
+    assert.ok(storedReceipt(receipt!.id));
+    assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true);
   });
 
   it('#20: a replay of an unsaved receipt saves the library\'s latest draft, an undone mark included', async () => {

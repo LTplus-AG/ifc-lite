@@ -84,7 +84,7 @@ fn a_userdefined_record_without_its_label_is_reported_10780() {
     let (out, n, warnings) = refused(line, "IFC2X3", "IFC4");
     assert!(out.contains(",.USERDEFINED.") && out.contains("'P',$,$,"), "{out}");
     assert_eq!(n, 1);
-    assert!(warnings.iter().any(|w| w.contains("USERDEFINED rule") && w.contains("IFCWORKPLAN")), "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("without the label their rule needs") && w.contains("IFCWORKPLAN")), "{warnings:?}");
     let labelled = line.replace("'P',$,$,", "'P',$,'Custom',");
     assert_eq!(refused(&labelled, "IFC2X3", "IFC4").1, 0, "ObjectType set");
 }

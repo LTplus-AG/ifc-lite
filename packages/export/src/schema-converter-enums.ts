@@ -133,8 +133,7 @@ export class EnumReconciliation {
     }
     if (this.unlabelled.size > 0) {
       const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
-      out.push(`${total} record(s) are written with PredefinedType .USERDEFINED. and their label attribute unset, which `
-        + `the target schema's USERDEFINED rule rejects; the converter does not invent a label: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
+      out.push(`${total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
     return [...out, ...this.structural.warnings()];
   }

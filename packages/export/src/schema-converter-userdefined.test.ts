@@ -46,7 +46,7 @@ describe('the USERDEFINED rule (#10780)', () => {
 
   it("reports the issue's IfcWorkPlan, written .USERDEFINED. with ObjectType unset", () => {
     const line = "#5=IFCWORKPLAN('g',#2,'P',$,$,'WP-1',#3,(#4),$,$,$,#6,$,.USERDEFINED.,'Custom');";
-    expect(warned(line, 'IFC2X3', 'IFC4')).toEqual([expect.stringContaining('1 record(s) are written with PredefinedType .USERDEFINED.')]);
+    expect(warned(line, 'IFC2X3', 'IFC4')).toEqual([expect.stringContaining('1 record(s) say PredefinedType .USERDEFINED. without the label')]);
     expect(warned(line, 'IFC2X3', 'IFC4')[0]).toContain('IFCWORKPLAN');
     expect(warned(line.replace("'P',$,$,", "'P',$,'Custom',"), 'IFC2X3', 'IFC4')).toEqual([]);
   });

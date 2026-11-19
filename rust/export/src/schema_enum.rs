@@ -87,8 +87,7 @@ impl EnumReconciliation {
             let total: usize = self.unlabelled.values().sum();
             let names: Vec<&str> = self.unlabelled.keys().map(String::as_str).collect();
             format!(
-                "{total} record(s) are written with PredefinedType .USERDEFINED. and their label attribute unset, which \
-                 the target schema's USERDEFINED rule rejects; the converter does not invent a label: {} (#10780).",
+                "{total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
                 names.join(", ")
             )
         });

@@ -40,6 +40,16 @@ export function discardOverlappingRetainedEdits(
   return 0;
 }
 
+export function registerModelWithRetainedEdits(
+  get: () => Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView'>,
+  modelId: string,
+  sourceEnd: number,
+): number {
+  const firstRetained = discardOverlappingRetainedEdits(get(), modelId, sourceEnd);
+  const nextRetained = get().mutationViews.get(modelId)?.peekNextExpressId();
+  return federationRegistry.registerModel(modelId, sourceEnd, firstRetained, nextRetained);
+}
+
 /** Source-only views carry no work to reload, and must not retain an old allocator floor. */
 export function discardUnchangedMutationViews(state: Partial<Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView' | 'georefMutations' | 'scheduleSourceModelId' | 'scheduleIsEdited' | 'scheduleData'>>): void {
   // Georeference and schedule edits live outside the view; clearing it would drop their dirty flag and history.

@@ -495,6 +495,21 @@ it('reserves a retained gap even when the reloaded source does not grow (#10139)
 });
 
 
+it('keeps retained allocator headroom through progressive publication and hydration (#10469)', () => {
+  const reg = new FederationRegistry();
+  const nextRetained = 2_000_001;
+  reg.reserveModel('reloaded', 10, 0, nextRetained);
+  assert.equal(reg.getGlobalIdRange('reloaded'), null);
+  reg.publishRange('reloaded', 1, 10);
+  assert.equal(reg.extendModel('reloaded', 20), nextRetained - 1);
+  const neighborOffset = reg.registerModel('neighbor', 50);
+
+  assert.equal(reg.canPublishOverlayFrom('reloaded', nextRetained), true);
+  reg.publishOverlayRange('reloaded', nextRetained, nextRetained);
+  assert.deepEqual(reg.fromGlobalId(nextRetained), { modelId: 'reloaded', expressId: nextRetained });
+  assert.deepEqual(reg.fromGlobalId(neighborOffset + 1), { modelId: 'neighbor', expressId: 1 });
+});
+
 it('no-op ownership refresh emits no notification (#10139)', () => {
   const reg = new FederationRegistry();
   reg.registerModel('x', 300);

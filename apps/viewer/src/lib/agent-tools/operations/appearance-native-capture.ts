@@ -7,8 +7,14 @@ import { viewerOperation, operation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import type { ToolHost } from '../types';
-import type { CapturedMeshSource } from '@/lib/appearance/create-captured-mesh';
 import { evictOldest } from './host-handles';
+import { nativeCapturedSurfaces } from '@/lib/appearance/appearance-native-capture';
+import { coordinationModelAdder } from '@/services/coordination-loader';
+import { createBlankIfcFile } from '@/utils/createBlankIfc';
+import { prepareCapturedRegion } from '@/lib/appearance/capture/source';
+import { appearanceRevision } from '@/lib/appearance/command';
+import { createIfcFromCapturedMesh, type CapturedMeshSource } from '@/lib/appearance/create-captured-mesh';
+import { selectCreatedAppearanceObject } from '@/components/viewer/appearance/select-created-object';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -53,7 +59,6 @@ export const appearanceCaptureOperations = [
     ),
     emptySchema,
     async (_, c) => {
-      const { nativeCapturedSurfaces } = await import('@/lib/appearance/appearance-native-capture');
       assertToolActive(c);
       return out(
         nativeCapturedSurfaces(useViewerStore.getState().models).map((item) => ({
@@ -78,10 +83,6 @@ export const appearanceCaptureOperations = [
     },
     emptySchema,
     async (_, c) => {
-      const [{ coordinationModelAdder }, { createBlankIfcFile }] = await Promise.all([
-        import('@/services/coordination-loader'),
-        import('@/utils/createBlankIfc'),
-      ]);
       assertToolActive(c);
       const id = await c.commitAsync(() =>
         coordinationModelAdder()(createBlankIfcFile({ projectName: 'Captured Surfaces' })),
@@ -114,10 +115,6 @@ export const appearanceCaptureOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ prepareCapturedRegion }, { appearanceRevision }] = await Promise.all([
-        import('@/lib/appearance/capture/source'),
-        import('@/lib/appearance/command'),
-      ]);
       assertToolActive(c);
       resolveRef(c.model, { express_id: i.container_id });
       const mesh = useViewerStore.getState().models.get(i.source_model_id)?.geometryResult?.meshes[i.mesh_ordinal];
@@ -159,12 +156,6 @@ export const appearanceCaptureOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ createIfcFromCapturedMesh }, { appearanceRevision }, { selectCreatedAppearanceObject }] =
-        await Promise.all([
-          import('@/lib/appearance/create-captured-mesh'),
-          import('@/lib/appearance/command'),
-          import('@/components/viewer/appearance/select-created-object'),
-        ]);
       const saved = owned(c).get(i.token);
       if (!saved || saved.modelId !== c.model.id) throw new Error('Unknown capture candidate for this host/model.');
       if (saved.result) return out(saved.result);

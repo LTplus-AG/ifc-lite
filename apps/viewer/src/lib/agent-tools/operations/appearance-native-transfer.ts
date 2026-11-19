@@ -7,7 +7,13 @@ import { operation } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import { nativeScanState, releaseNativeScanTransfer } from './appearance-native-scan-context';
-import type { ScanTransferSettings } from '@/lib/appearance/scan/prepare-transfer';
+import { compareNativeAppearancePreview } from '@/lib/appearance/appearance-native-preview';
+import { prepareMeshTransfer, type ScanTransferSettings } from '@/lib/appearance/scan/prepare-transfer';
+import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
+import { appearanceAssets } from '@/lib/appearance/model-assets';
+import { stageNativeScanTransfer } from '@/lib/appearance/appearance-native-transfer';
+import { commitAppearance } from '@/lib/appearance/command';
+import { refreshNativeScanBinding } from '@/lib/appearance/appearance-native-scan';
 const settingsSchema: JSONSchemaType<ScanTransferSettings> = {
   type: 'object',
   properties: {
@@ -87,13 +93,6 @@ export const appearanceTransferOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ prepareMeshTransfer }, { createAppearancePlanner }, { appearanceAssets }, { stageNativeScanTransfer }] =
-        await Promise.all([
-          import('@/lib/appearance/scan/prepare-transfer'),
-          import('@/lib/appearance/planner-worker-client'),
-          import('@/lib/appearance/model-assets'),
-          import('@/lib/appearance/appearance-native-transfer'),
-        ]);
       const state = nativeScanState(c, i.token, i.version);
       if (!state.result || !c.signal) throw new Error('Calculate and review a current native scan registration first.');
       for (const express_id of i.express_ids) resolveRef(c.model, { express_id });
@@ -145,7 +144,6 @@ export const appearanceTransferOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { compareNativeAppearancePreview } = await import('@/lib/appearance/appearance-native-preview');
       assertToolActive(c);
       const state = nativeScanState(c, i.token, i.version),
         transfer = state.transfer,
@@ -173,17 +171,6 @@ export const appearanceTransferOperations = [
     ),
     tokenInput,
     async (i, c) => {
-      const [
-        { commitAppearance },
-        { compareNativeAppearancePreview },
-        { refreshNativeScanBinding },
-        { createAppearancePlanner },
-      ] = await Promise.all([
-        import('@/lib/appearance/command'),
-        import('@/lib/appearance/appearance-native-preview'),
-        import('@/lib/appearance/appearance-native-scan'),
-        import('@/lib/appearance/planner-worker-client'),
-      ]);
       const state = nativeScanState(c, i.token, i.version),
         transfer = state.transfer,
         registration = state.result,
@@ -260,10 +247,6 @@ export const appearanceTransferOperations = [
     ),
     tokenInput,
     async (i, c) => {
-      const [{ refreshNativeScanBinding }, { createAppearancePlanner }] = await Promise.all([
-        import('@/lib/appearance/appearance-native-scan'),
-        import('@/lib/appearance/planner-worker-client'),
-      ]);
       const state = nativeScanState(c, i.token, i.version, false);
       if (state.transfer?.applying) throw new Error('The native transfer is being applied.');
       if (!state.recovery || !c.signal) throw new Error('No native retained binding is available for recovery.');

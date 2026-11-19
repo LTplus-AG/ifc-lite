@@ -6,6 +6,12 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { operation, viewerOperation, emptySchema, pointSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { nativeScanState, nativeScanStates, releaseNativeScanTransfer } from './appearance-native-scan-context';
+import { nativeAppearanceScanSources } from '@/lib/appearance/appearance-native-scan-sources';
+import { prepareScanSession } from '@/lib/appearance/scan/session';
+import { changeNativeScanPartition, appendNativeScanPair, registerNativeScanSession } from '@/lib/appearance/appearance-native-scan';
+import { sourceLandmark, targetLandmark } from '@/lib/appearance/scan/landmarks';
+import { pointLandmark } from '@/lib/appearance/scan/point-source';
+import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -39,7 +45,6 @@ export const appearanceScanOperations = [
     ),
     emptySchema,
     async (_, c) => {
-      const { nativeAppearanceScanSources } = await import('@/lib/appearance/appearance-native-scan-sources');
       assertToolActive(c);
       const s = useViewerStore.getState();
       return out({
@@ -68,7 +73,6 @@ export const appearanceScanOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { prepareScanSession } = await import('@/lib/appearance/scan/session');
       assertToolActive(c);
       if (!c.signal) throw new Error('A live cancellation signal is required.');
       if (nativeScanStates(c).size >= 8) throw new Error('Native scan session capacity reached.');
@@ -152,10 +156,6 @@ export const appearanceScanOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ sourceLandmark }, { pointLandmark }] = await Promise.all([
-        import('@/lib/appearance/scan/landmarks'),
-        import('@/lib/appearance/scan/point-source'),
-      ]);
       assertToolActive(c);
       const state = nativeScanState(c, i.token, i.version),
         source = state.session.source;
@@ -191,10 +191,6 @@ export const appearanceScanOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ targetLandmark }, { appendNativeScanPair }] = await Promise.all([
-        import('@/lib/appearance/scan/landmarks'),
-        import('@/lib/appearance/appearance-native-scan'),
-      ]);
       assertToolActive(c);
       const state = nativeScanState(c, i.token, i.version),
         renderer = getGlobalRenderer(),
@@ -225,10 +221,6 @@ export const appearanceScanOperations = [
     ),
     tokenInput,
     async (i, c) => {
-      const [{ registerNativeScanSession }, { createAppearancePlanner }] = await Promise.all([
-        import('@/lib/appearance/appearance-native-scan'),
-        import('@/lib/appearance/planner-worker-client'),
-      ]);
       const state = nativeScanState(c, i.token, i.version);
       if (!c.signal) throw new Error('A live cancellation signal is required.');
       const planner = createAppearancePlanner();
@@ -273,7 +265,6 @@ export const appearanceScanOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { changeNativeScanPartition } = await import('@/lib/appearance/appearance-native-scan');
       return c.commit(() => {
         const state = nativeScanState(c, i.token, i.version, false);
         if (state.transfer?.applying) throw new Error('The native transfer is being applied.');

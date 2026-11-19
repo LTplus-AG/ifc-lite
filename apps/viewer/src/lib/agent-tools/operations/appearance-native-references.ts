@@ -6,10 +6,17 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { viewerOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import { decodeAppearanceSettings } from './appearance-native-common';
-import type { NativeAppearanceReference } from '@/lib/appearance/appearance-native-reference';
-import type { RegisteredAppearanceReference } from '@/lib/appearance/references/types';
+import {
+  prepareNativeAppearanceReference,
+  placeNativeAppearanceReference,
+  type NativeAppearanceReference,
+} from '@/lib/appearance/appearance-native-reference';
+import { ownReference, type RegisteredAppearanceReference } from '@/lib/appearance/references/types';
 import type { AppearanceAssetOwner } from '@/lib/appearance/assets';
 import type { ToolHost } from '../types';
+import { appearanceAssets } from '@/lib/appearance/model-assets';
+import { restoreReferenceSource, referenceEditSettings } from '@/lib/appearance/references/edit';
+import { placementFrameKey } from '@/lib/model-placement/persistence';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -38,7 +45,6 @@ interface Candidate {
 }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 async function release(value: Candidate) {
-  const { appearanceAssets } = await import('@/lib/appearance/model-assets');
   value.renderer.getReferenceImages().remove(value.draftId);
   appearanceAssets.releaseOwner(value.owner);
 }
@@ -97,7 +103,6 @@ export const appearanceReferenceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { restoreReferenceSource, referenceEditSettings } = await import('@/lib/appearance/references/edit');
       assertToolActive(c);
       const record = useViewerStore.getState().appearanceReferences.get(i.reference_id);
       if (!record) throw new Error('Unknown native reference.');
@@ -122,13 +127,7 @@ export const appearanceReferenceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ prepareNativeAppearanceReference }, { appearanceAssets }, { placementFrameKey }, settings] =
-        await Promise.all([
-          import('@/lib/appearance/appearance-native-reference'),
-          import('@/lib/appearance/model-assets'),
-          import('@/lib/model-placement/persistence'),
-          decodeAppearanceSettings(i.settings_json),
-        ]);
+      const settings = await decodeAppearanceSettings(i.settings_json);
       assertToolActive(c);
       if (!c.signal) throw new Error('A live cancellation signal is required.');
       const s = useViewerStore.getState(),
@@ -183,7 +182,6 @@ export const appearanceReferenceOperations = [
     ),
     tokenInput,
     async (i, c) => {
-      const { placeNativeAppearanceReference } = await import('@/lib/appearance/appearance-native-reference');
       const saved = candidates(c).get(i.token);
       if (!saved) throw new Error('Unknown reference candidate for this host.');
       if (saved.discard) throw new Error('The reference candidate is being discarded.');
@@ -193,7 +191,6 @@ export const appearanceReferenceOperations = [
       if (saved.placing) throw new Error('The reference candidate is being placed.');
       saved.placing = true;
       try {
-        const { ownReference } = await import('@/lib/appearance/references/types');
         const expected = ownReference(saved.prepared.record);
         const current = useViewerStore.getState().appearanceReferences.get(expected.id);
         if (!current || JSON.stringify(current) !== JSON.stringify(expected)) {

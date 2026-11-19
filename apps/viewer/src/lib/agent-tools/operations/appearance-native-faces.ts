@@ -4,6 +4,18 @@
 import { operation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import { decodeAppearanceSettings } from './appearance-native-common';
+import {
+  inspectAnalyticsAppearanceCandidate,
+  compareAnalyticsAppearancePreview,
+  prepareAnalyticsAppearanceCandidate,
+} from './analytics-appearance';
+import { useViewerStore } from '@/store';
+import { resolveRef } from '../refs';
+import { prepareAppearanceSnapshot } from '@/lib/appearance/snapshot';
+import { prepareNativeAppearancePlan } from '@/lib/appearance/prepare-native-preview';
+import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
+import { appearanceAssets } from '@/lib/appearance/model-assets';
+import { changeNativeFaceMask, faceMaskRequests, reconcileFaceMasks, type FaceMasks } from '@/lib/appearance/face-masks';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -21,7 +33,6 @@ const meta = (id: string, description: string, write = false) => ({
   outputSchema,
 });
 async function candidate(c: OperationContext, id: string) {
-  const { inspectAnalyticsAppearanceCandidate } = await import('./analytics-appearance');
   assertToolActive(c);
   return inspectAnalyticsAppearanceCandidate(c.host, id, c.model.id);
 }
@@ -48,23 +59,7 @@ export const appearanceFaceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [
-        { prepareAppearanceSnapshot },
-        { prepareNativeAppearancePlan },
-        { createAppearancePlanner },
-        { appearanceAssets },
-        { useViewerStore },
-        { resolveRef },
-        settings,
-      ] = await Promise.all([
-        import('@/lib/appearance/snapshot'),
-        import('@/lib/appearance/prepare-native-preview'),
-        import('@/lib/appearance/planner-worker-client'),
-        import('@/lib/appearance/model-assets'),
-        import('@/store'),
-        import('../refs'),
-        decodeAppearanceSettings(i.settings_json),
-      ]);
+      const settings = await decodeAppearanceSettings(i.settings_json);
       for (const express_id of i.express_ids) resolveRef(c.model, { express_id });
       if (!c.signal) throw new Error('A live cancellation signal is required.');
       assertToolActive(c);
@@ -144,7 +139,6 @@ export const appearanceFaceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { compareAnalyticsAppearancePreview } = await import('./analytics-appearance');
       assertToolActive(c);
       return out(c.commit(() => compareAnalyticsAppearancePreview(c.host, i.candidate_id, c.model.id, i.original)));
     },
@@ -198,21 +192,13 @@ export const appearanceFaceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [
-        old,
-        { changeNativeFaceMask, faceMaskRequests, reconcileFaceMasks },
-        { prepareAnalyticsAppearanceCandidate },
-      ] = await Promise.all([
-        candidate(c, i.candidate_id),
-        import('@/lib/appearance/face-masks'),
-        import('./analytics-appearance'),
-      ]);
+      const old = await candidate(c, i.candidate_id);
       const settings = await decodeAppearanceSettings(i.settings_json);
       if (settings.representationPolicy !== 'evaluatedOccurrence')
         throw new Error('Face masks require native evaluatedOccurrence policy.');
       if (i.masks.reduce((count, mask) => count + mask.triangles.length, 0) > 200000)
         throw new Error('Face selection request exceeds the native operation triangle budget.');
-      let masks: import('@/lib/appearance/face-masks').FaceMasks = new Map();
+      let masks: FaceMasks = new Map();
       const ids = new Set<number>();
       for (const mask of i.masks) {
         if (ids.has(mask.product_id) || !i.express_ids.includes(mask.product_id))

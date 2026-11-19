@@ -4,6 +4,9 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
+import { getPdfDocument } from '@/lib/appearance/pdf/documents';
+import { pdfCalibrationFrame } from '@/lib/appearance/pdf/calibration';
+import { imageCalibrationFrame, rasterLandmarkAt, completeRasterCalibration } from '@/lib/appearance/raster-calibration';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -38,11 +41,6 @@ export const appearanceSourceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ getPdfDocument }, { pdfCalibrationFrame }, { imageCalibrationFrame }] = await Promise.all([
-        import('@/lib/appearance/pdf/documents'),
-        import('@/lib/appearance/pdf/calibration'),
-        import('@/lib/appearance/raster-calibration'),
-      ]);
       assertToolActive(c);
       const value = source(i.source_id);
       return out({
@@ -150,8 +148,6 @@ export const appearanceSourceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ imageCalibrationFrame, rasterLandmarkAt, completeRasterCalibration }, { pdfCalibrationFrame }] =
-        await Promise.all([import('@/lib/appearance/raster-calibration'), import('@/lib/appearance/pdf/calibration')]);
       assertToolActive(c);
       const value = source(i.source_id);
       if (JSON.stringify(value) !== i.expected_source) throw new Error('The native source changed. Inspect again.');

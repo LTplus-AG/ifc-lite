@@ -173,6 +173,16 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
     expect([...withUnits.matchAll(METRE_UNIT)]).toHaveLength(2);
   });
 
+  it('reads a commented `$` as a missing map unit', async () => {
+    const inputs: MergeModelInput[] = await Promise.all([
+      model('a', { unit: 'm', mapUnit: 'm', easting: 2600000 }),
+      model('b', { unit: 'mm', mapUnit: '$', easting: 2600100 }).replace(',$,$,$,$,$,$);', ',$,$,$,$,$,$ /* unspecified */);'),
+    ].map(async (text, index) => ({ id: 'ab'[index], name: 'ab'[index], dataStore: await parse(text) })));
+    const merged = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema: 'IFC4', unitReconciliation: 'normalize' })).content);
+    const metre = [...merged.matchAll(METRE_UNIT)].at(-1)![1];
+    expect(crsUnits(merged)).toEqual(['#2', `#${metre}`]);
+  });
+
   it('leaves a rigid operation into a CRS as written', async () => {
     const operation = '#21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(2600100.),IFCLENGTHMEASURE(1200000.),500.);';
     const merged = await merge([{ unit: 'm', mapUnit: 'm', easting: 2600000, schema: 'IFC4X3' },

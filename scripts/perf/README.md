@@ -1167,6 +1167,15 @@ contracts; do not infer latency from allocation counts or relax the gate.
 The user explicitly accepted the small absolute cost to retain the broader
 gains, with further investigation bounded by #10555.
 
+## Rectangular-cut diagnostics measure area and volume (#10510)
+
+Equal triangle counts can hide a real cut. Accepted rectangular cuts now
+compare the input and final surface area and volume before the load report
+identifies the host as unchanged. The real-model cohort included a cut with
+nearly identical area and a substantial volume reduction, so both measurements
+matter. Native load probes compare mesh fingerprints because this changes the
+diagnostics the loader emits while retaining the mesh output.
+
 ## Small void classes walk canonically (#10555)
 
 #10420's first hosted window in a 1K session exceeded the regression boundary. Phase timing through the real session API put
@@ -1981,6 +1990,14 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | D1b #8002 cache residency ownership and typed resource stops | identical | BWK +1.0% (±3), Holter +0.7% (±30), ISSUE_098 −1.9% (±10), ISSUE_068 +0.5% (±23), schependomlaan +0.6% (±7), ISSUE_129 +0.1% (±4) | neutral: with no account installed, one thread-local read per cache publication/lookup; geometry within ±2% on every model |
 | C5b opening source probe/classifier | identical | BWK −1.7% (±3), Holter +2.5% (±18), ISSUE_098 +0.7% (±12), ISSUE_068 −1.5% (±17), schependomlaan −1.6% (±5), ISSUE_129 −1.7% (±5) vs D3 base c282c7bebf | neutral: owned classify/probe on every opening host, all deltas inside noise |
 | C5c opening gateway cutover | identical | BWK +1.2% (±8), Holter −0.4% (±9), ISSUE_098 +2.9% (±33), ISSUE_068 −3.1% (±55), schependomlaan +0.3% (±11), ISSUE_129 +1.1% (±14) vs C5b | neutral within noise; fingerprints identical on 6 models and 122/122 corpus models; deterministic FZK instruction ratchet is the strict check |
+
+## Recovering rejected cuts on touching shells (#10512)
+
+Manifold-gated recess cuts can fail when adjoining wall bodies leave internal
+faces in the merged host. The retry certifies complete consecutive shells,
+unites them without losing volume, and cuts with the original recess depth.
+The shell scan runs only on a gate rejection. Builds without the manifold gate
+keep the existing void routing.
 
 ## Exact rectangular opening union (#7941)
 

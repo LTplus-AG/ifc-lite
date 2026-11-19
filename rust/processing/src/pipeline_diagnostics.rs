@@ -42,9 +42,18 @@ pub use report::PipelineDiagnosticsReport;
 use crate::types::response::ProcessingStats;
 use ifc_lite_geometry::{GeometryDiagnostics, RectFastSummary};
 
-/// Version of the `PipelineDiagnostics` wire shape. Bump on any
-/// breaking key change so JS consumers can gate on it.
-pub const PIPELINE_DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
+/// Version of the `PipelineDiagnostics` wire contract. Bump on incompatible
+/// keys or count semantics. Version 2 reports measured silent no-ops (#10510).
+pub const PIPELINE_DIAGNOSTICS_SCHEMA_VERSION: u32 = 2;
+const LEGACY_PIPELINE_DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
+
+fn cut_count_schema_version(diag: &GeometryDiagnostics) -> u32 {
+    if diag.has_measured_silent_no_ops() {
+        PIPELINE_DIAGNOSTICS_SCHEMA_VERSION
+    } else {
+        LEGACY_PIPELINE_DIAGNOSTICS_SCHEMA_VERSION
+    }
+}
 
 /// Pipeline phase wall-times in milliseconds. Field names mirror the
 /// `ProcessingStats` timers they are sourced from. On wasm32 only
@@ -76,7 +85,7 @@ pub struct PipelinePhaseTimings {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PipelineDiagnostics {
-    /// Wire-shape version ([`PIPELINE_DIAGNOSTICS_SCHEMA_VERSION`]).
+    /// Wire contract version ([`PIPELINE_DIAGNOSTICS_SCHEMA_VERSION`]).
     pub schema_version: u32,
     /// Geometry passes folded in: one per `processGeometryBatch*` call on
     /// wasm, exactly 1 for the native single-pass pipeline.
@@ -97,7 +106,9 @@ pub struct PipelineDiagnostics {
     pub products_with_failures: u64,
     /// Hosts that had openings processed.
     pub hosts_with_openings: u64,
-    /// Hosts where rect cutters ran clean but the mesh came out unchanged.
+    /// Hosts where rectangular cutters ran clean and left area and volume
+    /// unchanged within tolerance (v2). Version 1 compared triangle counts.
+    /// A mixed accumulator keeps the counts from measured batches.
     pub silent_no_ops: u64,
     /// rect_fast fast-path engagement, summed across batches.
     pub rect_fast: RectFastSummary,
@@ -167,7 +178,13 @@ impl PipelineDiagnostics {
         self.total_csg_failures += diag.total_csg_failures;
         self.products_with_failures += diag.products_with_failures;
         self.hosts_with_openings += diag.hosts_with_openings;
-        self.silent_no_ops += diag.silent_no_ops;
+        let cut_schema = cut_count_schema_version(diag);
+        if self.batches == 1 || cut_schema > self.schema_version {
+            self.schema_version = cut_schema;
+            self.silent_no_ops = diag.silent_no_ops;
+        } else if cut_schema == self.schema_version {
+            self.silent_no_ops += diag.silent_no_ops;
+        }
         self.rect_fast.fired += diag.rect_fast.fired;
         self.rect_fast.openings_cut += diag.rect_fast.openings_cut;
         self.rect_fast.defer_host_not_box += diag.rect_fast.defer_host_not_box;
@@ -191,7 +208,8 @@ impl PipelineDiagnostics {
             None => (0, 0, RectFastSummary::default()),
         };
         Self {
-            schema_version: PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
+            schema_version: stats.geometry_diagnostics.as_ref()
+                .map_or(PIPELINE_DIAGNOSTICS_SCHEMA_VERSION, cut_count_schema_version),
             batches: 1,
             element_count,
             mesh_count: stats.total_meshes as u64,
@@ -267,6 +285,23 @@ mod tests {
         }
         assert!(v["rectFast"].get("deferHostNotBox").is_some());
         assert_eq!(v["schemaVersion"], PIPELINE_DIAGNOSTICS_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn issue_10510_pipeline_keeps_measured_and_legacy_cut_counts_distinct() {
+        let legacy = GeometryDiagnostics { schema_version: 5, silent_no_ops: 9, ..Default::default() };
+        let measured = GeometryDiagnostics { schema_version: 6, silent_no_ops: 2, ..Default::default() };
+        let mut accumulator = PipelineDiagnostics::default();
+        accumulator.record_batch(1, 1, 12, 0, 0, 0, 0, 0, &legacy);
+        assert_eq!((accumulator.schema_version, accumulator.silent_no_ops), (1, 9));
+        accumulator.record_batch(1, 1, 12, 0, 0, 0, 0, 0, &measured);
+        accumulator.record_batch(1, 1, 12, 0, 0, 0, 0, 0, &legacy);
+        accumulator.record_batch(1, 1, 12, 0, 0, 0, 0, 0, &measured);
+        assert_eq!((accumulator.schema_version, accumulator.silent_no_ops), (2, 4));
+        assert_eq!(accumulator.batches, 4);
+        let stats = ProcessingStats { geometry_diagnostics: Some(legacy), ..Default::default() };
+        let report = PipelineDiagnosticsReport::from_processing_stats(&stats, 1);
+        assert_eq!((report.schema_version, report.silent_no_ops), (1, 9));
     }
 
     #[test]

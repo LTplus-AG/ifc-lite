@@ -148,6 +148,9 @@ function makeHarness() {
         case 'getQuantizedPipelineVariant': return () => null;
         case 'getSelectionPipeline':
         case 'getTexturedSelectionPipeline': return () => SELECTION;
+        // No batch highlight pipeline (#10264 S3): these tests pin the copies
+        // that stand in whenever the colour batches cannot draw the highlight.
+        case 'getBatchSelectionPipeline': return () => null;
         case 'getPipeline': return () => ({ label: 'opaque', getBindGroupLayout: () => ({}) });
         case 'opaquePipeline': return () => ({ label: 'opaque' });
         case 'getTransparentPipeline': return () => ({ label: 'transparent' });

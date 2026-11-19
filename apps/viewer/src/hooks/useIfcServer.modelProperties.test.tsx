@@ -263,16 +263,25 @@ it('a range that already carries authored ids is a hard error, never an alias', 
     assert.equal(warnings.some(args => /Optional hydration failed/.test(String(args[0]))), true);
   } finally { federationRegistry.clear(); }
 });
-it('a processed model whose reference changes aborts its properties: there is no sourceFile to compare', async () => {
-  const opened = { sha256: 'a'.repeat(64), bytes: 1 };
-  useViewerStore.getState().updateModel('server', { sourceFile: undefined, processedModel: opened });
-  await start();
-  const oldSignal = signal;
-  await act(async () => { useViewerStore.getState().updateModel('server', { processedModel: { sha256: 'b'.repeat(64), bytes: 1 } }); });
-  assert.equal(oldSignal.aborted, true, 'a replacement processed model is detected');
-  await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
-  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'the older model\'s properties are not published');
-});
+for (const changes of ['hash', 'server'] as const) {
+  it(`a processed model whose ${changes} changes aborts its properties (#10469)`, async () => {
+    const opened = { sha256: 'a'.repeat(64), bytes: 1, serverUrl: 'https://first.example' };
+    const replacement = changes === 'hash'
+      ? { ...opened, sha256: 'b'.repeat(64) }
+      : { ...opened, serverUrl: 'https://second.example' };
+    useViewerStore.getState().updateModel('server', { sourceFile: undefined, processedModel: opened });
+    await start();
+    const oldSignal = signal;
+    await act(async () => {
+      useViewerStore.getState().updateModel('server', { processedModel: { ...opened, bytes: 2 } });
+    });
+    assert.equal(oldSignal.aborted, false, 'a size metadata correction keeps the same source');
+    await act(async () => { useViewerStore.getState().updateModel('server', { processedModel: replacement }); });
+    assert.equal(oldSignal.aborted, true, 'a replacement processed model is detected');
+    await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'the older properties are not published');
+  });
+}
 
 
 for (const remount of [false, true]) {

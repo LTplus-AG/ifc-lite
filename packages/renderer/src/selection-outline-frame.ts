@@ -36,6 +36,9 @@
  */
 
 import { isBorrowedSelection } from './textured-selection.js';
+import { highlightBatchOf } from './batch-highlight.js';
+import { batchEntityIdAnchor } from './entity-color-table.js';
+import { MESH_FLAG_ONE_ENTITY } from './entity-highlight-table.js';
 import { packClipBox } from './clip-box.js';
 import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET, packRteFragmentSpace } from './mesh-rte-uniforms.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
@@ -43,7 +46,7 @@ import type { IndividualMeshGpu } from './individual-mesh-upload.js';
 import type { HoveredMesh, SelectableMesh } from './selection-mask-pass.js';
 import type { InstancedMaskFrame, InstancedMaskTemplate } from './selection-mask-pipelines.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
-import type { ClipBox, ExtraClipPlane, Mesh } from './types.js';
+import type { BatchedMesh, ClipBox, ExtraClipPlane, Mesh } from './types.js';
 
 export interface SelectionOutlineSource {
   uniformBufferSize: number;
@@ -53,6 +56,8 @@ export interface SelectionOutlineSource {
   selectedMeshes: readonly Mesh[];
   /** GPU copies of the hovered entity's pieces, used when it is not among `selectedMeshes`. */
   hoverPieces: readonly IndividualMeshGpu[];
+  /** Colour batches holding the hovered entity, drawn instead of copies when given (#10264 S3). */
+  hoverBatches?: readonly BatchedMesh[] | null;
   hoveredId: number | null | undefined;
   selectedModelIndex: number | undefined;
   /** This frame's resolved section plane (the one every mesh draw packs). */
@@ -73,14 +78,31 @@ export interface SelectionOutlineSource {
  * for unit testing; the two GPU-facing lookups above call it with `.find`.
  * A pooled selection merge (#9835) holds many entities under one id, so it
  * never stands for the hovered one: that entity gets its own hover copies.
+ * Nor does a colour batch drawn for the selection (#10264 S3), whose id is
+ * only its lane anchor.
  */
 export function matchesHoveredMesh(mesh: Mesh, hoveredId: number, selectedModelIndex: number | undefined): boolean {
-  return mesh.expressId === hoveredId && !mesh.mergedSelection?.ids && (selectedModelIndex === undefined || mesh.modelIndex === selectedModelIndex);
+  return mesh.expressId === hoveredId && !mesh.mergedSelection?.ids && !highlightBatchOf(mesh) && (selectedModelIndex === undefined || mesh.modelIndex === selectedModelIndex);
+}
+
+/**
+ * Which hover sources a frame needs (#10264 S3). Only a selected hydrated copy
+ * outlines every piece of the hovered entity. Authored meshes and textured
+ * borrows of a batch-drawn selected entity cover only themselves, so its other
+ * pieces still need the hover batches, or hover copies when the batches
+ * cannot draw it (a textured entity). Both flags are that one condition.
+ */
+export function hoverSources(selected: readonly Mesh[], id: number | null, model: number | undefined): { ownHover: boolean; needsBatches: boolean } {
+  if (id == null) return { ownHover: false, needsBatches: false };
+  const own = !selected.some((m) => m.hydrated === true && matchesHoveredMesh(m, id, model));
+  return { ownHover: own, needsBatches: own };
 }
 
 function toSelectable(mesh: Mesh): SelectableMesh | null {
   if (!mesh.bindGroup) return null;
-  return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup: mesh.bindGroup, ...(isBorrowedSelection(mesh) ? { vertexStride: 36 as const } : {}) };
+  const quantized = highlightBatchOf(mesh)?.quantized !== undefined;
+  return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup: mesh.bindGroup,
+    ...(isBorrowedSelection(mesh) ? { vertexStride: 36 as const } : {}), ...(quantized ? { quantized: true as const } : {}) };
 }
 
 const IDENTITY_TRANSFORM: Mesh['transform'] = { m: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) };
@@ -119,6 +141,27 @@ export function packHoverUniforms(source: SelectionOutlineSource, mesh: Pick<Mes
   return scratch;
 }
 
+/**
+ * The hover mask uniform for a colour batch holding the hovered entity: the
+ * frame fields, the batch's origin, quantization and lane anchor, and the one
+ * entity the fragment keeps (`MESH_FLAG_ONE_ENTITY`, id in `flags.w`).
+ */
+export function packBatchHoverUniforms(source: SelectionOutlineSource, batch: BatchedMesh, hoveredId: number): Float32Array | null {
+  const scratch = packMaskFrameUniforms(source);
+  const origin: [number, number, number] = batch.origin ? [batch.origin[0], batch.origin[1], batch.origin[2]] : [0, 0, 0];
+  scratch[MESH_UNIFORM_OFFSET.model + 12] = origin[0];
+  scratch[MESH_UNIFORM_OFFSET.model + 13] = origin[1];
+  scratch[MESH_UNIFORM_OFFSET.model + 14] = origin[2];
+  const q = batch.quantized;
+  if (q) scratch.set([q.min[0], q.min[1], q.min[2], q.step], MESH_UNIFORM_OFFSET.quantParams);
+  const words = new Uint32Array(scratch.buffer);
+  words[MESH_UNIFORM_OFFSET.overrideParams] = batchEntityIdAnchor(batch) ?? 0xFFFFFFFF;
+  words[MESH_UNIFORM_OFFSET.flags] |= MESH_FLAG_ONE_ENTITY;
+  words[MESH_UNIFORM_OFFSET.flags + 3] = hoveredId >>> 0;
+  // Outside the eye envelope the colour pass skips the batch too.
+  return source.relativeToEyeFrame.tryPackDrawableOrigin(origin, scratch, MESH_UNIFORM_OFFSET.drawableDelta) ? scratch : null;
+}
+
 export interface SelectionOutlineFrameResult {
   selected: SelectableMesh[];
   /** Every piece of the hovered entity (empty when nothing is hovered). */
@@ -151,12 +194,17 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
   if (source.hoveredId != null) {
     const hoveredId = source.hoveredId;
     const already = source.selectedMeshes.filter((m) => matchesHoveredMesh(m, hoveredId, source.selectedModelIndex));
-    if (already.length > 0) {
-      for (const mesh of already) {
-        const s = toSelectable(mesh);
-        if (s) hovered.push(s);
+    for (const mesh of already) {
+      const s = toSelectable(mesh);
+      if (s) hovered.push(s);
+    }
+    // Batches come only when no copy matched (hoverSources): beside any authored meshes of the entity.
+    if (source.hoverBatches) {
+      for (const batch of source.hoverBatches) {
+        const uniforms = packBatchHoverUniforms(source, batch, hoveredId);
+        if (uniforms) hovered.push({ vertexBuffer: batch.vertexBuffer, indexBuffer: batch.indexBuffer, indexCount: batch.indexCount, uniforms, ...(batch.quantized ? { quantized: true as const } : {}) });
       }
-    } else {
+    } else if (!already.some((m) => m.hydrated === true)) {
       for (const piece of source.hoverPieces) {
         hovered.push({ vertexBuffer: piece.vertexBuffer, indexBuffer: piece.indexBuffer, indexCount: piece.indexCount, uniforms: packHoverUniforms(source, piece) });
       }

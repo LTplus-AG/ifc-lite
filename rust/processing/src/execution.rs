@@ -122,9 +122,22 @@ pub struct RouterDrain {
 }
 impl RouterDrain {
     pub fn take(router: &GeometryRouter) -> Self {
+        Self::take_with_hosts(router, router.take_host_opening_diagnostics())
+    }
+
+    /// Drain the same counters alongside the measured rectangular no-op count.
+    pub fn take_with_rectangular_no_ops(router: &GeometryRouter) -> (Self, u64) {
+        let (hosts, no_ops) = router.take_host_opening_report();
+        (Self::take_with_hosts(router, hosts), no_ops)
+    }
+
+    fn take_with_hosts(
+        router: &GeometryRouter,
+        hosts: FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>,
+    ) -> Self {
         Self {
             classification: router.take_classification_stats(),
-            hosts: router.take_host_opening_diagnostics(),
+            hosts,
             oversized_refs: router.take_content_hash_oversized_ref_drops() as u64,
             rect_fast: router.take_rect_fast_stats(),
         }

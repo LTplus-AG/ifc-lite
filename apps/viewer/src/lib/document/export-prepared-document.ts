@@ -30,5 +30,6 @@ export function documentPdfWarnings(result: DocumentPdfResult): string[] {
     ...result.imageFailures.map((name) => `Image unavailable: ${name}`),
     ...result.tableFailures.map((id) => `Table unavailable: ${id}`),
     ...(result.chartFailures ?? []).map((message) => `Chart unavailable: ${message}`),
+    ...(result.qualityGateFailures ?? []).map((id) => `Saved quality gate unavailable for document block ${id}`),
   ];
 }

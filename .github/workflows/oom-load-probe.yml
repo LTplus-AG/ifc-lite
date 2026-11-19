@@ -29,10 +29,6 @@ on:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
-  # Proof run on a hosted runner before merge: a workflow not yet on the default
-  # branch cannot be dispatched. Remove before queueing.
-  push:
-    branches: [test/10264-capped-repro-ci]
 
 permissions:
   contents: read

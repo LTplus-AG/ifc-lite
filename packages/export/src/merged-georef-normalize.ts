@@ -74,6 +74,8 @@ const SCALE_ATTR = 7;
 /** 0-based `IfcPropertySet.Name` and `.HasProperties`, `IfcPropertySingleValue.Name`, `.NominalValue` and `.Unit`. */
 const PSET_NAME_ATTR = 2, PSET_PROPERTIES_ATTR = 4, PROPERTY_NAME_ATTR = 0, PROPERTY_VALUE_ATTR = 2, PROPERTY_UNIT_ATTR = 3;
 const METRE_UNIT = 'IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)';
+/** The ePSet_MapConversion placement properties, by the names the parser reads (`EPSET_TRANSFORM_PROPERTIES`). */
+const EPSET_PLACEMENT = new Set(['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale']);
 
 // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
 const idsOf = (dataStore: IfcDataStore, types: Iterable<string>) => [...types].flatMap(type => dataStore.entityIndex.byType.get(type) ?? []);
@@ -85,8 +87,8 @@ const typeOf = (dataStore: IfcDataStore, id: number) => (dataStore.entityIndex.b
 
 /** The normalize advisory for a model's georeference, or null when it carries none. */
 export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, plan: GeorefNormalizePlan | undefined): string | null {
-  const lists = [plan?.records.size, plan?.implicitUnit.length, plan?.scaleLeft.length];
-  if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0 && !lists.some(Boolean)) return null;
+  if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0 && !plan?.records.size && !plan?.implicitUnit.length
+    && !plan?.scaleLeft.length) return null;
   const idsIn = (ids: readonly number[]) => `${ids.map(id => `#${id}`).join(', ')} (${ids.length === 1 ? 'an id' : 'ids'} in "${name}")`;
   const unkeptIds = plan?.unkept ?? [], implicitIds = plan?.implicitUnit ?? [], leftIds = plan?.scaleLeft ?? [];
   const unkept = unkeptIds.length === 0 ? '' : unkeptIds.length === 1
@@ -102,7 +104,8 @@ export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, pla
 
 /**
  * The Scale that keeps the scale the viewer gives a conversion's geometry once its model is normalized: the divided
- * Scale (the spec reading) as it will be written, else undefined to keep it as written; `unkept` when neither keeps it.
+ * Scale (the spec reading) as it will be written, else undefined to keep it as written; `unkept` when neither keeps it,
+ * and `keepsWritten` when the Scale as written keeps it.
  */
 function chooseScale(conversion: Pick<MapConversion, 'scale' | 'factorX' | 'factorY' | 'factorZ'>, mapUnitScale: number | undefined,
   modelScale: number, primaryScale: number): { scale: number | undefined; unkept: boolean; keepsWritten: boolean } {
@@ -136,9 +139,14 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
     if (choice.scale !== undefined) records.set(conversion.id, { kind: 'edit', attr: SCALE_ATTR, value: toStepRealScaled(choice.scale) });
     if (choice.unkept) unkept.push(conversion.id);
   }
-  // An ePSet_MapConversion's properties are left as written: its offsets are in the map unit, and its other values
-  // are no project lengths.
-  for (const ids of psets) for (const id of ids) records.set(id, { kind: 'keep' });
+  // An ePSet_MapConversion's placement properties are left as written: its offsets are in the map unit, and its axis
+  // and Scale are ratios. So is a property it cannot read. Any other property of the set is rescaled like any other.
+  for (const ids of psets) {
+    for (const id of ids) {
+      const name = getStepAttr(dataStore, id, PROPERTY_NAME_ATTR);
+      if (name === null || EPSET_PLACEMENT.has(label(name))) records.set(id, { kind: 'keep' });
+    }
+  }
   // The ePSet the viewer reads (when no IFC4 entity places the model) is planned from the parser's reading of it. A
   // placement the parser refused has no conversion and is left as written.
   const epset = candidates?.entities.hasGeoreference ? undefined : candidates?.ePSetMapConversion;
@@ -193,9 +201,9 @@ function planViewerEPSet(dataStore: IfcDataStore, conversion: MapConversion, crs
     } else if (last.editable) records.set(last.id, { kind: 'edit', attr: PROPERTY_VALUE_ATTR, value });
     return last === undefined || last.editable;
   };
-  if (!crs || crs.id === conversion.id || (crs.mapUnit === undefined && !write(crs.id, 'MapUnit', "IFCLABEL('METRE')"))) {
-    implicitUnit.push(conversion.id);
-  }
+  const hasCrsSet = crs !== undefined && crs.id !== conversion.id;
+  const unitExplicit = hasCrsSet && (crs.mapUnit !== undefined || write(crs.id, 'MapUnit', "IFCLABEL('METRE')"));
+  if (!unitExplicit) implicitUnit.push(conversion.id);
   const choice = chooseScale(conversion, crs?.mapUnitScale, modelScale, primaryScale);
   if (choice.scale === undefined) return;
   if (write(conversion.id, 'Scale', `IFCREAL(${toStepRealScaled(choice.scale)})`)) {

@@ -269,9 +269,11 @@ interface EPSetSpec {
   mapUnitRecord?: string;
   /** List a property the file does not define in the ePSet_MapConversion. */
   danglingProperty?: true;
+  /** Add a length that is no placement property, `SourceLength`, to the ePSet_MapConversion. */
+  extraLength?: true;
 }
 
-const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord, mapUnitRecord = 'IFCPROPERTYSINGLEVALUE', danglingProperty }: EPSetSpec) => {
+const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord, mapUnitRecord = 'IFCPROPERTYSINGLEVALUE', danglingProperty, extraLength }: EPSetSpec) => {
   const guid = (n: number) => `'0${name.toUpperCase()}EPSet${String(n).padStart(15, '0')}'`;
   // `\X\65` is `e`, `\X\45` is `E`, `\X\4E` is `N`, `\X\4F` is `O`.
   const [eps, east, north, height] = escapedNames ? ['\\X\\65PSet', '\\X\\45astings', '\\X\\4Eorthings', '\\X\\4FrthogonalHeight']
@@ -281,7 +283,8 @@ const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escap
 #32=IFCPROPERTYSINGLEVALUE('${height}',$,IFCLENGTHMEASURE(500.),$);
 ${scaleRecord !== undefined ? `#33=${scaleRecord};`
     : scale === undefined ? '' : `#33=IFCPROPERTYSINGLEVALUE('Scale',$,${scale.startsWith('IFC') ? scale : `IFCREAL(${scale})`},$);`}
-#34=IFCPROPERTYSET(${guid(2)},#8,'${eps}_MapConversion',$,(#30,#31,#32${scale === undefined && scaleRecord === undefined ? '' : ',#33'}${danglingProperty ? ',#99' : ''}));
+#34=IFCPROPERTYSET(${guid(2)},#8,'${eps}_MapConversion',$,(#30,#31,#32${scale === undefined && scaleRecord === undefined ? '' : ',#33'}${danglingProperty ? ',#99' : ''}${extraLength ? ',#40' : ''}));
+${extraLength ? "#40=IFCPROPERTYSINGLEVALUE('SourceLength',$,IFCLENGTHMEASURE(1000.),$);" : ''}
 #35=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);
 ${mapUnitSlots !== undefined ? `#36=${mapUnitRecord}('MapUnit',$,${mapUnitSlots});`
     : mapUnit === undefined ? '' : `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnit === '$' ? '$' : `IFCLABEL('${mapUnit}')`},$);`}
@@ -406,6 +409,12 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     expect(bounded.warnings).toEqual(expect.arrayContaining([
       expect.stringContaining('Normalize could not rewrite the Scale property of ePSet_MapConversion #34 (an id in "b")'),
     ]));
+  });
+
+  it('rescales a length in the ePSet_MapConversion that is no placement property', async () => {
+    const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, { unit: 'mm', easting: 2600100, mapUnit: 'METRE', extraLength: true }]);
+    expect(merged).toContain("IFCPROPERTYSINGLEVALUE('SourceLength',$,IFCLENGTHMEASURE(1.),$)");
+    expect(merged).toContain("IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(2600100.),$)");
   });
 
   it('passes over a dangling property reference, as the parser does', async () => {

@@ -7,18 +7,21 @@ import { inspectIfcArchiveAdmission } from './archiveServerAdmission';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission } from './localIfcAdmission';
+import { sampleDenseGeometryShare } from './geometryDensity';
 
 /** Consent belongs to one load, never to a later file/pairing/session. An
  * unwrapped source larger than the approved input needs a fresh decision. */
 export function createLocalIfcAdmission(options: {
   tryServer: () => Promise<boolean>; isCurrent: () => boolean;
   onCancel: () => void; signal: AbortSignal;
+  /** Dense-geometry share of this load's source, once sampled (#10264). */
+  denseShare?: () => number | undefined;
 }): (bytes: number) => Promise<boolean> {
   let approvedBytes = -1;
   return async bytes => {
     if (!options.isCurrent()) return false;
     let warning;
-    try { warning = inspectLocalIfcAdmission(bytes); }
+    try { warning = inspectLocalIfcAdmission(bytes, undefined, options.denseShare?.()); }
     catch (refusal) {
       if (await options.tryServer()) return false;
       if (!options.isCurrent()) return false;
@@ -36,6 +39,13 @@ export function createLocalIfcAdmission(options: {
     approvedBytes = bytes;
     return true;
   };
+}
+
+/** Whether the geometry density could change the decision: a load that fits even at the dense
+ * rate is admitted without sampling, so ordinary loads read nothing past the header (#6431). */
+function densityCanDecide(bytes: number): boolean {
+  try { return inspectLocalIfcAdmission(bytes, undefined, 1) !== null; }
+  catch { return true; } // over budget at the dense rate (or past the wasm32 limit, which admit reports)
 }
 
 /** Inspect only the header before a primary scene reset or a cold-tier change. */
@@ -65,7 +75,8 @@ export function createLocalIfcLoadAdmission(file: File, options: {
   let server: (bytes: number) => Promise<boolean> = async () => false;
   let sourceAllowsServer = true;
   let archiveModelBytes: number | undefined;
-  const admit = createLocalIfcAdmission({ ...options, tryServer: () => sourceAllowsServer ? server(Math.max(file.size, archiveModelBytes ?? 0)) : Promise.resolve(false) });
+  let denseShare: number | undefined;
+  const admit = createLocalIfcAdmission({ ...options, denseShare: () => denseShare, tryServer: () => sourceAllowsServer ? server(Math.max(file.size, archiveModelBytes ?? 0)) : Promise.resolve(false) });
   return {
     admit,
     allowsServer: () => sourceAllowsServer,
@@ -80,6 +91,8 @@ export function createLocalIfcLoadAdmission(file: File, options: {
         sourceAllowsServer = archive.allowsServer;
         archiveModelBytes = archive.modelBytes;
         bytes = Math.max(bytes, archiveModelBytes);
+      } else if (densityCanDecide(bytes)) {
+        denseShare = await sampleDenseGeometryShare(file); // bounded windows, each under 1 MiB
       }
       return admit(bytes);
     } }),

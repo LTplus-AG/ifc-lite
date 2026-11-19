@@ -108,10 +108,12 @@ Two tools:
   Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;
   anything missing exits 2, never skips.
 
-`--expect` is required. Today the issue is open, so the minimal case runs with
-`--expect killed`: it passes only while the tab is still killed and **fails once the load is
-loaded or refused**, telling you to switch to `--expect not-killed` (the #10264 acceptance:
-the tab is never killed). `error` and `timeout` never pass.
+`--expect` is required. `--expect killed` passes only while the tab is still killed and **fails
+once the load is loaded or refused**, telling you to switch to `--expect not-killed` (the #10264
+acceptance: the tab is never killed). `error` and `timeout` never pass. Admission now scales its
+estimate by the sampled share of dense triangulated geometry (`geometryDensity.ts`), so the dense
+minimal case below is expected to be `refused` before the source is read; it runs with
+`--expect not-killed`.
 
 A viewer may instead warn before an oversized load (a dialog "This model may exceed available
 memory" with Continue loading / Cancel). `--on-memory-dialog wait` (default) reports
@@ -160,7 +162,7 @@ happened before the decision, the identity-dependent flags are `null` with the r
 ```bash
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist
 npx playwright install chromium                            # once
-node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed \
+node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
   --kind tfs --target-mb 300 --device-memory 4 --cores 4 --cap 3G   # swiftshader, headless
 # Hardware GL: headed on a private Xvfb, e.g. DISPLAY=:181 ... --gl hardware
 ```

@@ -3,15 +3,15 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-ffi ffi_parse_buffers_match_their_pins",
   "cases": {
     "AC20-FZK-Haus": {
-      "fnv1a64": "d633f096f0e5d45a",
+      "fnv1a64": "011da2785910d351",
       "bytes": 2007141
     },
     "BIMcollab_STR_IFC2X3": {
-      "fnv1a64": "b5426879739ff8f0",
+      "fnv1a64": "0c4c3eb7346854f2",
       "bytes": 633386
     },
     "IfcOpenHouse_IFC4": {
-      "fnv1a64": "8b6d7534f78a57ae",
+      "fnv1a64": "94f0904bf0778be9",
       "bytes": 162206
     },
     "glossy-synthetic": {

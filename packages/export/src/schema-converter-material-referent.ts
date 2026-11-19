@@ -117,8 +117,8 @@ export class MaterialReferents {
     }
     // Named as Rust names it: a material record by its type, anything else as unread.
     const type = named === null ? undefined : this.source.typeOf(named);
-    const id = /#\s*(\d+)/.exec(line.slice(0, head.eq))?.[1];
-    if (id !== undefined) this.dropped.set(Number(id), type?.startsWith('IFCMATERIAL') ? type : 'an unread record');
+    const id = slotRef(line.slice(0, head.eq)); // past a leading comment, as the head is read
+    if (id !== null) this.dropped.set(id, type?.startsWith('IFCMATERIAL') ? type : 'an unread record');
     return null;
   }
 
@@ -143,7 +143,8 @@ export function materialPropertiesNotWritten(store: Pick<SourceStore, 'entityInd
   const { entityIndex, source: bytes } = store;
   // @raw-entity-enumeration-ok this report reads a parsed source's own index, not a live view
   const all = entityIndex.byType.get(PROPERTIES) ?? [];
-  // Without the bytes (none, or a sourceless store's empty buffer) no record can be checked, so each is reported, as a bare `convertStepLine` leaves each out.
+  // Without the bytes (none, or a sourceless store's empty buffer) no record can be checked: the report is
+  // pessimistic and names each, as a bare `convertStepLine` leaves each out. An export needs the bytes.
   if (!bytes?.byteLength) return { ids: [...all], attributes };
   // The writer's own decision: each record through the `apply` the export runs.
   const source = new SourceRecords({ entityIndex, source: bytes });

@@ -32,7 +32,7 @@ const meta = (id: string, description: string, write = false) => ({
   implementation: 'native-store' as const,
   outputSchema,
 });
-async function candidate(c: OperationContext, id: string) {
+function candidate(c: OperationContext, id: string) {
   assertToolActive(c);
   return inspectAnalyticsAppearanceCandidate(c.host, id, c.model.id);
 }
@@ -110,7 +110,7 @@ export const appearanceFaceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const current = await candidate(c, i.candidate_id);
+      const current = candidate(c, i.candidate_id);
       return out({
         model_id: current.model_id,
         revision: current.revision,
@@ -192,7 +192,7 @@ export const appearanceFaceOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const old = await candidate(c, i.candidate_id);
+      const old = candidate(c, i.candidate_id);
       const settings = await decodeAppearanceSettings(i.settings_json);
       if (settings.representationPolicy !== 'evaluatedOccurrence')
         throw new Error('Face masks require native evaluatedOccurrence policy.');
@@ -214,13 +214,13 @@ export const appearanceFaceOperations = [
         masks = changeNativeFaceMask(masks, old.plan.conversions, mask.product_id, mask.triangles);
       }
       assertToolActive(c);
-      await candidate(c, i.candidate_id);
+      candidate(c, i.candidate_id);
       const prepared = await prepareAnalyticsAppearanceCandidate(
         { source_id: i.source_id, express_ids: i.express_ids, settings },
         c,
         faceMaskRequests(masks, i.express_ids),
       );
-      const next = await candidate(c, prepared.preview_token);
+      const next = candidate(c, prepared.preview_token);
       const reconciled = reconcileFaceMasks(masks, next.plan, (id) => `IFC object #${id}`);
       return out({
         candidate: prepared,

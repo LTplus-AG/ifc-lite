@@ -44,7 +44,7 @@ interface Candidate {
   discard?: 'pending' | 'failed';
 }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
-async function release(value: Candidate) {
+function release(value: Candidate) {
   value.renderer.getReferenceImages().remove(value.draftId);
   appearanceAssets.releaseOwner(value.owner);
 }
@@ -58,7 +58,8 @@ function candidates(c: ViewerOperationContext) {
       'abort',
       () => {
         for (const value of owned.values())
-          void release(value).catch((error) => console.warn('[Appearance] Reference preview cleanup failed', error));
+          try { release(value); }
+          catch (error) { console.warn('[Appearance] Reference preview cleanup failed', error); }
         owned.clear();
       },
       { once: true },
@@ -197,7 +198,7 @@ export const appearanceReferenceOperations = [
           await placeNativeAppearanceReference(saved.prepared, saved.renderer, c.signal, saved.editing, (write) => c.commit(write));
         }
         saved.placed = expected.id;
-        await release(saved);
+        release(saved);
         return out({ reference_id: expected.id, placed: true });
       } finally {
         saved.placing = false;
@@ -218,7 +219,7 @@ export const appearanceReferenceOperations = [
       assertToolActive(c);
       if (saved.discard === 'pending') throw new Error('The reference candidate is being discarded.');
       saved.discard = 'pending';
-      try { await release(saved); }
+      try { release(saved); }
       catch (error) { saved.discard = 'failed'; throw error; }
       candidates(c).delete(i.token);
       return out({ discarded: true });

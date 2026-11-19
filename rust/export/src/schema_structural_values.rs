@@ -9,6 +9,7 @@ const RELATED_OBJECTS: usize = ifc_lite_core::slot::IfcRelAssignsToGroup::RELATE
 const RELATING_GROUP: usize = ifc_lite_core::slot::IfcRelAssignsToGroup::RELATING_GROUP.index();
 const DEFINED_OBJECTS: usize = ifc_lite_core::slot::IfcRelDefinesByProperties::RELATED_OBJECTS.index();
 const DEFINING_SET: usize = ifc_lite_core::slot::IfcRelDefinesByProperties::RELATING_PROPERTY_DEFINITION.index();
+const PROPERTY_NAME: usize = ifc_lite_core::slot::IfcProperty::NAME.index();
 const SET_NAME: usize = ifc_lite_core::slot::IfcPropertySet::NAME.index();
 const HAS_PROPERTIES: usize = ifc_lite_core::slot::IfcPropertySet::HAS_PROPERTIES.index();
 const REP_ITEMS: usize = 3;
@@ -71,7 +72,7 @@ impl Source<'_> {
     fn properties(&self, ids: &[u32]) -> Option<BTreeMap<String, u32>> {
         let mut properties = BTreeMap::new();
         for &id in ids {
-            let name = step_string(self.slots(id)?.first()?)?.to_string();
+            let name = step_string(self.slots(id)?.get(PROPERTY_NAME)?)?.to_string();
             if properties.insert(name, id).is_some() { return None; }
         }
         Some(properties)

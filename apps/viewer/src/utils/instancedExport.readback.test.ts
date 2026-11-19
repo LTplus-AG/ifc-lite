@@ -94,4 +94,65 @@ describe('exports over released geometry', () => {
     const out = await withReleasedExportGeometry(() => withInstancedMeshes(geometryResult, null));
     assert.equal(out.meshes[0], geometryResult.meshes[0]);
   });
+
+  for (const failFirst of [false, true]) {
+    it(`#10887 overlapping scoped exports keep separate contexts after ${failFirst ? 'failure' : 'success'}`, async () => {
+      const first: GeometryResult = { meshes: [mesh(1, 2)], totalTriangles: 1, totalVertices: 3,
+        coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+      const second: GeometryResult = { meshes: [mesh(101, 9)], totalTriangles: 1, totalVertices: 3,
+        coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+      const expected = second.meshes[0].positions.slice();
+      useViewerStore.setState({ models: new Map([
+        ['first', { id: 'first', idOffset: 0, maxExpressId: 100, geometryResult: first }],
+        ['second', { id: 'second', idOffset: 100, maxExpressId: 100, geometryResult: second }],
+      ]) } as never);
+      const store = useViewerStore as unknown as StoreApi<TapState>;
+      const scene = { isGeometryDataReleased: () => true,
+        placeAppearanceSource: (m: MeshData) => m, getAllInstancedMeshData: () => [] as MeshData[] };
+      setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+      let allowFirst!: () => void;
+      const held = new Promise<void>((resolve) => { allowFirst = resolve; });
+      let enteredFirst!: () => void;
+      const entered = new Promise<void>((resolve) => { enteredFirst = resolve; });
+      let settledExports: Promise<unknown> = Promise.resolve();
+      try {
+        await geometryBackingCommand(store, undefined, { action: 'start', options: {
+          database: { name: `export-overlap-${process.pid}-${failFirst}`, locks: null },
+        } as never });
+        const statuses = await geometryBackingCommand(store, undefined, { action: 'seal' });
+        assert.ok(statuses.every((s) => s.complete));
+        releaseCpuMeshBuffers(first.meshes);
+        releaseCpuMeshBuffers(second.meshes);
+        const a = withReleasedExportGeometry(async () => {
+          enteredFirst();
+          await held;
+          assert.equal(withInstancedMeshes(first, null).meshes[0].positions[2], 2);
+          if (failFirst) throw new Error('first exporter failed');
+        }, ['first']);
+        // Attach the rejection handler before letting either exporter finish.
+        const outcomeA = a.then(() => null, (error: unknown) => error);
+        await entered;
+        let secondEntered = false;
+        const b = withReleasedExportGeometry(async () => {
+          secondEntered = true;
+          await Promise.resolve();
+          return withInstancedMeshes(second, null);
+        }, ['second']);
+        settledExports = Promise.allSettled([outcomeA, b]);
+        await Promise.resolve();
+        assert.equal(secondEntered, false, 'the second export cannot borrow the first context');
+        allowFirst();
+        const [error, exported] = await Promise.all([outcomeA, b]);
+        if (failFirst) assert.match(String(error), /first exporter failed/);
+        else assert.equal(error, null);
+        assert.deepEqual(exported.meshes[0].positions, expected, 'the second scope reads its own geometry');
+        assert.throws(() => withInstancedMeshes(second, null), GeometryUnavailableError, 'no context leaks after completion');
+      } finally {
+        allowFirst();
+        await settledExports;
+        await geometryBackingCommand(store, undefined, { action: 'stop' });
+        setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+      }
+    });
+  }
 });

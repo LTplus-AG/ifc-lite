@@ -115,6 +115,9 @@ export function withInstancedMeshes(
 
 /** Read-back geometry for collectors running inside {@link withReleasedExportGeometry}. */
 let releasedExport: ReleasedExportGeometry | null = null;
+// Collectors are synchronous, but their enclosing exports may await. Give each
+// entry point sole ownership until it settles, including preparation and errors.
+let exportTail: Promise<void> = Promise.resolve();
 
 /** Whether any loaded CPU geometry (or this result's) was released (#10264). */
 export function geometryReleased(geometryResult?: GeometryResult): boolean {
@@ -132,14 +135,19 @@ export function geometryReleased(geometryResult?: GeometryResult): boolean {
  * them. Resident geometry runs `run` directly, unchanged.
  */
 export async function withReleasedExportGeometry<T>(run: () => T | Promise<T>, modelIds?: Iterable<string>): Promise<T> {
-  if (releasedExport || !geometryReleased()) return run();
-  const { prepareReleasedExport } = await import('@/lib/geometry-backing/export-readback');
-  const renderer = getGlobalRenderer();
-  releasedExport = await prepareReleasedExport(getViewerState(), renderer?.getScene(), modelIds);
+  const previous = exportTail;
+  let finish!: () => void;
+  exportTail = new Promise<void>((resolve) => { finish = resolve; });
+  await previous;
   try {
+    if (!geometryReleased()) return await run();
+    const { prepareReleasedExport } = await import('@/lib/geometry-backing/export-readback');
+    const renderer = getGlobalRenderer();
+    releasedExport = await prepareReleasedExport(getViewerState(), renderer?.getScene(), modelIds);
     return await run();
   } finally {
     releasedExport = null;
+    finish();
   }
 }
 

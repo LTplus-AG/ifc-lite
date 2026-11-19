@@ -356,7 +356,7 @@ export function PropertiesPanel() {
     if (!found) return null;
     if (released) {
       // Same frame as the fold above (`origin + positions`); unavailable is no centre, never NaN.
-      const backed = releasedGeometryMetadata()?.bounds(selectedEntity.modelId, targetExpressId);
+      const backed = releasedGeometryMetadata()?.bounds(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId, targetExpressId);
       if (!backed) return null;
       minX = Math.min(minX, backed.min[0]); minY = Math.min(minY, backed.min[1]); minZ = Math.min(minZ, backed.min[2]);
       maxX = Math.max(maxX, backed.max[0]); maxY = Math.max(maxY, backed.max[1]); maxZ = Math.max(maxZ, backed.max[2]);

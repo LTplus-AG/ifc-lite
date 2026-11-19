@@ -9,7 +9,6 @@ import type { ValidationReport } from '@ifc-lite/ids';
 import type { IdsReportBlock } from '@/lib/document/ids-report-types';
 import type { ToolHost } from '../types';
 import { evictOldest } from './host-handles';
-import { isGroupingLens } from '@/lib/lens/custom-groupings';
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const artifactOutput = { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer' } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
@@ -22,7 +21,10 @@ type ViewerState = ReturnType<typeof useViewerStore.getState>;
  * Tags and lenses are compared by what the rule engine reads, so renaming a tag or recolouring a lens changes nothing. */
 interface RunInputs { models: ViewerState['models']; mutationVersion: number; tagIds?: string; modelTagAssignments?: ViewerState['modelTagAssignments']; groupings?: string }
 /** The fields `customGroupingsFromLenses` hands the rule engine. */
-const groupingsSignature = (lenses: ViewerState['savedLenses']) => JSON.stringify(lenses.filter(isGroupingLens).map(lens => [lens.id, lens.name,
+/** Loaded by `validation.rules.run`, the only operation that records a rules run, so it is set before any rules run is
+ * compared. A static import of the lens module would split it out of the eager chunk. */
+let isGroupingLens: typeof import('@/lib/model-tags/evaluator-models').isGroupingLens | undefined;
+const groupingsSignature = (lenses: ViewerState['savedLenses']) => JSON.stringify(lenses.filter(isGroupingLens!).map(lens => [lens.id, lens.name,
   lens.capturedScope ?? null, lens.rules.map(rule => [rule.name, rule.enabled, rule.unreadableLegacy ? null : rule.groups ?? null])]));
 type RunKind = 'rules' | 'ids';
 const runInputs = (s: ViewerState, kind: RunKind): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion,
@@ -94,9 +96,10 @@ export const nativeValidationOperations = [
   operation<{ rules_json: string; model_ids: string[] }>(meta('validation.rules.run', 'Run a canonical information-rule definition over an explicit loaded model population through the shared native rule executor. Pending edits are materialized by its canonical effective-store path. Returns a host-owned, revision-bound run handle; native cancellation is forwarded.'), {
     type: 'object', properties: { rules_json: { type: 'string', maxLength: 1000000 }, model_ids: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 200 } } }, required: ['rules_json', 'model_ids'], additionalProperties: false,
   }, async (i, c) => {
-    const [{ parseRuleSetFile }, { runInformationCheck }, { evaluatorModelsFromState, definedModelTagIdsOf }] = await Promise.all([
+    const [{ parseRuleSetFile }, { runInformationCheck }, evaluator] = await Promise.all([
       import('@ifc-lite/rules'), import('@/lib/validation/run-information-check'), import('@/lib/model-tags/evaluator-models'),
     ]);
+    const { evaluatorModelsFromState, definedModelTagIdsOf } = evaluator; isGroupingLens = evaluator.isGroupingLens;
     const parsed = parseRuleSetFile(JSON.parse(i.rules_json)); if (!parsed.ok) throw new Error(parsed.error); assertToolActive(c);
     const s = useViewerStore.getState(), models = evaluatorModelsFromState(s).filter(model => i.model_ids.includes(model.id));
     if (models.length !== i.model_ids.length || !i.model_ids.includes(c.model.id)) throw new Error('Every explicit model must be currently loaded, and include the selected model.');

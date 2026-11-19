@@ -8,7 +8,7 @@ import { operation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
-import { zoneAssignmentSignature } from '@/lib/zones/assignment';
+import { zoneAssignmentSignature } from '@/lib/zones/assignment-signature';
 import { evictOldest } from './host-handles';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });

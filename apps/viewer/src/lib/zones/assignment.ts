@@ -134,9 +134,3 @@ export function assignElementsToZoneSets(
   }
   return out;
 }
-
-/** One set's assignments by content. The assignment sync rebuilds an identical Map after every geometry tick, a recolour included. */
-export function zoneAssignmentSignature(assignments: ZoneAssignmentsByElement, setId: string): string {
-  // Sorted: a rebuild may walk the meshes in another order.
-  return JSON.stringify([...assignments].flatMap(([id, sets]) => sets[setId] ? [[id, sets[setId]] as const] : []).sort(([a], [b]) => a - b));
-}

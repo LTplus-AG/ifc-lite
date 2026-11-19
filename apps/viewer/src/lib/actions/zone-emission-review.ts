@@ -8,7 +8,7 @@ import type { ViewerState } from '@/store';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { emitSpatialZones } from '@/lib/zones/emit-spatial-zones';
-import { zoneAssignmentSignature } from '@/lib/zones/assignment';
+import { zoneAssignmentSignature } from '@/lib/zones/assignment-signature';
 import type { ZoneAssignmentsByElement } from '@/lib/zones/types';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { resolveGlobalId } from './resolve-global-id';

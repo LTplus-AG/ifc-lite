@@ -22,6 +22,7 @@
  */
 
 import { onFieldTelemetry } from './perf/fieldTelemetryLoader.js';
+import { supportsWasmSimd } from './wasm-simd-support.js';
 
 /** Subset of the (non-standard, Chromium-only) NetworkInformation we consult. */
 interface NetworkInformationLike {
@@ -58,7 +59,8 @@ export function scheduleWasmPrewarm(): void {
   if (scheduled || typeof window === 'undefined') return;
   // Gate BEFORE latching: a session that was on a metered/2g link at mount can
   // become eligible later, and latching first would lock it out for good.
-  if (shouldSkipPrewarm(connection())) return;
+  // Without SIMD the binary cannot compile, so downloading it is waste (#10784).
+  if (!supportsWasmSimd() || shouldSkipPrewarm(connection())) return;
   scheduled = true;
 
   const run = () => {
@@ -93,7 +95,8 @@ let fastPathScheduled = false;
  * decides for itself whether this browser may prepare anything.
  */
 export function scheduleFastPath(): void {
-  if (fastPathScheduled || typeof window === 'undefined') return;
+  // The spare workers compile the same engine binary (#10784).
+  if (fastPathScheduled || typeof window === 'undefined' || !supportsWasmSimd()) return;
   fastPathScheduled = true;
   const run = () => {
     void import('./fast-path/startFastPath')

@@ -6,9 +6,8 @@
  * WebAssembly SIMD support (#10784). The engine binary is built with
  * `+simd128` and there is no scalar build, so a browser without SIMD (V8 on
  * x64 CPUs lacking SSE4.1, some security modes) cannot compile it. The local
- * IFC admission refuses with {@link WasmSimdUnsupportedError} before the binary
- * is fetched; the matcher backs it up for any path that compiles anyway. `analytics-scrub.ts` lists
- * the kind as benign: a device limit, like WebGL being unavailable.
+ * IFC admission refuses before the binary is fetched; the matcher backs it up
+ * for any path that compiles anyway. Analytics treats the kind as benign.
  */
 
 /**

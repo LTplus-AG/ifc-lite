@@ -1,0 +1,22 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts b/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
+index 0b2aeea2ac..f354a9505c 100644
+--- a/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
++++ b/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
+@@ -95,7 +95,7 @@ export class ReadbackRaycastFeeder {
+       let hit = await this.host.pick(x, y, visibility);
+       signal.throwIfAborted();
+       const skipped = new Set(visibility.hiddenIds ?? []);
+-      for (let layer = 0; hit && layer < 0; layer++) {
++      for (let layer = 0; hit && !this.raycastable(hit.expressId); layer++) {
+         if (layer >= MAX_SEE_THROUGH_LAYERS) throw new GeometryUnavailableError(`More than ${MAX_SEE_THROUGH_LAYERS} overlays under the pointer`);
+         skipped.add(hit.expressId);
+         hit = await this.host.pick(x, y, { ...visibility, hiddenIds: skipped });
+@@ -128,7 +128,7 @@ export class ReadbackRaycastFeeder {
+             const b = scene.getInstancedEntityBounds(id);
+             if (!b || b.min.x > p.x + r || b.max.x < p.x - r || b.min.y > p.y + r || b.max.y < p.y - r
+               || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId) continue;
+-            void id;
++            instancedIds.add(id);
+           }
+           // The hit is in the placed scene frame; directory bounds are model-local sources.
+           const [dx, dy, dz] = modelOffset(scene, hit.modelIndex);

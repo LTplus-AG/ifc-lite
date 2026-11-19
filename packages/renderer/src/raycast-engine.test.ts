@@ -962,4 +962,20 @@ describe('RaycastEngine readback meshes (#10264)', () => {
     engine.setReadbackMeshes(null);
     assert.equal(engine.raycastScene(400, 300), null, 'cleared readback leaves nothing behind');
   });
+
+  it('prepared for one ray, readback pieces never answer another ray or view', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });
+    addRegularQuad(scene, quad);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera);
+    scene.releaseGeometryData();
+    engine.setReadbackMeshes([{ ...quad }], { x: 400, y: 300 });
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 1, 'the prepared ray');
+    assert.equal(engine.raycastScene(401, 301)?.intersection.expressId, 1, 'within 1.5 CSS px');
+    assert.equal(engine.raycastScene(420, 300), null, 'another ray could pass an unfed front surface');
+    assert.equal(engine.readbackCovers(420, 300), false);
+    camera.setPosition(1, 0, 50);
+    assert.equal(engine.raycastScene(400, 300), null, 'a changed view invalidates the prepared ray');
+  });
 });

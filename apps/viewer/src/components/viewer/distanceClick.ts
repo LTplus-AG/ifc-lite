@@ -10,6 +10,7 @@
  */
 
 import { useViewerStore, type MeasurePoint } from '@/store';
+import { runWithReadback } from './measureReadbackGate.js';
 import type { MouseHandlerContext, MouseState } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
@@ -150,12 +151,20 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
   // Calculate canvas-relative coordinates
   const rect = canvas.getBoundingClientRect();
   const at = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  const measurePoint = pickMeasurePoint(ctx, at.x, at.y);
-  if (measurePoint) {
+  const begin = () => {
+    const measurePoint = pickMeasurePoint(ctx, at.x, at.y);
+    if (!measurePoint) return;
     beginDistance(ctx, measurePoint, at);
     startingPresses.add(mouseState);
     if (afterFinish) startsAfterFinish.add(mouseState);
-  }
+  };
+  // Released geometry (#10264): read back under the press first. A press already
+  // released or reset by then places nothing rather than a stale point.
+  let synchronous = true;
+  runWithReadback(ctx.renderer, at.x, at.y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current }, () => {
+    if (synchronous || (mouseState.isDragging && !pressOutlivedReset(mouseState) && !ctx.activeMeasurementRef.current)) begin();
+  });
+  synchronous = false;
 
   return true;
 }

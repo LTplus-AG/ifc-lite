@@ -12,6 +12,7 @@ import type { PickResult } from '@ifc-lite/renderer';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { openContextMenuAt } from './contextMenuSelection.js';
 import { useViewerStore } from '@/store';
+import { runWithReadback } from './measureReadbackGate.js';
 import { toast } from '@/components/ui/toast';
 import { routeCommandPointer } from './commandPointer.js';
 import { runToolAt } from './toolTap.js';
@@ -31,6 +32,15 @@ export { setViewportInteractionCursor } from './useViewportCursor.js';
 /** The click-driven Measure modes' point placement; also a touch tap's (#5856). */
 export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
   const mode = useViewerStore.getState().measureMode;
+  // Released geometry (#10264): read back under the click first; a tool or mode
+  // change in the meantime drops the click rather than applying it elsewhere.
+  runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current }, () => {
+    const now = useViewerStore.getState();
+    if (now.activeTool === 'measure' && now.measureMode === mode) measureClickAt(ctx, x, y, mode);
+  });
+}
+
+function measureClickAt(ctx: MouseHandlerContext, x: number, y: number, mode: string): void {
   if (mode === 'polyline') handlePolylineClick(ctx, x, y);
   else if (mode === 'angle') handleAngleClick(ctx, x, y);
   else if (mode === 'radius') handleRadiusClick(ctx, x, y);

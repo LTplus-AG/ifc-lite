@@ -3027,9 +3027,18 @@ export class Renderer {
      * pieces beside the resident ones, under the same visibility and section
      * clip. Pass `null` to clear. Place them in the current model frame first
      * (`getScene().placeAppearanceSource`); the caller keeps them alive.
+     *
+     * With `at`, the pieces answer only the ray through that canvas point under
+     * the current view (`readbackRaycastCovers`): a neighbourhood is not the
+     * whole scene, so another ray could pass an unfed front surface.
      */
-    setReadbackRaycastMeshes(meshes: readonly MeshData[] | null): void {
-        this.raycastEngine.setReadbackMeshes(meshes);
+    setReadbackRaycastMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
+        this.raycastEngine.setReadbackMeshes(meshes, at);
+    }
+
+    /** Whether the readback pieces were prepared for the ray at (x, y) under the current view. */
+    readbackRaycastCovers(x: number, y: number): boolean {
+        return this.raycastEngine.readbackCovers(x, y);
     }
 
     /**

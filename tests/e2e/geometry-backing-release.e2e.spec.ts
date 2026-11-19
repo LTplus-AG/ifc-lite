@@ -26,6 +26,10 @@ type Probe = typeof globalThis & {
   __ifc_lite_cpu_geometry_held__?: () => Promise<{ totalBytes: number }>;
 };
 
+// Touch measurement after release has no hover in front of it: on-demand readback (#10264).
+test.use({ hasTouch: true });
+type TapStore = { measurePointLast: { x: number; y: number; z: number } | null;
+  setActiveTool(tool: string): void; setMeasureMode(mode: string): void };
 const FIXTURES = ['tests/models/ara3d/AC20-FZK-Haus.ifc', 'tests/models/ara3d/duplex.ifc', 'tests/models/ara3d/C20-Institute-Var-2.ifc'];
 const HOOK = '/src/lib/geometry-backing/backing-debug-hook.ts';
 
@@ -87,18 +91,47 @@ for (const fixture of FIXTURES) {
         && Boolean(g.__ifc_lite_geometry_backing__);
     }, null, { timeout: 480_000, polling: 250 });
     await page.screenshot({ path: info.outputPath('before-release.png') });
-    const report = await page.evaluate(async ([hookPath, digest]) => {
+    // Phase 1, resident: seal, digest, and a dense magnetic-snap probe grid.
+    const phase1 = await page.evaluate(async ([digest]) => {
       const g = globalThis as Probe;
       const hash = (0, eval)(digest) as (meshes: MeshData[]) => string;
-      const { activeGeometryBackingTap } = await import(hookPath) as Hook;
       const [modelId, model] = [...g.__ifc_lite_viewer_store__!.getState().models][0];
       const before = hash(model.geometryResult!.meshes);
       const sealed = await g.__ifc_lite_geometry_backing__!({ action: 'seal' });
-      // Measurement/snap probes over a grid of the canvas: resident now, readback after release.
       const canvas = document.querySelector('canvas')!.getBoundingClientRect();
       const points: Array<[number, number]> = [];
-      for (let i = 1; i <= 5; i++) for (let j = 1; j <= 4; j++) points.push([canvas.width * i / 6, canvas.height * j / 5]);
+      for (let i = 1; i <= 24; i++) for (let j = 1; j <= 16; j++) points.push([canvas.width * i / 25, canvas.height * j / 17]);
       const snapsBefore = await g.__ifc_lite_geometry_backing__!({ action: 'snap-probe-for-test', points });
+      return { modelId, before, sealed, points, snapsBefore };
+    }, [digestSource()] as const);
+    type SnapRow = { outcome: string; instanced: boolean; expressId: number | null; point: number[] | null; snap: { type: string; position: number[] } | null };
+    const before = phase1.snapsBefore as SnapRow[];
+    // A real touchscreen tap in Measure > Point mode, at a point that hit geometry.
+    const target = before.findIndex((probe) => probe.expressId !== null);
+    expect(target, 'the probe grid must land on geometry').toBeGreaterThanOrEqual(0);
+    const box = (await page.locator('canvas').first().boundingBox())!;
+    const [tx, ty] = phase1.points[target];
+    const tapAndRead = async (): Promise<number[]> => {
+      const prior = await page.evaluate(() => {
+        const state = (globalThis as Probe).__ifc_lite_viewer_store__!.getState() as unknown as TapStore;
+        state.setActiveTool('measure'); state.setMeasureMode('point');
+        return JSON.stringify(state.measurePointLast);
+      });
+      await page.touchscreen.tap(box.x + tx, box.y + ty);
+      await page.waitForFunction((p) => JSON.stringify(((globalThis as Probe).__ifc_lite_viewer_store__!.getState() as unknown as TapStore)
+        .measurePointLast) !== p, prior, { timeout: 30_000 });
+      return page.evaluate(() => {
+        const last = ((globalThis as Probe).__ifc_lite_viewer_store__!.getState() as unknown as TapStore).measurePointLast!;
+        return [last.x, last.y, last.z];
+      });
+    };
+    const tapResident = await tapAndRead();
+    // Phase 2: test-only release, readback probes, and a full read-back digest.
+    const report = await page.evaluate(async ([hookPath, digest, modelId, points]) => {
+      const g = globalThis as Probe & typeof globalThis;
+      const hash = (0, eval)(digest) as (meshes: MeshData[]) => string;
+      const { activeGeometryBackingTap } = await import(hookPath) as Hook;
+      const model = g.__ifc_lite_viewer_store__!.getState().models.get(modelId)!;
       const heldBefore = (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes;
       const released = await g.__ifc_lite_geometry_backing__!({ action: 'release-for-test' });
       const heldAfter = (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes;
@@ -110,20 +143,24 @@ for (const fixture of FIXTURES) {
       for await (const batch of backing.reader.meshes()) { read.push(...batch); peak = Math.max(peak, backing.reader.retainedBytes); }
       let occurrences = 0, templates = 0;
       for await (const shard of backing.reader.instancedShards()) { occurrences += shard.instances.length; templates += shard.templates.length; }
-      return { modelId, before, after: hash(read), sealed, released, heldBefore, heldAfter, storeEmpty, snapsBefore, snapsAfter,
-        occurrences, templates, peakDecodedBytes: peak };
-    }, [HOOK, digestSource()] as const);
+      return { after: hash(read), released, heldBefore, heldAfter, storeEmpty, snapsAfter, occurrences, templates, peakDecodedBytes: peak };
+    }, [HOOK, digestSource(), phase1.modelId, phase1.points] as const);
+    // The probes fed readback at the last grid point; the tap point is uncovered, so the tap reads back on demand.
+    const tapReleased = await tapAndRead();
     await page.screenshot({ path: info.outputPath('after-release.png') });
-    await writeFile(info.outputPath('release-report.json'), JSON.stringify(report, null, 2));
-    expect(report.sealed[0].complete).toBe(true);
+    const after = report.snapsAfter as SnapRow[];
+    const summary = { ...phase1, ...report, snapsBefore: undefined, snapsAfter: undefined, points: undefined,
+      hits: before.filter((probe) => probe.expressId !== null).length,
+      instancedHits: before.filter((probe) => probe.instanced).length, fed: after.filter((probe) => probe.outcome === 'fed').length,
+      tap: { at: [tx, ty], resident: tapResident, released: tapReleased } };
+    await writeFile(info.outputPath('release-report.json'), JSON.stringify(summary, null, 2));
+    await writeFile(info.outputPath('snap-probes.json'), JSON.stringify({ before, after }));
+    expect(phase1.sealed[0].complete).toBe(true);
     expect(report.storeEmpty).toBe(true);
-    expect(report.after).toBe(report.before);
+    expect(report.after).toBe(phase1.before);
     expect(report.heldAfter).toBeLessThan(report.heldBefore);
-    // Measurement and snapping keep working after release, from readback alone.
-    type Probe = { outcome: string; expressId: number | null; point: number[] | null; snap: { type: string; position: number[] } | null };
-    const before = report.snapsBefore as Probe[], after = report.snapsAfter as Probe[];
-    const hits = before.filter((probe) => probe.expressId !== null).length;
-    expect(hits, 'the probe grid must land on geometry').toBeGreaterThan(0);
+    for (let k = 0; k < 3; k++) expect(Math.abs(tapReleased[k] - tapResident[k]), 'touch point after release').toBeLessThan(1e-6);
+    if (report.occurrences > 0) expect(summary.instancedHits, 'instanced occurrences under the grid').toBeGreaterThan(0);
     expect(before.every((probe) => probe.outcome === 'resident')).toBe(true);
     for (let i = 0; i < before.length; i++) {
       const a = before[i], b = after[i];

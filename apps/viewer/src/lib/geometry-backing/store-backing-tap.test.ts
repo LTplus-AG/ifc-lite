@@ -42,7 +42,7 @@ function shardBytes(entityId: number): ArrayBuffer {
 
 function storeWith(models: Record<string, MeshData[]>) {
   return createStore<TapState>(() => ({
-    models: new Map(Object.entries(models).map(([id, meshes]) => [id, { geometryResult: { meshes } }])),
+    models: new Map(Object.entries(models).map(([id, meshes]) => [id, { geometryResult: { meshes }, idOffset: 0 }])),
     geometryContentVersion: 0,
   }));
 }
@@ -53,7 +53,7 @@ function append(store: ReturnType<typeof storeWith>, modelId: string, meshes: Me
     const models = new Map(state.models);
     const target = models.get(modelId)!.geometryResult!;
     target.meshes.push(...meshes);
-    models.set(modelId, { geometryResult: { meshes: target.meshes } });
+    models.set(modelId, { geometryResult: { meshes: target.meshes }, idOffset: 0 });
     return { models };
   });
 }
@@ -86,7 +86,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('m1a', [shardBytes(5)], instancedShardGeneration());
     await tap.whenIdle();
-    store.setState((state) => ({ models: new Map([['m1a', { geometryResult: {
+    store.setState((state) => ({ models: new Map([['m1a', { idOffset: 0, geometryResult: {
       meshes: state.models.get('m1a')!.geometryResult!.meshes.map((m) => ({ ...m, color: [1, 0, 0, 1] as [number, number, number, number] })) } }]]) }));
     const [status] = await tap.seal();
     assert.equal(status.generation, 2);
@@ -155,6 +155,18 @@ describe('store geometry backing tap (test/debug only)', () => {
     const lease = await acknowledged.reader.leaseEntity(1);
     assert.equal(lease.meshes[0].positions.length, 9, 'with its real arrays');
     lease.release();
+    await tap.stop();
+  });
+
+  it('backs shard ids in the federated id space, as the drain uploads them', async () => {
+    const store = storeWith({ fed: [mesh(1)] });
+    store.setState((state) => ({ models: new Map([['fed', { ...state.models.get('fed')!, idOffset: 1000 }]]) }));
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('fed', [shardBytes(5)], instancedShardGeneration());
+    await tap.seal();
+    const backing = tap.backing('fed')!;
+    assert.deepEqual(backing.directory.shardsOf(1005), [0], 'global id');
+    assert.deepEqual(backing.directory.shardsOf(5), [], 'not the model-local id');
     await tap.stop();
   });
 });

@@ -43,6 +43,8 @@ export class RaycastEngine {
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
     /** Flat pieces read back for released geometry (#10264); empty when unused. */
     private readbackMeshes: readonly MeshData[] = [];
+    /** The one ray they were prepared for: canvas point and view-projection at set time. */
+    private readbackCoverage: { x: number; y: number; viewProj: Float32Array } | null = null;
 
     constructor(camera: Camera, scene: RaycastScene, canvas: HTMLCanvasElement) {
         this.camera = camera;
@@ -89,14 +91,30 @@ export class RaycastEngine {
      * clip rules; `null` clears them. The host owns their lifetime and frame
      * (place them with `SceneContents.placeAppearanceSource`).
      */
-    setReadbackMeshes(meshes: readonly MeshData[] | null): void {
+    setReadbackMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
         this.readbackMeshes = meshes ?? [];
+        this.readbackCoverage = meshes && at ? { ...at, viewProj: this.camera.getViewProjMatrix().m } : null;
+    }
+
+    /**
+     * Whether readback pieces answer a ray at (x, y). They hold the picked
+     * entity and its neighbourhood only, so a different ray (or view) could
+     * pass an unfed front surface and hit a fed one behind it: only the exact
+     * prepared ray, within 1.5 CSS px under the same view, may use them.
+     */
+    readbackCovers(x: number, y: number): boolean {
+        const at = this.readbackCoverage;
+        if (!at || Math.abs(at.x - x) > 1.5 || Math.abs(at.y - y) > 1.5) return false;
+        const now = this.camera.getViewProjMatrix().m;
+        for (let i = 0; i < 16; i++) if (now[i] !== at.viewProj[i]) return false;
+        return true;
     }
 
     /** Flat candidates near the ray, plus ray-culled instanced occurrences. */
-    private meshesForRay(options: PickOptions | undefined, ray: Ray): MeshData[] {
+    private meshesForRay(options: PickOptions | undefined, ray: Ray, at?: { x: number; y: number }): MeshData[] {
         const allMeshData = this.flatIndex.query(ray, this.visibilityFilter(options));
-        for (const piece of this.readbackMeshes) {
+        const covered = this.readbackCoverage === null || (at !== undefined && this.readbackCovers(at.x, at.y));
+        if (covered) for (const piece of this.readbackMeshes) {
             if (isEntityVisible(piece.expressId, options?.hiddenIds, options?.isolatedIds)) allMeshData.push(piece);
         }
         const seenInstancedKeys = new Set<string>();
@@ -162,7 +180,7 @@ export class RaycastEngine {
             const ray = this.camera.unprojectToRay(x, y, viewport.width, viewport.height);
 
             // Get all mesh data from scene
-            const meshesToTest = this.meshesForRay(options, ray);
+            const meshesToTest = this.meshesForRay(options, ray, { x, y });
             if (meshesToTest.length === 0) {
                 return null;
             }
@@ -236,7 +254,7 @@ export class RaycastEngine {
             // model (no IFC mesh loaded at all) must still fall through
             // to the point-cloud query below instead of returning a hard
             // miss.
-            const meshesToTest = this.meshesForRay(options, ray);
+            const meshesToTest = this.meshesForRay(options, ray, { x, y });
 
             const cameraPos = this.camera.getPosition();
             const cameraFov = this.camera.getFOV();

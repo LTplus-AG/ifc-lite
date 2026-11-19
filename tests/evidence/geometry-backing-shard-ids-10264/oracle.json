@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the new measure readback gate loadable while reintroducing backed instanced shards keyed by model-local ids, which picks and flat meshes never use in a federated session.",
+  "key": "apps/viewer/src/components/viewer/measureReadbackGate.ts",
+  "mutation": "tests/evidence/geometry-backing-shard-ids-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/geometry-backing/store-backing-tap.test.ts"
+}

@@ -21,6 +21,7 @@ import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
 import { useViewerStore } from '@/store';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
+import { runWithReadback } from './measureReadbackGate.js';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -114,7 +115,8 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
       ctx.measureRaycastFrameRef.current = null;
       if (isGeometryHeld(useViewerStore.getState())) return;
       // Shift can change while a view change prevents its immediate re-pick (#9242).
-      moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint);
+      runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current },
+        () => moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint));
     });
   }
 

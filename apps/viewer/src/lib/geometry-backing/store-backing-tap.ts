@@ -38,12 +38,13 @@ import type { StoreApi } from 'zustand';
 import { subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
+import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
 import type { BackingDatabaseOptions } from './backing-database';
 
 /** The store fields the tap reads. */
 export interface TapState {
-  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null }>;
+  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null; idOffset?: number }>;
   geometryContentVersion: number;
 }
 
@@ -198,6 +199,15 @@ export class StoreGeometryBackingTap {
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.
     const shard = decodeInstancedShard(bytes.slice(0));
+    // The drain re-homes shard ids into the federated id space after decoding;
+    // do the same, so backed occurrences answer the ids picks and flat meshes use.
+    const idOffset = this.store.getState().models.get(modelId)?.idOffset;
+    if (idOffset === undefined) {
+      target.instancedLost = true;
+      console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`);
+      return;
+    }
+    applyFederationOffsetToShard(shard, idOffset);
     this.enqueue(target, () => this.writer(target).appendInstancedShard(shard));
   }
 

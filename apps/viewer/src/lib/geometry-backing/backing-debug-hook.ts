@@ -25,6 +25,8 @@ export type GeometryBackingCommand =
 
 export interface SnapProbe {
   outcome: string;
+  error?: string;
+  instanced: boolean;
   expressId: number | null;
   point: [number, number, number] | null;
   snap: { type: string; position: [number, number, number] } | null;
@@ -99,7 +101,7 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<TapS
 
 /** The hover path's own sequence: readback (only when released), then the magnetic raycast. */
 async function snapProbe(renderer: Renderer, points: Array<[number, number]>): Promise<SnapProbe[]> {
-  const { feedReadbackAt } = await import('./readback-measure');
+  const { feedReadbackAt, readbackFeeder } = await import('./readback-measure');
   const { sceneGeometryReleased } = await import('./scene-released');
   const out: SnapProbe[] = [];
   for (const [x, y] of points) {
@@ -108,7 +110,8 @@ async function snapProbe(renderer: Renderer, points: Array<[number, number]>): P
       { snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
     const hit = result.intersection;
     const target = result.snapTarget;
-    out.push({ outcome, expressId: hit?.expressId ?? null,
+    const error = outcome === 'unavailable' ? readbackFeeder(renderer).lastError?.message : undefined;
+    out.push({ outcome, ...(error ? { error } : {}), expressId: hit?.expressId ?? null, instanced: hit ? renderer.getScene().isInstancedEntity(hit.expressId) : false,
       point: hit ? [hit.point.x, hit.point.y, hit.point.z] : null,
       snap: target ? { type: String(target.type), position: [target.position.x, target.position.y, target.position.z] } : null });
   }

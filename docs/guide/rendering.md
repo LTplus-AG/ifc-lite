@@ -510,6 +510,13 @@ renderer.setReadbackRaycastMeshes(null);     // clear when the tool moves on
 The pieces follow the same hide/isolate and section-clip rules as resident ones.
 The renderer does not copy them, so the host keeps them alive while they are set.
 
+Pass the canvas point they were prepared for, `setReadbackRaycastMeshes(placed, { x, y })`.
+Then they answer only that ray under the current view, because a neighbourhood
+is not the whole scene. Check `readbackRaycastCovers(x, y)` before a raycast at a
+new point, and prepare again when it is false. Instanced occurrences read back as
+decoded shards are expanded with `materializeShardOccurrences(shard, modelIndex, keyPrefix)`,
+the same preparation an upload uses, then placed like flat pieces.
+
 ### Magnetic Snap Configuration
 
 ```typescript

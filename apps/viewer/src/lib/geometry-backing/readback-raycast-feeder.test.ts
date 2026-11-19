@@ -10,6 +10,7 @@ import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { GeometryBackingRegistry, type ModelGeometryBacking } from './geometry-backing-registry';
 import { GeometryUnavailableError, leaseEntityGeometry, meshIsResident, modelGeometry } from './geometry-readback';
 import { ReadbackRaycastFeeder, type ReadbackRaycastHost } from './readback-raycast-feeder';
+import { instancedShard } from './geometry-backing.test-fixtures';
 
 let names = 0;
 const database = () => ({ name: `feeder-test-${process.pid}-${names++}`, locks: null });
@@ -27,12 +28,16 @@ async function backed(meshes: MeshData[], options = {}): Promise<{ registry: Geo
   return { registry, backing };
 }
 
-function host(state: { released: boolean; hit: { expressId: number; worldXYZ?: { x: number; y: number; z: number } } | null }) {
+type Box = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+function host(state: { released: boolean; hit: { expressId: number; modelIndex?: number; worldXYZ?: { x: number; y: number; z: number } } | null },
+  instanced = new Map<number, Box>()) {
   const fed: Array<readonly MeshData[] | null> = [];
   const scene = {
     isGeometryDataReleased: () => state.released,
     // Entity 4 is in the store but was never drawn (a type-filtered space).
     getEntityBoundingBox: (id: number) => (id === 4 ? null : { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }),
+    getInstancedEntityIds: () => instanced.keys(),
+    getInstancedEntityBounds: (id: number) => instanced.get(id) ?? null,
     // A model translated by +100 in x, as the scene's own placement would.
     placeAppearanceSource: (m: MeshData) => ({ ...m, origin: [100 + (m.origin?.[0] ?? 0), m.origin?.[1] ?? 0, m.origin?.[2] ?? 0] as [number, number, number] }),
   };
@@ -122,13 +127,49 @@ describe('released geometry readback for tools', () => {
     await registry.close();
   });
 
-  it('an instanced or unbacked front surface is refused, never measured through', async () => {
+  it('an unbacked front surface is refused, never measured through', async () => {
     const { registry, backing } = await backed([mesh(1, 0)]);
     const h = host({ released: true, hit: { expressId: 77, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } });
     const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
     assert.equal(await feeder.prepare(0, 0), 'unavailable');
-    assert.match(feeder.lastError!.message, /no backed flat geometry/);
+    assert.match(feeder.lastError!.message, /has no backed geometry/);
     assert.equal(h.fed.at(-1), null, 'the flat neighbourhood behind it is not fed');
+    await registry.close();
+  });
+
+  it('an instanced hit and instanced neighbours come back from backed shards, placed, opaque only', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard()); // 501 opaque, 502 translucent
+    const neighbour = instancedShard();
+    neighbour.instances = [{ ...neighbour.instances[0], entityId: 503 }];
+    await backing.writer.appendInstancedShard(neighbour);
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } },
+      new Map([[501, near], [502, near], [503, near], [504, { min: { x: 500, y: 0, z: 0 }, max: { x: 501, y: 1, z: 1 } }]]));
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message);
+    const fed = h.fed.at(-1)!;
+    const instanced = fed.filter((m) => m.occurrenceKey?.startsWith('readback:'));
+    assert.deepEqual(instanced.map((m) => m.expressId).sort(), [501, 503], 'picked + neighbour; translucent and far ones excluded');
+    assert.equal(instanced[0].origin![0] > 100, true, 'placed through the scene like flat pieces');
+    await registry.close();
+  });
+
+  it('sees through overlays the resident raycast ignores, as it does', async () => {
+    const { registry, backing } = await backed([mesh(1, 0)]);
+    const h = host({ released: true, hit: null });
+    const seen: Array<ReadonlySet<number> | undefined> = [];
+    h.value.pick = async (_x, _y, options) => {
+      seen.push(options?.hiddenIds);
+      return options?.hiddenIds?.has(900) ? { expressId: 1 } : { expressId: 900 };
+    };
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm', undefined, (id) => id !== 900);
+    assert.equal(await feeder.prepare(0, 0), 'fed');
+    assert.deepEqual(h.fed.at(-1)!.map((m) => m.expressId), [1], 'the surface behind the annotation');
+    assert.equal(seen.length, 2);
     await registry.close();
   });
 });

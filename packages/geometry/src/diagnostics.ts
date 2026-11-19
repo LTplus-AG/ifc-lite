@@ -19,7 +19,7 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 5). Bumped on field
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 6). Bumped on field
    * renames/removals and count-semantics changes; also on an additive field
    * whose absence a consumer must tell apart from a real zero. A purely
    * additive optional field that no consumer gates on does not bump.
@@ -29,6 +29,7 @@ export interface GeometryDiagnostics {
    * - 4: unsupported counts also include unmeshable openings.
    * - 5: work-budget refusals carry budget, demand and product/source identity
    *   separately from unsupported items.
+   * - 6: `silentNoOps` measures area and volume instead of triangle counts.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of
@@ -53,11 +54,11 @@ export interface GeometryDiagnostics {
   /** Failure counts by stable reason label, sorted desc by count. */
   failuresByReason: Array<{ reason: string; count: number }>;
   /**
-   * Hosts where rectangular cutters ran, the triangle count was unchanged, and NO
-   * failure was recorded (cut attempted, geometry not modified) - the highest-
-   * signal "looks wrong but did not error" indicator. Hosts that failed are
-   * excluded (they are loud failures counted in totalCsgFailures, not silent).
-   * Batch-summed upper bound.
+   * Hosts where rectangular cutters ran without a recorded failure and left
+   * area and volume within 0.1% of the original (schema 6 onward). Older
+   * payloads compared triangle counts. Batch-summed upper bound over the
+   * contributing batches. When mixed versions are folded, only measured
+   * batches contribute to a schema 6 count.
    */
   silentNoOps: number;
   /** rect_fast fast-path engagement (perf observability). */
@@ -184,7 +185,12 @@ export function mergeGeometryDiagnostics(
   if (!a) return b ?? null;
   if (!b) return a;
 
-  const schemaVersion = Math.max(a.schemaVersion ?? 0, b.schemaVersion ?? 0);
+  const aVersion = a.schemaVersion ?? 0;
+  const bVersion = b.schemaVersion ?? 0;
+  const schemaVersion = Math.max(aVersion, bVersion);
+  const measuredCutSchema = 6;
+  const silentNoOps = (schemaVersion < measuredCutSchema || aVersion >= measuredCutSchema ? a.silentNoOps : 0)
+    + (schemaVersion < measuredCutSchema || bVersion >= measuredCutSchema ? b.silentNoOps : 0);
 
   const failuresByReason = mergeReasonCounts(a.failuresByReason, b.failuresByReason);
 
@@ -245,7 +251,7 @@ export function mergeGeometryDiagnostics(
       total: a.classification.total + b.classification.total,
     },
     failuresByReason,
-    silentNoOps: a.silentNoOps + b.silentNoOps,
+    silentNoOps,
     rectFast: {
       fired: a.rectFast.fired + b.rectFast.fired,
       openingsCut: a.rectFast.openingsCut + b.rectFast.openingsCut,

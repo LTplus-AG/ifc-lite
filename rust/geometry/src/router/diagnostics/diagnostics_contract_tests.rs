@@ -100,6 +100,10 @@ fn aggregate_summarizes_failures_hosts_classification_and_silent_noops() {
     // Only host 9 (clean, unchanged tris) counts; host 7 failed, so it is NOT
     // a silent no-op.
     assert_eq!(d.silent_no_ops, 1);
+    // The public triangle-only producer keeps the previous wire contract.
+    let legacy = serde_json::to_value(&d).unwrap();
+    assert_eq!(legacy["schemaVersion"], 5);
+    assert_eq!(legacy["silentNoOps"], 1);
     assert_eq!(d.rect_fast.fired, 2);
     // Sorted desc by count: DifferenceEmptiedHost=2 then KernelOutputInvalid=1.
     assert_eq!(d.failures_by_reason[0].reason, "DifferenceEmptiedHost");
@@ -263,12 +267,12 @@ fn schema_version_round_trips_and_defaults() {
     let d = GeometryDiagnostics::default();
     assert_eq!(d.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     let json = serde_json::to_string(&d).unwrap();
-    assert!(json.contains("\"schemaVersion\":5"), "serialized unconditionally: {json}");
+    assert!(json.contains("\"schemaVersion\":6"), "serialized unconditionally: {json}");
     let back: GeometryDiagnostics = serde_json::from_str(&json).unwrap();
     assert_eq!(back.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     // A pre-versioned producer (field absent) deserializes to 0, distinguishable.
     let legacy: GeometryDiagnostics =
-        serde_json::from_str(&json.replace("\"schemaVersion\":5,", "")).unwrap();
+        serde_json::from_str(&json.replace("\"schemaVersion\":6,", "")).unwrap();
     assert_eq!(legacy.schema_version, 0);
 }
 

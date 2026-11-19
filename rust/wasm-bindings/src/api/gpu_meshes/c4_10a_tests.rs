@@ -205,7 +205,7 @@ fn f2_repeated_plans_count_each_omitted_type_record_once_per_load_8341() {
     assert_eq!((diag.refused_input_elements, diag.refused_prepass_records), (0, 0));
     let json = serde_json::to_value(&diag).unwrap();
     assert_eq!(json["omittedTypeRecords"], 2);
-    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["schemaVersion"], 2, "the prepass-only report uses the current wire schema");
 }
 
 #[test]

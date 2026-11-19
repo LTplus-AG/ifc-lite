@@ -11,6 +11,7 @@ pub(crate) enum Effect {
     /// One drained kernel batch: the host summary, then the failures.
     Failures(u32, Vec<BoolFailure>),
     Consumed(u32),
+    MeasuredRectangularCut(u32, bool),
     Cut {
         id: u32,
         before: usize,
@@ -24,6 +25,10 @@ pub(crate) enum Effect {
 pub(crate) struct EffectSet(Vec<Effect>);
 
 impl EffectSet {
+    pub(crate) fn attempted_rectangular_cut(&self) -> bool {
+        self.0.iter().any(|effect| matches!(effect, Effect::Cut { rectangles, .. } if *rectangles > 0))
+    }
+
     pub(crate) fn push(&mut self, effect: Effect) {
         self.0.push(effect);
     }
@@ -62,6 +67,7 @@ impl EffectSet {
                     router.record_csg_failures(id, failures);
                 }
                 Effect::Consumed(id) => router.record_void_consumed_host(id),
+                Effect::MeasuredRectangularCut(id, unchanged) => router.record_rectangular_cut_measure(id, unchanged),
                 Effect::Cut {
                     id,
                     before,

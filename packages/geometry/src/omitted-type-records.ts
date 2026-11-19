@@ -7,7 +7,7 @@
  * full decoder rejects them, so their type geometry was never planned.
  *
  * The count is the additive `omittedTypeRecords` key of the WASM
- * `getPipelineDiagnostics()` report (schema v1), kept on the IfcAPI that RAN
+ * `getPipelineDiagnostics()` report (added in schema v1), kept on the IfcAPI that RAN
  * the prepass. That report resets on the next content install
  * (`setSourceBytes`, `setEntityIndex`, another prepass) and survives
  * `clearPrePassCache`, so it is read from the prepass instance itself: right

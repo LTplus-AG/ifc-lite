@@ -43,10 +43,13 @@ export function resolveQualityGate(block: QualityGateBlock, reports: readonly Sa
   t: DocumentLabelFormatter = resolveEnglish): ResolvedQualityGate {
   const report = reports.find(candidate => candidate.id === block.clashReportId);
   const quality = report?.qualityGates;
-  const row = quality?.rows[block.row];
+  const row = block.row === undefined ? undefined : quality?.rows[block.row];
   const base = { kind: block.kind, id: block.id, scale: block.scale, ...blockHeaderStyleFields(block) };
   if (!report || !quality || !row) {
-    return { ...base, title: blockTitle(block, t('document.block.kindQualityGate')), lines: [t('document.qualityGate.missing')] };
+    const lines = report && quality && block.row === undefined
+      ? [report.name, t('document.qualityGate.chooseResult')]
+      : [t('document.qualityGate.missing')];
+    return { ...base, title: blockTitle(block, t('document.block.kindQualityGate')), lines };
   }
   const { ring, details, policy } = describeQualityGate(report, row, quality.config[row.kind], t);
   return { ...base, title: blockTitle(block, row.name), ring,

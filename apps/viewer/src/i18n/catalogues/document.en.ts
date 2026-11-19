@@ -119,6 +119,7 @@ export const documentEn = {
   'document.block.kindQualityGate': 'Quality gate',
   'document.qualityGate.report': 'Saved check report',
   'document.qualityGate.rule': 'Quality gate result',
+  'document.qualityGate.chooseResult': 'Choose a quality gate result.',
   'document.qualityGate.saveFirst': 'Save a collision or duplicate check with quality gate results first',
   'document.qualityGate.deleteWarning': 'Charts and quality gate blocks that read “{name}” will show it as unavailable.',
   'document.qualityGate.referenceCount': { one: '{count} reference found in readable libraries, including current unsaved entries.', other: '{count} references found in readable libraries, including current unsaved entries.' },

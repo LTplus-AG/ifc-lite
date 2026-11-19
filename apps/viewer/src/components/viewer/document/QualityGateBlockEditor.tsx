@@ -18,7 +18,8 @@ export function QualityGateBlockEditor({ block, reports, onChange }: Props) {
   const available = reports.filter(report => report.qualityGates?.rows.length);
   const source = available.find(report => report.id === block.clashReportId);
   const rows = source?.qualityGates?.rows ?? [];
-  const selected = rows[block.row];
+  const selected = block.row === undefined ? undefined : rows[block.row];
+  const rowPlaceholder = block.row === undefined ? t('document.qualityGate.chooseResult') : t('document.qualityGate.missing');
   const missing = t('document.qualityGate.missing');
   return <div className="flex flex-col gap-1">
     <Field label={t('document.qualityGate.report')}>
@@ -26,7 +27,7 @@ export function QualityGateBlockEditor({ block, reports, onChange }: Props) {
         const report = available.find(candidate => candidate.id === id);
         if (!report?.qualityGates?.rows.length) return;
         const matchingRow = report.qualityGates.rows.findIndex(row => row.rule === selected?.rule && row.kind === selected.kind);
-        onChange({ ...block, clashReportId: report.id, row: Math.max(0, matchingRow) });
+        onChange({ ...block, clashReportId: report.id, row: matchingRow < 0 ? undefined : matchingRow });
       }}>
         <SelectTrigger><SelectValue placeholder={missing} /></SelectTrigger>
         <SelectContent>{available.map(report => <SelectItem key={report.id} value={report.id}>
@@ -39,7 +40,7 @@ export function QualityGateBlockEditor({ block, reports, onChange }: Props) {
         const row = Number(value);
         if (value && rows[row]) onChange({ ...block, row });
       }}>
-        <SelectTrigger><SelectValue placeholder={missing} /></SelectTrigger>
+        <SelectTrigger><SelectValue placeholder={rowPlaceholder} /></SelectTrigger>
         <SelectContent>{rows.map((row, index) => <SelectItem key={index} value={String(index)}>
           {row.name} · {t(row.kind === 'clash' ? 'clashQuality.clash' : 'clashQuality.duplicates')}
         </SelectItem>)}</SelectContent>

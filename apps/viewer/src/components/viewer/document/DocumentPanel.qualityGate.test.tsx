@@ -55,6 +55,7 @@ it('places, refreshes, prints, and reports deletion of a saved quality gate insi
   mountClashPanel();
   await detectCoincidentWalls(2);
   const before = await saveCurrentResultAs('First coordination check');
+  const same = await saveCurrentResultAs('Matching coordination check');
   cleanup();
 
   const config = defaultQualityGateConfig();
@@ -99,24 +100,49 @@ it('places, refreshes, prints, and reports deletion of a saved quality gate insi
   click(add);
   const gate = savedDoc().blocks[1];
   assert.ok(gate?.kind === 'quality-gate', 'the add menu puts a movable block inside the current document');
-  const select = [...ui.querySelectorAll('[role="combobox"]')].find(element =>
-    document.getElementById(element.getAttribute('aria-labelledby') ?? '')?.textContent === 'Saved check report');
-  assert.ok(select);
-  const choose = (name: string) => {
+  const choose = (label: string, name: string) => {
+    const select = [...ui.querySelectorAll('[role="combobox"]')].find(element =>
+      document.getElementById(element.getAttribute('aria-labelledby') ?? '')?.textContent === label);
+    assert.ok(select);
     click(select);
     const option = [...document.querySelectorAll('[role="option"]')].find(item => item.textContent?.startsWith(name));
     assert.ok(option);
     click(option);
   };
   const preview = () => ui.querySelector(`[data-preview-block="${gate.id}"]`);
-  choose(before.name);
+  const collisionRow = before.qualityGates?.rows[0];
+  const duplicateRow = after.qualityGates?.rows[0];
+  assert.ok(collisionRow && duplicateRow);
+  choose('Saved check report', before.name);
+  choose('Quality gate result', collisionRow.name);
   await documentPreviewReady({ root: ui });
   await waitFor(() => !!preview()?.textContent?.includes('2 checked'), 'the first saved report renders');
   assert.match(preview()?.textContent ?? '', /2 checked · 2 affected/);
   assert.match(preview()?.textContent ?? '', /0\.0% · Failed/);
   assert.ok(preview()?.querySelector('img[alt="0.0%"]'));
 
-  choose(after.name);
+  choose('Saved check report', same.name);
+  const matched = savedDoc().blocks[1];
+  assert.ok(matched.kind === 'quality-gate');
+  assert.equal(matched.clashReportId, same.id);
+  assert.equal(matched.row, 0, 'switching to a report with the same rule preserves the selection');
+
+  choose('Saved check report', after.name);
+  const pending = savedDoc().blocks[1];
+  assert.ok(pending.kind === 'quality-gate');
+  assert.equal(pending.clashReportId, after.id);
+  assert.equal(pending.row, undefined, 'switching to an unrelated report leaves the rule unselected');
+  await waitFor(() => !!preview()?.textContent?.includes('Choose a quality gate result'), 'the preview prompts for a rule');
+  assert.equal(preview()?.querySelector('img'), null);
+  const pendingPdf = await printed(savedDoc());
+  assert.match(pendingPdf.text, /Choose a quality gate result/);
+  assert.deepEqual(pendingPdf.failures, [gate.id]);
+  const reloaded = parseDocumentFile(JSON.stringify(savedDoc())).blocks[1];
+  assert.ok(reloaded.kind === 'quality-gate');
+  assert.equal(reloaded.clashReportId, after.id);
+  assert.equal(reloaded.row, undefined);
+
+  choose('Quality gate result', duplicateRow.name);
   await waitFor(() => !!preview()?.textContent?.includes('3 checked'), 'the same preview block refreshes after selection');
   assert.match(preview()?.textContent ?? '', /3 checked · 3 affected/);
   assert.match(preview()?.textContent ?? '', /0\.0% · Review needed/);

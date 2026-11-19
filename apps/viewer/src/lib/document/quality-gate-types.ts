@@ -8,8 +8,8 @@ export interface QualityGateBlock extends BlockTitle {
   kind: 'quality-gate';
   id: string;
   clashReportId: string;
-  /** Row index in the immutable saved report. */
-  row: number;
+  /** Row index in the immutable saved report. Absent while the author chooses a result. */
+  row?: number;
   scale?: number;
 }
 
@@ -17,7 +17,7 @@ export function validateQualityGateBlock(block: Record<string, unknown>, at: str
   if (typeof block.clashReportId !== 'string' || !block.clashReportId.length) {
     errors.push({ path: `${at}.clashReportId`, message: 'expected a saved clash report id' });
   }
-  if (typeof block.row !== 'number' || !Number.isSafeInteger(block.row) || block.row < 0) {
+  if (block.row !== undefined && (typeof block.row !== 'number' || !Number.isSafeInteger(block.row) || block.row < 0)) {
     errors.push({ path: `${at}.row`, message: 'expected a non-negative row index' });
   }
 }

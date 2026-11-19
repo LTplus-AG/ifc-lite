@@ -267,5 +267,6 @@ To add a linked result to an existing document, choose **Add block → Quality
 gate** in Documentation. Select the saved check report and its rule. The
 preview and PDF use that run's captured percentages and category policy. After
 saving a revised check, select the new report in the same block to update it
-in place. Moving the block uses the same controls as other document blocks.
+in place. If the new report has no matching rule, choose a result from that
+report. Moving the block uses the same controls as other document blocks.
 Deleting the source report makes its linked blocks unavailable.

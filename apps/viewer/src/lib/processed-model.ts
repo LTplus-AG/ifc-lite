@@ -121,9 +121,13 @@ function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest 
   return { sha256, bytes: processedModelSize(model.bytes), name: model.name || 'model.ifc' };
 }
 
-/** A processed model was asked for on this page: it is meshed on the server, so nothing needs warming in the browser. */
+/**
+ * A processed model was asked for on this page: it is meshed on the server, so nothing needs
+ * warming in the browser. A `?processed=` link counts before the viewer files its request, which
+ * happens only after mount, later than the fast path's idle check.
+ */
 export function processedModelRequested(): boolean {
-  return anyRequested;
+  return anyRequested || (typeof location !== 'undefined' && new URLSearchParams(location.search).has('processed'));
 }
 
 function fileRequest(request: FiledProcessedModelRequest): void {

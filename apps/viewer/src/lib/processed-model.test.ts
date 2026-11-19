@@ -40,14 +40,17 @@ describe('setProcessingServerUrl', () => {
 });
 
 describe('applyProcessingConfig', () => {
-  // The host's server and start model loading for real: useIfcLoader.processedModel.test.tsx.
+  // How a filed request loads: useIfcLoader.processedModel.test.tsx; mountViewer's call: bootstrap.tsx.
   it('changes nothing for a configuration without them, or none at all', () => {
-    setProcessingServerUrl('/ifc');
-    applyProcessingConfig({});
-    applyProcessingConfig(undefined);
-    assert.equal(getProcessingServerUrl(), '/ifc');
-    assert.equal(takeProcessedModelRequest(), null);
-    setProcessingServerUrl(initial);
+    try {
+      setProcessingServerUrl('/ifc');
+      applyProcessingConfig({});
+      applyProcessingConfig(undefined);
+      assert.equal(getProcessingServerUrl(), '/ifc');
+      assert.equal(takeProcessedModelRequest(), null);
+    } finally {
+      setProcessingServerUrl(initial);
+    }
   });
 
   it('names the server, then files the start model as a host request that the page URL yields to', () => {
@@ -81,5 +84,16 @@ describe('processedModelRequested', () => {
     assert.equal(processedModelRequested(), true);
     takeProcessedModelRequest();
     assert.equal(processedModelRequested(), true, 'stays on after the viewer took the request');
+  });
+
+  it('is on for a ?processed= link before the viewer files its request', () => {
+    resetProcessedModelRequestsForTests();
+    const before = location.href;
+    try {
+      history.replaceState(null, '', `?processed=${'a'.repeat(64)}`);
+      assert.equal(processedModelRequested(), true);
+    } finally {
+      history.replaceState(null, '', before);
+    }
   });
 });

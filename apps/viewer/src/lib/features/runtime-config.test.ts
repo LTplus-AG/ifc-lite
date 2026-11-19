@@ -128,7 +128,10 @@ describe('the version 1 configuration shape', () => {
     for (const sha256 of [SHA, SHA.toUpperCase(), '', 'a'.repeat(63), 'a'.repeat(65), 'g'.repeat(64), `${'a'.repeat(62)}/x`]) {
       const viaConfig = (() => {
         try { return parseViewerRuntimeConfig({ version: 1, open: { processedModel: { sha256, bytes: 0, name: 'x.ifc' } } }).open?.processedModel.sha256; }
-        catch { return null; }
+        catch (error) {
+          if (error instanceof ViewerConfigError && error.code === 'invalid') return null;
+          throw error;
+        }
       })();
       assert.equal(viaConfig, normalizeProcessedModelHash(sha256), sha256);
     }

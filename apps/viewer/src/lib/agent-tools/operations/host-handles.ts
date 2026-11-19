@@ -47,24 +47,36 @@ export function candidateStillApplies(host?: ToolHost) {
     (!live || !bound || live.get(bound.modelId) === bound.store) && (applied || unchanged());
 }
 
-/** An applied candidate's receipt write. `handedOff` once the library holds the receipt (saved, or kept as its draft):
- * admission may then evict the candidate, because the receipt survives it. */
-export interface ReceiptHolder { persisting?: Promise<boolean>; handedOff?: boolean }
+/** Where an applied candidate's receipt is. Absent: nothing the library holds (not applied, or its write failed
+ * before the library recorded it), so a replay puts it. `writing`: a write in flight, which a replay shares.
+ * `handed-off`: the library keeps it as an unsaved draft, which only its `retry` writes again. `saved`: done. */
+export type ReceiptPersistence = { state: 'writing'; write: Promise<boolean> } | { state: 'handed-off' } | { state: 'saved' };
+export interface ReceiptHolder { persistence?: ReceiptPersistence }
+/** Admission may evict a candidate once the library holds its receipt, because the receipt survives it. */
+export const libraryHoldsReceipt = (holder: ReceiptHolder) => holder.persistence?.state === 'handed-off' || holder.persistence?.state === 'saved';
 
 /**
- * Save an applied candidate's receipt. The first write puts it; a successful one is cached, so a replay never
- * overwrites the library row the Changes panel has since marked undone. An unsaved one is kept by the library as a
- * dirty draft that only its `retry` writes again (the panel's Retry button), so a replay retries through `retry`,
- * which saves the library's latest draft (an undone mark included), never this receipt again.
+ * Save an applied candidate's receipt. A saved one is never written again, so a replay never overwrites the library
+ * row the Changes panel has since marked undone. A draft the library holds is written only through its `retry`, which
+ * saves the library's latest draft (an undone mark included), never this receipt again. Each write ends in the state
+ * the library reports for the receipt, so a failure at any point leaves a state the next replay can act on.
  */
 export function persistReceipt(holder: ReceiptHolder, receipt: ModelChangeReceipt): Promise<boolean> {
-  holder.persisting ??= import('@/lib/actions/receipts').then(async ({ modelChangeLibrary, useModelChangeReceipts }) => {
-    if (!holder.handedOff) { holder.handedOff = true; return modelChangeLibrary.put(receipt.id, receipt); }
-    const saved = () => useModelChangeReceipts.getState().status.items[receipt.id] === 'saved';
-    if (saved()) return true; // the panel's Retry may have saved it already
-    await modelChangeLibrary.retry();
-    return saved();
-  }).then(saved => { if (!saved) holder.persisting = undefined; return saved; },
-    (error: unknown) => { holder.persisting = undefined; throw error; });
-  return holder.persisting;
+  const before = holder.persistence;
+  if (before?.state === 'writing') return before.write;
+  if (before?.state === 'saved') return Promise.resolve(true);
+  const write = import('@/lib/actions/receipts').then(async ({ modelChangeLibrary, useModelChangeReceipts }) => {
+    const status = () => useModelChangeReceipts.getState().status.items[receipt.id];
+    const settle = (saved: boolean) => {
+      holder.persistence = saved || status() === 'saved' ? { state: 'saved' } : status() !== undefined ? { state: 'handed-off' } : undefined;
+      return holder.persistence?.state === 'saved';
+    };
+    try {
+      if (before?.state !== 'handed-off') return settle(await modelChangeLibrary.put(receipt.id, receipt));
+      if (status() !== 'saved') await modelChangeLibrary.retry(); // the panel's Retry may have saved it already
+      return settle(false);
+    } catch (error) { settle(false); throw error; }
+  }, (error: unknown) => { holder.persistence = before; throw error; });
+  holder.persistence = { state: 'writing', write };
+  return write;
 }

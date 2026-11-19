@@ -9,7 +9,7 @@ import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
 import { operation, emptySchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { admitCandidate, candidateStillApplies, persistReceipt, type ReceiptHolder } from './host-handles';
+import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const previewOutput = { type: 'object', properties: { token: { type: 'string' }, preview_json: { type: 'string' }, revision: { type: 'integer' } }, required: ['token', 'preview_json', 'revision'], additionalProperties: false };
 const receiptOutput = { type: 'object', properties: { receipt_json: { type: 'string' }, persisted: { type: 'boolean' } }, required: ['receipt_json', 'persisted'], additionalProperties: false };
@@ -34,7 +34,7 @@ const previewCurrent = (entry: Pick<Candidate, 'revision'>) => entry.revision ==
  * concurrent prepare cannot take the room. */
 function rememberAll<T extends object>(c: OperationContext, inputs: ReadonlyArray<{ input: Omit<Candidate, 'modelId' | 'store' | 'revision'>; preview: T }>) {
   const entries = candidates(c), stillApplies = candidateStillApplies(c.host);
-  admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.handedOff,
+  admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !libraryHoldsReceipt(entry),
     canApply: entry => stillApplies(entry.receipt !== undefined, () => previewCurrent(entry), entry), count: inputs.length });
   const revision = useViewerStore.getState().mutationVersion;
   return inputs.map(({ input, preview }) => {

@@ -128,6 +128,35 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(writes, 1);
   });
 
+  it('#20: a receipt write that throws before the library holds the receipt is put again by the replay', async () => {
+    const token = await prepareRename();
+    const put = modelChangeLibrary.put;
+    modelChangeLibrary.put = () => { throw new Error('Library unavailable'); };
+    try { assert.equal((await invoke('authoring.apply', { token }, true)).isError, true); } finally { modelChangeLibrary.put = put; }
+    const replay = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token }, true));
+    assert.equal(replay.persisted, true);
+    const receipt = JSON.parse(replay.receipt_json) as ModelChangeReceipt;
+    assert.equal(useModelChangeReceipts.getState().status.items[receipt.id], 'saved');
+    assert.equal(storedReceipt(receipt.id)?.status, 'applied');
+  });
+
+  it('#20: a receipt write that throws after the library kept its draft is retried, not put again', async () => {
+    const token = await prepareRename();
+    const put = modelChangeLibrary.put, refused = refuseContentWrites();
+    let receipt: ModelChangeReceipt | undefined;
+    modelChangeLibrary.put = (id, value, ...rest) => {
+      receipt = value as ModelChangeReceipt;
+      return put(id, value, ...rest).then(() => { throw new Error('Acknowledgement lost'); });
+    };
+    try { assert.equal((await invoke('authoring.apply', { token }, true)).isError, true); } finally { modelChangeLibrary.put = put; }
+    try {
+      // The Changes panel marks the kept draft undone; a second put of the original receipt would overwrite that.
+      assert.equal(await modelChangeLibrary.put(receipt!.id, { ...receipt!, status: 'undone', undoneAt: new Date(0).toISOString() }), false);
+    } finally { refused.mock.restore(); }
+    assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true);
+    assert.equal(storedReceipt(receipt!.id)?.status, 'undone', 'the replay saved the library\'s draft');
+  });
+
   it('#20: a replay of an unsaved receipt saves the library\'s latest draft, an undone mark included', async () => {
     const token = await prepareRename();
     let receipt: ModelChangeReceipt;

@@ -9,7 +9,7 @@ import type { ToolHost } from '../types';
 import { operation, emptySchema, referenceSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
-import { admitCandidate, candidateStillApplies, persistReceipt, type ReceiptHolder } from './host-handles';
+import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const tokenInput = { type: 'object' as const, properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['token' as const], additionalProperties: false as const };
@@ -86,7 +86,7 @@ export const graphAuthoringOperations = [
     // A review that fails it is dropped and its native handles released.
     const admit = () => {
       const stillApplies = candidateStillApplies(c.host);
-      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.handedOff,
+      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !libraryHoldsReceipt(entry),
         canApply: entry => stillApplies(entry.receipt !== undefined, () => entry.review?.sourcesCurrent() ?? false, entry),
         release: entry => entry.review?.dispose?.() });
     };

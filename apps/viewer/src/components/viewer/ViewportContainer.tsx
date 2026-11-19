@@ -156,9 +156,12 @@ export function ViewportContainer() {
   /**
    * Aggregate point clouds across visible models.
    *
-   * Phase 0: identity-stamping with modelIndex. Returns the same array
-   * reference when nothing has changed so the consumer effect skips work.
+   * Phase 0: identity-stamping with modelIndex. A type toggle over models
+   * without point clouds keeps the previous empty array, so it does not
+   * re-sync them: that recomputes the renderer's model bounds and refits the
+   * sun shadows although nothing changed (#10264).
    */
+  const pointCloudSourceRef = useRef<{ sources: readonly unknown[]; list: PointCloudAsset[] } | null>(null);
   const mergedPointClouds = useMemo(() => {
     const collected: PointCloudAsset[] = [];
     if (storeModels.size > 0) {
@@ -181,6 +184,10 @@ export function ViewportContainer() {
         collected.push(asset);
       }
     }
+    const sources = [storeModels, geometryResult, modelIdToIndex];
+    const previous = pointCloudSourceRef.current;
+    if (collected.length === 0 && previous?.list.length === 0 && previous.sources.every((source, i) => source === sources[i])) return previous.list;
+    pointCloudSourceRef.current = { sources, list: collected };
     return collected;
   }, [storeModels, geometryResult, modelIdToIndex, typeVisibility, structuralViewMode, retypedClasses]);
 

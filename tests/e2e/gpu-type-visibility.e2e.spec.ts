@@ -196,7 +196,7 @@ async function visiblePiecesOnly(page: Page, info: TestInfo, name: string, hidde
     renderer.requestRender();
   }, hidden);
   await settle(page);
-  return capture(page, info, name);
+  return stillFrame(page, info, name);
 }
 
 const SPACES_AND_OPENINGS = ['IFCSPACE', 'IFCOPENINGELEMENT', 'IFCOPENINGSTANDARDCASE'];
@@ -222,10 +222,10 @@ async function roundTrip(page: Page, info: TestInfo, name: string, hidden: numbe
   await picksNeverHidden(page, info, `${name}-default`, hidden);
   await batchIdentity(page, 'record');
   await store(page, [['toggleTypeVisibility', 'spaces'], ['toggleTypeVisibility', 'openings']]);
-  const on = await capture(page, info, `${name}-2-shown`);
+  const on = await stillFrame(page, info, `${name}-2-shown`);
   const shown = await batchIdentity(page, 'same');
   await store(page, [['toggleTypeVisibility', 'spaces'], ['toggleTypeVisibility', 'openings']]);
-  const back = await capture(page, info, `${name}-3-hidden-again`);
+  const back = await stillFrame(page, info, `${name}-3-hidden-again`);
   const kept = await batchIdentity(page, 'same');
   const onOff = await diff(page, on, off);
   const backOff = await diff(page, back, off);
@@ -309,9 +309,9 @@ test('after the test-only CPU release, classes hidden from the start toggle on a
   await settle(page);
   await batchIdentity(page, 'record');
   await store(page, [['toggleTypeVisibility', 'spaces'], ['toggleTypeVisibility', 'openings']]);
-  const shown = await capture(page, info, 'released-2-shown');
+  const shown = await stillFrame(page, info, 'released-2-shown');
   await store(page, [['toggleTypeVisibility', 'spaces'], ['toggleTypeVisibility', 'openings']]);
-  const back = await capture(page, info, 'released-3-hidden-again');
+  const back = await stillFrame(page, info, 'released-3-hidden-again');
   const kept = await batchIdentity(page, 'same');
   const vsRef = await diff(page, shown, shownRef);
   const vsBefore = await diff(page, shown, before);

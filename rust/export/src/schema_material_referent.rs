@@ -190,7 +190,7 @@ impl MaterialReferents {
         match (named, named.and_then(|r| resolve(&self.records, &self.gone, r))) {
             (Some(r), Some(m)) if m != r => {
                 let Some(mut out) = crate::step_log::replace_argument(&framed, at, &format!("#{m}")) else { return Some(line.into()) };
-                if bare { if let Some(semi) = out.rfind(';') { out.remove(semi); } }
+                if bare { out.pop(); } // the ';' it was read with is the last character
                 Some(Cow::Owned(out))
             }
             (_, Some(_)) => Some(line.into()),

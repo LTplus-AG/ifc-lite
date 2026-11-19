@@ -17,12 +17,14 @@ import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { attributeNamesForStore } from '@/lib/collab/schema-attribute-names.js';
+import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 
 interface ValueTypes { type: PropertyValueType; dataType?: string }
 type Session = NonNullable<ViewerState['collabSession']>;
 interface PublishedEdit {
-  /** The session the edit went to: after leaving it (even to rejoin the same room), its undo is local only. */
-  session: Session;
+  /** The session the edit went to: after leaving it (even to rejoin the same room), its undo is local only. A token,
+   * so history never keeps a left session's document alive. */
+  session: symbol;
   /** The value types the forward edit published, which a redo publishes again. */
   forward?: ValueTypes;
   /** The property's types before the edit, which an undo restores. Absent when it did not exist or was not loaded. */
@@ -30,6 +32,12 @@ interface PublishedEdit {
 }
 
 const published = new WeakMap<Mutation, PublishedEdit>();
+const sessionTokens = new WeakMap<Session, symbol>();
+function tokenOf(session: Session): symbol {
+  let token = sessionTokens.get(session);
+  if (!token) sessionTokens.set(session, token = Symbol('collab-session'));
+  return token;
+}
 
 /** The live session `modelId`'s edits are mirrored to, or null when they stay local. */
 export function mirroredSession(state: ViewerState, modelId: string): Session | null {
@@ -44,7 +52,7 @@ export function propertyBefore(view: MutablePropertyView, entityId: number, pset
 
 /** Record that `mutation` was mirrored into `session`, so its undo and redo are too. */
 export function rememberPublishedEdit(mutation: Mutation, session: Session, types: Omit<PublishedEdit, 'session'> = {}): void {
-  published.set(mutation, { session, ...types });
+  published.set(mutation, { session: tokenOf(session), ...types });
 }
 
 /**
@@ -54,9 +62,11 @@ export function rememberPublishedEdit(mutation: Mutation, session: Session, type
 function ownAttributeValue(state: ViewerState, view: MutablePropertyView, modelId: string, entityId: number, attrName: string): unknown {
   const store = state.models.get(modelId)?.ifcDataStore ?? (state.models.size === 0 ? state.ifcDataStore : null);
   const entity = view.getNewEntity(entityId) ?? store?.getEntity?.(entityId);
-  if (!store || !entity) return undefined;
-  const index = attributeNamesForStore(store, entity.type).indexOf(attrName);
-  return index < 0 ? undefined : entity.attributes[index] ?? null;
+  if (!entity) return undefined;
+  const index = (store ? attributeNamesForStore(store, entity.type) : getAttributeNamesAcrossSchemas(entity.type)).indexOf(attrName);
+  const value = index < 0 ? undefined : entity.attributes[index] ?? null;
+  // Only a plain value: the forward mirror only ever sent user-typed text, never a reference or a list.
+  return value === null || ['string', 'number', 'boolean'].includes(typeof value) ? value : undefined;
 }
 
 /** Send what an undo or redo step left, if it left anything to send. */
@@ -88,10 +98,10 @@ function publishStep(state: ViewerState, view: MutablePropertyView, modelId: str
 export function mirrorHistoryStep(get: () => ViewerState, set: (patch: Partial<ViewerState>) => void, view: MutablePropertyView,
   modelId: string, mutation: Mutation, direction: 'undo' | 'redo'): void {
   const edit = published.get(mutation), state = get();
-  if (!edit || edit.session !== state.collabSession || !state.canCollabEdit()) return;
+  if (!edit || !state.collabSession || edit.session !== tokenOf(state.collabSession) || !state.canCollabEdit()) return;
   try { publishStep(state, view, modelId, mutation, edit, direction); }
   catch (error) {
-    console.warn(`[collab] ${direction} of #${mutation.entityId} was not published to the room`, error);
-    set({ collabGeometryNotice: `Your ${direction} was applied locally, but could not be shared with the room${error instanceof Error ? ` (${error.message})` : ''}.` });
+    console.error(`[collab] ${direction} of #${mutation.entityId} was not published to the room`, error);
+    set({ collabGeometryNotice: `Your ${direction} was applied locally, but could not be shared with the room.` });
   }
 }

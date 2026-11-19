@@ -106,7 +106,10 @@ describe('undo and redo publish what the forward edit published (#10695)', () =>
     state().setProperty('hello', WALL_ID, 'Pset_Custom', 'FireRating', 'REI60', PropertyValueType.String);
     useViewerStore.setState({ mirrorPropertyEdit: () => { throw new Error('the room rejects this value'); }, collabGeometryNotice: null });
     state().undo('hello');
-    assert.equal(state().undoStacks.get('hello')?.length, 1, 'the step moved to the redo stack');
+    assert.equal(state().undoStacks.get('hello')?.length, 1);
+    assert.equal(state().redoStacks.get('hello')?.length, 1, 'the step moved to the redo stack');
+    const restored = state().getMutationView('hello')!.getForEntity(WALL_ID).find(set => set.name === 'Pset_Custom')?.properties.find(p => p.name === 'FireRating');
+    assert.equal(restored?.value, 'REI30', 'the local undo applied');
     assert.match(state().collabGeometryNotice ?? '', /undo was applied locally, but could not be shared/);
   });
 

@@ -17,17 +17,26 @@ const fixture: { slots: { type: string; index: number; members: string[] }[] } =
 );
 
 describe('retyped slots (#10778)', () => {
-  it('retypes exactly the shared fixture: every member both ways, a non-member to $', () => {
+  it('retypes the shared fixture exactly: every member both ways, every other code to $', () => {
     expect(fixture.slots.map(({ type, index }) => [type, index])).toEqual([['IFCMONETARYUNIT', 0]]);
-    const { members } = fixture.slots[0];
-    expect(members.length, 'anti-vacuity').toBeGreaterThan(80);
+    const members = new Set(fixture.slots[0].members);
+    expect(members.size, 'anti-vacuity').toBeGreaterThan(80);
     for (const m of members) {
-      expect(convertStepLine(`#5=IFCMONETARYUNIT(.${m}.);`, 'IFC2X3', 'IFC4'), m).toBe(`#5=IFCMONETARYUNIT('${m}');`);
-      expect(convertStepLine(`#5=IFCMONETARYUNIT('${m}');`, 'IFC4', 'IFC2X3'), m).toBe(`#5=IFCMONETARYUNIT(.${m}.);`);
+      for (const to of ['IFC4', 'IFC4X3', 'IFC5'] as const) {
+        expect(convertStepLine(`#5=IFCMONETARYUNIT(.${m}.);`, 'IFC2X3', to), `${m} ${to}`).toBe(`#5=IFCMONETARYUNIT('${m}');`);
+      }
     }
-    for (const label of ['XBT', 'BTC', 'EURO']) {
-      expect(convertStepLine(`#5=IFCMONETARYUNIT('${label}');`, 'IFC4', 'IFC2X3'), label).toBe('#5=IFCMONETARYUNIT($);');
+    // Every three-letter code: a member exactly when the fixture lists it.
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (const a of letters) for (const b of letters) for (const c of letters) {
+      const code = a + b + c;
+      const want = members.has(code) ? `.${code}.` : '$';
+      const got = convertStepLine(`#5=IFCMONETARYUNIT('${code}');`, 'IFC4', 'IFC2X3');
+      if (got !== `#5=IFCMONETARYUNIT(${want});`) expect(got, code).toBe(`#5=IFCMONETARYUNIT(${want});`);
     }
+    // No other record is retyped.
+    expect(convertStepLine('#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);', 'IFC2X3', 'IFC4')).toBe('#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);');
+    expect(convertStepLine("#5=IFCORGANIZATION($,'EUR',$,$,$);", 'IFC4', 'IFC2X3')).toBe("#5=IFCORGANIZATION($,'EUR',$,$,$);");
   });
 
   it('writes a currency member as a label and back', () => {

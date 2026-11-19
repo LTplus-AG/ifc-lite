@@ -10,8 +10,9 @@
  * downgrade writes a label that names a member as that member and anything
  * else as `$` (the IFC2X3 slot fill then reports the required slot).
  *
- * Twin of Rust `schema_retyped.rs`; both are held to
- * `rust/export/tests/fixtures/schema_retyped_slots.json`.
+ * Twin of Rust `schema_retyped.rs`. Rust compares its table with
+ * `rust/export/tests/fixtures/schema_retyped_slots.json`; the TypeScript test
+ * holds this one to it by behaviour, code by code.
  */
 
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -32,7 +33,7 @@ const CURRENCY: readonly string[] = [
 ];
 
 /** One retyped slot: `[type, index, IFC2X3 enumeration members]`. */
-export const RETYPED_SLOTS: readonly (readonly [string, number, readonly string[]])[] = [['IFCMONETARYUNIT', 0, CURRENCY]];
+const RETYPED_SLOTS: readonly (readonly [string, number, readonly string[]])[] = [['IFCMONETARYUNIT', 0, CURRENCY]];
 
 // IFC5 holds Currency as IFC4X3 does; the retype reads values, not attribute lists.
 /** The one enum or string token in `slot`, past the whitespace and comments

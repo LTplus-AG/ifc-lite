@@ -30,7 +30,7 @@ import { modelIndices } from '@/lib/model-placement/model-indices';
 import { getViewerState } from '@/store/viewerStoreHandle';
 import { hasInstancedShards } from '@/store/instancedShardModels';
 import { activeGeometryBackingTap } from './backing-debug-hook';
-import { currentSceneGeometry, releasedBatches } from './released-scene-replay';
+import { currentSceneGeometry, releasedBatches, releasedReplayEpoch } from './released-scene-replay';
 
 /** A private copy: the lift moves transforms, and the reader may hand the same decode out again. */
 function liftedCopy(shard: DecodedInstancedShard, lift: ReadonlyMap<number, number>): DecodedInstancedShard {
@@ -39,10 +39,24 @@ function liftedCopy(shard: DecodedInstancedShard, lift: ReadonlyMap<number, numb
   return copy;
 }
 
-export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipeline, scene, isCurrent, requestRender }) => {
+/** What the rebuild was taken from: any change while it awaits the backing makes it stale. */
+function viewerSource(state: ReturnType<typeof getViewerState>): unknown[] {
+  return [releasedReplayEpoch(), state.geometryContentVersion, currentSceneGeometry(),
+    ...[...state.models].flatMap(([id, model]) => [id, model.geometryResult, model.idOffset])];
+}
+
+export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipeline, scene, isCurrent: deviceCurrent, requestRender }) => {
   const tap = activeGeometryBackingTap();
   if (!tap) return false;
   const state = getViewerState();
+  // Fenced by the renderer (device, generation) AND by the viewer: a model replaced, a content
+  // version moved or a new drawn list while a chunk was read must not publish the old source.
+  const source = viewerSource(state);
+  const isCurrent = () => {
+    if (!deviceCurrent()) return false;
+    const now = viewerSource(getViewerState());
+    return now.length === source.length && now.every((value, i) => value === source[i]);
+  };
   const lift = currentLevelYForModels(state.models, state.appliedEntityLevelOffsets);
   const statuses = new Map(tap.status().map((row) => [row.modelId, row]));
   for (const modelId of state.models.keys()) {

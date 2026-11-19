@@ -60,6 +60,8 @@ export function supersedeReleasedReplays(): void {
   for (const stop of [...parked]) stop();
   for (const replay of [...unfinished]) if (replay.epoch !== epoch) unfinished.delete(replay);
 }
+/** The current scene epoch (a device recovery's rebuild is fenced by it too). */
+export function releasedReplayEpoch(): number { return epoch; }
 
 /**
  * Resident meshes for the normal upload; released ones are replayed from the backing.

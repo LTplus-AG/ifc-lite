@@ -24,12 +24,20 @@ export function loadFailureReporter(
   retryThisLoad: () => void,
   onLoadError: ((message: string) => void) | undefined,
 ): LoadFailureReporter {
-  return (message, code, retry = retryThisLoad) => {
-    const shown = activity.fail(message);
-    onLoadError?.(shown);
-    const { setError, setLastLoadRetry } = useViewerStore.getState();
-    reportLoadError(setError, setLastLoadRetry, shown, code, retry, file);
-  };
+  return (message, code, retry = retryThisLoad) =>
+    reportLoadFailure(activity.fail(message), code, retry, onLoadError, file);
+}
+
+export function reportLoadFailure(
+  message: string,
+  code: string,
+  retry: (() => void) | null,
+  onLoadError: ((message: string) => void) | undefined,
+  file?: File,
+): void {
+  onLoadError?.(message);
+  const { setError, setLastLoadRetry } = useViewerStore.getState();
+  reportLoadError(setError, setLastLoadRetry, message, code, retry, file);
 }
 
 /** Wait out a kernel refusal (already on the error card) and hand its message, if any, to `onLoadError`. */

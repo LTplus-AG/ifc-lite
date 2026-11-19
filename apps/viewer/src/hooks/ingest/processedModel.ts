@@ -17,6 +17,7 @@ import type { TranslationKey } from '@/i18n';
 import { isNetworkUnavailableError } from '@/lib/cancelled-and-network-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { messageOf } from '@/lib/load-errors';
+import { reportLoadFailure } from './loadFailureReport.js';
 
 /** `ref` with its hash lowercased, so the model record holds one spelling; a hash that is not a SHA-256 is kept for the client to refuse. A size that is not a positive integer becomes 0, unknown. */
 export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedModelSource & { bytes: number } {
@@ -48,6 +49,12 @@ const VIEWER_CAUSES: Record<ProcessedModelUnavailable['reason'], () => Processed
   unreachable: () => failure('viewportLighting.container.processedModel.unreachable', 'server_unreachable', false),
   'parquet-init': () => failure('viewportLighting.container.processedModel.unsupported', 'unsupported', true),
 };
+
+/** Report an unsupported target without entering the model-load lifecycle. */
+export function refuseFederatedProcessedModel(onLoadError?: (message: string) => void): void {
+  const { message, code } = VIEWER_CAUSES['not-primary']();
+  reportLoadFailure(message, code, null, onLoadError);
+}
 
 /** `error` is what the load threw; `null` when it ended without saying why. */
 export function describeProcessedModelFailure(error: unknown): ProcessedModelFailure {

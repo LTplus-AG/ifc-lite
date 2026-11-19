@@ -110,6 +110,17 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(writes, 1);
   });
 
+  it('#20: an applied candidate whose receipt write failed keeps its place until a replay saves it', async () => {
+    const token = await prepareRename();
+    const put = modelChangeLibrary.put;
+    modelChangeLibrary.put = async () => false;
+    try { assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false); }
+    finally { modelChangeLibrary.put = put; }
+    for (let i = 0; i < 63; i++) await prepareRename(`Name ${i}`);
+    assert.equal((await invoke('properties.prepare', { proposal_json: rename('One too many') })).isError, true, 'the unsaved receipt still holds a place');
+    assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true);
+  });
+
   it('#20: replaying an applied graph token keeps its undone receipt too', async () => {
     const { token } = answer<{ token: string }>(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
     const { receipt } = answer<{ receipt: ModelChangeReceipt }>(await invoke('authoring.graph.apply', { token }, true));

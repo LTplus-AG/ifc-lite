@@ -33,9 +33,11 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
 
 /** Write an applied candidate's receipt once. A replay returns it unwritten, so it never overwrites the
  * library row the Changes panel has since marked undone; only a failed first write is retried. */
-export function persistReceipt(holder: { persisting?: Promise<boolean> }, receipt: ModelChangeReceipt): Promise<boolean> {
-  // Held while in flight too, so a concurrent replay never issues a second write.
+export function persistReceipt(holder: { persisting?: Promise<boolean>; persisted?: boolean }, receipt: ModelChangeReceipt): Promise<boolean> {
+  // Held while in flight too, so a concurrent replay never issues a second write. `persisted` marks the candidate
+  // settled: until then a replay is its only way to retry the write, so admission must not evict it.
   holder.persisting ??= import('@/lib/actions/receipts').then(({ modelChangeLibrary }) => modelChangeLibrary.put(receipt.id, receipt))
-    .then(ok => { if (!ok) holder.persisting = undefined; return ok; }, (error: unknown) => { holder.persisting = undefined; throw error; });
+    .then(ok => { if (ok) holder.persisted = true; else holder.persisting = undefined; return ok; },
+      (error: unknown) => { holder.persisting = undefined; throw error; });
   return holder.persisting;
 }

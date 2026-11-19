@@ -142,12 +142,12 @@ export async function executeOperation(
     if (!entry.effects.includes('artifact')) throw new Error('The operation did not declare artifact creation.');
     return commit(write);
   });
-  const ownGeometry = async <T>(work: () => Promise<T>): Promise<T> => {
-    check();
+  const ownGeometry = async <T>(work: () => Promise<T>, release?: (value: T) => void): Promise<T> => {
+    checkpoint();
     const value = await work();
     const state = useViewerStore.getState(), now = model ? state.models.get(model.id) : undefined;
     if (nativeModel && now && state.mutationVersion === activeRevision && geometryOnly(nativeModel, now)) nativeModel = now;
-    check();
+    try { checkpoint(); } catch (error) { release?.(value); throw error; }
     return value;
   };
   const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, ownGeometry, artifacts };

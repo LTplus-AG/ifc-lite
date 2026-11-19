@@ -4,7 +4,7 @@
 
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -18,6 +18,7 @@ import { seedReviewedRoom, roomEnvelope } from '@/test/reviewed-room-fixture';
 import { MODEL } from '@/test/native-sdk-model';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
+import { SpacePlateHandle } from '@ifc-lite/wasm';
 
 let host: ToolHost;
 const invoke = (id: string, input: unknown = {}, write = false) => dispatchMainViewerTool(host, write ? 'viewer_operation_execute' : 'viewer_operation_inspect', {
@@ -28,7 +29,7 @@ function answer<T>(result: AgentToolResult): T {
   const value = (result.structured as { result: { native_json?: string } }).result;
   return (value?.native_json === undefined ? value : JSON.parse(value.native_json)) as T;
 }
-const prepare = () => invoke('authoring.room.prepare', { proposal_json: JSON.stringify(roomEnvelope()) });
+const prepare = (command?: Record<string, unknown>) => invoke('authoring.room.prepare', { proposal_json: JSON.stringify(roomEnvelope(command)) });
 async function setup() {
   await seedReviewedRoom();
   host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
@@ -74,5 +75,18 @@ describe('authoring.room.prepare through the operation executor (#10908)', () =>
       return { models: new Map(s.models).set(MODEL, { ...model, name: `${model.name} (renamed)` }) };
     }));
     try { assert.match((await prepare()).text, /Model replaced, closed, or edited during the operation/); } finally { stop(); }
+  });
+
+  it('releases the native preparation it refuses', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await setup();
+    const free = mock.method(SpacePlateHandle.prototype, 'free');
+    const stop = alongsideRemesh(() => useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })));
+    try {
+      // A split holds a native plate until its preparation is applied or disposed.
+      const refused = await prepare({ action: 'edit', operation: { kind: 'split', a: [21, 20], b: [21, 23] }, tolerance: .01 });
+      assert.match(refused.text, /Model replaced, closed, or edited during the operation/);
+      assert.ok(free.mock.callCount() > 0, 'the refused preparation freed its plate');
+    } finally { stop(); free.mock.restore(); }
   });
 });

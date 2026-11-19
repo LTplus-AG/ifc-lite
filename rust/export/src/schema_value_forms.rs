@@ -47,11 +47,12 @@ fn rule<'a>(rows: &'a [&'a str], form: &str) -> Option<Option<&'a str>> {
 /// would make `2.0000000000000001` whole. Every digit after the point, once the
 /// exponent moves it, is 0. Twin of `wholeDecimal`.
 fn whole_decimal(token: &str) -> bool {
+    // The shared STEP number grammar gates the token; only the digits are read here.
+    if ifc_lite_core::parser::step_numeric_literal_len(token.as_bytes()) != Some(token.len()) { return false; }
     let unsigned = token.strip_prefix(['+', '-']).unwrap_or(token);
-    let (mantissa, exponent) = unsigned.split_once(['e', 'E']).map_or((unsigned, Some(0)), |(m, e)| (m, e.parse::<i64>().ok()));
+    let (mantissa, exponent) = unsigned.split_once(['e', 'E']).unwrap_or((unsigned, "0"));
     let (int, frac) = mantissa.split_once('.').unwrap_or((mantissa, ""));
-    let Some(exponent) = exponent else { return false };
-    if int.is_empty() || !int.bytes().chain(frac.bytes()).all(|b| b.is_ascii_digit()) { return false; }
+    let Ok(exponent) = exponent.parse::<i64>() else { return false };
     let point = (int.len() as i64).saturating_add(exponent).max(0) as usize;
     int.bytes().chain(frac.bytes()).skip(point).all(|b| b == b'0')
 }

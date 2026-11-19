@@ -95,7 +95,7 @@ interface MergeSetup {
   firstModelInfraMap: Map<string, number[]>;
   /** Primary model's subcontexts-by-key and context WCS frame — see `merged-context.ts`. */
   firstModelContext: PrimaryContextState;
-  /** Kept top-level contexts of models whose IfcProject folded into the primary's, as output ids (#10798). */
+  /** Kept top-level contexts that a folded model's own IfcProject listed, as output ids (#10798). */
   keptContexts: number[];
   /** IfcProject express ids of the primary model. */
   firstProjectIds: number[];

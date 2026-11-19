@@ -4,16 +4,13 @@
 
 import type { TreeNode } from './types';
 
-const MAX_COMPARED_ITEMS = 256;
-
 /** Plain-data equality for tree rows: primitives, arrays and plain objects. */
 function sameData(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   if (Array.isArray(a)) {
-    // A long member list counts as changed: only that row re-renders, and the
-    // edit never pays a walk over a class group's every instance id.
-    if (!Array.isArray(b) || a.length !== b.length || a.length > MAX_COMPARED_ITEMS) return false;
+    // Comparing a rebuilt member list costs no more than building it did.
+    if (!Array.isArray(b) || a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) if (!sameData(a[i], b[i])) return false;
     return true;
   }

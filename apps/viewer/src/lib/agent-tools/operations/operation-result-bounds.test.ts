@@ -207,9 +207,21 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     assert.equal(preview.truncated, true);
   });
 
-  it('#74 exports.anonymized.prepare refuses a membership above the 100k id cap with a narrowing message', async () => {
+  // Seeds are always locked, so any prepare above the member cap also passes the preview-size limit; the export call
+  // has no preview check, so it is where the member cap alone decides.
+  const reason = (result: AgentToolResult) => (result.structured as { reason?: string } | null)?.reason;
+  it('#74 exports.anonymized refuses a membership above the 100k id cap with reason member-cap', async () => {
     await assemblyOf(100_001);
+    const result = await run('exports.anonymized', { ...anon, expected_included_ids: [] });
+    assert.equal(result.isError, true, result.text.slice(0, 200)); assert.equal(reason(result), 'member-cap', result.text.slice(0, 200)); assert.match(result.text, /Narrow the selection/);
+    assert.equal(reason(await run('exports.anonymized.prepare', anon)), 'member-cap', 'the cap is checked before the preview is built');
+  });
+
+  it('#74 exports.anonymized.prepare refuses a preview over the result limit below the cap with reason preview-size', async () => {
+    // 99,990 members stay under the cap, while the included, locked and group ids together pass 1 MB.
+    await assemblyOf(99_990);
     const result = await run('exports.anonymized.prepare', anon);
-    assert.equal(result.isError, true); assert.match(result.text, /Narrow the selection/);
+    assert.equal(result.isError, true, `${bytes(result.structured)}-byte preview was returned: the fixture no longer passes 1 MB`); assert.equal(reason(result), 'preview-size', result.text.slice(0, 200));
+    assert.ok((result.structured as { bytes: number }).bytes > MAX_RESULT_BYTES, 'the refused preview really was over the limit'); assert.match(result.text, /Narrow the selection/);
   });
 });

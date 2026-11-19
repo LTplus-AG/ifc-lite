@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
+import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { collectRelatedEntities, type RelatedEntityOptions } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { ensureModelExportReady } from '@/services/desktop-export';
@@ -15,6 +16,10 @@ import { nativeExportTarget, nativeExportGuard, nativeArtifact, targetSchema } f
 interface Input { target_model_id: string; seed_ids: number[]; excluded_ids: number[]; excluded_types: string[]; relations: Required<RelatedEntityOptions>; anonymize: AnonymizeToggles; file_stem: string }
 const MAX_IDS = 100000;
 const NARROW = 'Narrow the selection or exclude types.';
+/** A refusal the caller can tell apart by details.reason: the membership cap or the preview size (#10794). */
+function tooLarge(reason: 'member-cap' | 'preview-size', message: string, details: Record<string, number>): never {
+  throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: `${message} ${NARROW}`, details: { reason, ...details } });
+}
 const ids = { type: 'array' as const, maxItems: MAX_IDS, uniqueItems: true as const, items: { type: 'integer' as const, minimum: 1 } };
 const direction = { type: 'string' as const, enum: ['up', 'down', 'both', 'none'] as const };
 const bool = { type: 'boolean' as const };
@@ -35,7 +40,7 @@ async function prepare(i: Input, check: () => void) {
   const included = includedAnonymizedIds(related, locked, new Set(i.excluded_ids), new Set(i.excluded_types), typeOf);
   // The preview and the export both carry the membership as an id list, so above the cap neither could ever run (#10794).
   const size = Math.max(included.size, locked.size);
-  if (size > MAX_IDS) throw new Error(`The selection expands to ${size} entities, above the ${MAX_IDS} an anonymized export can carry. ${NARROW}`);
+  if (size > MAX_IDS) tooLarge('member-cap', `The selection expands to ${size} entities, above the ${MAX_IDS} an anonymized export can carry.`, { members: size, limit: MAX_IDS });
   check(); return { store, related, locked, included };
 }
 const previewSchema = { type: 'object', properties: { included_ids: ids, locked_ids: ids, groups: { type: 'array' }, truncated: { type: 'boolean' } }, required: ['included_ids', 'locked_ids', 'groups', 'truncated'], additionalProperties: false };
@@ -43,7 +48,8 @@ export const exportNativeAnonymizedOperations = [
   viewerOperation<Input>({ ...exportMetadata('exports.anonymized.prepare', 'Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities. truncated means relationship expansion hit its work budget, as the export dialog truncated badge shows.'), effects: ['read'], capability: 'read', outputSchema: previewSchema }, schema, async (i, c) => { const check = nativeExportGuard(c, [i.target_model_id]); check(); const p = await prepare(i, check);
     const preview = { included_ids: [...p.included], locked_ids: [...p.locked], groups: p.related.groups, truncated: p.related.truncated };
     // Groups repeat member ids, so a preview can pass the result limit below the id cap (#10794).
-    if (resultBytes(preview) > MAX_RESULT_BYTES) throw new Error(`The anonymized preview for this selection is larger than the operation result limit. ${NARROW}`);
+    const bytes = resultBytes(preview);
+    if (bytes > MAX_RESULT_BYTES) tooLarge('preview-size', 'The anonymized preview for this selection is larger than the operation result limit.', { bytes, limit: MAX_RESULT_BYTES });
     return preview; }),
   viewerOperation<Input & { expected_included_ids: number[] }>(exportMetadata('exports.anonymized', 'Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns native scrub/pruning warnings; GUID correlation maps stay private and are not exported.'), {
     type: 'object', properties: { ...schema.properties, expected_included_ids: ids }, required: [...schema.required, 'expected_included_ids'], additionalProperties: false,

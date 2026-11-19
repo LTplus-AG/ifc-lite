@@ -11,7 +11,8 @@ import { createRoot } from 'react-dom/client';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from '@/components/StaleDeploymentNotice';
 import { RhinoExportCommand } from '@/components/viewer/RhinoExportCommand';
-import { __resetStaleDeploymentForTests } from './stale-deployment.js';
+import { handlePreloadError } from './chunk-version-skew.js';
+import { __resetStaleDeploymentForTests, isStaleDeploymentReported } from './stale-deployment.js';
 
 it('keeps the ribbon and reload action available after the Rhino dynamic import fails (#10684)', async () => {
   // Represent the page the user gets after the one automatic reload.
@@ -54,6 +55,27 @@ it('keeps the ribbon and reload action available after the Rhino dynamic import 
     await act(async () => root.unmount());
     container.remove();
     hooks.deregister();
+    sessionStorage.removeItem('ifclite:chunk-skew-reload-ts');
+    __resetStaleDeploymentForTests();
+  }
+});
+
+it('offers a manual reload when the automatic navigation leaves the page open (#10684)', ({ mock }) => {
+  const reload = mock.method(window.location, 'reload', () => {});
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const failure = Object.assign(new Event('vite:preloadError', { cancelable: true }), {
+      payload: new TypeError('Importing a module script failed.'),
+    });
+    assert.equal(handlePreloadError(failure), 'reloaded');
+    assert.equal(reload.mock.callCount(), 1);
+    assert.equal(isStaleDeploymentReported(), false, 'wait while the navigation can still commit');
+
+    mock.timers.tick(10_000);
+
+    assert.equal(reload.mock.callCount(), 1, 'the timer does not spend another automatic attempt');
+    assert.equal(isStaleDeploymentReported(), true, 'a tab that stayed open gets the manual recovery');
+  } finally {
     sessionStorage.removeItem('ifclite:chunk-skew-reload-ts');
     __resetStaleDeploymentForTests();
   }

@@ -122,8 +122,12 @@ export interface ChunkSkewDeps {
 const defaultDeps: ChunkSkewDeps = {
   now: () => Date.now(),
   isReloadPending: (now) => isWithinReloadWindow(now, reloadPendingSince),
-  // Keep the open models: the boot reopens them (./reload-resume.ts).
-  reload: () => reloadKeepingOpenModels('automatic'),
+  reload: () => {
+    // A completed reload discards this timer. If navigation is cancelled or
+    // stalls, offer the manual recovery without waiting for another failure.
+    setTimeout(reportStaleDeployment, RELOAD_SUPPRESSION_WINDOW_MS);
+    reloadKeepingOpenModels('automatic');
+  },
   hasRecentReload: (now) => {
     try {
       const raw = sessionStorage.getItem(RELOAD_TS_KEY);

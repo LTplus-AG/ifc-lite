@@ -16,6 +16,7 @@ import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { isFeatureEnabled } from '@/lib/features';
 import { getLocale, registerEnglish, useTranslation } from '@/i18n';
 import { formatLocaleDate } from '@/i18n/intlFormat';
 import { agentBridgeEn } from '@/i18n/catalogues/agent-bridge.en';
@@ -63,19 +64,24 @@ function ActivityRow({ entry }: { entry: AgentBridgeActivity }) {
   );
 }
 
-/** The opt-in to agent edits: off at every pairing, revocable at any time. */
-function AllowEditsSwitch({ status }: { status: Extract<AgentBridgeStatus, { kind: 'connected' }> }) {
+type ConnectedStatus = Extract<AgentBridgeStatus, { kind: 'connected' }>;
+
+/** The agent's opt-in grant is off at every pairing and revocable at any time. */
+function AgentGrantSwitch({ status, editingEnabled }: { status: ConnectedStatus; editingEnabled: boolean }) {
   const { t } = useTranslation();
   const id = useId();
   const hint = `${id}-hint`;
+  const hintKey = status.readOnlyCeiling
+    ? 'agentBridge.panel.editsCeiling'
+    : editingEnabled ? 'agentBridge.panel.allowEditsHint' : 'agentBridge.panel.allowCommandsHint';
   return (
     <div className="flex items-start gap-2 rounded border p-2">
       <Switch id={id} checked={status.permission === 'read-write'} disabled={status.readOnlyCeiling} aria-describedby={hint}
-        onCheckedChange={(on) => setLiveAgentBridgePermission(on ? 'read-write' : 'read-only')} data-agent-bridge-allow-edits />
+        onCheckedChange={(on) => setLiveAgentBridgePermission(on ? 'read-write' : 'read-only')} data-agent-bridge-allow-edits={editingEnabled || undefined} />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <label htmlFor={id} className="text-xs font-medium">{t('agentBridge.panel.allowEdits')}</label>
+        <label htmlFor={id} className="text-xs font-medium">{t(editingEnabled ? 'agentBridge.panel.allowEdits' : 'agentBridge.panel.allowCommands')}</label>
         <p id={hint} className="text-xs text-muted-foreground">
-          {status.readOnlyCeiling ? t('agentBridge.panel.editsCeiling') : t('agentBridge.panel.allowEditsHint')}
+          {t(hintKey)}
         </p>
       </div>
     </div>
@@ -100,7 +106,10 @@ export function AgentBridgeActivityLog() {
 export function useAgentBridgeLabel(): string {
   const { t } = useTranslation();
   const { status } = useAgentBridgeState();
-  if (status.kind === 'connected') return t(status.permission === 'read-write' ? 'agentBridge.chip.connectedEdits' : 'agentBridge.chip.connected');
+  if (status.kind === 'connected') {
+    if (status.permission === 'read-only') return t('agentBridge.chip.connected');
+    return t(isFeatureEnabled('edit.model') ? 'agentBridge.chip.connectedEdits' : 'agentBridge.chip.connectedCommands');
+  }
   return status.kind === 'connecting' ? t('agentBridge.chip.connecting') : t('agentBridge.chip.ended');
 }
 
@@ -115,17 +124,21 @@ export function AgentBridgeConnectionPanel({ onDone, showActivity = true }: Agen
   const { t } = useTranslation();
   const { status } = useAgentBridgeState();
   const label = useAgentBridgeLabel();
+  const editingEnabled = isFeatureEnabled('edit.model');
+  const connectionDetails = status.kind === 'connected' && status.permission === 'read-write'
+    ? editingEnabled ? 'agentBridge.panel.sinceEdits' : 'agentBridge.panel.sinceCommands'
+    : 'agentBridge.panel.since';
   return (
     <div className="flex flex-col gap-3 text-sm" data-agent-bridge-panel={status.kind}>
       <p className="font-medium">{label}</p>
       {status.kind === 'connected' && (<>
         <p className="text-xs text-muted-foreground">
-          {t(status.permission === 'read-write' ? 'agentBridge.panel.sinceEdits' : 'agentBridge.panel.since', {
+          {t(connectionDetails, {
             port: status.port,
             time: formatLocaleDate(getLocale(), new Date(status.since), { hour: '2-digit', minute: '2-digit' }),
           })}
         </p>
-        <AllowEditsSwitch status={status} />
+        <AgentGrantSwitch status={status} editingEnabled={editingEnabled} />
       </>)}
       <AgentBridgeOutcome status={status} />
       <div className="flex justify-end gap-2">

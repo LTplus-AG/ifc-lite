@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { HierarchyNode, type HierarchyNodeProps } from './HierarchyNode';
 import type { HierarchyRowAction } from './HierarchyRowActions';
 import type { TreeNode } from './types';
@@ -37,6 +37,14 @@ export function stableRowHandlers(latest: { readonly current: HierarchyRowCallba
     syncSourceModel: (modelId, e) => latest.current.syncSourceModel(modelId, e),
     modelHeaderClick: (modelId, nodeId, hasChildren) => latest.current.modelHeaderClick(modelId, nodeId, hasChildren),
   };
+}
+
+/** Row handlers for the panel's lifetime, calling the callbacks of the last committed render. */
+export function useStableRowHandlers(callbacks: HierarchyRowCallbacks): HierarchyRowCallbacks {
+  const latest = useRef(callbacks);
+  // Published at commit, so a discarded render never leaves rows calling its callbacks.
+  useLayoutEffect(() => { latest.current = callbacks; });
+  return useState(() => stableRowHandlers(latest))[0];
 }
 
 type RowValues = Omit<HierarchyNodeProps, 'virtualRow' | 'onNodeClick' | 'rowRef' | 'onRowFocus' | 'onToggleExpand'

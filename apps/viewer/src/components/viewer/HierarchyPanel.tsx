@@ -4,7 +4,7 @@
 
 import { LayerGroupingControl } from './hierarchy/LayerGroupingControl';
 
-import { useState, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, Building2, Layers, LayoutTemplate, FileBox, GripHorizontal, Palette, Network, Layers3, Shapes } from 'lucide-react';
@@ -28,7 +28,7 @@ import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { revealMembershipSpatialTypes } from './hierarchy/nodeVisibility';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
-import { HierarchyRow, stableRowHandlers, type HierarchyRowCallbacks } from './hierarchy/HierarchyRow';
+import { HierarchyRow, useStableRowHandlers } from './hierarchy/HierarchyRow';
 import { CaptureModelPanel } from './hierarchy/CaptureModelPanel';
 import { reloadGaussianCapture } from '@/hooks/ingest/gaussianReload';
 import type { AriaTreeAttrs } from './hierarchy/ariaTreeAttrs';
@@ -383,12 +383,8 @@ export function HierarchyPanel() {
   });
 
   // Rows call these through one stable object, so a panel render re-renders only rows whose state changed (#10535).
-  // Published at commit, so a discarded render never leaves rows calling its callbacks.
-  const currentRowCallbacks: HierarchyRowCallbacks = { click: handleNodeClick, toggleExpand, visibilityToggle: handleVisibilityToggle, action: handleRowAction,
-    modelVisibilityToggle: handleModelVisibilityToggle, removeModel: handleRemoveModel, syncSourceModel: handleSyncSourceModel, modelHeaderClick: handleModelHeaderClick };
-  const rowCallbacks = useRef(currentRowCallbacks);
-  useLayoutEffect(() => { rowCallbacks.current = currentRowCallbacks; });
-  const [rowHandlers] = useState(() => stableRowHandlers(rowCallbacks));
+  const rowHandlers = useStableRowHandlers({ click: handleNodeClick, toggleExpand, visibilityToggle: handleVisibilityToggle, action: handleRowAction,
+    modelVisibilityToggle: handleModelVisibilityToggle, removeModel: handleRemoveModel, syncSourceModel: handleSyncSourceModel, modelHeaderClick: handleModelHeaderClick });
 
   const spatialSubtreeOf = useMemo(() => createSpatialSubtreeResolver(models, ifcDataStore, (modelId) => useViewerStore.getState().mutationViews.get(modelId)), [models, ifcDataStore, mutationVersion]);
   // Compute selection and visibility state for a node

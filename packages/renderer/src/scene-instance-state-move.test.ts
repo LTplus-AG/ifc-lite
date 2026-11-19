@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
+import type { RenderPipeline } from './pipeline.js';
 import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAGS_OFFSET, INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_SELECTED, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 (globalThis as Record<string, unknown>).GPUBufferUsage = { COPY_DST: 8, INDEX: 16, VERTEX: 32 };
 
@@ -41,7 +42,7 @@ function fixture(modelIndex = 3) {
     assert.equal(scene.setModelTranslation(3, [10, 0, 0]), true, 'the move re-uploads');
     assert.equal(scene.setModelRotation(3, Math.PI / 2, [0, 0, 0]), true, 'the rotation re-uploads');
   };
-  return { scene, flags, color, move };
+  return { scene, flags, color, move, device };
 }
 
 describe('live instance state survives a model move or rotation (#10767)', () => {
@@ -83,5 +84,16 @@ describe('live instance state survives a model move or rotation (#10767)', () =>
     lease.release();
     scene.setModelTranslation(3, [20, 0, 0]);
     assert.equal(flags(0) & INSTANCE_FLAG_HIDDEN, 0);
+  });
+
+  it('keeps them through device recovery, which uploads the same record', () => {
+    const { scene, flags, color, device } = fixture();
+    scene.setInstancedVisibility(new Set([42]), null);
+    scene.setInstancedColorOverrides(new Map([[41, [1, 0, 0, 1]]]));
+    assert.equal(scene.prepareDeviceRecovery().ok, true);
+    scene.discardGpuResourcesForRecovery();
+    scene.restoreGpuResourcesAfterRecovery(device, {} as RenderPipeline);
+    assert.equal(flags(1) & INSTANCE_FLAG_HIDDEN, INSTANCE_FLAG_HIDDEN);
+    assert.deepEqual(color(0), [1, 0, 0, 1]);
   });
 });

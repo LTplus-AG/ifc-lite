@@ -22,7 +22,6 @@ export function writeInstanceLane(
   data: Uint32Array | Float32Array,
 ): void {
   if (gpu) device.queue.writeBuffer(gpu, offset, data);
-  if (cpu && offset + data.byteLength <= cpu.byteLength) {
-    (data instanceof Uint32Array ? new Uint32Array(cpu, offset, data.length) : new Float32Array(cpu, offset, data.length)).set(data); // lanes are 4-aligned
-  }
+  // The GPU buffer was uploaded from this record, so the lane is in range; an out-of-range view throws.
+  if (cpu) (data instanceof Uint32Array ? new Uint32Array(cpu, offset, data.length) : new Float32Array(cpu, offset, data.length)).set(data);
 }

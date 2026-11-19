@@ -15,6 +15,7 @@
 import { getCanonicalEntityName, getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { valueForm, valueFormSlotsOf } from './schema-value-form-policy.js';
 import { ATTR_MAPS } from './schema-converter-attr-maps.js';
+import { withoutComments } from './step-comment-skip.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
@@ -23,6 +24,7 @@ import { skipStepTrivia } from './step-slot-grammar.js';
 interface Rule {
   readonly index: number;
   readonly where: string;
+  readonly required: boolean;
   /** Form -> null (drop), `T:NAME` (wrap), `U` (unwrap) or an integer form (`I`, `AI`). */
   readonly forms: ReadonlyMap<string, string | null>;
 }
@@ -48,46 +50,50 @@ function rulesFor(from: string, to: string, type: string): Rules {
   rules = !meta || !slots.length ? NONE : { arity: (meta.allAttributes ?? meta.attributes).length, rules: slots.map((slot) => ({
     index: slot.index,
     where: `${type}.${slot.attribute}`,
+    required: slot.required,
     forms: new Map(slot.rejected.map((f) => [f.split('>')[0], f.split('>')[1] ?? null])),
   })) };
   byType.set(type, rules);
   return rules;
 }
 
-/** `value` in the target's form, null to drop it, plus the members it dropped. */
-function fix(value: string, prefix: string, rule: Rule): { value: string | null; dropped: number } {
+/** `value` in the target's form (null to drop it), and how many values that lost. */
+function fix(value: string, prefix: string, rule: Rule): { value: string | null; lost: number } {
   const start = skipStepTrivia(value, 0);
-  if (start < 0) return { value, dropped: 0 };
-  const body = value.slice(start);
-  if (body[0] === '(') {
+  if (start < 0) return { value, lost: 0 };
+  if (value[start] === '(') {
     const members = listItems(value);
-    if (!members) return { value, dropped: 0 };
+    if (!members) return { value, lost: 0 };
     const kept: string[] = [];
-    let dropped = 0;
+    let lost = 0;
     for (const member of members) {
       const fixed = fix(member, `${prefix}A`, rule);
-      dropped += fixed.dropped + (fixed.value === null ? 1 : 0);
+      lost += fixed.lost;
       if (fixed.value !== null) kept.push(fixed.value);
     }
-    if (!dropped && kept.every((m, i) => m === members[i])) return { value, dropped: 0 };
-    return { value: kept.length ? `(${kept.join(',')})` : null, dropped };
+    if (!lost && kept.every((m, i) => m === members[i])) return { value, lost: 0 };
+    return { value: kept.length ? `(${kept.join(',')})` : null, lost };
   }
+  // Classified and converted without comments, so a trailing `/* .. */` changes nothing.
+  const body = withoutComments(value);
   const form = valueForm(body);
-  if (form === null) return { value, dropped: 0 };
-  const to = rule.forms.get(prefix + form);
-  if (to === undefined) return { value, dropped: 0 };
-  if (to === null) return { value: null, dropped: 0 };
-  if (to === 'U') return { value: body.slice(body.indexOf('(') + 1, body.lastIndexOf(')')).trim(), dropped: 0 };
-  if (to.endsWith('I')) {
-    const n = Number(body.trim());
-    return { value: Number.isSafeInteger(n) ? String(n) : null, dropped: 0 };
+  const to = form === null ? undefined : rule.forms.get(prefix + form);
+  if (to === undefined) return { value, lost: 0 };
+  if (to === null) return { value: null, lost: 1 };
+  if (to.startsWith('T:')) return { value: `${to.slice(2)}(${body})`, lost: 0 };
+  if (to === 'U') {
+    const close = body.lastIndexOf(')');
+    return close < 0 ? { value: null, lost: 1 } : { value: body.slice(body.indexOf('(') + 1, close).trim(), lost: 0 };
   }
-  return { value: `${to.slice(2)}(${body.trim()})`, dropped: 0 };
+  const n = Number(body);
+  return Number.isSafeInteger(n) ? { value: String(n), lost: 0 } : { value: null, lost: 1 };
 }
 
 /** Value-form reconciliation for one export: rewrites, and names what it dropped. */
 export class ValueForms {
+  /** Per `TYPE.Attribute`: values dropped, and those that left a required slot `$`. */
   private readonly dropped = new Map<string, number>();
+  private readonly emptied = new Map<string, number>();
 
   /** `line`, already converted from `from` to `to`, with every slot in a form the target accepts. */
   apply(line: string, from: string, to: string): string {
@@ -103,8 +109,8 @@ export class ValueForms {
     for (const rule of rules) {
       if (rule.index >= slots.length) continue;
       const fixed = fix(slots[rule.index], '', rule);
-      const lost = fixed.dropped + (fixed.value === null ? 1 : 0);
-      if (lost) this.dropped.set(rule.where, (this.dropped.get(rule.where) ?? 0) + lost);
+      const into = fixed.value === null && rule.required ? this.emptied : this.dropped;
+      if (fixed.lost) into.set(rule.where, (into.get(rule.where) ?? 0) + fixed.lost);
       const value = fixed.value ?? '$';
       if (value !== slots[rule.index]) {
         slots[rule.index] = value;
@@ -114,11 +120,15 @@ export class ValueForms {
     return changed ? `${record.prefix}${slots.join(',')}${record.suffix}` : line;
   }
 
-  /** One warning naming every slot a value was dropped from (#10847). */
+  /** One warning per kind, naming every slot a value was dropped from (#10847). */
   warnings(): string[] {
-    if (!this.dropped.size) return [];
-    const total = [...this.dropped.values()].reduce((a, b) => a + b, 0);
-    const sites = [...this.dropped.keys()].sort().join(', ');
-    return [`${total} value(s) of a type the target slot does not accept were written as $: ${sites} (#10847).`];
+    const line = (where: Map<string, number>, what: string) => {
+      const total = [...where.values()].reduce((a, b) => a + b, 0);
+      return where.size ? [`${total} value(s) of a type the target slot does not accept ${what}: ${[...where.keys()].sort().join(', ')} (#10847).`] : [];
+    };
+    return [
+      ...line(this.dropped, 'were written as $'),
+      ...line(this.emptied, 'left a slot the target requires as $, so the file is not valid against its header'),
+    ];
   }
 }

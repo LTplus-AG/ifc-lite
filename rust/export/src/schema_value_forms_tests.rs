@@ -66,3 +66,16 @@ fn the_table_is_sorted_for_the_lookup_10847() {
     assert!(keys.len() > 50, "anti-vacuity: {}", keys.len());
     assert!(keys.windows(2).all(|w| w[0] < w[1]), "not strictly sorted");
 }
+
+/// From review: a trailing comment does not change a value's form, an
+/// aggregate whose members are all rejected counts each member once, and a
+/// drop that empties a required slot says the file is now invalid.
+#[test]
+fn comments_counts_and_required_slots_10847() {
+    assert_eq!(convert("#5=IFCQUANTITYCOUNT('n',$,$,3. /* c */,$);", "IFC4", "IFC4X3").0, "#5=IFCQUANTITYCOUNT('n',$,$,3,$);");
+    assert_eq!(convert("#5=IFCQUANTITYCOUNT('n',$,$,3 /* see */,$);", "IFC4", "IFC4X3").0, "#5=IFCQUANTITYCOUNT('n',$,$,3 /* see */,$);");
+    let (out, dropped, _) = convert("#5=IFCFILLAREASTYLETILES(#1,(#2,#3),1.);", "IFC2X3", "IFC4");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCFILLAREASTYLETILES($,$,1.);", 3));
+    let (_, _, warnings) = convert("#5=IFCQUANTITYCOUNT('n',$,$,2.5,$);", "IFC4", "IFC4X3");
+    assert_eq!(warnings, ["1 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCQUANTITYCOUNT.CountValue (#10847)."]);
+}

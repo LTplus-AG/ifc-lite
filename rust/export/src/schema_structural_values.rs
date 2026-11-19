@@ -75,13 +75,14 @@ impl Source<'_> {
 
     fn property_sets(&self, name: &str) -> Vec<PropertySet> {
         self.ids("IFCRELDEFINESBYPROPERTIES").filter_map(|rel| {
+            // Both records are read at any arity, as the TypeScript twin does.
             let args = self.slots(rel)?;
-            let [_, _, _, _, related, relating_set] = args.as_slice() else { return None; };
-            let set = reference(relating_set)?;
+            let set = reference(args.get(5)?)?;
             if !self.kind(set, "IFCPROPERTYSET") { return None; }
             let slots = self.slots(set)?;
-            let [_, _, set_name, _, has_properties] = slots.as_slice() else { return None; };
-            if step_string(set_name) != Some(name) { return None; }
+            if step_string(slots.get(2)?) != Some(name) { return None; }
+            let related = args.get(4).map_or("", String::as_str);
+            let has_properties = slots.get(4).map_or("", String::as_str);
             // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that
             // does not, that lists a property it cannot read, or whose relationship lists a non-reference, still
             // counts as present for the objects it does name but gives no property.

@@ -17,6 +17,7 @@ import type { StructuralViewMode, TypeVisibility } from '@/store/types';
 import { isMeshTypeVisible, type RetypedClasses } from '@/store/typeVisibilityFilter';
 import { isMeshVisibleInViewMode, type TypeViewMode } from '@/lib/type-view-visibility';
 import { TypeHiddenIndex, withTypeHidden, type TypeHiddenSettings } from './type-hidden-index.js';
+import { acknowledgeSnapshotTypeIndex, clearSnapshotTypeIndex, installSnapshotTypeIndex, snapshotTypeIndex } from './snapshot-type-index.js';
 
 const mesh = (expressId: number, ifcType: string, geometryClass?: number, entityIds?: Uint32Array): MeshData => ({
   expressId, ifcType, geometryClass, entityIds,
@@ -138,5 +139,64 @@ describe('withTypeHidden', () => {
     const union = withTypeHidden(user, { ids: new Set([2, 3]), version: 2 });
     assert.deepEqual(sorted(union), [1, 2, 3]);
     assert.deepEqual(sorted(user), [1, 2], 'the user\'s hidden set is never written');
+  });
+});
+
+describe('TypeHiddenIndex metadata (scene snapshots)', () => {
+  it('a snapshot\'s stored buckets answer exactly as the mesh list, for every setting', () => {
+    const stored = TypeHiddenIndex.fromMetadata(JSON.parse(JSON.stringify(TypeHiddenIndex.metadataOf(meshes))));
+    assert.ok(stored);
+    for (const viewMode of ['model', 'types'] as TypeViewMode[]) {
+      for (const structuralViewMode of ['both', 'physical', 'analytical'] as StructuralViewMode[]) {
+        for (const spaces of [true, false]) {
+          const s = settings({ viewMode, structuralViewMode, typeVisibility: { ...allOn, spaces, openings: !spaces } });
+          assert.deepEqual(sorted(stored.hiddenFor(s).ids), referenceHidden(meshes, s), JSON.stringify(s));
+        }
+      }
+    }
+    assert.equal(stored.holds('placed'), true);
+    assert.equal(stored.holds('nonOccurrence'), true);
+  });
+
+  it('refuses missing or malformed metadata', () => {
+    for (const bad of [undefined, null, {}, { v: 2, buckets: [] }, { v: 1, buckets: [[0, 'IfcWall', ['x']]] }, { v: 1, buckets: [[0.5, 'IfcWall', [1]]] }]) {
+      assert.equal(TypeHiddenIndex.fromMetadata(bad), null, JSON.stringify(bad));
+    }
+  });
+});
+
+describe('snapshot type index installation', () => {
+  const metadata = () => TypeHiddenIndex.metadataOf(meshes);
+
+  it('settles true only when a viewport acknowledges the installed index', async () => {
+    const token = {};
+    const pending = installSnapshotTypeIndex(token, metadata());
+    const index = snapshotTypeIndex();
+    assert.ok(index);
+    acknowledgeSnapshotTypeIndex(index);
+    assert.equal(await pending, true);
+    clearSnapshotTypeIndex(token);
+    assert.equal(snapshotTypeIndex(), null);
+  });
+
+  it('a newer load supersedes an older one, and the older load cannot clear the newer one\'s', async () => {
+    const older = {}, newer = {};
+    const first = installSnapshotTypeIndex(older, metadata());
+    const second = installSnapshotTypeIndex(newer, metadata());
+    assert.equal(await first, false, 'the superseded load does not paint');
+    clearSnapshotTypeIndex(older);
+    const index = snapshotTypeIndex();
+    assert.ok(index, 'the newer load keeps its index');
+    acknowledgeSnapshotTypeIndex(index);
+    assert.equal(await second, true);
+    clearSnapshotTypeIndex(newer);
+  });
+
+  it('fails closed without metadata or without a viewport', async () => {
+    assert.equal(await installSnapshotTypeIndex({}, undefined), false);
+    assert.equal(snapshotTypeIndex(), null, 'nothing installed');
+    const token = {};
+    assert.equal(await installSnapshotTypeIndex(token, metadata(), 20), false, 'no acknowledgement in time');
+    clearSnapshotTypeIndex(token);
   });
 });

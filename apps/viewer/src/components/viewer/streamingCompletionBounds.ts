@@ -47,8 +47,9 @@ export function refitCompletedStreamBounds(params: Params): void {
     // `fullBounds` is the complete AABB for clipping / section ranges.
     const rb = robustFitAccRef.current.update(capturedGeometry, { excludedIds: fitExcludedIds });
     const robust = rb?.robust ?? null;
-    let fullBounds = rb?.full ?? computeBounds(withoutIds(capturedGeometry, fitExcludedIds));
-    let exactBounds = robust ?? fullBounds;
+    // Clipping covers every mesh, a type-hidden one shown later too; framing covers what is shown.
+    let fullBounds = rb?.full ?? computeBounds(capturedGeometry);
+    let exactBounds = robust ?? rb?.fit ?? computeBounds(withoutIds(capturedGeometry, fitExcludedIds)) ?? fullBounds;
     // #7955: retained flat walls and grouped columns share one final framing
     // extent. Keep exact's existing robust fit and telemetry unchanged.
     if (geometryKernel === 'retained') {

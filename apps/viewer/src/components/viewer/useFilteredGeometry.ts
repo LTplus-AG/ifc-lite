@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { perfTally } from '@ifc-lite/load-trace';
 import type { TypeVisibility, StructuralViewMode } from '@/store/types';
@@ -10,6 +10,7 @@ import type { RetypedClasses } from '@/store/typeVisibilityFilter';
 import { meshClassIsPlaced, meshIsNonOccurrence, type TypeViewMode } from '@/lib/type-view-visibility';
 import { sameMeshUpload } from './mesh-upload-identity.js';
 import { TypeHiddenIndex, type TypeHiddenIds } from './type-hidden-index.js';
+import { acknowledgeSnapshotTypeIndex, snapshotTypeIndex, subscribeSnapshotTypeIndex } from './snapshot-type-index.js';
 
 /** The scene's mesh list and what type visibility hides of it. */
 export interface SceneGeometry {
@@ -104,10 +105,16 @@ export function useFilteredGeometry(
     return sawOccurrenceRef.current;
   }, [mergedGeometryResult, geometryContentVersion]);
 
+  // An adopted scene snapshot draws before its meshes decode: its stored type
+  // index answers until they are published (snapshot-type-index.ts).
+  const snapshotIndex = useSyncExternalStore(subscribeSnapshotTypeIndex, snapshotTypeIndex, snapshotTypeIndex);
+  const hasType = hasTypeGeometry || (snapshotIndex?.holds('nonOccurrence') ?? false);
+  const hasPlaced = hasOccurrenceGeometry || (snapshotIndex?.holds('placed') ?? false);
+
   // Persisted view mode may be 'types' from a prior model; fall back to 'model'
   // when the current geometry has no type library so "Types" never renders an
   // empty scene (and the now-hidden switch can't be used to recover).
-  const effectiveViewMode = hasTypeGeometry ? typeViewMode : 'model';
+  const effectiveViewMode = hasType ? typeViewMode : 'model';
 
   // Every mesh goes to the scene once; type visibility is a set of hidden
   // entity ids the viewport hides on the GPU (`type-hidden-index.ts`), so a
@@ -156,18 +163,29 @@ export function useFilteredGeometry(
   }, [mergedGeometryResult]);
 
   const typeHiddenIndexRef = useRef<TypeHiddenIndex | null>(null);
+  const unionRef = useRef<{ parts: readonly TypeHiddenIds[]; result: TypeHiddenIds } | null>(null);
   const typeHidden = useMemo(() => {
     typeHiddenIndexRef.current ??= new TypeHiddenIndex();
-    return typeHiddenIndexRef.current.update(mergedGeometryResult?.meshes, {
-      typeVisibility, viewMode: effectiveViewMode, hasOccurrenceGeometry, structuralViewMode, retyped: retypedClasses,
-    });
+    const settings = { typeVisibility, viewMode: effectiveViewMode, hasOccurrenceGeometry: hasPlaced, structuralViewMode, retyped: retypedClasses };
+    const meshes = typeHiddenIndexRef.current.update(mergedGeometryResult?.meshes, settings);
+    if (!snapshotIndex) return meshes;
+    const stored = snapshotIndex.hiddenFor(settings);
+    const previous = unionRef.current;
+    if (previous && previous.parts[0] === meshes && previous.parts[1] === stored) return previous.result;
+    const ids = new Set(stored.ids);
+    for (const id of meshes.ids) ids.add(id);
+    const result = { ids, version: (previous?.result.version ?? 0) + meshes.version + stored.version + 1 };
+    unionRef.current = { parts: [meshes, stored], result };
+    return result;
     // geometryContentVersion: a batch can land in a list mutated in place.
-  }, [mergedGeometryResult, geometryContentVersion, typeVisibility, structuralViewMode, retypedClasses, effectiveViewMode, hasOccurrenceGeometry]);
+  }, [mergedGeometryResult, geometryContentVersion, typeVisibility, structuralViewMode, retypedClasses, effectiveViewMode, hasPlaced, snapshotIndex]);
+  // Adoption paints once the viewport below has committed these ids.
+  useEffect(() => { acknowledgeSnapshotTypeIndex(snapshotIndex); }, [snapshotIndex, typeHidden]);
 
   // Version counter that changes every batch — triggers useGeometryStreaming
   // without requiring a new geometry array reference.
   const geometryVersion = sceneVersionRef.current;
 
-  return { hasTypeGeometry, hasOccurrenceGeometry, sceneGeometry, geometryVersion,
+  return { hasTypeGeometry: hasType, hasOccurrenceGeometry: hasPlaced, sceneGeometry, geometryVersion,
     geometryReplacementVersion: replacementVersionRef.current, typeHidden };
 }

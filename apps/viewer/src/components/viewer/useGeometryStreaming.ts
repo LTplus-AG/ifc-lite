@@ -491,7 +491,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         }
       }
       if (!fitted && geometry.length > 0 && !isStreaming) {
-        const bounds = computeBounds(withoutIds(geometry, fitExcludedIds));
+        const bounds = computeBounds(withoutIds(geometry, fitExcludedIds)) ?? computeBounds(geometry);
         if (bounds) {
           const canvas = renderer.getCanvas();
           const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
@@ -500,7 +500,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
           );
           geometryBoundsRef.current = bounds;
-          sceneBoundsFull = bounds;
+          sceneBoundsFull = fitExcludedIds?.size ? computeBounds(geometry) ?? bounds : bounds; // clipping covers type-hidden meshes too
           lastFitPolicyKindRef.current = policy.kind;
           fitted = true;
         }

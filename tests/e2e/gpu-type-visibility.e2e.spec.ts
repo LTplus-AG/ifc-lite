@@ -17,6 +17,12 @@
  *   restores the first frame, and picks never return a hidden entity;
  * - after the test-only `Scene.releaseGeometryData()`, showing a class that
  *   was hidden from the start draws what a scene that kept its CPU copy draws.
+ * - the Model/Types switch hides by id over the same batches;
+ * - a cached reopen adopts the stored scene (which holds every mesh) and
+ *   hides spaces and openings from its first frame, before the meshes
+ *   decode, under the toggles at reopen rather than at capture.
+ *
+ * Grid axes, annotation text and structural glyphs are off (#10853).
  *
  * Opt-in: GPU_PICK_PARITY=1 on a real WebGPU adapter (gpu-batch-pick.config.ts).
  */
@@ -62,7 +68,15 @@ test.skip(process.env.GPU_PICK_PARITY !== '1', 'Set GPU_PICK_PARITY=1 on a real 
 test.beforeAll(async () => { server = await startViewerDevServer('gpu-type-visibility'); });
 test.afterAll(async () => { await server?.close(); });
 
+/** Grid axes, annotation text and structural glyphs load in idle time after the model and race the captures (#10853): off. */
+async function overlaysOff(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    for (const key of ['ifc-lite-ifc-annotations-visible', 'ifc-lite-ifc-grid-visible', 'ifc-lite-structural-glyphs-visible']) localStorage.setItem(key, 'false');
+  });
+}
+
 async function open(page: Page): Promise<void> {
+  await overlaysOff(page);
   await page.goto(server!.url);
   await page.waitForFunction(() => Boolean((globalThis as ProbeWindow).__ifc_lite_viewer_store__), null, { timeout: 120_000 });
 }
@@ -344,10 +358,6 @@ test('after the test-only CPU release, classes hidden from the start toggle on a
 });
 
 test('C20-Institute: the Model/Types switch hides by id over the same upload (#10264)', async ({ page }, info) => {
-  // The grid covers the small type library on screen, so the pick grid would only meet grid lines.
-  await page.addInitScript(() => {
-    for (const key of ['ifc-lite-ifc-annotations-visible', 'ifc-lite-ifc-grid-visible']) localStorage.setItem(key, 'false');
-  });
   await open(page);
   await load(page, FIXTURES.institute, 1);
   const hasTypes = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().hasTypeGeometry);
@@ -369,4 +379,99 @@ test('C20-Institute: the Model/Types switch hides by id over the same upload (#1
   expect(hiddenInTypes, 'the Types view hides the model geometry by id').toBeGreaterThan(0);
   expect(changed.strong, 'the Types view changes the frame (not vacuous)').toBeGreaterThan(200);
   expect(restored.differing, 'back in Model view the first frame returns').toBe(0);
+});
+
+// ---- Cached reopen: a scene snapshot holds every mesh (#10264 review) ----
+
+const WARM_UP = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
+
+/** Open `file` as the primary model and wait until this load (by trace id) has ended and settled. */
+async function openPrimary(page: Page, file: string): Promise<void> {
+  test.skip(!existsSync(join(process.cwd(), file)), `${file} missing — run \`pnpm fixtures\``);
+  const previous = await page.evaluate(() => (globalThis as Record<string, any>).__IFC_LITE_LOAD_TRACE__?.latest()?.loadId ?? null);
+  await page.locator('#file-input-open').setInputFiles(join(process.cwd(), file));
+  await page.waitForFunction((prior) => {
+    const g = globalThis as Record<string, any>;
+    const load = g.__IFC_LITE_LOAD_TRACE__?.latest();
+    const s = g.__ifc_lite_viewer_store__?.getState();
+    return Boolean(load && load.loadId !== prior && load.end !== null && s && !s.loading && !s.geometryStreamingActive
+      && (s.geometryResult?.meshes?.length ?? 0) > 0 && g.__ifc_lite_scene_settled__?.());
+  }, previous, { timeout: LOAD_TIMEOUT, polling: 250 });
+  await settle(page);
+}
+
+/** A page whose renderer runs and has settled quantized admission (the warm-up file is below the cache tier). */
+async function warmPage(page: Page): Promise<void> {
+  await overlaysOff(page);
+  await page.goto(`${server!.url}${server!.url.includes('?') ? '&' : '?'}perfTrace=1`);
+  await page.waitForFunction(() => Boolean((globalThis as ProbeWindow).__ifc_lite_viewer_store__), null, { timeout: 120_000 });
+  const admitted = page.waitForEvent('console', { predicate: (m) => m.text().startsWith('[Viewport] quantized vertices'), timeout: LOAD_TIMEOUT });
+  await openPrimary(page, WARM_UP);
+  await admitted;
+}
+
+test('cached reopen: the adopted snapshot hides type-hidden classes from its first frame, under the toggles at reopen (#10264)', async ({ browser }, info) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+  try {
+    // Cold load with spaces SHOWN: the stored snapshot holds them, and so does its capture-time view.
+    const cold = await context.newPage();
+    await warmPage(cold);
+    await store(cold, [['toggleTypeVisibility', 'spaces']]);
+    expect(await cold.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().typeVisibility.spaces)).toBe(true);
+    await openPrimary(cold, FIXTURES.institute);
+    await cold.waitForFunction(() => {
+      const load = (globalThis as Record<string, any>).__IFC_LITE_LOAD_TRACE__.latest();
+      return load.spans.some((s: { name: string; end: number | null; attrs?: { outcome?: string } }) => s.name === 'cache.writeSceneSnapshot' && s.end !== null);
+    }, null, { timeout: 120_000, polling: 250 });
+    const written = await cold.evaluate(() => (globalThis as Record<string, any>).__IFC_LITE_LOAD_TRACE__.latest().spans
+      .find((s: { name: string }) => s.name === 'cache.writeSceneSnapshot')?.attrs?.outcome ?? null);
+    expect(written, 'the cold load stored its scene snapshot').toBe('written');
+    const shownAtCapture = await stillFrame(cold, info, 'reopen-0-cold-spaces-shown');
+    // Change the toggles between capture and reopen: spaces hidden again (persisted per origin).
+    await store(cold, [['toggleTypeVisibility', 'spaces']]);
+    await cold.close();
+
+    const page = await context.newPage();
+    await warmPage(page);
+    // Record the viewport's hidden ids at the moment the snapshot is adopted, and that adoption's first frame.
+    await page.evaluate(async () => {
+      const module = '/src/hooks/useBCF.ts';
+      const { getGlobalRenderer }: { getGlobalRenderer(): { getScene(): Record<string, unknown> } | null } = await import(module);
+      const scene = getGlobalRenderer()!.getScene() as Record<string, unknown> & { adoptSceneSnapshot(...a: unknown[]): unknown; isSceneSnapshotHydrating(): boolean };
+      const g = globalThis as Record<string, unknown>;
+      const adopt = scene.adoptSceneSnapshot.bind(scene);
+      scene.adoptSceneSnapshot = (...args: unknown[]) => {
+        const adoption = adopt(...args);
+        const s = (g.__ifc_lite_viewer_store__ as { getState(): { geometryResult?: { meshes?: unknown[] } | null } }).getState();
+        g.__adoption_probe__ = { adopted: adoption !== null, hiddenIds: (g.__ifc_lite_render_visibility__ as () => { hiddenIds: number[] })().hiddenIds,
+          publishedMeshes: s.geometryResult?.meshes?.length ?? 0, hydrating: scene.isSceneSnapshotHydrating() };
+        g.__adoption_frame__ = (g.__ifc_lite_capture_color_frame__ as () => Promise<string | null>)();
+        return adoption;
+      };
+    });
+    await openPrimary(page, FIXTURES.institute);
+    const spans = await page.evaluate(() => [...new Set((globalThis as Record<string, any>).__IFC_LITE_LOAD_TRACE__.latest().spans.map((s: { name: string }) => s.name))]);
+    expect(spans, 'the reopen adopted the stored scene').toContain('scene.snapshotAdopted');
+    const probe = await page.evaluate(() => (globalThis as Record<string, unknown>).__adoption_probe__ as { adopted: boolean; hiddenIds: number[]; publishedMeshes: number; hydrating: boolean });
+    const firstFrame = await page.evaluate(() => (globalThis as Record<string, unknown>).__adoption_frame__ as Promise<string | null>);
+    expect(firstFrame).toBeTruthy();
+    await info.attach('reopen-1-adoption-frame.png', { body: Buffer.from(firstFrame!.split(',')[1]!, 'base64'), contentType: 'image/png' });
+    const hidden = await flatOfClasses(page, SPACES_AND_OPENINGS);
+    const atAdoption = new Set(probe.hiddenIds);
+    const settled = await stillFrame(page, info, 'reopen-2-settled');
+    const firstVsSettled = await diff(page, firstFrame!, settled);
+    const firstVsShown = await diff(page, firstFrame!, shownAtCapture);
+    await info.attach('reopen.json', { body: JSON.stringify({ ...probe, hiddenIds: probe.hiddenIds.length, typeHiddenFlat: hidden.length,
+      missingAtAdoption: hidden.filter((id) => !atAdoption.has(id)).length, strongFirstVsSettled: firstVsSettled.strong,
+      differingFirstVsSettled: firstVsSettled.differing, strongFirstVsShownAtCapture: firstVsShown.strong }, null, 2), contentType: 'application/json' });
+    expect(probe.adopted && probe.hydrating && probe.publishedMeshes === 0, 'probed inside the adoption window, before the meshes were published').toBe(true);
+    expect(hidden.length).toBeGreaterThan(0);
+    expect(hidden.filter((id) => !atAdoption.has(id)), 'every space and opening is hidden when the snapshot is adopted').toEqual([]);
+    expect(firstVsShown.strong, 'the capture-time view (spaces shown) is not what the first frame draws').toBeGreaterThan(200);
+    const pixels = firstVsSettled.width * firstVsSettled.height;
+    expect(firstVsSettled.strong, 'the first adopted frame draws what the settled reopen draws').toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
+    await picksNeverHidden(page, info, 'reopen-settled', hidden);
+  } finally {
+    await context.close();
+  }
 });

@@ -54,11 +54,13 @@ export function useVisibilityState(typeHidden?: TypeHiddenIds) {
   const geometryContentVersion = useViewerStore((state) => state.geometryContentVersion);
   const toGlobalId = useViewerStore((state) => state.toGlobalId);
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
-  const hiddenEntities = useMemo(() => {
+  const viewHidden = useMemo(() => {
     const masked = resolveViewHiddenEntities({ models, ifcDataStore, mutationViews, structuralViewMode,
       hiddenEntities: modelHiddenEntities(models, userHiddenEntities, toGlobalId), toGlobalId });
-    return withTypeHidden(withClassHiddenRetypes({ models, ifcDataStore, mutationViews, toGlobalId }, masked, typeVisibility), typeHidden);
-  }, [models, userHiddenEntities, toGlobalId, geometryContentVersion, structuralViewMode, ifcDataStore, mutationVersion, mutationViews, typeVisibility, typeHidden]);
+    return withClassHiddenRetypes({ models, ifcDataStore, mutationViews, toGlobalId }, masked, typeVisibility);
+  }, [models, userHiddenEntities, toGlobalId, geometryContentVersion, structuralViewMode, ifcDataStore, mutationVersion, mutationViews, typeVisibility]);
+  // Separate, so a streamed batch's type-hidden ids do not re-run the structural mask over every entity.
+  const hiddenEntities = useMemo(() => withTypeHidden(viewHidden, typeHidden), [viewHidden, typeHidden]);
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
   const userGhostExcept = useViewerStore((state) => state.ghostExceptEntities);
   // The Model workspace hides (or ghosts) the storeys above the one being

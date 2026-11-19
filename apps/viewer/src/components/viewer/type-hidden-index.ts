@@ -17,6 +17,10 @@
  * when the mesh arrives and keeps none of its arrays, so it still answers
  * after the CPU geometry is released.
  *
+ * An adopted scene snapshot draws before its meshes decode, so the snapshot
+ * carries the same buckets as compact metadata (`exportMetadata`), and
+ * `fromMetadata` answers for the current settings until the meshes arrive.
+ *
  * The verdict is per entity. An entity is hidden when any of its meshes is
  * hidden: in-tree meshes of one entity share their class and their verdict
  * (type-library meshes carry the type's own id, and occurrences and layer
@@ -27,6 +31,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { StructuralViewMode } from '@/store/types';
 import { isTypeVisible, type RetypedClasses, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import { isMeshVisibleInViewMode, type TypeViewMode } from '@/lib/type-view-visibility';
+import { GEOM_CLASS_OCCURRENCE, isPlacedGeometryClass } from '@ifc-lite/geometry/geometry-class';
 
 /** What decides the type-hidden set. */
 export interface TypeHiddenSettings {
@@ -49,6 +54,18 @@ export interface TypeHiddenIds {
 }
 
 type MeshFields = Pick<MeshData, 'expressId' | 'ifcType' | 'geometryClass' | 'entityIds'>;
+
+/** The index's buckets as JSON, stored beside a scene snapshot: [geometry class, IFC class, entity ids]. */
+export interface TypeIndexMetadata {
+  v: 1;
+  buckets: Array<[geometryClass: number, ifcType: string, ids: number[]]>;
+}
+
+function isMetadata(value: unknown): value is TypeIndexMetadata {
+  const m = value as TypeIndexMetadata | null | undefined;
+  return m?.v === 1 && Array.isArray(m.buckets) && m.buckets.every((b) => Array.isArray(b) && b.length === 3
+    && Number.isInteger(b[0]) && typeof b[1] === 'string' && Array.isArray(b[2]) && b[2].every(Number.isFinite));
+}
 
 interface Bucket {
   geometryClass: number;
@@ -91,6 +108,42 @@ export class TypeHiddenIndex {
   private version = 0;
   private current: TypeHiddenIds = { ids: this.hidden, version: 0 };
 
+  /** The buckets of `meshes`, for a scene snapshot to carry. */
+  static metadataOf(meshes: readonly MeshFields[]): TypeIndexMetadata {
+    const index = new TypeHiddenIndex();
+    for (const mesh of meshes) index.ingest(mesh, () => {});
+    return { v: 1, buckets: [...index.buckets.values()].map((b) => [b.geometryClass, b.ifcType ?? '', Array.from(b.ids.subarray(0, b.length))]) };
+  }
+
+  /** An index over a snapshot's stored buckets; null when the metadata is missing or malformed. */
+  static fromMetadata(value: unknown): TypeHiddenIndex | null {
+    if (!isMetadata(value)) return null;
+    const index = new TypeHiddenIndex();
+    for (const [geometryClass, ifcType, ids] of value.buckets) {
+      const bucket = index.bucketFor({ expressId: 0, geometryClass, ifcType: ifcType || undefined });
+      for (const id of ids) index.push(bucket, id);
+    }
+    return index;
+  }
+
+  /** What the viewport's mesh scans answer: any placed geometry (occurrence or layer slice), any non-occurrence geometry. */
+  holds(kind: 'placed' | 'nonOccurrence'): boolean {
+    for (const b of this.buckets.values()) {
+      if (kind === 'placed' ? isPlacedGeometryClass(b.geometryClass) : b.geometryClass !== GEOM_CLASS_OCCURRENCE) return true;
+    }
+    return false;
+  }
+
+  /** The hidden ids over the indexed buckets under `settings`, without a mesh list. */
+  hiddenFor(settings: TypeHiddenSettings): TypeHiddenIds {
+    if (this.settings === null || !sameSettings(this.settings, settings)) {
+      this.settings = settings;
+      this.hidden = this.collect(settings);
+      this.current = { ids: this.hidden, version: ++this.version };
+    }
+    return this.current;
+  }
+
   /**
    * Fold meshes appended since the last call (same array, grown) and apply
    * `settings`. A new array or a shorter one is indexed from scratch. Returns
@@ -108,10 +161,7 @@ export class TypeHiddenIndex {
     this.settings = settings;
     const added: number[] = [];
     for (let i = this.scanned; i < list.length; i++) {
-      const mesh = list[i]!;
-      const bucket = this.bucketFor(mesh);
-      meshIds(mesh, (id) => {
-        this.push(bucket, id);
+      this.ingest(list[i]!, (bucket, id) => {
         if (!rebuild && !this.entityVisible(bucket, id, settings) && !this.hidden.has(id)) added.push(id);
       });
     }
@@ -134,7 +184,12 @@ export class TypeHiddenIndex {
     return this.current;
   }
 
-  private bucketFor(mesh: MeshFields): Bucket {
+  private ingest(mesh: MeshFields, onId: (bucket: Bucket, id: number) => void): void {
+    const bucket = this.bucketFor(mesh);
+    meshIds(mesh, (id) => { this.push(bucket, id); onId(bucket, id); });
+  }
+
+  private bucketFor(mesh: Pick<MeshFields, 'expressId' | 'ifcType' | 'geometryClass'>): Bucket {
     const geometryClass = mesh.geometryClass ?? 0;
     const key = `${geometryClass}\u0000${mesh.ifcType ?? ''}`;
     let bucket = this.buckets.get(key);

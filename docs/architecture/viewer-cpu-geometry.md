@@ -228,6 +228,8 @@ The class toggles (spaces, spatial zones, openings, virtual elements, site and t
 - `useVisibilityState(typeHidden)` folds those ids into the set the viewport draws, picks, frames and highlights by, beside the structural mask and the storey context. The store's `hiddenEntities` is never written, so the user's own hide, isolate and show-all keep their meaning and intersect with type visibility as before.
 - The camera fit at load and after streaming leaves type-hidden meshes out, as when they were not uploaded. Frame building extent and the renderable-bounds lookup behind `resolveHighlightIds` treat them as absent, so isolate paths that flip a hidden type's toggle still see it as hidden. The Cesium world view gets the mesh list without them.
 - The scene snapshot key no longer carries the type filter: snapshot batches hold every mesh. Entries written under the old key stream once and are replaced. A snapshot keeps the camera framing it was captured with, whatever the toggles were then.
+- A reopen that adopts a snapshot draws before its meshes decode, so the snapshot also stores the type index's buckets (`typeIndex` in its host data). Adoption installs them (`snapshot-type-index.ts`), waits until the viewport has committed the ids they hide under the toggles at reopen, and only then adopts and paints. The stored index stops answering when the meshes are published or the load ends. A snapshot without one is not adopted; the hit streams.
+- The camera fit leaves type-hidden meshes out of framing, evaluated at each fit, so a class shown during streaming frames again. Clipping and section ranges (`full`) cover every mesh, shown or not.
 
 `useGeometryStreaming.meshlessModel.test.tsx` pins that a toggle creates no GPU buffer, appends no mesh and clears no batch, before and after `Scene.releaseGeometryData()`. `tests/e2e/gpu-type-visibility.e2e.spec.ts` checks on a real adapter that the type-hidden frame equals the frame of the visible pieces alone (shadows on, one model and two federated), that a toggle keeps every batch and vertex buffer object, that picks never return a type-hidden entity, and that after the test-only release, spaces and openings hidden from the start appear and hide again.
 
@@ -237,6 +239,8 @@ What this does not change:
 - **Section-plane slider bounds** come from the batches' bounds, which now include type-hidden geometry. Openings and spaces sit inside the model in practice; a far-out cutter now widens the slider range.
 - **Colour-merged pieces** keep the [#10653](https://github.com/LTplus-AG/ifc-lite/issues/10653) caveat: a type-hidden id present only as a secondary vertex-lane id is hidden only where the batch's primary entries are partly hidden.
 - **GPU memory**: the initially hidden classes now occupy GPU buffers from the first load.
+
+Cost, not measured: a streamed batch that adds type-hidden ids builds a new id set (O(hidden)), and the renderer compares and re-sorts its hidden table per change and compares its contents each frame (O(hidden)), as for any hide. The structural mask is no longer recomputed per batch. Spaces and openings keep the set small; the Types view and the structural modes hide most entities.
 
 This frees no CPU geometry and makes no speed claim; release stays disabled (S4).
 

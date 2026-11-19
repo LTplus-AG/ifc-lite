@@ -19,6 +19,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
 import { setGlobalRendererRef } from '../hooks/useBCF.js';
+import { modelIndices } from '@/lib/model-placement/model-indices';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { geometryBackingCommand } from '@/lib/geometry-backing/backing-debug-hook';
@@ -218,6 +219,49 @@ it('#10887 unscoped legacy exports restore released flat geometry without a rend
     assert.equal(geometry.meshes[0].positions.length, 0, 'export never restores resident store arrays');
   } finally {
     await geometryBackingCommand(store, undefined, { action: 'stop' });
+    useViewerStore.setState(initial, true);
+    setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  }
+});
+
+it('#10887 resident scoped exports ignore another released model and preserve generator scopes', async () => {
+  const initial = useViewerStore.getState();
+  const geometry = (id: number, z: number): GeometryResult => ({ meshes: [mesh(id, z)],
+    totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] });
+  const a = geometry(1, 3), b = geometry(1001, 7);
+  const models = new Map([
+    ['A', { ...fixtureModel('A', { idOffset: 0 }), geometryResult: a }],
+    ['B', { ...fixtureModel('B', { idOffset: 1000 }), geometryResult: b }],
+  ]);
+  useViewerStore.setState({ models, geometryResult: null });
+  const source = createStore<TapState>(() => ({ models: new Map([['A', models.get('A')!]]), geometryContentVersion: 0 }));
+  const indices = modelIndices(models);
+  let instancedOwners = [indices.get('A')!];
+  const scene = { isGeometryDataReleased: () => true, getInstancedModelIndices: () => instancedOwners,
+    placeAppearanceSource: (m: MeshData) => m, getAllInstancedMeshData: () => [] as MeshData[] };
+  setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+  try {
+    await geometryBackingCommand(source, undefined, { action: 'start', options: {
+      database: { name: `scoped-resident-export-${process.pid}`, locks: null },
+    } as never });
+    await geometryBackingCommand(source, undefined, { action: 'seal' });
+    releaseCpuMeshBuffers(a.meshes);
+    let output: GeometryResult | undefined;
+    await assert.doesNotReject(async () => {
+      output = await withReleasedExportGeometry(() => withInstancedMeshes(b,
+        { modelId: 'B', idOffset: 1000, maxExpressId: 10, rendererModelIndex: indices.get('B') }), ['B']);
+    }, 'B is resident and has no backing; A cannot force B into readback');
+    assert.equal(output?.meshes[0], b.meshes[0]);
+    function* owner() { yield 'A'; }
+    const read = await withReleasedExportGeometry(() => withInstancedMeshes(a,
+      { modelId: 'A', idOffset: 0, maxExpressId: 10, rendererModelIndex: indices.get('A') }), owner());
+    assert.equal(read.meshes[0].positions[2], 3, 'checking release must not consume the preparation scope');
+    instancedOwners = [indices.get('A')!, indices.get('B')!];
+    await assert.rejects(withReleasedExportGeometry(() => withInstancedMeshes(b,
+      { modelId: 'B', idOffset: 1000, maxExpressId: 10 }), ['B']), /Model B has no complete current backing/,
+    'resident flat pieces do not hide released instances owned by the same model');
+  } finally {
+    await geometryBackingCommand(source, undefined, { action: 'stop' });
     useViewerStore.setState(initial, true);
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   }

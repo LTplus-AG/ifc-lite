@@ -36,6 +36,7 @@
  * wrongly include.
  */
 import { getGlobalRenderer } from '../hooks/useBCF.js';
+import { modelIndices } from '@/lib/model-placement/model-indices';
 import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
 import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
@@ -79,7 +80,7 @@ export function withInstancedMeshes(
   // Released CPU geometry (#10264): substitute what the export context read back;
   // outside one, fail rather than export empty arrays and no occurrences.
   const prepared = releasedExport;
-  if (!prepared && geometryReleased(geometryResult)) {
+  if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : undefined)) {
     throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');
   }
   if (prepared) {
@@ -123,12 +124,25 @@ let releasedExport: ReleasedExportGeometry | null = null;
 let exportTail: Promise<void> = Promise.resolve();
 
 /** Whether any loaded CPU geometry (or this result's) was released (#10264). */
-export function geometryReleased(geometryResult?: GeometryResult): boolean {
+export function geometryReleased(geometryResult?: GeometryResult, modelIds?: Iterable<string>): boolean {
+  if (geometryResult && !geometryResult.meshes.every(meshIsResident)) return true;
+  const state = getViewerState();
+  const scope = modelIds === undefined ? undefined : new Set(modelIds);
+  const owners = storeGeometryOwners(state);
+  if (scope && [...scope].some((id) => !owners.some((owner) => owner.modelId === id))) return true;
+  if ((!geometryResult || scope) && owners.some((owner) => (!scope || scope.has(owner.modelId))
+    && !(owner.geometryResult?.meshes ?? []).every(meshIsResident))) return true;
   const renderer = getGlobalRenderer();
-  if (renderer && sceneGeometryReleased(renderer)) return true;
-  if (geometryResult) return !geometryResult.meshes.every(meshIsResident);
-  for (const model of storeGeometryOwners(getViewerState())) if (!(model.geometryResult?.meshes ?? []).every(meshIsResident)) return true;
-  return false;
+  if (!renderer || !sceneGeometryReleased(renderer)) return false;
+  if (!scope) return true;
+  // Flat geometry can stay resident while another model releases. The scene's
+  // release flag is global, but surviving GPU templates still name their owner:
+  // a scoped model with released instances must continue to require readback.
+  const scene = renderer.getScene();
+  if (typeof scene.getInstancedModelIndices !== 'function') return true;
+  const indices = modelIndices(state.models);
+  const wanted = new Set([...scope].map((id) => indices.get(id) ?? 0));
+  return scene.getInstancedModelIndices().some((index) => wanted.has(index));
 }
 
 /**
@@ -138,15 +152,16 @@ export function geometryReleased(geometryResult?: GeometryResult): boolean {
  * them. Resident geometry runs `run` directly, unchanged.
  */
 export async function withReleasedExportGeometry<T>(run: () => T | Promise<T>, modelIds?: Iterable<string>): Promise<T> {
+  const scope = modelIds === undefined ? undefined : [...modelIds];
   const previous = exportTail;
   let finish!: () => void;
   exportTail = new Promise<void>((resolve) => { finish = resolve; });
   await previous;
   try {
-    if (!geometryReleased()) return await run();
+    if (!geometryReleased(undefined, scope)) return await run();
     const { prepareReleasedExport } = await import('@/lib/geometry-backing/export-readback');
     const renderer = getGlobalRenderer();
-    releasedExport = await prepareReleasedExport(getViewerState(), renderer?.getScene(), modelIds);
+    releasedExport = await prepareReleasedExport(getViewerState(), renderer?.getScene(), scope);
     return await run();
   } finally {
     releasedExport = null;

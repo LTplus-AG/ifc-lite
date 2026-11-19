@@ -96,8 +96,11 @@ function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number):
   return raw === undefined ? null : raw.trim();
 }
 
+/** A `#N` reference, with STEP trivia (a comment, #3789) tolerated around it: `/* source *​/ #14` is still #14. */
+const REF_RE = new RegExp(`^${STEP_TRIVIA}#(\\d+)${STEP_TRIVIA}$`);
+
 function refId(raw: string | null): number | null {
-  const m = raw?.match(/^#(\d+)$/);
+  const m = raw?.match(REF_RE);
   return m ? parseInt(m[1], 10) : null;
 }
 

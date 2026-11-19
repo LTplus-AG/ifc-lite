@@ -7,6 +7,11 @@ use crate::schema_structural_axes::{list_items, reference, unset};
 const OBJECT_PLACEMENT: usize = ifc_lite_core::slot::IfcProduct::OBJECT_PLACEMENT.index();
 const RELATED_OBJECTS: usize = ifc_lite_core::slot::IfcRelAssignsToGroup::RELATED_OBJECTS.index();
 const RELATING_GROUP: usize = ifc_lite_core::slot::IfcRelAssignsToGroup::RELATING_GROUP.index();
+const DEFINED_OBJECTS: usize = ifc_lite_core::slot::IfcRelDefinesByProperties::RELATED_OBJECTS.index();
+const DEFINING_SET: usize = ifc_lite_core::slot::IfcRelDefinesByProperties::RELATING_PROPERTY_DEFINITION.index();
+const PROPERTY_NAME: usize = ifc_lite_core::slot::IfcProperty::NAME.index();
+const SET_NAME: usize = ifc_lite_core::slot::IfcPropertySet::NAME.index();
+const HAS_PROPERTIES: usize = ifc_lite_core::slot::IfcPropertySet::HAS_PROPERTIES.index();
 const REP_ITEMS: usize = 3;
 const PROPERTY_VALUE: usize = 2;
 
@@ -63,26 +68,31 @@ impl Source<'_> {
         counts
     }
 
+    /// Property name (with its quotes) -> id, or None when one cannot be read or two share a name.
+    fn properties(&self, ids: &[u32]) -> Option<BTreeMap<String, u32>> {
+        let mut properties = BTreeMap::new();
+        for &id in ids {
+            let name = step_string(self.slots(id)?.get(PROPERTY_NAME)?)?.to_string();
+            if properties.insert(name, id).is_some() { return None; }
+        }
+        Some(properties)
+    }
+
     fn property_sets(&self, name: &str) -> Vec<PropertySet> {
         self.ids("IFCRELDEFINESBYPROPERTIES").filter_map(|rel| {
+            // Both records are read at any arity, as the TypeScript twin does.
             let args = self.slots(rel)?;
-            let [_, _, _, _, related, relating_set] = args.as_slice() else { return None; };
-            let set = reference(relating_set)?;
+            let set = reference(args.get(DEFINING_SET)?)?;
             if !self.kind(set, "IFCPROPERTYSET") { return None; }
             let slots = self.slots(set)?;
-            let [_, _, set_name, _, has_properties] = slots.as_slice() else { return None; };
-            if set_name.trim() != name { return None; }
-            let members = references(related)?;
-            let ids = references(has_properties)?;
-            let mut properties = BTreeMap::new();
-            for &id in &ids {
-                let Some(args) = self.slots(id) else { continue; };
-                let Some(name) = args.first() else { continue; };
-                if properties.insert(name.trim().to_string(), id).is_some() {
-                    properties.clear();
-                    break;
-                }
-            }
+            if step_string(slots.get(SET_NAME)?) != Some(name) { return None; }
+            // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that
+            // does not, that lists a property it cannot read, or whose relationship lists a non-reference, still
+            // counts as present for the objects it does name but gives no property.
+            let listed = args.get(DEFINED_OBJECTS).and_then(|related| list_items(related)).unwrap_or_default();
+            let members: Vec<u32> = listed.iter().filter_map(|item| reference(item)).collect();
+            let ids = slots.get(HAS_PROPERTIES).and_then(|has| references(has)).unwrap_or_default();
+            let properties = if members.len() == listed.len() { self.properties(&ids).unwrap_or_default() } else { BTreeMap::new() };
             Some(PropertySet { rel, set, members, ids, properties })
         }).collect()
     }
@@ -94,6 +104,17 @@ struct PropertySet {
     members: Vec<u32>,
     ids: Vec<u32>,
     properties: BTreeMap<String, u32>,
+}
+
+/// One whole STEP string, STEP whitespace and comments around it allowed, as the TypeScript
+/// `stepString` reads it; returned WITH its quotes, as the name constants here hold them.
+/// Compared only with fixed names, so escapes are not decoded.
+fn step_string(token: &str) -> Option<&str> {
+    let bytes = token.as_bytes();
+    let start = ifc_lite_core::parser::skip_step_trivia(bytes, 0)?;
+    if bytes.get(start) != Some(&b'\'') { return None; }
+    let end = ifc_lite_core::step_encoding::step_string_literal_end(bytes, start)?;
+    (ifc_lite_core::parser::skip_step_trivia(bytes, end) == Some(bytes.len())).then(|| &token[start..end])
 }
 
 fn references(token: &str) -> Option<Vec<u32>> {

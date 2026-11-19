@@ -37,6 +37,7 @@ import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from 
 import type { StoreApi } from 'zustand';
 import { subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
+import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
 import type { BackingDatabaseOptions } from './backing-database';
 
@@ -54,6 +55,8 @@ interface Tracked {
   failure?: Error;
   instancedLost: boolean;
   shards: number;
+  /** The store list changed after a CPU release: this generation is kept durable but no longer answers. */
+  stale?: Error;
 }
 
 export interface ModelBackingStatus {
@@ -105,7 +108,8 @@ export class StoreGeometryBackingTap {
 
   /** The model's current backing generation, for readback consumers. */
   backing(modelId: string): ModelGeometryBacking | undefined {
-    return this.tracked.get(modelId)?.backing;
+    const tracked = this.tracked.get(modelId);
+    return tracked && !tracked.stale ? tracked.backing : undefined;
   }
 
   private sync(state: TapState): void {
@@ -118,12 +122,27 @@ export class StoreGeometryBackingTap {
       if (!tracked) { this.regenerate(modelId, meshes, 'none'); continue; }
       // First geometry of a model whose shards arrived earlier: an append.
       if (!versionChanged && tracked.meshes === undefined && tracked.consumed === 0 && meshes) tracked.meshes = meshes;
+      if (tracked.stale) continue;
       if (versionChanged || meshes !== tracked.meshes || (meshes && meshes.length < tracked.consumed)) {
+        // A released list has no arrays to back, and a new generation would delete the
+        // acknowledged one: keep that durable, stop answering from it, never back empties.
+        if (meshes?.some(isReleasedMesh)) {
+          tracked.stale = new Error('The store list changed after a CPU release; its backing no longer answers');
+          console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
+          continue;
+        }
         const hadShards = tracked.shards > 0 || tracked.instancedLost;
         this.regenerate(modelId, meshes, !hadShards ? 'none' : versionChanged ? 'lost' : 'carry');
         continue;
       }
-      if (meshes && meshes.length > tracked.consumed) this.appendSuffix(tracked, meshes);
+      if (meshes && meshes.length > tracked.consumed) {
+        if (meshes.slice(tracked.consumed).some(isReleasedMesh)) {
+          tracked.stale = new Error('Released meshes were appended; they have no arrays to back');
+          console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
+          continue;
+        }
+        this.appendSuffix(tracked, meshes);
+      }
     }
     for (const modelId of [...this.tracked.keys()]) {
       if (!state.models.has(modelId)) this.drop(modelId, 'Model was removed');
@@ -235,12 +254,12 @@ export class StoreGeometryBackingTap {
     return [...this.tracked].map(([modelId, tracked]) => {
       const backing = tracked.backing;
       const instancedLost = tracked.instancedLost || this.missedShards(modelId);
-      const error = tracked.failure ?? backing?.writer.error;
+      const error = tracked.stale ?? tracked.failure ?? backing?.writer.error;
       return {
         modelId, generation: backing?.generation ?? 0, meshes: tracked.consumed,
         chunks: backing?.directory.chunks.length ?? 0, shards: backing?.directory.shards.length ?? 0,
         storedBytes: backing?.directory.storedBytes ?? 0, pendingBytes: backing?.writer.pendingBytes ?? 0,
-        complete: !!backing?.isComplete && !instancedLost && !tracked.failure,
+        complete: !!backing?.isComplete && !instancedLost && !tracked.failure && !tracked.stale,
         instancedLost, ...(error ? { error: `${error.name}: ${error.message}` } : {}),
       };
     });

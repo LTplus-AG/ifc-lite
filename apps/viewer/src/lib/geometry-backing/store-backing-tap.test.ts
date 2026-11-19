@@ -9,6 +9,8 @@ import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
 import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
+import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
+import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 
 let names = 0;
 const database = () => ({ name: `tap-test-${process.pid}-${names++}`, locks: null });
@@ -133,6 +135,26 @@ describe('store geometry backing tap (test/debug only)', () => {
     assert.equal(status.late.instancedLost, true, 'the missed shard never reached the backing');
     assert.equal(status.late.complete, false);
     assert.equal(status.flat.complete, true);
+    await tap.stop();
+  });
+
+  it('never re-backs a released list: keeps the acknowledged generation durable and stops answering', async () => {
+    const list = [mesh(1, 0), mesh(2, 1)];
+    const store = storeWith({ rel: list });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    await tap.seal();
+    const acknowledged = tap.backing('rel')!;
+    releaseCpuMeshBuffers(list);
+    const recoloured = list.map((m) => carryReleasedMesh(m, { ...m, color: [1, 0, 0, 1] as [number, number, number, number] }));
+    store.setState({ models: new Map([['rel', { geometryResult: { meshes: recoloured }, idOffset: 0 }]]) });
+    const [status] = await tap.seal();
+    assert.equal(status.complete, false, 'no generation of emptied records is ever complete');
+    assert.match(status.error ?? '', /after a CPU release/);
+    assert.equal(tap.backing('rel'), undefined, 'readers get nothing rather than the pre-edit colours');
+    assert.equal(acknowledged.isCurrent, true, 'the sole durable copy is kept');
+    const lease = await acknowledged.reader.leaseEntity(1);
+    assert.equal(lease.meshes[0].positions.length, 9, 'with its real arrays');
+    lease.release();
     await tap.stop();
   });
 });

@@ -37,6 +37,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
+import { MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
 
 /**
  * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
@@ -180,32 +181,29 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
   return contextId === undefined ? null : resolveContextWcsMetres(dataStore, contextId, lengthUnitScale);
 }
 
-/** `IfcMapConversion` and its subtype, by raw STEP name: `byType` is not resolved to a supertype. */
-const MAP_CONVERSION_TYPES = ['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED'] as const;
-
 /**
  * The georeference of `dataStore`'s first representation context: the `IfcMapConversion` whose `SourceCRS` is
  * that context, as its target CRS name and numeric attributes (Eastings onward, plus a scaled conversion's
  * factors), or null when it has none or it cannot be read. Two contexts in one frame with different conversions
  * place the same coordinates at two places on the map, so they must not be unified (#10798).
  */
-export function resolveModelContextGeoref(dataStore: IfcDataStore): string | null {
+export function resolveModelContextGeorefSignature(dataStore: IfcDataStore): string | null {
   // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current conversions
   const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
   if (contextId === undefined) return null;
-  for (const type of MAP_CONVERSION_TYPES) {
+  for (const type of MAP_CONVERSION_STEP_TYPES) {
     // @raw-entity-enumeration-ok as above: the conversions of the merged input's current snapshot
     for (const id of dataStore.entityIndex.byType.get(type) ?? []) {
       if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
       const target = refId(getStepAttr(dataStore, id, 1));
       const crsName = target === null ? null : getStepAttr(dataStore, target, 0);
-      const values: number[] = [];
+      const values: (number | null)[] = [];
       for (let index = 2; ; index++) {
         const raw = getStepAttr(dataStore, id, index);
         if (raw === null) break;
-        values.push(raw === '$' ? NaN : Number(raw));
+        values.push(raw === '$' ? null : Number(raw));
       }
-      return JSON.stringify([type, crsName, values.map(value => (Number.isNaN(value) ? null : value))]);
+      return JSON.stringify([type, crsName, values]);
     }
   }
   return null;
@@ -221,7 +219,7 @@ export function resolveModelContextGeoref(dataStore: IfcDataStore): string | nul
 export interface PrimaryContextState {
   subContextsByKey: Map<string, number[]>;
   contextWcs: WcsSignature | null;
-  /** {@link resolveModelContextGeoref} of the primary model. */
+  /** {@link resolveModelContextGeorefSignature} of the primary model. */
   contextGeoref: string | null;
 }
 
@@ -234,7 +232,7 @@ export function resolvePrimaryContextState(
   return {
     subContextsByKey: groupSubContextsByKey(dataStore, subContextIds),
     contextWcs: resolveModelContextWcs(dataStore, primaryScale),
-    contextGeoref: resolveModelContextGeoref(dataStore),
+    contextGeoref: resolveModelContextGeorefSignature(dataStore),
   };
 }
 
@@ -250,6 +248,11 @@ function wcsSignaturesCompatible(a: WcsSignature | null, b: WcsSignature | null)
     && Math.abs(a.z - b.z) <= WCS_TOLERANCE_M
     && a.axis.every((value, index) => Math.abs(value - b.axis[index]) <= WCS_TOLERANCE_M)
     && a.refDirection.every((value, index) => Math.abs(value - b.refDirection[index]) <= WCS_TOLERANCE_M);
+}
+
+/** True when two georeference signatures agree, or either model declares none (one georeferences the shared frame). */
+function georefSignaturesCompatible(a: string | null, b: string | null): boolean {
+  return a === null || b === null || a === b;
 }
 
 /**
@@ -295,12 +298,10 @@ export function planInfrastructureUnify(
   // Computed once, up front — not per type in the loop below — so its result
   // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
-  // A georeference only one side declares still unifies (one model georeferences the shared frame); two that
-  // differ keep this model's context, and its conversion with it, as its own root (#10798).
-  const georef = resolveModelContextGeoref(dataStore);
+  // Two georeferences that differ keep this model's context, and its conversion with it, as its own root (#10798).
   const contextsCompatible = wcsSignaturesCompatible(firstModelContext.contextWcs,
     resolveModelContextWcs(dataStore, lengthUnitScale))
-    && (firstModelContext.contextGeoref === null || georef === null || georef === firstModelContext.contextGeoref);
+    && georefSignaturesCompatible(firstModelContext.contextGeoref, resolveModelContextGeorefSignature(dataStore));
   // Only the model's FIRST top-level context is (positionally) unified below;
   // any later sibling context — a model with both a 'Model' and a 'Plan'
   // context, say — is always retained. A subcontext may therefore unify ONLY

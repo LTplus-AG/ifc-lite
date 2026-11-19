@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { registerHooks } from 'node:module';
+import { register } from 'node:module';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { waitFor } from '@/test/render.js';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from '@/components/StaleDeploymentNotice';
 import { RhinoExportCommand } from '@/components/viewer/RhinoExportCommand';
@@ -17,16 +18,17 @@ import { __resetStaleDeploymentForTests, isStaleDeploymentReported } from './sta
 it('keeps the ribbon and reload action available after the Rhino dynamic import fails (#10684)', async () => {
   // Represent the page the user gets after the one automatic reload.
   sessionStorage.setItem('ifclite:chunk-skew-reload-ts', String(Date.now()));
-  let attempted = false;
-  const hooks = registerHooks({
-    resolve(specifier, context, nextResolve) {
+  // The Node test runner isolates this file in its own process. Only this
+  // command's import is substituted, with the failure Gecko would send.
+  const loader = `
+    export function resolve(specifier, context, nextResolve) {
       if (specifier === './RhinoExportDialog' && context.parentURL?.endsWith('/RhinoExportCommand.tsx')) {
-        attempted = true;
         throw new TypeError('error loading dynamically imported module: https://viewer.example/assets/RhinoExportDialog.js');
       }
       return nextResolve(specifier, context);
-    },
-  });
+    }
+  `;
+  register(`data:text/javascript,${encodeURIComponent(loader)}`);
   const container = document.createElement('div');
   document.body.append(container);
   const uncaught: unknown[] = [];
@@ -43,7 +45,11 @@ it('keeps the ribbon and reload action available after the Rhino dynamic import 
       </>,
     ));
 
-    assert.ok(attempted, 'the production dynamic import was attempted');
+    await waitFor(
+      () => uncaught.length > 0 || !!container.textContent?.includes('Layers panel could not be loaded'),
+      'the lazy rejection reaches React',
+    );
+
     assert.equal(uncaught.length, 0, 'the failed import must not unmount the viewer');
     assert.match(container.textContent ?? '', /Working ribbon action/);
     assert.match(container.textContent ?? '', /Layers panel could not be loaded/);
@@ -54,7 +60,6 @@ it('keeps the ribbon and reload action available after the Rhino dynamic import 
   } finally {
     await act(async () => root.unmount());
     container.remove();
-    hooks.deregister();
     sessionStorage.removeItem('ifclite:chunk-skew-reload-ts');
     __resetStaleDeploymentForTests();
   }

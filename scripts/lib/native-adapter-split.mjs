@@ -113,6 +113,9 @@ const GROUP = (id) => `geometry-platform-${id}-\${{ !inputs.batch && github.even
 const CANCEL = "${{ github.event_name == 'pull_request' && !inputs.batch }}";
 const steps = (block) => block.split(/^ {6}- /m).slice(1);
 const has = (block, line) => block.split('\n').some((l) => l.trim() === line);
+/** The setup-wasm-build inputs that pick the restored cache; shared-key defaults to main in the action. */
+const CACHE_KEYS = ['cache-prefix', 'shared-key', 'pinned-rust-cache', 'cache-bin'];
+const cacheInputs = (step) => ({ 'shared-key': 'main', ...Object.fromEntries([...step.matchAll(/^ {10}([\w-]+): (.+?)\s*$/gm)].map((m) => [m[1], m[2]])) });
 
 /** Blocks of the jobs that run the lane's work: the monolith and, when present, every split job. */
 export function laneJobBlocks(text) {
@@ -124,6 +127,8 @@ export function splitProblems(text) {
   const present = SPLIT_JOBS.filter((id) => jobBlock(text, id) !== null);
   if (present.length === 0) return [];
   const out = [];
+  const monoStep = steps(jobBlock(text, 'native-adapter') ?? '').find((t) => /uses: \.\/\.github\/actions\/setup-wasm-build/.test(t));
+  const monoCache = monoStep ? cacheInputs(monoStep) : {};
   const missing = SPLIT_JOBS.filter((id) => !present.includes(id));
   if (missing.length > 0) return [`${WORKFLOW}: the native-adapter split is partial; missing job(s) ${missing.join(', ')} (scripts/lib/native-adapter-split.mjs)`];
   for (const id of SPLIT_JOBS) {
@@ -153,7 +158,9 @@ export function splitProblems(text) {
       if (!name.startsWith('na-') || !has(s, 'overwrite: true')) out.push(`${WORKFLOW}: split job ${id} uploads '${name}'; split artifacts are named na-* (test.yml shares the run's artifact namespace) and set overwrite: true (a re-run replaces them)`);
     }
     for (const s of steps(block).filter((t) => /uses: \.\/\.github\/actions\/setup-wasm-build/.test(t))) {
-      if (!has(s, `shared-key: main-${id}`)) out.push(`${WORKFLOW}: split job ${id} must give setup-wasm-build its own shared-key: main-${id}, so parallel jobs do not race one Rust cache`);
+      const inputs = cacheInputs(s);
+      if (inputs['save-if'] !== "'false'") out.push(`${WORKFLOW}: split job ${id} must restore its Rust cache only (setup-wasm-build save-if: 'false'): the shadow phase writes no cache`);
+      if (CACHE_KEYS.some((k) => inputs[k] !== monoCache[k])) out.push(`${WORKFLOW}: split job ${id} must restore the single job's Rust cache (setup-wasm-build ${CACHE_KEYS.map((k) => `${k}: ${monoCache[k] ?? '(default)'}`).join(', ')}), so both layouts start alike`);
     }
     if (SPLIT_LANE_JOBS.includes(id)) {
       for (const step of jobLaneSteps(id)) {

@@ -11,12 +11,15 @@
  *     judged lane's outcome. A lane the monolith never reached (skipped after a
  *     hard failure there) is reported, not counted: the split still runs it.
  *   - witnesses: the set of `sdk witness executed:` markers, and of the
- *     registered cli/viewer markers, per log file.
+ *     registered cli/viewer markers, per log file; for the cli/viewer records
+ *     also their JSON payload, with volatile fields removed.
  *   - references: sha256 of every native reference and comparison product, raw
- *     and with timing fields removed (products.tsv carries `ms`/`cutMs`; some
- *     references carry `*Ms` phases). Only the timing-free hash decides.
- *   - transport: the copies the consumer jobs restored are byte-equal to what
- *     na-native packed.
+ *     and with volatile fields removed (products.tsv carries `ms`/`cutMs`; some
+ *     references carry `*Ms` phases). Only the volatile-free hash decides.
+ *   - browser/viewer outputs: browser.test.mjs's summary.json and products.tsv
+ *     and the viewer records under viewer-retained/, volatile-free.
+ *   - transport: each consumer job restored every file na-native packed,
+ *     byte-equal; restoring nothing is a failure.
  *   - timings: from the run's jobs listing when a token is available.
  */
 
@@ -30,36 +33,53 @@ import { judge, LANES, SPLIT_JUDGE, SPLIT_LANE_JOBS, splitLaneOutcome } from './
 /** Only the split has these, by design: the M1 reference and browser parity the single job never fed. */
 export const SPLIT_ONLY_MARKERS = { 'retained-browser.log': ['m1_browser_parity'] };
 export const SPLIT_ONLY_REFS = ['temp/native-references/m1-native-unit-rectangle.json'];
-const TIMING_KEY = /(?:^ms|_ms|Ms)$/;
+/**
+ * Fields that differ between two runs of the same commit: timings (`ms`, `*_ms`,
+ * `*Ms`, `msPer*`, `timings`), memory (`*Bytes`, `browserMemory`) and timestamps (`*At`).
+ */
+export const VOLATILE_KEY = /(?:^ms$|_ms$|Ms$|^msPer|^timings?$|Bytes$|^browserMemory$|At$)/;
 const readJson = (path, fallback) => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : fallback);
 const digest = (text) => createHash('sha256').update(text).digest('hex');
 
-/** sha256 of a reference with its timing fields removed. */
+/** `value` with every volatile field removed, at any depth. */
+export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : v && typeof v === 'object'
+  ? Object.fromEntries(Object.entries(v).filter(([k]) => !VOLATILE_KEY.test(k)).map(([k, x]) => [k, stripVolatile(x)])) : v);
+
+/** sha256 of a reference or output with its volatile fields (columns, keys) removed. */
 export function timingFreeHash(name, bytes) {
   if (name.endsWith('.tsv')) {
     const rows = bytes.toString('utf8').split('\n').map((l) => l.split('\t'));
-    const keep = rows[0].map((h, i) => (TIMING_KEY.test(h) ? -1 : i)).filter((i) => i >= 0);
+    const keep = rows[0].map((h, i) => (VOLATILE_KEY.test(h) ? -1 : i)).filter((i) => i >= 0);
     return digest(rows.map((r) => keep.map((i) => r[i] ?? '').join('\t')).join('\n'));
   }
-  if (name.endsWith('.json')) {
-    const strip = (v) => (Array.isArray(v) ? v.map(strip) : v && typeof v === 'object'
-      ? Object.fromEntries(Object.entries(v).filter(([k]) => !TIMING_KEY.test(k)).map(([k, x]) => [k, strip(x)])) : v);
-    return digest(JSON.stringify(strip(JSON.parse(bytes.toString('utf8')))));
-  }
+  if (name.endsWith('.json')) return digest(JSON.stringify(stripVolatile(JSON.parse(bytes.toString('utf8')))));
   return digest(bytes);
 }
 
-/** Every witness marker in one log: native-style lines and the registered cli/viewer records. */
+/**
+ * Every witness marker in one log, mapped to its record's content: null for a
+ * native-style line, the volatile-free sha256 of the JSON payload for a
+ * registered cli/viewer record (sorted and joined if the record repeats).
+ */
 export function markers(text, registered) {
-  const found = new Set();
+  const found = new Map();
   for (const raw of stripVTControlCharacters(text).split(/\r?\n/)) {
     const line = raw.replace(/^(?:# |ℹ )/, '');
     const native = line.match(/sdk witness executed: (.+?)\s*$/);
-    if (native) found.add(native[1]);
-    for (const m of registered) if (line.startsWith(`${m} `)) found.add(m);
+    if (native && !found.has(native[1])) found.set(native[1], null);
+    for (const m of registered) {
+      if (!line.startsWith(`${m} `)) continue;
+      let payload;
+      try { payload = digest(JSON.stringify(stripVolatile(JSON.parse(line.slice(m.length + 1))))); } catch { payload = `unparseable:${digest(line)}`; }
+      found.set(m, [...new Set([...(found.get(m)?.split(',') ?? []), payload])].sort().join(','));
+    }
   }
   return found;
 }
+
+/** Relative paths of every file under `dir`, sorted. */
+const filesUnder = (dir, prefix = '') => (existsSync(join(dir, prefix)) ? readdirSync(join(dir, prefix), { withFileTypes: true }).flatMap((e) =>
+  e.isDirectory() ? filesUnder(dir, join(prefix, e.name)) : e.isFile() ? [join(prefix, e.name)] : []).sort() : []);
 
 /** One evidence directory (collect's layout): steps, logs and the refs pack manifest. */
 function evidence(dir) {
@@ -68,6 +88,7 @@ function evidence(dir) {
     meta: readJson(join(dir, 'meta.json'), {}),
     refs: readJson(join(dir, 'refs', 'manifest.json'), { files: {} }).files,
     logs: existsSync(join(dir, 'logs')) ? readdirSync(join(dir, 'logs')).sort() : [],
+    outputs: filesUnder(join(dir, 'outputs')),
     // collect always writes meta.json, so its absence means the evidence never arrived.
     present: existsSync(join(dir, 'meta.json')),
     dir,
@@ -130,12 +151,16 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
     const read = (e) => (e.logs.includes(name) ? markers(readFileSync(join(e.dir, 'logs', name), 'utf8'), registered) : null);
     const a = read(mono);
     const owners = SPLIT_LANE_JOBS.filter((job) => split[job].logs.includes(name));
-    const b = owners.length ? new Set(owners.flatMap((job) => [...read(split[job])])) : null;
+    // One writer per log in the split; two would let one copy mask the other.
+    if (owners.length > 1) problems.push(`log ${name} comes from more than one split job (${owners.join(', ')})`);
+    const b = owners.length ? new Map(owners.flatMap((job) => [...read(split[job])])) : null;
     if (a === null || b === null) { lines.push(`- ${name}: only in ${a === null ? 'split' : 'single job'}`); problems.push(`log ${name} missing from the ${a === null ? 'single job' : 'split'}`); continue; }
-    const extra = [...b].filter((x) => !a.has(x) && !(SPLIT_ONLY_MARKERS[name] ?? []).includes(x));
-    const lost = [...a].filter((x) => !b.has(x));
-    lines.push(`- ${name} (${owners.join(', ')}): ${a.size} single, ${b.size} split${lost.length ? `; **missing in split**: ${lost.join(', ')}` : ''}${extra.length ? `; **split only**: ${extra.join(', ')}` : ''}`);
+    const extra = [...b.keys()].filter((x) => !a.has(x) && !(SPLIT_ONLY_MARKERS[name] ?? []).includes(x));
+    const lost = [...a.keys()].filter((x) => !b.has(x));
+    const changed = [...a.keys()].filter((x) => b.has(x) && a.get(x) !== b.get(x));
+    lines.push(`- ${name} (${owners.join(', ')}): ${a.size} single, ${b.size} split${lost.length ? `; **missing in split**: ${lost.join(', ')}` : ''}${extra.length ? `; **split only**: ${extra.join(', ')}` : ''}${changed.length ? `; **record content differs**: ${changed.join(', ')}` : ''}`);
     if (lost.length || extra.length) problems.push(`witness markers differ in ${name}`);
+    for (const m of changed) problems.push(`witness record ${m} content differs in ${name}`);
   }
 
   lines.push('', '### References (sha256, timing-free)', '', '| file | raw equal | timing-free equal |', '|---|---|---|');
@@ -149,9 +174,26 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
     if (!same) problems.push(`reference ${rel} differs`);
   }
   for (const job of ['na-browser', 'na-cli-parity']) {
-    const bad = Object.entries(split[job].refs).filter(([rel, h]) => native.refs[rel] && native.refs[rel] !== h).map(([rel]) => rel);
-    lines.push(`- transport to ${job}: ${bad.length ? `**altered** ${bad.join(', ')}` : `${Object.keys(split[job].refs).filter((r) => native.refs[r]).length} file(s) byte-equal to na-native's`}`);
+    const got = split[job].refs;
+    const bad = Object.entries(got).filter(([rel, h]) => native.refs[rel] && native.refs[rel] !== h).map(([rel]) => rel);
+    const missing = Object.keys(native.refs).filter((rel) => !got[rel]);
+    const restored = Object.keys(got).filter((rel) => native.refs[rel] === got[rel]).length;
+    lines.push(`- transport to ${job}: ${restored} file(s) byte-equal to na-native's${bad.length ? `; **altered** ${bad.join(', ')}` : ''}${missing.length ? `; **not restored** ${missing.join(', ')}` : ''}`);
     if (bad.length) problems.push(`references altered in transport to ${job}`);
+    if (missing.length) problems.push(`${job} did not restore ${missing.length} of na-native's ${Object.keys(native.refs).length} reference(s)`);
+    if (restored === 0) problems.push(`${job} restored no reference at all`);
+  }
+
+  lines.push('', '### Browser and viewer outputs (viewer-retained/, volatile-free)', '', '| file | equal |', '|---|---|');
+  // Counted only when the single job reached its viewer step; otherwise the split's extra outputs are expected.
+  const reached = ['success', 'failure'].includes(mono.steps['viewer-retained']?.outcome);
+  const ownerOf = (rel) => SPLIT_LANE_JOBS.find((job) => split[job].outputs.includes(rel));
+  for (const rel of [...new Set([...mono.outputs, ...SPLIT_LANE_JOBS.flatMap((job) => split[job].outputs)])].sort()) {
+    const owner = ownerOf(rel);
+    const inMono = mono.outputs.includes(rel);
+    const same = inMono && owner && timingFreeHash(rel, readFileSync(join(mono.dir, 'outputs', rel))) === timingFreeHash(rel, readFileSync(join(split[owner].dir, 'outputs', rel)));
+    lines.push(`| ${rel} | ${!inMono ? 'split only' : !owner ? 'single job only' : same ? 'yes' : '**no**'} |`);
+    if (reached && !same) problems.push(`output ${rel} ${!inMono ? 'only in the split' : !owner ? 'missing from the split' : 'differs'}`);
   }
 
   const t = await timings(env, fetchImpl);

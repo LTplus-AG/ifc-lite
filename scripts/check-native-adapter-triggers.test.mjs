@@ -548,13 +548,21 @@ test('a partial split, a judge that misses a lane job or a lane step that is fat
   assert.ok(audit(noVerdict).some((f) => f.includes('split job na-emscripten must end with an if: always() step id verdict')));
 });
 
-test('split artifacts and Rust caches stay namespaced per job', (context) => {
+test('split artifacts stay namespaced, and split Rust caches restore the single job\'s, read-only', (context) => {
   const artifact = copyTree(context);
   inJob(artifact, 'na-wasm', 'name: na-split-wasm-pkg', 'name: wasm-pkg');
   assert.ok(audit(artifact).some((f) => f.includes("split job na-wasm uploads 'wasm-pkg'")));
-  const cache = copyTree(context);
-  inJob(cache, 'na-browser', 'shared-key: main-na-browser', 'shared-key: main');
-  assert.ok(audit(cache).some((f) => f.includes('split job na-browser must give setup-wasm-build its own shared-key')));
+  // The Actions cache is at its limit: the shadow phase restores the single job's cache and writes none.
+  const saves = copyTree(context);
+  inJob(saves, 'na-browser', "          save-if: 'false'\n", '');
+  assert.ok(audit(saves).some((f) => f.includes("split job na-browser must restore its Rust cache only (setup-wasm-build save-if: 'false')")));
+  const ownKey = copyTree(context);
+  inJob(ownKey, 'na-native', "          save-if: 'false'\n", "          save-if: 'false'\n          shared-key: main-na-native\n");
+  assert.ok(audit(ownKey).some((f) => f.includes("split job na-native must restore the single job's Rust cache")));
+  // A change to the single job's cache (#10851's pinned adapter key) must reach the split too.
+  const monoMoved = copyTree(context);
+  inJob(monoMoved, 'native-adapter', '          cache-prefix: geometry-platform\n', '          cache-prefix: geometry-platform-adapter-v1\n');
+  assert.ok(audit(monoMoved).some((f) => f.includes("split job na-wasm must restore the single job's Rust cache")));
 });
 
 test('the split lane map must cover exactly the single job\'s judged lanes', (context) => {

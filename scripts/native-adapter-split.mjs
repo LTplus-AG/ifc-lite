@@ -73,8 +73,17 @@ export function unpack(from, temp, root = ROOT) {
   return Object.keys(files);
 }
 
+/** Every .json/.tsv under `dir`, as paths relative to it. */
+const outputsUnder = (dir, prefix = '') => (existsSync(join(dir, prefix)) ? readdirSync(join(dir, prefix), { withFileTypes: true }).flatMap((e) =>
+  e.isDirectory() ? outputsUnder(dir, join(prefix, e.name)) : e.isFile() && /\.(json|tsv)$/.test(e.name) ? [join(prefix, e.name)] : []) : []);
+
 export function collect(job, out, temp, env, root = ROOT) {
   pack(join(out, 'refs'), temp, root);
+  // browser.test.mjs (IFCLITE_BROWSER_OUT) and the viewer e2e records (IFCLITE_VIEWER_OUT) write here.
+  for (const rel of outputsUnder(join(temp, 'viewer-retained'))) {
+    mkdirSync(dirname(join(out, 'outputs', 'viewer-retained', rel)), { recursive: true });
+    copyFileSync(join(temp, 'viewer-retained', rel), join(out, 'outputs', 'viewer-retained', rel));
+  }
   mkdirSync(join(out, 'logs'), { recursive: true });
   for (const name of list(temp, /\.log$/)) copyFileSync(join(temp, name), join(out, 'logs', name));
   writeFileSync(join(out, 'steps.json'), env.STEPS_JSON ?? '{}');

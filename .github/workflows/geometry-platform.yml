@@ -668,8 +668,23 @@ jobs:
           ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
           path: upstream-smlib
           persist-credentials: false
-      - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Ensure CMake and Ninja are available
+        shell: bash
+        run: |
+          missing=()
+          command -v cmake || missing+=(cmake)
+          command -v ninja || missing+=(ninja-build)
+          if (( ${#missing[@]} )); then
+            for attempt in 1 2 3; do
+              sudo apt-get install -y --no-install-recommends "${missing[@]}" && break
+              if (( attempt < 3 )); then
+                sleep $((attempt * 15))
+                sudo apt-get update || true
+              fi
+            done
+          fi
+          cmake --version
+          ninja --version
       - name: Build native owned boundary and worker
         run: |
           cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
@@ -686,10 +701,13 @@ jobs:
         id: native-ctest
         continue-on-error: true
         run: ctest --test-dir "$RUNNER_TEMP/smlib-native" --output-on-failure
+      # Restore-only, from the single job's own key: the shadow phase writes no Rust
+      # cache (the Actions cache is at its limit), and both layouts start alike.
+      # The split's own cache arrangement is decided at the flip.
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: geometry-platform
-          shared-key: main-na-native
+          save-if: 'false'
       - name: Real Rust subprocess integration
         id: native-consumers
         continue-on-error: true
@@ -856,8 +874,23 @@ jobs:
           ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
           path: upstream-smlib
           persist-credentials: false
-      - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Ensure CMake and Ninja are available
+        shell: bash
+        run: |
+          missing=()
+          command -v cmake || missing+=(cmake)
+          command -v ninja || missing+=(ninja-build)
+          if (( ${#missing[@]} )); then
+            for attempt in 1 2 3; do
+              sudo apt-get install -y --no-install-recommends "${missing[@]}" && break
+              if (( attempt < 3 )); then
+                sleep $((attempt * 15))
+                sudo apt-get update || true
+              fi
+            done
+          fi
+          cmake --version
+          ninja --version
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -877,7 +910,26 @@ jobs:
         id: wasm-ctest
         continue-on-error: true
         run: ctest --test-dir "$RUNNER_TEMP/smlib-wasm" --output-on-failure
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Resolve Playwright version
+        id: playwright-version
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version)
+          echo "version=${version#Version }" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: native-adapter-chromium-ubuntu24.04-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright Chromium on cache miss
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
+      - name: Ensure Playwright Chromium system dependencies are available
+        run: |
+          # The dry run simulates apt and reports the missing packages for this image.
+          pnpm exec playwright install-deps --dry-run chromium ||
+            pnpm exec playwright install-deps chromium
       - name: Actual module Workers over the staged /smlib bundle
         id: browser-workers
         continue-on-error: true
@@ -962,10 +1014,13 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      # Restore-only, from the single job's own key: the shadow phase writes no Rust
+      # cache (the Actions cache is at its limit), and both layouts start alike.
+      # The split's own cache arrangement is decided at the flip.
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: geometry-platform
-          shared-key: main-na-wasm
+          save-if: 'false'
       - name: Strict Clippy and unit tests with the opt-in retained-browser feature
         id: retained-clippy
         continue-on-error: true
@@ -1080,7 +1135,26 @@ jobs:
           for f in packages/wasm/pkg/ifc-lite_bg.wasm packages/wasm/pkg/ifc-lite.js packages/wasm/pkg-retained/ifc-lite_bg.wasm packages/wasm/pkg-retained/ifc-lite.js; do
             test -s "$f"
           done
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Resolve Playwright version
+        id: playwright-version
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version)
+          echo "version=${version#Version }" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: native-adapter-chromium-ubuntu24.04-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright Chromium on cache miss
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
+      - name: Ensure Playwright Chromium system dependencies are available
+        run: |
+          # The dry run simulates apt and reports the missing packages for this image.
+          pnpm exec playwright install-deps --dry-run chromium ||
+            pnpm exec playwright install-deps chromium
       - name: Staged Node retained engine with real worker_threads
         id: cli-retained
         continue-on-error: true
@@ -1209,10 +1283,13 @@ jobs:
           ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
           path: upstream-smlib
           persist-credentials: false
+      # Restore-only, from the single job's own key: the shadow phase writes no Rust
+      # cache (the Actions cache is at its limit), and both layouts start alike.
+      # The split's own cache arrangement is decided at the flip.
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: geometry-platform
-          shared-key: main-na-browser
+          save-if: 'false'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: na-split-smlib-wasm
@@ -1374,7 +1451,26 @@ jobs:
           path: ${{ runner.temp }}
       - name: Unpack na-viewer's built packages
         run: if [ -f "$RUNNER_TEMP/na-dists.tar" ]; then tar -xf "$RUNNER_TEMP/na-dists.tar"; fi
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Resolve Playwright version
+        id: playwright-version
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version)
+          echo "version=${version#Version }" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: native-adapter-chromium-ubuntu24.04-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright Chromium on cache miss
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
+      - name: Ensure Playwright Chromium system dependencies are available
+        run: |
+          # The dry run simulates apt and reports the missing packages for this image.
+          pnpm exec playwright install-deps --dry-run chromium ||
+            pnpm exec playwright install-deps chromium
       # retained-browser-contract.mjs reads the native M11-I reference from the staged
       # /smlib directory, which the single job's "Stage /smlib" step filled earlier.
       - name: Canonical JavaScript retained API with an actual module Worker

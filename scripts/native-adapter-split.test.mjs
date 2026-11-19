@@ -126,7 +126,13 @@ test('the timing-free hash ignores timing fields and nothing else', () => {
 
 test('markers reads native witness lines and registered cli/viewer records, through reporter decoration', () => {
   const text = '\u001b[32m# sdk witness executed: m8 real browser Worker parity\u001b[0m\nℹ cli-witness-x {"a":1}\nnoise\n';
-  assert.deepEqual([...markers(text, ['cli-witness-x', 'absent-one'])].sort(), ['cli-witness-x', 'm8 real browser Worker parity']);
+  const found = markers(text, ['cli-witness-x', 'absent-one']);
+  assert.deepEqual([...found.keys()].sort(), ['cli-witness-x', 'm8 real browser Worker parity']);
+  assert.equal(found.get('m8 real browser Worker parity'), null);
+  // A record's content is compared without its volatile fields, and not without the rest.
+  const record = (payload) => markers(`cli-witness-x ${JSON.stringify(payload)}\n`, ['cli-witness-x']).get('cli-witness-x');
+  assert.equal(record({ published: 3, startupMs: 1, wasmHeapPeakBytes: 9 }), record({ published: 3, startupMs: 7, wasmHeapPeakBytes: 2 }));
+  assert.notEqual(record({ published: 3 }), record({ published: 4 }));
 });
 
 /** Collected evidence for both layouts, all green and identical unless `edit` changes it. */
@@ -138,10 +144,18 @@ function layouts(base, edit = () => {}) {
   execFileSync('git', ['-C', root, 'init', '-q']);
   execFileSync('git', ['-C', root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'x']);
   put(join(temp, 'retained-browser.log'), 'sdk witness executed: m10_browser_parity\n');
+  put(join(temp, 'cli-real-authoring.log'), '# M2-D cli-real-archicad: {"published":12,"compared":3}\n');
+  put(join(temp, 'viewer-retained/summary.json'), '{"published":12,"msPerProduct":{"p50":4},"browserMemory":{"used":1}}');
+  put(join(temp, 'viewer-retained/e2e/real-archicad.json'), '{"meshes":40}');
   const monoSteps = Object.fromEntries(LANES.filter((l) => l.mono).map((l) => [l.mono, { outcome: 'success' }]));
   monoSteps['retained-clippy'] = { outcome: 'success' };
   collect('native-adapter', join(base, 'mono'), temp, { ...env, STEPS_JSON: JSON.stringify(monoSteps) }, root);
-  for (const job of SPLIT_LANE_JOBS) collect(job, join(base, 'split', `na-split-evidence-${job}`), job === 'na-native' ? temp : join(base, 'empty'), { ...env, STEPS_JSON: JSON.stringify(ok(jobLaneSteps(job))) }, root);
+  // na-native produced the references; na-browser and na-cli-parity restored them from its pack.
+  pack(join(base, 'xfer'), temp, root);
+  const restored = join(base, 'restored');
+  unpack(join(base, 'xfer'), restored, root);
+  const tempOf = (job) => (job === 'na-native' ? temp : ['na-browser', 'na-cli-parity'].includes(job) ? restored : join(base, 'empty'));
+  for (const job of SPLIT_LANE_JOBS) collect(job, join(base, 'split', `na-split-evidence-${job}`), tempOf(job), { ...env, STEPS_JSON: JSON.stringify(ok(jobLaneSteps(job))) }, root);
   edit(base);
   return { mono: join(base, 'mono'), split: join(base, 'split'), needs: { 'native-adapter': { result: 'success' }, ...greenNeeds() }, root: REPO };
 }
@@ -149,12 +163,15 @@ function layouts(base, edit = () => {}) {
 test('identical layouts match, with the split-only M1 reference and marker allowed', async (context) => {
   const base = scratch(context);
   const input = layouts(base, (b) => {
-    const native = join(b, 'split/na-split-evidence-na-native');
-    put(join(native, 'logs/retained-browser.log'), 'sdk witness executed: m10_browser_parity\nsdk witness executed: m1_browser_parity\n');
-    const manifest = JSON.parse(readFileSync(join(native, 'refs/manifest.json'), 'utf8'));
-    put(join(native, 'refs/temp/native-references/m1-native-unit-rectangle.json'), '{"fixture":"unit-rectangle-1m","volume":1}');
-    manifest.files['temp/native-references/m1-native-unit-rectangle.json'] = 'x';
-    writeFileSync(join(native, 'refs/manifest.json'), JSON.stringify(manifest));
+    put(join(b, 'split/na-split-evidence-na-native/logs/retained-browser.log'), 'sdk witness executed: m10_browser_parity\nsdk witness executed: m1_browser_parity\n');
+    // Produced by na-native and restored by both consumers; the single job never writes it.
+    for (const job of ['na-native', 'na-browser', 'na-cli-parity']) {
+      const dir = join(b, `split/na-split-evidence-${job}`);
+      const manifest = JSON.parse(readFileSync(join(dir, 'refs/manifest.json'), 'utf8'));
+      put(join(dir, 'refs/temp/native-references/m1-native-unit-rectangle.json'), '{"fixture":"unit-rectangle-1m","volume":1}');
+      manifest.files['temp/native-references/m1-native-unit-rectangle.json'] = 'x';
+      writeFileSync(join(dir, 'refs/manifest.json'), JSON.stringify(manifest));
+    }
   });
   const report = await compareLayouts(input);
   assert.equal(report.match, true, report.markdown);
@@ -178,6 +195,26 @@ test('a lane, a witness, a reference or a verdict that differs is a mismatch', a
   input.needs['native-adapter'].result = 'failure';
   const verdicts = await compareLayouts(input);
   assert.ok(verdicts.problems.some((p) => p.startsWith('verdicts differ')), verdicts.markdown);
+});
+
+test('cli/viewer record content, browser outputs and an empty transport are compared too', async (context) => {
+  const evidence = (b, job) => join(b, 'split', `na-split-evidence-${job}`);
+  const record = await compareLayouts(layouts(scratch(context), (b) => put(join(evidence(b, 'na-native'), 'logs/cli-real-authoring.log'), '# M2-D cli-real-archicad: {"published":11,"compared":3}\n')));
+  assert.ok(record.problems.includes('witness record M2-D cli-real-archicad: content differs in cli-real-authoring.log'), record.markdown);
+  // Only volatile fields differ: still a match.
+  const volatile = await compareLayouts(layouts(scratch(context), (b) => put(join(evidence(b, 'na-native'), 'outputs/viewer-retained/summary.json'), '{"published":12,"msPerProduct":{"p50":99},"browserMemory":{"used":5}}')));
+  assert.equal(volatile.match, true, volatile.markdown);
+  const output = await compareLayouts(layouts(scratch(context), (b) => put(join(evidence(b, 'na-native'), 'outputs/viewer-retained/e2e/real-archicad.json'), '{"meshes":39}')));
+  assert.ok(output.problems.includes('output viewer-retained/e2e/real-archicad.json differs'), output.markdown);
+  const lost = await compareLayouts(layouts(scratch(context), (b) => {
+    for (const job of SPLIT_LANE_JOBS) rmSync(join(evidence(b, job), 'outputs'), { recursive: true, force: true });
+  }));
+  assert.ok(lost.problems.includes('output viewer-retained/summary.json missing from the split'), lost.markdown);
+  const twice = await compareLayouts(layouts(scratch(context), (b) => put(join(evidence(b, 'na-wasm'), 'logs/retained-browser.log'), 'sdk witness executed: m10_browser_parity\n')));
+  assert.ok(twice.problems.includes('log retained-browser.log comes from more than one split job (na-native, na-wasm)'), twice.markdown);
+  const empty = await compareLayouts(layouts(scratch(context), (b) => writeFileSync(join(evidence(b, 'na-browser'), 'refs/manifest.json'), '{"files":{}}')));
+  assert.ok(empty.problems.includes('na-browser restored no reference at all'), empty.markdown);
+  assert.ok(empty.problems.some((p) => p.startsWith('na-browser did not restore 4 of na-native')), empty.markdown);
 });
 
 test('missing evidence from either layout is a mismatch, never an empty match', async (context) => {

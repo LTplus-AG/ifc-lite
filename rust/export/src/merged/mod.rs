@@ -150,15 +150,15 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
     export_merged_models(&inputs, opts)
 }
 
-/// Merge several parsed models into one STEP/IFC string, honoring per-model
-/// visibility, spatial-merge strategies, and unit reconciliation.
 /// A model's material records as the merge writes them (#10763): its ids
 /// offset, its references rewritten, the records it leaves out left out.
 fn add_materials(checks: &mut ConversionChecks, content: &[u8], source_schema: &str, included: &HashSet<u32>, plan: &plan::ModelPlan, offset: u32) {
     let written = |id: u32| included.contains(&id) && !plan.skip.contains(&id) && !plan.shared_remap.contains_key(&id);
-    checks.materials.add_model(content, crate::schema_convert::canon(source_schema), &|id, _| written(id).then(|| id.saturating_add(offset)), &|bytes| rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied()));
+    checks.materials.add_model(content, crate::schema_convert::canon(source_schema), "IFCMATERIALPROPERTIES", &|id, _| written(id).then(|| id.saturating_add(offset)), &|bytes| rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied()));
 }
 
+/// Merge several parsed models into one STEP/IFC string, honoring per-model
+/// visibility, spatial-merge strategies, and unit reconciliation.
 pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (String, MergedStats) {
     let schema = header::output_schema(models, opts);
 

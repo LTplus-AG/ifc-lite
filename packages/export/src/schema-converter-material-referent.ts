@@ -56,17 +56,17 @@ export class MaterialReferents {
 
   /** The IfcMaterial `id` resolves to, in a `from` record, or null. A set member the export does not write is left out of the set, as the writers leave it out of the list. */
   resolve(id: number, from: string): number | null {
-    const source = this.source, table = attrNameTable(from as IfcSchemaVersion);
-    const type = source.typeOf(id);
+    const source = this.source, type = source.typeOf(id);
     if (!type) return null;
     if (type === 'IFCMATERIAL') return id;
-    const names = table?.get(type), slots = source.slots(id);
+    const table = attrNameTable(from as IfcSchemaVersion), names = table?.get(type), slots = source.slots(id);
     if (!names || !slots) return null;
     const material = (slot: string | undefined) => {
       const ref = slotRef(slot);
       return ref !== null && source.typeOf(ref) === 'IFCMATERIAL' ? ref : null;
     };
-    if (names.includes('Material')) return material(slots[names.indexOf('Material')]);
+    const own = names.indexOf('Material');
+    if (own >= 0) return material(slots[own]);
     const at = names.findIndex((n) => MEMBERS.includes(n));
     if (at < 0) return null;
     const found = new Set<number>();
@@ -151,11 +151,15 @@ export function materialPropertiesNotWritten(store: SourceStore, from: string, t
 export function mergedMaterialSource(store: SourceStore, written: (id: number) => boolean, offset: number, remap: (text: string) => string): MaterialSource {
   const source = new SourceRecords(store);
   const local = (id: number) => (id > offset && written(id - offset) ? id - offset : null);
+  const read = new Map<number, readonly string[] | undefined>();
   return {
     typeOf: (id) => { const l = local(id); return l === null ? undefined : source.type(l); },
     slots: (id) => {
-      const l = local(id), text = l === null ? undefined : source.text(l);
-      return text === undefined ? undefined : readStepSlots(remap(text))?.slots;
+      if (!read.has(id)) {
+        const l = local(id), text = l === null ? undefined : source.text(l);
+        read.set(id, text === undefined ? undefined : readStepSlots(remap(text))?.slots);
+      }
+      return read.get(id);
     },
   };
 }

@@ -284,7 +284,7 @@ export class SelectionHighlight {
       return { covered: new Set(), draws: [] };
     }
     const covered = result.covered;
-    scene.removeMeshesWhere((mesh) => mesh.hydrated === true && (this.modelIndex === undefined || mesh.modelIndex === this.modelIndex)
+    scene.removeMeshesWhere((mesh) => mesh.hydrated === true
       && (mesh.mergedSelection?.ids ? hasAny(mesh.mergedSelection.ids, covered) : covered.has(mesh.expressId) && mesh.expressId !== item));
     return result;
   }

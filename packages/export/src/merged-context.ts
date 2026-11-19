@@ -34,10 +34,9 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
+import { asSourceBytes, extractGeoreferencingOnDemand, STEP_TRIVIA } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
-import { MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
 
 /**
  * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
@@ -181,51 +180,27 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
   return contextId === undefined ? null : resolveContextWcsMetres(dataStore, contextId, lengthUnitScale);
 }
 
-/** The coordinate operations a context can carry: every map conversion type, and IFC4X3's rigid operation. */
-const COORDINATE_OPERATION_STEP_TYPES: readonly string[] = [...MAP_CONVERSION_STEP_TYPES, 'IFCRIGIDOPERATION'];
+let unresolvedGeorefs = 0;
 
 /**
- * `id`'s attributes from `from` on, for comparing two records by value: a number where one parses, else the raw
- * text, and a reference as its target's type and attributes, up to `depth` levels deep (a bound, not a need: a
- * conversion-based map unit's factor sits four levels below a coordinate operation).
- */
-function stepValues(dataStore: IfcDataStore, id: number, from: number, depth: number): unknown[] {
-  const values: unknown[] = [];
-  for (let index = from; ; index++) {
-    const raw = getStepAttr(dataStore, id, index);
-    if (raw === null) return values;
-    const ref = refId(raw);
-    if (ref !== null && depth > 0) {
-      // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this is the merged input's current record
-      values.push([dataStore.entityIndex.byId.get(ref)?.type ?? null, ...stepValues(dataStore, ref, 0, depth - 1)]);
-    } else {
-      const value = Number(raw);
-      values.push(raw === '$' ? null : Number.isNaN(value) ? raw : value);
-    }
-  }
-}
-
-/**
- * The georeference of `dataStore`'s first representation context: the coordinate operation whose `SourceCRS` is
- * that context, with its target CRS and that CRS's map unit, or null when it has none. A CRS without a map unit
- * uses the project's length unit, so `lengthUnitScale` stands in for it. Two contexts in one frame with different
- * georeferences place the same coordinates at two places on the map, so they must not be unified (#10798).
+ * The georeference of `dataStore`'s first representation context, as the values that place it on the map, or null
+ * when the model's georeference sits on no such context. The parser's reading fills IFC defaults (scale 1, no
+ * rotation) and resolves the map unit, so two spellings of one georeference agree; a CRS without a map unit uses
+ * the project's length unit (`lengthUnitScale`), and one whose unit the parser cannot resolve matches no other.
+ * Two contexts in one frame with different georeferences place the same coordinates at two places on the map, so
+ * they must not be unified (#10798).
  */
 export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, lengthUnitScale: number): string | null {
   // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
   const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
-  if (contextId === undefined) return null;
-  for (const type of COORDINATE_OPERATION_STEP_TYPES) {
-    // @raw-entity-enumeration-ok as above: the coordinate operations of the merged input's current snapshot
-    for (const id of dataStore.entityIndex.byType.get(type) ?? []) {
-      if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
-      const target = refId(getStepAttr(dataStore, id, 1));
-      const mapUnit = target === null ? null : getStepAttr(dataStore, target, 6);
-      // The target CRS and its map unit compare by value, a conversion-based unit by its factor.
-      return JSON.stringify([type, ...stepValues(dataStore, id, 1, 8), mapUnit === null || mapUnit === '$' ? lengthUnitScale : null]);
-    }
-  }
-  return null;
+  const { mapConversion: op, projectedCRS: crs } = extractGeoreferencingOnDemand(dataStore) ?? {};
+  if (contextId === undefined || !op || op.sourceCRS !== contextId) return null;
+  if (crs?.mapUnitResolved === false) return `unresolved map unit ${++unresolvedGeorefs}`;
+  // Rounded to the precision at which the merge treats two length units as one.
+  const unitScale = Number((crs?.mapUnitScale ?? lengthUnitScale).toPrecision(6));
+  return JSON.stringify([op.operation ?? 'mapConversion', crs?.kind, crs?.name, crs?.geodeticDatum, crs?.verticalDatum,
+    crs?.mapProjection, crs?.mapZone, crs?.wellKnownText, unitScale, op.eastings, op.northings, op.orthogonalHeight,
+    op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, op.scale ?? 1, op.factorX ?? 1, op.factorY ?? 1, op.factorZ ?? 1]);
 }
 
 /**

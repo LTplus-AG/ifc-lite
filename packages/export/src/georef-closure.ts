@@ -31,7 +31,7 @@ import { collectRefsInByteRange } from './reference-collector.js';
  * `subset-roots.ts`'s `IDENTIFYING_TYPES`/`COORDINATE_REFERENCE_TYPES`, and
  * `on-demand-georeferencing.ts`'s `GEOREF_TYPES` all guard against (#3243).
  */
-export const MAP_CONVERSION_STEP_TYPES: readonly string[] = [
+const MAP_CONVERSION_STEP_TYPES: readonly string[] = [
   'IFCMAPCONVERSION',
   'IFCMAPCONVERSIONSCALED',
 ];

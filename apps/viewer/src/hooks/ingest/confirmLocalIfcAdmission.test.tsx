@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
-import { afterEach, it } from 'node:test';
+import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render, waitFor } from '@/test/render.js';
@@ -34,4 +34,12 @@ it('#10264 approval covers only that load and cannot bypass the wasm32 limit', a
     if (memory) Object.defineProperty(navigator, 'deviceMemory', memory);
     else Reflect.deleteProperty(navigator, 'deviceMemory');
   }
+});
+
+it('#10784 a browser without SIMD still opens through the server, and is refused only when no server takes it', async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(WebAssembly, 'validate', () => false);
+  const options = (served: boolean) => ({ tryServer: async () => served, isCurrent: () => true, onCancel: () => {}, signal: new AbortController().signal });
+  assert.equal(await createLocalIfcAdmission(options(true))(20e6), false, 'the server took the load; nothing local runs');
+  await assert.rejects(createLocalIfcAdmission(options(false))(20e6), /Wasm SIMD unsupported/);
 });

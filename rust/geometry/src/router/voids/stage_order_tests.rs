@@ -13,7 +13,8 @@
 //! - ParamRect before Bool2d (both fixtures eligible on one host);
 //! - malformed recut before the flap clip, and the sliver refinement kept;
 //! - a rejected frame retry restoring the first run's diagnostics;
-//! - the coaxial union before the disjoint-batch plan.
+//! - the coaxial union before the disjoint-batch plan;
+//! - the touching-shell retry before the open-rim fallback.
 //!
 //! Not pinned here: the shard sweep's `host_mutated` gate. Forcing the sweep
 //! always on or always off changes no output in this crate's tests, and no
@@ -132,6 +133,33 @@ fn param_rect_is_tried_before_bool2d() {
     assert!(crate::exact_topology::strict_closed_mesh(&out));
     let removed = 4.0 * 3.0 * 0.2 - mesh_signed_volume(&out).abs();
     assert!((removed - 0.2).abs() < 1e-3, "removed {removed}");
+}
+
+#[cfg(feature = "csg_manifold_gate")]
+#[path = "../../../tests/voids_common/split_wall.rs"]
+mod split_wall;
+
+/// Two recesses across the interface of three touching solids. There is no
+/// world-coordinate rebase in this near-origin fixture. The manifold gate's
+/// rejected cut needs the closed-shell retry before #635 opens the rim.
+#[cfg(feature = "csg_manifold_gate")]
+#[test]
+fn split_shell_recess_retries_before_the_open_rim_fallback_10512() {
+    use ifc_lite_core::{build_entity_index, EntityDecoder};
+    use split_wall::{analytic_volume, wall, Recess};
+
+    for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+        let content = wall([0.0, 0.0], 0.0, 2.137, recess);
+        let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let voids = crate::void_index_from_content(&content, &mut decoder);
+        let entity = decoder.decode_by_id(100).unwrap();
+        let router = GeometryRouter::with_scale(1.0);
+        let cut = router.process_element_with_voids(&entity, &mut decoder, &voids).unwrap();
+        assert!(crate::exact_topology::strict_closed_mesh(&cut), "{recess:?}: the exact retry closes the recess floor");
+        assert!((mesh_signed_volume(&cut).abs() - analytic_volume()).abs() < 0.0005,
+            "{recess:?}: the recess removes only the 12 mm finish");
+        assert!(router.take_csg_failures().is_empty(), "{recess:?}: the successful retry clears the rejected attempt");
+    }
 }
 
 /// The exact tail's post passes run recut -> flap clip, after the sliver

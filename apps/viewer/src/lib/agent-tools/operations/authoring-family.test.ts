@@ -101,14 +101,31 @@ describe('native reviewed authoring operations (full automation follow-up #10525
     assert.equal(read.Name, 'Operation group'); assert.ok(read.memberships.length > 0);
     const bytes = editedModelBytes(store, useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!); assert.equal(danglingReferences(new TextDecoder().decode(bytes)).length, 0);
   });
-  it('keeps change-set import staging distinct from applying model edits', async () => {
+  it('keeps change-set import staging distinct from applying model edits (#10796)', async () => {
     const made = answer<{ id: string }>(await invoke('changeSets.create', { name: 'Native staging' }, true));
-    const exported = await invoke('changeSets.export', { id: made.id }, true); assert.equal(exported.isError, false, exported.text);
-    const source = useViewerStore.getState().exportChangeSet(made.id)!;
+    const store = useViewerStore.getState().models.get(SAMPLE_MODEL)!.ifcDataStore!;
+    const expressId = store.entities.getExpressIdByGlobalId(BACK_WALL);
+    const edit = useViewerStore.getState().setAttribute(SAMPLE_MODEL, expressId, 'Name', 'Staged wall', BACK_WALL_NAME);
+    assert.ok(edit);
+
+    const { artifact_id } = answer<{ artifact_id: string }>(await invoke('changeSets.export', { id: made.id }, true));
+    const read = await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id });
+    assert.equal(read.isError, false, read.text);
+    const chunk = read.structured as { data: string; next_offset: number | null };
+    assert.equal(chunk.next_offset, null);
+    const json = Buffer.from(chunk.data, 'base64').toString('utf8');
+
+    assert.equal(answer<{ changed: boolean }>(await invoke('changes.history', { direction: 'undo' }, true)).changed, true);
+    answer(await invoke('changeSets.discard', { id: made.id }, true));
+    assert.equal(useViewerStore.getState().changeSets.has(made.id), false);
     const before = useViewerStore.getState().mutationVersion;
-    const imported = answer<{ applied: boolean }>(await invoke('changeSets.import', { json: source }, true));
-    assert.equal(imported.applied, false); assert.equal(useViewerStore.getState().mutationVersion, before);
-    answer(await invoke('changeSets.discard', { id: made.id }, true)); assert.equal(useViewerStore.getState().changeSets.has(made.id), false);
+    const imported = answer<{ id: string; applied: boolean }>(await invoke('changeSets.import', { json }, true));
+    assert.equal(imported.applied, false);
+    const state = useViewerStore.getState();
+    assert.deepEqual(state.changeSets.get(imported.id)?.mutations, [edit]);
+    assert.equal(state.mutationVersion, before);
+    const name = state.getMutationView(SAMPLE_MODEL)?.getAttributeMutationsForEntity(expressId).find(row => row.name === 'Name')?.value;
+    assert.equal(name ?? store.entities.getName(expressId), BACK_WALL_NAME);
   });
   it('configures zones and stages change sets with no IFC model loaded', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });

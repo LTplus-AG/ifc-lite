@@ -1,12 +1,12 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index c29d29ab06..4f30a2fb6d 100644
+index 67df1e12fd..0fc11900ed 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -185,7 +185,6 @@ export class StoreGeometryBackingTap {
+@@ -189,7 +189,6 @@ export class StoreGeometryBackingTap {
        retained: previous ? [...previous.retained, previous.key] : [] };
      const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
        next.backing = await this.registry.begin(key, this.options);
 -      for (const old of next.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by a committed generation');
-       if (shards === 'carry') {
+       if (shards === 'carry' && !next.instancedLost) {
          // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
-         const source = previous?.backing && !previous.failure && !previous.instancedLost ? previous : this.acknowledged.get(modelId);
+         const source = previous?.backing && !previous.failure ? previous : this.acknowledged.get(modelId);

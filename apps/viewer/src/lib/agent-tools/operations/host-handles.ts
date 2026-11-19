@@ -52,6 +52,7 @@ export function candidateStillApplies(host?: ToolHost) {
  * `handed-off`: the library keeps it as an unsaved draft, which only its `retry` writes again. `saved`: done. */
 export type ReceiptPersistence = { state: 'writing'; write: Promise<boolean> } | { state: 'handed-off' } | { state: 'saved' };
 export interface ReceiptHolder { persistence?: ReceiptPersistence }
+const SAVED: ReceiptPersistence = { state: 'saved' }, HANDED_OFF: ReceiptPersistence = { state: 'handed-off' };
 /** Admission may evict a candidate once the library holds its receipt, because the receipt survives it. */
 export const libraryHoldsReceipt = (holder: ReceiptHolder) => holder.persistence?.state === 'handed-off' || holder.persistence?.state === 'saved';
 
@@ -67,15 +68,16 @@ export function persistReceipt(holder: ReceiptHolder, receipt: ModelChangeReceip
   if (before?.state === 'saved') return Promise.resolve(true);
   const write = import('@/lib/actions/receipts').then(async ({ modelChangeLibrary, useModelChangeReceipts }) => {
     const status = () => useModelChangeReceipts.getState().status.items[receipt.id];
-    const settle = (saved: boolean) => {
-      holder.persistence = saved || status() === 'saved' ? { state: 'saved' } : status() !== undefined ? { state: 'handed-off' } : undefined;
-      return holder.persistence?.state === 'saved';
+    const settle = () => {
+      const now = status();
+      holder.persistence = now === 'saved' ? SAVED : now !== undefined ? HANDED_OFF : undefined;
+      return now === 'saved';
     };
     try {
-      if (before?.state !== 'handed-off') return settle(await modelChangeLibrary.put(receipt.id, receipt));
-      if (status() !== 'saved') await modelChangeLibrary.retry(); // the panel's Retry may have saved it already
-      return settle(false);
-    } catch (error) { settle(false); throw error; }
+      if (before?.state !== 'handed-off') await modelChangeLibrary.put(receipt.id, receipt);
+      else if (status() !== 'saved') await modelChangeLibrary.retry(); // the panel's Retry may have saved it already
+      return settle();
+    } catch (error) { settle(); throw error; }
   }, (error: unknown) => { holder.persistence = before; throw error; });
   holder.persistence = { state: 'writing', write };
   return write;

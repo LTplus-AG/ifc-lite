@@ -90,6 +90,18 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expect([...projectContexts(content)].sort()).toEqual([...contexts].sort());
   });
 
+  it('lists a kept context on the synchronous path too, and leaves a library\'s context to the library', async () => {
+    const moved = model('b', '0ProjectB000000000000b', null, 'IFC4').replace('#10=IFCCARTESIANPOINT((0.,0.,0.))', '#10=IFCCARTESIANPOINT((10.,0.,0.))')
+      .replace('ENDSEC;\nEND-ISO', "#30=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-05,#13,$);\n#31=IFCPROJECTLIBRARY('0LibraryB000000000000b',$,'Lib',$,$,$,$,(#30),#9);\nENDSEC;\nEND-ISO");
+    const bytes = new TextEncoder().encode(moved);
+    const inputs = [await input('a', null, 'IFC4'), { id: 'b', name: 'b', dataStore: await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer) }];
+    const content = new TextDecoder().decode(new MergedExporter(inputs).export({ schema: 'IFC4' }).content);
+    const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
+    const library = content.match(/^#\d+=IFCPROJECTLIBRARY\(.*,\((#\d+)\),#\d+\);$/m)?.[1];
+    expect(contexts).toHaveLength(3);
+    expect([...projectContexts(content)].sort()).toEqual(contexts.filter(id => id !== library).sort());
+  });
+
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {
     expect((await merge([at(X), at(X)])).contexts).toHaveLength(1);
     expect((await merge([at(X), null])).contexts).toHaveLength(1);

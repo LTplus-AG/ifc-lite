@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveContextWcsMetres } from './merged-context.js';
+import { resolveContextWcsMetres, listKeptContexts } from './merged-context.js';
 import { asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 
 type MockEntityRef = { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number };
@@ -95,5 +95,24 @@ describe('resolveContextWcsMetres: trivia between the type name and "(" (#3789)'
     expect(wcs!.x).toBe(0);
     expect(wcs!.y).toBe(0);
     expect(wcs!.z).toBe(0);
+  });
+});
+
+describe('listKeptContexts (#10798)', () => {
+  const project = (contexts: string) => [`#1=IFCPROJECT('g',$,'P',$,$,$,$,${contexts},#3);`, '#9=IFCGEOMETRICREPRESENTATIONCONTEXT($,$,3,1.E-05,$,$);'];
+  it('appends a kept context to the list, whatever comments the slot carries', () => {
+    for (const [slot, out] of [['(#2)', '(#2,#9)'], ['(#2) /* c */', '(#2,#9)'], ['$', '(#9)'], ['$ /* c */', '(#9)'], ['( #2 , #4 )', '(#2,#4,#9)']]) {
+      const lines = project(slot);
+      listKeptContexts(lines, 1, [9]);
+      expect(lines[0]).toBe(`#1=IFCPROJECT('g',$,'P',$,$,$,$,${out},#3);`);
+    }
+  });
+  it('lists only contexts the merge wrote', () => {
+    const lines = project('(#2)');
+    listKeptContexts(lines, 1, [9, 12]);
+    expect(lines[0]).toContain(',(#2,#9),#3);');
+    const unwritten = project('(#2)');
+    listKeptContexts(unwritten, 1, [12]);
+    expect(unwritten[0]).toContain(',(#2),#3);');
   });
 });

@@ -231,6 +231,9 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
   return a.placement === b.placement && a.unitScale !== null && b.unitScale !== null && unitScalesEqual(a.unitScale, b.unitScale);
 }
 
+/** 0-based attribute index of `IfcProject.RepresentationContexts` (IFC2X3 and IFC4). */
+const PROJECT_REPRESENTATION_CONTEXTS_ATTR = 7;
+
 /**
  * Plan the whole shared-infrastructure dedup for one model — `MergedExporter`
  * delegates its entire "remap and skip duplicate infrastructure" step here.
@@ -316,16 +319,19 @@ export function planInfrastructureUnify(
     sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);
     skipEntityIds.add(thisIds[0]);
   }
-  return modelContextIds.filter(id => !sharedRemap.has(id));
+  // Only the contexts this model's own IfcProject listed: one an IfcProjectLibrary owns stays the library's.
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this is the merged input's current project
+  const projectId = (dataStore.entityIndex.byType.get('IFCPROJECT') ?? [])[0];
+  const owned = projectId === undefined ? '' : getStepAttr(dataStore, projectId, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '';
+  const listed = new Set([...owned.matchAll(/#(\d+)/g)].map(match => Number(match[1])));
+  return modelContextIds.filter(id => !sharedRemap.has(id) && listed.has(id));
 }
-
-/** 0-based attribute index of `IfcProject.RepresentationContexts` (IFC2X3 and IFC4). */
-const PROJECT_REPRESENTATION_CONTEXTS_ATTR = 7;
 
 /**
  * List `contextIds` in the merged project's RepresentationContexts (#10798). A compatible later model's IfcProject
  * folds into the primary's, so a top-level context of it that was kept rather than unified (a different frame or
- * georeference, or a second context) belongs to no project otherwise. Only ids written to `lines` are listed.
+ * georeference, or a second context its own project listed) belongs to no project otherwise. Only ids written to
+ * `lines` are listed.
  */
 export function listKeptContexts(lines: string[], projectId: number | undefined, contextIds: readonly number[]): void {
   if (projectId === undefined || contextIds.length === 0) return;
@@ -341,8 +347,9 @@ export function listKeptContexts(lines: string[], projectId: number | undefined,
   const text = lines[projectIndex], frame = stepRecordFrame(text, { allowMissingSemicolon: true });
   const args = frame && splitTopLevelStepArguments(frameArgs(text, frame));
   if (!frame || !args || args.length <= PROJECT_REPRESENTATION_CONTEXTS_ATTR) return;
-  const listed = args[PROJECT_REPRESENTATION_CONTEXTS_ATTR].trim();
-  const items = listed === '$' ? [] : [listed.replace(/^\(|\)$/g, '')].filter(Boolean);
+  // The slot holds references only, so its comments can go: `(#2) /* c */` and `$ /* c */` read as the list.
+  const listed = args[PROJECT_REPRESENTATION_CONTEXTS_ATTR].replace(/\/\*[\s\S]*?\*\//g, '').trim();
+  const items = listed === '$' ? [] : listed.replace(/^\(|\)$/g, '').split(',').map(item => item.trim()).filter(Boolean);
   args[PROJECT_REPRESENTATION_CONTEXTS_ATTR] = `(${[...items, ...written.map(id => `#${id}`)].join(',')})`;
   lines[projectIndex] = withFrameArgs(text, frame, args.join(','));
 }

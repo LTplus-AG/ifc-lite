@@ -77,15 +77,18 @@ export function roomGeometryLease(get:()=>ViewerState,modelId:string,storeyId:nu
   const before=captureRoomGeometry(get(),modelId,storeyId),sameLayout=roomGeometryLayout(before);
   const saved=before.meshes.map(mesh=>({positions:mesh.positions.slice(),indices:mesh.indices.slice()}));
   let content=get().geometryContentVersion;
-  let compared=before.meshes.map(mesh=>[new WeakRef(mesh.positions),new WeakRef(mesh.indices)] as const);
+  const weakBuffers=(mesh:RoomGeometryCapture['meshes'][number])=>[new WeakRef(mesh.positions),new WeakRef(mesh.indices)] as const;
+  const compared=before.meshes.map(weakBuffers);
   const holds=(state:ViewerState,exact:boolean)=> {
     const now=captureRoomGeometry(state,modelId,storeyId);
     if (!sameLayout(now)) return false;
     const unmoved=!exact && state.geometryContentVersion===content;
     const ok=saved.every((mesh,i)=> {const current=now.meshes[i];
       if (unmoved && compared[i][0].deref()===current.positions && compared[i][1].deref()===current.indices) return true;
-      return !mesh.positions.some((value,j)=>!Object.is(value,current.positions[j])) && !mesh.indices.some((value,j)=>value!==current.indices[j]);});
-    if (ok) { content=state.geometryContentVersion; compared=now.meshes.map(mesh=>[new WeakRef(mesh.positions),new WeakRef(mesh.indices)] as const); }
+      const same=!mesh.positions.some((value,j)=>!Object.is(value,current.positions[j])) && !mesh.indices.some((value,j)=>value!==current.indices[j]);
+      if (same) compared[i]=weakBuffers(current); // identical bytes: these buffers are what later probes compare to
+      return same;});
+    if (ok) content=state.geometryContentVersion;
     return ok;
   };
   return {

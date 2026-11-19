@@ -192,6 +192,7 @@ impl MaterialReferents {
         }
         let named = slots.as_ref().and_then(|s| s.get(at)).and_then(|s| slot_ref(s));
         let kept = match (named, named.and_then(|r| resolve(&self.records, &self.gone, r))) {
+            // The frame and slot splitter `read_slots` used, so it rewrites any record that read.
             (Some(r), Some(m)) if m != r => crate::step_log::replace_argument(&framed, at, &format!("#{m}")).map(|mut out| {
                 if matches!(framed, Cow::Owned(_)) { out.pop(); } // the ';' it was read with is the last character
                 Cow::Owned(out)
@@ -201,8 +202,12 @@ impl MaterialReferents {
         };
         if kept.is_none() {
             *dropped += slots.as_ref().map_or(1, |s| s.iter().filter(|s| !slot_unset(s)).count()); // unread: at least the record
-            let named = named.and_then(|r| self.records.get(&r)).map_or("an unread record", |(t, ..)| t.as_str());
-            self.dropped.insert(id, named.to_owned());
+            let why = match (&slots, named) {
+                (None, _) => "unreadable",
+                (_, None) => "no Material",
+                (_, Some(r)) => self.records.get(&r).map_or("an unread record", |(t, ..)| t.as_str()),
+            };
+            self.dropped.insert(id, why.to_owned());
         }
         kept
     }

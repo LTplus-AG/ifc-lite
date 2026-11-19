@@ -330,7 +330,8 @@ describe('IDS candidates and validation runs (#10792)', () => {
     // Cancel from the call's own checkpoint right after its contexts load, so it lands before the later imports.
     const context = { host, canEdit: () => true, signal: controller.signal, checkpoint: () => controller.abort() } as Parameters<typeof prepareOperation.execute>[1];
     await assert.rejects(prepareOperation.execute({ document_revision: useViewerStore.getState().idsStudioRevision,
-      ops_json: JSON.stringify([setSpecTextOp(specId(), 'name', 'Cancelled')]) }, context));
+      ops_json: JSON.stringify([setSpecTextOp(specId(), 'name', 'Cancelled')]) }, context), { message: 'Tool cancelled.' });
+    assert.equal(controller.signal.aborted, true, 'the call was cancelled from its own checkpoint');
     answer(await invoke('ids.candidate.apply', { token: applied }, true)); // still held: its replay answers
   });
 

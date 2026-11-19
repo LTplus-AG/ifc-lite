@@ -17,7 +17,7 @@
  * a host has asked for a model: the host's model wins over the page URL.
  */
 
-import { assertProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
+import { assertProcessedModelHash, normalizeProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
 import { SERVER_URL, USE_SERVER } from '@/utils/ifcConfig';
 import type { ViewerRuntimeConfig } from './features/runtime-config';
 
@@ -118,16 +118,20 @@ export function resetProcessedModelRequestsForTests(): void {
 
 function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest {
   const sha256 = assertProcessedModelHash(model.sha256);
-  return { sha256, bytes: processedModelSize(model.bytes), name: model.name || 'model.ifc' };
+  return { sha256, bytes: processedModelSize(model.bytes), name: model.name?.trim() || 'model.ifc' };
 }
 
 /**
- * A processed model was asked for on this page: it is meshed on the server, so nothing needs
- * warming in the browser. A `?processed=` link counts before the viewer files its request, which
- * happens only after mount, later than the fast path's idle check.
+ * The page was opened with a valid `?processed=` link. Read once at load, as the autoload reads
+ * it at mount: the viewer files that request only after mount, later than the fast path's idle
+ * check, and the URL may change in between. A malformed value files nothing, so it counts for nothing.
  */
+const linkedProcessedModel = typeof location !== 'undefined'
+  && normalizeProcessedModelHash(new URLSearchParams(location.search).get('processed')) !== null;
+
+/** A processed model was asked for on this page: it is meshed on the server, so nothing needs warming in the browser. */
 export function processedModelRequested(): boolean {
-  return anyRequested || (typeof location !== 'undefined' && new URLSearchParams(location.search).has('processed'));
+  return anyRequested || linkedProcessedModel;
 }
 
 function fileRequest(request: FiledProcessedModelRequest): void {

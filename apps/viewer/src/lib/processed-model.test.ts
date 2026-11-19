@@ -86,14 +86,27 @@ describe('processedModelRequested', () => {
     assert.equal(processedModelRequested(), true, 'stays on after the viewer took the request');
   });
 
-  it('is on for a ?processed= link before the viewer files its request', () => {
-    resetProcessedModelRequestsForTests();
+  it('reads a ?processed= link once, at load: a valid one counts before its request is filed, a malformed one never', async () => {
     const before = location.href;
+    const fresh = async (search: string) => {
+      history.replaceState(null, '', search);
+      const module = await import(`./processed-model?link=${encodeURIComponent(search)}`) as typeof import('./processed-model');
+      history.replaceState(null, '', before);
+      return module.processedModelRequested(); // the URL has changed back by now
+    };
     try {
-      history.replaceState(null, '', `?processed=${'a'.repeat(64)}`);
-      assert.equal(processedModelRequested(), true);
+      assert.equal(await fresh(`?processed=${'A'.repeat(64)}`), true);
+      for (const search of ['?processed=', '?processed=abc', '?model=x.ifc']) assert.equal(await fresh(search), false, search);
     } finally {
       history.replaceState(null, '', before);
     }
+  });
+
+  it('trims the name of every request, and falls back to model.ifc for a blank one', () => {
+    resetProcessedModelRequestsForTests();
+    openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '  Haus A.ifc  ' });
+    assert.equal(takeProcessedModelRequest()?.name, 'Haus A.ifc');
+    openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '   ' });
+    assert.equal(takeProcessedModelRequest()?.name, 'model.ifc');
   });
 });

@@ -3,78 +3,58 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { registerHooks } from 'node:module';
+import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, Component, Suspense, type ReactNode } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+import { StaleDeploymentNotice } from '@/components/StaleDeploymentNotice';
+import { RhinoExportCommand } from '@/components/viewer/RhinoExportCommand';
+import { __resetStaleDeploymentForTests } from './stale-deployment.js';
 
-import { lazyChunk } from './lazy-chunk.js';
-import { __resetStaleDeploymentForTests, isStaleDeploymentReported } from './stale-deployment.js';
-
-// The exact rejection Gecko produced for #10684 on the self-hosted deployment.
-const GECKO_CHUNK_FAILURE =
-  'error loading dynamically imported module: https://viewer.example/assets/dpl_77Fn9eEaTurTjv77yUJRQjdHWgyX/RhinoExportDialog-D_4cLIIM.js';
-
-const roots: Array<{ root: Root; container: HTMLElement }> = [];
-
-/** Mount and let the lazy import settle, rejected or not. */
-async function mount(node: ReactNode): Promise<HTMLElement> {
+it('keeps the ribbon and reload action available after the Rhino dynamic import fails (#10684)', async () => {
+  // Represent the page the user gets after the one automatic reload.
+  sessionStorage.setItem('ifclite:chunk-skew-reload-ts', String(Date.now()));
+  let attempted = false;
+  const hooks = registerHooks({
+    resolve(specifier, context, nextResolve) {
+      if (specifier === './RhinoExportDialog' && context.parentURL?.endsWith('/RhinoExportCommand.tsx')) {
+        attempted = true;
+        throw new TypeError('error loading dynamically imported module: https://viewer.example/assets/RhinoExportDialog.js');
+      }
+      return nextResolve(specifier, context);
+    },
+  });
   const container = document.createElement('div');
-  document.body.appendChild(container);
-  // React reports an uncaught render error here instead of throwing it.
-  const root = createRoot(container, { onUncaughtError: () => {} });
-  roots.push({ root, container });
-  await act(async () => { root.render(node); });
-  await act(async () => {});
-  return container;
-}
+  document.body.append(container);
+  const uncaught: unknown[] = [];
+  const root = createRoot(container, { onUncaughtError: (error) => uncaught.push(error) });
+  try {
+    await act(async () => root.render(
+      <>
+        <button>Working ribbon action</button>
+        <RhinoExportCommand surface="ribbon" />
+        <ChunkErrorBoundary label="Layers panel">
+          <RhinoExportCommand surface="ribbon" />
+        </ChunkErrorBoundary>
+        <StaleDeploymentNotice />
+      </>,
+    ));
 
-class Boundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state = { error: null as Error | null };
-  static getDerivedStateFromError(error: Error) { return { error }; }
-  render() { return this.state.error ? <p>caught: {this.state.error.message}</p> : this.props.children; }
-}
-
-afterEach(async () => {
-  for (const { root, container } of roots.splice(0)) {
-    await act(async () => { root.unmount(); });
+    assert.ok(attempted, 'the production dynamic import was attempted');
+    assert.equal(uncaught.length, 0, 'the failed import must not unmount the viewer');
+    assert.match(container.textContent ?? '', /Working ribbon action/);
+    assert.match(container.textContent ?? '', /Layers panel could not be loaded/);
+    const notice = Array.from(container.querySelectorAll('[role="alert"]'))
+      .find((alert) => alert.textContent?.includes('A new version of the viewer is available'));
+    assert.ok(notice, 'the shared reload notice is visible');
+    assert.equal(notice?.querySelector('button')?.textContent, 'Reload');
+  } finally {
+    await act(async () => root.unmount());
     container.remove();
+    hooks.deregister();
+    sessionStorage.removeItem('ifclite:chunk-skew-reload-ts');
+    __resetStaleDeploymentForTests();
   }
-  __resetStaleDeploymentForTests();
-});
-
-describe('lazyChunk (#10684)', () => {
-  it('keeps the rest of the app mounted when a chunk fails to load with no boundary above it', async () => {
-    const Dialog = lazyChunk<() => ReactNode>(() => Promise.reject(new TypeError(GECKO_CHUNK_FAILURE)));
-    const container = await mount(
-      <div>
-        <span>ribbon</span>
-        <Suspense fallback={<button type="button">Rhino</button>}>
-          <Dialog />
-        </Suspense>
-      </div>,
-    );
-    assert.equal(container.textContent, 'ribbon', 'the app survives and the failed slot renders nothing');
-    assert.equal(isStaleDeploymentReported(), true, 'the reload notice is raised');
-  });
-
-  it('still rejects a module that loaded but threw, so a real bug reaches its boundary', async () => {
-    const Panel = lazyChunk<() => ReactNode>(() => Promise.reject(new Error('Cannot read properties of undefined')));
-    const container = await mount(
-      <Boundary>
-        <Suspense fallback={null}>
-          <Panel />
-        </Suspense>
-      </Boundary>,
-    );
-    assert.equal(container.textContent, 'caught: Cannot read properties of undefined');
-    assert.equal(isStaleDeploymentReported(), false, 'a crash is not reported as a stale deployment');
-  });
-
-  it('renders the component when the chunk loads', async () => {
-    const Panel = lazyChunk(() => Promise.resolve({ default: ({ name }: { name: string }) => <em>{name}</em> }));
-    const container = await mount(<Suspense fallback={null}><Panel name="loaded" /></Suspense>);
-    assert.equal(container.textContent, 'loaded');
-    assert.equal(isStaleDeploymentReported(), false);
-  });
 });

@@ -29,6 +29,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { reloadKeepingOpenModels } from '@/lib/reload-resume';
 import { isStaleDeploymentError } from '@/lib/stale-deployment';
+import { ChunkBoundaryContext } from '@/lib/lazy-chunk';
 
 /**
  * Which surface the fallback paints on.
@@ -134,7 +135,9 @@ export class ChunkErrorBoundary extends Component<
 
   render(): ReactNode {
     const { error } = this.state;
-    if (!error) return this.props.children;
+    if (!error) {
+      return <ChunkBoundaryContext.Provider value>{this.props.children}</ChunkBoundaryContext.Provider>;
+    }
     const fallback = (
       <ChunkErrorFallback
         label={this.props.label}

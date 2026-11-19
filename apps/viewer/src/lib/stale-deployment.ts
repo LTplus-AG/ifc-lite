@@ -20,7 +20,7 @@
  */
 
 import { isWasmAssetUnavailableError, isWorkerScriptSkewMessage } from '@ifc-lite/geometry';
-import { isChunkLoadError } from './chunk-version-skew.js';
+import { isChunkLoadError } from './chunk-load-error.js';
 
 /** True when `err` means an asset of this deployment is gone, not that the model or code is broken. */
 export function isStaleDeploymentError(err: unknown): boolean {

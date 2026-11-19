@@ -59,6 +59,7 @@ function makeDeps(opts: {
   };
   h.deps = {
     now: () => h.clock,
+    isReloadPending: () => false,
     reload: () => { h.reloads += 1; },
     // The production reader returns `true` when storage throws, so an
     // unrecordable attempt is never performed.
@@ -173,12 +174,31 @@ describe('handlePreloadError', () => {
     assert.equal(h.reloads, 1);
   });
 
+  it('leaves module evaluation errors to the caller without starting recovery (#10684)', () => {
+    const h = makeDeps();
+    const event = makeEvent(new Error('Cannot access module before initialization'));
+    assert.equal(handlePreloadError(event, h.deps), 'surfaced');
+    assert.equal(event.defaultPrevented, false);
+    assert.equal(h.reloads, 0);
+    assert.equal(h.refused, 0);
+  });
+
   it('never spends two reloads on one skew', () => {
     const h = makeDeps();
-    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'reloaded');
-    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
-    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'reloaded');
+    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
     assert.equal(h.reloads, 1);
+  });
+
+  it('shares the pending reload across concurrent failures (#10684)', () => {
+    const h = makeDeps();
+    h.deps.isReloadPending = () => h.pendingAt !== null;
+    const failure = makeEvent(new TypeError('Importing a module script failed.'));
+    assert.equal(handlePreloadError(failure, h.deps), 'reloaded');
+    assert.equal(handlePreloadError(failure, h.deps), 'reloaded');
+    assert.equal(h.reloads, 1);
+    assert.equal(h.refused, 0, 'the notice waits until recovery is refused in the new page');
   });
 
   it('does not loop on a chunk that stays missing across reloads', () => {
@@ -190,18 +210,18 @@ describe('handlePreloadError', () => {
     const h = makeDeps();
     for (let i = 0; i < 20; i++) {
       h.clock += 250; // a reload cycle, far inside the debounce window
-      handlePreloadError(makeEvent(new Error('boom')), h.deps);
+      handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps);
     }
     assert.equal(h.reloads, 1);
   });
 
   it('lets a genuinely later deploy recover once the window elapses', () => {
     const h = makeDeps();
-    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'reloaded');
+    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'reloaded');
     h.clock += DEBOUNCE_MS - 1;
-    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
     h.clock += 2;
-    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'reloaded');
+    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'reloaded');
     assert.equal(h.reloads, 2);
   });
 
@@ -223,14 +243,14 @@ describe('handlePreloadError', () => {
   it('refuses to reload when the attempt cannot be read', () => {
     // Unbounded retries on a permanently missing chunk would loop forever.
     const h = makeDeps({ unreadable: true });
-    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
     assert.equal(h.reloads, 0);
     assert.equal(h.pendingAt, null);
   });
 
   it('refuses to reload when the attempt cannot be persisted', () => {
     const h = makeDeps({ unwritable: true });
-    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
     assert.equal(h.reloads, 0);
     assert.equal(h.pendingAt, null);
   });
@@ -258,18 +278,18 @@ describe('handlePreloadError', () => {
 
     for (const opts of [{ unreadable: true }, { unwritable: true }]) {
       const h = makeDeps(opts);
-      handlePreloadError(makeEvent(new Error('boom')), h.deps);
+      handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps);
       assert.equal(h.refused, 1, JSON.stringify(opts));
     }
   });
 
   it('marks the reload pending only on the path that actually reloads', () => {
     const h = makeDeps({ now: 5_000 });
-    handlePreloadError(makeEvent(new Error('boom')), h.deps);
+    handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps);
     assert.equal(h.pendingAt, 5_000);
 
     const debounced = makeDeps({ now: 5_000, lastReloadAt: 4_900 });
-    handlePreloadError(makeEvent(new Error('boom')), debounced.deps);
+    handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), debounced.deps);
     assert.equal(debounced.pendingAt, null);
   });
 });
@@ -343,7 +363,7 @@ it('offline panel imports surface without navigation or spending reload recovery
     assert.equal(h.reloads, 0);
     assert.equal(h.stored, null, 'offline failures do not consume the reload budget');
     assert.equal(h.pendingAt, null, 'offline errors are not suppressed as reload noise');
-    assert.equal(h.refused, 0, 'a reload cannot help offline, so none is asked for');
+    assert.equal(h.refused, 1, 'the user can reload after reconnecting');
     network.onLine = true;
     assert.equal(handlePreloadError(event, h.deps), 'reloaded', 'online deploy-skew recovery still works');
     assert.equal(h.reloads, 1);

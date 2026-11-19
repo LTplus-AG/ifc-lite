@@ -3,41 +3,39 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `React.lazy` for the viewer, with a chunk that will not load turned into an
- * empty slot instead of a dead app (#10684).
+ * `React.lazy` for the viewer (#10684). A rejected `lazy()` import re-throws
+ * from render, and most lazy roots have no error boundary, so one chunk that
+ * would not load unmounted the whole app. Here a chunk-load failure renders
+ * nothing, unless a `ChunkErrorBoundary` is above it, which then shows its
+ * labelled card as before. Any other rejection still rejects.
  *
- * A rejected `lazy()` import is re-thrown from the render phase. Under a
- * `ChunkErrorBoundary` that costs one panel; with no boundary above it, React
- * unmounts the whole root and the user gets a blank page. Most `lazy()` roots
- * have no boundary (export dialogs in the ribbon, overlays, notices), and the
- * one automatic reload in ./chunk-version-skew.ts cannot help once it is spent
- * or when the host keeps failing the asset.
- *
- * So a chunk-load failure resolves to a component that renders nothing, and
- * raises the app-wide "reload to continue" notice (./stale-deployment.ts). Any
- * other rejection (a module that threw while evaluating) still rejects, so a
- * real bug keeps reaching its boundary and error tracking.
+ * Vite usually sees the failure first. The same recovery handles loaders
+ * whose rejection arrives without a preload event.
  */
 
-import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
-import { surfaceStaleDeployment } from './stale-deployment.js';
+import { createContext, lazy, useContext, type ComponentType, type LazyExoticComponent } from 'react';
+import { isChunkLoadError, recoverChunkLoad } from './chunk-version-skew.js';
 
-/** What a lazy slot renders when its chunk is gone. The notice says why. */
-function ChunkUnavailable(): null {
-  return null;
+/** True under a `ChunkErrorBoundary`, which has a fallback for a failed chunk. */
+export const ChunkBoundaryContext = createContext(false);
+
+function unavailable(err: unknown): () => null {
+  return function ChunkUnavailable() {
+    if (useContext(ChunkBoundaryContext)) throw err;
+    return null;
+  };
 }
 
-// `ComponentType<any>` is React.lazy's own constraint; a narrower one would
-// reject components whose props are not assignable to it.
+// Same constraint as React.lazy.
 export function lazyChunk<T extends ComponentType<any>>(
   load: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {
   return lazy(() =>
     load().catch((err: unknown) => {
-      if (!surfaceStaleDeployment(err)) throw err;
+      if (!isChunkLoadError(err)) throw err;
+      recoverChunkLoad(err);
       console.warn('[lazy-chunk] chunk unavailable; rendering nothing until reload', err);
-      // Renders null for any props, so it stands in for every T at runtime.
-      return { default: ChunkUnavailable as unknown as T };
+      return { default: unavailable(err) as unknown as T };
     }),
   );
 }

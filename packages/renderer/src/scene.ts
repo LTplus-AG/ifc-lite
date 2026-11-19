@@ -48,7 +48,7 @@ import { mergeSameColorPieces } from './scene-mesh-pieces.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
-import { writeInstanceRecord } from './instance-record-write.js';
+import { writeInstanceLane } from './instance-lane-write.js';
 import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
@@ -3392,8 +3392,7 @@ export class Scene {
       const selectedBit = itemRestricted
         ? (loc.itemId === this.instancedSelectedItemId ? INSTANCE_FLAG_SELECTED : 0)
         : (eidSelected ? INSTANCE_FLAG_SELECTED : 0);
-      writeInstanceRecord(device, this.instancedTemplates[loc.templateIndex]?.instanceBuffer, this.instancedTemplateCpu[loc.templateIndex]?.instanceData,
-        loc.byteOffset + INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit | (loc.finishBits ?? 0)) >>> 0]));
+      this.writeInstanceSlot(device, loc, INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit | (loc.finishBits ?? 0)) >>> 0]));
     }
   }
 
@@ -3411,7 +3410,7 @@ export class Scene {
   private restoreInstanceColor(device: GPUDevice, eid: number): void {
     const locs = this.instancedEntityMap.get(eid);
     if (!locs) return;
-    for (const loc of locs) this.writeInstanceSlot(device, loc, INSTANCE_COLOR_OFFSET, new Float32Array(loc.originalColor));
+    for (const loc of locs) this.writeInstanceSlot(device, loc, INSTANCE_COLOR_OFFSET, originalColorWithAlpha(loc.originalColor, loc.originalColor[3]));
   }
 
   private writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void {
@@ -3420,7 +3419,7 @@ export class Scene {
 
   /** GPU and CPU record together, so a whole-buffer re-upload keeps the state (#10767). */
   private writeInstanceSlot(device: GPUDevice, loc: InstancedOccurrence, lane: number, data: Uint32Array | Float32Array): void {
-    writeInstanceRecord(device, this.instancedTemplates[loc.templateIndex]?.instanceBuffer, this.instancedTemplateCpu[loc.templateIndex]?.instanceData, loc.byteOffset + lane, data);
+    writeInstanceLane(device, this.instancedTemplates[loc.templateIndex]?.instanceBuffer, this.instancedTemplateCpu[loc.templateIndex]?.instanceData, loc.byteOffset + lane, data);
   }
 
   /**

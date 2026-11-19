@@ -14,7 +14,7 @@
  * colour and flag lanes are read only at upload: materialization and restore
  * use the occurrence's captured `originalColor`.
  */
-export function writeInstanceRecord(
+export function writeInstanceLane(
   device: GPUDevice,
   gpu: GPUBuffer | undefined,
   cpu: ArrayBuffer | undefined,
@@ -23,6 +23,6 @@ export function writeInstanceRecord(
 ): void {
   if (gpu) device.queue.writeBuffer(gpu, offset, data);
   if (cpu && offset + data.byteLength <= cpu.byteLength) {
-    new Uint8Array(cpu, offset, data.byteLength).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    (data instanceof Uint32Array ? new Uint32Array(cpu, offset, data.length) : new Float32Array(cpu, offset, data.length)).set(data); // lanes are 4-aligned
   }
 }

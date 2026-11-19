@@ -26,10 +26,11 @@ export function useStableRowHandlers(callbacks: HierarchyRowCallbacks): Hierarch
   // Published at commit, so a discarded render never leaves rows calling its callbacks.
   useLayoutEffect(() => { latest.current = callbacks; });
   // Each handler read returns a forwarder to the latest callback of that name. The
-  // target holds only the names, so the first render's closures are not kept.
-  return useState(() => new Proxy(Object.fromEntries(Object.keys(callbacks).map((key) => [key, key])) as HierarchyRowCallbacks, {
+  // target holds only the names, so the first render's closures are not kept; the
+  // proxy presents exactly the callbacks interface, which the cast states.
+  return useState(() => new Proxy(Object.fromEntries(Object.keys(callbacks).map((key) => [key, key])), {
     get: (names, key) => key in names ? (...args: unknown[]) => Reflect.apply(Reflect.get(latest.current, key), undefined, args) : undefined,
-  }))[0];
+  }) as unknown as HierarchyRowCallbacks)[0];
 }
 
 type RowValues = Omit<HierarchyNodeProps, 'virtualRow' | 'onNodeClick' | 'rowRef' | 'onRowFocus' | keyof NodeHandlers>;

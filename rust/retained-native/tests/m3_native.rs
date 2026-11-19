@@ -47,7 +47,11 @@ fn refusal(outcomes: &[ProductOutcome], id: u32) -> (&str, Option<RefusalOrigin>
     }).unwrap_or_else(|| panic!("missing refused #{id}: {outcomes:?}"))
 }
 fn measure(shape: &ShapeOnlyProduct) -> metrics::Metrics {
-    let mut result = metrics::Metrics::default();
+    // Material bands are open and close only as an assembly: measuring each
+    // band from its own first vertex depends on vertex order (m4_native, CLI).
+    let mut result = if shape.parts.iter().any(|part| part.layer.is_some()) {
+        metrics::Metrics::assembly()
+    } else { metrics::Metrics::default() };
     for part in &shape.parts {
         let points: Vec<_> = part.positions.chunks_exact(3).map(|p|
             metrics::transform(&part.world_from_object, [p[0], p[1], p[2]])).collect();

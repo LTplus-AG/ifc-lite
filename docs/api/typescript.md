@@ -1059,6 +1059,8 @@ class Drawing2DGenerator {
   generate(meshes: MeshData[], config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
   // Same drawing from a replayable source, one batch at a time (see DrawingMeshSource)
   generateFromSource(source: DrawingMeshSource, config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  // Push chunks one at a time: addGeometry → endGeometry → addOcclusion → finish | cancel
+  beginDrawing(config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): DrawingSession;
   dispose(): void;
 }
 

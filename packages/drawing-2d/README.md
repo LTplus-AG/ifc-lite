@@ -93,6 +93,17 @@ const source: DrawingMeshSource = {
 const drawing = await generator.generateFromSource(source, config, { signal });
 ```
 
+To push chunks instead (each lease released before the next), use a session:
+
+```typescript
+const session = generator.beginDrawing(config, options);
+for (const chunk of chunks) { const l = await lease(chunk); await session.addGeometry(l.meshes); l.release(); }
+const needs = session.endGeometry();
+// needs.depthRaster: feed every chunk again; otherwise only needs.openSurfaceEntities' meshes.
+for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) { /* session.addOcclusion(...) */ }
+const drawing = session.finish(); // or session.cancel()
+```
+
 ## Graphic overrides
 
 Apply named graphic presets (architectural, fire-safety, structural, MEP, monochrome) via the override engine:

@@ -1,13 +1,13 @@
-diff --git a/packages/drawing-2d/src/drawing-generator.ts b/packages/drawing-2d/src/drawing-generator.ts
-index 620b87e602..c4f0ad4db5 100644
---- a/packages/drawing-2d/src/drawing-generator.ts
-+++ b/packages/drawing-2d/src/drawing-generator.ts
-@@ -220,7 +220,7 @@ export class Drawing2DGenerator {
-     if (classify || freeEdges.needed) {
-       for await (const batch of source.pass('occlusion')) {
-         signal?.throwIfAborted();
--        void freeEdges;
-+        freeEdges.add(batch);
-         if (!classify) continue;
-         const occluders = config.clipProjectionBands
-           ? batch.map((mesh) => clipMeshToProjectionWindow(mesh, config.plane, 0, occluderDepth))
+diff --git a/packages/drawing-2d/src/drawing-session.ts b/packages/drawing-2d/src/drawing-session.ts
+index 6203917639..c49cc615b2 100644
+--- a/packages/drawing-2d/src/drawing-session.ts
++++ b/packages/drawing-2d/src/drawing-session.ts
+@@ -147,7 +147,7 @@ export class DrawingSession {
+   addOcclusion(meshes: readonly MeshData[]): void {
+     this.enter('occlusion');
+     const { config, occluderDepth } = this;
+-    void meshes;
++    this.freeEdges!.add(meshes);
+     if (!this.classify) return;
+     const occluders = config.clipProjectionBands
+       ? meshes.map((mesh) => clipMeshToProjectionWindow(mesh, config.plane, 0, occluderDepth))

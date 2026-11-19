@@ -245,6 +245,8 @@ export { GPUSectionCutter, isGPUComputeAvailable } from './gpu-section-cutter.js
 export { Drawing2DGenerator, createSectionConfig, generateFloorPlan, generateSection } from './drawing-generator.js';
 export type { GeneratorOptions, GeneratorProgress } from './drawing-generator.js';
 export type { DrawingMeshSource, DrawingPass } from './drawing-mesh-source.js';
+export { DrawingSession } from './drawing-session.js';
+export type { DrawingOcclusionNeeds, DrawingSessionOptions } from './drawing-session.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MATH UTILITIES

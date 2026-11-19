@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MeshData } from '@ifc-lite/geometry';
 import { Drawing2DGenerator } from './drawing-generator.js';
+import { makeEntityKey } from './types.js';
 import type { DrawingMeshSource, DrawingPass } from './drawing-mesh-source.js';
 import { drawingDigest, STREAM_OPTIONS, streamConfigs, streamScene, box, sheet } from './drawing-stream.fixtures.test.js';
 import golden from './drawing-stream.golden.json' with { type: 'json' };
@@ -145,5 +146,63 @@ describe('Drawing2DGenerator.generateFromSource', () => {
       .rejects.toThrow('superseded');
     expect(stats.batches).toBe(3);
     expect(stats.live).toBe(0);
+  });
+});
+
+describe('Drawing2DGenerator.beginDrawing (push session)', () => {
+  for (const { name, config } of streamConfigs()) {
+    it(`${name}: one batch at a time, released between adds, draws the golden drawing`, async () => {
+      const session = new Drawing2DGenerator().beginDrawing(config, STREAM_OPTIONS);
+      for (const mesh of streamScene()) await session.addGeometry([mesh]);
+      const needs = session.endGeometry();
+      if (needs.depthRaster) for (const mesh of streamScene()) session.addOcclusion([mesh]);
+      else for (const mesh of streamScene()) {
+        // Only the open-surface candidates' meshes, as a bounded caller would lease them.
+        if (needs.openSurfaceEntities.has(makeEntityKey(mesh.modelIndex ?? 0, mesh.expressId))) session.addOcclusion([mesh]);
+      }
+      expect(drawingDigest(session.finish())).toBe(goldenDigests[name]);
+    });
+  }
+
+  it('names the open-surface entities a cut-only caller must re-feed, and nothing else', async () => {
+    const { config } = streamConfigs()[0];
+    const cutOnly = { ...STREAM_OPTIONS, includeProjection: false };
+    const session = new Drawing2DGenerator().beginDrawing(config, cutOnly);
+    await session.addGeometry(streamScene());
+    const needs = session.endGeometry();
+    expect(needs.depthRaster).toBe(false);
+    expect([...needs.openSurfaceEntities]).toEqual([makeEntityKey(0, 5)]);
+    session.addOcclusion(streamScene().filter((mesh) => mesh.expressId === 5));
+    const pushed = session.finish();
+    const array = await new Drawing2DGenerator().generate(streamScene(), config, cutOnly);
+    expect(drawingDigest(pushed)).toBe(drawingDigest(array));
+  });
+
+  it('keeps no mesh or geometry array of an added batch', async () => {
+    const { config } = streamConfigs()[1];
+    const handed: object[] = [];
+    const session = new Drawing2DGenerator().beginDrawing(config, STREAM_OPTIONS);
+    for (const mesh of streamScene()) { handed.push(mesh, mesh.positions, mesh.indices); await session.addGeometry([mesh]); }
+    session.endGeometry();
+    for (const mesh of streamScene()) { handed.push(mesh, mesh.positions, mesh.indices); session.addOcclusion([mesh]); }
+    const kept = reachable(session);
+    expect(handed.filter((object) => kept.has(object))).toEqual([]);
+    const drawn = reachable(session.finish());
+    expect(handed.filter((object) => drawn.has(object))).toEqual([]);
+  });
+
+  it('enforces its phases, and a cancelled or aborted session refuses further batches', async () => {
+    const { config } = streamConfigs()[0];
+    const session = new Drawing2DGenerator().beginDrawing(config, STREAM_OPTIONS);
+    expect(() => session.addOcclusion(streamScene())).toThrow(/geometry phase/);
+    await session.addGeometry(streamScene());
+    session.endGeometry();
+    await expect(session.addGeometry(streamScene())).rejects.toThrow(/occlusion phase/);
+    session.cancel();
+    expect(() => session.finish()).toThrow(/cancelled/);
+    const controller = new AbortController();
+    const aborted = new Drawing2DGenerator().beginDrawing(config, { ...STREAM_OPTIONS, signal: controller.signal });
+    controller.abort(new Error('superseded'));
+    await expect(aborted.addGeometry(streamScene())).rejects.toThrow('superseded');
   });
 });

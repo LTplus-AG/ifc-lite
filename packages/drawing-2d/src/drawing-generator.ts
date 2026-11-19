@@ -19,30 +19,16 @@ import type {
   SectionAxis,
   Drawing2D,
   DrawingLine,
-  CutSegment,
-  Bounds2D,
-  LineCategory,
   ProfileEntry,
   MeshOutline2D,
 } from './types.js';
 import { DEFAULT_SECTION_CONFIG } from './types.js';
-import { SectionCutter } from './section-cutter.js';
-import { PolygonBuilder } from './polygon-builder.js';
-import { OpenSurfaceAccumulator, openSurfaceCandidates } from './open-surface.js';
-import { EdgeExtractor } from './edge-extractor.js';
-import { HiddenLineClassifier } from './hidden-line.js';
-import { mergeDrawingLines } from './line-merger.js';
 import { HatchGenerator } from './hatch-generator.js';
 import { SVGExporter } from './svg-exporter.js';
 import type { SVGExportOptions } from './svg-exporter.js';
 import { GPUSectionCutter } from './gpu-section-cutter.js';
-import { clipMeshToProjectionWindow } from './projection-clip.js';
-import { ProjectionCollector } from './projection-collector.js';
 import { meshArraySource, type DrawingMeshSource } from './drawing-mesh-source.js';
-import {
-  boundsEmpty,
-  boundsExtendLine,
-} from './math.js';
+import { DrawingSession } from './drawing-session.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -110,10 +96,6 @@ export interface GeneratorProgress {
 
 export class Drawing2DGenerator {
   private gpuCutter: GPUSectionCutter | null = null;
-  private cpuCutter: SectionCutter | null = null;
-  private polygonBuilder = new PolygonBuilder();
-  private edgeExtractor = new EdgeExtractor(30); // 30° crease angle
-  private hiddenLineClassifier = new HiddenLineClassifier({ resolution: 1024 });
   private hatchGenerator = new HatchGenerator();
   private svgExporter = new SVGExporter();
 
@@ -157,161 +139,30 @@ export class Drawing2DGenerator {
     options: Partial<GeneratorOptions> = {},
     profiles?: ProfileEntry[],
   ): Promise<Drawing2D> {
+    const session = this.beginDrawing(config, options, profiles);
+    try {
+      for await (const batch of source.pass('geometry')) await session.addGeometry(batch);
+      const needs = session.endGeometry();
+      if (needs.depthRaster || needs.openSurfaceEntities.size > 0) {
+        for await (const batch of source.pass('occlusion')) session.addOcclusion(batch);
+      }
+      return session.finish();
+    } catch (error) {
+      session.cancel();
+      throw error;
+    }
+  }
+
+  /**
+   * Start one drawing fed batch by batch (see `DrawingSession`): for callers
+   * that lease geometry chunk by chunk. `generateFromSource` drives the same.
+   */
+  beginDrawing(config: SectionConfig, options: Partial<GeneratorOptions> = {}, profiles?: readonly ProfileEntry[]): DrawingSession {
     const opts = { ...DEFAULT_OPTIONS, ...options };
-    const startTime = performance.now();
-    const signal = opts.signal;
-    signal?.throwIfAborted();
-
-    const report = (stage: string, progress: number) => {
-      opts.onProgress?.(stage, progress);
-    };
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // PASS 1: section cutting and construction projection, batch by batch.
-    // ─────────────────────────────────────────────────────────────────────────
-    report('cutting', 0);
-
     // GPU path. Falls back to CPU when a custom (face-picked) plane is active
     // because GPUSectionCutter still assumes cardinal axes.
     const gpuCutter = opts.useGPU && this.gpuDevice && !config.plane.customPlane ? this.gpuCutter : null;
-    // CPU path. Always rebuild the cutter so a switch from cardinal to
-    // custom-plane (or between two custom planes) takes effect immediately.
-    const cpuCutter = gpuCutter ? null : new SectionCutter(config.plane);
-    if (cpuCutter) this.cpuCutter = cpuCutter;
-    const projection = opts.includeProjection
-      ? new ProjectionCollector(config, opts, this.edgeExtractor, profiles) : null;
-    const segmentBatches: CutSegment[][] = [];
-    let totalTriangles = 0;
-
-    for await (const batch of source.pass('geometry')) {
-      signal?.throwIfAborted();
-      if (gpuCutter) segmentBatches.push(await gpuCutter.cutMeshes([...batch], config.plane));
-      else for (const mesh of batch) segmentBatches.push(cpuCutter!.cutSingleMesh(mesh).segments);
-      for (const mesh of batch) totalTriangles += mesh.indices.length / 3;
-      projection?.add(batch);
-    }
-    signal?.throwIfAborted();
-    const cutSegments = segmentBatches.flat();
-    report('cutting', 1);
-
-    if (projection) report('edges', 0);
-    const projectionLines = projection?.finish() ?? [];
-    if (projection) report('edges', 1);
-
-    // Caller-supplied rim lines (issue #2042) are classifiable like projection
-    // lines despite their 'cut' category — see `GeneratorOptions.extraLines`.
-    const classifiable = [...(opts.extraLines ?? []), ...projectionLines];
-    const classify = (opts.includeHiddenLines || config.clipProjectionBands) && classifiable.length > 0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // PASS 2 (only when needed): occluder depth raster, and free edges of the
-    // entities whose cut left open chains (#8664).
-    // ─────────────────────────────────────────────────────────────────────────
-    const freeEdges = new OpenSurfaceAccumulator(openSurfaceCandidates(cutSegments));
-    const occluderDepth = config.clipProjectionBands
-      ? (config.projectionBelowDepth ?? config.projectionDepth)
-      : Math.max(config.projectionDepth, config.projectionBelowDepth ?? config.projectionDepth,
-        config.projectionAboveDepth ?? config.projectionDepth);
-    if (classify) {
-      report('hidden', 0);
-      // The raster spans every line the drawing will classify or keep.
-      this.hiddenLineClassifier.beginDepthBuffer(this.computeBounds(classifiable, cutSegments));
-    }
-    if (classify || freeEdges.needed) {
-      for await (const batch of source.pass('occlusion')) {
-        signal?.throwIfAborted();
-        freeEdges.add(batch);
-        if (!classify) continue;
-        const occluders = config.clipProjectionBands
-          ? batch.map((mesh) => clipMeshToProjectionWindow(mesh, config.plane, 0, occluderDepth))
-            .filter((mesh): mesh is MeshData => mesh !== null)
-          : batch;
-        this.hiddenLineClassifier.addOccluders(occluders, config.plane, occluderDepth);
-      }
-      signal?.throwIfAborted();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Polygon reconstruction
-    // ─────────────────────────────────────────────────────────────────────────
-    report('polygons', 0);
-    const openSurfaces = freeEdges.index(), openSurfaceSegments = new Set<CutSegment>();
-    const cutPolygons = this.polygonBuilder.buildPolygons(cutSegments, openSurfaces, openSurfaceSegments);
-    // Opaque base cross-section per multi-material entity, for the 3D overlay to
-    // draw behind the per-layer fills (never see-through). Kept out of
-    // `cutPolygons` so the flat 2D drawing / export / measure paths are untouched.
-    const layerBaseCutPolygons = this.polygonBuilder.buildBasePolygons(cutSegments, openSurfaces);
-    report('polygons', 1);
-
-    const cutLines: DrawingLine[] = cutSegments.map((seg) => ({
-      line: { start: seg.p0_2d, end: seg.p1_2d },
-      category: 'cut' as LineCategory,
-      ...(openSurfaceSegments.has(seg) ? { openSurfaceCut: true as const } : {}),
-      visibility: 'visible' as const,
-      entityId: seg.entityId,
-      ifcType: seg.ifcType,
-      modelIndex: seg.modelIndex,
-      depth: 0,
-    }));
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Hidden line removal
-    // ─────────────────────────────────────────────────────────────────────────
-    let allLines = [...cutLines, ...classifiable];
-    if (classify) {
-      // Occlusion only DOWNGRADES visible → hidden; it can never reveal an
-      // already-dashed OVERHEAD line. So classify the visible (below-cut)
-      // projection lines and pass overhead lines through unchanged — otherwise
-      // an unoccluded overhead beam would be re-marked 'visible' (solid).
-      //
-      // The split is by SOURCE (`classifiable` vs the cutter's own
-      // `cutLines`), not by category: `extraLines` carry `category: 'cut'`
-      // yet must be classified.
-      const toClassify = classifiable.filter((l) => l.visibility === 'visible');
-      const passthrough = classifiable.filter((l) => l.visibility !== 'visible');
-      const classified = this.hiddenLineClassifier.applyVisibility(toClassify);
-      // SDK hidden-output filtering applies to occlusion results. Existing
-      // overhead outlines keep their dashed convention even with HLR off.
-      const classifiedLines = config.clipProjectionBands && !opts.includeHiddenLines
-        ? classified.filter(line => line.visibility !== 'hidden') : classified;
-      allLines = [...cutLines, ...classifiedLines, ...passthrough];
-      report('hidden', 1);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Line merging
-    // ─────────────────────────────────────────────────────────────────────────
-    if (opts.mergeLines) {
-      report('merging', 0);
-      allLines = mergeDrawingLines(allLines);
-      report('merging', 1);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // FINALIZE
-    // ─────────────────────────────────────────────────────────────────────────
-    const bounds = this.computeBounds(allLines);
-    const processingTimeMs = performance.now() - startTime;
-
-    report('complete', 1);
-
-    return {
-      config,
-      lines: allLines,
-      cutPolygons,
-      layerBaseCutPolygons,
-      projectionPolygons: [], // TODO: implement projection polygon extraction
-      bounds,
-      stats: {
-        cutLineCount: allLines.filter((l) => l.category === 'cut').length,
-        projectionLineCount: allLines.filter((l) => l.category === 'projection').length,
-        hiddenLineCount: allLines.filter((l) => l.visibility === 'hidden').length,
-        silhouetteLineCount: allLines.filter((l) => l.category === 'silhouette').length,
-        polygonCount: cutPolygons.length,
-        totalTriangles,
-        processingTimeMs,
-      },
-    };
+    return new DrawingSession(config, opts, profiles, gpuCutter);
   }
 
   /**
@@ -346,19 +197,6 @@ export class Drawing2DGenerator {
     }
 
     return hatchLines;
-  }
-
-  /**
-   * Compute bounds from lines
-   */
-  private computeBounds(lines: readonly DrawingLine[], segments: readonly CutSegment[] = []): Bounds2D {
-    let bounds = boundsEmpty();
-    for (const seg of segments) bounds = boundsExtendLine(bounds, { start: seg.p0_2d, end: seg.p1_2d });
-    for (const line of lines) {
-      bounds = boundsExtendLine(bounds, line.line);
-    }
-
-    return bounds;
   }
 
   /**

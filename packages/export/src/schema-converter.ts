@@ -165,8 +165,8 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
-  const mepTarget = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
-  if (mepTarget) return mepTarget;
+  const target = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
+  if (target) return target;
 
   const map = getConversionMap(fromSchema, toSchema);
   return map?.get(upper) ?? upper;

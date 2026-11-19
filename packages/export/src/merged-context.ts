@@ -189,17 +189,17 @@ export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, leng
  */
 export interface ContextOperation { operation: number; crs: number | null; record: string }
 
-/**
- * A record's attributes by value: numbers parsed, `$` as null, a reference as its target's record, `depth` levels
- * deep. `skip` leaves attributes out (an operation's SourceCRS and TargetCRS, which differ by id).
- */
+/** A value equal to nothing else, for a record that cannot be compared (unreadable, dangling, past the depth cut). */
+let incomparable = 0;
+/** A record by value: numbers parsed, `$` as null, a reference as its target, `depth` deep; `skip` leaves slots out. */
 function recordValue(dataStore: IfcDataStore, id: number, depth: number, skip: readonly number[] = []): unknown[] {
   // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this is the merged input's current record
-  const values: unknown[] = [dataStore.entityIndex.byId.get(id)?.type ?? null];
+  const type = dataStore.entityIndex.byId.get(id)?.type, values: unknown[] = [type];
+  if (!type || depth < 0 || getStepAttr(dataStore, id, 0) === null) return [`incomparable ${++incomparable}`];
   for (let index = 0, raw = getStepAttr(dataStore, id, 0); raw !== null; raw = getStepAttr(dataStore, id, ++index)) {
     if (skip.includes(index)) continue;
     const ref = refId(raw), number = Number(raw);
-    values.push(ref !== null && depth > 0 ? recordValue(dataStore, ref, depth - 1) : raw === '$' ? null : Number.isNaN(number) ? raw : number);
+    values.push(ref !== null ? recordValue(dataStore, ref, depth - 1) : raw === '$' ? null : Number.isFinite(number) ? number : raw);
   }
   return values;
 }

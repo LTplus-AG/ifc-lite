@@ -168,6 +168,9 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expectApart(merged, 2);
     expect(merged.crs).toBe(2);
     expect((await merge([described('LV95'), described('LV95')])).crs).toBe(1);
+    // A record that cannot be read (here a MapUnit that points nowhere) is no evidence the two agree: neither is dropped.
+    const dangling: Georef = { raw: `#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#99);\n#21=IFCMAPCONVERSION(#14,#20,${X});` };
+    expect((await merge([dangling, dangling])).crs).toBe(2);
   });
 
   it('keeps one WKT on the shared CRS, and leaves an operation into another context alone (#10873)', async () => {

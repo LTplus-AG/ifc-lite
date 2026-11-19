@@ -207,7 +207,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else {
     reportUnreplayable('undo', mutation.type, mutation.entityId);
   }
-  mirrorHistoryStep(get, set, view, modelId, mutation, 'undo');
+  mirrorHistoryStep(get, set, modelId, mutation, 'undo');
 }
 
 /** Re-apply `mutation` to `view` (one redo step, stacks untouched). */
@@ -308,5 +308,5 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else {
     reportUnreplayable('redo', mutation.type, mutation.entityId);
   }
-  mirrorHistoryStep(get, set, view, modelId, mutation, 'redo');
+  mirrorHistoryStep(get, set, modelId, mutation, 'redo');
 }

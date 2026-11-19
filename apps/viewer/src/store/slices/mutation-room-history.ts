@@ -16,7 +16,6 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
-import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 
 interface ValueTypes { type: PropertyValueType; dataType?: string }
 type Session = NonNullable<ViewerState['collabSession']>;
@@ -54,34 +53,14 @@ export function rememberPublishedEdit(mutation: Mutation, session: Session, type
   published.set(mutation, { session: tokenOf(session), ...types });
 }
 
-/**
- * The entity's own value of `attrName` (a created entity's payload, else the source record), which undoing an edit
- * with no recorded prior value restores. Read in the model's own schema, as the forward mirror encodes it.
- */
-function ownAttributeValue(state: ViewerState, view: MutablePropertyView, modelId: string, entityId: number, attrName: string): unknown {
-  const store = state.models.get(modelId)?.ifcDataStore ?? (state.models.size === 0 ? state.ifcDataStore : null);
-  const entity = view.getNewEntity(entityId) ?? store?.getEntity?.(entityId);
-  if (!store || !entity) return undefined;
-  const index = attributeNamesForStore(store, entity.type).indexOf(attrName);
-  if (index < 0 || referenceAttributeSlotsForStore(store, entity.type)[index]) return undefined;
-  // Only a plain value: the forward mirror only ever sent user-typed text, never a reference or a list.
-  const value = entity.attributes[index] ?? null;
-  return value === null || ['string', 'number', 'boolean'].includes(typeof value) ? value : undefined;
-}
-
 /** Send what an undo or redo step left, if it left anything to send. */
-function publishStep(state: ViewerState, view: MutablePropertyView, modelId: string, mutation: Mutation, edit: PublishedEdit, direction: 'undo' | 'redo'): void {
+function publishStep(state: ViewerState, modelId: string, mutation: Mutation, edit: PublishedEdit, direction: 'undo' | 'redo'): void {
   const { entityId, psetName, propName, attributeName } = mutation;
   if (mutation.type === 'UPDATE_ATTRIBUTE') {
-    if (!attributeName) return;
-    const value = direction === 'redo' ? mutation.newValue
-      : mutation.oldValue ?? ownAttributeValue(state, view, modelId, entityId, attributeName);
-    // The room has the edited value; leaving it there unannounced would hide the divergence.
-    if (value === undefined) {
-      if (direction === 'undo') throw new Error(`the original ${attributeName} could not be read to restore it`);
-      return; // A redo with no new value applied nothing locally either.
-    }
-    state.mirrorAttributeEdit(modelId, entityId, attributeName, value === null ? null : String(value));
+    // An undo restores a prior value only when the edit recorded one. Without it the original is not known here (a
+    // created entity's payload, a select, a reference slot), so the step stays local: see #10695 follow-ups.
+    const value = direction === 'redo' ? mutation.newValue : mutation.oldValue;
+    if (attributeName && value !== undefined && value !== null) state.mirrorAttributeEdit(modelId, entityId, attributeName, String(value));
     return;
   }
   if (!psetName || !propName) return;
@@ -100,11 +79,11 @@ function publishStep(state: ViewerState, view: MutablePropertyView, modelId: str
  * Gated like the forward edit on the collab role. The local step has already happened, so a publication failure
  * (a value the room's type rejects) becomes a room notice, never an error thrown into the history replay.
  */
-export function mirrorHistoryStep(get: () => ViewerState, set: (patch: Partial<ViewerState>) => void, view: MutablePropertyView,
+export function mirrorHistoryStep(get: () => ViewerState, set: (patch: Partial<ViewerState>) => void,
   modelId: string, mutation: Mutation, direction: 'undo' | 'redo'): void {
   const edit = published.get(mutation), state = get();
   if (!edit || !state.collabSession || edit.session !== tokenOf(state.collabSession) || !state.canCollabEdit()) return;
-  try { publishStep(state, view, modelId, mutation, edit, direction); }
+  try { publishStep(state, modelId, mutation, edit, direction); }
   catch (error) {
     console.error(`[collab] ${direction} of #${mutation.entityId} was not published to the room`, error);
     set({ collabGeometryNotice: `Your ${direction} was applied locally, but could not be shared with the room.` });

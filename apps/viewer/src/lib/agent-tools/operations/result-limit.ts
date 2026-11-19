@@ -10,9 +10,14 @@ const PAGE_RESERVE = 16 * 1024;
 
 const utf8 = new TextEncoder();
 
-/** UTF-8 bytes of `value`'s JSON, as the executor measures a result. */
+/** UTF-8 bytes of `text`. */
+export function utf8Bytes(text: string): number {
+  return utf8.encode(text).length;
+}
+
+/** UTF-8 bytes of `value`'s JSON: what the executor measures against {@link MAX_RESULT_BYTES}. */
 export function resultBytes(value: unknown): number {
-  return utf8.encode(JSON.stringify(value) ?? 'null').length;
+  return utf8Bytes(JSON.stringify(value) ?? 'null');
 }
 
 /**

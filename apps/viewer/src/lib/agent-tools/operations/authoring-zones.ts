@@ -18,13 +18,25 @@ const meta = (id: string, description: string, effect: 'read' | 'configuration' 
   policy: effect === 'artifact' ? { artifact: 'native-export' as const } : undefined, outputSchema: effect === 'artifact' ? artifactOutput : jsonOutput });
 function set(id: string): ZoneSet { const found = useViewerStore.getState().zoneSets.find(row => row.id === id); if (!found) throw new Error('Unknown native zone set.'); return found; }
 function revision(expected: string) { assertRevision(useViewerStore.getState().zoneSets, expected, 'Zone configuration changed. Inspect again.'); }
-/** Assignments are one row per element, so they are paged (#10794). */
-function assignmentPage(offset: number | null | undefined, rest: Record<string, unknown>) {
-  const rows = [...useViewerStore.getState().zoneAssignments];
-  // Measured as out() writes it: Maps become entry arrays.
-  const measured = JSON.parse(out(rest).native_json) as unknown;
-  const { items, ...page } = boundedPage(rows, offset, measured);
-  return out({ ...rest, assignments: items, assignments_page: { ...page, revision: stateRevision(rows) } });
+/**
+ * zones.read pages one sequence, sets then apportionment entries (one per set) then assignments, under one cursor,
+ * beside a fixed-size header, so configuration_revision always fits (#10794). One entry too large for a page by itself
+ * is refused with the offset to continue from. The sequence and its revision are rebuilt only when the store replaces
+ * one of the three, not once per page.
+ */
+let sequence: { from: readonly unknown[]; items: unknown[]; a: number; b: number; revision: string } | null = null;
+function zonesPage(offset?: number | null) {
+  const s = useViewerStore.getState(), from = [s.zoneSets, s.zoneApportionment, s.zoneAssignments];
+  if (!sequence || sequence.from.some((value, index) => value !== from[index])) {
+    const apportionment = JSON.parse(out([...s.zoneApportionment]).native_json) as unknown[], assignments: unknown[] = [...s.zoneAssignments];
+    sequence = { from, items: [...s.zoneSets, ...apportionment, ...assignments], a: s.zoneSets.length, b: s.zoneSets.length + apportionment.length,
+      revision: stateRevision([stateRevision(s.zoneSets), apportionment, assignments]) };
+  }
+  const { items: all, a, b, revision } = sequence;
+  const header = { configuration_revision: stateRevision(s.zoneSets), timing: s.zoneAssignmentTiming, counts: { sets: a, apportionment: b - a, assignments: all.length - b } };
+  const { items, ...page } = boundedPage(all, offset, header);
+  const cut = (start: number, end: number) => items.slice(Math.max(0, start - page.offset), Math.max(0, end - page.offset));
+  return out({ ...header, sets: cut(0, a), apportionment: cut(a, b), assignments: cut(b, all.length), page: { ...page, revision } });
 }
 const idInput = { type: 'object' as const, properties: { set_id: { type: 'string' as const, minLength: 1, maxLength: 200 } }, required: ['set_id' as const], additionalProperties: false as const };
 const basis = { type: 'string' as const, enum: ['mesh', 'net', 'gross', 'unqualified'] as VolumeBasis[] };
@@ -33,11 +45,7 @@ function changes(c: ViewerOperationContext, expected: string, write: () => Recor
   revision(expected); const result = c.commit(write); return out({ ...result, configuration_revision: stateRevision(useViewerStore.getState().zoneSets) });
 }
 export const zoneOperations = [
-  operation<PageInput>(meta('zones.read', 'Inspect complete native zone configuration, its configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), and current assignment/apportionment results. Assignments are paged: pass assignments_page.next_offset as offset until it is null, and restart from 0 if assignments_page.revision changes. Pages after the first carry only assignments and configuration_revision. Coordinates are renderer Y-up metres; rotations are radians.'), pageInput, (i) => {
-    // Later pages carry only the assignments, so configuration and apportionment are not repeated on every page.
-    const s = useViewerStore.getState(), first = !i.offset, configuration_revision = stateRevision(s.zoneSets);
-    return assignmentPage(i.offset, first ? { configuration_revision, sets: s.zoneSets, timing: s.zoneAssignmentTiming, apportionment: s.zoneApportionment } : { configuration_revision });
-  }),
+  operation<PageInput>(meta('zones.read', 'Inspect native zone sets, their configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), apportionment and assignment results. One cursor pages sets, then apportionment entries, then assignments: pass page.next_offset as offset until it is null, and restart from 0 if page.revision changes. Every page carries configuration_revision, timing and counts. Coordinates are renderer Y-up metres; rotations are radians.'), pageInput, (i) => zonesPage(i.offset)),
   operation<{ name: string; expected_configuration: string }>(meta('zones.set.create', 'Create a native zone set after checking the exact configuration snapshot.', 'configuration'), {
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, expected_configuration: revisionInput }, required: ['name', 'expected_configuration'], additionalProperties: false,
   }, (i, c) => changes(c, i.expected_configuration, () => ({ set_id: useViewerStore.getState().createZoneSet(i.name) }))),
@@ -66,10 +74,10 @@ export const zoneOperations = [
     type: 'object', properties: { ...idInput.properties, expected_configuration: revisionInput }, required: ['set_id', 'expected_configuration'], additionalProperties: false,
   }, async (i, c) => { const { generateZonesFromStoreys } = await import('@/hooks/useZoneStoreyGeneration'); assertToolActive(c); const result = generateZonesFromStoreys(); if (!result.ok) throw new Error(result.error);
     return changes(c, i.expected_configuration, () => { set(i.set_id); useViewerStore.getState().replaceZonesInSet(i.set_id, result.zones); return { set: set(i.set_id) }; }); }),
-  operation(meta('zones.assign', 'Recompute native assignments using the live renderer’s canonical entity bounds; returns their first page (read the rest with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.'), emptySchema, async (_, c) => {
+  operation(meta('zones.assign', 'Recompute native assignments using the live renderer’s canonical entity bounds; returns how many elements were assigned and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.'), emptySchema, async (_, c) => {
     const [{ getGlobalRenderer }, { recomputeZoneAssignmentsNow }] = await Promise.all([import('@/hooks/useBCF'), import('@/hooks/useZoneAssignmentSync')]);
     assertToolActive(c); if (!getGlobalRenderer()?.getScene()) throw new Error('A mounted native renderer is required for zone evaluation.');
-    recomputeZoneAssignmentsNow(); return assignmentPage(0, { timing: useViewerStore.getState().zoneAssignmentTiming });
+    recomputeZoneAssignmentsNow(); const s = useViewerStore.getState(); return out({ element_count: s.zoneAssignments.size, timing: s.zoneAssignmentTiming });
   }),
   operation<{ set_id: string; zone_id: string }>(meta('zones.select', 'Select native assigned elements in a zone. Empty zone_id selects the unassigned bucket using the same federation-aware handler as the panel.', 'selection'), {
     type: 'object', properties: { ...idInput.properties, zone_id: { type: 'string', maxLength: 200 } }, required: ['set_id', 'zone_id'], additionalProperties: false,

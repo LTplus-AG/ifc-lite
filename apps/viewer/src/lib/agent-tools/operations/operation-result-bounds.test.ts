@@ -88,12 +88,36 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     const setId = useViewerStore.getState().createZoneSet('Large');
     const record = { [setId]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };
     useViewerStore.setState({ zoneAssignments: new Map(Array.from({ length: 12000 }, (_, i) => [i + 1, record])) });
-    const { items, token } = await readAll<unknown>('zones.read', 'assignments', value => value.assignments_page as { next_offset: number | null });
+    const { items, token } = await readAll<unknown>('zones.read', 'assignments', value => value.page as { next_offset: number | null });
     assert.equal(items.length, 12000); assert.ok(token.length <= 64);
     const made = json<{ set_id: string; configuration_revision: string }>(await run('zones.set.create', { name: 'Next', expected_configuration: token }));
     assert.match((await run('zones.set.create', { name: 'Again', expected_configuration: token })).text, /configuration changed/);
     // The edit hands back the revision the next edit needs.
     assert.ok(json<{ set_id: string }>(await run('zones.set.create', { name: 'Again', expected_configuration: made.configuration_revision })).set_id);
+  });
+
+  it('#29 zones.read pages a sets list over 1 MB and every page carries configuration_revision', async () => {
+    for (let i = 0; i < 300; i++) useViewerStore.getState().createZoneSet(`Set ${i} ${pad(4000)}`);
+    assert.ok(bytes(useViewerStore.getState().zoneSets) > MAX_RESULT_BYTES, 'the sets alone exceed the limit');
+    const { items, token } = await readAll<{ id: string }>('zones.read', 'sets', value => value.page as { next_offset: number | null });
+    assert.deepEqual(items.map(row => row.id), useViewerStore.getState().zoneSets.map(row => row.id)); assert.ok(token.length <= 64);
+    assert.ok(json<{ set_id: string }>(await run('zones.set.create', { name: 'Next', expected_configuration: token })).set_id);
+  });
+
+  it('#29 zones.read pages straddle sets, apportionment and assignments without dropping or repeating a row', async () => {
+    for (let i = 0; i < 100; i++) useViewerStore.getState().createZoneSet(`Set ${i} ${pad(4000)}`);
+    const sets = useViewerStore.getState().zoneSets, record = { [sets[0].id]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };
+    const apportionment = new Map(sets.slice(0, 3).map(set => [set.id, { revision: 1, note: pad(150_000) }]));
+    useViewerStore.setState({ zoneApportionment: apportionment as never, zoneAssignments: new Map(Array.from({ length: 6000 }, (_, i) => [i + 1, record])) });
+    type ZonePage = { sets: Array<{ id: string }>; apportionment: Array<[string, unknown]>; assignments: Array<[number, unknown]>; counts: Record<string, number>; page: { next_offset: number | null } };
+    const pages: ZonePage[] = [];
+    for (let offset: number | null = 0; offset !== null;) { const value: ZonePage = json<ZonePage>(await run('zones.read', { offset })); pages.push(value); offset = value.page.next_offset; }
+    assert.ok(pages.length >= 3, `${pages.length} pages`);
+    assert.ok(pages.some(page => page.sets.length && page.apportionment.length) || pages.some(page => page.apportionment.length && page.assignments.length), 'a page crosses a segment boundary');
+    assert.deepEqual(pages.flatMap(page => page.sets.map(row => row.id)), sets.map(row => row.id));
+    assert.deepEqual(pages.flatMap(page => page.apportionment.map(([id]) => id)), [...apportionment.keys()]);
+    assert.deepEqual(pages.flatMap(page => page.assignments.map(([id]) => id)), Array.from({ length: 6000 }, (_, i) => i + 1));
+    assert.deepEqual(pages[0].counts, { sets: 100, apportionment: 3, assignments: 6000 });
   });
 
   it('#24 zones.writeback.prepare returns the row count and a bounded sample, not every row', async () => {

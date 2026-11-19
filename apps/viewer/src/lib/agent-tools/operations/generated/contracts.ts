@@ -8779,7 +8779,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.read",
     "version": 1,
     "owner": "zones",
-    "description": "Inspect complete native zone configuration, its configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), and current assignment/apportionment results. Assignments are paged: pass assignments_page.next_offset as offset until it is null, and restart from 0 if assignments_page.revision changes. Pages after the first carry only assignments and configuration_revision. Coordinates are renderer Y-up metres; rotations are radians.",
+    "description": "Inspect native zone sets, their configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), apportionment and assignment results. One cursor pages sets, then apportionment entries, then assignments: pass page.next_offset as offset until it is null, and restart from 0 if page.revision changes. Every page carries configuration_revision, timing and counts. Coordinates are renderer Y-up metres; rotations are radians.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -9178,7 +9178,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.assign",
     "version": 1,
     "owner": "zones",
-    "description": "Recompute native assignments using the live renderer’s canonical entity bounds; returns their first page (read the rest with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.",
+    "description": "Recompute native assignments using the live renderer’s canonical entity bounds; returns how many elements were assigned and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.",
     "needs": "viewer",
     "effects": [
       "read"

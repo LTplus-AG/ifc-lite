@@ -51,11 +51,11 @@ const X = '2600000.,1200000.,500.,1.,0.,1.';
 const Y = '2700000.,1200000.,500.,1.,0.,1.';
 const at = (values: string): Georef => ({ values });
 
-async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IFC4', unitReconciliation?: 'normalize') {
+async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IFC4', unitReconciliation?: 'normalize' | 'assume-shared') {
   const inputs = await Promise.all(georefs.map((georef, index) => input(String.fromCharCode(97 + index), georef, schema)));
   const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation })).content);
   const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
-  const sources = [...content.matchAll(/=IFC(?:MAPCONVERSION|RIGIDOPERATION)\((#\d+),/g)].map(match => match[1]);
+  const sources = [...content.matchAll(/=IFC(?:MAPCONVERSION(?:SCALED)?|RIGIDOPERATION)\((#\d+),/g)].map(match => match[1]);
   return { contexts, sources };
 }
 
@@ -88,6 +88,8 @@ describe('merged STEP export and map conversions (#10798)', () => {
     // A CRS without a map unit uses the project's.
     expectApart(await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'normalize'), 2);
     expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$' }])).contexts).toHaveLength(1);
+    // Under assume-shared the caller says every model is in the primary's unit, so the map unit is the primary's too.
+    expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'assume-shared')).contexts).toHaveLength(1);
     // Two spellings of one georeference agree: an explicit metre and the project's metre, an omitted and a unit scale.
     expect((await merge([at(X), { values: X, unit: '$' }])).contexts).toHaveLength(1);
     expect((await merge([at(X), at('2600000.,1200000.,500.,$,$,$')])).contexts).toHaveLength(1);
@@ -101,6 +103,13 @@ describe('merged STEP export and map conversions (#10798)', () => {
 #21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(${eastings}.),IFCLENGTHMEASURE(1200000.),500.);` });
     expectApart(await merge([rigid(2600000), rigid(2700000)], 'IFC4X3'), 2);
     expect((await merge([rigid(2600000), rigid(2600000)], 'IFC4X3')).contexts).toHaveLength(1);
+  });
+
+  it('tells apart two scaled conversions with different factors', async () => {
+    const scaled = (factorX: string): Georef => ({ raw: `#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);
+#21=IFCMAPCONVERSIONSCALED(#14,#20,${X},${factorX},1.,1.);` });
+    expectApart(await merge([scaled('1.'), scaled('2.')], 'IFC4X3'), 2);
+    expect((await merge([scaled('1.'), scaled('1.')], 'IFC4X3')).contexts).toHaveLength(1);
   });
 
   it('keeps apart a georeference it cannot compare', async () => {

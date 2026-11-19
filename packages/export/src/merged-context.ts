@@ -278,7 +278,8 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
  * context (`IFCGEOMETRICREPRESENTATIONCONTEXT`) unifies only when its resolved
  * WCS frame agrees with the primary model's (origin in metres AND
  * axis/refDirection orientation, so a differing length unit or a rotated frame
- * doesn't produce a false match); a mismatch leaves it un-remapped — kept as
+ * doesn't produce a false match) and its georeference agrees with the one on
+ * the shared context (#10798); a mismatch leaves it un-remapped — kept as
  * this model's own root — so its untouched coordinates are never
  * re-interpreted against the wrong frame.
  *
@@ -289,7 +290,8 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
  * `contextsCompatible` computed once up front: a subcontext inherits its WCS
  * from `ParentContext`, so when the parent root's frame disagrees, retaining
  * the parent means every child must be retained too, not just remapped in
- * isolation. Mutates `sharedRemap`/`skipEntityIds`.
+ * isolation. Mutates `sharedRemap`/`skipEntityIds`, and records a unified
+ * model's georeference on `firstModelContext.contextGeoref` when it had none.
  *
  * `lengthUnitScale` is the scale THIS model's raw WCS coordinates resolve
  * under. Under assume-shared the caller asserts raw coordinates are already

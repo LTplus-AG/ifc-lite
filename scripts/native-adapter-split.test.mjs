@@ -180,6 +180,10 @@ test('m11-n compares by mesh invariants: SMLib order and quad diagonals do not c
   assert.equal(same(m11n({ edit: (p) => { p.normals[2] = -1; } })), false, 'changed normal');
   assert.equal(same(m11n({ edit: (p) => { p.surfaceIndices[2] = 9; } })), false, 'changed face-surface mapping');
   assert.equal(same(m11n({ edit: (p) => { p.frame[12] = 2; } })), false, 'changed frame');
+  // Three triangles on one face: [7,7,8] -> [7,8,8] keeps the set of surfaces, not the count per surface.
+  const three = (surfaces) => m11n({ edit: (p) => { p.revisionLocalFaces = [0, 0, 0]; p.surfaceIndices = surfaces; } });
+  assert.equal(sameReference('temp/m11-n-native.json', three([7, 7, 8]), three([7, 8, 8])), false, 'triangle moved to another surface');
+  assert.equal(sameReference('temp/m11-n-native.json', three([7, 7, 8]), three([7, 7, 8])), true);
   // Same vertices, counts, normals and surfaces, but the square only half covered (a degenerate triangle): the area check.
   assert.equal(same(m11n({ edit: (p) => { p.indices.splice(3, 3, 0, 2, 2); } })), false, 'face area');
   // A non-mesh field still compares exactly.

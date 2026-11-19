@@ -83,7 +83,9 @@ export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : t
  *   - the frame and every non-mesh field;
  *   - the multiset of vertex positions and the triangle count;
  *   - per face (revisionLocalFaces): its triangle count, its set of corner
- *     normals and its source surfaces (surfaceIndices);
+ *     normals and how many of its triangles map to each source surface
+ *     (surfaceIndices: a count per surface, not a set, so moving one triangle
+ *     to another surface still differs);
  * and, as a coverage check, each face's total triangle area within 1e-9
  * relative. The producer is unchanged here; its fix is tracked separately.
  */
@@ -100,10 +102,11 @@ export function m11nInvariants(reference) {
     const faces = new Map();
     for (let t = 0; t * 3 < indices.length; t += 1) {
       const id = revisionLocalFaces?.[t] ?? null;
-      const face = faces.get(id) ?? { triangles: 0, normals: new Set(), surfaces: new Set(), area: 0 };
+      const face = faces.get(id) ?? { triangles: 0, normals: new Set(), surfaces: new Map(), area: 0 };
       face.triangles += 1;
       for (let k = 0; k < 3; k += 1) if (Array.isArray(normals)) face.normals.add(JSON.stringify(xyz(normals, t * 3 + k)));
-      face.surfaces.add(JSON.stringify(surfaceIndices?.[t] ?? null));
+      const surface = JSON.stringify(surfaceIndices?.[t] ?? null);
+      face.surfaces.set(surface, (face.surfaces.get(surface) ?? 0) + 1);
       const [a, b, c] = [0, 1, 2].map((k) => xyz(positions, indices[t * 3 + k]));
       const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
       face.area += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2;
@@ -113,7 +116,7 @@ export function m11nInvariants(reference) {
     for (const id of ids) areas.push(faces.get(id).area);
     return {
       ...rest, vertices: vertices.sort(), triangleCount: indices.length / 3,
-      faces: ids.map((id) => [id, faces.get(id).triangles, [...faces.get(id).normals].sort(), [...faces.get(id).surfaces].sort()]),
+      faces: ids.map((id) => [id, faces.get(id).triangles, [...faces.get(id).normals].sort(), [...faces.get(id).surfaces].sort(([a], [b]) => a.localeCompare(b))]),
     };
   };
   const exact = reference.map((model) => ({ ...model, rows: model.rows?.map((row) => (Array.isArray(row.parts) ? { ...row, parts: row.parts.map(part) } : row)) }));

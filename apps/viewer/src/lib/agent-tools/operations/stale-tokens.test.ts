@@ -478,6 +478,31 @@ describe('multi-batch IDS corrections (#10792)', () => {
     answer(await invoke('authoring.apply', { token: applied }, true)); // still held: its replay answers
   });
 
+  const prepareCorrection = async (raw_value = 'yes') => {
+    const express_ids = Array.from({ length: WALLS }, (_, i) => i + 1);
+    const { candidates } = answer<{ candidates: Array<{ token: string }> }>(await invoke('validation.fix.prepare',
+      { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value, title: 'Mark reviewed' }));
+    assert.equal(candidates.length, 2);
+    return candidates.map(row => row.token);
+  };
+  const applyBatch = async (token: string) => JSON.parse(answer<{ receipt_json: string }>(await invoke('authoring.apply', { token }, true)).receipt_json) as ModelChangeReceipt;
+
+  it('#10894: a correction over 500 changes applies batch by batch without re-preparing, in either order', async () => {
+    for (const [round, order] of [[0, 1], [1, 0]].entries()) {
+      const tokens = await prepareCorrection(round === 0 ? 'yes' : 'no');
+      let applied = 0;
+      for (const index of order) applied += (await applyBatch(tokens[index])).applied.length;
+      assert.equal(applied, WALLS, `every change applied, order ${order.join(',')}`);
+    }
+  });
+
+  it('#10894: an edit outside the correction between its batches still refuses the rest', async () => {
+    const [first, second] = await prepareCorrection();
+    await applyBatch(first);
+    useViewerStore.getState().setAttribute(modelId, 1, 'Description', 'Unrelated edit');
+    assert.match((await invoke('authoring.apply', { token: second }, true)).text, /Model changed since preview/);
+  });
+
   it('#68: a correction that cannot fit is refused whole and stages none of its batches', async () => {
     for (let i = 0; i < 63; i++) answer(await invoke('properties.prepare', { proposal_json: renameWall(`Name ${i}`) }));
     // Two batches cannot fit beside 63: every batch is previewed first, then none is admitted.

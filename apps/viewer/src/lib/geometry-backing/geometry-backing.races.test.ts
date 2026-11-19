@@ -222,3 +222,82 @@ it('#10868 concurrent acknowledgements name the same complete generation', async
     assert.equal(registry.verify(second), true);
   } finally { await registry.close(); }
 });
+
+it('#10868 an append issued after close began is refused, never silently acknowledged', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  const db = databaseOf(registry);
+  const original = db.commit.bind(db);
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => { open = resolve; });
+  db.commit = async (stores, write) => { await gate; return original(stores, write); };
+  try {
+    const backing = await registry.begin('m', { chunkBytes: 64, queueBytes: 4096 });
+    await backing.writer.append([fullMesh(1, new Uint32Array(3))]);
+    const closing = backing.writer.close();
+    const late = backing.writer.append([fullMesh(5, new Uint32Array(3))]);
+    open();
+    await closing;
+    await assert.rejects(late, GeometryBackingFailedError);
+    assert.equal(backing.isComplete, true);
+    const lease = await backing.reader.leaseEntity(5);
+    assert.equal(lease.meshes.length, 0, 'the refused mesh was never stored');
+    lease.release();
+  } finally { db.commit = original; await registry.close(); }
+});
+
+it('#10868 empty whole-model iterators are fenced and cancellable', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  try {
+    const backing = await registry.begin('m');
+    await backing.writer.close();
+    const aborted = AbortSignal.abort(new Error('cancelled empty read'));
+    await assert.rejects(backing.reader.meshes({ signal: aborted }).next(), /cancelled empty read/);
+    await assert.rejects(backing.reader.instancedShards({ signal: aborted }).next(), /cancelled empty read/);
+    await registry.invalidate('m');
+    await assert.rejects(backing.reader.meshes().next(), StaleGeometryGenerationError);
+    await assert.rejects(backing.reader.instancedShards().next(), StaleGeometryGenerationError);
+  } finally { await registry.close(); }
+});
+
+it('#10868 a source aliasing only the appearance fence keeps that identity', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  try {
+    const backing = await registry.begin('m');
+    const mesh = fullMesh(1, new Uint32Array(3));
+    const fence = mesh.indices.slice();
+    mesh.appearanceSource = { kind: 'canonical-item', indices: fence, sourceIndices: fence };
+    await backing.writer.append([mesh]);
+    await backing.writer.close();
+    const lease = await backing.reader.leaseEntity(1);
+    const read = lease.meshes[0].appearanceSource!;
+    assert.equal(read.sourceIndices, read.indices, 'fence and source stay one array');
+    assert.notEqual(read.indices, lease.meshes[0].indices, 'and stay distinct from the topology');
+    lease.release();
+  } finally { await registry.close(); }
+});
+
+it('#10868 concurrent chunk decodes share one canonical source instance', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  try {
+    const backing = await registry.begin('m', { chunkBytes: 64, queueBytes: 4096 });
+    const shared = Uint32Array.from([0, 1, 2, 2, 1, 0]);
+    await backing.writer.append([fullMesh(1, shared), fullMesh(2, shared)]);
+    await backing.writer.close();
+    assert.ok(backing.directory.chunks.length >= 2);
+    // Hold every read until both chunks have fetched, so neither sees the other's cache entry.
+    const db = databaseOf(registry);
+    const read = db.read.bind(db);
+    let finished = 0, both!: () => void;
+    const together = new Promise<void>((resolve) => { both = resolve; });
+    db.read = async (stores, collect) => {
+      const result = await read(stores, collect);
+      if (++finished === 2) both();
+      await together;
+      return result;
+    };
+    const [a, b] = await Promise.all([backing.reader.leaseChunks([0]), backing.reader.leaseChunks([1])]);
+    db.read = read;
+    assert.equal(a.meshes[0].appearanceSource!.sourceIndices, b.meshes[0].appearanceSource!.sourceIndices);
+    a.release(); b.release();
+  } finally { await registry.close(); }
+});

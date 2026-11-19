@@ -153,7 +153,9 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
     if (appearance.kind !== 'canonical-item') {
       throw new UnsupportedBackingFieldError(`Mesh ${mesh.expressId} has appearance kind ${String(appearance.kind)}`);
     }
-    // A source aliasing an array of this mesh stays a slot; otherwise pool it.
+    // Slot the fence first: a source aliasing it (or any other array of this
+    // mesh) must stay that slot so decode restores the identity; else pool it.
+    const fence = slot(appearance.indices);
     const local = slotOf.get(appearance.sourceIndices);
     let source: { pooled: number } | { slot: number };
     if (local !== undefined) source = { slot: local };
@@ -163,7 +165,7 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
       source = { pooled: interned.id };
     }
     record.appearance = {
-      kind: 'canonical-item', fence: slot(appearance.indices), source,
+      kind: 'canonical-item', fence, source,
       ...(appearance.cornerIndices !== undefined ? { corners: slot(appearance.cornerIndices) } : {}),
     };
   }

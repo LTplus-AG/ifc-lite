@@ -123,8 +123,11 @@ export class BackingReader {
     for (const id of requested) {
       const indices = fetched.get(id);
       if (!(indices instanceof Uint32Array)) throw new GeometryNotBackedError(`Canonical source ${id} of chunk ${index} is missing`);
-      this.sources.set(id, new WeakRef(indices));
-      loaded.set(id, indices);
+      // A concurrent decode of another chunk may have published this source
+      // while ours was in flight: adopt it so pieces share one instance.
+      const shared = this.sources.get(id)?.deref() ?? indices;
+      this.sources.set(id, new WeakRef(shared));
+      loaded.set(id, shared);
     }
     const pinned = loaded;
     const context = {
@@ -214,6 +217,8 @@ export class BackingReader {
 
   /** Stream every backed flat mesh, optionally limited to chunks meeting a box. */
   async *meshes(options: ReadOptions & { bounds?: { min: Vec3; max: Vec3 } } = {}): AsyncGenerator<readonly MeshData[]> {
+    // Fenced even when nothing matches: an empty stale or aborted read is not "no geometry".
+    this.fence(options.signal);
     const indices = options.bounds
       ? this.directory.chunksIntersecting(options.bounds.min, options.bounds.max)
       : this.directory.chunks.map((chunk) => chunk.index);
@@ -230,6 +235,7 @@ export class BackingReader {
 
   /** Stream every backed instanced shard (templates and occurrences). */
   async *instancedShards(options: ReadOptions = {}): AsyncGenerator<DecodedInstancedShard> {
+    this.fence(options.signal);
     for (const shard of this.directory.shards) {
       await this.writer.whenDurable('shard', shard.index);
       this.fence(options.signal);

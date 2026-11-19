@@ -12,8 +12,8 @@ diff --git a/apps/viewer/src/lib/agent-tools/operations/analytics-drawing-markup
 diff --git a/apps/viewer/src/lib/agent-tools/operations/appearance-native-sources.ts b/apps/viewer/src/lib/agent-tools/operations/appearance-native-sources.ts
 --- a/apps/viewer/src/lib/agent-tools/operations/appearance-native-sources.ts
 +++ b/apps/viewer/src/lib/agent-tools/operations/appearance-native-sources.ts
-@@ -154,6 +154,7 @@
-         await Promise.all([import('@/lib/appearance/raster-calibration'), import('@/lib/appearance/pdf/calibration')]);
+@@ -150,6 +150,7 @@
+     async (i, c) => {
        assertToolActive(c);
        const value = source(i.source_id);
 +      if (JSON.stringify(value) !== i.expected_source) throw new Error('The native source changed. Inspect again.');

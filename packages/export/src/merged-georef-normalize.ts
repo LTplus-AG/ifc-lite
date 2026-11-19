@@ -19,6 +19,8 @@
  * `METRE` one, and the Scale property is chosen as above.
  */
 
+import { isCompleteStepNumericLiteral } from '@ifc-lite/data';
+import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { extractGeoreferenceCandidatesOnDemand, type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { COORDINATE_OPERATION_STEP_TYPES, MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
 import { refsIn } from './merged-project-contexts.js';
@@ -75,27 +77,30 @@ const EPSET_OFFSETS = new Set(['Eastings', 'Northings', 'OrthogonalHeight']);
 
 // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
 const idsOf = (dataStore: IfcDataStore, types: Iterable<string>) => [...types].flatMap(type => dataStore.entityIndex.byType.get(type) ?? []);
-/** A STEP string slot's text, or '' when it is no string. */
-const label = (raw: string | null) => stepString(raw ?? undefined) ?? '';
+/** A STEP string slot's decoded text, as the parser decodes it, or '' when it is no string. */
+const label = (raw: string | null) => { const text = stepString(raw ?? undefined); return text === null ? '' : decodeStepStringLiteral(text); };
 /**
  * A property's NominalValue as a number the way the parser reads it (`getNumber`): the whole typed or string value
  * must be a numeric literal, so `IFCLABEL('0.5x')` is no number.
  */
 function nominalNumber(raw: string | null): number | undefined {
-  const inner = raw?.match(/^\s*\w+\s*\(([\s\S]*)\)\s*$/)?.[1] ?? raw ?? '';
+  // STEP comments may sit inside the value, as the parser allows: `IFCREAL(0.9996 /* scale */)`.
+  const bare = (raw ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const inner = bare.match(/^\s*\w+\s*\(([\s\S]*)\)\s*$/)?.[1] ?? bare;
   const literal = (stepString(inner) ?? inner).trim();
-  return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(literal) && Number.isFinite(Number(literal)) ? Number(literal) : undefined;
+  return isCompleteStepNumericLiteral(literal) && Number.isFinite(Number(literal)) ? Number(literal) : undefined;
 }
 
 /** The normalize advisory for a model's georeference, or null when it carries none. */
 export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, plan: GeorefNormalizePlan | undefined): string | null {
   if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0 && !plan?.records.size) return null;
-  const implicit = plan?.implicitUnit.length ? ` Its ePSet_MapConversion ${plan.implicitUnit.map(id => `#${id}`).join(', ')} ` +
-    `(an id in "${name}") has no ePSet_ProjectedCRS, so its map unit stays implicit; the viewer reads it as metres.` : '';
-  const unkeptIds = plan?.unkept ?? [], ids = unkeptIds.map(id => `#${id}`).join(', ');
+  const idsIn = (ids: readonly number[]) => `${ids.map(id => `#${id}`).join(', ')} (${ids.length === 1 ? 'an id' : 'ids'} in "${name}")`;
+  const unkeptIds = plan?.unkept ?? [], implicitIds = plan?.implicitUnit ?? [];
   const unkept = unkeptIds.length === 0 ? '' : unkeptIds.length === 1
-    ? ` The viewer cannot show its map conversion ${ids} (an id in "${name}") at its own scale in the merged unit, so its Scale is written as the IFC specification reads it.`
-    : ` The viewer cannot show its map conversions ${ids} (ids in "${name}") at their own scale in the merged unit, so their Scale is written as the IFC specification reads it.`;
+    ? ` The viewer cannot show its map conversion ${idsIn(unkeptIds)} at its own scale in the merged unit, so its Scale is written as the IFC specification reads it.`
+    : ` The viewer cannot show its map conversions ${idsIn(unkeptIds)} at their own scale in the merged unit, so their Scale is written as the IFC specification reads it.`;
+  const implicit = implicitIds.length === 0 ? '' : ` It has no ePSet_ProjectedCRS, so the map unit of ePSet_MapConversion ` +
+    `${idsIn(implicitIds)} stays implicit; the viewer reads it as metres.`;
   return `Model "${name}" carries georeferencing, whose offsets normalize leaves in the CRS unit (a CRS without one ` +
     `is written in metres). If the model was georeferenced in its own unit, review the merged georeference.${unkept}${implicit}`;
 }
@@ -165,11 +170,12 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
 
 /**
  * A model's `ePSet_MapConversion` and `ePSet_ProjectedCRS` sets (any casing, as the parser finds them), with their
- * properties by name. A set whose record does not contain `epset_` is passed over before any attribute is parsed.
+ * properties by name. As in the parser's prefilter, a set whose record has neither `epset_` nor a backslash (which
+ * may escape part of the name) is passed over before any attribute is parsed.
  */
 function planEPSets(dataStore: IfcDataStore) {
   return idsOf(dataStore, ['IFCPROPERTYSET']).flatMap(id => {
-    if (!decodeEntity(dataStore, id)?.toLowerCase().includes('epset_')) return [];
+    if (!/epset_|\\/i.test(decodeEntity(dataStore, id) ?? '')) return [];
     const kind = label(getStepAttr(dataStore, id, PSET_NAME_ATTR)).toLowerCase();
     if (kind !== 'epset_mapconversion' && kind !== 'epset_projectedcrs') return [];
     const properties = new Map(refsIn(getStepAttr(dataStore, id, PSET_PROPERTIES_ATTR) ?? '')

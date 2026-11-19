@@ -7,6 +7,7 @@ import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
 import { convertStepLine } from './schema-converter.js';
 import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
+import { MaterialReferents } from './schema-converter-material-referent.js';
 
 const model = (schema: string, data: string): string =>
   `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;\n${data}\nENDSEC;\nEND-ISO-10303-21;\n`;
@@ -54,6 +55,7 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     });
     // Without the source bytes the export leaves it out too (nothing can check it), and the report says so.
     expect(entry(analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC4', 'IFC2X3'))?.expressIds).toEqual([5]);
+    expect(entry(analyzeConversionLoss({ entityIndex: store.entityIndex, source: new Uint8Array(0) }, 'IFC4', 'IFC2X3'))?.expressIds, 'sourceless store').toEqual([5]);
   });
 
   it('resolves a constituent set in the loss report (an export holding one is refused)', async () => {
@@ -125,5 +127,12 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     // No lookup proves #13 an IfcMaterial either way, so neither form is written.
     expect(convertStepLine("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", 'IFC4', 'IFC2X3')).toBeNull();
     expect(convertStepLine("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13)", 'IFC4', 'IFC2X3')).toBeNull();
+  });
+
+  it('leaves out and names a record it cannot read (/code-review)', () => {
+    const referents = new MaterialReferents({ typeOf: (id) => (id === 8 ? 'IFCMATERIAL' : undefined), slots: () => undefined });
+    expect(referents.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);");
+    expect(referents.apply("#7=IFCMATERIALPROPERTIES('P',$,(#6,#8);", 'IFC4', 'IFC2X3')).toBeNull();
+    expect(referents.warnings().join()).toContain('#7 (an unread record)');
   });
 });

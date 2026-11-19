@@ -185,22 +185,23 @@ impl MaterialReferents {
         // `convert_record` also accepts a record without its ';', so it is read the same way here.
         let bare = !line.trim_end().ends_with(';');
         let framed: Cow<str> = if bare { format!("{line};").into() } else { line.into() };
-        let Some((_, slots)) = crate::step_log::read_slots(&framed) else { return Some(line.into()) };
-        let named = slots.get(at).and_then(|s| slot_ref(s));
-        match (named, named.and_then(|r| resolve(&self.records, &self.gone, r))) {
-            (Some(r), Some(m)) if m != r => {
-                let Some(mut out) = crate::step_log::replace_argument(&framed, at, &format!("#{m}")) else { return Some(line.into()) };
+        // A record that cannot be read is not checked, so it is left out too.
+        let slots = crate::step_log::read_slots(&framed).map(|(_, s)| s);
+        let named = slots.as_ref().and_then(|s| s.get(at)).and_then(|s| slot_ref(s));
+        let kept = match (named, named.and_then(|r| resolve(&self.records, &self.gone, r))) {
+            (Some(r), Some(m)) if m != r => crate::step_log::replace_argument(&framed, at, &format!("#{m}")).map(|mut out| {
                 if bare { out.pop(); } // the ';' it was read with is the last character
-                Some(Cow::Owned(out))
-            }
+                Cow::Owned(out)
+            }),
             (_, Some(_)) => Some(line.into()),
-            _ => {
-                *dropped += slots.iter().filter(|s| !slot_unset(s)).count();
-                let named = named.and_then(|r| self.records.get(&r)).map_or("an unread record", |(t, ..)| t.as_str());
-                self.dropped.insert(id, named.to_owned());
-                None
-            }
+            _ => None,
+        };
+        if kept.is_none() {
+            *dropped += slots.iter().flatten().filter(|s| !slot_unset(s)).count();
+            let named = named.and_then(|r| self.records.get(&r)).map_or("an unread record", |(t, ..)| t.as_str());
+            self.dropped.insert(id, named.to_owned());
         }
+        kept
     }
 
     pub(crate) fn warnings(&self) -> Vec<String> {

@@ -49,7 +49,7 @@ export function candidateStillApplies(host?: ToolHost) {
 
 /** Where an applied candidate's receipt is. Absent: nothing the library holds (not applied, or its write failed
  * before the library recorded it), so a replay puts it. `writing`: a write in flight, which a replay shares.
- * `handed-off`: the library keeps it as an unsaved draft, which only its `retry` writes again. `saved`: done. */
+ * `handed-off`: the library took it (kept as an unsaved draft, which only its `retry` writes again). `saved`: done. */
 export type ReceiptPersistence = { state: 'writing'; write: Promise<boolean> } | { state: 'handed-off' } | { state: 'saved' };
 export interface ReceiptHolder { persistence?: ReceiptPersistence }
 const SAVED: ReceiptPersistence = { state: 'saved' }, HANDED_OFF: ReceiptPersistence = { state: 'handed-off' };
@@ -68,14 +68,16 @@ export function persistReceipt(holder: ReceiptHolder, receipt: ModelChangeReceip
   if (before?.state === 'saved') return Promise.resolve(true);
   const write = import('@/lib/actions/receipts').then(async ({ modelChangeLibrary, useModelChangeReceipts }) => {
     const status = () => useModelChangeReceipts.getState().status.items[receipt.id];
-    const settle = () => {
+    // A write that saved is done, even while a newer write of the same row (the panel's undo) is still in flight.
+    // Once handed off, the library owns the receipt: if it later drops it (a restore), a replay never puts it back.
+    const settle = (saved = false) => {
       const now = status();
-      holder.persistence = now === 'saved' ? SAVED : now !== undefined ? HANDED_OFF : undefined;
-      return now === 'saved';
+      holder.persistence = saved || now === 'saved' ? SAVED : now !== undefined || before?.state === 'handed-off' ? HANDED_OFF : undefined;
+      return holder.persistence === SAVED;
     };
     try {
-      if (before?.state !== 'handed-off') await modelChangeLibrary.put(receipt.id, receipt);
-      else if (status() !== 'saved') await modelChangeLibrary.retry(); // the panel's Retry may have saved it already
+      if (before?.state !== 'handed-off') return settle(await modelChangeLibrary.put(receipt.id, receipt));
+      if (status() !== 'saved') await modelChangeLibrary.retry(); // the panel's Retry may have saved it already
       return settle();
     } catch (error) { settle(); throw error; }
   }, (error: unknown) => { holder.persistence = before; throw error; });

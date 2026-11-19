@@ -131,6 +131,7 @@ describe('reviewed model candidates (#10792)', () => {
   it('#20: a receipt write that throws before the library holds the receipt is put again by the replay', async () => {
     const token = await prepareRename();
     const put = modelChangeLibrary.put;
+    // Defensive: the real library records a draft before its first await, so only a throw before that reaches here.
     modelChangeLibrary.put = () => { throw new Error('Library unavailable'); };
     try { assert.equal((await invoke('authoring.apply', { token }, true)).isError, true); } finally { modelChangeLibrary.put = put; }
     const replay = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token }, true));
@@ -148,13 +149,43 @@ describe('reviewed model candidates (#10792)', () => {
       receipt = value as ModelChangeReceipt;
       return put(id, value, ...rest).then(() => { throw new Error('Acknowledgement lost'); });
     };
-    try { assert.equal((await invoke('authoring.apply', { token }, true)).isError, true); } finally { modelChangeLibrary.put = put; }
     try {
+      assert.equal((await invoke('authoring.apply', { token }, true)).isError, true);
+      modelChangeLibrary.put = put;
       // The Changes panel marks the kept draft undone; a second put of the original receipt would overwrite that.
       assert.equal(await modelChangeLibrary.put(receipt!.id, { ...receipt!, status: 'undone', undoneAt: new Date(0).toISOString() }), false);
-    } finally { refused.mock.restore(); }
+    } finally { modelChangeLibrary.put = put; refused.mock.restore(); }
     assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true);
     assert.equal(storedReceipt(receipt!.id)?.status, 'undone', 'the replay saved the library\'s draft');
+  });
+
+  it('#20: a receipt saved while the Changes panel writes it again still reports persisted', async () => {
+    const token = await prepareRename();
+    const put = modelChangeLibrary.put;
+    modelChangeLibrary.put = (id, value, ...rest) => {
+      modelChangeLibrary.put = put;
+      const first = put(id, value, ...rest);
+      // The panel marks it undone before our write lands; the library's status now follows the newer write.
+      void put(id, { ...(value as ModelChangeReceipt), status: 'undone', undoneAt: new Date(0).toISOString() });
+      return first;
+    };
+    try { assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true); }
+    finally { modelChangeLibrary.put = put; }
+  });
+
+  it('#20: a replay never puts back a receipt draft that a library restore dropped', async () => {
+    const token = await prepareRename();
+    let receipt: ModelChangeReceipt;
+    const refused = refuseContentWrites();
+    try {
+      const applied = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token }, true));
+      assert.equal(applied.persisted, false);
+      receipt = JSON.parse(applied.receipt_json) as ModelChangeReceipt;
+    } finally { refused.mock.restore(); }
+    assert.equal(await modelChangeLibrary.restore(), true); // the user restores what storage holds, without this draft
+    assert.equal(storedReceipt(receipt!.id), undefined);
+    for (let i = 0; i < 2; i++) assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false);
+    assert.equal(storedReceipt(receipt!.id), undefined, 'the dropped receipt stays dropped');
   });
 
   it('#20: a replay of an unsaved receipt saves the library\'s latest draft, an undone mark included', async () => {

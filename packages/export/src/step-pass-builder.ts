@@ -353,7 +353,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     const read = new Map<number, readonly string[] | undefined>();
     const written = (id: number): string | undefined => {
       // A created record this cannot read (the overlay writer, building per slot, may still write it) resolves to
-      // nothing: the IfcMaterialProperties naming it is left out and named in the export warnings, not carried.
+      // nothing: the IfcMaterialProperties naming it is left out, its id in the export warnings as naming an unread record.
       if (mutationView && effective.isOverlayCreated(id)) {
         try { return effectiveCreatedRecord(mutationView, id, sourceSchema)?.text; } catch { return undefined; }
       }

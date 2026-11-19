@@ -42,12 +42,12 @@ export const downgradesMaterial = (from: string, to: string): boolean => to === 
 export interface MaterialSource {
   /** The UPPERCASE type of a record the export writes; undefined for one it does not. */
   typeOf(id: number): string | undefined;
-  /** Its slots as written; undefined for a record the export does not write. */
+  /** Its slots as written; undefined for a record the export does not write or could not read. */
   slots(id: number): readonly string[] | undefined;
 }
 
 export class MaterialReferents {
-  /** Record id -> the type its `Material` names, for records not written. */
+  /** Record id -> why it was not written: the type its `Material` names, or `unreadable` / `no Material` / `an unread record`. */
   private readonly dropped = new Map<number, string>();
 
   /** The export's record lookup. Without one nothing resolves, so every downgraded record is left out and reported: never carried unchecked. */
@@ -115,12 +115,17 @@ export class MaterialReferents {
       out[at] = `#${material}`;
       return withFrameArgs(line, frame, out.join(','));
     }
-    // Named as Rust names it: the record unreadable, without a Material, or by the type its Material names.
-    const referent = named === null ? undefined : this.source.typeOf(named);
-    const why = !slots ? 'unreadable' : named === null ? 'no Material' : referent?.startsWith('IFCMATERIAL') ? referent : 'an unread record';
+    // Named as Rust names it: the record unreadable, without a Material, or by its referent.
+    const why = !slots ? 'unreadable' : named === null ? 'no Material' : this.referentName(named);
     const id = slotRef(line.slice(0, head.eq)); // past a leading comment, as the head is read
     if (id !== null) this.dropped.set(id, why);
     return null;
+  }
+
+  /** A referent by its material type when it could be read; one that could not is named so, not blamed for its materials. */
+  private referentName(id: number): string {
+    const type = this.source.typeOf(id);
+    return type?.startsWith('IFCMATERIAL') && this.source.slots(id) ? type : 'an unread record';
   }
 
   /** Whether `apply` left record `id` out. */

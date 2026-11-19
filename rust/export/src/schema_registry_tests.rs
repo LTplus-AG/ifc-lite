@@ -167,7 +167,10 @@ const SOURCE_LAYOUT_EXEMPT: &[(&str, &str)] = &[
 
 /// Same-index name changes reviewed as the same concept and value type, which
 /// a positional pass-through therefore keeps right (#10807). Test data only:
-/// conversion does not read it, so it never reaches a writer.
+/// conversion does not read it, so it never reaches a writer. It reviews these
+/// renamed pairs alone: an attribute that keeps its name but changes value
+/// type (IfcAsset's IncorporationDate, an IfcCalendarDate reference in IFC2X3
+/// and an IfcDate string in IFC4) is outside the gate (#10847).
 const SAME_CONCEPT_AT_INDEX: &[(&str, &str, &str)] = &[
     ("IFCASSET", "AssetID", "Identification"),
     ("IFCDOCUMENTREFERENCE", "ItemReference", "Identification"),

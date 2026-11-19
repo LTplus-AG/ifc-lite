@@ -69,31 +69,36 @@ export interface GeorefNormalizePlan {
 const CRS_UNIT_ATTR = { IFCPROJECTEDCRS: 6, IFCGEOGRAPHICCRS: 5 };
 /** 0-based index of `IfcMapConversion.Scale`. */
 const SCALE_ATTR = 7;
-/** 0-based `IfcPropertySet.Name` and `.HasProperties`, `IfcPropertySingleValue.Name` and `.NominalValue`. */
-const PSET_NAME_ATTR = 2, PSET_PROPERTIES_ATTR = 4, PROPERTY_NAME_ATTR = 0, PROPERTY_VALUE_ATTR = 2;
+/** 0-based `IfcPropertySet.Name` and `.HasProperties`, `IfcPropertySingleValue.Name`, `.NominalValue` and `.Unit`. */
+const PSET_NAME_ATTR = 2, PSET_PROPERTIES_ATTR = 4, PROPERTY_NAME_ATTR = 0, PROPERTY_VALUE_ATTR = 2, PROPERTY_UNIT_ATTR = 3;
 const METRE_UNIT = 'IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)';
-/** The ePSet properties normalize leaves as written, by the exact name the parser reads (`georef-epset.ts`). */
-const EPSET_OFFSETS = new Set(['Eastings', 'Northings', 'OrthogonalHeight']);
 
 // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
 const idsOf = (dataStore: IfcDataStore, types: Iterable<string>) => [...types].flatMap(type => dataStore.entityIndex.byType.get(type) ?? []);
 /** A STEP string slot's decoded text, as the parser decodes it, or '' when it is no string. */
 const label = (raw: string | null) => { const text = stepString(raw ?? undefined); return text === null ? '' : decodeStepStringLiteral(text); };
+/** The record type of `id`, a deferred property atom included. */
+// @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
+const typeOf = (dataStore: IfcDataStore, id: number) => (dataStore.entityIndex.byId.get(id) ?? dataStore.deferredEntityIndex?.get(id))?.type?.toUpperCase();
 /**
- * A property's NominalValue as a number the way the parser reads it (`getNumber`): the whole typed or string value
- * must be a numeric literal, so `IFCLABEL('0.5x')` is no number.
+ * A property's NominalValue as the parser keeps it (`readPsetSingleValues`): a string's decoded text or a number's
+ * literal, else undefined (unset, or a boolean or enum the parser skips). A STEP comment may sit beside a number
+ * inside its typed value; a string's inside is kept verbatim.
  */
-function nominalNumber(raw: string | null): number | undefined {
-  // STEP comments may sit inside the value, as the parser allows: `IFCREAL(0.9996 /* scale */)`.
-  const bare = (raw ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ');
-  const inner = bare.match(/^\s*\w+\s*\(([\s\S]*)\)\s*$/)?.[1] ?? bare;
-  const literal = (stepString(inner) ?? inner).trim();
-  return isCompleteStepNumericLiteral(literal) && Number.isFinite(Number(literal)) ? Number(literal) : undefined;
+function nominalValue(raw: string | null): string | undefined {
+  if (raw === null || slotUnset(raw)) return undefined;
+  const inner = raw.match(/^\s*\w+\s*\(([\s\S]*)\)\s*$/)?.[1] ?? raw;
+  const text = stepString(inner);
+  if (text !== null) return decodeStepStringLiteral(text);
+  const literal = inner.replace(/\/\*[\s\S]*?\*\//g, ' ').trim();
+  return isCompleteStepNumericLiteral(literal) ? literal : undefined;
 }
+/** A kept NominalValue as a number the way the parser's `getNumber` reads it: a complete, finite literal only. */
+const numberOf = (value: string) => isCompleteStepNumericLiteral(value.trim()) && Number.isFinite(Number(value)) ? Number(value) : undefined;
 
 /** The normalize advisory for a model's georeference, or null when it carries none. */
 export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, plan: GeorefNormalizePlan | undefined): string | null {
-  if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0 && !plan?.records.size) return null;
+  if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0 && !plan?.records.size && !plan?.implicitUnit.length) return null;
   const idsIn = (ids: readonly number[]) => `${ids.map(id => `#${id}`).join(', ')} (${ids.length === 1 ? 'an id' : 'ids'} in "${name}")`;
   const unkeptIds = plan?.unkept ?? [], implicitIds = plan?.implicitUnit ?? [];
   const unkept = unkeptIds.length === 0 ? '' : unkeptIds.length === 1
@@ -140,24 +145,33 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
     if (choice.scale !== undefined) records.set(conversion.id, { kind: 'edit', attr: SCALE_ATTR, value: toStepRealScaled(choice.scale) });
     if (choice.unkept) unkept.push(conversion.id);
   }
-  // The ePSet sets, read as the viewer reads them: the first ePSet_ProjectedCRS gives the map unit.
+  // An ePSet_MapConversion's properties are left as written: its offsets are in the map unit, and its other values
+  // are no project lengths. Beyond that, the ePSets are planned only where the viewer reads them: when the parser
+  // places the model by its ePSet and not by an IFC4 entity. The first ePSet_ProjectedCRS gives the map unit.
+  for (const { kind, ids } of psets) if (kind === 'epset_mapconversion') for (const id of ids) records.set(id, { kind: 'keep' });
+  const viewerReads = !!candidates?.ePSetMapConversion && !candidates.entities.hasGeoreference;
   const hasCrsSet = psets.some(({ kind }) => kind === 'epset_projectedcrs');
   const mapUnitScale = candidates?.ePSetMapConversion?.projectedCRS?.mapUnitScale;
-  for (const { id, kind, properties } of psets) {
+  for (const { id, kind, byName } of viewerReads ? psets : []) {
     const append = (text: string) => { minted.refOf(text); records.set(id, { kind: 'append', attr: PSET_PROPERTIES_ATTR, mint: text }); };
     if (kind === 'epset_projectedcrs') {
-      const unit = properties.get('MapUnit');
+      const unit = byName.get('MapUnit');
       const metreLabel = "IFCLABEL('METRE')";
       if (unit === undefined) append(`IFCPROPERTYSINGLEVALUE('MapUnit',$,${metreLabel},$)`);
-      else if (slotUnset(getStepAttr(dataStore, unit, PROPERTY_VALUE_ATTR) ?? '$')) {
+      // A missing MapUnit as the parser's `asString` sees it: unset, empty, or no string or number. A MapUnit that is
+      // no single value, or carries its own Unit, is left alone.
+      else if (!nominalValue(getStepAttr(dataStore, unit, PROPERTY_VALUE_ATTR)) && typeOf(dataStore, unit) === 'IFCPROPERTYSINGLEVALUE'
+        && slotUnset(getStepAttr(dataStore, unit, PROPERTY_UNIT_ATTR) ?? '$')) {
         records.set(unit, { kind: 'edit', attr: PROPERTY_VALUE_ATTR, value: metreLabel });
       }
       continue;
     }
     if (!hasCrsSet) implicitUnit.push(id);
-    for (const [name, property] of properties) if (EPSET_OFFSETS.has(name)) records.set(property, { kind: 'keep' });
-    const scaleProperty = properties.get('Scale');
-    const written = scaleProperty === undefined ? undefined : nominalNumber(getStepAttr(dataStore, scaleProperty, PROPERTY_VALUE_ATTR));
+    const scaleProperty = byName.get('Scale');
+    const kept = scaleProperty === undefined ? undefined : nominalValue(getStepAttr(dataStore, scaleProperty, PROPERTY_VALUE_ATTR));
+    const written = kept === undefined ? undefined : numberOf(kept);
+    // A Scale the parser cannot read as a number refuses the whole placement, so the set stays as written.
+    if (kept !== undefined && written === undefined) continue;
     const choice = chooseScale({ scale: written }, mapUnitScale, modelScale, primaryScale);
     if (choice.unkept) unkept.push(id);
     if (choice.scale === undefined) continue;
@@ -170,18 +184,22 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
 
 /**
  * A model's `ePSet_MapConversion` and `ePSet_ProjectedCRS` sets (any casing, as the parser finds them), with their
- * properties by name. As in the parser's prefilter, a set whose record has neither `epset_` nor a backslash (which
- * may escape part of the name) is passed over before any attribute is parsed.
+ * property ids and, by name, the last property the parser would read (one with a string or number value). As in the
+ * parser's prefilter, a set whose record has neither `epset_` nor a backslash (which may escape part of the name) is
+ * passed over before any attribute is parsed.
  */
 function planEPSets(dataStore: IfcDataStore) {
   return idsOf(dataStore, ['IFCPROPERTYSET']).flatMap(id => {
     if (!/epset_|\\/i.test(decodeEntity(dataStore, id) ?? '')) return [];
     const kind = label(getStepAttr(dataStore, id, PSET_NAME_ATTR)).toLowerCase();
     if (kind !== 'epset_mapconversion' && kind !== 'epset_projectedcrs') return [];
-    const properties = new Map(refsIn(getStepAttr(dataStore, id, PSET_PROPERTIES_ATTR) ?? '')
-      .map(ref => Number(ref.slice(1)))
-      .map(property => [label(getStepAttr(dataStore, property, PROPERTY_NAME_ATTR)), property] as const));
-    return [{ id, kind, properties }];
+    const ids = refsIn(getStepAttr(dataStore, id, PSET_PROPERTIES_ATTR) ?? '').map(ref => Number(ref.slice(1)));
+    const byName = new Map<string, number>();
+    for (const property of ids) {
+      const name = label(getStepAttr(dataStore, property, PROPERTY_NAME_ATTR));
+      if (!byName.has(name) || nominalValue(getStepAttr(dataStore, property, PROPERTY_VALUE_ATTR)) !== undefined) byName.set(name, property);
+    }
+    return [{ id, kind, ids, byName }];
   });
 }
 

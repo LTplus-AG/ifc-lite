@@ -261,9 +261,11 @@ interface EPSetSpec {
   deferAtoms?: true;
   /** Write the set and offset names with a STEP `\X\` escape for their first letter. */
   escapedNames?: true;
+  /** The MapUnit property's NominalValue and Unit, written as given (e.g. `$,#3`), in place of `mapUnit`. */
+  mapUnitSlots?: string;
 }
 
-const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames }: EPSetSpec) => {
+const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots }: EPSetSpec) => {
   const guid = (n: number) => `'0${name.toUpperCase()}EPSet${String(n).padStart(15, '0')}'`;
   // `\X\65` is `e`, `\X\45` is `E`, `\X\4E` is `N`, `\X\4F` is `O`.
   const [eps, east, north, height] = escapedNames ? ['\\X\\65PSet', '\\X\\45astings', '\\X\\4Eorthings', '\\X\\4FrthogonalHeight']
@@ -274,9 +276,10 @@ const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escap
 ${scale === undefined ? '' : `#33=IFCPROPERTYSINGLEVALUE('Scale',$,${scale.startsWith('IFC') ? scale : `IFCREAL(${scale})`},$);`}
 #34=IFCPROPERTYSET(${guid(2)},#8,'${eps}_MapConversion',$,(#30,#31,#32${scale === undefined ? '' : ',#33'}));
 #35=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);
-${mapUnit === undefined ? '' : `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnit === '$' ? '$' : `IFCLABEL('${mapUnit}')`},$);`}
+${mapUnitSlots !== undefined ? `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnitSlots});`
+    : mapUnit === undefined ? '' : `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnit === '$' ? '$' : `IFCLABEL('${mapUnit}')`},$);`}
 #38=IFCRELDEFINESBYPROPERTIES(${guid(4)},#8,$,$,(#1),#34);
-${crsSet === false ? '' : `#37=IFCPROPERTYSET(${guid(3)},#8,'ePSet_ProjectedCRS',$,(#35${mapUnit === undefined ? '' : ',#36'}));
+${crsSet === false ? '' : `#37=IFCPROPERTYSET(${guid(3)},#8,'ePSet_ProjectedCRS',$,(#35${mapUnit === undefined && mapUnitSlots === undefined ? '' : ',#36'}));
 #39=IFCRELDEFINESBYPROPERTIES(${guid(5)},#8,$,$,(#1),#37);`}`;
   return `ISO-10303-21;
 HEADER;
@@ -364,12 +367,25 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     ['its Scale is a numeric string', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: "IFCLABEL('0.001')" }, true],
     ['its Scale carries a STEP comment', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: 'IFCREAL(0.9996 /* grid */)' }, true],
     ['its names are STEP-escaped', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', escapedNames: true }, true],
+    ['its Scale is no number and its map unit is not the project unit', { unit: 'mm', easting: 2600100, mapUnit: 'MILLIMETRE', scale: "IFCLABEL('0.5x')" }, false],
+    ['its Scale overflows', { unit: 'mm', easting: 2600100, mapUnit: 'MILLIMETRE', scale: 'IFCREAL(1.E400)' }, false],
+    ['its Scale is written as a length', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: 'IFCLENGTHMEASURE(1.)' }, true],
+    ['its Scale is an escaped number', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: "IFCLABEL('\\X\\30.001')" }, true],
+    ['its MapUnit label is empty', { unit: 'mm', easting: 2600100, mapUnit: '' }, true],
   ] as const)('puts a millimetre model where the viewer puts it alone when %s', async (_, later, placed) => {
     const alone = viewerEPSet(await parse(epsetModel('b', later)));
     expect(alone === 'none').toBe(!placed);
     const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, later]);
     expect(viewerEPSet(await parse(merged))).toEqual(alone);
     expect(merged.match(/IFCPROPERTYSINGLEVALUE\('MapUnit',/g)).toHaveLength(1);
+  });
+
+  it('gives an empty MapUnit label METRE, and leaves a MapUnit that carries its own Unit', async () => {
+    const empty = await mergeEPSets([{ unit: 'm', easting: null }, { unit: 'mm', easting: 2600100, mapUnit: '' }]);
+    expect(empty.merged).toContain("IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('METRE'),$)");
+    const withUnit = await mergeEPSets([{ unit: 'm', easting: null }, { unit: 'mm', easting: 2600100, mapUnitSlots: '$,#3' }]);
+    expect(withUnit.merged).toMatch(/IFCPROPERTYSINGLEVALUE\('MapUnit',\$,\$,#\d+\)/);
+    expect(withUnit.merged).not.toContain("IFCLABEL('METRE')");
   });
 
   it('names an ePSet_MapConversion whose map unit stays implicit, with no ePSet_ProjectedCRS', async () => {

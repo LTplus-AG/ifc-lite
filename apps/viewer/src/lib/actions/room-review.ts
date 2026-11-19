@@ -98,7 +98,7 @@ function sourceIdentitiesCurrent(captured: ReturnType<typeof sources>, state: Vi
     return !!model && model.ifcDataStore === row.store && model.ifcDataStore?.source === row.source && model.sourceContentHash === row.hash;
   });
 }
-const isBuffer = (value: unknown): value is object => typeof value === 'object' && value !== null;
+const isWeakKey = (value: unknown): value is object => typeof value === 'object' && value !== null;
 function sourcesCurrent(captured: ReturnType<typeof sources>, state: ViewerState): boolean {
   return sourceIdentitiesCurrent(captured, state) && captured.every(row => state.mutationViews.get(row.id) === row.view
     && state.mutationViews.get(row.id)?.getMutationRevision() === row.revision);
@@ -154,15 +154,15 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1;
     const buffers = new WeakMap<object, Set<unknown>>();
     for (const mesh of geometry?.meshes ?? []) {
-      if (!isBuffer(mesh.positions)) continue;
-      const captured = buffers.get(mesh.positions) ?? new Set();
-      captured.add(mesh.indices); buffers.set(mesh.positions, captured);
+      if (!isWeakKey(mesh.positions)) continue;
+      const indices = buffers.get(mesh.positions) ?? new Set();
+      indices.add(mesh.indices); buffers.set(mesh.positions, indices);
     }
     const content = current.geometryContentVersion;
     const geometryCurrent = (state: ViewerState) => {
       const now = state.models.get(proposal.modelId)?.geometryResult;
       return !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length === meshCount
-        && now.meshes.every(mesh => !isBuffer(mesh.positions) || buffers.get(mesh.positions)?.has(mesh.indices) === true);
+        && now.meshes.every(mesh => !isWeakKey(mesh.positions) || buffers.get(mesh.positions)?.has(mesh.indices) === true);
     };
     const validate = () => {
       signal.throwIfAborted();

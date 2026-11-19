@@ -21,7 +21,12 @@ export type GeometryBackingCommand =
   /** TEST ONLY: release CPU geometry of every model after verifying its backing. */
   | { action: 'release-for-test' }
   /** TEST ONLY: magnetic snap at canvas CSS points, through readback when released. */
-  | { action: 'snap-probe-for-test'; points: Array<[number, number]> };
+  | { action: 'snap-probe-for-test'; points: Array<[number, number]> }
+  /** TEST ONLY: read the camera pose, or pin it first, so screen probes compare like for like. */
+  | { action: 'camera-for-test'; pose?: CameraPose };
+
+type Xyz = { x: number; y: number; z: number };
+export interface CameraPose { position: Xyz; target: Xyz; up: Xyz }
 
 export interface SnapProbe {
   outcome: string;
@@ -41,7 +46,14 @@ export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined 
 /** `renderer` is needed only by `release-for-test`; a test may start the tap
  * before the viewport has one, so the whole stream is observed. */
 export async function geometryBackingCommand(store: StoreApi<TapState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[]> {
+  Promise<ModelBackingStatus[] | SnapProbe[] | CameraPose[]> {
+  if (command.action === 'camera-for-test') {
+    const camera = renderer?.getCamera();
+    if (!camera) throw new Error('Camera poses need the viewport renderer');
+    const { pose } = command;
+    if (pose) { camera.setPosition(pose.position.x, pose.position.y, pose.position.z); camera.setTarget(pose.target.x, pose.target.y, pose.target.z); camera.setUp(pose.up.x, pose.up.y, pose.up.z); }
+    return [{ position: { ...camera.getPosition() }, target: { ...camera.getTarget() }, up: { ...camera.getUp() } }];
+  }
   if (command.action === 'snap-probe-for-test') {
     if (!renderer) throw new Error('Snap probes need the viewport renderer');
     return snapProbe(renderer, command.points);

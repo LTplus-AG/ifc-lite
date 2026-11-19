@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { splitReleasedForReplay } from '@/lib/geometry-backing/released-scene-replay';
 import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 /**
  * Geometry streaming hook for the 3D viewport.
@@ -377,11 +378,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       }
     }
 
-    // ── Route meshes to scene ──
-    // A LandXML provisional transaction may have uploaded these exact
-    // store-owned meshes after its registry range became pickable. Consume the
-    // one-shot marker so normal scene rebuilds still own later re-uploads.
+    // ── Route meshes to scene ── A LandXML provisional transaction may have uploaded these exact store-owned
+    // meshes once its range became pickable; consume that one-shot marker so later rebuilds own re-uploads.
     newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
+    // Released CPU geometry (#10264) is replayed from the backing; a failed or superseded replay is unclaimed for retry.
+    newMeshes = splitReleasedForReplay(renderer, newMeshes, (gone) => { for (const m of gone) processedMeshIdsRef.current.delete(geometryMeshKey(m, geometry.indexOf(m))); });
     if (newMeshes.length > 0) {
       // #6979: per-batch spans on the streaming load (no-op when not streaming or untraced).
       const trace = isStreaming ? activeLoadTrace() : NOOP_LOAD_TRACE;

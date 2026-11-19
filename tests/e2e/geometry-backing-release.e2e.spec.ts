@@ -22,7 +22,7 @@ type Probe = typeof globalThis & {
   __ifc_lite_viewer_store__?: { getState(): { loading: boolean; geometryStreamingActive: boolean;
     models: Map<string, { geometryResult: { meshes: MeshData[] } | null }> } };
   __ifc_lite_scene_settled__?: () => boolean;
-  __ifc_lite_geometry_backing__?: (command: { action: string; points?: Array<[number, number]> }) => Promise<Array<Record<string, unknown>>>;
+  __ifc_lite_geometry_backing__?: (command: { action: string; points?: Array<[number, number]>; pose?: unknown }) => Promise<Array<Record<string, unknown>>>;
   __ifc_lite_cpu_geometry_held__?: () => Promise<{ totalBytes: number }>;
 };
 
@@ -245,6 +245,43 @@ for (const fixture of FIXTURES) {
       expect(b.snap?.type, `probe ${i} snap kind`).toBe(a.snap?.type);
       if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `probe ${i} snap`).toBeLessThan(1e-6);
     }
+    // A content-version reload after release (realign, rebase, collab): the scene rebuilds from the
+    // store list, whose released members are replayed from the backing in bounded batches.
+    const reload = await page.evaluate(async ([points]) => {
+      const g = globalThis as Probe;
+      const store = g.__ifc_lite_viewer_store__! as unknown as { setState(fn: (s: { geometryContentVersion: number }) => object): void };
+      // A rebuilt scene may refit the camera; probe from the same pose as before the reload.
+      const [pose] = await g.__ifc_lite_geometry_backing__!({ action: 'camera-for-test' });
+      store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+      // The replay is asynchronous: wait until the scene settles again and a reseal acknowledges the replacement.
+      for (let i = 0; i < 200 && !(g.__ifc_lite_scene_settled__?.()); i++) await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 1500));
+      const sealed = await g.__ifc_lite_geometry_backing__!({ action: 'seal' });
+      const held = (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes;
+      await g.__ifc_lite_geometry_backing__!({ action: 'camera-for-test', pose });
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const snaps = await g.__ifc_lite_geometry_backing__!({ action: 'snap-probe-for-test', points });
+      return { sealed, held, snaps };
+    }, [phase1.points] as const);
+    await page.screenshot({ path: info.outputPath('after-reload.png') });
+    await writeFile(info.outputPath('reload.json'), JSON.stringify({ sealed: reload.sealed, held: reload.held }, null, 2));
+    expect(reload.sealed[0].complete, JSON.stringify(reload.sealed[0])).toBe(report.occurrences > 0 ? false : true);
+    expect(reload.held, 'no CPU restore: the replay keeps no CPU pieces').toBeLessThanOrEqual(report.heldAfter);
+    const reloaded = reload.snaps as SnapRow[];
+    // Interim limit until instanced occurrences are restaged in place: a content bump loses a
+    // model's instancing, its new generation is never complete, and released readback must then
+    // fail closed (unavailable), never answer from a different or stale surface.
+    const lost = reload.sealed[0].instancedLost === true;
+    let unavailable = 0;
+    for (let i = 0; i < before.length; i++) {
+      const a = before[i], b = reloaded[i];
+      if (lost && b.outcome === 'unavailable') { unavailable++; continue; }
+      expect(b.expressId, `reload probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
+      if (a.expressId === null) continue;
+      for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `reload probe ${i} hit`).toBeLessThan(1e-6);
+      expect(b.snap?.type, `reload probe ${i} snap kind`).toBe(a.snap?.type);
+    }
+    await writeFile(info.outputPath('reload-probes.json'), JSON.stringify({ lost, unavailable, probes: before.length }));
     await page.evaluate(() => (globalThis as Probe).__ifc_lite_geometry_backing__!({ action: 'stop' }));
   });
 }

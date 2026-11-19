@@ -18,6 +18,11 @@
  * filter (C) must differ from A, so the comparison is not vacuous. Picks under
  * the same visibility must never return a hidden entity.
  *
+ * Grid axes, annotation text and structural glyphs are off for every test
+ * (`open()`): they load in idle time after the model and raced the captures
+ * (#10853). The cost is that IfcAnnotation/IfcGrid meshes are not uploaded,
+ * so no scenario here exercises them as hidden or visible batchmates.
+ *
  * Opt-in: GPU_PICK_PARITY=1 on a real WebGPU adapter (gpu-batch-pick.config.ts).
  */
 
@@ -360,8 +365,8 @@ test('after the scene releases its CPU geometry, hide and isolate draw the same 
   await picksNeverHidden(page, info, 'released-isolate', await hiddenFlat(page), false);
 });
 
-/** Pixels that differ between `a` and `b` inside the mask where `on` and `off` differ (all > 2/255). */
-async function diffWithin(page: Page, a: string, b: string, on: string, off: string): Promise<{ mask: number; differing: number }> {
+/** Pixels that differ between `a` and `b` (> 2/255; strong > 48/255) inside the mask where `on` and `off` differ. */
+async function diffWithin(page: Page, a: string, b: string, on: string, off: string): Promise<{ mask: number; differing: number; strong: number }> {
   return page.evaluate(async (urls) => {
     const data = await Promise.all(urls.map(async (url) => {
       const bitmap = await createImageBitmap(await (await fetch(url)).blob());
@@ -372,19 +377,25 @@ async function diffWithin(page: Page, a: string, b: string, on: string, off: str
     const [pa, pb, pon, poff] = data as [Uint8ClampedArray, Uint8ClampedArray, Uint8ClampedArray, Uint8ClampedArray];
     if (new Set(data.map((d) => d.length)).size !== 1) throw new Error('frames differ in size');
     const d = (p: Uint8ClampedArray, q: Uint8ClampedArray, i: number) => Math.max(Math.abs(p[i]! - q[i]!), Math.abs(p[i + 1]! - q[i + 1]!), Math.abs(p[i + 2]! - q[i + 2]!));
-    let mask = 0, differing = 0;
+    let mask = 0, differing = 0, strong = 0;
     for (let i = 0; i < pa.length; i += 4) {
       if (d(pon, poff, i) <= 2) continue;
       mask++;
-      if (d(pa, pb, i) > 2) differing++;
+      const delta = d(pa, pb, i);
+      if (delta > 2) differing++;
+      if (delta > 48) strong++;
     }
-    return { mask, differing };
+    return { mask, differing, strong };
   }, [a, b, on, off]);
 }
 
 /** A still frame: wait until two frames 20 animation frames apart match. */
 async function stillCapture(page: Page, info: TestInfo, name: string): Promise<string> {
-  const grab = async () => (await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!()))!;
+  const grab = async () => {
+    const png = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!());
+    expect(png, `${name}: the renderer returned its colour frame`).toBeTruthy();
+    return png!;
+  };
   let frame = await grab();
   let still = false;
   for (let i = 0; i < 20 && !still; i++) {
@@ -416,7 +427,8 @@ test('deleted instanced occurrences stay off the frame and the picks with nothin
     return [...scene.getInstancedEntityIds()].filter((id) => !scene.getMeshDataPieces(id)?.length);
   });
   expect(ids.length, 'the fixture has instanced-only entities').toBeGreaterThan(0);
-  // Where those occurrences are on screen: the frame with only them isolated against an empty isolation.
+  // Where those occurrences are on screen: the frame with only them isolated against an empty
+  // isolation. The mask also holds their lighting footprint (shadow, AO), which is small here.
   await act(page, [['isolateEntities', 'ids']], ids);
   const only = await stillCapture(page, info, 'delete-M-occurrences-only');
   await act(page, [['clearIsolation']]);
@@ -441,16 +453,23 @@ test('deleted instanced occurrences stay off the frame and the picks with nothin
   }, ids);
   const a = await stillCapture(page, info, 'delete-A-deleted');
   const ab = await diff(page, a, b);
+  const abInside = await diffWithin(page, a, b, only, none);
   const ac = await diffWithin(page, a, c, only, none);
   await info.attach('delete-A-vs-B-diff.png', { body: Buffer.from(ab.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
-  const row = { deleted: ids.length, pixels: ab.width * ab.height, occurrenceMask: shown.mask, occurrencesShown: shown.differing,
-    occurrencesGoneOnDelete: ac.differing, differingAB: ab.differing, strongAB: ab.strong };
+  const pixels = ab.width * ab.height;
+  const row = { deleted: ids.length, pixels, occurrenceMask: shown.mask, occurrencesShown: shown.differing, occurrencesShownStrong: shown.strong,
+    occurrencesGoneOnDelete: ac.differing, differingAB: ab.differing, strongAB: ab.strong, differingABInMask: abInside.differing };
   await info.attach('delete.json', { body: JSON.stringify(row, null, 2), contentType: 'application/json' });
   // Only instanced-occurrence pixels count toward "on screen" (#10853): hiding them must change
   // their own pixels, and so must deleting them.
-  expect(shown.differing, 'the occurrences are on screen (hiding them changes their pixels)').toBeGreaterThan(50);
-  expect(ac.differing, 'deleting them changes their pixels (not a vacuous comparison)').toBeGreaterThan(50);
-  expect(ab.differing, 'a deleted occurrence draws nothing a hidden one does not').toBeLessThanOrEqual(Math.floor(shown.differing * 0.05));
+  // The "nothing" frame must really draw nothing: then the mask is the occurrences' own footprint
+  // (plus their lighting), a small part of the frame.
+  expect(shown.mask, 'the occurrence mask is non-empty and not the whole model').toBeGreaterThan(100);
+  expect(shown.mask, 'the occurrence mask is non-empty and not the whole model').toBeLessThan(pixels * 0.25);
+  expect(shown.strong, 'the occurrences are on screen (hiding them strongly changes their pixels)').toBeGreaterThan(50);
+  expect(ac.strong, 'deleting them strongly changes their pixels (not a vacuous comparison)').toBeGreaterThan(50);
+  expect(abInside.differing, 'a deleted occurrence draws nothing a hidden one does not').toBeLessThanOrEqual(Math.floor(shown.differing * 0.05));
+  expect(ab.strong, 'and nothing else in the frame moves').toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
   await picksNeverHidden(page, info, 'deleted', ids);
   // A later visibility change must not bring them back: hide surviving instanced entities (a frame
   // renders with the instanced hidden set non-empty), then show all again, which empties it.
@@ -463,6 +482,8 @@ test('deleted instanced occurrences stay off the frame and the picks with nothin
   await act(page, [['hideEntities', 'ids']], survivors);
   await stillCapture(page, info, 'delete-A2-survivors-hidden');
   await act(page, [['showAll']]);
-  const again = await diff(page, await stillCapture(page, info, 'delete-A3-after-visibility-change'), b);
+  const a3 = await stillCapture(page, info, 'delete-A3-after-visibility-change');
+  const again = await diffWithin(page, a3, b, only, none);
   expect(again.differing, 'still absent after a visibility change').toBeLessThanOrEqual(Math.floor(shown.differing * 0.05));
+  expect((await diff(page, a3, b)).strong, 'and nothing else in the frame moves').toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
 });

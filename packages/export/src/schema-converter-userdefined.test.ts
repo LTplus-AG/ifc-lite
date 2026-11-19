@@ -29,6 +29,9 @@ describe('the USERDEFINED rule (#10780)', () => {
   it('reports exactly the entities the shared fixture does not exempt, in every schema', () => {
     for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
       const exempt = new Set(fixture.exempt[schema]);
+      // What `EXEMPT_AT` must hold for this registry, named in every failure below.
+      const candidates = [...attrNameTable(schema)!].filter(([, n]) => n.includes('PredefinedType') && n.some((a) => fixture.labels.includes(a))).map(([t]) => t).sort();
+      const encoding = fixture.exempt[schema].map((t) => candidates.indexOf(t).toString(36)).join(' ');
       let checked = 0;
       for (const [type, names] of attrNameTable(schema)!) {
         const predefined = names.indexOf('PredefinedType');
@@ -37,7 +40,7 @@ describe('the USERDEFINED rule (#10780)', () => {
         const slots = names.map((_, i) => (i === 0 ? "'g'" : i === predefined ? '.USERDEFINED.' : '$'));
         const enums = new EnumReconciliation();
         enums.apply(`#5=${type}(${slots.join(',')});`, schema);
-        expect(reported(enums).length, `${schema} ${type}`).toBe(exempt.has(type) ? 0 : 1);
+        expect(reported(enums).length, `${schema} ${type}; EXEMPT_AT.${schema} = '${encoding}'`).toBe(exempt.has(type) ? 0 : 1);
         checked++;
       }
       expect(checked, `anti-vacuity: ${schema}`).toBeGreaterThan(80);

@@ -8,7 +8,9 @@
 //! converter cannot invent the label, so it reports the record instead.
 //!
 //! Every non-abstract entity with both attributes has the rule except the ones
-//! [`EXEMPT`] lists, re-derived from the EXPRESS files by the tests. Twin of
+//! [`EXEMPT`] lists, re-derived from the EXPRESS files by the tests. The
+//! TypeScript twin ships the same list as positions, for the viewer's eager
+//! bundle; its test prints them from the shared fixture. Twin of
 //! `packages/export/src/schema-converter-userdefined.ts`; both are held to
 //! `tests/fixtures/schema_userdefined_rules.json`.
 

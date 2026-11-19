@@ -20,10 +20,12 @@ const LABELS: readonly string[] = ['ObjectType', 'ElementType', 'ProcessType', '
 
 /**
  * The entities with both attributes but no USERDEFINED rule, per schema, as
- * base-36 positions in that schema's {@link candidates}: the viewer loads this
- * module eagerly, and the names would cost about 1.8 KB (#10780 perf ratchet).
- * The test checks every candidate against the shared fixture's names, so a
- * registry change that moves a position fails it.
+ * base-36 positions in that schema's {@link candidates} (every registry entity
+ * with both attributes, abstract ones included). The viewer loads this module
+ * eagerly, and the names would cost about 1.8 KB (#10780 perf ratchet); the
+ * Rust twin keeps the names. The test checks every candidate against the
+ * shared fixture's names and prints the encoding to paste here when a
+ * registry change moves a position.
  */
 const EXEMPT_AT: Readonly<Record<SchemaVersionWithRegistry, string>> = {
   IFC2X3: '0 4 5 7 9 a d g j l m o s t u v w x 13 14 1a 1b 1c 1d 1e 1g 1k 1l 1m 1n 1q 1r 1s 1t 1v 1x 1y 1z 20 21 22 23 24 25 26 29 2a 2f 2g',

@@ -285,7 +285,7 @@ fn convert_record(
     // slot list can still receive a type rename, proxy replacement, trim, or
     // padding and become a partially converted record (#4200). The one split
     // is then reused by every branch below.
-    let Some(args) = split_top_level_args(attrs) else {
+    let Some(mut args) = split_top_level_args(attrs) else {
         return Ok(line.to_string());
     };
 
@@ -333,13 +333,24 @@ fn convert_record(
         Plan::Unrepresented => return resolve_unrepresented_entity(prefix, &entity_type, cto, express_id),
         // The attribute list against the target schema (#7683): see
         // `schema_plan::plan_for` for which way it moves and why.
-        Plan::Write { renamed, adjust } => {
+        Plan::Write { renamed, adjust, replaced } => {
             let new_type = renamed.unwrap_or(&entity_type);
+            // #10758: a slot a schema replaced in place keeps no value across.
+            let rebuilt;
+            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| v.trim() != "$")) {
+                Some(i) => {
+                    lost += usize::from(holds_value(&args[i]));
+                    args[i] = "$".to_owned();
+                    rebuilt = args.join(",");
+                    rebuilt.as_str()
+                }
+                None => attrs,
+            };
             let final_attrs: Cow<'_, str> = match adjust {
                 Adjust::Trim(n) if !args.is_empty() => {
                     let keep = n.min(args.len());
                     let carried_slot = cause_carried.then_some(crate::schema_structural_carriers::CAUSED_BY);
-                    lost = args.iter().enumerate().skip(keep).filter(|(i, v)| Some(*i) != carried_slot && holds_value(v)).count();
+                    lost += args.iter().enumerate().skip(keep).filter(|(i, v)| Some(*i) != carried_slot && holds_value(v)).count();
                     Cow::Owned(args[..keep].join(","))
                 }
                 // An attribute-less record is left alone rather than fabricated
@@ -350,7 +361,7 @@ fn convert_record(
                 // `GridFrames` already wrote this one in the target's layout.
                 Adjust::ByName(_, tgt) if &*entity_type == crate::schema_grid_frames::GRID_PLACEMENT && args.len() == tgt.len() => Cow::Borrowed(attrs),
                 Adjust::ByName(src, tgt) => {
-                    lost = values_without_a_name(&args, src, tgt, cause_carried);
+                    lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Keep => Cow::Borrowed(attrs),

@@ -1,5 +1,5 @@
 {
- "_comment": "Shared positional-rename allowance for schema conversion (#7739). A type listed here has attributes that a schema RENAMED IN PLACE (same index, same meaning and type), so its source and target name lists are not prefixes of each other by name alone. Each pair is (older name, newer name); both names are read as the newer one before the strict-prefix test that decides trim/pad. Types where a schema INSERTED, reordered or retyped attributes (IfcMaterialProperties, IfcApproval, IfcTask, the IfcConstruction*Resource family, IfcLibraryInformation, IfcPerformanceHistory, ...) are deliberately NOT here: trimming or padding would shift values into the wrong slots. Pinned in both twins: rust/export/src/schema_renames.rs and packages/export/src/schema-converter-renames.ts each compare their table with this file; their conversion is pinned by schema_upconvert_sweep.json rows. DO NOT hand-edit to make a test pass.",
+ "_comment": "Shared positional-rename allowance for schema conversion (#7739). A type listed here has attributes that a schema RENAMED IN PLACE (same index, same meaning and type), so its source and target name lists are not prefixes of each other by name alone. Each pair is (older name, newer name); both names are read as the newer one before the strict-prefix test that decides trim/pad. Types where a schema INSERTED, reordered or retyped attributes (IfcMaterialProperties, IfcApproval, IfcTask, the IfcConstruction*Resource family, IfcLibraryInformation, IfcPerformanceHistory, ...) are deliberately NOT here: trimming or padding would shift values into the wrong slots. Pinned in both twins: rust/export/src/schema_renames.rs and packages/export/src/schema-converter-renames.ts each compare their table with this file; their conversion is pinned by schema_upconvert_sweep.json rows. `replaced` (#10758) lists attributes a schema REPLACED in place: same index, a different concept. Both names are read as one for the prefix test, like a rename, but the value is not carried: the converter writes `$` and reports it lost. DO NOT hand-edit to make a test pass.",
  "renames": [
   {
    "type": "IFCACTIONREQUEST",
@@ -128,6 +128,44 @@
     ]
    ],
    "why": "as IfcPropertyBoundedValue, with CurveInterpolation appended in IFC4"
+  },
+  {
+   "type": "IFCASYMMETRICISHAPEPROFILEDEF",
+   "pairs": [
+    [
+     "OverallWidth",
+     "BottomFlangeWidth"
+    ],
+    [
+     "FlangeThickness",
+     "BottomFlangeThickness"
+    ],
+    [
+     "FilletRadius",
+     "BottomFlangeFilletRadius"
+    ]
+   ],
+   "why": "#10758: IFC4 named the IFC2X3 bottom flange (the inherited IfcIShapeProfileDef attributes) BottomFlange*; same index and measure. Slot 11 changed concept and is under `replaced`; BottomFlangeSlope, TopFlangeEdgeRadius and TopFlangeSlope are appended"
+  },
+  {
+   "type": "IFCTRANSPORTELEMENT",
+   "pairs": [
+    [
+     "OperationType",
+     "PredefinedType"
+    ]
+   ],
+   "why": "#10758: both IfcTransportElementTypeEnum at index 8; IFC2X3's CapacityByWeight and CapacityByNumber follow it and IFC4 dropped them"
+  }
+ ],
+ "replaced": [
+  {
+   "type": "IFCASYMMETRICISHAPEPROFILEDEF",
+   "pair": [
+    "CentreOfGravityInY",
+    "BottomFlangeEdgeRadius"
+   ],
+   "why": "IFC4 ADD2 TC1: 'Name changed from CentreOfGravityInY to BottomFlangeEdgeRadius'. A centre of gravity is not an edge radius; IFC4 moved it to IfcExtendedProfileProperties. Both are OPTIONAL, so $ is valid on either side"
   }
  ]
 }

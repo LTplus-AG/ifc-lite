@@ -27,13 +27,14 @@ const owned = new WeakMap<ToolHost, Map<string, Candidate>>();
 function candidates(c: OperationContext) {
   let found = owned.get(c.host); if (!found) { found = new Map(); owned.set(c.host, found); } return found;
 }
+/** The permanent half of apply's check: the model has not changed since the preview. */
+const previewCurrent = (entry: Pick<Candidate, 'revision'>) => entry.revision === useViewerStore.getState().mutationVersion;
 function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) {
   const entries = candidates(c);
-  // Unchanged as candidate() checks it: the model revision the preview was made at.
-  const revision = useViewerStore.getState().mutationVersion, stillApplies = candidateStillApplies(c.host);
+  const stillApplies = candidateStillApplies(c.host);
   admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.settled,
-    canApply: entry => stillApplies(entry, entry.receipt !== undefined, () => entry.revision === revision) });
-  const token = crypto.randomUUID();
+    canApply: entry => stillApplies(entry.receipt !== undefined, () => previewCurrent(entry), entry) });
+  const token = crypto.randomUUID(), revision = useViewerStore.getState().mutationVersion;
   entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
   return { token, revision, preview_json: JSON.stringify(preview) };
 }
@@ -44,7 +45,7 @@ function ownedCandidate(c: OperationContext, token: string) {
 }
 function candidate(c: OperationContext, token: string) {
   const saved = ownedCandidate(c, token);
-  if (!saved.receipt && saved.revision !== useViewerStore.getState().mutationVersion) throw new Error('Model changed since preview; prepare again.');
+  if (!saved.receipt && !previewCurrent(saved)) throw new Error('Model changed since preview; prepare again.');
   return saved;
 }
 async function persist(saved: Candidate, receipt: ModelChangeReceipt) {

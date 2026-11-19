@@ -36,7 +36,8 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
   /** The loaded source owners this review bound are unchanged (its evaluation snapshot is checked by validate()). */
   const sourcesCurrent = () => {
     const current = store.getState();
-    return sources.length === current.models.size && !sources.some(row => current.models.get(row.id) !== row.model || row.model.ifcDataStore?.source !== row.source || row.model.sourceContentHash !== row.hash || row.model.sourceFingerprint !== row.fingerprint);
+    return sources.length === current.models.size && sources.every(row => current.models.get(row.id) === row.model && row.model.ifcDataStore?.source === row.source
+      && row.model.sourceContentHash === row.hash && row.model.sourceFingerprint === row.fingerprint);
   };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');

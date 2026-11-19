@@ -86,7 +86,7 @@ export const graphAuthoringOperations = [
     const admit = () => {
       const stillApplies = candidateStillApplies(c.host);
       admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.settled,
-        canApply: entry => stillApplies(entry, entry.receipt !== undefined, () => entry.review?.sourcesCurrent() ?? false),
+        canApply: entry => stillApplies(entry.receipt !== undefined, () => entry.review?.sourcesCurrent() ?? false, entry),
         release: entry => entry.review?.dispose?.() });
     };
     admit();

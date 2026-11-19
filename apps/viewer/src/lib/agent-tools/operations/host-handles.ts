@@ -42,8 +42,8 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
  */
 export function candidateStillApplies(host?: ToolHost) {
   const live = host ? new Map(host.models().map(model => [model.id, model.store])) : null;
-  return (entry: { modelId?: string; store?: unknown }, applied: boolean, unchanged: () => boolean): boolean =>
-    (!live || entry.modelId === undefined || live.get(entry.modelId) === entry.store) && (applied || unchanged());
+  return (applied: boolean, unchanged: () => boolean, bound?: { modelId: string; store: unknown }): boolean =>
+    (!live || !bound || live.get(bound.modelId) === bound.store) && (applied || unchanged());
 }
 
 /** An applied candidate's receipt write. `settled` once it resolved: admission may then evict the candidate. */

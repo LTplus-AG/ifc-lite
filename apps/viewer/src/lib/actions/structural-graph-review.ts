@@ -70,11 +70,11 @@ export function prepareStructuralReview(store: StoreApi<ViewerState>, input: Str
   // Existing records, including every shared referrer/cascade target, are captured exactly.
   const reviewSignature = JSON.stringify({ snapshot, approved: [...approved], delta: preview.delta });
   const sourcesCurrent = (initializing = false) => captured.length === store.getState().models.size && captured.every(row => {
-    const current = store.getState(), model = current.models.get(row.id);
-    return !(model !== row.model || model?.ifcDataStore !== row.store || model?.ifcDataStore?.source !== row.source
-      || model?.sourceContentHash !== row.hash || model?.sourceFingerprint !== row.fingerprint
-      || (current.mutationViews.get(row.id) !== row.view || current.mutationViews.get(row.id)?.getMutationRevision() !== row.revision)
-        && !(initializing && row.id === proposal.modelId && !row.view && !current.mutationViews.get(row.id)?.getEffectiveChanges().length));
+    const current = store.getState(), model = current.models.get(row.id), view = current.mutationViews.get(row.id);
+    const initializingTarget = initializing && row.id === proposal.modelId && !row.view && !view?.getEffectiveChanges().length;
+    return model === row.model && model?.ifcDataStore === row.store && model?.ifcDataStore?.source === row.source
+      && model?.sourceContentHash === row.hash && model?.sourceFingerprint === row.fingerprint
+      && ((view === row.view && view?.getMutationRevision() === row.revision) || initializingTarget);
   });
   const validate = (initializing = false) => {
     if (reviewSignature !== JSON.stringify({ snapshot, approved: [...approved], delta: preview.delta })) throw new Error('The reviewed Structural choices or native delta changed');

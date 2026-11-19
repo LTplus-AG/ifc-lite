@@ -75,45 +75,47 @@ export const preloadHelperChunkGroup = {
   test: /vite\/preload-helper/,
 };
 
+/** A non-recursive group that claims exactly these `apps/viewer/src` modules (`.ts`, no query). */
+function allowlistGroup(name: string, modules: readonly string[]) {
+  const escaped = modules.map((module) => module.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'));
+  return { name, priority: 40, includeDependenciesRecursively: false, modules, test: new RegExp(`/apps/viewer/src/(?:${escaped.join('|')})\\.ts$`) };
+}
+
 /**
  * Agent operation modules (lazy, `lib/agent-tools/operations/generated/loaders.ts`)
- * import a handful of eager drawing and ingest helpers. Left alone, Rolldown
- * splits each such helper out of its eager chunk into its own chunk, and every
- * chunk adds a name to the entry's dynamic-import preload map plus its own
- * import/export glue (#10587). This allowlist keeps them in one eager chunk.
- * The lazy groups below are allowlists too: a group claims a module however it
- * is imported, so a broad pattern would merge `import()` boundaries (pdf.js)
- * into every chunk that shares the group.
+ * share small modules with the Drawing and Appearance panels. Left alone,
+ * Rolldown gives each shared module its own chunk, and every chunk adds a name
+ * to the entry's dynamic-import preload map plus its own import/export glue
+ * (#10587). These allowlists keep each family in one chunk.
+ *
+ * A group claims a module however it is imported, so every member must contain
+ * no `import()` (src/test/vite-chunks.test.ts checks this): otherwise the group
+ * would merge a deferred boundary into every chunk that shares it.
  */
-export const drawingSharedChunkGroup = {
-  name: 'drawing-shared',
-  priority: 40,
-  includeDependenciesRecursively: false,
-  test: /\/apps\/viewer\/src\/(?:hooks\/(?:useDxfUnderlay|dxfUnderlayWorldLines|dxfUnderlayMath|dxfExportGeoref|pdfSectionLayout)|hooks\/ingest\/(?:dxfIngest|pointCloudScanCache)|lib\/drawing\/(?:element-tags|drawing-runtime)|lib\/drawing2d-markup\/dimension-graphics|components\/viewer\/tools\/(?:computePolygonArea|formatDistance)|services\/coordination-loader|lib\/renderer\/line-overlay-rte|lib\/geo\/(?:use-projection-kind|useAnchorGeoreference))\.ts$/,
-};
+export const drawingSharedChunkGroup = allowlistGroup('drawing-shared', [
+  // Eager: the Drawing panel's host and DXF/point-cloud ingest.
+  'hooks/useDxfUnderlay', 'hooks/dxfUnderlayWorldLines', 'hooks/dxfUnderlayMath', 'hooks/dxfExportGeoref', 'hooks/pdfSectionLayout',
+  'hooks/ingest/dxfIngest', 'hooks/ingest/pointCloudScanCache', 'lib/drawing/element-tags', 'lib/drawing/drawing-runtime',
+  'lib/drawing2d-markup/dimension-graphics', 'components/viewer/tools/computePolygonArea', 'components/viewer/tools/formatDistance',
+  'services/coordination-loader', 'lib/renderer/line-overlay-rte', 'lib/geo/use-projection-kind', 'lib/geo/useAnchorGeoreference',
+]);
+
+/** Lazy: small drawing and appearance modules the Drawing panel and operations share. */
+export const drawingLeavesChunkGroup = allowlistGroup('drawing-leaves', [
+  'lib/drawing/center-dxf', 'lib/drawing/dxf-text-layout', 'hooks/dxfDrawingBounds',
+  'lib/appearance/references/drawing', 'lib/appearance/face-masks', 'lib/appearance/settings',
+]);
 
 /**
- * Small lazy leaves the Drawing and Appearance panels share with agent
- * operations. An explicit allowlist of modules with no `import()` and no vendor
- * dependency, so grouping them cannot move a deferred boundary (#10587).
+ * Lazy: capture, scan, transfer and preview workflows the Appearance panel and
+ * operations share. The textured-product family stays out because the Drawing
+ * panel's reference library imports it, and this group would then ride along.
  */
-export const drawingLeavesChunkGroup = {
-  name: 'drawing-leaves',
-  priority: 40,
-  includeDependenciesRecursively: false,
-  test: /\/apps\/viewer\/src\/(?:lib\/drawing\/(?:center-dxf|dxf-text-layout)|hooks\/dxfDrawingBounds|lib\/appearance\/(?:references\/drawing|face-masks|settings))\.ts$/,
-};
-
-/**
- * Lazy appearance workflows (capture, scan, transfer, preview, reference edit)
- * that the Appearance panels and agent operations both import. Same rule as
- * above: an explicit list of modules with no `import()` and no vendor
- * dependency. `calibration` and `appearance-native-pdf` stay out because they
- * defer pdf.js (#10587).
- */
-export const appearanceWorkflowsChunkGroup = {
-  name: 'appearance-workflows',
-  priority: 40,
-  includeDependenciesRecursively: false,
-  test: /\/apps\/viewer\/src\/(?:lib\/appearance\/(?:appearance-native-(?:preview|scan|scan-sources|capture|transfer)|raster-payload|baked-images|create-captured-mesh|snapshot|prepare-native-preview|pdf\/page-preview|capture\/(?:region|source)|scan\/(?:landmarks|point-source|geometry-proof|session-source|session|transfer-frame|prepare-transfer))|components\/viewer\/appearance\/scan-validation-message)\.ts$/,
-};
+export const appearanceWorkflowsChunkGroup = allowlistGroup('appearance-workflows', [
+  'lib/appearance/appearance-native-preview', 'lib/appearance/appearance-native-scan', 'lib/appearance/appearance-native-scan-sources',
+  'lib/appearance/appearance-native-capture', 'lib/appearance/appearance-native-transfer', 'lib/appearance/raster-payload',
+  'lib/appearance/baked-images', 'lib/appearance/create-captured-mesh', 'lib/appearance/snapshot', 'lib/appearance/prepare-native-preview',
+  'lib/appearance/pdf/page-preview', 'lib/appearance/capture/region', 'lib/appearance/capture/source', 'lib/appearance/scan/landmarks',
+  'lib/appearance/scan/point-source', 'lib/appearance/scan/geometry-proof', 'lib/appearance/scan/session-source', 'lib/appearance/scan/session',
+  'lib/appearance/scan/transfer-frame', 'lib/appearance/scan/prepare-transfer', 'components/viewer/appearance/scan-validation-message',
+]);

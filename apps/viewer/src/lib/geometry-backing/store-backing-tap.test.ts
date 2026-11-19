@@ -290,6 +290,60 @@ describe('store geometry backing tap (test/debug only)', () => {
     });
   }
 
+  it('#10888 a statement, then a drain that DROPS the shard, then seal: incomplete and the old copy kept; a later supply completes', async () => {
+    const store = storeWith({ dp: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('dp', [shardBytes(77)], instancedShardGeneration());
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    await tap.seal();
+    const acknowledged = tap.backing('dp')!;
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    discardInstancedShards();
+    const fresh = instancedShardGeneration();
+    enqueueInstancedShards('dp', [shardBytes(80)], fresh);
+    completeInstancedShardSupply('dp', 1, fresh); // matched and accepted
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'dropped'); }); // never uploaded
+    let [status] = await tap.seal();
+    assert.equal(status.complete, false, 'the scene never received the stated shard');
+    assert.equal(acknowledged.isCurrent, true, 'the last complete generation is not retired');
+    // The model is re-supplied within the same queue generation (a new epoch of its own).
+    enqueueInstancedShards('dp', [shardBytes(81)], fresh);
+    completeInstancedShardSupply('dp', 1, fresh);
+    [status] = await tap.seal();
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
+    const ids: number[] = [];
+    for await (const shard of tap.backing('dp')!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    assert.deepEqual(ids, [81], 'never the dropped 80');
+    await tap.stop();
+  });
+
+  it('#10888 a model-scoped discard, then a complete replacement set, completes without any global reset', async () => {
+    const store = storeWith({ ms: [mesh(1)], other: [mesh(2)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    const generation = instancedShardGeneration();
+    enqueueInstancedShards('ms', [shardBytes(77)], generation);
+    await tap.seal();
+    const acknowledged = tap.backing('ms')!;
+    discardInstancedShards('ms'); // its queued shard never reached the scene; the queue generation does not move
+    assert.equal(instancedShardGeneration(), generation);
+    let [status] = await tap.seal();
+    assert.equal(status.complete, false, 'backed but never drawn: lost');
+    assert.equal(acknowledged.isCurrent, true);
+    // A partial replacement in the same generation is still not whole.
+    enqueueInstancedShards('ms', [shardBytes(90)], generation);
+    completeInstancedShardSupply('ms', 2, generation);
+    [status] = await tap.seal();
+    assert.equal(status.complete, false, 'one of two stated shards');
+    enqueueInstancedShards('ms', [shardBytes(91)], generation);
+    completeInstancedShardSupply('ms', 2, generation);
+    [status] = await tap.seal();
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
+    const ids: number[] = [];
+    for await (const shard of tap.backing('ms')!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    assert.deepEqual(ids.sort(), [90, 91]);
+    await tap.stop();
+  });
+
   it('#10888 a full discard after the statement voids it even when it dropped nothing (generation fence)', async () => {
     const store = storeWith({ dg: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });

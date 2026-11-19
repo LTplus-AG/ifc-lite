@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "why": "Keep the generation replay loadable while reintroducing the abandoned re-supply: a model's matched completion statement is kept after its queued shards are discarded (global or model-scoped) or after a full discard moves the queue generation, so a seal acknowledges shards the scene never received and retires the last complete durable copy.",
+  "why": "Keep the generation replay loadable while reintroducing the abandoned re-supply. A model's matched completion statement is kept after its queued shards are dropped by the drain or discarded (global or model-scoped), or after a full discard moves the queue generation. A seal then acknowledges shards the scene never received and retires the last complete durable copy.",
   "key": "apps/viewer/src/lib/geometry-backing/generation-replay.ts",
   "mutation": "tests/evidence/geometry-backing-discard-10264/behaviour.oracle.patch",
   "test": "apps/viewer/src/lib/geometry-backing/store-backing-tap.test.ts"

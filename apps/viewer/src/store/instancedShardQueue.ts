@@ -29,8 +29,11 @@ export interface PendingInstancedShard {
 }
 
 export interface InstancedShardQueueEvent {
-  /** `drained`: handed to the renderer (uploaded or skipped). `discarded`: dropped by a session reset. */
-  readonly kind: 'enqueued' | 'drained' | 'discarded';
+  /**
+   * `drained`: uploaded by the renderer. `dropped`: settled by the drain without an upload.
+   * `discarded`: removed undrained (a reset, or a model's removal).
+   */
+  readonly kind: 'enqueued' | 'drained' | 'dropped' | 'discarded';
   readonly modelIds: ReadonlySet<string>;
   /** `enqueued` only: the shards this call queued (their bytes are read, never detached). */
   readonly shards?: readonly PendingInstancedShard[];
@@ -123,10 +126,13 @@ export function drainInstancedShards(
     consume(taken, (shard, outcome) => { outcomes.set(shard, outcome); });
   } finally {
     const gone = (shard: PendingInstancedShard) => outcomes.get(shard) === 'uploaded' || outcomes.get(shard) === 'dropped';
-    const left = taken.filter(gone);
     const restored = taken.filter((shard) => !gone(shard));
     if (restored.length > 0 && generation === takenGeneration) pending = [...restored, ...pending];
-    if (left.length > 0) emit({ kind: 'drained', modelIds: modelIdsOf(left) });
+    const uploaded = taken.filter((shard) => outcomes.get(shard) === 'uploaded');
+    const lost = taken.filter((shard) => outcomes.get(shard) === 'dropped');
+    if (uploaded.length > 0) emit({ kind: 'drained', modelIds: modelIdsOf(uploaded) });
+    // A dropped shard never reached the scene: whatever claimed the model whole before it no longer can.
+    if (lost.length > 0) { const ids = modelIdsOf(lost); for (const id of ids) bumpModelEpoch(id); emit({ kind: 'dropped', modelIds: ids }); }
   }
 }
 
@@ -140,12 +146,22 @@ export function discardInstancedShards(modelId?: string): void {
   if (modelId === undefined) generation++;
   const dropped = modelId === undefined ? pending : pending.filter((shard) => shard.modelId === modelId);
   if (dropped.length === 0) return;
+  if (modelId !== undefined) bumpModelEpoch(modelId);
   pending = modelId === undefined ? [] : pending.filter((shard) => shard.modelId !== modelId);
   emit({ kind: 'discarded', modelIds: modelIdsOf(dropped), full: modelId === undefined });
 }
 
 /** A producer's statement that `modelId`'s whole shard set for `generation` is enqueued: `count` shards, zero included. */
-export interface InstancedShardSupply { readonly modelId: string; readonly generation: number; readonly count: number }
+export interface InstancedShardSupply { readonly modelId: string; readonly generation: number; readonly epoch: number; readonly count: number }
+
+/**
+ * Per model, within one queue generation: bumped whenever the model's queued shards are
+ * dropped or discarded without a full reset. Shards and statements after the bump belong to
+ * a new supply of that model, so it can be replaced without resetting every model.
+ */
+const modelEpochs = new Map<string, number>();
+function bumpModelEpoch(modelId: string): void { modelEpochs.set(modelId, (modelEpochs.get(modelId) ?? 0) + 1); }
+export function instancedShardModelEpoch(modelId: string): number { return modelEpochs.get(modelId) ?? 0; }
 const supplyListeners = new Set<(supply: InstancedShardSupply) => void>();
 
 /**
@@ -157,7 +173,7 @@ const supplyListeners = new Set<(supply: InstancedShardSupply) => void>();
  */
 export function completeInstancedShardSupply(modelId: string, count: number, fromGeneration: number): void {
   if (fromGeneration !== generation) return;
-  const supply = { modelId, generation, count };
+  const supply = { modelId, generation, epoch: instancedShardModelEpoch(modelId), count };
   for (const listener of supplyListeners) {
     try { listener(supply); } catch (error) { console.error('[instancedShardQueue] supply listener failed:', error); }
   }

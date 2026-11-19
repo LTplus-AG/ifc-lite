@@ -37,12 +37,12 @@
 
 import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
-import { type InstancedShardSupply, instancedShardGeneration, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
+import { type InstancedShardSupply, instancedShardGeneration, instancedShardModelEpoch, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
 import { collectMeshAreas, type MeshAreaEntry } from '@/components/viewer/tools/measure-modes/mesh-area';
-import { acceptStatement, admitShard, type ResupplyState, statementVoided } from './instanced-resupply';
+import { acceptStatement, admitShard, type ResupplyState, statementVoided, supplyPoint, type SupplyPoint } from './instanced-resupply';
 import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
 import { type PreviousGeneration, replayStoreList } from './generation-replay';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
@@ -121,7 +121,13 @@ export class StoreGeometryBackingTap {
     tap.stops.push(subscribeInstancedShards((event) => {
       // Discarded, never uploaded: the backing holds shards the scene will not draw.
       // A full discard already moved the generation: shards of the next one are fresh again.
-      if (event.kind === 'discarded') { for (const id of event.modelIds) tap.abandon(id, instancedShardGeneration() - (event.full ? 1 : 0)); return; }
+      // Dropped or discarded before upload. A full discard moved the generation: its next one is fresh;
+      // a model-scoped one moved that model's epoch: its next supply is fresh, in this same generation.
+      if (event.kind === 'discarded' || event.kind === 'dropped') {
+        const g = instancedShardGeneration();
+        for (const id of event.modelIds) tap.abandon(id, event.full ? { generation: g - 1, epoch: Infinity } : { generation: g, epoch: instancedShardModelEpoch(id) - 1 });
+        return;
+      }
       if (event.kind !== 'enqueued' || !event.shards) return;
       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
       for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
@@ -197,7 +203,7 @@ export class StoreGeometryBackingTap {
     const next: Tracked = { key, number: (previous?.number ?? 0) + 1, meshes, members: [], consumed: 0,
       // Lost instancing is sticky: no later edit may fall back to pre-loss (stale) occurrences.
       chain: Promise.resolve(), instancedLost: shards === 'lost' || (shards === 'carry' && !!previous?.instancedLost),
-      lostAtQueueGeneration: shards === 'lost' ? instancedShardGeneration() : previous?.lostAtQueueGeneration,
+      lostAt: shards === 'lost' ? supplyPoint(modelId) : previous?.lostAt,
       resupply: shards === 'carry' ? previous?.resupply : undefined, supplied: shards === 'carry' ? previous?.supplied : undefined, shards: 0, occurrences: 0, areas: new Map(),
       retained: previous ? [...previous.retained, previous.key] : [] };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
@@ -271,7 +277,7 @@ export class StoreGeometryBackingTap {
       tracked = this.tracked.get(modelId)!;
     }
     const target = tracked;
-    if (!admitShard(target, instancedShardGeneration())) return; // `instanced-resupply.ts`
+    if (!admitShard(target, supplyPoint(modelId))) return; // `instanced-resupply.ts`
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.
     const shard = decodeInstancedShard(bytes.slice(0));
@@ -297,11 +303,11 @@ export class StoreGeometryBackingTap {
   }
 
   /** Instancing whose shards were dropped before upload: a fresh lost generation, never carrying the abandoned shards. */
-  private abandon(modelId: string, lostAt: number): void {
+  private abandon(modelId: string, lostAt: SupplyPoint): void {
     const tracked = this.stopped ? undefined : this.tracked.get(modelId);
     if (!tracked || !this.store.getState().models.has(modelId)) return;
     this.regenerate(modelId, tracked.meshes, 'lost');
-    this.tracked.get(modelId)!.lostAtQueueGeneration = lostAt;
+    this.tracked.get(modelId)!.lostAt = lostAt;
   }
 
   private enqueue(tracked: Tracked, step: () => Promise<void>): void {
@@ -342,7 +348,7 @@ export class StoreGeometryBackingTap {
   /** Close every model's writer and acknowledge complete generations. */
   async seal(): Promise<ModelBackingStatus[]> {
     // A statement holds only while its queue generation does: a full discard since (even of nothing) voids it.
-    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, instancedShardGeneration())) this.abandon(modelId, tracked.supplied!);
+    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, instancedShardGeneration())) this.abandon(modelId, { generation: tracked.supplied!.generation, epoch: Infinity });
     await this.whenIdle();
     let acknowledged = false;
     for (const [modelId, tracked] of this.tracked) {

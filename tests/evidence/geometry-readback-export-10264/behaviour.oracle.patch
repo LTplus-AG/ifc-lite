@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/utils/instancedExport.ts b/apps/viewer/src/utils/instancedExport.ts
+index 5249d600bf..1f225cb825 100644
+--- a/apps/viewer/src/utils/instancedExport.ts
++++ b/apps/viewer/src/utils/instancedExport.ts
+@@ -77,7 +77,7 @@ export function withInstancedMeshes(
+   // Released CPU geometry (#10264): substitute what the export context read back;
+   // outside one, fail rather than export empty arrays and no occurrences.
+   const prepared = releasedExport;
+-  if (!prepared && geometryReleased(geometryResult) && prepared !== null) {
++  if (!prepared && geometryReleased(geometryResult)) {
+     throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');
+   }
+   if (prepared) {

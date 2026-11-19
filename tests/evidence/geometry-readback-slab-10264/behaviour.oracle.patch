@@ -1,0 +1,21 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts b/apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts
+index 84cf198acd..6febfece77 100644
+--- a/apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts
++++ b/apps/viewer/src/lib/geometry-backing/store-mesh-readback.ts
+@@ -76,14 +76,14 @@ export async function leaseStoreMeshes(
+         const end = start + chunk.meshCount;
+         let hit = false;
+         for (const index of indices) if (index >= start && index < end) { hit = true; break; }
+-        if (hit) picks.push({ chunk: chunk.index, start });
++        if (hit && (!options.slab || boxMeetsSlab(chunk.min, chunk.max, options.slab))) picks.push({ chunk: chunk.index, start });
+         start = end;
+       }
+       for (const pick of picks) {
+         const lease = await backing.reader.leaseChunks([pick.chunk], options);
+         leases.push(lease);
+         lease.meshes.forEach((mesh, offset) => {
+-          const index = pick.start + offset + (offset > 0 ? 1 : 0);
++          const index = pick.start + offset;
+           if (indices.has(index)) answered.set(lists.get(modelId)![index], mesh);
+         });
+       }

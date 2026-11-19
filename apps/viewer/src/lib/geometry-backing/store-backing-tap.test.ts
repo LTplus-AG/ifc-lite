@@ -11,6 +11,8 @@ import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instan
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
+import { releasedGeometryMetadata } from './released-geometry-metadata';
+import { collectMeshAreas } from '@/components/viewer/tools/measure-modes/mesh-area';
 
 let names = 0;
 const database = () => ({ name: `tap-test-${process.pid}-${names++}`, locks: null });
@@ -168,5 +170,23 @@ describe('store geometry backing tap (test/debug only)', () => {
     assert.deepEqual(backing.directory.shardsOf(1005), [0], 'global id');
     assert.deepEqual(backing.directory.shardsOf(5), [], 'not the model-local id');
     await tap.stop();
+  });
+
+  it('answers bounds and mesh areas of a complete generation as the resident arrays would', async () => {
+    const list = [mesh(1, 0), mesh(2, 5), mesh(1, 2)];
+    const expected = collectMeshAreas([list]);
+    const store = storeWith({ meta: list.slice(0, 2) });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    append(store, 'meta', [list[2]]); // entity 1's second piece arrives in a later batch
+    assert.equal(releasedGeometryMetadata()?.area('meta', 1), undefined, 'not before the generation is complete');
+    await tap.seal();
+    const metadata = releasedGeometryMetadata()!;
+    assert.deepEqual(metadata.area('meta', 1), expected.get(1), 'two pieces of one entity sum as one pass would');
+    assert.deepEqual(metadata.area('meta', 2), expected.get(2));
+    assert.deepEqual(metadata.bounds('meta', 1), { min: [0, 0, 0], max: [1, 1, 2] });
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    assert.equal(metadata.bounds('meta', 1), undefined, 'a superseded generation answers nothing');
+    await tap.stop();
+    assert.equal(releasedGeometryMetadata(), null);
   });
 });

@@ -37,6 +37,11 @@
  */
 import { getGlobalRenderer } from '../hooks/useBCF.js';
 import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
+import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
+import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
+import { getViewerState } from '@/store/viewerStoreHandle';
+import { GeometryUnavailableError } from '@/lib/geometry-backing/geometry-readback';
+import type { ReleasedExportGeometry } from '@/lib/geometry-backing/export-readback';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { hasRetainedShapeOnlyModel, type RetainedGeometrySummary } from '@/store/retainedGeometry';
 
@@ -69,9 +74,23 @@ export function withInstancedMeshes(
   geometryResult: GeometryResult,
   modelRange: InstancedModelRange | null,
 ): GeometryResult {
+  // Released CPU geometry (#10264): substitute what the export context read back;
+  // outside one, fail rather than export empty arrays and no occurrences.
+  const prepared = releasedExport;
+  if (!prepared && geometryReleased(geometryResult)) {
+    throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');
+  }
+  if (prepared) {
+    geometryResult = { ...geometryResult, meshes: geometryResult.meshes.map((mesh) => {
+      if (meshIsResident(mesh)) return mesh;
+      const copy = prepared.flat.get(mesh);
+      if (!copy) throw new GeometryUnavailableError(`Mesh of entity ${mesh.expressId} was not read back for export`);
+      return copy;
+    }) };
+  }
   geometryResult = placedViewGeometry(geometryResult, undefined, modelRange?.modelId);
   const scene = getGlobalRenderer()?.getScene();
-  const all = scene?.getAllInstancedMeshData() ?? [];
+  const all = prepared ? prepared.instanced : scene?.getAllInstancedMeshData() ?? [];
   const instanced = modelRange
     ? all.filter(
         (m) => m.expressId > modelRange.idOffset && m.expressId <= modelRange.idOffset + modelRange.maxExpressId
@@ -92,6 +111,36 @@ export function withInstancedMeshes(
     totalTriangles,
     totalVertices,
   };
+}
+
+/** Read-back geometry for collectors running inside {@link withReleasedExportGeometry}. */
+let releasedExport: ReleasedExportGeometry | null = null;
+
+/** Whether any loaded CPU geometry (or this result's) was released (#10264). */
+export function geometryReleased(geometryResult?: GeometryResult): boolean {
+  const renderer = getGlobalRenderer();
+  if (renderer && sceneGeometryReleased(renderer)) return true;
+  if (geometryResult) return !geometryResult.meshes.every(meshIsResident);
+  for (const model of getViewerState().models.values()) if (!(model.geometryResult?.meshes ?? []).every(meshIsResident)) return true;
+  return false;
+}
+
+/**
+ * Run an export (or any `withInstancedMeshes` collector) so it also works once
+ * CPU geometry was released (#10264): released store meshes and instanced
+ * occurrences are read back first, and the synchronous collectors substitute
+ * them. Resident geometry runs `run` directly, unchanged.
+ */
+export async function withReleasedExportGeometry<T>(run: () => T | Promise<T>, modelIds?: Iterable<string>): Promise<T> {
+  if (releasedExport || !geometryReleased()) return run();
+  const { prepareReleasedExport } = await import('@/lib/geometry-backing/export-readback');
+  const renderer = getGlobalRenderer();
+  releasedExport = await prepareReleasedExport(getViewerState(), renderer?.getScene(), modelIds);
+  try {
+    return await run();
+  } finally {
+    releasedExport = null;
+  }
 }
 
 /** Resolves a single panel's `InstancedModelRange` (see the module doc above)

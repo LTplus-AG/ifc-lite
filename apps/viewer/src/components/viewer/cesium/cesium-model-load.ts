@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { withReleasedExportGeometry } from '@/utils/instancedExport';
 import type { MutableRefObject } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import {
@@ -70,7 +71,8 @@ export async function loadCesiumModel({
     } else {
       await new Promise((resolve) => setTimeout(resolve, 50));
       if (isSuperseded()) return;
-      const built = buildCesiumModelGLBParts(glbInput, globe);
+      // Released CPU geometry (#10264) is read back first; resident geometry builds as before.
+      const built = await withReleasedExportGeometry(() => buildCesiumModelGLBParts(glbInput, globe));
       parts = built.parts;
       glbCacheRef.current = built;
     }

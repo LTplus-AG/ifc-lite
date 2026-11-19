@@ -22,7 +22,8 @@
 
 import { useEffect, useRef } from 'react';
 import { Drawing2DGenerator } from '@ifc-lite/drawing-2d';
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import { withCutGeometry } from '@/lib/geometry-backing/cut-readback';
 import { useViewerStore } from '@/store';
 import { capCutConfig, capSignature } from '@/lib/section/section-cut-config';
 import { cuttingSectionBoxCapPlanes } from '@/lib/section/section-box-caps';
@@ -90,12 +91,13 @@ export function useExtraSectionCaps(
           if (isCurrent()) setCap(plane.id, { signature, cutPolygons: [], lines: [] });
           continue;
         }
-        const result = await generator.generate(meshes, config, {
+        // Released geometry (#10264): only the chunks meeting the plane are read back.
+        const result = await withCutGeometry(meshes, config.plane, 0, (cut) => generator.generate(cut as MeshData[], config, {
           includeHiddenLines: false,
           includeProjection: false,
           includeEdges: false,
           mergeLines: true,
-        });
+        }));
         if (!isCurrent()) return;
         setCap(plane.id, {
           signature,

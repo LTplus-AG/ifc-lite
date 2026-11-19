@@ -15,10 +15,13 @@ export async function exportModelIfcx(input: {
   /** Loaded models, to resolve this model's renderer index: it separates a collab-joined model from one with an overlapping id range. */
   models: ReadonlyMap<string, FederatedModel>; options: Ifc5ExportOptions;
 }) {
-  const { withInstancedMeshes } = await import('../../utils/instancedExport.js');
-  const geometry = input.geometryResult ? withInstancedMeshes(input.geometryResult,
-    input.maxExpressId !== undefined ? { modelId: input.modelId, idOffset: input.idOffset, maxExpressId: input.maxExpressId,
-      rendererModelIndex: modelIndices(input.models).get(input.modelId) } : null,
-  ) : input.geometryResult;
-  return new Ifc5Exporter(input.dataStore, geometry, input.mutationView, input.idOffset).export(input.options);
+  const { withInstancedMeshes, withReleasedExportGeometry } = await import('../../utils/instancedExport.js');
+  // Released CPU geometry (#10264) is read back first; resident geometry exports as before.
+  return withReleasedExportGeometry(() => {
+    const geometry = input.geometryResult ? withInstancedMeshes(input.geometryResult,
+      input.maxExpressId !== undefined ? { modelId: input.modelId, idOffset: input.idOffset, maxExpressId: input.maxExpressId,
+        rendererModelIndex: modelIndices(input.models).get(input.modelId) } : null,
+    ) : input.geometryResult;
+    return new Ifc5Exporter(input.dataStore, geometry, input.mutationView, input.idOffset).export(input.options);
+  }, [input.modelId]);
 }

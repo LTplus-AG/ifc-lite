@@ -14,7 +14,7 @@ import type { GeorefMutationData } from '@/store/slices/mutationSlice';
 import { getMapUnitScale } from './cesium-placement';
 import { mergeMapConversion, mergeProjectedCRS, resolveEpsetMapUnitScale } from './effective-georef';
 import { resolveMapUnitToMetreScale } from './geo-scale';
-import { withInstancedMeshes, type InstancedModelRange } from '../../utils/instancedExport.js';
+import { withInstancedMeshes, withReleasedExportGeometry, type InstancedModelRange } from '../../utils/instancedExport.js';
 import { effectiveMapConversionForGeometry } from './map-absolute';
 import { reprojectToLatLon } from './reproject';
 import { buildKmz, type KmzAltitudeMode, type KmzProcessor } from './kmz-exporter';
@@ -216,7 +216,10 @@ export async function buildKmzForResolvedGeoref(
   input: ResolvedKmzGeorefInput,
   createProcessor?: () => KmzProcessor,
 ): Promise<Uint8Array | KmzBuildError> {
-  const meshes = withInstancedMeshes(input.geometryResult, input.instancedModelRange).meshes as MeshData[];
+  // Released CPU geometry (#10264) is read back first; resident geometry is unchanged.
+  const meshes = await withReleasedExportGeometry(() =>
+    withInstancedMeshes(input.geometryResult, input.instancedModelRange).meshes as MeshData[],
+  input.instancedModelRange?.modelId ? [input.instancedModelRange.modelId] : undefined);
   if (!meshes.length) return 'no-geometry';
   const { conversion, crs, coordinateInfo, lengthUnitScale } = input;
   const latLon = await reprojectToLatLon(conversion, crs, coordinateInfo, lengthUnitScale);

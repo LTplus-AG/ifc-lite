@@ -21,6 +21,7 @@
  * workplane-local (`Workplane.renderToLocal`).
  */
 
+import { withCutGeometry } from '@/lib/geometry-backing/cut-readback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Drawing2DGenerator, createSectionConfig, type Drawing2D } from '@ifc-lite/drawing-2d';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -168,13 +169,16 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
           genRef.current = gen;
           await gen.initialize();
           if (cancelled) return;
-          const drawing = await gen.generate(
-            req.meshes as MeshData[],
-            createSectionConfig('y', req.cutY, SECTION_DEPTHS),
+          const config = createSectionConfig('y', req.cutY, SECTION_DEPTHS);
+          // Released geometry (#10264): read back the chunks meeting the cut and its projection bands.
+          const depth = Math.max(SECTION_DEPTHS.projectionDepth, SECTION_DEPTHS.projectionBelowDepth, SECTION_DEPTHS.projectionAboveDepth);
+          const drawing = await withCutGeometry(req.meshes as MeshData[], config.plane, depth, (meshes) => gen.generate(
+            meshes as MeshData[],
+            config,
             // This caller supplies meshes, not extracted profiles. The existing
             // silhouette path draws floors and their shafts below the cut (#9296).
             { includeProjection: true, includeEdges: true, includeHiddenLines: false, mergeLines: true, useGPU: false },
-          );
+          ));
           if (cancelled) return;
           setResult({ ...mapPlanDrawing(drawing, req.map), loading: false, simplified: false, failed: false, ms: performance.now() - started, key: req.key, scope: req.scope });
         } catch (err) {

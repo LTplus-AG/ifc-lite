@@ -11,7 +11,10 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { extractMaterialPropertiesOnDemand, extractProjectUnits, ProjectUnits, type IfcDataStore, type extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
 import { pickElementQuantities, rollupQuantities, rollupGeometryVolumes, rollupMeshArea, MEASURABLE_QUANTITY_TYPES, type PickedQuantity } from './quantities';
-import { collectMeshAreas } from './mesh-area';
+import { collectMeshAreas, type MeshAreaEntry } from './mesh-area';
+import type { MeshData } from '@ifc-lite/geometry';
+import { isReleasedMesh } from '@/lib/released-mesh-provenance';
+import { releasedGeometryMetadata } from '@/lib/geometry-backing/released-geometry-metadata';
 import { pickIfcDensity, resolveElementWeight, rollupWeights, classifyWeightUnitKind, type WeightOutcome } from './weight';
 import { siConverterFor, densitySiConverterFor, quantitySetsFor } from './quantity-source';
 
@@ -53,11 +56,11 @@ export function useSelectionQuantitySummary() {
   // memo below would re-sum the whole federation's triangles on the main
   // thread on every selection click.
   const meshAreaByGlobalId = useMemo(
-    () => collectMeshAreas(
+    () => withReleasedMeshAreas(collectMeshAreas(
       models.size > 0
         ? [...models.values()].map((m) => m.geometryResult?.meshes)
         : [geometryResult?.meshes],
-    ),
+    ), models),
     [models, geometryResult],
   );
 
@@ -258,4 +261,24 @@ export function useSelectionQuantitySummary() {
   }, [refs, models, ifcDataStore, geometryResult, meshAreaByGlobalId, mutationViews, mutationVersion]);
 
   return { summary, refs, models, activeModelId };
+}
+
+/**
+ * Released CPU geometry (#10264) has no triangles to sum: its entities' areas
+ * come from what the backing recorded while they were resident. An entity the
+ * backing cannot answer for stays absent (no area), never 0 m².
+ */
+function withReleasedMeshAreas(
+  areas: Map<number, MeshAreaEntry>,
+  models: ReadonlyMap<string, { geometryResult?: { meshes: MeshData[] } | null }>,
+): Map<number, MeshAreaEntry> {
+  const metadata = releasedGeometryMetadata();
+  for (const [modelId, model] of models) {
+    for (const mesh of model.geometryResult?.meshes ?? []) {
+      if (!isReleasedMesh(mesh) || areas.has(mesh.expressId)) continue;
+      const backed = metadata?.area(modelId, mesh.expressId);
+      if (backed) areas.set(mesh.expressId, backed);
+    }
+  }
+  return areas;
 }

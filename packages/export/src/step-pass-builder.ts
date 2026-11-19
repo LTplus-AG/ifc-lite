@@ -32,6 +32,8 @@ import { buildStepHeader } from './step-header.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
+import { documentLinksApply } from './schema-converter-document-links.js';
+import { SourceRecords } from './schema-converter-structural-source.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
 import { StyleFlatten } from './schema-style-flatten.js';
 
@@ -329,12 +331,14 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
-  // Structural prepasses read source types and references, so only an unedited full export arms them.
+  // Structural and document-link prepasses read source types and references, so only an unedited full export arms them.
   // The schema pair is tested first: no other export reads the options here.
   const pair = (sourceSchema === 'IFC2X3' && schema === 'IFC4') || (sourceSchema === 'IFC4' && schema === 'IFC2X3');
-  if (pair && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly && !options.subsetEntityIds
-    && !excludeGeometry && options.includeRelationships !== false) {
-    pass.enums.structural.fromStore(dataStore, sourceSchema, schema);
+  if ((pair || documentLinksApply(sourceSchema, schema)) && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly
+    && !options.subsetEntityIds && !excludeGeometry && options.includeRelationships !== false) {
+    const source = new SourceRecords(dataStore);
+    if (pair) pass.enums.structural.fromStore(dataStore, sourceSchema, schema, source);
+    pass.enums.documents.fromSource(source, sourceSchema, schema); // #10846
   }
   // The same object, deliberately. See the file header.
   return pass;

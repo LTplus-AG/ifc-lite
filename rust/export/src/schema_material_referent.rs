@@ -182,22 +182,25 @@ impl MaterialReferents {
         let Some(head) = crate::step_record_frame::record_head(line) else { return Some(line.into()) };
         if !head.type_name(line).eq_ignore_ascii_case(PROPERTIES) { return Some(line.into()); }
         let Some(at) = crate::schema_convert::schema_attribute_names(schema, PROPERTIES).and_then(|n| n.iter().position(|a| *a == "Material")) else { return Some(line.into()) };
-        // `convert_record` also accepts a record without its ';', so it is read the same way here.
-        let bare = !line.trim_end().ends_with(';');
-        let framed: Cow<str> = if bare { format!("{line};").into() } else { line.into() };
-        // A record that cannot be read is not checked, so it is left out too.
-        let slots = crate::step_log::read_slots(&framed).map(|(_, s)| s);
+        // Read as written; `convert_record` also accepts a record without its ';', so failing that, with one added.
+        // A record that cannot be read either way is not checked, so it is left out too.
+        let mut framed = Cow::Borrowed(line);
+        let mut slots = crate::step_log::read_slots(line).map(|(_, s)| s);
+        if slots.is_none() {
+            framed = format!("{line};").into();
+            slots = crate::step_log::read_slots(&framed).map(|(_, s)| s);
+        }
         let named = slots.as_ref().and_then(|s| s.get(at)).and_then(|s| slot_ref(s));
         let kept = match (named, named.and_then(|r| resolve(&self.records, &self.gone, r))) {
             (Some(r), Some(m)) if m != r => crate::step_log::replace_argument(&framed, at, &format!("#{m}")).map(|mut out| {
-                if bare { out.pop(); } // the ';' it was read with is the last character
+                if matches!(framed, Cow::Owned(_)) { out.pop(); } // the ';' it was read with is the last character
                 Cow::Owned(out)
             }),
             (_, Some(_)) => Some(line.into()),
             _ => None,
         };
         if kept.is_none() {
-            *dropped += slots.iter().flatten().filter(|s| !slot_unset(s)).count();
+            *dropped += slots.as_ref().map_or(1, |s| s.iter().filter(|s| !slot_unset(s)).count()); // unread: at least the record
             let named = named.and_then(|r| self.records.get(&r)).map_or("an unread record", |(t, ..)| t.as_str());
             self.dropped.insert(id, named.to_owned());
         }

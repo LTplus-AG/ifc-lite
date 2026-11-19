@@ -10,7 +10,6 @@ import { connectionFor, HANDOFF_CALLBACK, handoffContext, readHandoff, registryC
 export interface ResourceSession { accessToken: string; expiresAt: number; registry: string; scope: string }
 interface Metadata { authorization_endpoint: string; token_endpoint: string; issuerInCallback: boolean }
 interface AuthorizationRequest { scope: string; resource: string }
-export interface DestinationAuthorization { session: ResourceSession; publicationToken?: string }
 interface Pending { handoff: OciHandoff; registry: string; issuer: string; issuerRequired: boolean; clientId: string; redirectUri: string; state: string; verifier: string; scope: string; created: number }
 const PENDING = 'ifc-lite:oci-handoff:pkce';
 export const PUSH_CALLBACK = '/oauth/registry/callback';
@@ -158,16 +157,16 @@ export async function finishHandoff(href: string, signal: AbortSignal, connectio
   if (!resourceAllows(session, handoff.source.repository, 'pull')) throw new RegistryError('This account cannot open the selected folder.', 403);
   return { handoff, session };
 }
-async function destinationGrant(connection: RegistryConnection, authorization: AuthorizationRequest, signal: AbortSignal, connections: readonly RegistryConnection[]): Promise<unknown> {
-  const popup = window.open('about:blank', 'ifc-lite-oci-push', 'width=520,height=720');
-  if (!popup) throw new RegistryError('Allow the sign-in popup and try Push to again.');
+async function repositoryGrant(connection: RegistryConnection, authorization: AuthorizationRequest, signal: AbortSignal, connections: readonly RegistryConnection[]): Promise<unknown> {
+  const popup = window.open('about:blank', 'ifc-lite-oci-repository', 'width=520,height=720');
+  if (!popup) throw new RegistryError('Allow the file-store sign-in popup and try again.');
   try {
     const metadata = await authorizationMetadata(connection, signal);
     const redirectUri = new URL(PUSH_CALLBACK, window.location.origin).href;
     const request = await createAuthorizationRequest({ authorizationEndpoint: metadata.authorization_endpoint, clientId: connection.client_id,
       redirectUri, scope: authorization.scope, extraParams: { resource: authorization.resource } });
     signal.throwIfAborted();
-    const waiting = waitForOAuthCallback({ expectedState: request.state, timeoutMs: TIMEOUT, timeoutMessage: 'Sign-in timed out. Try Push to again.', signal });
+    const waiting = waitForOAuthCallback({ expectedState: request.state, timeoutMs: TIMEOUT, timeoutMessage: 'File-store sign-in timed out. Try again.', signal });
     popup.location.href = request.url;
     const code = validateRegistryCallback(await waiting, redirectUri, request.state, connection.authorization_server,
       metadata.issuerInCallback || hasOtherIssuer(connection, connections));
@@ -175,23 +174,20 @@ async function destinationGrant(connection: RegistryConnection, authorization: A
   } finally { popup.close(); }
 }
 
-/** Each push destination obtains its own resource-bound token; source tokens are never reused. */
-export async function authorizeDestination(connection: RegistryConnection, repository: string, signal: AbortSignal, connections: readonly RegistryConnection[]): Promise<DestinationAuthorization> {
+/** Write access is obtained independently of the read-only handoff grant. */
+export async function authorizeRepository(connection: RegistryConnection, repository: string, action: 'pull' | 'push', signal: AbortSignal, connections: readonly RegistryConnection[]): Promise<ResourceSession> {
   repositoryName(repository);
-  const scope = `repository:${repository}:pull repository:${repository}:push`;
-  const reply = await destinationGrant(connection, authorizationRequest(connection, scope, true), signal, connections);
-  const subject = connection.token_exchange ? bearerGrant(reply).token : undefined;
-  const session = subject
-    ? await exchangeRegistryToken(connection, subject, scope, signal)
+  const write = action === 'push';
+  const pull = `repository:${repository}:pull`;
+  const scope = write ? `${pull} repository:${repository}:push` : pull;
+  const reply = await repositoryGrant(connection, authorizationRequest(connection, scope, write), signal, connections);
+  const session = connection.token_exchange
+    ? await exchangeRegistryToken(connection, bearerGrant(reply).token, scope, signal)
     : resourceSession(reply, connection.registry, scope);
-  if (!resourceAllows(session, repository, 'pull') || !resourceAllows(session, repository, 'push')) {
-    throw new RegistryError('Ask the owner for permission to view and publish in this folder.', 403);
+  if (!resourceAllows(session, repository, 'pull') || (write && !resourceAllows(session, repository, 'push'))) {
+    throw new RegistryError(write
+      ? 'Ask the owner for permission to view and publish in this folder.'
+      : 'Ask the owner for permission to view this folder.', 403);
   }
-  return { session, publicationToken: connection.token_exchange?.publication_endpoint ? subject : undefined };
-}
-
-/** Confirmation can be retried after the file store closes its upload repository. */
-export async function authorizePublicationConfirmation(connection: RegistryConnection, signal: AbortSignal, connections: readonly RegistryConnection[]): Promise<string> {
-  if (!connection.token_exchange?.publication_endpoint) throw new RegistryError('No publication endpoint is configured for this file store.');
-  return bearerGrant(await destinationGrant(connection, authorizationRequest(connection, '', true), signal, connections)).token;
+  return session;
 }

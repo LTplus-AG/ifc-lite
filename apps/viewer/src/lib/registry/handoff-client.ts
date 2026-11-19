@@ -2,12 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { OciClient, buildImageManifest, parseReference } from '@ifc-lite/oci';
+import { OciClient, OciError, buildImageManifest, parseReference, type OciDescriptor, type OciManifestResult } from '@ifc-lite/oci';
 import { RegistryError, releaseName, repositoryName } from './protocol';
 import { registryOrigin, type ArtifactSource } from './handoff-contract';
 import { resourceAllows, type ResourceSession } from './handoff-auth';
 const MAX_IFC_BYTES = 512 * 1024 * 1024;
 const IFC_ARTIFACT_TYPE = 'application/vnd.ifc-lite.ifc.v1';
+const VERSIONS_PER_PAGE = 12;
+
+export interface RepositoryVersion {
+  tag: string;
+  title: string;
+  digest: string;
+}
+
+function ifcLayer({ value }: OciManifestResult): OciDescriptor | undefined {
+  if ('layers' in value && value.artifactType === IFC_ARTIFACT_TYPE &&
+      value.layers.length === 1 && value.layers[0].mediaType === 'application/x-step') {
+    return value.layers[0];
+  }
+}
 
 function connection(session: ResourceSession, registry: string, repository: string, action: 'pull' | 'push') {
   registryOrigin(registry); repositoryName(repository);
@@ -15,15 +29,37 @@ function connection(session: ResourceSession, registry: string, repository: stri
   const origin = new URL(registry), insecureHosts = origin.protocol === 'http:' ? [origin.host] : undefined;
   return { client: new OciClient({ credentials: { token: session.accessToken }, insecureHosts }), reference: (suffix = '') => parseReference(`${origin.host}/${repository}${suffix}`, { insecureHosts }) };
 }
+
+/** Read tags in a known repository and inspect a bounded page of their manifests. */
+export async function browseRepositoryVersions(
+  registry: string, repository: string, session: ResourceSession, signal: AbortSignal, remainingTags?: string[],
+): Promise<{ versions: RepositoryVersion[]; remaining: string[] }> {
+  const { client, reference } = connection(session, registry, repository, 'pull');
+  const tags = remainingTags ?? [...new Set(await client.tags(reference(), { signal }))];
+  const versions = await Promise.all(tags.slice(0, VERSIONS_PER_PAGE).map(async tag => {
+    try {
+      const manifest = await client.manifest(reference(`:${tag}`), { signal });
+      const layer = ifcLayer(manifest);
+      return layer && {
+        tag, digest: manifest.digest,
+        title: manifest.value.annotations?.['org.opencontainers.image.title']
+          ?? layer.annotations?.['org.opencontainers.image.title'] ?? tag,
+      };
+    } catch (error) {
+      if (error instanceof OciError && (error.code === 'NOT_FOUND' || error.code === 'UNSUPPORTED_MANIFEST')) return undefined;
+      throw error;
+    }
+  }));
+  return { versions: versions.filter(version => version !== undefined), remaining: tags.slice(VERSIONS_PER_PAGE) };
+}
+
 export async function pullHandoff(source: ArtifactSource, session: ResourceSession, signal?: AbortSignal): Promise<{ bytes: Uint8Array<ArrayBuffer>; filename: string; digest: string }> {
   const { client, reference } = connection(session, source.registry, source.repository, 'pull');
   if (!/^sha256:[a-f0-9]{64}$/.test(source.digest)) throw new RegistryError('Choose an exact published version.');
   const ref = reference(`@${source.digest}`), manifest = await client.manifest(ref, { signal });
-  if (!('layers' in manifest.value) || manifest.value.artifactType !== IFC_ARTIFACT_TYPE ||
-      manifest.value.layers.length !== 1 || manifest.value.layers[0].mediaType !== 'application/x-step') {
-    throw new RegistryError('Choose a version containing a supported IFC package.');
-  }
-  const layer = manifest.value.layers[0], bytes = await client.blob(ref, layer, { signal, maxBytes: MAX_IFC_BYTES });
+  const layer = ifcLayer(manifest);
+  if (!layer) throw new RegistryError('Choose a version containing a supported IFC package.');
+  const bytes = await client.blob(ref, layer, { signal, maxBytes: MAX_IFC_BYTES });
   return { bytes: new Uint8Array(bytes), filename: layer.annotations?.['org.opencontainers.image.title']?.split(/[\\/]/).pop() || 'model.ifc', digest: manifest.digest };
 }
 export async function pushHandoff(registry: string, repository: string, tag: string, bytes: Uint8Array<ArrayBuffer>, filename: string, session: ResourceSession, signal?: AbortSignal): Promise<ArtifactSource> {

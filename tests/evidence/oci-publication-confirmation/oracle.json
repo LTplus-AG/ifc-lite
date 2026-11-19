@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "apps/viewer/src/components/sources/OciPushTo.tsx",
-  "mutation": "tests/evidence/oci-publication-confirmation/confirmation.oracle.patch",
-  "test": "apps/viewer/src/components/sources/OciPushTo.test.tsx",
-  "why": "A successful upload must not be displayed as a saved version when the file store rejects confirmation."
-}

@@ -8,11 +8,8 @@ import type { ResourceSession } from './handoff-auth';
 interface HandoffWorkspace {
   handoff?: OciHandoff;
   sourceSession?: ResourceSession;
-  loadedModelId?: string;
   saved?: { modelId: string; artifact: ArtifactSource };
-  pendingPublication?: { handoff: OciHandoff; artifact: ArtifactSource };
-  conflictedHandoff?: OciHandoff;
-  destinationSession?: ResourceSession;
+  repositorySession?: ResourceSession;
 }
 /** Tokens and opened content remain in this tab's memory. */
 export const useHandoffWorkspace = create<HandoffWorkspace>(() => ({}));

@@ -101,7 +101,7 @@ jobs:
           test -x "$ORAS_BINARY"
           pnpm test --filter=@ifc-lite/viewer --only
 
-      - name: Test OCI handoff and managed publication
+      - name: Test OCI handoff, browsing, and publication
         env:
           TEST_PATTERN: 'lib/registry/handoff.*test|components/sources/OciPushTo.*test'
         run: pnpm test --filter=@ifc-lite/viewer --only

@@ -12,7 +12,6 @@ export interface TokenExchangeSettings {
   authorization_resource: string;
   read_scope: string;
   write_scope: string;
-  publication_endpoint?: string;
 }
 export interface RegistryConnection {
   name?: string;
@@ -48,15 +47,8 @@ function tokenExchangeSettings(value: unknown): TokenExchangeSettings {
   const resource = webAddress(value.authorization_resource);
   const endpoint = webAddress(value.endpoint);
   if (endpoint.origin !== resource.origin) throw new RegistryError('Use a token exchange endpoint on the configured authorization resource origin.');
-  let publication_endpoint: string | undefined;
-  if ('publication_endpoint' in value) {
-    if (typeof value.publication_endpoint !== 'string' || webAddress(value.publication_endpoint).origin !== resource.origin) {
-      throw new RegistryError('Use a publication endpoint on the configured authorization resource origin.');
-    }
-    publication_endpoint = value.publication_endpoint;
-  }
   return { endpoint: value.endpoint, authorization_resource: value.authorization_resource,
-    read_scope: value.read_scope, write_scope: value.write_scope, publication_endpoint };
+    read_scope: value.read_scope, write_scope: value.write_scope };
 }
 export function registryConnections(input = import.meta.env?.VITE_REGISTRY_CONNECTIONS): RegistryConnection[] {
   if (!input) return [];
@@ -95,14 +87,6 @@ export function handoffContext(value: unknown, connections = registryConnections
     destination = { registry: target.registry, repository: repositoryName(target.repository) };
   }
   return { protocol: HANDOFF_PROTOCOL, source: { registry: source.registry, repository: repositoryName(source.repository), digest: source.digest }, intent: value.intent, ...(destination ? { destination } : {}) };
-}
-export function artifactSource(value: unknown, registry: string): ArtifactSource {
-  if (!value || typeof value !== 'object' || !('registry' in value) || value.registry !== registry ||
-      !('repository' in value) || typeof value.repository !== 'string' ||
-      !('digest' in value) || typeof value.digest !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(value.digest)) {
-    throw new RegistryError('The file store did not identify a saved version.');
-  }
-  return { registry, repository: repositoryName(value.repository), digest: value.digest };
 }
 export function readHandoff(href: string, connections = registryConnections()): OciHandoff {
   const url = new URL(href), params = new URLSearchParams(url.hash.slice(1));

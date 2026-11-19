@@ -32,7 +32,6 @@ export function RegistryLaunchLoader() {
         controller.signal.throwIfAborted();
         const state = useViewerStore.getState(), loaded = state.models.get(modelId);
         if (state.error || loaded?.loadError || loaded?.loadState !== 'complete' || !loaded.ifcDataStore || state.activeModelId !== modelId) throw new RegistryError(loaded?.loadError || state.error || 'The selected model could not be opened.');
-        useHandoffWorkspace.setState({ loadedModelId: modelId });
         state.setEditEnabled(handoff.intent === 'edit'); state.setSourcesPanelVisible(true);
       })().catch((failure: unknown) => { if (!disposed) setError(failure instanceof Error ? failure.message : 'Open the selected version again.'); })
         .finally(() => { if (!disposed) setBusy(false); });

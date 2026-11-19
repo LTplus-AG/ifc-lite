@@ -274,34 +274,36 @@ with independent ORAS integrity verification.
 
 ## Open and save a version from a file store
 
-Enable the viewer with `VITE_REGISTRY_ENABLED=true` and set
-`VITE_REGISTRY_CONNECTIONS` to an array of trusted connections. An example:
+### Subsoil setup
 
-```json
-[
-  {
-    "name": "Project files",
-    "registry": "https://registry.example.org",
-    "authorization_server": "https://login.example.org",
-    "client_id": "ifc-lite",
-    "token_exchange": {
-      "authorization_resource": "https://api.example.org/files",
-      "read_scope": "openid read",
-      "write_scope": "openid read write",
-      "endpoint": "https://api.example.org/files/token",
-      "publication_endpoint": "https://api.example.org/files/publications"
-    }
-  }
-]
-```
+1. Sign in to [Subsoil](https://cde.subsoil.dev/) and open **My workspace → Workspace apps**. Register IFC Lite with the launch URL `http://localhost:5173/open-artifact` and these callback URLs.
 
-Register `/open-artifact/callback` and `/oauth/registry/callback` at the viewer's
-exact origin. Allow that origin at the token, exchange, publication, and
-registry endpoints. The registry exposes the OCI upload and digest headers to
-the browser, including `Location` and `Docker-Content-Digest`.
+   ```text
+   http://localhost:5173/open-artifact/callback
+   http://localhost:5173/oauth/registry/callback
+   ```
 
-To open a version, append `#handoff=<encoded>` to the viewer's `/open-artifact`
-URL. Encode the following UTF-8 JSON in unpadded base64url:
+   Add `application/vnd.ifc-lite.ifc.v1` to both **View package types** and **Edit package types**. Copy the client ID and repository from the app configuration.
+
+2. From a checkout with dependencies and workspace packages built, start the viewer with the client ID from step 1.
+
+   ```sh
+   VITE_REGISTRY_ENABLED=true \
+   VITE_REGISTRY_CONNECTIONS='[{"name":"My workspace","registry":"https://registry.subsoil.dev","authorization_server":"https://auth.subsoil.dev/realms/subsoil","client_id":"PASTE_CLIENT_ID"}]' \
+   pnpm --filter @ifc-lite/viewer dev --host localhost --port 5173 --strictPort
+   ```
+
+3. Load an IFC in the viewer. Under **File → Cloud Sources**, choose **My workspace**, enter the repository in **Folder**, and **Push to…** a new tag such as `model-v1`. Sign in when prompted.
+4. In Subsoil, open that version with **Open with… → Edit with IFC Lite**. Edit the model, then **Push to…** the same repository with a fresh tag such as `model-v2`.
+5. **Open saved version** reopens the exact published digest. In the same folder, **Browse versions** lists tagged IFC packages so you can open either version. Subsoil also lists both versions in **My workspace**.
+
+### OCI connections
+
+Start with a repository from the handoff, workspace configuration, or **Folder**. **Browse versions** uses `@ifc-lite/oci` to follow tag pages and check manifest digests. It shows tags with supported IFC packages. Untagged manifests can still be opened when you have their digest. The existing registry browser can discover repository names on servers that expose the optional Distribution catalog and grant you access. [OCI tag listing](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags) · [Distribution catalog](https://distribution.github.io/distribution/spec/api/#listing-repositories)
+
+Publishing uploads the IFC and puts its OCI manifest under the tag you choose. Use a fresh tag per version and configure server-side tag immutability if the repository requires it. The saved locator uses the manifest digest. [OCI manifest push](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pushing-manifests)
+
+A handoff is an unpadded base64url encoding of UTF-8 JSON in `/open-artifact#handoff=<encoded>`.
 
 ```json
 {
@@ -311,55 +313,10 @@ URL. Encode the following UTF-8 JSON in unpadded base64url:
     "repository": "project/model",
     "digest": "sha256:32982f1d25a7c6d12f627c1fbc5d3d09df56514c3a24de7647bcc6808d6be214"
   },
-  "intent": "edit",
-  "destination": {
-    "registry": "https://registry.example.org",
-    "repository": "project/uploads/slot"
-  }
+  "intent": "edit"
 }
 ```
 
-The source and optional destination are locators. The viewer verifies the
-manifest and layer bytes and accepts the IFC artifact type
-`application/vnd.ifc-lite.ifc.v1` with a single `application/x-step` layer.
-It exports a complete IFC and uses the OCI empty config when publishing.
+The optional `destination` can suggest a configured `registry` and `repository` for publishing. The viewer verifies the manifest and its single `application/x-step` layer. It signs in with Authorization Code and PKCE S256, using repository pull access to open or browse and a separate pull and push grant to publish. An optional `token_exchange` connection setting supports providers using [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html).
 
-The viewer signs in with Authorization Code and PKCE S256. For a connection
-without `token_exchange`, it requests registry access directly. With token
-exchange, it requests the configured authorization resource and scope, then
-uses [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693.html) with the access
-token as `subject_token`. The exchange requests the registry origin as
-`resource` and Distribution repository scopes for the selected repository.
-Opening requests pull. Saving requests pull and push in a separate
-authorization. The exchange returns a bearer access token, lifetime,
-`issued_token_type` of `urn:ietf:params:oauth:token-type:access_token`, and the
-granted scopes when narrower than requested. Only this token goes to OCI
-endpoints.
-
-The viewer requires a matching OAuth callback `iss` parameter when the issuer
-advertises RFC 9207 support or the viewer is configured with multiple issuers.
-A deployment with one issuer can use a provider that omits `iss` and does not
-advertise support.
-
-When a publication endpoint is configured, the edit handoff supplies a
-destination in the same registry. The viewer uploads directly to that
-repository and posts a JSON object with `source` and `uploaded` locators
-(each with registry, repository, and manifest digest) to the publication
-endpoint. It authenticates this call with the OAuth access token for the
-authorization resource. The provider must verify the user's access to the source
-file and enforce the binding between that file and its assigned upload slot.
-It rejects an upload from any other slot, including one the user can write to.
-The link's destination is a repository hint. The provider also checks that the
-source digest is current.
-
-The provider records the revision and returns a JSON `{registry, repository,
-digest}` receipt with the source repository and uploaded digest. It should
-return the same receipt for repeated submissions of the same source and upload
-and respond with HTTP 409 when the source version is out of date. After a 409,
-open the latest version for editing from the file store. Other confirmation
-failures can be retried from the current tab with a fresh user access token.
-A retry confirms the already uploaded snapshot. To publish later edits, save
-again. The next save uses the confirmed digest as its base and requests fresh
-upload authorization for the destination. If the provider assigns a new upload
-slot per edit handoff, open the saved version for editing from the file store
-to get the new slot.
+For a custom hosted setup, register both callback paths at the viewer's exact origin and allow that origin at the issuer and registry endpoints. Expose `Link` for tag pagination and `Location` and `Docker-Content-Digest` for OCI transfers. The callback requires a matching `iss` when the provider advertises RFC 9207 support or the viewer has multiple configured issuers.

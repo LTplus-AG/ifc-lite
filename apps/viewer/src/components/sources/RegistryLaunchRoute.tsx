@@ -30,10 +30,7 @@ export default function RegistryLaunchRoute({ sourceProviders, enabled = import.
       if (disposed || !enabled) return;
       const opening = callback ? finishHandoff(href, controller.signal).then(({ handoff, session }) => {
         if (!disposed) {
-          useHandoffWorkspace.setState({
-            handoff, sourceSession: session, loadedModelId: undefined,
-            pendingPublication: undefined, conflictedHandoff: undefined, saved: undefined,
-          });
+          useHandoffWorkspace.setState({ handoff, sourceSession: session, saved: undefined });
           setReady(true);
         }
       }) : prepareHandoff(href, controller.signal).then(url => { controller.signal.throwIfAborted(); window.location.assign(url); });

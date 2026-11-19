@@ -59,3 +59,11 @@ test('two cropped models with one name are told apart in their warnings, as the 
   const refusals = prepared.warnings.filter(warning => /Georeferencing edits were not written/.test(warning));
   assert.deepEqual(refusals.map(warning => warning.split(':')[0]), ['Same (a)', 'Same (b)']);
 });
+
+test('a cropped and an uncropped model of one name get the labels the merge gives them (#10669)', async () => {
+  const inputs: MergeModelInput[] = await Promise.all(['a', 'b'].map(async id => ({ id, name: 'Same', dataStore: await store(), georefMutations: GEOREF })));
+  const prepared = await sectionMergeInputs(inputs, none, 'IFC2X3', id => id === 'a' ? { planes: [] } : undefined);
+  const merged = await new MergedExporter(prepared.inputs).exportAsync({ schema: 'IFC2X3' });
+  const refusals = [...prepared.warnings, ...merged.stats.warnings].filter(warning => /Georeferencing edits were not written/.test(warning));
+  assert.deepEqual(refusals.map(warning => warning.split(':')[0]), ['Same (a)', 'Same (b)']);
+});

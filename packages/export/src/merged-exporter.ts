@@ -26,7 +26,7 @@ import { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
-import { bakeMutatedModels, needsBake } from './merged-bake.js';
+import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
@@ -798,17 +798,17 @@ export class MergedExporter {
    * referencing), and it deliberately leaves georeferencing untouched.
    */
   private collectNormalizeCaveats(model: MergeModelInput, warnings: Set<string>): void {
-    const schema = (model.dataStore.schemaVersion ?? '').toUpperCase();
+    const schema = (model.dataStore.schemaVersion ?? '').toUpperCase(), label = mergeWarningLabel(model, this.models);
     if (NORMALIZE_UNCOVERED_SCHEMAS.has(schema)) {
       warnings.add(
-        `Model "${model.name}" (${schema}) was normalized using the IFC4 length-attribute schema; ` +
+        `Model "${label}" (${schema}) was normalized using the IFC4 length-attribute schema; ` +
         `length values on ${schema}-specific entities (e.g. alignment / linear-referencing segment ` +
         `lengths and radii) may not have been rescaled. Verify infrastructure geometry.`,
       );
     }
     if (this.findEntitiesByType(model.dataStore, 'IFCMAPCONVERSION').length > 0) {
       warnings.add(
-        `Model "${model.name}" carries georeferencing (IfcMapConversion), which normalize leaves ` +
+        `Model "${label}" carries georeferencing (IfcMapConversion), which normalize leaves ` +
         `untouched. If the model was georeferenced in its own unit, review the merged coordinate ` +
         `operation.`,
       );

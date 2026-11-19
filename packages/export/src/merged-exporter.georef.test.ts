@@ -113,3 +113,19 @@ describe('MergedExporter georeference warnings for models with one name (#10669)
     expect(refusals.map(warning => warning.split(':')[0])).toEqual(['Same (a)', 'Same (b)']);
   });
 });
+
+describe('MergedExporter normalize warnings for models with one name (#10669)', () => {
+  it('names each normalized model, so both caveats are reported', async () => {
+    // Millimetre models with a map conversion are normalized into the metre primary, and each gets a caveat.
+    const millimetre = (project: string) => model('Same', project).replace('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)', 'IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)')
+      .replace('ENDSEC;\nEND-ISO', "#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);\n#21=IFCMAPCONVERSION(#14,#20,0.,0.,0.,1.,0.,1.);\nENDSEC;\nEND-ISO");
+    const inputs: MergeModelInput[] = [
+      { id: 'p', name: 'Primary', dataStore: await parse(model('Primary', '0ProjectP000000000000p')) },
+      { id: 'a', name: 'Same', dataStore: await parse(millimetre('0ProjectA000000000000a')) },
+      { id: 'b', name: 'Same', dataStore: await parse(millimetre('0ProjectB000000000000b')) },
+    ];
+    const result = await new MergedExporter(inputs).exportAsync({ schema: 'IFC4', unitReconciliation: 'normalize' });
+    const caveats = result.stats.warnings.filter(warning => /carries georeferencing/.test(warning));
+    expect(caveats.map(warning => warning.split('"')[1])).toEqual(['Same (a)', 'Same (b)']);
+  });
+});

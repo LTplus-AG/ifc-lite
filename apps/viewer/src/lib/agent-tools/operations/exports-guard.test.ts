@@ -17,6 +17,17 @@ const context = {} as Parameters<typeof exportCheckpoint>[0];
 const geometry = (): GeometryResult => ({ meshes: [], totalTriangles: 0, totalVertices: 0,
   coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
     shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }, hasLargeCoordinates: false } });
+/**
+ * Hide the wall the moment an operation reads a mutation view: after it captured the view state, so a guard that
+ * watches the view must refuse. Were the hide earlier, the guard would capture it and the export would succeed.
+ */
+function hideWallOnMutationViewRead(): void {
+  const getMutationView = useViewerStore.getState().getMutationView;
+  useViewerStore.setState({ hiddenEntities: new Set(), getMutationView: (id: string) => {
+    useViewerStore.setState({ hiddenEntities: new Set([WALL_ID]), getMutationView });
+    return getMutationView(id);
+  } });
+}
 const stepOptions = { schema: 'IFC4', include_geometry: false, apply_mutations: true, visible_only: false, section_mode: 'trim' };
 
 test('switching the active model does not void an export of another model (#10695)', async () => {
@@ -50,18 +61,11 @@ test('a visible-only STEP export is voided when the view changes, a full one is 
   seed([model('A', await parseHelloWall())]);
   const host = viewerHost();
   const run = (visible_only: boolean) => dispatchMainViewerTool(host, 'viewer_operation_execute', { model_id: 'A', operation_id: 'exports.modelStep', input: { ...stepOptions, visible_only } }, { canEdit: () => true });
-  // The operation reads the mutation view after it captured the view state; the user hides the wall right then.
-  // Were the hide earlier, the guard would capture it and the visible-only export would succeed, failing this test.
-  const getMutationView = useViewerStore.getState().getMutationView;
-  const hideOnRead = () => useViewerStore.setState({ hiddenEntities: new Set(), getMutationView: (id: string) => {
-    useViewerStore.setState({ hiddenEntities: new Set([WALL_ID]), getMutationView });
-    return getMutationView(id);
-  } });
-  hideOnRead();
+  hideWallOnMutationViewRead();
   const visible = await run(true);
   assert.equal(visible.isError, true, 'visible-only export must not publish a stale view');
   assert.match(visible.text, /visibility/);
-  hideOnRead();
+  hideWallOnMutationViewRead();
   const full = await run(false);
   assert.equal(full.isError, false, full.text);
   assert.equal(useViewerStore.getState().hiddenEntities.size, 1, 'the hide landed during the full export too');
@@ -97,12 +101,7 @@ test('a visible-only IFCX export is voided when the view changes (#10695)', asyn
   resetFeaturesForTest();
   seed([model('A', await parseHelloWall())]);
   const host = viewerHost();
-  const getMutationView = useViewerStore.getState().getMutationView;
-  // As the STEP test: the wall is hidden when the operation reads the mutation view, after it captured the view state.
-  useViewerStore.setState({ getMutationView: (id: string) => {
-    useViewerStore.setState({ hiddenEntities: new Set([WALL_ID]), getMutationView });
-    return getMutationView(id);
-  } });
+  hideWallOnMutationViewRead();
   const result = await dispatchMainViewerTool(host, 'viewer_operation_execute', { model_id: 'A', operation_id: 'exports.modelIfcx', input: {
     include_geometry: false, apply_mutations: true, visible_only: true, changes_only: false, only_known_properties: false } }, { canEdit: () => true });
   assert.equal(result.isError, true, 'visible-only IFCX must not publish a stale view');

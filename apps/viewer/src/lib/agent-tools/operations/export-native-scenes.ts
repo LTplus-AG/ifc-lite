@@ -42,7 +42,7 @@ export const exportNativeSceneOperations = [
     const model = nativeExportTarget(i.target_model_id); const s = useViewerStore.getState();
     if (hasRetainedShapeOnlyModel(s.models)) throw new Error(RETAINED_SHAPE_ONLY_REASON);
     if (!model.geometryResult || !model.ifcDataStore) throw new Error('Native KMZ requires IFC geometry and georeferencing data.');
-    const check = nativeExportGuard(c, [model.id]); check(); const result = await buildKmzForModel({ geometryResult: model.geometryResult, instancedModelRange: model.id === '__legacy__' ? null : instancedModelRangeOf(model.id, s.models), dataStore: model.ifcDataStore, mutations: s.georefMutations.get(model.id), name: sanitizeFilename(stripExtension(model.name), { fallback: 'model' }), altitudeMode: i.altitude_mode });
+    const check = nativeExportGuard(c, [model.id]); check(); const result = await buildKmzForModel({ geometryResult: model.geometryResult, instancedModelRange: instancedModelRangeOf(model.id, s.models), dataStore: model.ifcDataStore, mutations: s.georefMutations.get(model.id), name: sanitizeFilename(stripExtension(model.name), { fallback: 'model' }), altitudeMode: i.altitude_mode });
     check(); if (typeof result === 'string') throw new Error(`Native KMZ refused: ${result}`);
     return nativeArtifact(c, new Blob([new Uint8Array(result)], { type: 'application/vnd.google-earth.kmz' }), modelExportFilename(model.name, 'kmz'), { model_id: model.id, altitude_mode: i.altitude_mode }, check);
   }),

@@ -95,6 +95,15 @@ export function withInstancedMeshes(
   };
 }
 
+/**
+ * `modelId`'s instanced range, owner index included: an overlapping-id collab model's occurrences fall inside the id
+ * bracket too, and only the renderer index tells them apart (#10695).
+ */
+export function instancedModelRangeOf(modelId: string, models: ReadonlyMap<string, { idOffset?: number; maxExpressId?: number }>): InstancedModelRange | null {
+  const model = models.get(modelId);
+  return model ? { modelId, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0, rendererModelIndex: modelIndices(models).get(modelId) } : null;
+}
+
 /** Resolves a single panel's `InstancedModelRange` (see the module doc above)
  *  from its own `modelId` plus the currently loaded models, AND whether an
  *  instanced-geometry export may proceed at all.
@@ -108,15 +117,6 @@ export function withInstancedMeshes(
  * a leak was `GeoreferencingPanel`'s KMZ export before this helper existed
  * (PR #2878 review): `canExport: false` tells the caller to withhold the
  * export instead of falling through to that unfiltered case. */
-/**
- * `modelId`'s instanced range, owner index included: an overlapping-id collab model's occurrences fall inside the id
- * bracket too, and only the renderer index tells them apart (#10695).
- */
-export function instancedModelRangeOf(modelId: string, models: ReadonlyMap<string, { idOffset?: number; maxExpressId?: number }>): InstancedModelRange | null {
-  const model = models.get(modelId);
-  return model ? { modelId, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0, rendererModelIndex: modelIndices(models).get(modelId) } : null;
-}
-
 export function resolveInstancedExportGate(
   modelId: string | undefined,
   models: ReadonlyMap<string, { idOffset?: number; maxExpressId?: number; retainedGeometry?: RetainedGeometrySummary }>,

@@ -13,10 +13,10 @@ import { hasRetainedSectionExport } from '@/store/retainedGeometry';
 import { modelExportFilename } from '@/lib/export/download';
 import { buildMergeInputs } from '@/components/viewer/export-merge-inputs';
 import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
-import { operation, viewerOperation } from './contract';
+import { operation, viewerOperation, type ViewerOperationContext } from './contract';
 import { exportCheckpoint, exportMetadata } from './exports-common';
 import { nativeExportGuard } from './export-native-runtime';
-import { LEGACY_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 interface Options {
   schema: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   include_geometry: boolean; apply_mutations: boolean; visible_only: boolean; section_mode: 'trim' | 'whole';
@@ -32,12 +32,12 @@ function retainedGuard(ids: Iterable<string>, visible: boolean, geometry: boolea
   }
 }
 /** A visible-only export also reads the current view, so it is discarded when the view changes (#10695). */
-const exportGuard = (c: Parameters<typeof exportCheckpoint>[0], ids: readonly string[], visibleOnly: boolean) =>
+const exportGuard = (c: ViewerOperationContext, ids: readonly string[], visibleOnly: boolean) =>
   visibleOnly ? nativeExportGuard(c, ids) : exportCheckpoint(c, ids);
 export const stepExportOperations = [
   operation(exportMetadata('exports.modelStep', 'Produce one native full/visible STEP IFC or portable IFCZIP with the Export dialog schema, geometry, mutation and trim/whole-section options. Uses its exact shared exportModelStep producer, room/source ID mapping, appearance packaging and schedule splicing; refuses unsupported native source/section modes. No download.'), schema, async (i, c) => {
     // A legacy single model is 'default' to the agent host and '__legacy__' to the export services (#10695).
-    const id = useViewerStore.getState().models.size === 0 && c.model.id === LEGACY_MODEL_ID ? '__legacy__' : c.model.id;
+    const id = normalizeMutationModelId(useViewerStore.getState(), c.model.id);
     const current = exportGuard(c, [id], i.visible_only); current();
     retainedGuard([id], i.visible_only, i.include_geometry);
     const store = await ensureModelExportReady(id);

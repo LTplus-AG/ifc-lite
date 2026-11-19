@@ -19,7 +19,7 @@ const meta = (id: string, owner: string, description: string, write = false) => 
 interface Review { room?: import('@/lib/actions/room-review').RoomReview; preview: object; validate(): void; commit(): ModelChangeReceipt; dispose?(): void }
 interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
-function owned(c: OperationContext) {
+function owned(c: Pick<OperationContext, 'host'>) {
   let entries = hosts.get(c.host);
   if (!entries) {
     entries = new Map(); hosts.set(c.host, entries);
@@ -77,7 +77,14 @@ export const graphAuthoringOperations = [
       selectedEntityIds: new Set(refs.map(ref => toGlobalIdForRef(state.models, ref))) });
     return output(capture);
   }),
-  ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput }, {
+  ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput,
+    // A result the executor refuses never reaches the caller, so its candidate must not keep a place under the cap.
+    discard: (result, c) => {
+      const token = (result as { token?: unknown } | null)?.token, entries = owned(c);
+      const entry = typeof token === 'string' ? entries.get(token) : undefined;
+      if (!entry || entry.receipt) return;
+      entries.delete(token as string); entry.review?.dispose?.();
+    } }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
     if (owned(c).size >= 32) throw new Error('At most 32 graph review candidates may be retained.');

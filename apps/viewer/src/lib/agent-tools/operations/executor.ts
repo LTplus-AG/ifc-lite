@@ -135,15 +135,23 @@ export async function executeOperation(
     return commit(write);
   });
   const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, artifacts };
+  /** Accept a handler's result through `accept`; a result it refuses is never delivered, so what the handler stored
+   * for it is discarded. A committed write is not, since it already happened. */
+  const refusing = <T>(result: unknown, accept: () => T): T => {
+    try { return accept(); } catch (error) {
+      if (!committed) {
+        try { entry.discard?.(result, operationContext); } catch (discardError) { console.warn('[viewer operation] discarding a refused result failed', discardError); }
+      }
+      throw error;
+    }
+  };
   check();
   if (!args.background) {
     const run = async () => {
       check();
       try {
         const result = await entry.execute(input, operationContext);
-        if (!committed) check();
-        const value = boundedResult(result);
-        entry.validateResult(value);
+        const value = refusing(result, () => { if (!committed) check(); const bounded = boundedResult(result); entry.validateResult(bounded); return bounded; });
         return { operation_id: entry.id, model_id: model?.id ?? null, revision: activeRevision, state: entry.completion ?? 'succeeded', committed, result: value };
       } catch (error) {
         if (committed) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR,
@@ -177,7 +185,7 @@ export async function executeOperation(
   void Promise.resolve().then(() => { active(); return entry.execute(input, { ...operationContext, signal: controller.signal, checkpoint: active, progress: detail => {
       active(); snapshot.progress = detail;
     } }); })
-    .then(result => { active(); snapshot.result = boundedResult(result); entry.validateResult(snapshot.result); snapshot.state = 'succeeded'; })
+    .then(result => { snapshot.result = refusing(result, () => { active(); const bounded = boundedResult(result); entry.validateResult(bounded); return bounded; }); snapshot.state = 'succeeded'; })
     .catch((error: unknown) => {
       snapshot.state = controller.signal.aborted ? 'cancelled' : 'failed';
       snapshot.error = error instanceof Error ? error.message : 'Operation failed.';

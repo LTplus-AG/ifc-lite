@@ -38,6 +38,9 @@ export interface Operation {
   validate(input: unknown): void;
   validateResult(result: unknown): void;
   execute(input: unknown, context: OperationExecutionContext): Promise<unknown>;
+  /** Undo what the handler stored for its caller (a prepared candidate) when the executor refuses the result the
+   * handler returned, after a later state change or an invalid result: the caller never receives it. */
+  discard?(result: unknown, context: OperationExecutionContext): void;
 }
 type Metadata = Omit<Operation, 'version' | 'inputSchema' | 'validate' | 'execute' | 'result' | 'validateResult' | 'needs'>;
 

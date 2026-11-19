@@ -146,13 +146,15 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     const captured = sources(current);
     // What the geometry lease read, cheaply and without re-capturing it: the target model's frame and mesh buffers by
     // identity. A recolour copies meshes with the same buffers; a remesh, re-frame or in-place vertex edit changes one.
+    // Held weakly, so a remesh or a geometry release can still free the old buffers.
     const geometry = current.models.get(proposal.modelId)?.geometryResult;
-    const frame = geometry?.coordinateInfo, buffers = geometry?.meshes.flatMap(mesh => [mesh.positions, mesh.indices]) ?? [];
+    const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1, buffers = new WeakSet<object>();
+    for (const mesh of geometry?.meshes ?? []) { buffers.add(mesh.positions); buffers.add(mesh.indices); }
     const content = current.geometryContentVersion;
     const geometryCurrent = (state: ViewerState) => {
       const now = state.models.get(proposal.modelId)?.geometryResult;
-      return !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length * 2 === buffers.length
-        && now.meshes.every((mesh, i) => mesh.positions === buffers[2 * i] && mesh.indices === buffers[2 * i + 1]);
+      return !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length === meshCount
+        && now.meshes.every(mesh => buffers.has(mesh.positions) && buffers.has(mesh.indices));
     };
     const validate = () => {
       signal.throwIfAborted();

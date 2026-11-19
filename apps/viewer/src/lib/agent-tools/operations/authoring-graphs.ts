@@ -86,7 +86,7 @@ export const graphAuthoringOperations = [
     // A review that fails it is dropped and its native handles released.
     const admit = () => {
       const stillApplies = candidateStillApplies(c.host);
-      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.settled,
+      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.handedOff,
         canApply: entry => stillApplies(entry.receipt !== undefined, () => entry.review?.sourcesCurrent() ?? false, entry),
         release: entry => entry.review?.dispose?.() });
     };

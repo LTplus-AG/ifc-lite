@@ -9,6 +9,7 @@ import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { emitSpatialZones } from '@/lib/zones/emit-spatial-zones';
 import { zoneAssignmentSignature } from '@/lib/zones/assignment';
+import type { ZoneAssignmentsByElement } from '@/lib/zones/types';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { resolveGlobalId } from './resolve-global-id';
 import { readZoneEmissionSnapshot } from './zone-emission-evidence';
@@ -16,6 +17,16 @@ import { parseZoneEmissionProposal, type ZoneEmissionProposal } from './zone-emi
 import type { ModelChangeReceipt } from './model-change-commit';
 import { batchDigest } from './model-change-preview';
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
+/** One signature per assignments Map and set, shared by every retained review: the sync replaces the Map rather
+ * than mutating it, so a rebuilt Map is signed once, however many reviews probe it. */
+const signatures = new WeakMap<ZoneAssignmentsByElement, Map<string, string>>();
+function setAssignmentSignature(assignments: ZoneAssignmentsByElement, setId: string): string {
+  let bySet = signatures.get(assignments);
+  if (!bySet) { bySet = new Map(); signatures.set(assignments, bySet); }
+  let signature = bySet.get(setId);
+  if (signature === undefined) { signature = zoneAssignmentSignature(assignments, setId); bySet.set(setId, signature); }
+  return signature;
+}
 export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmissionProposal) {
   const proposal = parseZoneEmissionProposal(JSON.stringify(input)), state = store.getState();
   const deny = mutationDenial(state, proposal.modelId); if (deny) throw new Error(deny);
@@ -41,22 +52,16 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
       && row.model.sourceContentHash === row.hash && row.model.sourceFingerprint === row.fingerprint);
   };
   // The zone configuration the snapshot read, cheaply: the set object, which the zones slice replaces on every write
-  // to it, and the set's assignments by content, re-read only when the assignments Map itself is rebuilt (the sync
-  // rebuilds an identical Map after every geometry tick).
+  // to it, and the set's assignments by content (the sync rebuilds an identical Map after every geometry tick).
   const zoneSet = state.zoneSets.find(row => row.id === proposal.zoneSetId);
-  const assignmentsAtPrepare = zoneAssignmentSignature(state.zoneAssignments, proposal.zoneSetId);
-  let assignmentsSeen = state.zoneAssignments, assignmentsUnchanged = true;
+  const assignmentsAtPrepare = setAssignmentSignature(state.zoneAssignments, proposal.zoneSetId);
   // The native lease binds the target model's mutation view and its revision, as the Group and Structural probes do.
   const view = state.mutationViews.get(proposal.modelId), viewRevision = view?.getMutationRevision();
   const zoneConfigurationCurrent = () => {
     const current = store.getState(), liveView = current.mutationViews.get(proposal.modelId);
     if (liveView !== view || liveView?.getMutationRevision() !== viewRevision) return false;
     if (current.zoneSets.find(row => row.id === proposal.zoneSetId) !== zoneSet) return false;
-    if (current.zoneAssignments !== assignmentsSeen) {
-      assignmentsSeen = current.zoneAssignments;
-      assignmentsUnchanged = zoneAssignmentSignature(assignmentsSeen, proposal.zoneSetId) === assignmentsAtPrepare;
-    }
-    return assignmentsUnchanged;
+    return setAssignmentSignature(current.zoneAssignments, proposal.zoneSetId) === assignmentsAtPrepare;
   };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');

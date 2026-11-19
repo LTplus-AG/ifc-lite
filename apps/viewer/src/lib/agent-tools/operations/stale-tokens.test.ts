@@ -128,7 +128,7 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(writes, 1);
   });
 
-  it('#20: an unsaved receipt keeps its place, and a replay saves the library\'s latest draft, an undone mark included', async () => {
+  it('#20: a replay of an unsaved receipt saves the library\'s latest draft, an undone mark included', async () => {
     const token = await prepareRename();
     let receipt: ModelChangeReceipt;
     const refused = refuseContentWrites(); // storage refuses: put resolves false and keeps the receipt as a draft
@@ -136,15 +136,25 @@ describe('reviewed model candidates (#10792)', () => {
       const applied = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token }, true));
       assert.equal(applied.persisted, false);
       receipt = JSON.parse(applied.receipt_json) as ModelChangeReceipt;
-      for (let i = 0; i < 63; i++) await prepareRename(`Name ${i}`);
-      assert.equal((await invoke('properties.prepare', { proposal_json: rename('One too many') })).isError, true, 'the unsaved receipt still holds a place');
+      assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false, 'still unsaved');
       // The Changes panel marks it undone while storage is still refusing.
       assert.equal(await modelChangeLibrary.put(receipt.id, { ...receipt, status: 'undone', undoneAt: new Date(0).toISOString() }), false);
     } finally { refused.mock.restore(); }
     assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true);
     assert.equal(useModelChangeReceipts.getState().status.items[receipt!.id], 'saved');
     assert.equal(storedReceipt(receipt!.id)?.status, 'undone', 'the replay saved the undone draft, not the original receipt');
-    await prepareRename('Room again once saved');
+  });
+
+  it('#20: unsaved receipts do not lock the host out; the library keeps them for its own retry', async () => {
+    const refused = refuseContentWrites();
+    try {
+      const applied = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token: await prepareRename() }, true));
+      assert.equal(applied.persisted, false);
+      const receipt = JSON.parse(applied.receipt_json) as ModelChangeReceipt;
+      for (let i = 0; i < 64; i++) await prepareRename(`Name ${i}`); // the 64th evicts the applied candidate
+      assert.ok(storedReceipt(receipt.id), 'the receipt survives as the library\'s draft');
+      assert.notEqual(useModelChangeReceipts.getState().status.items[receipt.id], 'saved');
+    } finally { refused.mock.restore(); }
   });
 
   it('#20: replaying an applied graph token keeps its undone receipt too', async () => {
@@ -510,11 +520,15 @@ describe('zone emission reviews (#10792)', () => {
 
   it('#19: 32 zone reviews whose native lease moved (an edit to the target model) free the cap', async (t) => {
     const f = await seedZones(t); if (!f) return;
+    // The view exists before the reviews, so the edit below moves only its revision.
+    useViewerStore.setState(s => ({ mutationViews: new Map(s.mutationViews).set('bonsai', configuredView(f.store, 'bonsai')) }));
+    recomputeZoneAssignmentsNow();
     const proposal_json = zoneProposal();
     for (let i = 0; i < 32; i++) answer(await invoke('authoring.zone.prepare', { proposal_json }));
     // Zone set and assignments unchanged; only the model the reviews' lease bound is edited.
-    useViewerStore.setState(s => ({ mutationViews: new Map(s.mutationViews).set('bonsai', configuredView(f.store, 'bonsai')) }));
+    const view = useViewerStore.getState().mutationViews.get('bonsai');
     useViewerStore.getState().setAttribute('bonsai', f.wall.expressId, 'Description', 'Edited after review');
+    assert.equal(useViewerStore.getState().mutationViews.get('bonsai'), view, 'same view, new revision');
     assert.ok((useViewerStore.getState().mutationViews.get('bonsai')?.getMutationRevision() ?? 0) > 0, 'the edit reached the model');
     recomputeZoneAssignmentsNow();
     answer(await invoke('authoring.zone.prepare', { proposal_json: zoneProposal() }));

@@ -114,7 +114,7 @@
       "headers": [{ "key": "Cache-Control", "value": "no-store" }, { "key": "Referrer-Policy", "value": "no-referrer" }]
     },
     {
-      "source": "/open-artifact/:path*",
+      "source": "/open-artifact/callback",
       "headers": [{ "key": "Cache-Control", "value": "no-store" }, { "key": "Referrer-Policy", "value": "no-referrer" }]
     },
     {

@@ -336,15 +336,30 @@ authorization. The exchange returns a bearer access token, lifetime,
 granted scopes when narrower than requested. Only this token goes to OCI
 endpoints.
 
+The viewer requires a matching OAuth callback `iss` parameter when the issuer
+advertises RFC 9207 support or the viewer is configured with multiple issuers.
+A deployment with one issuer can use a provider that omits `iss` and does not
+advertise support.
+
 When a publication endpoint is configured, the edit handoff supplies a
 destination in the same registry. The viewer uploads directly to that
 repository and posts a JSON object with `source` and `uploaded` locators
 (each with registry, repository, and manifest digest) to the publication
 endpoint. It authenticates this call with the OAuth access token for the
-authorization resource. The provider verifies access and records the new
-version, then returns its `{registry, repository, digest}` locator as a JSON
-object. It should return the same result for a repeated submission of the same
-digests, and respond with HTTP 409 when the source version is out of date. The
-viewer shows a save only after it receives the receipt. A failed confirmation
-can be retried for the uploaded digest from the current tab with a fresh user
-access token.
+authorization resource. The provider must verify the user's access to the source
+file and enforce the binding between that file and its assigned upload slot.
+It rejects an upload from any other slot, including one the user can write to.
+The link's destination is a repository hint. The provider also checks that the
+source digest is current.
+
+The provider records the revision and returns a JSON `{registry, repository,
+digest}` receipt with the source repository and uploaded digest. It should
+return the same receipt for repeated submissions of the same source and upload
+and respond with HTTP 409 when the source version is out of date. After a 409,
+open the latest version for editing from the file store. Other confirmation
+failures can be retried from the current tab with a fresh user access token.
+A retry confirms the already uploaded snapshot. To publish later edits, save
+again. The next save uses the confirmed digest as its base and requests fresh
+upload authorization for the destination. If the provider assigns a new upload
+slot per edit handoff, open the saved version for editing from the file store
+to get the new slot.

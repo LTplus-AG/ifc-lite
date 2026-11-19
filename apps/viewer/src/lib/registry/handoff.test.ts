@@ -58,7 +58,13 @@ test('exchange scopes the registry token and a failed confirmation retries the s
   const scope = `repository:${stagingRepository}:pull repository:${stagingRepository}:push`;
   const tokenType = 'urn:ietf:params:oauth:token-type:access_token';
   const receipts: unknown[] = [];
-  let nextStatus = 409;
+  const outcomes = [
+    { status: 503 },
+    { status: 409 },
+    { status: 201, receipt: { repository: 'project/unrelated' } },
+    { status: 201, receipt: { digest: source.digest } },
+    { status: 201 },
+  ];
   const provider = await startServer(async (req, res) => {
     assert.equal(req.method, 'POST');
     const chunks: Buffer[] = [];
@@ -81,9 +87,11 @@ test('exchange scopes the registry token and a failed confirmation retries the s
     assert.equal(req.headers.authorization, 'Bearer login-only');
     const payload = JSON.parse(body);
     receipts.push(payload);
-    const status = nextStatus;
-    nextStatus = 201;
-    return send(res, { status, body: status === 201 ? JSON.stringify({ ...source, digest: payload.uploaded.digest }) : '' });
+    const outcome = outcomes.shift();
+    assert(outcome);
+    return send(res, { status: outcome.status, body: outcome.status === 201
+      ? JSON.stringify({ ...source, digest: payload.uploaded.digest, ...outcome.receipt })
+      : '' });
   });
   const settings = {
     endpoint: provider.origin + '/exchange',
@@ -101,9 +109,15 @@ test('exchange scopes the registry token and a failed confirmation retries the s
   const bytes = new TextEncoder().encode('ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;');
   const uploaded = await pushHandoff(registry.origin, stagingRepository, 'save-1', bytes, 'edited.ifc', session, signal);
   const registryRequestCount = registry.requests.length;
-  await assert.rejects(confirmPublication(trusted, handoff, uploaded, 'login-only', signal), /newer version/);
-  assert.deepEqual(await confirmPublication(trusted, handoff, uploaded, 'login-only', signal), { ...source, digest: uploaded.digest });
-  assert.deepEqual(receipts, [{ source, uploaded }, { source, uploaded }]);
+  const confirm = () => confirmPublication(trusted, handoff, uploaded, 'login-only', signal);
+  await assert.rejects(confirm(), /could not confirm the save/);
+  await assert.rejects(confirm(), { status: 409 });
+  // #9638: A 2xx may carry a valid locator for a different file or digest.
+  await assert.rejects(confirm(), /different file or version/);
+  await assert.rejects(confirm(), /different file or version/);
+  assert.deepEqual(await confirm(), { ...source, digest: uploaded.digest });
+  assert.equal(receipts.length, 5);
+  for (const receipt of receipts) assert.deepEqual(receipt, { source, uploaded });
   assert.equal(registry.requests.length, registryRequestCount);
   const credentials = registry.requests.flatMap(request => request.authorization ? [request.authorization] : []);
   assert(credentials.length > 0 && credentials.every(value => value === 'Bearer registry-only'));

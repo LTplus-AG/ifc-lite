@@ -32,6 +32,7 @@ export const viewerShellRu = {
   "viewerShell.chunkLabel.mcpPage": "Страница MCP",
   "viewerShell.chunkLabel.mcpPlayground": "Тестовая среда MCP",
   "viewerShell.chunkLabel.rteGpuWitness": "Контрольный тест RTE на GPU",
+  "viewerShell.chunkLabel.registryModel": "Модель из реестра",
   "viewerShell.dialog.close": "Закрыть",
   "viewerShell.dialog.confirmTitle": "Подтвердить действие",
   "viewerShell.dialog.promptTitle": "Ввести значение",

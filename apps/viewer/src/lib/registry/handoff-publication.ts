@@ -5,6 +5,12 @@
 import { artifactSource, type ArtifactSource, type OciHandoff, type RegistryConnection } from './handoff-contract';
 import { RegistryError, responseBytes } from './protocol';
 
+export class PublicationConflictError extends RegistryError {
+  constructor() {
+    super('A newer version was saved. Open it before saving your changes.', 409);
+  }
+}
+
 /** The provider records the staged digest as a revision of the original file. */
 export async function confirmPublication(
   connection: RegistryConnection,
@@ -27,10 +33,14 @@ export async function confirmPublication(
   });
   if (!response.ok) {
     await response.body?.cancel();
-    if (response.status === 409) throw new RegistryError('A newer version was saved. Open it before saving your changes.', 409);
+    if (response.status === 409) throw new PublicationConflictError();
     if (response.status === 401 || response.status === 403) throw new RegistryError('The file store denied this save. Sign in again or ask the owner for access.', response.status);
     throw new RegistryError('The upload finished, but the file store could not confirm the save. Try finishing the save again.', response.status);
   }
   const receipt: unknown = JSON.parse(new TextDecoder().decode(await responseBytes(response, 64 * 1024)));
-  return artifactSource(receipt, connection.registry);
+  const saved = artifactSource(receipt, connection.registry);
+  if (saved.repository !== handoff.source.repository || saved.digest !== uploaded.digest) {
+    throw new RegistryError('The file store returned a different file or version than the upload being saved.');
+  }
+  return saved;
 }

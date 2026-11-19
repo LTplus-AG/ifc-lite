@@ -8,18 +8,26 @@ import { RegistryError, repositoryName, responseBytes } from './protocol';
 import { connectionFor, HANDOFF_CALLBACK, handoffContext, readHandoff, registryConnections, webAddress, type OciHandoff, type RegistryConnection } from './handoff-contract';
 
 export interface ResourceSession { accessToken: string; expiresAt: number; registry: string; scope: string }
-interface Metadata { authorization_endpoint: string; token_endpoint: string }
+interface Metadata { authorization_endpoint: string; token_endpoint: string; issuerInCallback: boolean }
 interface AuthorizationRequest { scope: string; resource: string }
 export interface DestinationAuthorization { session: ResourceSession; publicationToken?: string }
-interface Pending { handoff: OciHandoff; registry: string; issuer: string; clientId: string; redirectUri: string; state: string; verifier: string; scope: string; created: number }
+interface Pending { handoff: OciHandoff; registry: string; issuer: string; issuerRequired: boolean; clientId: string; redirectUri: string; state: string; verifier: string; scope: string; created: number }
 const PENDING = 'ifc-lite:oci-handoff:pkce';
 export const PUSH_CALLBACK = '/oauth/registry/callback';
 const TIMEOUT = 5 * 60 * 1000;
 
-function validateRegistryCallback(href: string, redirectUri: string, state: string): string {
+function validateRegistryCallback(href: string, redirectUri: string, state: string, issuer: string, issuerRequired: boolean): string {
   const callback = new URL(href), expected = new URL(redirectUri);
   if (callback.origin !== expected.origin || callback.pathname !== expected.pathname || callback.username || callback.password || callback.hash || callback.searchParams.getAll('state').length !== 1 || callback.searchParams.get('state') !== state || callback.searchParams.getAll('code').length !== 1 || callback.searchParams.has('error')) throw new RegistryError('The authorization response was cancelled or did not match this request.');
+  const issuers = callback.searchParams.getAll('iss');
+  if ((issuerRequired || issuers.length > 0) && (issuers.length !== 1 || issuers[0] !== issuer)) {
+    throw new RegistryError('The authorization response did not identify the expected issuer.');
+  }
   return callback.searchParams.get('code')!;
+}
+function hasOtherIssuer(connection: RegistryConnection, connections: readonly RegistryConnection[]): boolean {
+  // All configured issuers share the same callback URL for each flow.
+  return connections.some(other => other.authorization_server !== connection.authorization_server);
 }
 async function json(response: Response): Promise<unknown> {
   if (!response.ok) throw new RegistryError(`File-store authorization failed (${response.status}). Sign in again or ask the owner for access.`, response.status);
@@ -41,7 +49,12 @@ export async function authorizationMetadata(connection: RegistryConnection, sign
     !('response_types_supported' in value) || !Array.isArray(value.response_types_supported) || !value.response_types_supported.includes('code') ||
     !('code_challenge_methods_supported' in value) || !Array.isArray(value.code_challenge_methods_supported) || !value.code_challenge_methods_supported.includes('S256')) throw new RegistryError('This authorization server must support Authorization Code with PKCE S256.');
   webAddress(value.authorization_endpoint); webAddress(value.token_endpoint);
-  return { authorization_endpoint: value.authorization_endpoint, token_endpoint: value.token_endpoint };
+  return {
+    authorization_endpoint: value.authorization_endpoint,
+    token_endpoint: value.token_endpoint,
+    issuerInCallback: 'authorization_response_iss_parameter_supported' in value &&
+      value.authorization_response_iss_parameter_supported === true,
+  };
 }
 function bearerGrant(value: unknown): { token: string; expiresAt: number; scope?: string } {
   if (!value || typeof value !== 'object' || !('access_token' in value) || typeof value.access_token !== 'string' || !value.access_token ||
@@ -119,6 +132,7 @@ export async function prepareHandoff(href: string, signal: AbortSignal, connecti
     redirectUri, scope: authorization.scope, extraParams: { resource: authorization.resource } });
   signal.throwIfAborted();
   const pending: Pending = { handoff, registry: connection.registry, issuer: connection.authorization_server, clientId: connection.client_id,
+    issuerRequired: metadata.issuerInCallback || hasOtherIssuer(connection, connections),
     redirectUri, scope, state: request.state, verifier: request.codeVerifier, created: Date.now() };
   sessionStorage.setItem(PENDING, JSON.stringify(pending));
   return request.url;
@@ -133,9 +147,8 @@ export async function finishHandoff(href: string, signal: AbortSignal, connectio
     !('scope' in p) || typeof p.scope !== 'string' || !('created' in p) || typeof p.created !== 'number' || Date.now() < p.created || Date.now() - p.created > TIMEOUT) throw new RegistryError('The opening request expired or could not be verified.');
   const handoff = handoffContext(p.handoff, connections), connection = connectionFor(p.registry, connections);
   if (connection.registry !== handoff.source.registry || connection.authorization_server !== p.issuer || connection.client_id !== p.clientId || p.scope !== `repository:${handoff.source.repository}:pull`) throw new RegistryError('The file-store configuration changed. Open the file again.');
-  const callback = new URL(href);
-  if (callback.searchParams.getAll('iss').length !== 1 || callback.searchParams.get('iss') !== p.issuer) throw new RegistryError('The authorization response came from another issuer.');
-  const code = validateRegistryCallback(href, p.redirectUri, p.state);
+  const issuerRequired = !('issuerRequired' in p) || p.issuerRequired !== false || hasOtherIssuer(connection, connections);
+  const code = validateRegistryCallback(href, p.redirectUri, p.state, p.issuer, issuerRequired);
   const metadata = await authorizationMetadata(connection, signal);
   const authorization = authorizationRequest(connection, p.scope, false);
   const reply = await redeem(connection, metadata.token_endpoint, p.redirectUri, code, p.verifier, authorization.resource, signal);
@@ -145,7 +158,7 @@ export async function finishHandoff(href: string, signal: AbortSignal, connectio
   if (!resourceAllows(session, handoff.source.repository, 'pull')) throw new RegistryError('This account cannot open the selected folder.', 403);
   return { handoff, session };
 }
-async function destinationGrant(connection: RegistryConnection, authorization: AuthorizationRequest, signal: AbortSignal): Promise<unknown> {
+async function destinationGrant(connection: RegistryConnection, authorization: AuthorizationRequest, signal: AbortSignal, connections: readonly RegistryConnection[]): Promise<unknown> {
   const popup = window.open('about:blank', 'ifc-lite-oci-push', 'width=520,height=720');
   if (!popup) throw new RegistryError('Allow the sign-in popup and try Push to again.');
   try {
@@ -156,18 +169,17 @@ async function destinationGrant(connection: RegistryConnection, authorization: A
     signal.throwIfAborted();
     const waiting = waitForOAuthCallback({ expectedState: request.state, timeoutMs: TIMEOUT, timeoutMessage: 'Sign-in timed out. Try Push to again.', signal });
     popup.location.href = request.url;
-    const href = await waiting, callback = new URL(href);
-    if (callback.searchParams.getAll('iss').length !== 1 || callback.searchParams.get('iss') !== connection.authorization_server) throw new RegistryError('The authorization response came from another issuer.');
-    const code = validateRegistryCallback(href, redirectUri, request.state);
+    const code = validateRegistryCallback(await waiting, redirectUri, request.state, connection.authorization_server,
+      metadata.issuerInCallback || hasOtherIssuer(connection, connections));
     return await redeem(connection, metadata.token_endpoint, redirectUri, code, request.codeVerifier, authorization.resource, signal);
   } finally { popup.close(); }
 }
 
 /** Each push destination obtains its own resource-bound token; source tokens are never reused. */
-export async function authorizeDestination(connection: RegistryConnection, repository: string, signal: AbortSignal): Promise<DestinationAuthorization> {
+export async function authorizeDestination(connection: RegistryConnection, repository: string, signal: AbortSignal, connections: readonly RegistryConnection[]): Promise<DestinationAuthorization> {
   repositoryName(repository);
   const scope = `repository:${repository}:pull repository:${repository}:push`;
-  const reply = await destinationGrant(connection, authorizationRequest(connection, scope, true), signal);
+  const reply = await destinationGrant(connection, authorizationRequest(connection, scope, true), signal, connections);
   const subject = connection.token_exchange ? bearerGrant(reply).token : undefined;
   const session = subject
     ? await exchangeRegistryToken(connection, subject, scope, signal)
@@ -179,7 +191,7 @@ export async function authorizeDestination(connection: RegistryConnection, repos
 }
 
 /** Confirmation can be retried after the file store closes its upload repository. */
-export async function authorizePublicationConfirmation(connection: RegistryConnection, signal: AbortSignal): Promise<string> {
+export async function authorizePublicationConfirmation(connection: RegistryConnection, signal: AbortSignal, connections: readonly RegistryConnection[]): Promise<string> {
   if (!connection.token_exchange?.publication_endpoint) throw new RegistryError('No publication endpoint is configured for this file store.');
-  return bearerGrant(await destinationGrant(connection, authorizationRequest(connection, '', true), signal)).token;
+  return bearerGrant(await destinationGrant(connection, authorizationRequest(connection, '', true), signal, connections)).token;
 }

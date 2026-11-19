@@ -14,7 +14,8 @@ import { useTranslation } from '@/i18n';
 /** Digest-verified IFC data enters the same load path as every other model. */
 export function RegistryLaunchLoader() {
   const { t } = useTranslation(), { loadFile } = useIfcLoader();
-  const loader = useRef(loadFile); loader.current = loadFile;
+  const loader = useRef(loadFile);
+  useEffect(() => { loader.current = loadFile; }, [loadFile]);
   const [attempt, setAttempt] = useState(0), [busy, setBusy] = useState(true), [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController(); let disposed = false;

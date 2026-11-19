@@ -44,6 +44,7 @@
     "@ifc-lite/merge": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/oauth-pkce": "workspace:^",
+    "@ifc-lite/oci": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/plugin-api": "workspace:^",
     "@ifc-lite/pointcloud": "workspace:^",

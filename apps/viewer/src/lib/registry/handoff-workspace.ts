@@ -9,8 +9,9 @@ interface HandoffWorkspace {
   handoff?: OciHandoff;
   sourceSession?: ResourceSession;
   loadedModelId?: string;
-  saved?: ArtifactSource;
+  saved?: { modelId: string; artifact: ArtifactSource };
   pendingPublication?: { handoff: OciHandoff; artifact: ArtifactSource };
+  conflictedHandoff?: OciHandoff;
   destinationSession?: ResourceSession;
 }
 /** Tokens and opened content remain in this tab's memory. */

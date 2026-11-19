@@ -20,7 +20,8 @@ export default function RegistryLaunchRoute({ sourceProviders, enabled = import.
   const { t } = useTranslation(), [href] = useState(registryLaunchLocation);
   const callback = new URL(href).pathname === HANDOFF_CALLBACK;
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(enabled), [error, setError] = useState('');
-  const translate = useRef(t); translate.current = t;
+  const translate = useRef(t);
+  useEffect(() => { translate.current = t; }, [t]);
   useEffect(() => {
     window.history.replaceState(null, '', HANDOFF_PATH); clearRegistryLaunchLocation();
     const controller = new AbortController(); let disposed = false;
@@ -28,7 +29,13 @@ export default function RegistryLaunchRoute({ sourceProviders, enabled = import.
     queueMicrotask(() => {
       if (disposed || !enabled) return;
       const opening = callback ? finishHandoff(href, controller.signal).then(({ handoff, session }) => {
-        if (!disposed) { useHandoffWorkspace.setState({ handoff, sourceSession: session, loadedModelId: undefined, pendingPublication: undefined, saved: undefined }); setReady(true); }
+        if (!disposed) {
+          useHandoffWorkspace.setState({
+            handoff, sourceSession: session, loadedModelId: undefined,
+            pendingPublication: undefined, conflictedHandoff: undefined, saved: undefined,
+          });
+          setReady(true);
+        }
       }) : prepareHandoff(href, controller.signal).then(url => { controller.signal.throwIfAborted(); window.location.assign(url); });
       void opening.catch((failure: unknown) => { if (!disposed) setError(failure instanceof Error ? failure.message : translate.current('registry.failed')); })
         .finally(() => { clearTimeout(timer); if (!disposed) setBusy(false); });

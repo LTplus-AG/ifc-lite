@@ -11,10 +11,8 @@ export type GaussianLoadOutcome = 'completed' | 'cancelled' | 'failed';
 
 export interface ModelLoadOptions {
   /**
-   * Open a model the processing server has already processed, named by the
-   * SHA-256 of its source file. The `File` passed alongside carries the display
-   * name only: no source bytes are read, hashed, cached or uploaded, and there
-   * is no local fallback. Primary target only.
+   * Compatibility for callers that still pass a processed reference to `loadFile`.
+   * Use `loadProcessedModel` for new callers. Primary target only.
    */
   processedModel?: ProcessedModelSource;
   sourceHandle?: FileSystemFileHandle;

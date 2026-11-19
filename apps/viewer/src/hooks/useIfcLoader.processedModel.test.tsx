@@ -402,6 +402,28 @@ for (const atStartup of [false, true]) {
   });
 }
 
+it('opens a host processed model without constructing a placeholder file (#10469)', async () => {
+  stubWebGpu();
+  const OriginalFile = globalThis.File;
+  const name = 'No source file.ifc';
+  globalThis.File = class extends OriginalFile {
+    constructor(parts: BlobPart[], fileName: string, options?: FilePropertyBag) {
+      if (fileName === name && parts.length === 0) throw new Error('A processed model has no source File');
+      super(parts, fileName, options);
+    }
+  };
+  try {
+    openProcessedModel({ sha256, bytes: 7_000_000, name });
+    await act(async () => { root.render(<Probe fromUrl />); });
+    await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the processed model loads'); });
+    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }]);
+    assert.equal(model()?.name, name);
+    assert.equal(model()?.sourceFile, undefined);
+  } finally {
+    globalThis.File = OriginalFile;
+  }
+});
+
 it('openProcessedModel refuses a hash that is not a SHA-256 before anything is asked', async () => {
   assert.throws(() => openProcessedModel({ sha256: '../x', bytes: 1, name: 'x.ifc' }, { serverUrl: '/elsewhere' }), /SHA-256 of its source file/);
   assert.equal(takeProcessedModelRequest(), null);

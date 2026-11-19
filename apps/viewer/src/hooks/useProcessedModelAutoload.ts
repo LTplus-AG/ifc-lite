@@ -40,7 +40,7 @@ export function processedModelFromQuery(search: string): ProcessedModelRequest |
 }
 
 export function useProcessedModelAutoload(): void {
-  const { loadFile } = useIfcLoader();
+  const { loadProcessedModel } = useIfcLoader();
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   const { t } = useTranslation();
   // Navigation may change the query while the adapter probe is pending. Keep what this mount asked for.
@@ -65,16 +65,15 @@ export function useProcessedModelAutoload(): void {
     const loadWaiting = () => {
       const request = takeProcessedModelRequest();
       if (!request) return;
-      const { name, ...processedModel } = request;
       const attempt = () => {
         markLoadIntent();
         // Replay-safe (a request, no user gesture): Retry on the unsupported card may re-run it.
         if (!guardWebGpu(attempt, { replay: 'free' })) return;
-        void loadFile(new File([], name), { kind: 'primary' }, { processedModel });
+        void loadProcessedModel(request);
       };
       attempt();
     };
     loadWaiting(); // filed before this viewer mounted, or just now from the URL
     return onProcessedModelRequest(loadWaiting);
-  }, [guardWebGpu, loadFile, t, webgpu.checking]);
+  }, [guardWebGpu, loadProcessedModel, t, webgpu.checking]);
 }

@@ -19,6 +19,10 @@ import { formatLoadError } from '@/lib/load-error-message';
 import { messageOf } from '@/lib/load-errors';
 import { reportLoadFailure } from './loadFailureReport.js';
 
+export type ModelLoadSource =
+  | { file: File; name?: never; processedModel?: never }
+  | { file?: never; name: string; processedModel: ProcessedModelSource };
+
 /** `ref` with its hash lowercased, so the model record holds one spelling; a hash that is not a SHA-256 is kept for the client to refuse. A size that is not a positive integer becomes 0, unknown. */
 export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedModelRecord {
   return { ...ref, sha256: normalizeProcessedModelHash(ref.sha256) ?? ref.sha256, bytes: processedModelSize(ref.bytes) };

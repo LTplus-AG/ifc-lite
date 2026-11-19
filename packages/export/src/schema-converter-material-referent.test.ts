@@ -114,11 +114,23 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
   it("resolves each merged model's referents in the merge's id space", async () => {
     const one = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10),'Wall',$);\n#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#13);`;
     const models: MergeModelInput[] = [];
-    for (const [id, data] of [['one', one], ['two', LAYERED]]) models.push({ id, name: id, dataStore: await parse(model('IFC4', `${BASE}\n${data}`)) });
+    // A third model, after the two-material one, whose set names Steel: it resolves under its own offset.
+    const steel = `#10=IFCMATERIALLAYER(#9,0.2,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10),'Wall',$);\n#5=IFCMATERIALPROPERTIES('Pset_s','d',(#6),#13);`;
+    for (const [id, data] of [['one', one], ['two', LAYERED], ['three', steel]]) models.push({ id, name: id, dataStore: await parse(model('IFC4', `${BASE}\n${data}`)) });
     const result = new MergedExporter(models).export({ schema: 'IFC2X3' });
     const out = new TextDecoder().decode(result.content);
+    const lines = out.split('\n');
     // The first model's set names one material; the second's names two, so its record is not written.
-    expect(out.split('\n').filter((l) => l.includes('=IFCEXTENDEDMATERIALPROPERTIES('))).toEqual(["#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');"]);
+    const written = lines.filter((l) => l.includes('=IFCEXTENDEDMATERIALPROPERTIES('));
+    expect(written[0]).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");
+    expect(written).toHaveLength(2);
+    // The third's names its own Steel, in the merge's id space.
+    const named = /IFCEXTENDEDMATERIALPROPERTIES\(#(\d+),/.exec(written[1])?.[1];
+    // Exactly the third model's Steel: the last one written, not the first's #9 or the second's.
+    const steels = lines.filter((l) => l.endsWith("=IFCMATERIAL('Steel');")).map((l) => /^#(\d+)=/.exec(l)?.[1]);
+    expect(steels).toHaveLength(3);
+    expect(named).toBe(steels[2]);
+    expect(written[1]).toContain("'Pset_s'");
     expect(out).not.toContain('IFCMATERIALPROPERTIES(');
     expect(result.stats.warnings.join('\n')).toContain('1 IfcMaterialProperties record(s) were not written');
   });

@@ -349,6 +349,8 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     const source = new SourceRecords(dataStore);
     const read = new Map<number, readonly string[] | undefined>();
     const written = (id: number): string | undefined => {
+      // A created record this cannot read (the overlay writer, building per slot, may still write it) resolves to
+      // nothing: the IfcMaterialProperties naming it is left out and named in the export warnings, not carried.
       if (mutationView && effective.isOverlayCreated(id)) {
         try { return effectiveCreatedRecord(mutationView, id, sourceSchema)?.text; } catch { return undefined; }
       }
@@ -357,6 +359,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
         : applySourceLineMutations(mutationView, id, text, type, pass.modifiedAttributes.get(id), sourceSchema, pass.overlayActive).text;
     };
     const slots = (id: number) => {
+      if (!pass.willBeEmitted(id)) return undefined;
       if (!read.has(id)) { const text = written(id); read.set(id, text === undefined ? undefined : readStepSlots(text)?.slots); }
       return read.get(id);
     };

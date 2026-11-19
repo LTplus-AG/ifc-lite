@@ -8,7 +8,7 @@ import { assertToolActive } from '../cancellation';
 import type { ZoneSet } from '@/lib/zones/types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
 import { zoneSetRevision } from '@/lib/zones/apportionment-cache';
-import { boundedPage, pageInput, type PageInput } from './result-limit';
+import { boundedPage, pageInput, type PageInput, type PageRequest } from './result-limit';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -52,12 +52,13 @@ function zoneRows(): NonNullable<typeof sequence> {
   sequence = { from, rows, counts, configuration_revision, revision: stateRevision([configuration_revision, rows]) };
   return sequence;
 }
-function zonesPage(offset?: number | null) {
+function zonesPage(request: PageRequest) {
   const { rows, counts, configuration_revision, revision } = zoneRows();
   const header = { configuration_revision, timing: useViewerStore.getState().zoneAssignmentTiming, counts };
-  const { items, ...page } = boundedPage(rows, offset, header);
+  // The cached revision digests every row, so any change between two pages refuses the second.
+  const { items, ...page } = boundedPage(rows, request, header, revision);
   if (page.next_offset === null) sequence = null;
-  return out({ ...header, rows: items, page: { ...page, revision } });
+  return out({ ...header, rows: items, page });
 }
 const idInput = { type: 'object' as const, properties: { set_id: { type: 'string' as const, minLength: 1, maxLength: 200 } }, required: ['set_id' as const], additionalProperties: false as const };
 const basis = { type: 'string' as const, enum: ['mesh', 'net', 'gross', 'unqualified'] as VolumeBasis[] };
@@ -68,7 +69,7 @@ function zoneWrite(c: ViewerOperationContext, expected: string, write: () => Zon
   revision(expected); const receipt: ZoneReceipt = c.commit(write); return out({ ...receipt, configuration_revision: stateRevision(useViewerStore.getState().zoneSets) });
 }
 export const zoneOperations = [
-  operation<PageInput>(meta('zones.read', 'Inspect native zones as flat rows, each tagged with kind: set (one per zone set, without its zones), zone, apportionment (one per computed set, with stale when the set changed since), apportioned and refused (one per element of it), and assignment (one per element and zone set). Every page carries configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), timing and counts by kind. Pass page.next_offset as offset until it is null, and restart from 0 if page.revision changes. Coordinates are renderer Y-up metres; rotations are radians.'), pageInput, (i) => zonesPage(i.offset)),
+  operation<PageInput>(meta('zones.read', 'Inspect native zones as flat rows, each tagged with kind: set (one per zone set, without its zones), zone, apportionment (one per computed set, with stale when the set changed since), apportioned and refused (one per element of it), and assignment (one per element and zone set). Every page carries configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), timing and counts by kind. Pass page.next_offset as offset with page.page_revision as page_revision until next_offset is null; a change in between is refused, so read again from 0. Coordinates are renderer Y-up metres; rotations are radians.'), pageInput, (i) => zonesPage(i)),
   operation<{ name: string; expected_configuration: string }>(meta('zones.set.create', 'Create a native zone set after checking the exact configuration revision. Returns set_id and the next configuration_revision.', 'configuration'), {
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, expected_configuration: revisionInput }, required: ['name', 'expected_configuration'], additionalProperties: false,
   }, (i, c) => zoneWrite(c, i.expected_configuration, () => ({ set_id: useViewerStore.getState().createZoneSet(i.name) }))),

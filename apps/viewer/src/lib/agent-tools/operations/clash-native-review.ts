@@ -75,7 +75,7 @@ export const clashReviewOperations = [
   viewerOperation<PageInput>(
     meta(
       'clash.groups.read',
-      'Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create. status summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries.',
+      'Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create. status summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries.',
     ),
     pageInput,
     async (i, c) => {
@@ -83,7 +83,7 @@ export const clashReviewOperations = [
       await clashGroupLibrary.initialize();
       assertToolActive(c);
       const { entries, status, activeId } = useClashGroupLibrary.getState(), expected_library = groupLibraryRevision({ entries, activeId });
-      const paged = libraryPage(entries, status, i.offset, { activeId, expected_library });
+      const paged = libraryPage(entries, status, i, { activeId, expected_library });
       return out({ entries: paged.entries, ...paged.page, status: paged.storage, activeId, expected_library });
     },
   ),

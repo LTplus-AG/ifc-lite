@@ -52,7 +52,7 @@ export const clashReportOperations = [
   viewerOperation<PageInput>(
     meta(
       'clash.reports.read',
-      'Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_reports changes between pages. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Saved results never install historical runtime IDs into the current scene.',
+      'Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Saved results never install historical runtime IDs into the current scene.',
     ),
     pageInput,
     async (i, c) => {
@@ -60,7 +60,7 @@ export const clashReportOperations = [
       assertToolActive(c);
       const s = useViewerStore.getState();
       const expected_reports = stateRevision(s.savedClashReports);
-      const { entries: reports, page, storage } = libraryPage(s.savedClashReports, s.savedClashReportsStorage, i.offset, { expected_reports });
+      const { entries: reports, page, storage } = libraryPage(s.savedClashReports, s.savedClashReportsStorage, i, { expected_reports });
       return out({ reports, ...page, storage, expected_reports });
     },
   ),

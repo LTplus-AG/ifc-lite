@@ -8779,7 +8779,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.read",
     "version": 1,
     "owner": "zones",
-    "description": "Inspect native zones as flat rows, each tagged with kind: set (one per zone set, without its zones), zone, apportionment (one per computed set, with stale when the set changed since), apportioned and refused (one per element of it), and assignment (one per element and zone set). Every page carries configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), timing and counts by kind. Pass page.next_offset as offset until it is null, and restart from 0 if page.revision changes. Coordinates are renderer Y-up metres; rotations are radians.",
+    "description": "Inspect native zones as flat rows, each tagged with kind: set (one per zone set, without its zones), zone, apportionment (one per computed set, with stale when the set changed since), apportioned and refused (one per element of it), and assignment (one per element and zone set). Every page carries configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), timing and counts by kind. Pass page.next_offset as offset with page.page_revision as page_revision until next_offset is null; a change in between is refused, so read again from 0. Coordinates are renderer Y-up metres; rotations are radians.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -8791,6 +8791,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
           "nullable": true
         }
       },
@@ -12621,7 +12626,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "validation.reports.read",
     "version": 1,
     "owner": "validation",
-    "description": "Read the native durable report library, one page at a time (pass next_offset as offset until it is null; restart from 0 if expected_reports changes), and its persistence diagnostics with no model required. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Historical evidence never installs old entity IDs into the scene.",
+    "description": "Read the native durable report library, one page at a time (pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), and its persistence diagnostics with no model required. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Historical evidence never installs old entity IDs into the scene.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -12633,6 +12638,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
           "nullable": true
         }
       },
@@ -19089,7 +19099,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.groups.read",
     "version": 1,
     "owner": "clash",
-    "description": "Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create. status summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries.",
+    "description": "Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create. status summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -19101,6 +19111,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
           "nullable": true
         }
       },
@@ -19353,7 +19368,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.reports.read",
     "version": 1,
     "owner": "clash",
-    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_reports changes between pages. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Saved results never install historical runtime IDs into the current scene.",
+    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Saved results never install historical runtime IDs into the current scene.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -19365,6 +19380,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
           "nullable": true
         }
       },

@@ -35,11 +35,11 @@ function json<T>(result: AgentToolResult): T {
 }
 /** Read every page of a paged list operation; each page must fit the limit on its own. */
 async function readAll<T>(operation: string, field: string) {
-  const items: T[] = []; let offset: number | null = 0, token = '';
+  const items: T[] = []; let offset: number | null = 0, token = '', page_revision: string | undefined;
   while (offset !== null) {
-    const value: Record<string, unknown> = json(await run(operation, { offset }));
+    const value: Record<string, unknown> = json(await run(operation, { offset, page_revision }));
     items.push(...value[field] as T[]); token = (value.expected_reports ?? value.expected_library ?? value.configuration_revision) as string;
-    offset = value.next_offset as number | null;
+    offset = value.next_offset as number | null; page_revision = value.page_revision as string;
   }
   return { items, token };
 }
@@ -89,11 +89,11 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
   /** Every zones.read row, by following page.next_offset; each page must fit the limit on its own. */
   type ZoneRow = { kind: string; set?: { id: string; zone_count: number }; set_id?: string; zone?: { id: string }; global_id?: number };
   const zoneRows = async () => {
-    const rows: ZoneRow[] = []; let offset: number | null = 0, token = '', pages = 0, counts: Record<string, number> = {};
+    const rows: ZoneRow[] = []; let offset: number | null = 0, token = '', pages = 0, counts: Record<string, number> = {}, page_revision: string | undefined;
     while (offset !== null) {
-      type ZonePage = { rows: ZoneRow[]; configuration_revision: string; counts: Record<string, number>; page: { next_offset: number | null } };
-      const value: ZonePage = json<ZonePage>(await run('zones.read', { offset }));
-      rows.push(...value.rows); token = value.configuration_revision; counts = value.counts; offset = value.page.next_offset; pages++;
+      type ZonePage = { rows: ZoneRow[]; configuration_revision: string; counts: Record<string, number>; page: { next_offset: number | null; page_revision: string } };
+      const value: ZonePage = json<ZonePage>(await run('zones.read', { offset, page_revision }));
+      rows.push(...value.rows); token = value.configuration_revision; counts = value.counts; offset = value.page.next_offset; page_revision = value.page.page_revision; pages++;
     }
     return { rows, token, pages, counts, of: (kind: string) => rows.filter(row => row.kind === kind) };
   };
@@ -108,19 +108,56 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     useViewerStore.setState({ savedClashReports: ids.map(id => ({ id, name: 'R' })) as never, savedClashReportsStorage: status as never, initializeSavedClashReports: async () => true,
       savedValidationReports: ids.map(id => ({ id, name: 'V' })) as never, validationReportsStorage: status as never, initializeValidationReports: async () => true });
     for (const [operation, field, storageField] of [['clash.groups.read', 'entries', 'status'], ['clash.reports.read', 'reports', 'storage'], ['validation.reports.read', 'reports', 'storage']] as const) {
-      const seen: string[] = [], saved: string[] = []; let offset: number | null = 0, counts: Record<string, number> = {};
+      const seen: string[] = [], saved: string[] = []; let offset: number | null = 0, counts: Record<string, number> = {}, page_revision: string | undefined;
       while (offset !== null) {
-        type LibraryPage = Record<string, unknown> & { next_offset: number | null };
-        const value: LibraryPage = json<LibraryPage>(await run(operation, { offset }));
+        type LibraryPage = Record<string, unknown> & { next_offset: number | null; page_revision: string };
+        const value: LibraryPage = json<LibraryPage>(await run(operation, { offset, page_revision }));
         seen.push(...(value[field] as Array<{ id: string }>).map(row => row.id));
         const storage = value[storageField] as { items: Record<string, string>; counts: Record<string, number> };
-        saved.push(...Object.keys(storage.items)); counts = storage.counts; offset = value.next_offset;
+        saved.push(...Object.keys(storage.items)); counts = storage.counts; offset = value.next_offset; page_revision = value.page_revision as string;
       }
       assert.deepEqual(seen, ids, `${operation}: every entry once, in order`);
       // storage.items is a map, so its key order is not the entry order.
       assert.deepEqual([...saved].sort(), [...ids, 'deleted-but-stuck'].sort(), `${operation}: every save state once, including one whose entry is gone`);
       assert.deepEqual(counts, { saved: 5000, conflict: 1 }, `${operation}: the summary counts every save state`);
     }
+  });
+
+  it('libraryPage refuses the next page after a save state whose entry is gone was removed between pages', async () => {
+    const ids = Array.from({ length: 3000 }, (_, i) => `${String(i).padStart(6, '0')}${'k'.repeat(194)}`);
+    // Orphaned save states (stuck deletions) after the entries span more than one page.
+    const orphans = Array.from({ length: 3000 }, (_, i) => `gone-${String(i).padStart(6, '0')}${'k'.repeat(190)}`);
+    const items = { ...Object.fromEntries(ids.map(id => [id, 'saved'])), ...Object.fromEntries(orphans.map(id => [id, 'conflict'])) };
+    useViewerStore.setState({ savedClashReports: ids.map(id => ({ id, name: 'R' })) as never, savedClashReportsStorage: { phase: 'ready', recovered: false, items } as never, initializeSavedClashReports: async () => true });
+    const first = json<{ next_offset: number | null; page_revision: string }>(await run('clash.reports.read', {}));
+    assert.notEqual(first.next_offset, null, 'the fixture spans more than one page');
+    const { [orphans[0]]: _removed, ...rest } = items;
+    useViewerStore.setState({ savedClashReportsStorage: { phase: 'ready', recovered: false, items: rest } as never });
+    const next = await run('clash.reports.read', { offset: first.next_offset, page_revision: first.page_revision });
+    assert.equal(next.isError, true, 'a shifted list is refused, not paged past'); assert.match(next.text, /changed since the previous page/);
+    assert.match((await run('clash.reports.read', { offset: first.next_offset })).text, /page_revision is required/);
+  });
+
+  it('boundedPage names the page_revision to continue with past an item too large for any page', async () => {
+    const reports = [{ id: 'huge', name: 'H', evidence: pad(1_100_000) }, { id: 'next', name: 'N' }];
+    useViewerStore.setState({ savedClashReports: reports as never, savedClashReportsStorage: { phase: 'ready', recovered: false, items: {} } as never, initializeSavedClashReports: async () => true });
+    const refused = await run('clash.reports.read', {});
+    const match = /read on from offset (\d+) with page_revision (\S+)\./.exec(refused.text);
+    assert.ok(match, refused.text.slice(0, 200));
+    const after = json<{ reports: Array<{ id: string }>; next_offset: number | null }>(await run('clash.reports.read', { offset: Number(match[1]), page_revision: match[2] }));
+    assert.deepEqual(after.reports.map(row => row.id), ['next']); assert.equal(after.next_offset, null);
+  });
+
+  it('boundedPage (zones.read) refuses the next page after a row before the cursor was removed', async () => {
+    const setId = useViewerStore.getState().createZoneSet('Large');
+    const record = { [setId]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };
+    useViewerStore.setState({ zoneAssignments: new Map(Array.from({ length: 12000 }, (_, i) => [i + 1, record])) });
+    const first = json<{ page: { next_offset: number | null; page_revision: string } }>(await run('zones.read', {}));
+    assert.notEqual(first.page.next_offset, null, 'the fixture spans more than one page');
+    const assignments = new Map(useViewerStore.getState().zoneAssignments); assignments.delete(1);
+    useViewerStore.setState({ zoneAssignments: assignments });
+    const next = await run('zones.read', { offset: first.page.next_offset, page_revision: first.page.page_revision });
+    assert.equal(next.isError, true, 'a shifted list is refused, not paged past'); assert.match(next.text, /changed since the previous page/);
   });
 
   it('#29 zones.read pages assignments over 1 MB and returns one short configuration_revision', async () => {

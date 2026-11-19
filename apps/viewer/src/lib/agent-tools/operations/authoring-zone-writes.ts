@@ -39,7 +39,8 @@ export const zoneWriteOperations = [
     validate(candidate); evictOldest(owned(c), 32); const token = crypto.randomUUID(); owned(c).set(token, candidate);
     // The token covers every row; the preview carries as many as fit the result limit (#10794).
     const rest = { token, action: i.action, model_ids: i.model_ids, row_count: rows.length, truncated: true, undo: 'explicit-native-remove; not history Undo', partial_outcomes: true };
-    const sample = boundedPage(rows, 0, rest);
+    // A one-page preview: nothing pages after it, so no list revision is needed.
+    const sample = boundedPage(rows, {}, rest, 'preview');
     return out({ ...rest, rows: sample.items, truncated: sample.next_offset !== null });
   }),
   operation<{ token: string }>(meta('zones.writeback.apply', 'Apply the exact reviewed whole-set native writeback/removal. Preserves native per-model eligibility, role checks, volume proofs and explicit partial outcome diagnostics.', 'model'), {

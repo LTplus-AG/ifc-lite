@@ -20,7 +20,7 @@ const uniqueName = () => `backing-races-${process.pid}-${names++}`;
 it('#10868 pins a weakly cached canonical source across an asynchronous read and GC', () => {
   const result = spawnSync(process.execPath, ['--expose-gc', '--import', 'tsx',
     '--import', './src/test/vite-module-hooks.mjs', '--input-type=module', '-e',
-    "const m = await import('./src/lib/geometry-backing/geometry-backing-gc.test-fixtures.ts'); await m.canonicalSourceGcRace();"],
+    "const m = await import('./src/lib/geometry-backing/__fixtures__/canonical-source-gc.ts'); await m.canonicalSourceGcRace();"],
   { cwd: process.cwd(), encoding: 'utf8', timeout: 30_000 });
   assert.equal(result.status, 0, `${result.error?.message ?? ''}\n${result.stdout}\n${result.stderr}`);
 });

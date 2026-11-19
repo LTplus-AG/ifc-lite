@@ -5,8 +5,8 @@
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import type { BackingDatabase } from './backing-database';
-import { GeometryBackingRegistry } from './geometry-backing-registry';
+import type { BackingDatabase } from '../backing-database';
+import { GeometryBackingRegistry } from '../geometry-backing-registry';
 
 /** Runs in an exposed-GC subprocess so the normal suite need not enable GC. */
 export async function canonicalSourceGcRace(): Promise<void> {

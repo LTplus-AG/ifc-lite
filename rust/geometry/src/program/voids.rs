@@ -13,7 +13,6 @@
 //! every opening's product pipeline per layer.
 use super::inner::{ProgramError, ProgramStage};
 use super::product::{ProductControl, ProductOutput, ProductReply};
-use crate::mesh::SubMesh;
 use crate::program::openings::execute::{execute, NumericalOutcome};
 use crate::program::openings::requests::OpeningReply;
 use crate::program::openings::{protocol, OpeningControl, OpeningOutput, OpeningPoll};
@@ -21,7 +20,7 @@ use crate::router::processing::SourceHygiene;
 use crate::router::transforms::cut_frame::CutFrame;
 use crate::router::voids::hygiene::clean_void_output;
 use crate::router::voids::VoidContext;
-use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
+use crate::{GeometryRouter, Mesh, Result, styled_parts::{CutQueue, StyledParts}};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 mod frame;
@@ -30,7 +29,7 @@ mod frame;
 /// sub-meshes are collected anew, keeping only non-empty ones.
 enum Parts {
     Merged { parts: Vec<Mesh>, next: usize },
-    Styled { rest: std::vec::IntoIter<SubMesh>, done: SubMeshCollection, occurrences: Vec<u32> }, // the cut part's
+    Styled(CutQueue),
 }
 
 enum Cutting {
@@ -94,7 +93,7 @@ impl<'a> VoidControl<'a> {
     /// `layered` slices when the uncut layer attempt sliced it. A voided
     /// occurrence materializes its cut geometry (#1623 don't-bake off) with
     /// no texture index (#1781: a cut rebuilds vertices, orphaning UVs).
-    pub(super) fn styled(host: &'a DecodedEntity, ids: &'a [u32], layered: Option<SubMeshCollection>) -> Self {
+    pub(super) fn styled(host: &'a DecodedEntity, ids: &'a [u32], layered: Option<StyledParts>) -> Self {
         let phase = match layered {
             Some(sub_meshes) => hosts_complete(host, ids, Ok(ProductOutput::Styled(sub_meshes))),
             None => Phase::Host(frame::host_walk(host, true), ids),
@@ -296,7 +295,7 @@ impl<'a> VoidControl<'a> {
 fn hosts_complete<'a>(host: &'a DecodedEntity, ids: &'a [u32], hosts: Result<ProductOutput>) -> Phase<'a> {
     match hosts {
         Ok(ProductOutput::Styled(sub_meshes)) if sub_meshes.is_empty() => {
-            Phase::Complete(Ok(ProductOutput::Styled(SubMeshCollection::new())))
+            Phase::Complete(Ok(ProductOutput::Styled(StyledParts::new())))
         }
         Ok(hosts) if ids.is_empty() => Phase::Complete(Ok(hosts)),
         Ok(hosts) => poll_openings(Box::new(OpeningControl::host(host, ids)), hosts),
@@ -333,10 +332,7 @@ fn context_ready<'a>(output: Result<OpeningOutput>, hosts: ProductOutput) -> Pha
         ProductOutput::Parts(parts) => Parts::Merged { parts, next: 0 },
         // INHERIT the discriminator rather than assuming rep-item ids: a
         // layered producer must never relabel material ids as items (#3199).
-        ProductOutput::Styled(sub_meshes) => Parts::Styled {
-            done: SubMeshCollection { sub_meshes: Vec::new(), ids_are_materials: sub_meshes.ids_are_materials },
-            rest: sub_meshes.sub_meshes.into_iter(), occurrences: Vec::new(),
-        },
+        ProductOutput::Styled(sub_meshes) => Parts::Styled(CutQueue::new(sub_meshes)),
     };
     advance(context, parts)
 }
@@ -363,11 +359,7 @@ fn keep_cut(parts: &mut Parts, id: u32, mesh: Mesh) {
             }
             *next += 1;
         }
-        Parts::Styled { done, occurrences, .. } => {
-            if !mesh.is_empty() {
-                done.sub_meshes.push(SubMesh { occurrences: std::mem::take(occurrences), ..SubMesh::new(id, mesh) });
-            }
-        }
+        Parts::Styled(queue) => queue.keep(id, mesh),
     }
 }
 
@@ -375,14 +367,14 @@ fn keep_cut(parts: &mut Parts, id: u32, mesh: Mesh) {
 fn take_part(parts: &mut Parts) -> Option<(u32, Mesh)> {
     match parts {
         Parts::Merged { parts, next } => parts.get_mut(*next).map(|part| (0, std::mem::take(part))),
-        Parts::Styled { rest, occurrences, .. } => rest.next().map(|sub| { *occurrences = sub.occurrences; (sub.geometry_id, sub.mesh) }),
+        Parts::Styled(queue) => queue.take(),
     }
 }
 
 fn parts_output(parts: Parts) -> ProductOutput {
     match parts {
         Parts::Merged { parts, .. } => ProductOutput::Parts(parts),
-        Parts::Styled { done, .. } => ProductOutput::Styled(done),
+        Parts::Styled(queue) => ProductOutput::Styled(queue.into_done()),
     }
 }
 

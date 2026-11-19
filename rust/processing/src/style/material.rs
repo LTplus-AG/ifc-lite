@@ -152,17 +152,37 @@ pub fn resolve_submesh_color(
     mat_color_idx: &mut usize,
     element_color: [f32; 4],
 ) -> [f32; 4] {
+    resolve_submesh_color_branch(direct_color, material_colors, mat_color_idx, element_color).0
+}
+
+/// Which step of [`resolve_submesh_color`] decided a colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubmeshColorBranch {
+    Direct,
+    Material,
+    Element,
+}
+
+/// [`resolve_submesh_color`] and the step that decided it, from the one
+/// decision, so a caller pairs the colour with its source without comparing
+/// colours.
+pub(crate) fn resolve_submesh_color_branch(
+    direct_color: Option<[f32; 4]>,
+    material_colors: Option<&[[f32; 4]]>,
+    mat_color_idx: &mut usize,
+    element_color: [f32; 4],
+) -> ([f32; 4], SubmeshColorBranch) {
     if let Some(color) = direct_color {
-        return color;
+        return (color, SubmeshColorBranch::Direct);
     }
     if let Some(colors) = material_colors {
         let prefer_transparent = (*mat_color_idx).is_multiple_of(2);
         *mat_color_idx += 1;
         if let Some(color) = pick_material_style_for_submesh(colors, prefer_transparent) {
-            return color;
+            return (color, SubmeshColorBranch::Material);
         }
     }
-    element_color
+    (element_color, SubmeshColorBranch::Element)
 }
 
 /// material id → colours, by following each material's styled representations to

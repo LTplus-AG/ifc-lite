@@ -44,7 +44,7 @@ fn a_dangling_placement_keeps_the_canonical_decoder_error() {
 /// with their actual world frame (#7781).
 #[test]
 fn placement_application_preserves_unplaced_instance_metadata() {
-    use crate::{InstanceMeta, Mesh, SubMeshCollection};
+    use crate::{InstanceMeta, Mesh};
 
     let mut decoder = EntityDecoder::new(MODEL);
     let router = GeometryRouter::with_scale_and_local_frame(1.0, false);
@@ -62,13 +62,13 @@ fn placement_application_preserves_unplaced_instance_metadata() {
             let element = decoder.decode_by_id(id).unwrap();
             let mut output = mesh.clone();
             if submesh_path {
-                let mut parts = SubMeshCollection::new();
+                let mut parts = crate::styled_parts::StyledParts::new();
                 parts.add(20, output);
                 let placement = router
                     .resolve_object_placement(&element, &mut decoder)
                     .unwrap();
                 router.place_sub_meshes(&mut parts, &placement);
-                output = parts.sub_meshes.remove(0).mesh;
+                output = parts.parts.remove(0).sub.mesh;
             } else {
                 let placement = router
                     .resolve_object_placement(&element, &mut decoder)

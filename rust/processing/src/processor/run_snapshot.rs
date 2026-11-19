@@ -3,7 +3,6 @@
 //! shared by every rayon job, re-taken only on the deferred style replay.
 use crate::mesh_frame::MeshFrame;
 use crate::style::GeometryStyleInfo;
-use crate::types::mesh::MeshData;
 use rustc_hash::FxHashMap;
 
 /// The run's one immutable model snapshot, shared by every job and re-taken
@@ -50,6 +49,6 @@ pub(super) fn site_rotation(frame: MeshFrame) -> Option<std::sync::Arc<Vec<f64>>
 /// An element whose model snapshot was refused publishes no meshes.
 #[cold]
 #[inline(never)]
-pub(super) fn refused_by_context() -> Vec<MeshData> {
+pub(super) fn refused_by_context() -> Vec<crate::element::ProducedMesh> {
     Vec::new()
 }

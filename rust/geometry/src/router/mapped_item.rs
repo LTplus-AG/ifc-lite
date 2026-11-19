@@ -255,7 +255,8 @@ impl GeometryRouter {
     /// sub-mesh's `local_transform` (keeping its canonical `rep_identity`), so
     /// occurrences sharing a map but differing by target collate under one
     /// template (GLB export #1443, the multi-item class Phase 2 leaves flat). #1623
-    pub(crate) fn bake_styled_mapping(&self, sub_meshes: &mut [crate::SubMesh], transform: &Matrix4<f64>) {
+    pub(crate) fn bake_styled_mapping<'s>(&self, sub_meshes: impl IntoIterator<Item = &'s mut crate::SubMesh>,
+        transform: &Matrix4<f64>) {
         let nontrivial_target = !transform.is_identity(1e-9);
         for sub in sub_meshes {
             self.transform_mesh_local(&mut sub.mesh, transform);

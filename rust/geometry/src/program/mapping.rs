@@ -26,7 +26,7 @@ use crate::router::frame_parts::SourceParts;
 use crate::router::instancing::TemplateClaim;
 use crate::router::mapped_item::{MappedOccurrence, StyledSource};
 use crate::router::textured::{TexturedPart, TypeParts};
-use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
+use crate::{GeometryRouter, Mesh, Result, styled_parts::StyledParts};
 pub(super) use execute::MappingReply;
 use ifc_lite_core::DecodedEntity;
 use nalgebra::Matrix4;
@@ -76,7 +76,7 @@ pub(super) struct Template {
 /// A don't-bake occurrence's instance-only placeholder.
 pub(super) struct Placeholder {
     /// The don't-bake `IfcMappedItem` occurrence itself: the placeholder's
-    /// innermost occurrence (`SubMesh::occurrences`).
+    /// innermost occurrence (`crate::styled_parts`).
     item_id: u32,
     solid_id: u32,
     source_id: u32,
@@ -198,14 +198,14 @@ enum Action<'a> {
 pub(super) enum MappingOutput {
     Retained(Vec<super::retained::LogicalRetainedValue>),
     Parts(Vec<Mesh>),
-    Styled(SubMeshCollection),
+    Styled(StyledParts),
     Type(TypeParts),
 }
 
 pub(super) enum Merged {
     Parts(SourceParts),
     Textured(Result<Vec<TexturedPart>>),
-    Styled(SubMeshCollection),
+    Styled(StyledParts),
 }
 
 pub(super) enum MappingValue {
@@ -231,8 +231,8 @@ pub(super) enum MappingValue {
     TypeMapEntered(Result<(DecodedEntity, Vec<DecodedEntity>)>, super::mapping_budget::LogicalBudget),
     Origin(Result<Option<Matrix4<f64>>>),
     TypeFinished(Result<TypeParts>),
-    StyledFinished(SubMeshCollection),
-    Placeholder(SubMeshCollection),
+    StyledFinished(StyledParts),
+    Placeholder(StyledParts),
 }
 
 impl MappingValue {
@@ -280,7 +280,7 @@ pub(super) struct MappingControl<'a> {
     /// Styled only: whether the top-level occurrence may don't-bake.
     allow_instancing: bool,
     /// The styled walk's sub-meshes, and the type map's textured parts.
-    meshes: SubMeshCollection,
+    meshes: StyledParts,
     textured: Vec<TexturedPart>,
     levels: Vec<Level>,
     action: Action<'a>,

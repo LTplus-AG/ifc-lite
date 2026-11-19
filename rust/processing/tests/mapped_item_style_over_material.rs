@@ -22,13 +22,26 @@
 //!   item, so one draws grey and one teal, though both share the leaf #60.
 //! - #50 carries the triangle set #60 directly AND through a grey-styled
 //!   mapped item (#53). The direct body is what renders (`Select::Meshed`
-//!   skips the duplicate map), so the grey occurrence must not colour it.
+//!   skips the duplicate map), so the grey occurrence must not colour it, nor
+//!   lend it a finish.
+//!
+//! Finishes follow the style the colour came from, never the colour (the
+//! source travels with each mesh from the colour decision to the join):
+//!
+//! - #100 maps the leaf twice through two occurrences with the SAME RGBA but
+//!   different finishes (roughness 0.2 at x=0, 0.8 at x=3): each mesh keeps
+//!   its own occurrence's finish.
+//! - #120 maps it through a glossy teal occurrence (roughness 0.25, x=0) and
+//!   an unstyled one (x=3) whose teal comes from the material, the same RGBA:
+//!   only the glossy mesh has a finish.
 
-use ifc_lite_processing::process_geometry;
+use ifc_lite_processing::style::SpecularMaterial;
+use ifc_lite_processing::{process, process_geometry, MeshData, ProcessingRequest, ProcessingSink};
 
 const GREY: [f32; 4] = [0.6, 0.65, 0.7, 1.0];
 const TEAL: [f32; 4] = [0.0, 0.5, 0.5, 1.0];
 const RED: [f32; 4] = [0.8, 0.1, 0.1, 1.0];
+const DARK: [f32; 4] = [0.3, 0.3, 0.3, 1.0];
 
 const MAPPED_ITEM_STYLE_IFC: &str = r#"ISO-10303-21;
 HEADER;
@@ -83,6 +96,30 @@ DATA;
 #54=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#53));
 #55=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#60));
 #56=IFCSTYLEDITEM(#53,(#91),$);
+#100=IFCSLAB('6SameColourTwoFinish',$,'Same RGBA, two finishes',$,$,#101,#102,$,.FLOOR.);
+#101=IFCLOCALPLACEMENT($,#5);
+#102=IFCPRODUCTDEFINITIONSHAPE($,$,(#105));
+#103=IFCMAPPEDITEM(#63,#7);
+#104=IFCMAPPEDITEM(#63,#9);
+#105=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#103,#104));
+#110=IFCSTYLEDITEM(#103,(#111),$);
+#111=IFCSURFACESTYLE('Smooth dark',.POSITIVE.,(#112));
+#112=IFCSURFACESTYLERENDERING(#113,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.8),$,.NOTDEFINED.);
+#113=IFCCOLOURRGB($,0.3,0.3,0.3);
+#114=IFCSTYLEDITEM(#104,(#115),$);
+#115=IFCSURFACESTYLE('Rough dark',.POSITIVE.,(#116));
+#116=IFCSURFACESTYLERENDERING(#117,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.2),$,.NOTDEFINED.);
+#117=IFCCOLOURRGB($,0.3,0.3,0.3);
+#120=IFCSLAB('7GlossyAndMaterial00',$,'Glossy occurrence, material twin',$,$,#121,#122,$,.FLOOR.);
+#121=IFCLOCALPLACEMENT($,#5);
+#122=IFCPRODUCTDEFINITIONSHAPE($,$,(#125));
+#123=IFCMAPPEDITEM(#63,#7);
+#124=IFCMAPPEDITEM(#63,#9);
+#125=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#123,#124));
+#130=IFCSTYLEDITEM(#123,(#131),$);
+#131=IFCSURFACESTYLE('Glossy teal',.POSITIVE.,(#132));
+#132=IFCSURFACESTYLERENDERING(#133,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.75),$,.NOTDEFINED.);
+#133=IFCCOLOURRGB($,0.,0.5,0.5);
 #80=IFCMATERIAL('Teal',$,$);
 #81=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#82),#80);
 #82=IFCSTYLEDREPRESENTATION(#2,'Style','Material',(#83));
@@ -90,7 +127,7 @@ DATA;
 #84=IFCSURFACESTYLE('Teal',.POSITIVE.,(#85));
 #85=IFCSURFACESTYLERENDERING(#86,0.,$,$,$,$,$,$,.BLINN.);
 #86=IFCCOLOURRGB($,0.,0.5,0.5);
-#87=IFCRELASSOCIATESMATERIAL('0RelAssocMaterialTeal',$,$,$,(#10,#20,#30,#40,#50),#80);
+#87=IFCRELASSOCIATESMATERIAL('0RelAssocMaterialTeal',$,$,$,(#10,#20,#30,#40,#50,#100,#120),#80);
 #90=IFCSTYLEDITEM(#13,(#91),$);
 #91=IFCSURFACESTYLE('Grey',.POSITIVE.,(#92));
 #92=IFCSURFACESTYLERENDERING(#93,0.,$,$,$,$,$,$,.BLINN.);
@@ -146,24 +183,80 @@ fn a_style_on_the_mapped_geometry_still_outranks_the_material() {
 #[test]
 fn each_occurrence_of_a_shared_leaf_takes_its_own_style() {
     // #43 (grey) places the leaf at the origin, #44 (unstyled) 3 m along x.
-    let result = process_geometry(MAPPED_ITEM_STYLE_IFC);
-    let meshes: Vec<_> = result.meshes.iter().filter(|m| m.express_id == 40).collect();
-    assert_eq!(meshes.len(), 2, "two occurrences, two meshes");
-    for mesh in meshes {
-        let min_x = world_min_x(mesh);
-        let expected = if min_x < 1.5 { GREY } else { TEAL };
-        assert!(approx_eq(mesh.color, expected), "mesh at x={min_x}: expected {expected:?}, got {:?}", mesh.color);
-    }
+    let [(near, _), (far, _)] = at_origin_and_three_metres(40);
+    assert!(approx_eq(near.color, GREY), "the styled occurrence at x=0 must draw grey, got {:?}", near.color);
+    assert!(approx_eq(far.color, TEAL), "the unstyled occurrence at x=3 must draw teal, got {:?}", far.color);
 }
 
 #[test]
 fn a_skipped_mapped_representation_does_not_colour_the_direct_body() {
-    let colours = colours_of(50);
-    assert_eq!(colours.len(), 1, "only the direct body renders, the mapped duplicate is skipped: {colours:?}");
-    assert!(approx_eq(colours[0], TEAL), "the direct body has no style of its own: expected teal, got {:?}", colours[0]);
+    let meshes = with_finishes(50);
+    assert_eq!(meshes.len(), 1, "only the direct body renders, the mapped duplicate is skipped");
+    let (mesh, finish) = &meshes[0];
+    assert!(approx_eq(mesh.color, TEAL), "the direct body has no style of its own: expected teal, got {:?}", mesh.color);
+    assert_eq!(*finish, None, "the skipped grey occurrence lends no finish");
+}
+
+#[test]
+fn two_occurrences_with_the_same_colour_keep_their_own_finishes() {
+    let [(near, near_finish), (far, far_finish)] = at_origin_and_three_metres(100);
+    assert!(approx_eq(near.color, DARK) && approx_eq(far.color, DARK), "both occurrences draw the same RGBA");
+    assert_eq!(roughness(near_finish), Some(0.2), "the occurrence at x=0 keeps its smooth finish");
+    assert_eq!(roughness(far_finish), Some(0.8), "the occurrence at x=3 keeps its rough finish");
+}
+
+#[test]
+fn a_material_colour_equal_to_a_glossy_occurrence_borrows_no_finish() {
+    let [(near, near_finish), (far, far_finish)] = at_origin_and_three_metres(120);
+    assert!(approx_eq(near.color, TEAL) && approx_eq(far.color, TEAL), "the style and the material are the same RGBA");
+    assert_eq!(roughness(near_finish), Some(0.25), "the glossy occurrence keeps its finish");
+    assert_eq!(far_finish, None, "the material-coloured occurrence has no style, so no finish");
+}
+
+/// Each mesh of the native pass with `Features::finishes`, paired with the
+/// finish `on_finishes` announced for it.
+#[derive(Default)]
+struct Recorder {
+    pending: Vec<Option<SpecularMaterial>>,
+    meshes: Vec<(MeshData, Option<SpecularMaterial>)>,
+}
+
+impl ProcessingSink for Recorder {
+    fn on_finishes(&mut self, finishes: &[Option<SpecularMaterial>]) {
+        self.pending = finishes.to_vec();
+    }
+
+    fn on_batch(&mut self, meshes: &[MeshData], _processed: usize, _total: usize) {
+        assert_eq!(self.pending.len(), meshes.len(), "one finish per mesh");
+        self.meshes.extend(meshes.iter().cloned().zip(std::mem::take(&mut self.pending)));
+    }
+}
+
+fn with_finishes(express_id: u32) -> Vec<(MeshData, Option<SpecularMaterial>)> {
+    let request = ProcessingRequest::full_pass();
+    let features = request.features.finishes(true);
+    let mut recorder = Recorder::default();
+    process(MAPPED_ITEM_STYLE_IFC.as_bytes(), &request.features(features), &mut recorder);
+    recorder.meshes.into_iter().filter(|(mesh, _)| mesh.express_id == express_id).collect()
+}
+
+/// The two meshes of a slab whose occurrences sit at x=0 and x=3: exactly
+/// one near each, nearest first.
+fn at_origin_and_three_metres(express_id: u32) -> [(MeshData, Option<SpecularMaterial>); 2] {
+    let mut meshes = with_finishes(express_id);
+    assert_eq!(meshes.len(), 2, "two occurrences, two meshes");
+    meshes.sort_by(|a, b| world_min_x(&a.0).total_cmp(&world_min_x(&b.0)));
+    let xs = [world_min_x(&meshes[0].0), world_min_x(&meshes[1].0)];
+    assert!(xs[0].abs() < 1e-6 && (xs[1] - 3.0).abs() < 1e-6, "one mesh at x=0 and one at x=3, got {xs:?}");
+    let far = meshes.pop().unwrap();
+    [meshes.pop().unwrap(), far]
+}
+
+fn roughness(finish: Option<SpecularMaterial>) -> Option<f32> {
+    finish.and_then(|f| f.roughness).map(|r| (r * 1000.0).round() / 1000.0)
 }
 
 /// The smallest x of a mesh's vertices (positions are placed, relative to `origin`).
-fn world_min_x(mesh: &ifc_lite_processing::MeshData) -> f64 {
+fn world_min_x(mesh: &MeshData) -> f64 {
     mesh.positions.chunks_exact(3).map(|p| f64::from(p[0]) + mesh.origin[0]).fold(f64::INFINITY, f64::min)
 }

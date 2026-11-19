@@ -12,11 +12,12 @@
 //! `on_batch`, mesh retention and the one-time replay of deferred styles as
 //! `on_color_update`.
 
+use crate::element::StyleSource;
 use super::diagnostics::DiagnosticCollectors;
 use super::entity_index::ProcessingIndex;
 use super::job::{AppearanceResolver, EntityJob};
 use super::jobs::{
-    new_worker_placement_caches, new_worker_point_caches, run_job, WorkerPlacementCaches,
+    new_worker_placement_caches, new_worker_point_caches, WorkerPlacementCaches,
     WorkerPointCaches,
 };
 use super::pass_metadata::{populate_metadata, replay_deferred_styles};
@@ -29,7 +30,6 @@ use crate::style::{GeometryStyleInfo, ModelFinishes};
 use crate::types::mesh::{MeshData, RawInstanceOccurrence};
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::{GeometryRouter, TessellationQuality};
-use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -237,10 +237,11 @@ fn finish_join<'c>(
 }
 
 /// `on_finishes` for the batch about to be emitted, one entry per mesh, when
-/// the request asked for finishes.
-fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&mut ModelFinishes<'_>>, meshes: &[MeshData]) {
+/// the request asked for finishes: each mesh's finish from the source its
+/// colour came from (#10698), never from its colour.
+fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&ModelFinishes<'_>>, styles: &[StyleSource]) {
     let Some(finishes) = finishes else { return };
-    let batch: Vec<_> = meshes.iter().map(|mesh| finishes.finish_for_mesh(mesh)).collect();
+    let batch: Vec<_> = styles.iter().map(|&style| finishes.finish_for_source(style)).collect();
     sink.on_finishes(&batch);
 }
 
@@ -294,7 +295,7 @@ pub(super) fn run<'c>(
         },
         sink,
     );
-    let mut finishes = finish_join(content, req, &facts, &ctx);
+    let finishes = finish_join(content, req, &facts, &ctx);
     let mut appearance = AppearanceResolver::new(
         element_material_color,
         presentation_layer_by_assigned_id,
@@ -332,10 +333,7 @@ pub(super) fn run<'c>(
         let chunk_end = (chunk_start + current_chunk_size).min(total_jobs);
         let jobs_chunk = &mut entity_jobs[chunk_start..chunk_end];
         populate_metadata(jobs_chunk, &ctx, &mut appearance, &mut decoder);
-        let chunk_meshes: Vec<MeshData> = super::scheduling::element_tasks(jobs_chunk)
-            .map(|job| run_job(job, &ctx))
-            .flatten_iter()
-            .collect();
+        let (chunk_meshes, chunk_styles) = super::jobs::run_chunk(jobs_chunk, &ctx);
 
         processed_jobs += jobs_chunk.len();
         total_vertices += chunk_meshes.iter().map(|m| m.vertex_count()).sum::<usize>();
@@ -347,8 +345,8 @@ pub(super) fn run<'c>(
         if !chunk_meshes.is_empty() {
             total_meshes += chunk_meshes.len();
             let emit_mesh_chunk_size = current_chunk_size.max(1);
-            for emitted_meshes in chunk_meshes.chunks(emit_mesh_chunk_size) {
-                emit_finishes(sink, finishes.as_mut(), emitted_meshes);
+            for (emitted_meshes, emitted_styles) in chunk_meshes.chunks(emit_mesh_chunk_size).zip(chunk_styles.chunks(emit_mesh_chunk_size)) {
+                emit_finishes(sink, finishes.as_ref(), emitted_styles);
                 sink.on_batch(emitted_meshes, processed_jobs, total_jobs);
             }
             if req.retain_meshes {

@@ -241,7 +241,7 @@ fn issue_7955_j5_retopologized_body_reports_the_lost_palette_mapping() {
     let job = job(&entity, &meta);
     let mut mesh = router.process_element_parts(&entity, &mut decoder).unwrap().remove(0);
     mesh.indices.truncate(9); // stated invariant: topology changed after colour indexing
-    let out = super::presentation_source::fallback(
+    let out = super::presentation_source::fallback_plain(
         &AssemblyJob::from(&job).with_provenance(true),
         &entity,
         mesh,
@@ -290,7 +290,7 @@ fn issue_7955_j5_dropped_texture_is_reported_and_the_palette_then_binds() {
     let job = job(&entity, &meta);
     let mut submeshes = router.process_element_with_submeshes_textured(&entity, &mut decoder, ctx.texture_index).unwrap();
     submeshes.sub_meshes[0].uvs.as_mut().unwrap().truncate(2); // rebuilt without the UV channel
-    let (split, _) = super::presentation_source::submeshes(
+    let (split, _) = super::presentation_source::submeshes_plain(
         &AssemblyJob::from(&job).with_provenance(true),
         submeshes,
         [0.8; 4],
@@ -352,7 +352,7 @@ fn issue_7955_j5_normal_provenance_names_who_wrote_the_normals() {
         let entity = decoder.decode_by_id(10).unwrap();
         let meta = metadata(10);
         let data = Data::default();
-        let (meshes, _) = super::presentation_source::submeshes(
+        let (meshes, _) = super::presentation_source::submeshes_plain(
             &AssemblyJob::from(&job(&entity, &meta)).with_provenance(true),
             collection,
             [0.8; 4],

@@ -23,8 +23,8 @@ pub(super) fn apply(product: &mut ShapeOnlyProduct, context: &Context<'_>) -> Ve
     let occurrences: Vec<u32> = value.presentation()
         .filter(|fact| fact.representation_map.is_some() && fact.type_product.is_none())
         .map(|fact| fact.style_source_id).collect();
-    let (rgba, _) = crate::element::presentation_source::color(&AssemblyJob::from(&job), item, &occurrences,
-        context.element_color, model.element_material_colors.get(&product.product_id).map(Vec::as_slice),
+    let (rgba, _, _) = crate::element::presentation_source::color(&AssemblyJob::from(&job), item, &occurrences,
+        (context.element_color, crate::element::StyleSource::Unavailable), model.element_material_colors.get(&product.product_id).map(Vec::as_slice),
         &mut 0, &model, &mut decoder, false);
     let part = &mut product.parts[0];
     let rgba = part.appearance.as_ref().map_or(rgba, |p| p.rgba);

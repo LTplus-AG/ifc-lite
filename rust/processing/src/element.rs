@@ -48,9 +48,11 @@
 use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
 use crate::types::mesh::{MeshData, MeshTextureData, RawInstanceOccurrence};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+#[cfg(test)]
+use ifc_lite_geometry::SubMeshCollection;
 use ifc_lite_geometry::{
     calculate_normals, orient_mesh_outward_verdict, BoolFailure,
-    GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap, SubMeshCollection,
+    GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
@@ -70,9 +72,10 @@ mod element_color;
 use element_color::{find_indexed_colour_for_element, infer_opening_subpart_material_name};
 // Re-exported because they have callers outside this module: the colour
 // resolvers from processor/, the style-source walks from style::finish_join.
-pub(crate) use element_color::{find_geometry_item_color, resolve_color_for_representation_map};
+#[cfg(test)]
+pub(crate) use element_color::find_geometry_item_color;
+pub(crate) use element_color::resolve_color_for_representation_map;
 pub(crate) use element_color::{find_geometry_item_style_source, product_shape_style_source, representation_map_style_source};
-pub(crate) use element_color::mapped_item_style_sources;
 
 mod types;
 pub use types::*;
@@ -101,7 +104,10 @@ mod session_canonical;
 #[cfg(test)]
 mod session_resumable;
 mod owned_session;
-pub use owned_session::produce_element_meshes_owned;
+pub use owned_session::{produce_element_meshes_owned, produce_element_meshes_owned_styled};
+mod styled_output;
+pub use styled_output::{StyleSource, StyledElementMeshes};
+pub(crate) use styled_output::{ProducedMesh, ProducedOccurrence, StyledProduction};
 
 /// THE canonical per-element mesh producer.
 ///

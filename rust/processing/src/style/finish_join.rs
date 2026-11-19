@@ -9,6 +9,15 @@
 //! afterwards: the wasm batch, its instanced (IFNS) occurrences, and the
 //! server's JSON and Parquet transports. They all join here, once.
 //!
+//! TWO ENTRIES. The exact one, `finish_for_source`, takes the
+//! [`StyleSource`] production paired with the mesh when it chose the colour
+//! (#10698): a `Style(id)` mesh takes `id`'s finish, any other none. No colour
+//! is compared. Every in-repo consumer uses it. The colour-based one,
+//! `finish`/`finish_for_mesh`, is kept for callers that hold only a
+//! `MeshData`; it reconstructs the source by the rule below, with the blind
+//! spots that rule documents, and it cannot tell two occurrences of one
+//! shared item apart.
+//!
 //! THE RULE: a mesh's finish comes from the style its colour came from, never
 //! from another. So the join asks the colour walks themselves which styled
 //! item the colour was taken from (`crate::element`'s style-source walks), in
@@ -19,11 +28,8 @@
 //!    (`find_geometry_item_color`). A hit decides: the finish is that item's,
 //!    or none when its style authors none (a fill-only style).
 //! 2. **Element level**, when the item resolved nothing and the colour fell
-//!    back to the element's, or to the style of the `IfcMappedItem`
-//!    occurrence the mesh was produced under (#10698; the mesh does not keep
-//!    which occurrence): the element's own style source, then each styled
-//!    occurrence in its shape. For a product that is its
-//!    `IfcProductDefinitionShape` walk; for a type product (#957
+//!    back to the element's: the element's own style source. For a product
+//!    that is its `IfcProductDefinitionShape` walk; for a type product (#957
 //!    type geometry, no item id on its meshes) each `IfcRepresentationMap` in
 //!    order, which is where a finish authored only on a type's
 //!    representation map is reached. A fallback candidate is accepted only
@@ -31,10 +37,8 @@
 //!    competes with the material chain and the type default, both colour-only,
 //!    and the mesh does not record which one won. The equality is what tells
 //!    them apart, and for a type with several maps it is what pairs each mesh
-//!    with its own map. Its blind spots are a material colour bit-identical
-//!    to the element's style colour, which renders identically anyway, and two
-//!    occurrence styles of one product with the same colour but different
-//!    finishes: the first in walk order gives both meshes its finish.
+//!    with its own map. Its one blind spot is a material colour bit-identical
+//!    to the element's style colour, which renders identically anyway.
 //!
 //! `finishes` is [`crate::prepass::resolve_geometry_finishes`]'s index (the
 //! wasm host's `setStyleFinishes` wire decodes to the same map), keyed by
@@ -44,13 +48,20 @@
 
 use crate::prepass::{resolve_geometry_finishes, PrepassSpans, Span};
 use crate::style::{GeometryStyleInfo, SpecularMaterial};
+use crate::element::StyleSource;
 use crate::types::mesh::MeshData;
 use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, IfcType};
 use rustc_hash::FxHashMap;
 
-/// Element id → its element-level style-source candidates keyed by their
-/// style colour (`f32::to_bits`), the first candidate in colour order per colour.
-type ElementSources = FxHashMap<u32, FxHashMap<[u32; 4], u32>>;
+/// The exact join: the finish `source`'s styled item authors, if the colour
+/// came from a styled item and that style authors one (a fill-only style
+/// authors none).
+fn finish_of_source(source: StyleSource, finishes: &FxHashMap<u32, SpecularMaterial>) -> Option<SpecularMaterial> {
+    finishes.get(&source.style()?).copied().filter(|f| f.metallic.is_some() || f.roughness.is_some())
+}
+
+/// Element id → its element-level style-source candidates, in colour order.
+type ElementSources = FxHashMap<u32, Vec<u32>>;
 
 /// The join itself (see the module doc for the rule). `element_sources`
 /// memoises step 2 per element: a type product or a multi-part product has
@@ -79,25 +90,18 @@ fn join_finish(
             return finish_of(source);
         }
     }
-    let candidates = element_sources.entry(express_id).or_insert_with(|| {
-        // Indexed by colour once per element: a product can have many meshes
-        // and many occurrence styles. The first candidate of a colour wins.
-        let mut by_colour = FxHashMap::default();
-        for source in element_style_sources(express_id, &has_style, decoder) {
-            if let Some(rgba) = style_color(source) {
-                by_colour.entry(rgba.map(f32::to_bits)).or_insert(source);
-            }
-        }
-        by_colour
-    });
-    candidates.get(&color.map(f32::to_bits)).and_then(|&source| finish_of(source))
+    let candidates = element_sources
+        .entry(express_id)
+        .or_insert_with(|| element_style_sources(express_id, &has_style, decoder));
+    candidates
+        .iter()
+        .find(|&&source| style_color(source) == Some(color))
+        .and_then(|&source| finish_of(source))
 }
 
 /// Step 2's candidates for one element: every representation map of a type
 /// product (in `RepresentationMaps` order, as `produce_type_geometry` renders
-/// them), or a product's product-shape source followed by the styled
-/// `IfcMappedItem` occurrences of its rendered representations (each can
-/// colour an unstyled sub-mesh, #10698). Attribute 6 is
+/// them), or the one product-shape source of a product. Attribute 6 is
 /// `RepresentationMaps` on `IfcTypeProduct` and `Representation` on
 /// `IfcProduct`.
 fn element_style_sources(
@@ -116,14 +120,11 @@ fn element_style_sources(
             .filter_map(|rep_map| crate::element::representation_map_style_source(rep_map, has_style, decoder))
             .collect();
     }
-    let Some(shape) = entity.get_ref(6) else {
-        return Vec::new();
-    };
-    // The candidates are deduplicated by the caller's colour index.
-    let mut sources: Vec<u32> =
-        crate::element::product_shape_style_source(shape, has_style, decoder).into_iter().collect();
-    sources.extend(crate::element::mapped_item_style_sources(&entity, has_style, decoder));
-    sources
+    entity
+        .get_ref(6)
+        .and_then(|shape| crate::element::product_shape_style_source(shape, has_style, decoder))
+        .into_iter()
+        .collect()
 }
 
 /// The finish join over caller-held indexes: the wasm batch, which already
@@ -168,6 +169,12 @@ impl<'a> MeshFinishJoin<'a> {
     /// [`Self::finish`] for a produced mesh.
     pub fn finish_for_mesh(&mut self, mesh: &MeshData, decoder: &mut EntityDecoder) -> Option<SpecularMaterial> {
         self.finish(mesh.express_id, mesh.geometry_item_id, mesh.color, decoder)
+    }
+
+    /// The finish of a mesh or occurrence whose colour came from `source`
+    /// (from production, paired with the mesh): exact, no colour compared.
+    pub fn finish_for_source(&self, source: StyleSource) -> Option<SpecularMaterial> {
+        finish_of_source(source, self.finishes)
     }
 }
 
@@ -230,6 +237,12 @@ impl<'c> ModelFinishes<'c> {
     /// Whether the file authors no finish at all (every join is then `None`).
     pub fn is_empty(&self) -> bool {
         self.finishes.is_empty()
+    }
+
+    /// The finish of a mesh or occurrence whose colour came from `source`
+    /// (from production, paired with the mesh): exact, no colour compared.
+    pub fn finish_for_source(&self, source: StyleSource) -> Option<SpecularMaterial> {
+        finish_of_source(source, &self.finishes)
     }
 
     /// The finish `mesh` carries, by the module's rule.

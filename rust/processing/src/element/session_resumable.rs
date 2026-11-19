@@ -173,7 +173,12 @@ impl<'j> ProductState<'j> {
         Ok(true)
     }
 
-    pub fn finish(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<ProducedElementMeshes, WorkError> {
+    pub fn finish(self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<ProducedElementMeshes, WorkError> {
+        self.finish_styled(decoder, router).map(StyledProduction::into_produced)
+    }
+
+    /// [`Self::finish`] with each mesh still paired with its colour's source.
+    pub(super) fn finish_styled(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<StyledProduction, WorkError> {
         if self.capture_stop() {
             return self.finish_stopped(decoder, router);
         }
@@ -199,7 +204,7 @@ impl<'j> ProductState<'j> {
                     Ok(failures) => self.publish(failures, degenerate::dropped_this_element()),
                     Err(stop) => {
                         self.remember_stop(stop);
-                        session_canonical::stopped_output()
+                        StyledProduction::unstyled(session_canonical::stopped_output())
                     }
                 });
             }))
@@ -211,7 +216,7 @@ impl<'j> ProductState<'j> {
 
     /// Publish only the source evidence already accepted into this product's
     /// scopes; a stopped product runs no final hook and adopts nothing ambient.
-    fn finish_stopped(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<ProducedElementMeshes, WorkError> {
+    fn finish_stopped(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<StyledProduction, WorkError> {
         self.protocol.idle()?;
         // A dormant pre-stopped product never owned this router's reports.
         if let Some(owner) = &self.owner {
@@ -220,7 +225,7 @@ impl<'j> ProductState<'j> {
         }
         let Some(scopes) = &mut self.scopes else { return Err(WorkError::Aborted) };
         scopes.pending.publish_pending();
-        Ok(session_canonical::stopped_output())
+        Ok(StyledProduction::unstyled(session_canonical::stopped_output()))
     }
 }
 
@@ -277,9 +282,9 @@ impl<'j> OwnedProductExecution<'j> {
         self.validate()?;
         let context = self.context;
         let mut publication = session_run::Publication::new(router);
-        publication.output = Some(self.state.finish(decoder, router)?);
+        publication.output = Some(self.state.finish_styled(decoder, router)?);
         // A final diagnostic callback may explicitly invalidate the model.
         context.validate_source().map_err(|_| WorkError::StaleSource)?;
-        publication.commit()
+        publication.commit().map(StyledProduction::into_produced)
     }
 }

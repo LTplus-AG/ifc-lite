@@ -101,73 +101,15 @@ fn a_file_without_finishes_joins_nothing() {
     assert_eq!(finishes.finish_for_mesh(&mesh(10, Some(30), [0.5, 0.4, 0.3, 1.0])), None);
 }
 
-/// #10698: one product maps an unstyled leaf (#130) twice. The first occurrence
-/// (#112) is styled shading-only red, the second (#113) glossy blue. The test
-/// isolates finish selection: it supplies each mesh's colour (the occurrence
-/// colour a material-coloured product would render it with; the fixture itself
-/// has no material) and checks that the blue mesh keeps the glossy finish
-/// although the product-level source is the red occurrence.
-const TWO_OCCURRENCES: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('t.ifc','',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
-#3=IFCUNITASSIGNMENT((#6));
-#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);
-#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#100=IFCBUILDINGELEMENTPROXY('3occurrencesTwo000000',$,'C',$,$,$,#101,$,.NOTDEFINED.);
-#101=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));
-#102=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#112,#113));
-#112=IFCMAPPEDITEM(#121,#125);
-#113=IFCMAPPEDITEM(#121,#125);
-#121=IFCREPRESENTATIONMAP(#5,#122);
-#122=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#130));
-#125=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,$,$);
-#130=IFCTRIANGULATEDFACESET(#131,$,.T.,((1,2,3)),$);
-#131=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));
-#140=IFCSTYLEDITEM(#112,(#141),$);
-#141=IFCSURFACESTYLE('plain red',.POSITIVE.,(#142));
-#142=IFCSURFACESTYLESHADING(#143,$);
-#143=IFCCOLOURRGB($,0.9,0.1,0.1);
-#150=IFCSTYLEDITEM(#113,(#151),$);
-#151=IFCSURFACESTYLE('glossy blue',.POSITIVE.,(#152));
-#152=IFCSURFACESTYLERENDERING(#153,$,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.75),$,.NOTDEFINED.);
-#153=IFCCOLOURRGB($,0.1,0.2,0.9);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
+/// #10698: the exact join takes the finish of the source the colour came from,
+/// with no colour compared: a fill-only style authors none, and a colour from
+/// no style, or of unknown provenance, has none.
 #[test]
-fn an_occurrence_coloured_mesh_takes_the_finish_of_its_own_occurrence() {
-    let mut finishes = ModelFinishes::from_content(TWO_OCCURRENCES.as_bytes());
-    let blue = style_color(&finishes, 113);
-    let red = style_color(&finishes, 112);
-    let f = finishes.finish_for_mesh(&mesh(100, Some(130), blue)).expect("the glossy occurrence #113");
-    assert!((f.roughness.unwrap() - 0.25).abs() < 1e-6);
-    // The red occurrence authors no finish, and must not borrow the blue one's.
-    assert_eq!(finishes.finish_for_mesh(&mesh(100, Some(130), red)), None);
-}
-
-/// #10698: a product whose direct body has a red-styled face set (#160) and the
-/// unstyled leaf #130, plus a glossy-blue styled mapped duplicate (#113) of
-/// #130. The router meshes only the direct body (`meshed_representations` drops
-/// the duplicate map), and the product-level source is the red #160, so a mesh
-/// of the blue colour must not take the skipped duplicate's finish.
-#[test]
-fn a_skipped_mapped_duplicate_lends_no_finish() {
-    let content = TWO_OCCURRENCES
-        .replace(
-            "#101=IFCPRODUCTDEFINITIONSHAPE($,$,(#102));",
-            "#101=IFCPRODUCTDEFINITIONSHAPE($,$,(#103,#102));\n#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#160,#130));\n#160=IFCTRIANGULATEDFACESET(#131,$,.T.,((1,2,3)),$);",
-        )
-        .replace("'MappedRepresentation',(#112,#113)", "'MappedRepresentation',(#113)")
-        .replace("#140=IFCSTYLEDITEM(#112,", "#140=IFCSTYLEDITEM(#160,");
-    let mut finishes = ModelFinishes::from_content(content.as_bytes());
-    let blue = style_color(&finishes, 113);
-    assert_eq!(finishes.finish_for_mesh(&mesh(100, Some(130), blue)), None);
+fn the_exact_join_reads_the_source_not_the_colour() {
+    let finishes = ModelFinishes::from_content(MAPPED.as_bytes());
+    let glossy = finishes.finish_for_source(StyleSource::Style(30)).expect("#30 authors a finish");
+    assert!((glossy.roughness.unwrap() - 0.25).abs() < 1e-6);
+    assert_eq!(finishes.finish_for_source(StyleSource::Style(70)), None, "a shading-only style");
+    assert_eq!(finishes.finish_for_source(StyleSource::Unstyled), None);
+    assert_eq!(finishes.finish_for_source(StyleSource::Unavailable), None);
 }

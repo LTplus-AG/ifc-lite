@@ -54,7 +54,7 @@ impl IfcAPI {
             occurrences: all_occurrences,
         } = state;
         let super::batch_prepare::BatchSetup {
-            mut decoder,
+            decoder,
             router,
             mapped_item_cache,
             ctx: _context,
@@ -83,8 +83,7 @@ impl IfcAPI {
             } else {
                 [0.0; 3]
             },
-            &mut batch_finishes,
-            &mut decoder,
+            &batch_finishes,
         );
 
         // Fold this batch into the per-worker PipelineDiagnostics accumulator

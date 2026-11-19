@@ -137,14 +137,17 @@ pub struct SubMesh {
     pub uvs: Option<Vec<f32>>,
     /// The surface texture sampled by `uvs` (#1781).
     pub texture: Option<crate::processors::texture::TextureAttachment>,
-    /// The `IfcMappedItem`s it was produced under, inner to outer (a shared item's occurrences differ only here, #10698).
-    pub occurrences: Vec<u32>,
 }
 
 impl SubMesh {
     /// Create a new sub-mesh
     pub fn new(geometry_id: u32, mesh: Mesh) -> Self {
-        Self { geometry_id, mesh, uvs: None, texture: None, occurrences: Vec::new() }
+        Self {
+            geometry_id,
+            mesh,
+            uvs: None,
+            texture: None,
+        }
     }
 
     /// Create a textured sub-mesh (#1781): `uvs` are 1:1 with `mesh.positions`.
@@ -159,7 +162,6 @@ impl SubMesh {
             mesh,
             uvs: Some(uvs),
             texture: Some(texture),
-            occurrences: Vec::new(),
         }
     }
 }

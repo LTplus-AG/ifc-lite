@@ -82,11 +82,14 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     AttrMap { retyped: &["RateDateTime"], ..same("IFCCURRENCYRELATIONSHIP") },
     same("IFCDOCUMENTINFORMATIONRELATIONSHIP"),
     AttrMap { retyped: &["VersionDate"], up_only: &["Publisher"], ..same("IFCLIBRARYINFORMATION") },
-    // IFC4 deleted this IFC2X3 subtype and made the abstract supertype concrete
-    // in its place, so a downgrade writes the deleted subtype
+    // IFC4 deleted these IFC2X3 subtypes and made the abstract supertype
+    // concrete in their place, so a downgrade writes the deleted subtype
     // (`schema_convert::map_4_to_2x3`). Downgrade only: nothing renames the
-    // IFC2X3 subtype on an upgrade. IfcMaterialProperties is left unmapped
-    // here: its Material referent must be resolved first (#10763 follow-up).
+    // IFC2X3 subtypes on an upgrade.
+    AttrMap {
+        renamed: &[("ExtendedProperties", "Properties")],
+        ..map("IFCEXTENDEDMATERIALPROPERTIES", "IFCMATERIALPROPERTIES")
+    },
     map("IFCGENERALPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },

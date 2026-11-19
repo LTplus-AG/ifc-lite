@@ -155,6 +155,15 @@
    "why": "'Location and Description attributes added; Publisher and VersionDate data type changed; HasLibraryReferences inverse attribute added (previous LibraryReference changed to inverse).' Publisher went from IfcOrganization to IfcActorSelect, which an optional IFC2X3 slot cannot hold for a person"
   },
   {
+   "ifc2x3": "IFCEXTENDEDMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [["ExtendedProperties", "Properties"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' A downgrade writes IfcExtendedMaterialProperties. Material: 'The datatype has been changed to supertype IfcMaterialDefinition'; IFC2X3 requires an IfcMaterial, so a downgrade resolves the referent (schema_material_referent.rs / schema-converter-material-referent.ts): an IfcMaterial is kept, a definition of exactly one IfcMaterial names it, and anything else leaves the record out, reported"
+  },
+  {
    "ifc2x3": "IFCGENERALPROFILEPROPERTIES",
    "ifc4": "IFCPROFILEPROPERTIES",
    "renamed": [],

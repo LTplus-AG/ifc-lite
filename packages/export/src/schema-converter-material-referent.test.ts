@@ -1,0 +1,75 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/** #10763, as Rust `schema_material_referent_tests.rs`: the IfcMaterial a downgraded IfcMaterialProperties names. */
+import { describe, expect, it } from 'vitest';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { StepExporter } from './step-exporter.js';
+import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
+
+const model = (schema: string, data: string): string =>
+  `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;\n${data}\nENDSEC;\nEND-ISO-10303-21;\n`;
+const parse = (text: string): Promise<IfcDataStore> => new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer);
+const BASE = `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
+#8=IFCMATERIAL('Concrete',$,$);
+#9=IFCMATERIAL('Steel',$,$);
+#6=IFCPROPERTYSINGLEVALUE('p',$,IFCLABEL('v'),$);`;
+
+/** The IFC2X3 output's #5 and the export warnings. */
+async function down(from: string, data: string): Promise<{ line: string | undefined; warnings: string[] }> {
+  const result = new StepExporter(await parse(model(from, `${BASE}\n${data}`))).export({ schema: 'IFC2X3' });
+  const out = new TextDecoder().decode(result.content);
+  return { line: out.split('\n').find((l) => l.startsWith('#5=')), warnings: result.stats.warnings };
+}
+
+const LAYERS = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);
+#11=IFCMATERIALLAYER($,0.05,.T.,$,$,$,$);
+#12=IFCMATERIALLAYER(#8,0.1,$,$,$,$,$);`;
+
+describe('the Material a downgraded IfcMaterialProperties names (#10763)', () => {
+  it('carries an IfcMaterial as it is', async () => {
+    for (const from of ['IFC4', 'IFC4X3']) {
+      expect((await down(from, "#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#8);")).line, from)
+        .toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");
+    }
+  });
+
+  it('points a layer, or a set of one material, at that material', async () => {
+    expect((await down('IFC4', `${LAYERS}\n#13=IFCMATERIALLAYERSET((#10,#11,#12),'Wall',$);\n#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#13);`)).line)
+      .toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),$,'Pset_x');");
+    expect((await down('IFC4', `${LAYERS}\n#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#10);`)).line)
+      .toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),$,'Pset_x');");
+  });
+
+  it('leaves out a set of two materials and names it in the warnings and the loss report', async () => {
+    const data = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);\n#12=IFCMATERIALLAYER(#9,0.1,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10,#12),'Wall',$);\n#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#13);`;
+    const { line, warnings } = await down('IFC4', data);
+    expect(line).toBeUndefined();
+    expect(warnings.join('\n')).toContain('1 IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: #5 (IFCMATERIALLAYERSET) (#10763).');
+    const report = analyzeConversionLoss(await parse(model('IFC4', `${BASE}\n${data}`)), 'IFC4', 'IFC2X3');
+    expect(report.entries.find((e) => e.sourceType === 'IFCMATERIALPROPERTIES')).toMatchObject({
+      targetType: 'IFCEXTENDEDMATERIALPROPERTIES', kind: 'lossy', droppedAttributes: ['Name', 'Description', 'Properties', 'Material'], expressIds: [5],
+    });
+  });
+
+  it('resolves a constituent set in the loss report (an export holding one is refused)', async () => {
+    const entry = async (constituents: string) => analyzeConversionLoss(await parse(model('IFC4X3', `${BASE}\n${constituents}\n#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#21);`)), 'IFC4X3', 'IFC2X3')
+      .entries.find((e) => e.sourceType === 'IFCMATERIALPROPERTIES');
+    expect(await entry("#20=IFCMATERIALCONSTITUENT('c',$,#9,0.5,$);\n#21=IFCMATERIALCONSTITUENTSET('s',$,(#20));")).toBeUndefined();
+    expect((await entry("#20=IFCMATERIALCONSTITUENT('c',$,#9,0.5,$);\n#22=IFCMATERIALCONSTITUENT('d',$,#8,0.5,$);\n#21=IFCMATERIALCONSTITUENTSET('s',$,(#20,#22));"))?.expressIds).toEqual([5]);
+  });
+
+  it('checks the record and its referents as edited (/code-review)', async () => {
+    const data = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);\n#12=IFCMATERIALLAYER(#9,0.1,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10,#12),'Wall',$);\n#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#13);`;
+    const edited = async (edit: (view: MutablePropertyView) => void) => {
+      const store = await parse(model('IFC4', `${BASE}\n${data}`));
+      const view = new MutablePropertyView(null, 'm');
+      edit(view);
+      const out = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC2X3', applyMutations: true }).content);
+      return out.split('\n').find((l) => l.startsWith('#5='));
+    };
+    // The layer edited to the other layer's material: the set now holds one.
+    expect(await edited((view) => view.setPositionalAttribute(12, 0, '#8'))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");
+    // The record's own Material edited to a material.
+    expect(await edited((view) => view.setPositionalAttribute(5, 3, '#9'))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#9,(#6),'d','Pset_x');");
+  });
+});

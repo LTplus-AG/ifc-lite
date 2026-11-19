@@ -190,6 +190,8 @@ pub(crate) struct ConversionChecks {
     pub(crate) documents: crate::schema_document_links::DocumentLinks,
     /// Values a target slot's type cannot hold (#10847).
     pub(crate) forms: crate::schema_value_forms::ValueForms,
+    /// The IfcMaterial a downgraded IfcMaterialProperties names (#10763).
+    pub(crate) materials: crate::schema_material_referent::MaterialReferents,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     /// Non-`$` source values the converted record has no slot for (#7683):
@@ -209,6 +211,8 @@ impl ConversionChecks {
     pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: &dyn Fn(u32, usize) -> bool, allocate: &mut dyn FnMut() -> Option<u32>) -> Self {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let mut checks = Self::new();
+        // Read from the source's types alone, so it runs for every export (#10763).
+        checks.materials = crate::schema_material_referent::MaterialReferents::scan(content, from, to, kept);
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }
@@ -265,6 +269,7 @@ impl ConversionChecks {
         out.extend(self.enums.warnings());
         out.extend(self.documents.warnings());
         out.extend(self.forms.warnings());
+        out.extend(self.materials.warnings());
         out.extend(self.structural.warnings());
         out
     }

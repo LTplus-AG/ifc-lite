@@ -123,6 +123,13 @@ export class SourceRecords {
     return id === null ? undefined : this.entry(id)?.type.toUpperCase();
   }
 
+  /** The record's source text, as written. */
+  text(id: number): string | undefined {
+    // @raw-entity-enumeration-ok same unedited source-only prepass
+    const entry = this.store.entityIndex.byId.get(id);
+    return entry ? this.decode(entry) : undefined;
+  }
+
   slots(id: number | null): readonly string[] | undefined {
     if (id === null) return undefined;
     if (!this.cache.has(id)) {

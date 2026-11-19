@@ -80,10 +80,9 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCCURRENCYRELATIONSHIP', { retyped: ['RateDateTime'] }),
     same('IFCDOCUMENTINFORMATIONRELATIONSHIP'),
     same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
-    // IFC4 deleted this IFC2X3 subtype for its now-concrete supertype, so a
-    // downgrade writes the deleted subtype (`IFC4_TO_IFC2X3`). Downgrade only:
-    // nothing renames the IFC2X3 subtype on an upgrade. IfcMaterialProperties is
-    // left unmapped here: its Material referent must be resolved first (#10763 follow-up).
+    // IFC4 deleted these IFC2X3 subtypes for their now-concrete supertypes.
+    // A downgrade writes the deleted subtype; an upgrade leaves its name alone.
+    map('IFCEXTENDEDMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES', { renamed: [['ExtendedProperties', 'Properties']] }),
     map('IFCGENERALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
     same('IFCPERFORMANCEHISTORY'),
     same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),

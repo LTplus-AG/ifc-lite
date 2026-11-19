@@ -17,6 +17,7 @@ import { model, parseStep, seed, viewerHost } from '@/test/agent-tools-fixture';
 import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
 import { DEFAULT_ANONYMIZE_TOGGLES } from '@/components/viewer/anonymized-export/AnonymizationOptionsPanel';
 import { MAX_RESULT_BYTES } from './result-limit';
+import { viewerOperation } from './registry';
 import { seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 
@@ -55,6 +56,21 @@ async function assemblyOf(count: number) {
 }
 
 describe('operation results and expected-state tokens stay bounded (#10794)', () => {
+  // Settles where the limit is measured: on the operation's own result, the same object resultBytes() measures in the
+  // anonymized preview check, not on the executor's { operation_id, ..., result } wrapper (#10855 review).
+  it('the executor returns a result of exactly MAX_RESULT_BYTES - 1 bytes and refuses MAX_RESULT_BYTES + 1', async (t: TestContext) => {
+    const entry = viewerOperation('zones.read'), overhead = bytes({ native_json: '' });
+    const sized = (total: number) => ({ native_json: 'x'.repeat(total - overhead) });
+    assert.equal(bytes(sized(MAX_RESULT_BYTES - 1)), MAX_RESULT_BYTES - 1);
+    t.mock.method(entry, 'execute', async () => sized(MAX_RESULT_BYTES - 1));
+    const under = await run('zones.read', {});
+    assert.equal(under.isError, false, under.text.slice(0, 200));
+    assert.equal(bytes((under.structured as { result: unknown }).result), MAX_RESULT_BYTES - 1, 'returned whole, though the wrapper around it is larger');
+    t.mock.method(entry, 'execute', async () => sized(MAX_RESULT_BYTES + 1));
+    const over = await run('zones.read', {});
+    assert.equal(over.isError, true); assert.match(over.text, /exceeds the 1 MB operation result limit/);
+  });
+
   it('#4 clash.reports.read pages a library over 1 MB and its expected_reports token stays short', async () => {
     const reports = Array.from({ length: 400 }, (_, i) => ({ id: `r${i}`, name: `Report ${i}`, evidence: pad(4000) }));
     useViewerStore.setState({ savedClashReports: reports as never, initializeSavedClashReports: async () => true });

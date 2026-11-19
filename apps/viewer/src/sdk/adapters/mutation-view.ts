@@ -6,7 +6,6 @@ import { createModelMutationView } from '@/utils/model-mutation-view';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { getAttributeNamesForSchema, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type { EntityAttributeData, EntityData } from '@ifc-lite/sdk';
-import type { ViewerState } from '../../store/index.js';
 import { getModelForRef, isLegacyMutationRef, normalizeMutationModelId, LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from './model-compat.js';
 import type { StoreApi } from './types.js';
 

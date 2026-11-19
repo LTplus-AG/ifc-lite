@@ -12,7 +12,7 @@
  */
 
 /**
- * A 30-byte module whose one function uses `i8x16.splat` and `i8x16.popcnt`.
+ * A 31-byte module whose one function uses `i8x16.splat` and `i8x16.popcnt`.
  * The same probe `apps/landing`'s browser test uses: popcnt only landed with
  * the final SIMD spec, so pre-standard implementations also fail it.
  */
@@ -27,10 +27,10 @@ export function supportsWasmSimd(): boolean {
 }
 
 /**
- * A compile failure caused by missing SIMD (V8 `Wasm SIMD unsupported`,
- * SpiderMonkey `SIMD support is not enabled`). Needs a refusal phrase too, so
- * a message that merely mentions SIMD keeps its own kind.
+ * A compile failure caused by missing SIMD: the engines' exact wordings only
+ * (V8, then SpiderMonkey), because load messages carry user-controlled file
+ * names and this kind is claimed ahead of the worker and memory buckets.
  */
 export function isWasmSimdUnsupportedMessage(message: string): boolean {
-  return /\bsimd\b/i.test(message) && /unsupported|not (?:enabled|supported)/i.test(message);
+  return /\bWasm SIMD unsupported\b|\bSIMD support is not enabled\b/i.test(message);
 }

@@ -10,8 +10,8 @@
  * autoload in `ViewerLayout.tsx` returned silently instead. `guard` shows
  * the load-error card with an explanation and, when the caller supplies one,
  * a Retry closing over the same attempt.
- * It also refuses a browser without WebAssembly SIMD (#10784): a permanent
- * condition, so that card has no Retry.
+ * It also refuses a browser without WebAssembly SIMD (#10784) when the open
+ * will compile the local engine: a permanent condition, so no Retry.
  */
 
 import { useCallback, useEffect } from 'react';
@@ -19,6 +19,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { clearLoadError, showLoadError } from '@/lib/analytics';
 import { supportsWasmSimd } from '@/lib/wasm-simd-support';
+import { serverUploadsEnabled } from '@/lib/processed-model';
 import { getWebGPUStatus, retryWebGPU, useWebGPU, type WebGPUStatus } from './useWebGPU';
 
 /**
@@ -37,6 +38,8 @@ export type OpenReplay = 'free' | 'on-retry' | 'activation';
 
 export interface WebGpuOpenGuardOptions {
   replay?: OpenReplay;
+  /** False when the open never compiles the local wasm engine (a processed model). */
+  localEngine?: boolean;
 }
 
 export interface WebGpuOpenGuard {
@@ -149,7 +152,8 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
 
   const guard = useCallback((retry?: () => void, options?: WebGpuOpenGuardOptions): boolean => {
     const { setError, setLastLoadRetry } = useViewerStore.getState();
-    if (!supportsWasmSimd()) {
+    // A server-backed build meshes remotely; its wasm fallback hits the classifier's SIMD kind instead.
+    if (options?.localEngine !== false && !serverUploadsEnabled() && !supportsWasmSimd()) {
       showLoadError(setError, setLastLoadRetry, t(SIMD_UNSUPPORTED_KEY), 'wasm_simd_unsupported', null);
       return false;
     }

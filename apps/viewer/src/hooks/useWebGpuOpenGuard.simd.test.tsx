@@ -62,6 +62,15 @@ describe('useWebGpuOpenGuard without WebAssembly SIMD (#10784)', () => {
     assert.equal(lastLoadRetry, null, 'a retry cannot add SIMD to the browser');
   });
 
+  it('lets a processed model through: it never compiles the local engine', () => {
+    render(<OpenProbe />);
+    mock.method(WebAssembly, 'validate', () => false);
+    let allowed = false;
+    act(() => { allowed = guard(() => {}, { replay: 'free', localEngine: false }); });
+    assert.equal(allowed, true);
+    assert.equal(useViewerStore.getState().error, null);
+  });
+
   it('lets the same open through when the probe validates', () => {
     render(<OpenProbe />);
     let allowed = false;

@@ -14,7 +14,10 @@
 import { useViewerStore } from '@/store';
 import { showLoadError as reportLoadError } from '@/lib/analytics';
 
-/** Show `message` as this load's failure; `retry` defaults to re-running this load. */
+/**
+ * Show `message` as this load's failure; `retry` defaults to re-running this
+ * load. A browser without WebAssembly SIMD gets no Retry: it fails the same way.
+ */
 export type LoadFailureReporter = (message: string, code: string, retry?: (() => void) | null) => void;
 
 export function loadFailureReporter(
@@ -28,7 +31,7 @@ export function loadFailureReporter(
     const shown = activity.fail(message);
     onLoadError?.(shown);
     const { setError, setLastLoadRetry } = useViewerStore.getState();
-    reportLoadError(setError, setLastLoadRetry, shown, code, retry, file);
+    reportLoadError(setError, setLastLoadRetry, shown, code, code === 'wasm_simd_unsupported' ? null : retry, file);
   };
 }
 

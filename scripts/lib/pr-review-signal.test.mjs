@@ -140,6 +140,9 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     // Not in the aggregate's `needs`; with CI_PR_VIEWER_SELECT off it
     // publishes `skipped`, which is presence.
     'Viewer tests, advisory (selected for this PR)',
+    // Posts that lane's pending `PR viewer selection` status before the build
+    // (scripts/ci-viewer-select-status.mjs); `skipped` unless the switch is `on`.
+    'Viewer selection status (pending)',
     // The release PR lean lane's own checks (scripts/ci-release-lane.mjs).
     // `skipped` on every other PR, and on the release PR unless the switch is on.
     'Release PR checks',
@@ -149,7 +152,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 55);
+  assert.equal(names.length, 56);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

@@ -450,11 +450,13 @@ function runCli(exitCode) {
   return { ...r, result: JSON.parse(readFileSync(join(dir, 'result.json'), 'utf8')), summary: readFileSync(summary, 'utf8') };
 }
 
-test('CLI --run: failing tests are an advisory warning, exit 0, and recorded in result.json', () => {
+test('CLI --run: failing tests exit 0 and record a failed verdict in result.json', () => {
   const r = runCli(1);
   assert.equal(r.status, 0, 'a test failure must not fail the Test run');
-  assert.deepEqual(r.result, { files: 1, exitCode: 1, signal: null });
-  assert.ok(r.stdout.includes('::warning title=Selected viewer tests (advisory)::')); // @source-text-assertion-ok subject is the CLI's emitted annotation
+  assert.equal(r.result.files, 1);
+  assert.equal(r.result.exitCode, 1);
+  assert.equal(r.result.passed, false, 'the verdict the PR viewer selection status posts');
+  assert.ok(r.stdout.includes('::warning title=Selected viewer tests::')); // @source-text-assertion-ok subject is the CLI's emitted annotation
   assert.match(r.summary, /at least one failed \(exit 1\)/); // @source-text-assertion-ok subject is the CLI's written step summary
 });
 
@@ -462,6 +464,7 @@ test('CLI --run: passing tests exit 0 with no warning', () => {
   const r = runCli(0);
   assert.equal(r.status, 0);
   assert.equal(r.result.exitCode, 0);
+  assert.equal(r.result.passed, true);
   assert.ok(!r.stdout.includes('::warning')); // @source-text-assertion-ok subject is the CLI's emitted output
 });
 
@@ -504,10 +507,13 @@ test('WIRING: the select step feeds the switch inputs, and every heavy step wait
   const upload = steps.at(-1);
   assert.equal(upload.name, 'Upload the selection', 'the upload is last, so it carries result.json');
   assert.equal(upload.if, "always() && steps.select.outputs.artifact == 'true'");
-  for (const s of steps.slice(select + 1, -1)) {
+  const status = steps.at(-2);
+  assert.equal(status.if, 'always()', 'the verdict is posted even when a step before it broke or the job was cancelled');
+  for (const s of steps.slice(select + 1, -2)) {
     assert.ok(String(s.if ?? '').startsWith("steps.select.outputs.run == 'true'"), `${s.name ?? s.uses ?? s.run} must wait on run`); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
   }
-  assert.ok(steps.at(-2).run.includes('ci-viewer-select.mjs --run')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+  assert.equal(steps.at(-3).id, 'run');
+  assert.ok(steps.at(-3).run.includes('ci-viewer-select.mjs --run')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
 });
 
 test('WIRING: the advisory job cannot fail the Test run, and says it is advisory', () => {

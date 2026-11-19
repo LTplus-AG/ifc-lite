@@ -1608,20 +1608,67 @@ jobs:
   # SELECTED VIEWER TESTS on a fast-lane PR (scripts/ci-viewer-select.mjs).
   # The fast lane skips the shards above, so a viewer failure otherwise first
   # shows in the merge queue. This runs the viewer test files the PR's changes
-  # reach through the static import graph, nearest first, within a time budget.
+  # reach through the static import graph, nearest first, within a time budget,
+  # and retries a failed file once under CI_SHARD_RETRY like the shards.
   # Switch: repo variable CI_PR_VIEWER_SELECT = off (default: this job is
   # skipped) | shadow (record the selection, run nothing) | on (run it).
-  # ADVISORY: deliberately NOT in the aggregate's `needs` (see
+  # ADVISORY TO THE RUN: deliberately NOT in the aggregate's `needs` (see
   # UNJUDGED_BY_DESIGN in scripts/check-ci-aggregate-coverage.mjs), and it
   # cannot fail the run: a failed Test run is never push-replayed
   # (scripts/ci-push-replay.mjs), so a flake here would re-run every lane on
-  # main. Test failures exit 0 with a warning; continue-on-error covers the rest.
-  # The merge queue's full run is the gate.
+  # main. Test failures exit 0; continue-on-error covers the rest.
+  # A GATE ON QUEUE ENTRY instead: in `on`, the verdict is the commit status
+  # `PR viewer selection` on the PR head (scripts/ci-viewer-select-status.mjs),
+  # pending from `viewer-selection-pending` until this job posts success or
+  # failure. .mergify.yml's auto_merge_conditions keep a PR whose status is
+  # failing or pending out of the queue; an absent one (job skipped, fork PR)
+  # passes. Per sha, so a push starts clean. A flake: re-run this job; its new
+  # status replaces the old. Stuck pending (build failed, job cancelled by
+  # hand): re-run. The merge queue's full run is still the full gate.
+  viewer-selection-pending:
+    name: Viewer selection status (pending)
+    needs: [changes]
+    continue-on-error: true
+    # Same lane conditions as viewer-tests-selected, `on` only (shadow gates nothing).
+    if: >-
+      github.event_name == 'pull_request' &&
+      vars.CI_PR_VIEWER_SELECT == 'on' &&
+      needs.changes.outputs.lane == 'fast' &&
+      needs.changes.outputs.batch != 'true' &&
+      needs.changes.outputs.noop != 'true' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          sparse-checkout: scripts
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Post the pending status
+        run: node scripts/ci-viewer-select-status.mjs --pending
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+
   viewer-tests-selected:
     name: Viewer tests, advisory (selected for this PR)
-    needs: [changes, build]
+    # The pending job first, so its status can never land after this job's verdict.
+    needs: [changes, build, viewer-selection-pending]
     continue-on-error: true
+    # !cancelled() and the build's own result: the pending job is skipped in
+    # `shadow`, and a skipped need would otherwise skip this job too.
     if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
       github.event_name == 'pull_request' &&
       (vars.CI_PR_VIEWER_SELECT == 'shadow' || vars.CI_PR_VIEWER_SELECT == 'on') &&
       needs.changes.outputs.lane == 'fast' &&
@@ -1630,7 +1677,15 @@ jobs:
       (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # Artifact download, and the status step's job-URL lookup.
+      actions: read
+      # The `PR viewer selection` commit status (fork PRs: read-only, not posted).
+      statuses: write
     steps:
+      # The CI_SHARD_RETRY retry budget is what is left of timeout-minutes.
+      - run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -1681,8 +1736,27 @@ jobs:
         if: steps.select.outputs.run == 'true'
         run: pnpm fixtures:check
       - name: Run the selected viewer tests
+        id: run
         if: steps.select.outputs.run == 'true'
         run: node scripts/ci-viewer-select.mjs --run "$RUNNER_TEMP/viewer-selection"
+        env:
+          CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
+          JOB_TIMEOUT_MINUTES: '20'  # this job's timeout-minutes
+      # The verdict as the queue-entry status, on always(): a broken or
+      # cancelled job posts failure rather than leaving the gate to guess.
+      - name: Post the PR viewer selection status
+        if: always()
+        run: node scripts/ci-viewer-select-status.mjs --final "$RUNNER_TEMP/viewer-selection"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          JOB_NAME: Viewer tests, advisory (selected for this PR)
+          JOB_STATUS: ${{ job.status }}
+          SELECT_OUTCOME: ${{ steps.select.outcome }}
+          SELECT_RUN: ${{ steps.select.outputs.run }}
+          RUN_OUTCOME: ${{ steps.run.outcome }}
       # Kept per PR run so a queue failure in a viewer test can be checked
       # against what this PR's selection covered (recall). Last, and on
       # always(), so it also carries result.json from the run.

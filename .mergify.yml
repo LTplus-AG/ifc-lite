@@ -10,8 +10,9 @@
 # only with more runners.
 #
 # A labelled PR (other than Version Packages) enters the queue only once it is
-# ready: `PR review signal` green and no unresolved review thread
-# (`auto_merge_conditions`, at the foot). The label can go on early. Once
+# ready: `PR review signal` green, no unresolved review thread, and the `PR
+# viewer selection` status not failing or pending (`auto_merge_conditions`, at
+# the foot). The label can go on early. Once
 # queued, a push, removing the label, or a new review thread takes it out and
 # its queue run is lost: main's branch protection requires resolved
 # conversations, and Mergify adds that to every queue's conditions itself.
@@ -143,6 +144,15 @@ pull_request_rules:
 # run (Workflow Automation is not activated on this repo). This gate keeps a PR
 # out until its review has landed, so threads are found before a queue run
 # starts rather than during it.
+#
+# `PR viewer selection` is the commit status of the selected viewer tests on
+# a fast-lane PR (scripts/ci-viewer-select-status.mjs; test.yml keeps that job
+# advisory so a flake never turns the Test run red). Negated, so an ABSENT
+# status passes: the job is skipped on the full lane, docs-only changes, fork
+# PRs and when CI_PR_VIEWER_SELECT is not `on`. Pending is posted before the
+# build, so the gate cannot open before the tests report. Statuses are per
+# sha: a push starts clean. Here, not in queue_conditions: those are re-checked
+# while queued, and a re-run of the job would dequeue the PR mid-run.
 merge_protections_settings:
   auto_merge_conditions:
     - or:
@@ -150,3 +160,5 @@ merge_protections_settings:
       - and:
         - check-success=PR review signal
         - "#review-threads-unresolved=0"
+        - -check-failure=PR viewer selection
+        - -check-pending=PR viewer selection

@@ -7,7 +7,7 @@ import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import type { AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 import { PdfAppearanceSource } from '@/lib/appearance/pdf/source-document.js';
 import { getPdfDocument, registerPdfDocument, removePdfDocument } from '@/lib/appearance/pdf/documents.js';
-import { publishPdfRaster } from '@/lib/appearance/pdf/publish-source.js';
+import { rasterNativePdfSource } from '@/lib/appearance/appearance-native-pdf';
 import { PdfAppearanceError, type PdfRasterRequest } from '@/lib/appearance/pdf/types.js';
 import type { AppearancePdfControls, AppearancePdfPasswordPrompt } from './pdf-controls.js';
 
@@ -50,9 +50,7 @@ export function usePdfAppearanceSource(source: AppearanceSourceOption | undefine
           provisionalUrl = URL.createObjectURL(new Blob([appearanceAssets.encoded(full.asset.id)], { type: full.asset.mimeType }));
         } finally { document.releaseRaster(full.asset.id); }
       }
-      const result = await document.rasterize(request, { signal });
-      if (signal.aborted || !mounted.current) { document.releaseRaster(result.asset.id); return; }
-      publishPdfRaster(documentKey, result);
+      await rasterNativePdfSource(documentKey, request, { signal, isCurrent: () => mounted.current });
       if (provisionalUrl) {
         const next = { documentKey, pageNumber: request.pageNumber, rotation: request.rotation ?? 0, url: provisionalUrl };
         previewRef.current = next; setPreview(next); provisionalUrl = undefined;

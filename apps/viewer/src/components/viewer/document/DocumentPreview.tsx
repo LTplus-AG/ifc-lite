@@ -13,6 +13,7 @@ import { captureTranslation } from '@/i18n/registry';
 import type { BindingContext } from '@/lib/document/bindings';
 import type { DocumentSpec } from '@/lib/document/types';
 import type { DocumentLabelFormatter } from '@/lib/document/document-labels';
+import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import type { DocumentPdfInput } from '@/lib/document/generate-document-pdf';
 import { topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { pageBox } from '@/lib/export/report/compose';
@@ -29,6 +30,7 @@ export interface DocumentPreviewProps {
   bindings: BindingContext;
   aggregations: Map<string, Aggregation | null>;
   chartMessages: Map<string, string>;
+  qualityGateReports?: readonly SavedClashReport[];
   topics: Map<string, BCFTopic>;
   tables?: ReadonlyMap<string, TableState>;
   labels?: DocumentLabelFormatter;
@@ -77,8 +79,8 @@ export function DocumentPreview(props: DocumentPreviewProps) {
   }, [recordImageSize]);
   const input = useMemo<DocumentPdfInput>(() => ({ document: props.document, bindings: props.bindings,
     aggregations: props.aggregations, chartMessages: props.chartMessages, topics: props.topics,
-    tables: props.tables ?? EMPTY_TABLES, snapshotIds: EMPTY_IDS, labels }),
-  [props.document, props.bindings, props.aggregations, props.chartMessages, props.topics, props.tables, labels]);
+    tables: props.tables ?? EMPTY_TABLES, qualityGateReports: props.qualityGateReports, snapshotIds: EMPTY_IDS, labels }),
+  [props.document, props.bindings, props.aggregations, props.chartMessages, props.topics, props.tables, props.qualityGateReports, labels]);
   const { value, error, pending } = useDocumentLayout(input, imageSizes);
   const displayedImageFailures = useMemo(() => {
     const failures = new Set(imageFailures);

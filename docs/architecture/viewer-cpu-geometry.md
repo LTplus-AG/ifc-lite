@@ -192,8 +192,21 @@ What S2 does not change, and what still reads the CPU copy:
 
 - **X-Ray and lens promotion** still split a batch into per-alpha subsets cut from its pieces while it can be partitioned (row 5 of the original table). Without pieces the batch draws whole under the visibility test at the lowest alpha of its visible entities: a fade that is too wide, never a missing or hidden entity.
 - **Type visibility** (IfcSpace, openings, the Model/Types switch) is not hide/isolate: `useFilteredGeometry` drops those meshes from the list the scene uploads, so toggling a type re-uploads from the store's CPU arrays. It needs its own route before a release.
-- **Selection and hover highlight** (row 5) still build per-entity meshes from the pieces; that is S3.
+- **Selection and hover highlight** (row 5) still built per-entity meshes from the pieces; S3 below moves them to the batches.
 - **Colour-merged pieces.** Classification reads primary entries, as before S2. Partly visible batches test the vertex lane and hide secondary entities exactly. When every primary entry is visible, the test is skipped and a hidden secondary can remain drawn; when every primary entry is hidden, a visible secondary is dropped. No in-tree producer emits foreign per-vertex ids today, but hosts can supply them through `MeshData.entityIds`. [#10653](https://github.com/LTplus-AG/ifc-lite/issues/10653) tracks complete lane coverage before an in-tree producer emits foreign ids or CPU-geometry release is enabled for such host-supplied meshes.
 - **Textured meshes** are drawn one per mesh and were already filtered without CPU geometry. Instanced occurrences keep their per-instance hidden flag.
 
 S2 frees nothing and makes no speed claim; release stays disabled.
+
+## Stage S3: selection and hover highlight from the batches
+
+The "Selection / hover highlight (flat)" row above no longer applies to entities held by colour batches. The selection highlight, the selection outline and the hover outline draw those batches again from their own GPU buffers and keep only the highlighted entities on the GPU: the selection against a sorted id table beside the hide/isolate table, the hover against the one entity id in its draw's uniform, so hovering writes no shared table (see [Batching Strategy](rendering-pipeline.md#batching-strategy)). No highlight copy is built from CPU pieces for them, so a scene whose CPU geometry was released keeps its highlight. `selection-batch-highlight.test.ts` pins the draws with the scene released; `tests/e2e/gpu-entity-highlight.e2e.spec.ts` compares the real frame with the frame of the copies route on public fixtures.
+
+What still reads the CPU copy for the highlight, and why:
+
+- **An item filter** (`selectedItemId`, #4382). The lane carries the entity, not the representation item, so the item keeps its copy while the entity's pieces are in memory. A released scene highlights the whole entity, as the S1 pick reports the entity only.
+- **The fallback.** An entity whose batches cannot all draw it (an evicted batch, which is asked back into residency; a batch without a lane anchor; a quantized batch without its selection pipeline), an id two federated models share in one batch while the selection is scoped to one of them, and every entity while a larger highlight table awaits WebGPU's confirmation keep the copies. A released scene then has no copy to draw, and the entity is not highlighted until its batch is back. No entity is ever highlighted in part.
+- **Colour-merged pieces** ([#10653](https://github.com/LTplus-AG/ifc-lite/issues/10653)). An entity present only as a secondary vertex-lane id in a batch is not found in the batch's entries and keeps its copies, as for hide/isolate.
+- **Overlapping highlighted surfaces behind translucent geometry.** The highlight writes no depth, so where two highlighted surfaces overlap on screen without opaque depth between them, the one drawn last shows. The batches draw in batch order rather than the copies' hydration order; the colour is the same, only the per-face shading of that overlap can differ.
+
+A hovered entity with textured pieces keeps its hover copies, which cover the textured pieces the colour batches do not hold. Textured pieces already highlighted from their own buffers, and instanced occurrences through their per-instance flag. S3 frees nothing and makes no speed claim; release stays disabled. Type visibility still re-uploads from the store's CPU arrays and remains a prerequisite of S4.

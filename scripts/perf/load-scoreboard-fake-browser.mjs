@@ -15,7 +15,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const ALLOWED = new Set(['shellState', 'readBootSignal']);
+const ALLOWED = new Set(['shellState', 'readBootSignal', 'readBenchLongTasks', 'watchQuietInPage']);
 
 /** Run `browserSample` against the fake; resolves to { result, hookCalls }. */
 export async function fakeBrowserSample(browserSample, { arm = 'quiet', hook = undefined, side = {}, warmOpens = 0, cpuTrace = false, instructions = false } = {}) {

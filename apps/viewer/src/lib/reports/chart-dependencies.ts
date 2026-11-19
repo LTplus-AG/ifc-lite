@@ -7,11 +7,12 @@ import type { ViewerState } from '@/store';
 import { readDashboards } from '@/lib/charts/persistence';
 
 export type ReportSource = { kind: 'compare' | 'clash'; id: string };
-export interface ChartDependency { key: string; family: 'dashboard' | 'document'; name: string; chart: string }
+export interface ChartDependency { key: string; family: 'dashboard' | 'document'; name: string; chart: string; qualityGate?: true }
 export const DEPENDENCY_DISPLAY_LIMIT = 20;
 export interface ChartDependencyPreview {
   entries: ChartDependency[];
   total: number;
+  hasQualityGates: boolean;
   documentPhase: 'loading' | 'ready' | 'unavailable';
   dashboardsUnavailable: boolean;
   documentsRecovered: boolean;
@@ -20,7 +21,7 @@ export interface ChartDependencyPreview {
 }
 const pointsTo = (chart: ChartSpec, source: ReportSource) => chart.source === source.kind
   && (source.kind === 'compare' ? chart.comparisonId : chart.clashReportId) === source.id;
-/** Only executable chart references; embedded report snapshots are independent historical evidence. */
+/** Library references that become unavailable after deletion. Embedded snapshots are independent. */
 export function reportChartDependencies(state: ViewerState, source: ReportSource, durableDocuments?: { entries: readonly DocumentSpec[]; phase: ChartDependencyPreview['documentPhase'] }): ChartDependencyPreview {
   const persisted = readDashboards();
   // Another tab's durable version and this tab's unsaved version can each
@@ -34,12 +35,17 @@ export function reportChartDependencies(state: ViewerState, source: ReportSource
   for (const dashboard of [...persisted.entries, ...state.dashboards]) for (const chart of dashboard.charts) {
     if (pointsTo(chart, source)) add({ key: JSON.stringify(['dashboard', dashboard.id, chart.id]), family: 'dashboard', name: dashboard.name, chart: chart.title });
   }
+  let hasQualityGates = false;
   for (const document of [...(durableDocuments?.entries ?? []), ...state.documents]) for (const block of document.blocks) {
     if (block.kind === 'chart' && pointsTo(block.chart, source)) add({ key: JSON.stringify(['document', document.id, block.id]), family: 'document', name: document.name, chart: block.chart.title });
+    if (block.kind === 'quality-gate' && source.kind === 'clash' && block.clashReportId === source.id) {
+      hasQualityGates = true;
+      add({ key: JSON.stringify(['document', document.id, block.id]), family: 'document', name: document.name, chart: block.title ?? '', qualityGate: true });
+    }
   }
   const all = [...references.values()];
   all.sort((a, b) => a.key.localeCompare(b.key));
   const coverage = { documentPhase: durableDocuments?.phase === 'loading' || state.documentsStorage.phase === 'loading' ? 'loading' as const
     : durableDocuments?.phase === 'unavailable' || state.documentsStorage.phase === 'unavailable' ? 'unavailable' as const : 'ready' as const, documentsRecovered: state.documentsStorage.recovered, dashboardsUnavailable: persisted.unavailable, omittedDashboards: persisted.omitted };
-  return { ...coverage, entries: all.slice(0, DEPENDENCY_DISPLAY_LIMIT), total: all.length, signature: JSON.stringify([all, coverage, [...observations].sort()]) };
+  return { ...coverage, entries: all.slice(0, DEPENDENCY_DISPLAY_LIMIT), total: all.length, hasQualityGates, signature: JSON.stringify([all, coverage, [...observations].sort()]) };
 }

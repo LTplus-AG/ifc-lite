@@ -15,7 +15,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::schema_convert::{rename_type, schema_attribute_names, should_skip_entity, BY_NAME_ATTR_REMAP_TYPES};
-use crate::schema_renames::is_strict_attr_prefix;
+use crate::schema_renames::{is_strict_attr_prefix, replaced_slot};
 use crate::schema_unrepresented::has_representation;
 
 /// How a written record's attribute list is reconciled with the target type.
@@ -41,7 +41,8 @@ pub(crate) enum Plan {
     /// error otherwise (`schema_unrepresented::resolve_unrepresented_entity`).
     Unrepresented,
     /// Written as `renamed` (`None`: under its own name), attributes adjusted.
-    Write { renamed: Option<&'static str>, adjust: Adjust },
+    /// `replaced`: the slot a schema replaced in place, written `$` (#10758).
+    Write { renamed: Option<&'static str>, adjust: Adjust, replaced: Option<usize> },
 }
 
 /// The [`Plan`] for `entity_type` (uppercase) between two different canonical
@@ -60,7 +61,8 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
     }
     // The two prefix branches cannot both apply: each needs its own list
     // strictly shorter.
-    let adjust = match (src_names, schema_attribute_names(cto, new_type)) {
+    let tgt_names = schema_attribute_names(cto, new_type);
+    let adjust = match (src_names, tgt_names) {
         (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
         (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),
         (Some(src), Some(tgt)) if new_type != entity_type
@@ -72,7 +74,8 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
         (Some(src), Some(tgt)) if entity_type == crate::schema_grid_frames::GRID_PLACEMENT && src != tgt => Adjust::ByName(src, tgt),
         _ => Adjust::Keep,
     };
-    Plan::Write { renamed, adjust }
+    let replaced = src_names.zip(tgt_names).and_then(|(src, tgt)| replaced_slot(entity_type, src, tgt));
+    Plan::Write { renamed, adjust, replaced }
 }
 
 /// Index of a canonical schema family, for [`PlanCache`]'s per-pair maps.
@@ -130,8 +133,8 @@ mod tests {
         assert!(matches!(plan_for("IFCQUANTITYLENGTH", "IFC4", "IFC2X3"), Plan::Write { adjust: Adjust::Trim(_), .. }));
         assert!(matches!(plan_for("IFCQUANTITYLENGTH", "IFC2X3", "IFC4"), Plan::Write { adjust: Adjust::Pad(_), .. }));
         assert_eq!(plan_for("IFCALIGNMENT", "IFC4X3", "IFC4"), Plan::ProductProxy);
-        assert_eq!(plan_for("IFCALIGNMENT", "IFC4X3", "IFC5"), Plan::Write { renamed: None, adjust: Adjust::Keep });
-        assert!(matches!(plan_for("IFCDOORTYPE", "IFC4", "IFC2X3"), Plan::Write { renamed: Some("IFCDOORSTYLE"), adjust: Adjust::ByName(..) }));
+        assert_eq!(plan_for("IFCALIGNMENT", "IFC4X3", "IFC5"), Plan::Write { renamed: None, adjust: Adjust::Keep, replaced: None });
+        assert!(matches!(plan_for("IFCDOORTYPE", "IFC4", "IFC2X3"), Plan::Write { renamed: Some("IFCDOORSTYLE"), adjust: Adjust::ByName(..), replaced: None }));
         assert_eq!(plan_for("IFCTRIANGULATEDFACESET", "IFC4", "IFC2X3"), Plan::Unrepresented);
     }
 }

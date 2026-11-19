@@ -58,7 +58,7 @@ export const viewportLightingRu = {
   "viewportLighting.container.processedModel.notPrimary": "Обработанную модель можно открыть только как первую модель.",
   "viewportLighting.container.processedModel.noServer": "Для этого просмотрщика не настроен сервер обработки, поэтому обработанные модели открыть нельзя.",
   "viewportLighting.container.processedModel.unreachable": "Настроенный сервер обработки недоступен с этой страницы.",
-  "viewportLighting.container.processedModel.unsupported": "Этот браузер не может открывать обработанные модели: ему не хватает поддержки Parquet.",
+  "viewportLighting.container.processedModel.unsupported": "Не удалось инициализировать декодер Parquet, необходимый для открытия этой обработанной модели.",
   "viewportLighting.container.processedModel.notStored": "Эта модель (пока) недоступна на сервере.",
   "viewportLighting.container.processedModel.forbidden": "У вас нет доступа к этой модели.",
   "viewportLighting.container.processedModel.busy": "Сервер обработки занят. Повторите попытку через минуту.",

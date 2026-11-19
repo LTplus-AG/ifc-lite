@@ -97,7 +97,7 @@ export const viewportLightingEn = {
   'viewportLighting.container.processedModel.notPrimary': 'A processed model can only be opened as the first model.',
   'viewportLighting.container.processedModel.noServer': 'No processing server is configured for this viewer, so processed models cannot be opened.',
   'viewportLighting.container.processedModel.unreachable': 'The configured processing server cannot be reached from this page.',
-  'viewportLighting.container.processedModel.unsupported': 'This browser cannot open processed models: it lacks the Parquet support they need.',
+  'viewportLighting.container.processedModel.unsupported': 'Could not initialize the Parquet decoder needed to open this processed model.',
   'viewportLighting.container.processedModel.notStored': 'This model is not available on the server (yet).',
   'viewportLighting.container.processedModel.forbidden': 'You have no access to this model.',
   'viewportLighting.container.processedModel.busy': 'The processing server is busy. Try again in a moment.',

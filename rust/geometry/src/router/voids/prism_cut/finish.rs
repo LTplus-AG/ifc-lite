@@ -11,14 +11,9 @@ use crate::exact_topology::kernel_grid;
 #[cfg(test)]
 use super::closed_enough_to_emit;
 
-/// Optional refinement must retain the adopted remote repair's certificate;
-/// the established coarser probes alone can hide newly collapsed faces.
-///
-/// The refined mesh is adopted only when the cleanup the finalizer runs next
-/// leaves it strictly closed. Bisection halves a needle toward its sharp
-/// corner until the pieces fall below the cleanup grid, and it also splits
-/// the zero-area triangles a flush cutter face leaves; dropping those opens a
-/// T-junction chain, which a hairline-tolerant probe let through.
+/// Canonicalization must retain the adopted remote repair's certificate.
+/// The established coarser probes can miss collapsed faces, so verify that
+/// cleanup still leaves the resulting mesh closed.
 pub(super) fn can_adopt_refinement(boundary: ConsolidationBoundary, refined: &Mesh) -> bool {
     if !super::directed_closed(refined) || !boundary.accepts(refined) {
         return false;

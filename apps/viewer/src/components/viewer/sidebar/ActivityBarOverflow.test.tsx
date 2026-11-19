@@ -39,14 +39,14 @@ it('labels the trigger visibly and keeps its count (#8802 council)', () => {
   assert.ok(trigger);
   assert.equal(container.querySelector('[data-rail-overflow-caption]')?.textContent, resolve('shellChrome.activityBar.moreCaption'));
   assert.match(trigger.textContent ?? '', /\+4/, 'the hidden-panel count stays visible');
-  // Some listed panels are open, and the name says so instead of only a dot.
-  assert.equal(trigger.getAttribute('aria-label'), resolve('shellChrome.activityBar.morePanelsSomeOpen', { count: 4 }));
+  // The visible content names the button, and its description also announces open panels.
+  assert.equal(trigger.getAttribute('aria-description'), resolve('shellChrome.activityBar.morePanelsSomeOpen', { count: 4 }));
 });
 
-it('names the trigger without the open note when every listed panel is closed', () => {
+it('describes the trigger without the open note when every listed panel is closed', () => {
   const container = render(<ActivityBarOverflow ids={[closed.id]} locationOf={() => 'closed'} onSelect={() => {}} />);
   const trigger = container.querySelector<HTMLButtonElement>('[data-rail-overflow]');
-  assert.equal(trigger?.getAttribute('aria-label'), resolve('shellChrome.activityBar.morePanels', { count: 1 }));
+  assert.equal(trigger?.getAttribute('aria-description'), resolve('shellChrome.activityBar.morePanels', { count: 1 }));
 });
 
 it('names each listed panel with its location, like the rail icons', () => {

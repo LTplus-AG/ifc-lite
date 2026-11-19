@@ -48,7 +48,10 @@ type FieldValues = Omit<FilterValueSchema, 'propertyValues'> & { propertyValues:
  * no field can starve the others. A cut field charges only the bytes it kept; the rest flows to the larger fields.
  */
 export function boundedFieldValues(values: FilterValueSchema, budget: number): FieldValues {
-  const out: FieldValues = { ...values, propertyValues: Object.fromEntries(values.propertyValues) };
+  // Keys in ordinal order (they hold propValueKey's NUL separator), so neither output order nor which keys survive a cut
+  // depends on entity order.
+  const keys = [...values.propertyValues].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const out: FieldValues = { ...values, propertyValues: Object.fromEntries(keys) };
   // Reserve keys and a full `truncated` list; the null placeholders and each field's own brackets are slack.
   let left = budget - bytes({ ...Object.fromEntries(VALUE_FIELDS.map(field => [field, null])), truncated: VALUE_FIELDS });
   const bySize = VALUE_FIELDS.map(field => ({ field, size: bytes(out[field]) })).sort((a, b) => a.size - b.size);
@@ -57,10 +60,8 @@ export function boundedFieldValues(values: FilterValueSchema, budget: number): F
     const share = Math.floor(left / (bySize.length - index));
     if (size <= share) { left -= size; return; }
     truncated.add(field);
-    if (field === 'propertyValues') {
-      // Sorted like the lists, so which keys survive does not depend on entity order.
-      out.propertyValues = boundedPropertyValues([...values.propertyValues].sort(([a], [b]) => a.localeCompare(b)), share);
-    } else out[field] = boundedList(out[field], share);
+    if (field === 'propertyValues') out.propertyValues = boundedPropertyValues(keys, share);
+    else out[field] = boundedList(out[field], share);
     left -= bytes(out[field]);
   });
   return truncated.size ? { ...out, truncated: VALUE_FIELDS.filter(field => truncated.has(field)) } : out;

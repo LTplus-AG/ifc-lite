@@ -28,7 +28,7 @@ const LINK = 'IfcRelAssignsToProduct linking one structural member to its elemen
 function strandedAs(entity: string, args: readonly string[], unconverted: boolean, reaction: boolean, cause: { restored: boolean } | null): string | null {
   const target = varyingTarget(entity);
   // The export's own warning test (#10779): `$`, `*` or empty, comments aside, is no value.
-  if (!target || !holdsValue(args[CAUSED_BY])) return null;
+  if (!target || !holdsValue(args[CAUSED_BY] ?? '')) return null;
   // An unconverted action naming no point reaction keeps CausedBy unreported.
   if (unconverted) return reaction ? entity : null;
   return cause?.restored ? null : target;

@@ -112,6 +112,11 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
       const lost = analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries.filter((e) => e.droppedAttributes.includes('CausedBy'));
       expect(lost, empty).toEqual([]);
     }
+    // A short varying record has no CausedBy slot; it neither throws nor hides the others' losses.
+    const short = await parse(IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', ',.F.,#99,.PROJECTED_LENGTH.')
+      .replace('#30=', '#90=IFCSTRUCTURALLINEARACTIONVARYING();\n#30='));
+    const stranded = analyzeConversionLoss(short, 'IFC2X3', 'IFC4').entries.filter((e) => e.droppedAttributes.includes('CausedBy'));
+    expect(stranded.flatMap((e) => e.expressIds)).toEqual([30]);
     const withValue = new StepExporter(await parse(IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', ',.F.,#99,.PROJECTED_LENGTH.'))).export({ schema: 'IFC4' });
     expect(withValue.stats.warnings.join('\n')).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4');
   });

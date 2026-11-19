@@ -333,7 +333,10 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
-        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView, georefMutations: useViewerStore.getState().georefMutations });
+        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, {
+          // georefMutations read at export time: this callback does not re-memoize on georef edits.
+          applyMutations, getMutationView, georefMutations: useViewerStore.getState().georefMutations,
+        });
         const refusal = emptyMergeRefusal(mergeInputs, t);
         if (refusal) { toast.error(refusal); return { success: false, message: refusal }; }
 

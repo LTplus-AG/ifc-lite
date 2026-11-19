@@ -6064,6 +6064,7 @@
     "gridPlacementDependents: function",
     "guardSpreadsheetFormula: function",
     "isExpressibleMapUnit: function",
+    "isGeorefRefusal: function",
     "isParquet: function",
     "needsConversion: function",
     "parseGLB: function",

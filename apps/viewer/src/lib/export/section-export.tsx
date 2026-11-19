@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useState } from 'react';
-import { exportSectionedStep, StepExporter, type SectionExportOptions, type MergeModelInput, type IfcSchemaVersion } from '@ifc-lite/export';
+import { exportSectionedStep, isGeorefRefusal, StepExporter, type SectionExportOptions, type MergeModelInput, type IfcSchemaVersion } from '@ifc-lite/export';
 import { IfcParser } from '@ifc-lite/parser';
 import { renderFrameWorldOffset, viewerToIfcAxes } from '@ifc-lite/geometry/world-frame';
 import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
@@ -78,7 +78,7 @@ export async function sectionMergeInputs(
     });
     // As the merge bake does: an edit the exporter refuses (IFC2X3, a partial position) is left out and named.
     const source = await crop(input.georefMutations).catch((error: unknown) => {
-      if (!input.georefMutations || !(error instanceof Error && error.message.startsWith('Georeferencing '))) throw error;
+      if (!input.georefMutations || !isGeorefRefusal(error)) throw error;
       warnings.push(`${input.name}: Georeferencing edits were not written. ${error.message}`);
       return crop(undefined);
     });

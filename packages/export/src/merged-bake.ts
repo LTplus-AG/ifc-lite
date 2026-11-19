@@ -6,7 +6,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { MergeModelInput } from './merged-exporter.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
-import { hasGeorefEdits } from './step-coordinate-options.js';
+import { hasGeorefEdits, isGeorefRefusal } from './step-coordinate-options.js';
 import { StepExporter } from './step-exporter.js';
 
 /**
@@ -73,13 +73,12 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
     let exported: ReturnType<typeof bake> | null = null;
     if (georef) {
       try { exported = bake(georef); } catch (error) {
-        // Only the exporter's georeferencing refusals; any other failure is a real export failure.
-        if (!(error instanceof Error && error.message.startsWith('Georeferencing '))) throw error;
+        if (!isGeorefRefusal(error)) throw error;
         warnings.push(`${model.name}: ${GEOREF_NOT_WRITTEN} ${error.message}`);
       }
     }
     if (!exported && !viewHasMutations(model.mutationView)) {
-      baked.push(model.georefMutations ? { ...model, georefMutations: undefined } : model);
+      baked.push(model);
       continue;
     }
     exported ??= bake(undefined);

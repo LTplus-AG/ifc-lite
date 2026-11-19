@@ -45,6 +45,14 @@ export interface StepGeoreferencingOptions {
   };
 }
 
+/**
+ * True when `error` is {@link StepExporter}'s refusal of `georefMutations` it cannot write (an IFC2X3 export, a
+ * partial position), which a caller may answer by exporting without the edits. Any other error is a real failure.
+ */
+export function isGeorefRefusal(error: unknown): error is Error {
+  return error instanceof Error && error.message.startsWith('Georeferencing ');
+}
+
 /** True when `edits` would change an IfcProjectedCRS or IfcMapConversion. */
 export function hasGeorefEdits(edits: StepGeoreferencingOptions['georefMutations']): boolean {
   return Object.keys(edits?.projectedCRS ?? {}).length > 0 || Object.keys(edits?.mapConversion ?? {}).length > 0;

@@ -1059,7 +1059,8 @@ export class MergedExporter {
     if (!isFirstModel && compatible) {
       // Remap this model's IfcProject references → first model's IfcProject.
       const projectIds = this.findEntitiesByType(model.dataStore, 'IFCPROJECT');
-      if (setup.firstProjectIds.length > 0) {
+      const folded = setup.firstProjectIds.length > 0; // a federated (incompatible) model never gets here and keeps its project
+      if (folded) {
         for (const pid of projectIds) {
           sharedRemap.set(pid, setup.firstProjectIds[0] + setup.firstModelOffset);
           skipEntityIds.add(pid);
@@ -1068,7 +1069,7 @@ export class MergedExporter {
 
       // Remap and skip duplicate infrastructure (units, contexts) — WCS-gated; scale choice documented on planInfrastructureUnify (merged-context.ts).
       const kept = planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
-      if (setup.firstProjectIds.length > 0) setup.keptContexts.push(...kept.map(id => id + setup.modelOffsets.get(model.id)!));
+      if (folded) setup.keptContexts.push(...kept.map(id => id + setup.modelOffsets.get(model.id)!)); // its project folded above
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the

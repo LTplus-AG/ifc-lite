@@ -33,11 +33,12 @@ export function shareUnchangedNodes(
   next: TreeNode[],
 ): TreeNode[] {
   if (previous === next) return next;
-  const byId = new Map<string, TreeNode>();
-  for (const node of previous) byId.set(node.id, node);
+  // Rows usually keep their positions; index by id only when one moved.
+  let byId: Map<string, TreeNode> | undefined;
   let unchanged = previous.length === next.length;
   const shared = next.map((node, i) => {
-    const prior = byId.get(node.id);
+    const prior = previous[i]?.id === node.id ? previous[i]
+      : (byId ??= new Map(previous.map((row) => [row.id, row]))).get(node.id);
     const kept = prior && sameData(prior, node) ? prior : node;
     if (kept !== previous[i]) unchanged = false;
     return kept;

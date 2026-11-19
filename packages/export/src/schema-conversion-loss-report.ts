@@ -322,8 +322,8 @@ export function analyzeConversionLoss(
       if (entry) entries.push(entry);
     }
     // #10763: an IfcMaterialProperties whose Material names no single IfcMaterial is not written.
-    const notWritten = source ? materialPropertiesNotWritten({ entityIndex: store.entityIndex, source }, fromSchema, toSchema) : undefined;
-    if (notWritten?.ids.length) {
+    const notWritten = materialPropertiesNotWritten(store, fromSchema, toSchema);
+    if (notWritten.ids.length) {
       entries.push({ sourceType: 'IFCMATERIALPROPERTIES', targetType: 'IFCEXTENDEDMATERIALPROPERTIES', kind: 'lossy', droppedAttributes: [...notWritten.attributes], count: notWritten.ids.length, expressIds: notWritten.ids });
     }
     for (const [sourceType, ids] of varying) {

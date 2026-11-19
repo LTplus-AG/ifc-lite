@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { register } from 'node:module';
+import * as nodeModule from 'node:module';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -15,20 +15,25 @@ import { RhinoExportCommand } from '@/components/viewer/RhinoExportCommand';
 import { handlePreloadError } from './chunk-version-skew.js';
 import { __resetStaleDeploymentForTests, isStaleDeploymentReported } from './stale-deployment.js';
 
+function rejectRhinoImport(...[specifier, context, nextResolve]: Parameters<nodeModule.ResolveHookSync>) {
+  if (specifier === './RhinoExportDialog' && context.parentURL?.endsWith('/RhinoExportCommand.tsx')) {
+    throw new TypeError('error loading dynamically imported module: https://viewer.example/assets/RhinoExportDialog.js');
+  }
+  return nextResolve(specifier, context);
+}
+
 it('keeps the ribbon and reload action available after the Rhino dynamic import fails (#10684)', async () => {
   // Represent the page the user gets after the one automatic reload.
   sessionStorage.setItem('ifclite:chunk-skew-reload-ts', String(Date.now()));
-  // The Node test runner isolates this file in its own process. Only this
-  // command's import is substituted, with the failure Gecko would send.
-  const loader = `
-    export function resolve(specifier, context, nextResolve) {
-      if (specifier === './RhinoExportDialog' && context.parentURL?.endsWith('/RhinoExportCommand.tsx')) {
-        throw new TypeError('error loading dynamically imported module: https://viewer.example/assets/RhinoExportDialog.js');
-      }
-      return nextResolve(specifier, context);
-    }
-  `;
-  register(`data:text/javascript,${encodeURIComponent(loader)}`);
+  // Match the kind of hook tsx uses on this Node version. The older async
+  // hook runs in a worker and stays scoped to this isolated test process.
+  const hooks = typeof nodeModule.registerHooks === 'function'
+    ? nodeModule.registerHooks({ resolve: rejectRhinoImport })
+    : undefined;
+  if (!hooks) {
+    const loader = 'export const resolve = ' + rejectRhinoImport.toString();
+    nodeModule.register('data:text/javascript,' + encodeURIComponent(loader));
+  }
   const container = document.createElement('div');
   document.body.append(container);
   const uncaught: unknown[] = [];
@@ -60,6 +65,7 @@ it('keeps the ribbon and reload action available after the Rhino dynamic import 
   } finally {
     await act(async () => root.unmount());
     container.remove();
+    hooks?.deregister();
     sessionStorage.removeItem('ifclite:chunk-skew-reload-ts');
     __resetStaleDeploymentForTests();
   }

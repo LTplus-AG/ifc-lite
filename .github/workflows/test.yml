@@ -1689,6 +1689,22 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      # The entry status again, from this job's own inputs: a re-run of this
+      # job alone (the flake remedy) first turns an old verdict back to
+      # `pending`, so the gate is closed while it retests.
+      - name: Post the PR viewer selection status as pending
+        run: node scripts/ci-viewer-select-status.mjs --entry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT: ${{ github.event_name }}
+          LANE: ${{ needs.changes.outputs.lane }}
+          BATCH: ${{ needs.changes.outputs.batch }}
+          NOOP: ${{ needs.changes.outputs.noop }}
+          FRONTEND: ${{ needs.changes.outputs.frontend }}
+          RUST: ${{ needs.changes.outputs.rust }}
       # Re-derives the switch from the same inputs as the `if:` above, so a
       # job that runs when it should not still selects nothing.
       - name: Select viewer tests

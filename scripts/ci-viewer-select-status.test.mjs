@@ -229,6 +229,14 @@ test('WIRING: entry is the last step of `changes` and reads its final outputs', 
     assert.equal(ENTRY_STEP.env[env], CHANGES.outputs[output], `${env} is the job's own ${output} output`);
   }
   assert.ok(TESTS.needs.includes('changes'), 'the verdict always follows the entry status'); // @source-text-assertion-ok subject is the parsed needs list
+  // A re-run of the tests job alone re-posts pending before its verdict.
+  const rerun = TESTS.steps.find((s) => s.name === 'Post the PR viewer selection status as pending');
+  assert.ok(rerun, 'the tests job re-posts the entry status');
+  assert.ok(TESTS.steps.indexOf(rerun) < TESTS.steps.findIndex((s) => s.id === 'select'), 'before any test runs'); // @source-text-assertion-ok subject is the parsed step order
+  assert.equal(rerun.if, undefined, 'on every attempt');
+  for (const [env, output] of [['LANE', 'lane'], ['BATCH', 'batch'], ['NOOP', 'noop'], ['FRONTEND', 'frontend'], ['RUST', 'rust']]) {
+    assert.equal(rerun.env[env], `\${{ needs.changes.outputs.${output} }}`, env); // eslint-disable-line no-template-curly-in-string
+  }
 });
 
 test('WIRING: only `changes` and the tests job may write statuses, and both post on the PR head', () => {

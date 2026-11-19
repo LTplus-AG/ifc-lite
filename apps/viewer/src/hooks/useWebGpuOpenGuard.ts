@@ -152,7 +152,7 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
 
   const guard = useCallback((retry?: () => void, options?: WebGpuOpenGuardOptions): boolean => {
     const { setError, setLastLoadRetry } = useViewerStore.getState();
-    // A server-backed build meshes remotely; its wasm fallback hits the classifier's SIMD kind instead.
+    // Server-backed builds mesh remotely; a wasm fallback there meets the classifier's SIMD kind.
     if (options?.localEngine !== false && !serverUploadsEnabled() && !supportsWasmSimd()) {
       showLoadError(setError, setLastLoadRetry, t(SIMD_UNSUPPORTED_KEY), 'wasm_simd_unsupported', null);
       return false;

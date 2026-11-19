@@ -37,7 +37,10 @@ export async function withCutGeometry<T>(
   if (meshes.every(meshIsResident)) return cut(meshes);
   const [{ activeGeometryBackingTap }, { leaseStoreMeshes }] = await Promise.all([
     import('./backing-debug-hook'), import('./store-mesh-readback')]);
-  const models = [...getViewerState().models].map(([modelId, model]) => ({ modelId, meshes: model.geometryResult?.meshes ?? [] }));
+  const state = getViewerState();
+  const models = state.models.size > 0
+    ? [...state.models].map(([modelId, model]) => ({ modelId, meshes: model.geometryResult?.meshes ?? [] }))
+    : [{ modelId: '__legacy__', meshes: state.geometryResult?.meshes ?? [] }];
   const lease = await leaseStoreMeshes(activeGeometryBackingTap(), models, meshes, { slab: cutSlab(plane, depth) });
   try {
     return await cut(lease.meshes);

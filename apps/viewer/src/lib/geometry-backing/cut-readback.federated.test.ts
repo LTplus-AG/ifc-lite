@@ -13,6 +13,7 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { StoreApi } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
 import { Drawing2DGenerator, createSectionConfig } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
@@ -74,4 +75,27 @@ describe('section caps over released federated, placed geometry', () => {
       await geometryBackingCommand(store, undefined, { action: 'stop' });
     }
   });
+});
+
+it('#10887 extra caps read a released legacy geometryResult with no models', async () => {
+  const initial = useViewerStore.getState();
+  const meshes = [box(42, 0, 0)];
+  const geometry = { meshes };
+  const store = createStore<TapState>(() => ({
+    models: new Map([['__legacy__', { geometryResult: geometry }]]), geometryContentVersion: 0,
+  }));
+  useViewerStore.setState({ models: new Map(), geometryResult: geometry } as never);
+  try {
+    await geometryBackingCommand(store, undefined, { action: 'start', options: {
+      database: { name: `legacy-cap-${process.pid}`, locks: null },
+    } as never });
+    await geometryBackingCommand(store, undefined, { action: 'seal' });
+    const resident = await cut(meshes);
+    assert.equal(resident.length, 1);
+    releaseCpuMeshBuffers(meshes);
+    assert.deepEqual(await cut(meshes), resident, 'the complete legacy backing answers the cap');
+  } finally {
+    await geometryBackingCommand(store, undefined, { action: 'stop' });
+    useViewerStore.setState(initial, true);
+  }
 });

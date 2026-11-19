@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 // Canonical native selection/summary lifetime retained from MeasureQuantities (#7184).
-import { useMemo } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
@@ -14,7 +14,7 @@ import { pickElementQuantities, rollupQuantities, rollupGeometryVolumes, rollupM
 import { collectMeshAreas, type MeshAreaEntry } from './mesh-area';
 import type { MeshData } from '@ifc-lite/geometry';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
-import { releasedGeometryMetadata } from '@/lib/geometry-backing/released-geometry-metadata';
+import { releasedGeometryMetadata, releasedGeometryMetadataVersion, subscribeReleasedGeometryMetadata } from '@/lib/geometry-backing/released-geometry-metadata';
 import { pickIfcDensity, resolveElementWeight, rollupWeights, classifyWeightUnitKind, type WeightOutcome } from './weight';
 import { siConverterFor, densitySiConverterFor, quantitySetsFor } from './quantity-source';
 
@@ -50,19 +50,23 @@ export function useSelectionQuantitySummary() {
   // sit after `if (!store) continue` and silently drop an already-computed
   // area for any ref whose model lacked an `IfcDataStore`).
   //
-  // Its OWN memo, keyed on the mesh data alone: per-entity total mesh area
+  // Its OWN memo, keyed on mesh data and release/metadata lifetime: per-entity total mesh area
   // is selection-independent (it iterates every loaded model's triangles,
   // never `refs`), so recomputing it inside the selection-keyed `summary`
   // memo below would re-sum the whole federation's triangles on the main
   // thread on every selection click.
-  const meshAreaByGlobalId = useMemo(
-    () => withReleasedMeshAreas(collectMeshAreas(
-      models.size > 0
-        ? [...models.values()].map((m) => m.geometryResult?.meshes)
-        : [geometryResult?.meshes],
-    ), models, geometryResult),
-    [models, geometryResult],
-  );
+  const residentAreasByModel = useMemo(() => {
+    const sources = models.size > 0 ? models : new Map([['__legacy__', { geometryResult }]]);
+    return new Map([...sources].map(([id, model]) => [id, {
+      meshes: model.geometryResult?.meshes ?? [],
+      areas: collectMeshAreas([model.geometryResult?.meshes]),
+    }]));
+  }, [models, geometryResult]);
+  const metadataVersion = useSyncExternalStore(subscribeReleasedGeometryMetadata,
+    releasedGeometryMetadataVersion, releasedGeometryMetadataVersion);
+  const meshAreasByModel = useMemo(() => new Map([...residentAreasByModel].map(([id, source]) => [id,
+    withReleasedMeshAreas(new Map(source.areas), id, source.meshes),
+  ])), [residentAreasByModel, metadataVersion]);
 
   const summary = useMemo(() => {
     if (refs.length === 0) return null;
@@ -114,10 +118,11 @@ export function useSelectionQuantitySummary() {
 
     // Resolved directly from `refs`, BEFORE the store-dependent loop below —
     // not inside it — so no store-related branch in that loop can ever skip
-    // it again. `meshAreaByGlobalId` needs no store to build or to read.
+    // it again. `meshAreasByModel` needs no store to build or to read.
     let meshAreaIncomplete = 0;
     const meshAreas: Array<number | undefined> = refs.map((ref) => {
-      const entry = meshAreaByGlobalId.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId));
+      const entry = meshAreasByModel.get(models.size === 0 ? '__legacy__' : ref.modelId)
+        ?.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId));
       if (!entry) return undefined;
       if (entry.incomplete) meshAreaIncomplete += 1;
       return entry.area;
@@ -258,7 +263,7 @@ export function useSelectionQuantitySummary() {
       withoutStore,
       rescaled,
     };
-  }, [refs, models, ifcDataStore, geometryResult, meshAreaByGlobalId, mutationViews, mutationVersion]);
+  }, [refs, models, ifcDataStore, geometryResult, meshAreasByModel, mutationViews, mutationVersion]);
 
   return { summary, refs, models, activeModelId };
 }
@@ -269,23 +274,17 @@ export function useSelectionQuantitySummary() {
  * backing cannot answer for stays absent (no area), never 0 m².
  */
 function withReleasedMeshAreas(
-  areas: Map<number, MeshAreaEntry>,
-  models: ReadonlyMap<string, { geometryResult?: { meshes: MeshData[] } | null }>,
-  legacyGeometry?: { meshes: MeshData[] } | null,
+  areas: Map<number, MeshAreaEntry>, modelId: string, meshes: readonly MeshData[],
 ): Map<number, MeshAreaEntry> {
   const metadata = releasedGeometryMetadata();
-  const sources = models.size > 0 ? models : new Map([['__legacy__', { geometryResult: legacyGeometry }]]);
-  for (const [modelId, model] of sources) {
-    const answered = new Set<number>();
-    for (const mesh of model.geometryResult?.meshes ?? []) {
-      if (!isReleasedMesh(mesh) || answered.has(mesh.expressId)) continue;
-      answered.add(mesh.expressId);
-      const backed = metadata?.area(modelId, mesh.expressId);
-      // One released piece makes the resident sum partial. The backing holds
-      // the whole entity, so replace rather than add or keep that partial sum.
-      if (backed) areas.set(mesh.expressId, backed);
-      else areas.delete(mesh.expressId);
-    }
+  const answered = new Set<number>();
+  for (const mesh of meshes) {
+    if (!isReleasedMesh(mesh) || answered.has(mesh.expressId)) continue;
+    answered.add(mesh.expressId);
+    const backed = metadata?.area(modelId, mesh.expressId);
+    // Replace only this model's partial sum, never another model's same id.
+    if (backed) areas.set(mesh.expressId, backed);
+    else areas.delete(mesh.expressId);
   }
   return areas;
 }

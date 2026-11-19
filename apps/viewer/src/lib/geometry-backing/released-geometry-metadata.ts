@@ -22,5 +22,20 @@ export interface ReleasedGeometryMetadata {
 
 let provider: ReleasedGeometryMetadata | null = null;
 
-export function setReleasedGeometryMetadata(next: ReleasedGeometryMetadata | null): void { provider = next; }
+let version = 0;
+const listeners = new Set<() => void>();
+/** Lifecycle and in-place CPU release invalidate mounted metadata consumers. */
+export function notifyReleasedGeometryMetadataChanged(): void {
+  version += 1;
+  for (const listener of listeners) listener();
+}
+export function releasedGeometryMetadataVersion(): number { return version; }
+export function subscribeReleasedGeometryMetadata(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+export function setReleasedGeometryMetadata(next: ReleasedGeometryMetadata | null): void {
+  provider = next;
+  notifyReleasedGeometryMetadataChanged();
+}
 export function releasedGeometryMetadata(): ReleasedGeometryMetadata | null { return provider; }

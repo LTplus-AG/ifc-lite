@@ -101,3 +101,27 @@ test('the installed QuickJS core still splits where the runtime group expects', 
   assert.notEqual(largest, 'index.mjs', 'the runtime lives outside the index, in a file the group claims');
 });
 
+
+test('the #10587 groups claim only their allowlists and leave deferred pdf.js boundaries alone', () => {
+  const groups = chunks as Record<string, unknown>;
+  const src = '/repo/apps/viewer/src/';
+  const cases: Array<[string, string[], string[]]> = [
+    ['drawingSharedChunkGroup', ['hooks/useDxfUnderlay.ts', 'hooks/ingest/dxfIngest.ts', 'lib/drawing/drawing-runtime.ts'],
+      ['hooks/useDxfUnderlayPanel.ts', 'hooks/useDxfUnderlay.ts?worker']],
+    ['drawingLeavesChunkGroup', ['lib/drawing/center-dxf.ts', 'hooks/dxfDrawingBounds.ts', 'lib/appearance/face-masks.ts'],
+      ['lib/drawing/export-native-drawing.ts']],
+    ['appearanceWorkflowsChunkGroup', ['lib/appearance/scan/session.ts', 'lib/appearance/create-captured-mesh.ts'],
+      // Dynamic-import targets (pdf.js), eager history, and the textured-product
+      // family the Drawing panel's reference library imports.
+      ['lib/appearance/appearance-native-pdf.ts', 'lib/appearance/pdf/browser-backend.ts', 'lib/appearance/raster-calibration.ts',
+        'lib/appearance/history.ts', 'lib/appearance/textured-product-command.ts']],
+  ];
+  for (const [name, claimed, excluded] of cases) {
+    const group = groups[name] as Group;
+    assert.ok(group, name);
+    assert.equal(group.includeDependenciesRecursively, false, name);
+    assert.ok(group.priority > 0 && group.priority < 50, name);
+    for (const id of claimed) assert.ok(group.test.test(src + id), `${name} claims ${id}`);
+    for (const id of excluded) assert.equal(group.test.test(src + id), false, `${name} leaves ${id}`);
+  }
+});

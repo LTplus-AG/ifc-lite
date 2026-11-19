@@ -407,7 +407,7 @@ function convertRecord(
   }
   if (srcAttrs && tgtAttrs) {
     const replaced = replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
-    if (replaced !== undefined && replaced < args.length) { args[replaced] = '$'; finalAttrs = args.join(','); }
+    if (replaced !== undefined && replaced < args.length && args[replaced].trim() !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
     if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);
     } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs, entityType)) {

@@ -88,6 +88,8 @@ fn every_replacement_is_the_shared_fixture_and_a_same_index_pair_10758() {
         let old = attribute_names_for_schema("IFC2X3", ty).unwrap();
         let new = attribute_names_for_schema("IFC4", ty).unwrap();
         assert!(is_strict_attr_prefix(ty, old, new), "{ty}: IFC2X3 is a prefix of IFC4 once read as one name");
+        let x3 = attribute_names_for_schema("IFC4X3", ty).unwrap();
+        assert!(is_strict_attr_prefix(ty, old, x3), "{ty}: and of IFC4X3, so no pair keeps the source layout");
         let slot = replaced_slot(ty, old, new).expect("the pair sits at one index");
         assert_eq!(replaced_slot(ty, new, old), Some(slot), "either direction");
         assert_eq!(replaced_slot("IFCISHAPEPROFILEDEF", old, new), None, "an unlisted type replaces nothing");

@@ -20,6 +20,8 @@ beforeEach(async () => {
   seed([model('hello', await parseHelloWall())]);
   mirrored = [];
   useViewerStore.setState({
+    // 'hello' is the room's model, so its edits are mirrored; the mirrors are spies.
+    collabRoomId: 'room-a', collabRoomModels: new Map([['hello', { slotId: 'm0', pathPrefix: '/m0' }]]),
     mirrorPropertyEdit: (...args) => { mirrored.push(['edit', ...args]); },
     mirrorPropertyDelete: (...args) => { mirrored.push(['delete', ...args]); },
     mirrorAttributeEdit: (...args) => { mirrored.push(['attribute', ...args]); },
@@ -75,6 +77,23 @@ describe('undo and redo publish what the forward edit published (#10695)', () =>
     const view = state().getMutationView('hello')!;
     const mutation = view.setProperty(WALL_ID, 'Pset_Custom', 'Note', 'local', PropertyValueType.String);
     useViewerStore.setState({ undoStacks: new Map([['hello', [mutation]]]) });
+    state().undo('hello');
+    assert.deepEqual(take(), []);
+  });
+
+  it('after the room changes, an edit from the earlier room is undone locally only', () => {
+    state().setProperty('hello', WALL_ID, 'Pset_Custom', 'FireRating', 'REI30', PropertyValueType.String);
+    take();
+    useViewerStore.setState({ collabRoomId: 'room-b' });
+    state().undo('hello');
+    assert.deepEqual(take(), []);
+  });
+
+  it('an edit made outside a room is not published when undone later in one', () => {
+    useViewerStore.setState({ collabRoomId: null });
+    state().setProperty('hello', WALL_ID, 'Pset_Custom', 'FireRating', 'REI30', PropertyValueType.String);
+    take();
+    useViewerStore.setState({ collabRoomId: 'room-a' });
     state().undo('hello');
     assert.deepEqual(take(), []);
   });

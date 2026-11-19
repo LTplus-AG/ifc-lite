@@ -16,26 +16,34 @@ import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
+import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 
+interface ValueTypes { type: PropertyValueType; dataType?: string }
 interface PublishedEdit {
-  /** The new value's types, as the forward edit published them. */
-  valueType?: PropertyValueType;
-  dataType?: string;
+  /** The room the edit went to: after a room change, its undo is local only. */
+  roomId: string;
+  /** The value types the forward edit published, which a redo publishes again. */
+  forward?: ValueTypes;
   /** The property's types before the edit, which an undo restores. Absent when it did not exist or was not loaded. */
-  previousType?: PropertyValueType;
-  previousDataType?: string;
+  inverse?: ValueTypes;
 }
 
 const published = new WeakMap<Mutation, PublishedEdit>();
 
-/** The effective property row before an edit, for the types its undo must restore. */
-export function propertyBefore(view: MutablePropertyView, entityId: number, psetName: string, propName: string): { type: PropertyValueType; dataType?: string } | undefined {
-  return view.getForEntity(entityId).find(set => set.name === psetName)?.properties.find(property => property.name === propName);
+/** The room `modelId`'s edits are mirrored to, or null when they stay local. */
+export function mirroredRoom(state: ViewerState, modelId: string): string | null {
+  return state.collabRoomId && roomSlotFor(state, modelId) ? state.collabRoomId : null;
 }
 
-/** Record that `mutation` was mirrored into the room, so its undo and redo are too. */
-export function rememberPublishedEdit(mutation: Mutation, edit: PublishedEdit = {}): void {
-  published.set(mutation, edit);
+/** The effective property row before an edit, for the types its undo must restore. */
+export function propertyBefore(view: MutablePropertyView, entityId: number, psetName: string, propName: string): ValueTypes | undefined {
+  const row = view.getForEntity(entityId).find(set => set.name === psetName)?.properties.find(property => property.name === propName);
+  return row && { type: row.type, dataType: row.dataType };
+}
+
+/** Record that `mutation` was mirrored into `roomId`, so its undo and redo are too. */
+export function rememberPublishedEdit(mutation: Mutation, roomId: string, types: Omit<PublishedEdit, 'roomId'> = {}): void {
+  published.set(mutation, { roomId, ...types });
 }
 
 /** The source record's own value of `attrName`, which undoing an edit with no recorded prior value restores. */
@@ -52,13 +60,12 @@ function sourceAttributeValue(state: ViewerState, modelId: string, entityId: num
  */
 export function mirrorHistoryStep(get: () => ViewerState, modelId: string, mutation: Mutation, direction: 'undo' | 'redo'): void {
   const edit = published.get(mutation), state = get();
-  if (!edit || !state.canCollabEdit()) return;
+  if (!edit || edit.roomId !== state.collabRoomId || !state.canCollabEdit()) return;
   const { entityId, psetName, propName, attributeName } = mutation;
   if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (!attributeName) return;
     const value = direction === 'redo' ? mutation.newValue
-      : mutation.oldValue !== undefined && mutation.oldValue !== null ? mutation.oldValue
-        : sourceAttributeValue(state, modelId, entityId, attributeName);
+      : mutation.oldValue ?? sourceAttributeValue(state, modelId, entityId, attributeName);
     if (value === undefined) return;
     state.mirrorAttributeEdit(modelId, entityId, attributeName, value === null ? null : String(value));
     return;
@@ -71,8 +78,6 @@ export function mirrorHistoryStep(get: () => ViewerState, modelId: string, mutat
   }
   const value = direction === 'undo' ? mutation.oldValue : mutation.newValue;
   if (value === undefined) return;
-  const restoring = direction === 'undo' && edit.previousType !== undefined;
-  state.mirrorPropertyEdit(modelId, entityId, psetName, propName, value,
-    (restoring ? edit.previousType : edit.valueType) ?? PropertyValueType.String,
-    restoring ? edit.previousDataType : edit.dataType);
+  const types = direction === 'undo' ? edit.inverse ?? edit.forward : edit.forward;
+  state.mirrorPropertyEdit(modelId, entityId, psetName, propName, value, types?.type ?? PropertyValueType.String, types?.dataType);
 }

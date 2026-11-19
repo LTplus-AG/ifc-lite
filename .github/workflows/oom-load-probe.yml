@@ -16,7 +16,10 @@
 # Cases (the issue's acceptance):
 # - dense tfs, 300 MB, reported 4 GB, 3 GiB cap: refused (#10264 A1).
 # - dense tfs, 1100 MB, reported 8 GB, 6 GiB cap: awaiting-decision (the
-#   consent dialog at the browser-capped 8 GB report, #10353).
+#   consent dialog at the browser-capped 8 GB report, #10353). Pinned on
+#   purpose: a later hard refusal at 8 GB is a policy change and should turn
+#   this lane red until the case is updated. Clicking Continue is out of scope:
+#   the route decision on #10264 keeps consent at a reported 8 GB.
 # SwiftShader, so the numbers are not GPU memory. Not a PR gate; a red
 # scheduled run opens or updates the scheduled-lane issue.
 

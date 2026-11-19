@@ -114,6 +114,31 @@ fn issue_9584_a_taken_staging_name_is_not_removed() {
     fs::remove_dir_all(dir).unwrap();
 }
 
+/// #9584 review: a killed build runs no destructor, so its staging files
+/// stay. With a fixed PID (a container) the next build would choose the same
+/// names; it moves on to the next sequence instead, leaves the leftovers
+/// alone, and gives up only after `STAGING_ATTEMPTS` taken names.
+#[test]
+fn issue_9584_a_leftover_staging_name_is_skipped_not_fatal() {
+    let dir = scratch("leftover-staging");
+    fs::write(dir.join(".model.ifclite.1.0.spool"), b"killed build").unwrap();
+    fs::write(dir.join(".model.ifclite.1.1.tmp"), b"killed build").unwrap();
+    let mut sequence = 0..;
+    let next = || format!("1.{}", sequence.next().unwrap());
+    let (staging, _spool) = Staging::create_unused(&dir, "model.ifclite", next).unwrap();
+    assert_eq!(staging.spool, dir.join(".model.ifclite.1.2.spool"), "the first free sequence");
+    drop(staging);
+    let leftovers = vec![".model.ifclite.1.0.spool".to_owned(), ".model.ifclite.1.1.tmp".to_owned()];
+    assert_eq!(listing(&dir), leftovers, "the leftovers are not ours to remove; ours are gone");
+
+    match Staging::create_unused(&dir, "model.ifclite", || "1.0".to_owned()) {
+        Err(CacheError::Io { source, .. }) => assert_eq!(source.kind(), io::ErrorKind::AlreadyExists),
+        other => panic!("expected the attempts to run out, got {:?}", other.err()),
+    }
+    assert_eq!(listing(&dir), leftovers);
+    fs::remove_dir_all(dir).unwrap();
+}
+
 /// #9584: the u32 bound, end to end through the streaming writer, with an
 /// injected limit instead of a 4 GiB model: refused with `TooLarge`, and
 /// cleaned up like any other failure.

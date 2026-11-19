@@ -18,7 +18,10 @@
 //!
 //! Both staging files live in the output's directory, so the rename is
 //! atomic and the spool needs no space elsewhere. [`Staging`] removes them on
-//! every error path, including a panic that unwinds.
+//! every error path, including a panic that unwinds. A process that is killed
+//! or aborts (the release profile is `panic = "abort"`) runs no destructor and
+//! leaves `.<output name>.<pid>.<n>.tmp` and `.spool` behind; a later build
+//! skips a taken name rather than failing on it.
 
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
@@ -38,6 +41,10 @@ pub(crate) const BATCH_JOBS: usize = 1024;
 
 const IO_BUFFER: usize = 1 << 20;
 
+/// Staging names tried before giving up. Each taken one is a leftover or a
+/// concurrent build, so this many taken names means something else is wrong.
+const STAGING_ATTEMPTS: u32 = 1024;
+
 fn io_error(context: impl Into<String>) -> impl FnOnce(io::Error) -> CacheError {
     let context = context.into();
     move |source| CacheError::Io { context, source }
@@ -56,18 +63,38 @@ struct Staging {
 }
 
 impl Staging {
-    /// Name both files beside `output` and create the spool.
+    /// Name both files beside `output` and create them. A taken name,
+    /// typically one a killed build left behind (with a fixed PID, as in a
+    /// container, every retry would pick the same names), moves on to the
+    /// next sequence number rather than failing or touching that file.
     fn create(output: &Path) -> Result<(Self, File), CacheError> {
         static SEQUENCE: AtomicU64 = AtomicU64::new(0);
         let Some(name) = output.file_name().map(OsStr::to_string_lossy) else {
             let error = io::Error::new(io::ErrorKind::InvalidInput, "not a file path");
             return Err(io_error(format!("output {}", output.display()))(error));
         };
-        let unique = format!("{}.{}", std::process::id(), SEQUENCE.fetch_add(1, Ordering::Relaxed));
-        Self::create_named(parent_dir(output), &name, &unique)
+        let pid = std::process::id();
+        Self::create_unused(parent_dir(output), &name, || format!("{pid}.{}", SEQUENCE.fetch_add(1, Ordering::Relaxed)))
     }
 
-    /// [`Staging::create`] with the unique part of the names given.
+    /// [`Staging::create_named`] with each `next_unique` in turn until both
+    /// names are free, at most [`STAGING_ATTEMPTS`] times.
+    fn create_unused(dir: &Path, name: &str, mut next_unique: impl FnMut() -> String) -> Result<(Self, File), CacheError> {
+        let mut attempt = 1;
+        loop {
+            match Self::create_named(dir, name, &next_unique()) {
+                Err(CacheError::Io { source, .. })
+                    if source.kind() == io::ErrorKind::AlreadyExists && attempt < STAGING_ATTEMPTS =>
+                {
+                    attempt += 1;
+                }
+                result => return result,
+            }
+        }
+    }
+
+    /// Create the spool and reserve the temporary file under exactly these
+    /// names. A taken name is an error, and the file is left alone.
     fn create_named(dir: &Path, name: &str, unique: &str) -> Result<(Self, File), CacheError> {
         let mut staging = Self {
             temp: dir.join(format!(".{name}.{unique}.tmp")),
@@ -83,6 +110,14 @@ impl Staging {
             .open(&staging.spool)
             .map_err(io_error(format!("create spool {}", staging.spool.display())))?;
         staging.spool_owned = true;
+        // Reserved now, so a taken temporary name is found before the build
+        // rather than after it. On failure `drop` removes the spool.
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staging.temp)
+            .map_err(io_error(format!("create {}", staging.temp.display())))?;
+        staging.temp_owned = true;
         Ok((staging, spool))
     }
 
@@ -92,12 +127,8 @@ impl Staging {
         let temp_context = || format!("write {}", self.temp.display());
         let mut spool = spool.file.into_inner().map_err(|error| io_error("flush spool")(error.into_error()))?;
         spool.seek(SeekFrom::Start(0)).map_err(io_error("rewind spool"))?;
-        let mut temp = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&self.temp)
-            .map_err(io_error(temp_context()))?;
-        self.temp_owned = true;
+        // The file `create_named` reserved, still empty.
+        let mut temp = OpenOptions::new().write(true).truncate(true).open(&self.temp).map_err(io_error(temp_context()))?;
         temp.write_all(prefix).map_err(io_error(temp_context()))?;
         let copied = io::copy(&mut BufReader::with_capacity(IO_BUFFER, spool), &mut temp)
             .map_err(io_error(temp_context()))?;

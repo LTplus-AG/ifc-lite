@@ -134,6 +134,35 @@ fn issue_9584_a_head_that_crosses_the_limit_is_refused_at_finish() {
     }
 }
 
+/// #9584 review: since `append` counts the smallest head, the exact check in
+/// `finish` only decides when the real head is larger than that, so a
+/// `CoordinateInfo` with its optional fields set is what reaches it: every
+/// chunk fits the lower bound, and only the finished head crosses the limit.
+#[test]
+fn issue_9584_a_head_larger_than_the_smallest_is_refused_at_finish() {
+    let meshes = [sample(1, [0.0; 3])];
+    let info = CoordinateInfo {
+        building_rotation: Some(0.5),
+        length_unit_scale: Some(0.001),
+        site_origin: Some([1.0, 2.0, 3.0]),
+        ..CoordinateInfo::default()
+    };
+    let finished = |limits: Limits| {
+        let mut body = Vec::new();
+        let mut writer = SectionWriter::new(false, 0, limits);
+        writer.push(&meshes[0], &mut body)?;
+        writer.finish(info.clone(), &mut body).map(|head| head.section_length())
+    };
+    let exact = finished(Limits::FORMAT).unwrap();
+    let (smallest, _) = section(&meshes, false, Limits::FORMAT).unwrap();
+    assert!(exact > smallest.section_length(), "the optional fields grow the head");
+    assert_eq!(finished(limited(exact)).unwrap(), exact, "a cache exactly at the limit is fine");
+    match finished(limited(exact - 1)) {
+        Err(CacheError::TooLarge(at_least)) => assert_eq!(at_least, exact),
+        other => panic!("expected TooLarge, got {other:?}"),
+    }
+}
+
 #[test]
 fn the_limit_counts_from_the_section_start() {
     let meshes = [sample(1, [0.0; 3])];

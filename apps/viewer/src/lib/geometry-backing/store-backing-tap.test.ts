@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
-import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
@@ -189,5 +189,34 @@ describe('store geometry backing tap (test/debug only)', () => {
     assert.equal(metadata.bounds('meta', 1), undefined, 'a superseded generation answers nothing');
     await tap.stop();
     assert.equal(releasedGeometryMetadata(), null);
+  });
+
+  it('lost instancing stays lost through later edits until a fresh shard set re-supplies it', async () => {
+    const store = storeWith({ st: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('st', [shardBytes(77)], instancedShardGeneration());
+    await tap.seal();
+    const acknowledged = tap.backing('st')!;
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // occurrences may have moved
+    // A recolour after the bump must not fall back to the pre-bump occurrences.
+    store.setState((state) => ({ models: new Map([['st', { geometryResult: {
+      meshes: state.models.get('st')!.geometryResult!.meshes.map((m) => ({ ...m, color: [1, 0, 0, 1] as [number, number, number, number] })) }, idOffset: 0 }]]) }));
+    const [stale] = await tap.seal();
+    assert.equal(stale.instancedLost, true, 'the invalidation survives the recolour');
+    assert.equal(stale.complete, false);
+    assert.equal(acknowledged.isCurrent, true, 'the acknowledged durable copy is preserved');
+    // A shard arriving without a fresh supply (same queue generation) is not proof of current transforms.
+    enqueueInstancedShards('st', [shardBytes(78)], instancedShardGeneration());
+    assert.equal((await tap.seal())[0].complete, false);
+    // A full re-supply after a queue reset carries the current transforms.
+    discardInstancedShards();
+    enqueueInstancedShards('st', [shardBytes(79)], instancedShardGeneration());
+    const [recovered] = await tap.seal();
+    assert.equal(recovered.complete, true, recovered.error);
+    assert.equal(acknowledged.isCurrent, false, 'retired only now');
+    const ids = [];
+    for await (const shard of tap.backing('st')!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    assert.deepEqual(ids, [79], 'only the fresh occurrences, never the stale ones');
+    await tap.stop();
   });
 });

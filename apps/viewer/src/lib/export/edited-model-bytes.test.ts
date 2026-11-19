@@ -90,6 +90,21 @@ it('LandXML preflight sees pending edits in the legacy single-model session (#10
     const bytes = mod.editedModelBytes(selection.store, useViewerStore.getState().getMutationView(selection.modelId));
     const exported = await parse(bytes);
     assert.equal(exported.entities.getName(10), 'Edited terrain');
+
+    // A pre-existing default-key overlay still exists in some legacy sessions.
+    const prior = new MutablePropertyView(store.properties ?? null, 'default');
+    configureMutationView(prior, store);
+    prior.setAttribute(10, 'Name', 'Earlier terrain', 'Terrain');
+    useViewerStore.getState().registerMutationView('default', prior);
+    const read = async (modelId: string) => {
+      const current = useViewerStore.getState().getMutationView(modelId);
+      return (await parse(mod!.editedModelBytes(selection.store, current))).entities.getName(10);
+    };
+    assert.equal(await read('default'), 'Edited terrain', 'the canonical overlay wins over an earlier alias');
+    assert.equal(await read('legacy'), 'Edited terrain');
+    useViewerStore.getState().clearMutationView('legacy');
+    assert.equal(await read('legacy'), 'Terrain', 'clear discards the canonical overlay through an alias');
+    assert.equal(await read('default'), 'Terrain', 'clear also discards the earlier alias overlay');
   } finally {
     useViewerStore.setState(snapshot);
   }

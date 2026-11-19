@@ -24,8 +24,10 @@ export const LEGACY_MODEL_ID = 'default';
 /** Key used for the mutation view in a legacy single-model session. */
 export const LEGACY_MUTATION_MODEL_ID = '__legacy__';
 
+export const LEGACY_MUTATION_MODEL_IDS: readonly string[] = [LEGACY_MUTATION_MODEL_ID, LEGACY_MODEL_ID, 'legacy'];
+
 export function isLegacyMutationRef(state: Pick<ViewerState, 'models'>, modelId: string): boolean {
-  return state.models.size === 0 && (modelId === 'legacy' || modelId === LEGACY_MODEL_ID || modelId === LEGACY_MUTATION_MODEL_ID);
+  return state.models.size === 0 && LEGACY_MUTATION_MODEL_IDS.includes(modelId);
 }
 
 export function normalizeMutationModelId(state: Pick<ViewerState, 'models'>, modelId: string): string {

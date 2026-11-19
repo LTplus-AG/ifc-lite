@@ -12,7 +12,7 @@ import { modelEditTarget, readModelEditTarget } from './mutation-modelling-recor
 import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
-import { normalizeMutationModelId } from '@/sdk/adapters/model-compat';
+import { isLegacyMutationRef, LEGACY_MUTATION_MODEL_IDS, normalizeMutationModelId } from '@/sdk/adapters/model-compat';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
@@ -1060,7 +1060,8 @@ export const createMutationSlice: StateCreator<
   // Mutation View Management
   getMutationView: (modelId) => {
     const state = get();
-    return state.mutationViews.get(modelId) ?? state.mutationViews.get(normalizeMutationModelId(state, modelId)) ?? null;
+    const canonicalId = normalizeMutationModelId(state, modelId);
+    return state.mutationViews.get(canonicalId) ?? state.mutationViews.get(modelId) ?? null;
   },
 
   registerMutationView: (modelId, view) => {
@@ -1079,7 +1080,10 @@ export const createMutationSlice: StateCreator<
       let history = { undoStacks: initial.undoStacks, redoStacks: initial.redoStacks,
         mutationBatchTags: initial.mutationBatchTags, mutationMeshTranslations: initial.mutationMeshTranslations };
       const discarded: Mutation[] = [];
-      for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
+      const requestedIds = typeof modelIds === 'string' ? [modelIds] : modelIds;
+      const clearedIds = new Set(requestedIds.flatMap(modelId =>
+        isLegacyMutationRef(initial, modelId) ? LEGACY_MUTATION_MODEL_IDS : [modelId]));
+      for (const modelId of clearedIds) {
         const undo = history.undoStacks.get(modelId) ?? [], redo = history.redoStacks.get(modelId) ?? [];
         const keepGeoref = options?.keepGeoref === true && [...undo, ...redo].some(isGeorefMutation);
         // What still makes the model unsaved without its view: a pending georeference

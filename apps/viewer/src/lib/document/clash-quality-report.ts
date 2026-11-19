@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { UseTranslationResult } from '@/i18n';
 import type { SavedClashReport } from '../clash/saved-report-schema';
-import { displayQualityPercent, qualityBand, type QualityGateRow } from '../clash/quality-gate';
+import { displayQualityPercent } from '../clash/quality-gate';
+import { describeQualityGate } from './quality-gate-block';
 import { literalTemplateText } from './bindings';
 import { freshBlockId, freshDocumentId } from './persistence';
 import { DOCUMENT_VERSION, type DocumentBlock, type DocumentSpec } from './types';
@@ -34,18 +35,10 @@ export function qualityGateDocument(report: SavedClashReport, t: UseTranslationR
   const blocks: DocumentBlock[] = [text(report.name, 'title'),
     text(t('clashQuality.captured', { when: report.savedAt }), 'small'), text(t('clashQuality.policy'), 'small')];
   for (const row of report.qualityGates.rows) {
-    const band = row.percent === null ? null : qualityBand(row.percent, report.qualityGates.config[row.kind]);
-    const label = band?.label ?? t(`clashQuality.${row.status as Exclude<QualityGateRow['status'], 'evaluated'>}`);
+    const { ring, label, details, policy } = describeQualityGate(report, row, report.qualityGates.config[row.kind], t);
     blocks.push(text(row.name, 'heading'),
-      { kind: 'image', id: freshBlockId(), dataUrl: renderRing(row.percent, band?.color ?? '#64748b', row.percent === null ? undefined : displayQualityPercent(row.percent, report.qualityGates.config[row.kind])), height: 90, align: 'left', caption: label },
-      text([t('clashQuality.metric'), `${row.percent === null ? '—' : displayQualityPercent(row.percent, report.qualityGates.config[row.kind]) + '%'} · ${label}`,
-        t('clashQuality.counts', { checked: row.checked ?? '—', affected: row.affected ?? '—' }),
-        t('clashQuality.models', { models: row.models.map(id => report.models.find(model => model.id === id)?.name ?? id).join(', ') || '—' }),
-        t('clashQuality.tolerance', { tolerance: row.tolerance }),
-        t('clashQuality.detectionExclusions', { value: row.excludeVoidsAndHosts ? t('clashQuality.enabled') : t('clashQuality.disabled') }),
-        ...(row.clearance !== undefined ? [t('clashQuality.clearance', { clearance: row.clearance })] : []),
-      ].join('\n')));
-    const policy = report.qualityGates.config[row.kind].map(band => `${band.minimum}%: ${band.label} (${band.color})`).join('; ');
+      { kind: 'image', id: freshBlockId(), dataUrl: renderRing(ring.percent, ring.color, ring.percent === null ? undefined : ring.display.slice(0, -1)), height: 90, align: 'left', caption: label },
+      text(details.join('\n')));
     blocks.push(text(policy, 'small'));
   }
   blocks.push(text(t('clashQuality.revision', { revision: report.run.mutationRevision ?? t('clashQuality.unknown') }), 'small'));

@@ -22,6 +22,8 @@ import type { DocumentLayout, ResolvedBlock } from './compose.js';
 import { composeResolvedDocument, documentTextMeasure, pageBandImageAspects } from './document-layout.js';
 import { flattenExportModel, flattenRawModel, type TableState } from './resolve-table.js';
 import { TABLE_ROWS_DEFAULT, type DocumentSpec } from './types.js';
+import { qualityGateRingSvg, resolveQualityGate } from './quality-gate-block';
+import type { SavedClashReport } from '../clash/saved-report-schema';
 import { ringSvg } from '../validation/manual/ring.js';
 import type { DocumentLabelFormatter } from './document-labels.js';
 import { documentTableColumns, documentTableLabels, tableMessage, tableTitle } from './document-table-labels.js';
@@ -50,6 +52,8 @@ export interface DocumentPdfInput {
   snapshotIds: (blockId: string) => readonly number[];
   /** BCF topics by GUID. */
   topics: Map<string, BCFTopic>;
+  /** Saved reports provide the immutable evidence selected by a quality gate block. */
+  qualityGateReports?: readonly SavedClashReport[];
   /** Table block id → its list run (#5142); a block with no entry prints as still resolving. */
   tables: ReadonlyMap<string, TableState>;
 }
@@ -68,6 +72,7 @@ export interface DocumentPdfResult {
   tableFailures: string[];
   /** Missing sources, refused filters and aggregation errors printed in the chart's place. */
   chartFailures?: string[];
+  qualityGateFailures?: string[];
 }
 
 /** The browser's image measure: decode the data URL. */
@@ -174,6 +179,9 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         blocks.push({ ...block, kind: 'manual-report' });
         break;
       }
+      case 'quality-gate':
+        blocks.push(resolveQualityGate(block, input.qualityGateReports ?? [], input.labels));
+        break;
       case 'topic': {
         const topic = input.topics.get(block.guid);
         if (!topic) {
@@ -240,6 +248,8 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
   const doc = await seams.createDoc(format, input.document.page.orientation);
   const blocks = await resolveBlocks(input, seams.imageSize, result);
 
+  const missingGates = blocks.flatMap(block => block.kind === 'quality-gate' && !block.ring ? [block.id] : []);
+  if (missingGates.length) result.qualityGateFailures = missingGates;
   const logoAspects = await pageBandImageAspects(input.document, seams.imageSize);
   const layout = composeResolvedDocument(input.document, blocks, seams.now().toLocaleString(), documentTextMeasure(doc), input.labels,
     logoAspects, localIsoDate(input.bindings.today));
@@ -315,6 +325,9 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
         case 'ring':
           // Colour lives only in the ring; its counts are printed beside it in words (#6401).
           await doc.svg(ringSvg(item.counts, item.size), item.x, item.y, item.size, item.size);
+          break;
+        case 'quality-gate-ring':
+          await doc.svg(qualityGateRingSvg(item), item.x, item.y, item.w, item.h);
           break;
         case 'topic-snapshot': {
           const topic = topicsByBlock.get(item.blockId);

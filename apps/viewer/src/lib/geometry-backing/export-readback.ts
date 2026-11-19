@@ -25,6 +25,7 @@ import { activeGeometryBackingTap } from './backing-debug-hook';
 import { GeometryUnavailableError, meshIsResident } from './geometry-readback';
 import { readInstancedOccurrences } from './instanced-readback';
 import { leaseStoreMeshes } from './store-mesh-readback';
+import { storeGeometryOwners } from './store-geometry-owners';
 
 export const DEFAULT_EXPORT_READBACK_BYTES = 1024 * 1024 * 1024;
 
@@ -37,14 +38,15 @@ export interface ReleasedExportGeometry {
 
 export async function prepareReleasedExport(
   state: ViewerState, scene: Pick<SceneContents, 'placeAppearanceSource'> | undefined,
-  modelIds: Iterable<string> = state.models.keys(), budgetBytes = DEFAULT_EXPORT_READBACK_BYTES,
+  modelIds?: Iterable<string>, budgetBytes = DEFAULT_EXPORT_READBACK_BYTES,
 ): Promise<ReleasedExportGeometry> {
   const tap = activeGeometryBackingTap();
   // A federation can publish its next model before that model has geometry.
   // Such an entry contributes nothing to the view and needs no backing yet.
   // Preserve shard-only geometry and reject explicitly missing model owners.
-  const owners = [...modelIds].filter((modelId) => {
-    const model = state.models.get(modelId);
+  const sources = new Map(storeGeometryOwners(state).map((owner) => [owner.modelId, owner]));
+  const owners = [...(modelIds ?? sources.keys())].filter((modelId) => {
+    const model = sources.get(modelId);
     return !model || model.geometryResult != null || (tap?.backing(modelId)?.directory.shards.length ?? 0) > 0;
   });
   let bytes = 0;
@@ -59,7 +61,7 @@ export async function prepareReleasedExport(
   const flat = new Map<MeshData, MeshData>();
   const instanced: MeshData[] = [];
   for (const modelId of owners) {
-    const meshes = state.models.get(modelId)?.geometryResult?.meshes ?? [];
+    const meshes = sources.get(modelId)?.geometryResult?.meshes ?? [];
     const released = meshes.filter((mesh) => !meshIsResident(mesh));
     if (released.length > 0) {
       const lease = await leaseStoreMeshes(tap, [{ modelId, meshes }], released, { budgetBytes });

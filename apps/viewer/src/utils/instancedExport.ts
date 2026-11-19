@@ -41,6 +41,7 @@ import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
 import { getViewerState } from '@/store/viewerStoreHandle';
 import { GeometryUnavailableError } from '@/lib/geometry-backing/geometry-readback';
+import { storeGeometryOwners } from '@/lib/geometry-backing/store-geometry-owners';
 import { releasedCopyFrom } from '@/lib/geometry-backing/store-mesh-readback';
 import type { ReleasedExportGeometry } from '@/lib/geometry-backing/export-readback';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -126,7 +127,7 @@ export function geometryReleased(geometryResult?: GeometryResult): boolean {
   const renderer = getGlobalRenderer();
   if (renderer && sceneGeometryReleased(renderer)) return true;
   if (geometryResult) return !geometryResult.meshes.every(meshIsResident);
-  for (const model of getViewerState().models.values()) if (!(model.geometryResult?.meshes ?? []).every(meshIsResident)) return true;
+  for (const model of storeGeometryOwners(getViewerState())) if (!(model.geometryResult?.meshes ?? []).every(meshIsResident)) return true;
   return false;
 }
 

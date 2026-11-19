@@ -15,6 +15,7 @@ import { getViewerState } from '@/store/viewerStoreHandle';
 import { meshIsResident } from './geometry-readback';
 import type { Slab } from './store-mesh-readback';
 import type { Vec3 } from './backing-directory';
+import { storeGeometryOwners } from './store-geometry-owners';
 
 const AXES: Record<'x' | 'y' | 'z', Vec3> = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 /** Covers float noise in the cutter's own plane test. */
@@ -38,9 +39,7 @@ export async function withCutGeometry<T>(
   const [{ activeGeometryBackingTap }, { leaseStoreMeshes }] = await Promise.all([
     import('./backing-debug-hook'), import('./store-mesh-readback')]);
   const state = getViewerState();
-  const models = state.models.size > 0
-    ? [...state.models].map(([modelId, model]) => ({ modelId, meshes: model.geometryResult?.meshes ?? [] }))
-    : [{ modelId: '__legacy__', meshes: state.geometryResult?.meshes ?? [] }];
+  const models = storeGeometryOwners(state).map(({ modelId, geometryResult }) => ({ modelId, meshes: geometryResult?.meshes ?? [] }));
   const lease = await leaseStoreMeshes(activeGeometryBackingTap(), models, meshes, { slab: cutSlab(plane, depth) });
   try {
     return await cut(lease.meshes);

@@ -39,12 +39,18 @@ const releasedSources = new WeakMap<MeshData, MeshData>();
 
 /** The meshes a released copy descends from, nearest first (#10264 readback provenance). */
 export function* releasedAncestry(mesh: MeshData): Iterable<MeshData> {
-  for (let at = releasedSources.get(mesh); at; at = releasedSources.get(at)) yield at;
+  const seen = new Set<MeshData>([mesh]);
+  for (let at = releasedSources.get(mesh); at && !seen.has(at); at = releasedSources.get(at)) {
+    seen.add(at);
+    yield at;
+  }
 }
 
 export function carryReleasedMesh(source: MeshData, copy: MeshData): MeshData {
   registerCpuMeshCopy(source, copy);
-  if (source !== copy && isReleasedMesh(source)) releasedSources.set(copy, source);
+  // A copy can outlive a later release of its shared buffers. Record its
+  // source while resident too; release clears both registered aliases.
+  if (source !== copy) releasedSources.set(copy, source);
   const provenance = released.get(source);
   if (provenance) released.set(copy, provenance);
   const counts = releasedCounts.get(source);

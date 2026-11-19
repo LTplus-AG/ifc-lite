@@ -60,13 +60,15 @@ describe('section caps over released federated, placed geometry', () => {
         ...a.map((m) => carryReleasedMesh(m, { ...m, modelIndex: 0 })),
         ...b.map((m) => placedMesh(carryReleasedMesh(m, { ...m, modelIndex: 1 }), [10, 0, 0])),
       ];
-      const resident = await cut(consumerInput());
+      const heldCopies = consumerInput();
+      const resident = await cut(heldCopies);
       assert.equal(resident.length, 3);
       releaseCpuMeshBuffers([...a, ...b]);
-      const released = await cut(consumerInput());
+      assert.ok(heldCopies.every((mesh) => mesh.positions.length === 0), 'registered copies release their buffers too');
+      const released = await cut(heldCopies);
       assert.deepEqual(released, resident, 'same polygons, including the translated federated model');
       // The export collectors (Cesium, GLB, KMZ) receive the same kind of copies.
-      const input = consumerInput();
+      const input = heldCopies;
       const exported = await withReleasedExportGeometry(() => withInstancedMeshes(
         { meshes: input, totalTriangles: 36, totalVertices: 24, coordinateInfo: {} as never }, null));
       assert.deepEqual(exported.meshes.map((m) => [m.expressId, m.modelIndex, m.origin ?? null, m.positions.length]),

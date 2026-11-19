@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RefObject } from 'react';
 import type { StoreApi } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
@@ -188,5 +189,36 @@ describe('exports over released geometry', () => {
         setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
       }
     });
+  }
+});
+
+it('#10887 unscoped legacy exports restore released flat geometry without a renderer', async () => {
+  const initial = useViewerStore.getState();
+  const geometry: GeometryResult = { meshes: [mesh(42, 7)], totalTriangles: 1, totalVertices: 3,
+    coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+  const expected = [...geometry.meshes[0].positions];
+  const store = createStore<TapState>(() => ({
+    models: new Map([['__legacy__', { geometryResult: geometry }]]), geometryContentVersion: 0,
+  }));
+  useViewerStore.setState({ models: new Map(), geometryResult: geometry, activeModelId: null });
+  setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  try {
+    await geometryBackingCommand(store, undefined, { action: 'start', options: {
+      database: { name: `legacy-export-${process.pid}`, locks: null },
+    } as never });
+    await geometryBackingCommand(store, undefined, { action: 'seal' });
+    releaseCpuMeshBuffers(geometry.meshes);
+    let result: GeometryResult | undefined;
+    await assert.doesNotReject(async () => {
+      result = await withReleasedExportGeometry(() => withInstancedMeshes(geometry, null));
+    }, 'view PDF and KMZ-style unscoped collectors include the legacy owner');
+    assert.ok(result);
+    assert.deepEqual([...result.meshes[0].positions], expected);
+    assert.equal(result.totalTriangles, 1);
+    assert.equal(geometry.meshes[0].positions.length, 0, 'export never restores resident store arrays');
+  } finally {
+    await geometryBackingCommand(store, undefined, { action: 'stop' });
+    useViewerStore.setState(initial, true);
+    setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   }
 });

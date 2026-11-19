@@ -37,8 +37,12 @@ enum lost members in that direction (#5365).
 | IfcBeam.PredefinedType | IfcBeamTypeEnum | CORNICE, DIAPHRAGM, EDGEBEAM, GIRDER_SEGMENT, HATSTONE, PIERCAP | `.USERDEFINED.`, name in `ObjectType` |
 | IfcBeamStandardCase.PredefinedType | IfcBeamTypeEnum | CORNICE, DIAPHRAGM, EDGEBEAM, GIRDER_SEGMENT, HATSTONE, PIERCAP | `.USERDEFINED.`, name in `ObjectType` |
 | IfcBeamType.PredefinedType | IfcBeamTypeEnum | CORNICE, DIAPHRAGM, EDGEBEAM, GIRDER_SEGMENT, HATSTONE, PIERCAP | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
 | IfcBuildingElementPart.PredefinedType | IfcBuildingElementPartTypeEnum | APRON, ARMOURUNIT, SAFETYCAGE | `.USERDEFINED.`, name in `ObjectType` |
 | IfcBuildingElementPartType.PredefinedType | IfcBuildingElementPartTypeEnum | APRON, ARMOURUNIT, SAFETYCAGE | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
 | IfcCableCarrierFitting.PredefinedType | IfcCableCarrierFittingTypeEnum | CONNECTOR, JUNCTION, TRANSITION | `.USERDEFINED.`, name in `ObjectType` |
 | IfcCableCarrierFittingType.PredefinedType | IfcCableCarrierFittingTypeEnum | CONNECTOR, JUNCTION, TRANSITION | `.USERDEFINED.`, name in `ElementType` |
 | IfcCableCarrierSegment.PredefinedType | IfcCableCarrierSegmentTypeEnum | CABLEBRACKET, CATENARYWIRE, DROPPER | `.USERDEFINED.`, name in `ObjectType` |
@@ -67,6 +71,7 @@ enum lost members in that direction (#5365).
 | IfcDoorStandardCase.OperationType | IfcDoorTypeOperationEnum | DOUBLE_DOOR_LIFTING_VERTICAL, LIFTING_HORIZONTAL, LIFTING_VERTICAL_LEFT, LIFTING_VERTICAL_RIGHT, REVOLVING_VERTICAL | `.USERDEFINED.`, name in `UserDefinedOperationType` |
 | IfcDoorType.PredefinedType | IfcDoorTypeEnum | BOOM_BARRIER, TURNSTILE | `.USERDEFINED.`, name in `ElementType` |
 | IfcDoorType.OperationType | IfcDoorTypeOperationEnum | DOUBLE_DOOR_LIFTING_VERTICAL, LIFTING_HORIZONTAL, LIFTING_VERTICAL_LEFT, LIFTING_VERTICAL_RIGHT, REVOLVING_VERTICAL | `.USERDEFINED.`, name in `UserDefinedOperationType` |
+| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcElectricFlowStorageDevice.PredefinedType | IfcElectricFlowStorageDeviceTypeEnum | CAPACITOR, COMPENSATOR, INDUCTOR, RECHARGER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcElectricFlowStorageDeviceType.PredefinedType | IfcElectricFlowStorageDeviceTypeEnum | CAPACITOR, COMPENSATOR, INDUCTOR, RECHARGER | `.USERDEFINED.`, name in `ElementType` |
 | IfcElementAssembly.PredefinedType | IfcElementAssemblyTypeEnum | ABUTMENT, CROSS_BRACING, DECK, DILATATIONPANEL, ENTRANCEWORKS, GRID, MAST, PIER, PYLON, RAIL_MECHANICAL_EQUIPMENT_ASSEMBLY, SHELTER, SIGNALASSEMBLY, SUMPBUSTER, SUPPORTINGASSEMBLY, SUSPENSIONASSEMBLY, TRACKPANEL, TRACTION_SWITCHING_ASSEMBLY, TRAFFIC_CALMING_DEVICE, TURNOUTPANEL | `.USERDEFINED.`, name in `ObjectType` |
@@ -75,6 +80,7 @@ enum lost members in that direction (#5365).
 | IfcFireSuppressionTerminalType.PredefinedType | IfcFireSuppressionTerminalTypeEnum | FIREMONITOR | `.USERDEFINED.`, name in `ElementType` |
 | IfcFlowInstrument.PredefinedType | IfcFlowInstrumentTypeEnum | COMBINED, VOLTMETER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFlowInstrumentType.PredefinedType | IfcFlowInstrumentTypeEnum | COMBINED, VOLTMETER | `.USERDEFINED.`, name in `ElementType` |
+| IfcFooting.PredefinedType | IfcFootingTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFurniture.PredefinedType | IfcFurnitureTypeEnum | TECHNICALCABINET | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFurnitureType.PredefinedType | IfcFurnitureTypeEnum | TECHNICALCABINET | `.USERDEFINED.`, name in `ElementType` |
 | IfcGeographicElement.PredefinedType | IfcGeographicElementTypeEnum | SOIL_BORING_POINT, VEGETATION | `.USERDEFINED.`, name in `ObjectType` |
@@ -97,6 +103,7 @@ enum lost members in that direction (#5365).
 | IfcRailingType.PredefinedType | IfcRailingTypeEnum | FENCE | `.USERDEFINED.`, name in `ElementType` |
 | IfcReinforcingBar.PredefinedType | IfcReinforcingBarTypeEnum | SPACEBAR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcReinforcingBarType.PredefinedType | IfcReinforcingBarTypeEnum | SPACEBAR | `.USERDEFINED.`, name in `ElementType` |
+| IfcRelAssignsToProduct.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcSensor.PredefinedType | IfcSensorTypeEnum | EARTHQUAKESENSOR, FOREIGNOBJECTDETECTIONSENSOR, OBSTACLESENSOR, RAINSENSOR, SNOWDEPTHSENSOR, TRAINSENSOR, TURNOUTCLOSURESENSOR, WHEELSENSOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcSensorType.PredefinedType | IfcSensorTypeEnum | EARTHQUAKESENSOR, FOREIGNOBJECTDETECTIONSENSOR, OBSTACLESENSOR, RAINSENSOR, SNOWDEPTHSENSOR, TRAINSENSOR, TURNOUTCLOSURESENSOR, WHEELSENSOR | `.USERDEFINED.`, name in `ElementType` |
 | IfcSimplePropertyTemplate.TemplateType | IfcSimplePropertyTemplateTypeEnum | Q_NUMBER | `$` (reported) |
@@ -132,13 +139,6 @@ enum lost members in that direction (#5365).
 | IfcWallElementedCase.PredefinedType | IfcWallTypeEnum | RETAININGWALL, WAVEWALL | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWallStandardCase.PredefinedType | IfcWallTypeEnum | RETAININGWALL, WAVEWALL | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWallType.PredefinedType | IfcWallTypeEnum | RETAININGWALL, WAVEWALL | `.USERDEFINED.`, name in `ElementType` |
-| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
-| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
-| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
-| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcFooting.PredefinedType | IfcFootingTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcRelAssignsToProduct.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 
 ## IFC4X3 → IFC2X3
 
@@ -149,7 +149,10 @@ enum lost members in that direction (#5365).
 | IfcAlarmType.PredefinedType | IfcAlarmTypeEnum | RAILWAYCROCODILE, RAILWAYDETONATOR | `.USERDEFINED.`, name in `ElementType` |
 | IfcAppliedValueRelationship.ArithmeticOperator | IfcArithmeticOperatorEnum | MODULO | **refused**: kept as written, reported |
 | IfcBeamType.PredefinedType | IfcBeamTypeEnum | CORNICE, DIAPHRAGM, EDGEBEAM, GIRDER_SEGMENT, HATSTONE, HOLLOWCORE, PIERCAP, SPANDREL | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcBuildingElementProxy.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
 | IfcBuildingElementProxyType.PredefinedType | IfcBuildingElementProxyTypeEnum | COMPLEX, ELEMENT, PARTIAL, PROVISIONFORSPACE, PROVISIONFORVOID | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
 | IfcCableCarrierFittingType.PredefinedType | IfcCableCarrierFittingTypeEnum | CONNECTOR, JUNCTION, TRANSITION | `.USERDEFINED.`, name in `ElementType` |
 | IfcCableCarrierSegmentType.PredefinedType | IfcCableCarrierSegmentTypeEnum | CABLEBRACKET, CATENARYWIRE, DROPPER | `.USERDEFINED.`, name in `ElementType` |
 | IfcCableSegmentType.PredefinedType | IfcCableSegmentTypeEnum | BUSBARSEGMENT, CONTACTWIRESEGMENT, CORESEGMENT, FIBERSEGMENT, FIBERTUBE, OPTICALCABLESEGMENT, STITCHWIRE, WIREPAIRSEGMENT | `.USERDEFINED.`, name in `ElementType` |
@@ -162,7 +165,10 @@ enum lost members in that direction (#5365).
 | IfcCoveringType.PredefinedType | IfcCoveringTypeEnum | COPING, MOLDING, SKIRTINGBOARD, TOPPING | `.USERDEFINED.`, name in `ElementType` |
 | IfcDerivedUnit.UnitType | IfcDerivedUnitEnum | AREADENSITYUNIT, SOUNDPOWERLEVELUNIT, SOUNDPRESSURELEVELUNIT, TEMPERATURERATEOFCHANGEUNIT | **refused**: kept as written, reported |
 | IfcDoorPanelProperties.PanelOperation | IfcDoorPanelOperationEnum | FIXEDPANEL | `.NOTDEFINED.` (reported) |
+| IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | FREESTANDINGELECTRICHEATER, FREESTANDINGWATERCOOLER, FREESTANDINGWATERHEATER, KITCHENMACHINE | `.USERDEFINED.`, name in `ElementType` |
+| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcElectricFlowStorageDeviceType.PredefinedType | IfcElectricFlowStorageDeviceTypeEnum | CAPACITOR, COMPENSATOR, INDUCTOR, RECHARGER | `.USERDEFINED.`, name in `ElementType` |
 | IfcElectricGeneratorType.PredefinedType | IfcElectricGeneratorTypeEnum | CHP, ENGINEGENERATOR, STANDALONE | `.USERDEFINED.`, name in `ElementType` |
 | IfcElementAssembly.PredefinedType | IfcElementAssemblyTypeEnum | ABUTMENT, CROSS_BRACING, DECK, DILATATIONPANEL, ENTRANCEWORKS, GRID, MAST, PIER, PYLON, RAIL_MECHANICAL_EQUIPMENT_ASSEMBLY, SHELTER, SIGNALASSEMBLY, SUMPBUSTER, SUPPORTINGASSEMBLY, SUSPENSIONASSEMBLY, TRACKPANEL, TRACTION_SWITCHING_ASSEMBLY, TRAFFIC_CALMING_DEVICE, TURNOUTPANEL | `.USERDEFINED.`, name in `ObjectType` |
@@ -171,6 +177,7 @@ enum lost members in that direction (#5365).
 | IfcFireSuppressionTerminalType.PredefinedType | IfcFireSuppressionTerminalTypeEnum | FIREMONITOR | `.USERDEFINED.`, name in `ElementType` |
 | IfcFlowInstrumentType.PredefinedType | IfcFlowInstrumentTypeEnum | COMBINED, VOLTMETER | `.USERDEFINED.`, name in `ElementType` |
 | IfcFooting.PredefinedType | IfcFootingTypeEnum | CAISSON_FOUNDATION | `.USERDEFINED.`, name in `ObjectType` |
+| IfcGasTerminalType.PredefinedType | IfcGasTerminalTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
 | IfcHeatExchangerType.PredefinedType | IfcHeatExchangerTypeEnum | TURNOUTHEATING | `.USERDEFINED.`, name in `ElementType` |
 | IfcJunctionBoxType.PredefinedType | IfcJunctionBoxTypeEnum | DATA, POWER | `.USERDEFINED.`, name in `ElementType` |
 | IfcLampType.PredefinedType | IfcLampTypeEnum | HALOGEN, LED, OLED | `.USERDEFINED.`, name in `ElementType` |
@@ -199,6 +206,13 @@ enum lost members in that direction (#5365).
 | IfcSpaceHeaterType.PredefinedType | IfcSpaceHeaterTypeEnum | RADIATOR | `.USERDEFINED.`, name in `ElementType` |
 | IfcSpaceType.PredefinedType | IfcSpaceTypeEnum | BERTH, EXTERNAL, GFA, INTERNAL, PARKING, SPACE | `.USERDEFINED.`, name in `ElementType` |
 | IfcStair.ShapeType | IfcStairTypeEnum | LADDER | `.NOTDEFINED.` (reported) |
+| IfcStructuralLinearAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralLinearAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcStructuralLoadGroup.ActionType | IfcActionTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcStructuralLoadGroup.ActionSource | IfcActionSourceTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcStructuralPlanarAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralPlanarAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
 | IfcSurfaceStyleRendering.ReflectanceMethod | IfcReflectanceMethodEnum | PHYSICAL | `.NOTDEFINED.` (reported) |
 | IfcSwitchingDeviceType.PredefinedType | IfcSwitchingDeviceTypeEnum | DIMMERSWITCH, KEYPAD, MOMENTARYSWITCH, RELAY, SELECTORSWITCH, START_AND_STOP_EQUIPMENT | `.USERDEFINED.`, name in `ElementType` |
 | IfcTankType.PredefinedType | IfcTankTypeEnum | BASIN, BREAKPRESSURE, FEEDANDEXPANSION, OILRETENTIONTRAY, STORAGE, VESSEL | `.USERDEFINED.`, name in `ElementType` |
@@ -208,20 +222,6 @@ enum lost members in that direction (#5365).
 | IfcUnitaryEquipmentType.PredefinedType | IfcUnitaryEquipmentTypeEnum | DEHUMIDIFIER | `.USERDEFINED.`, name in `ElementType` |
 | IfcVibrationIsolatorType.PredefinedType | IfcVibrationIsolatorTypeEnum | BASE | `.USERDEFINED.`, name in `ElementType` |
 | IfcWallType.PredefinedType | IfcWallTypeEnum | MOVABLE, PARAPET, PARTITIONING, RETAININGWALL, SOLIDWALL, WAVEWALL | `.USERDEFINED.`, name in `ElementType` |
-| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
-| IfcBuildingElementProxy.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
-| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
-| IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcGasTerminalType.PredefinedType | IfcGasTerminalTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
-| IfcStructuralLinearAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
-| IfcStructuralLinearAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
-| IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcStructuralLoadGroup.ActionType | IfcActionTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcStructuralLoadGroup.ActionSource | IfcActionSourceTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcStructuralPlanarAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
-| IfcStructuralPlanarAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
 | IfcWindowStyle.ConstructionType | IfcWindowStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcWindowStyle.OperationType | IfcWindowStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 
@@ -232,7 +232,10 @@ enum lost members in that direction (#5365).
 | IfcActorRole.Role | IfcRoleEnum | COMMISSIONINGENGINEER | `.USERDEFINED.`, name in `UserDefinedRole` |
 | IfcAirTerminalType.PredefinedType | IfcAirTerminalTypeEnum | LOUVRE | `.USERDEFINED.`, name in `ElementType` |
 | IfcBeamType.PredefinedType | IfcBeamTypeEnum | HOLLOWCORE, SPANDREL | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcBuildingElementProxy.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
 | IfcBuildingElementProxyType.PredefinedType | IfcBuildingElementProxyTypeEnum | COMPLEX, ELEMENT, PARTIAL, PROVISIONFORVOID, PROVISIONFORSPACE | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
 | IfcCableSegmentType.PredefinedType | IfcCableSegmentTypeEnum | BUSBARSEGMENT, CORESEGMENT | `.USERDEFINED.`, name in `ElementType` |
 | IfcCoilType.PredefinedType | IfcCoilTypeEnum | HYDRONICCOIL | `.USERDEFINED.`, name in `ElementType` |
 | IfcColumnType.PredefinedType | IfcColumnTypeEnum | PILASTER | `.USERDEFINED.`, name in `ElementType` |
@@ -243,11 +246,15 @@ enum lost members in that direction (#5365).
 | IfcCoveringType.PredefinedType | IfcCoveringTypeEnum | MOLDING, SKIRTINGBOARD | `.USERDEFINED.`, name in `ElementType` |
 | IfcDerivedUnit.UnitType | IfcDerivedUnitEnum | AREADENSITYUNIT, SOUNDPOWERLEVELUNIT, SOUNDPRESSURELEVELUNIT, TEMPERATURERATEOFCHANGEUNIT | **refused**: kept as written, reported |
 | IfcDoorPanelProperties.PanelOperation | IfcDoorPanelOperationEnum | FIXEDPANEL | `.NOTDEFINED.` (reported) |
+| IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | FREESTANDINGELECTRICHEATER, FREESTANDINGWATERHEATER, FREESTANDINGWATERCOOLER, KITCHENMACHINE | `.USERDEFINED.`, name in `ElementType` |
+| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcElectricGeneratorType.PredefinedType | IfcElectricGeneratorTypeEnum | CHP, ENGINEGENERATOR, STANDALONE | `.USERDEFINED.`, name in `ElementType` |
 | IfcEvaporatorType.PredefinedType | IfcEvaporatorTypeEnum | DIRECTEXPANSION | `.USERDEFINED.`, name in `ElementType` |
 | IfcFilterType.PredefinedType | IfcFilterTypeEnum | COMPRESSEDAIRFILTER | `.USERDEFINED.`, name in `ElementType` |
 | IfcFooting.PredefinedType | IfcFootingTypeEnum | CAISSON_FOUNDATION | `.USERDEFINED.`, name in `ObjectType` |
+| IfcGasTerminalType.PredefinedType | IfcGasTerminalTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
 | IfcJunctionBoxType.PredefinedType | IfcJunctionBoxTypeEnum | DATA, POWER | `.USERDEFINED.`, name in `ElementType` |
 | IfcLampType.PredefinedType | IfcLampTypeEnum | HALOGEN, LED, OLED | `.USERDEFINED.`, name in `ElementType` |
 | IfcLightFixtureType.PredefinedType | IfcLightFixtureTypeEnum | SECURITYLIGHTING | `.USERDEFINED.`, name in `ElementType` |
@@ -265,24 +272,10 @@ enum lost members in that direction (#5365).
 | IfcRoof.ShapeType | IfcRoofTypeEnum | USERDEFINED | `.NOTDEFINED.` (reported) |
 | IfcSectionReinforcementProperties.ReinforcementRole | IfcReinforcingBarRoleEnum | ANCHORING | `.NOTDEFINED.` (reported) |
 | IfcSensorType.PredefinedType | IfcSensorTypeEnum | COSENSOR, CONDUCTANCESENSOR, CONTACTSENSOR, FROSTSENSOR, IDENTIFIERSENSOR, IONCONCENTRATIONSENSOR, LEVELSENSOR, PHSENSOR, RADIATIONSENSOR, RADIOACTIVITYSENSOR, WINDSENSOR | `.USERDEFINED.`, name in `ElementType` |
+| IfcSlab.PredefinedType | IfcSlabTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcSpace.InteriorOrExteriorSpace | IfcInternalOrExternalEnum | EXTERNAL_EARTH, EXTERNAL_WATER, EXTERNAL_FIRE | `.NOTDEFINED.` (reported) |
 | IfcSpaceHeaterType.PredefinedType | IfcSpaceHeaterTypeEnum | RADIATOR | `.USERDEFINED.`, name in `ElementType` |
 | IfcSpaceType.PredefinedType | IfcSpaceTypeEnum | SPACE, PARKING, GFA, INTERNAL, EXTERNAL | `.USERDEFINED.`, name in `ElementType` |
-| IfcSwitchingDeviceType.PredefinedType | IfcSwitchingDeviceTypeEnum | DIMMERSWITCH, KEYPAD, MOMENTARYSWITCH, SELECTORSWITCH | `.USERDEFINED.`, name in `ElementType` |
-| IfcTankType.PredefinedType | IfcTankTypeEnum | BASIN, BREAKPRESSURE, FEEDANDEXPANSION, STORAGE, VESSEL | `.USERDEFINED.`, name in `ElementType` |
-| IfcTransformerType.PredefinedType | IfcTransformerTypeEnum | INVERTER, RECTIFIER | `.USERDEFINED.`, name in `ElementType` |
-| IfcTransportElement.OperationType | IfcTransportElementTypeEnum | CRANEWAY, LIFTINGGEAR | `.NOTDEFINED.` (reported) |
-| IfcTransportElementType.PredefinedType | IfcTransportElementTypeEnum | CRANEWAY, LIFTINGGEAR | `.USERDEFINED.`, name in `ElementType` |
-| IfcUnitaryEquipmentType.PredefinedType | IfcUnitaryEquipmentTypeEnum | DEHUMIDIFIER | `.USERDEFINED.`, name in `ElementType` |
-| IfcWallType.PredefinedType | IfcWallTypeEnum | MOVABLE, PARAPET, PARTITIONING, SOLIDWALL | `.USERDEFINED.`, name in `ElementType` |
-| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
-| IfcBuildingElementProxy.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
-| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
-| IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcGasTerminalType.PredefinedType | IfcGasTerminalTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
-| IfcSlab.PredefinedType | IfcSlabTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcStructuralLinearAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
 | IfcStructuralLinearAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
 | IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
@@ -290,6 +283,13 @@ enum lost members in that direction (#5365).
 | IfcStructuralLoadGroup.ActionSource | IfcActionSourceTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcStructuralPlanarAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
 | IfcStructuralPlanarAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcSwitchingDeviceType.PredefinedType | IfcSwitchingDeviceTypeEnum | DIMMERSWITCH, KEYPAD, MOMENTARYSWITCH, SELECTORSWITCH | `.USERDEFINED.`, name in `ElementType` |
+| IfcTankType.PredefinedType | IfcTankTypeEnum | BASIN, BREAKPRESSURE, FEEDANDEXPANSION, STORAGE, VESSEL | `.USERDEFINED.`, name in `ElementType` |
+| IfcTransformerType.PredefinedType | IfcTransformerTypeEnum | INVERTER, RECTIFIER | `.USERDEFINED.`, name in `ElementType` |
+| IfcTransportElement.OperationType | IfcTransportElementTypeEnum | CRANEWAY, LIFTINGGEAR | `.NOTDEFINED.` (reported) |
+| IfcTransportElementType.PredefinedType | IfcTransportElementTypeEnum | CRANEWAY, LIFTINGGEAR | `.USERDEFINED.`, name in `ElementType` |
+| IfcUnitaryEquipmentType.PredefinedType | IfcUnitaryEquipmentTypeEnum | DEHUMIDIFIER | `.USERDEFINED.`, name in `ElementType` |
+| IfcWallType.PredefinedType | IfcWallTypeEnum | MOVABLE, PARAPET, PARTITIONING, SOLIDWALL | `.USERDEFINED.`, name in `ElementType` |
 | IfcWindowStyle.ConstructionType | IfcWindowStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcWindowStyle.OperationType | IfcWindowStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 
@@ -300,15 +300,24 @@ enum lost members in that direction (#5365).
 | IfcActorRole.Role | IfcRoleEnum | COMISSIONINGENGINEER | `.USERDEFINED.`, name in `UserDefinedRole` |
 | IfcAirTerminal.PredefinedType | IfcAirTerminalTypeEnum | EYEBALL, IRIS, LINEARGRILLE, LINEARDIFFUSER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcAirTerminalType.PredefinedType | IfcAirTerminalTypeEnum | EYEBALL, IRIS, LINEARGRILLE, LINEARDIFFUSER | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcCommunicationsAppliance.PredefinedType | IfcCommunicationsApplianceTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcController.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ObjectType` |
 | IfcControllerType.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ElementType` |
 | IfcElectricAppliance.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ElementType` |
+| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFlowMeter.PredefinedType | IfcFlowMeterTypeEnum | ELECTRICMETER, FLOWMETER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFlowMeterType.PredefinedType | IfcFlowMeterTypeEnum | ELECTRICMETER, FLOWMETER | `.USERDEFINED.`, name in `ElementType` |
+| IfcFooting.PredefinedType | IfcFootingTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcOwnerHistory.ChangeAction | IfcChangeActionEnum | MODIFIEDADDED, MODIFIEDDELETED | `.NOTDEFINED.` (reported) |
 | IfcProtectiveDevice.PredefinedType | IfcProtectiveDeviceTypeEnum | EARTHFAILUREDEVICE | `.USERDEFINED.`, name in `ObjectType` |
 | IfcProtectiveDeviceType.PredefinedType | IfcProtectiveDeviceTypeEnum | EARTHFAILUREDEVICE | `.USERDEFINED.`, name in `ElementType` |
+| IfcRelAssignsToProduct.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcSlab.PredefinedType | IfcSlabTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcSpaceHeater.PredefinedType | IfcSpaceHeaterTypeEnum | SECTIONALRADIATOR, PANELRADIATOR, TUBULARRADIATOR, BASEBOARDHEATER, FINNEDTUBEUNIT, UNITHEATER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcSpaceHeaterType.PredefinedType | IfcSpaceHeaterTypeEnum | SECTIONALRADIATOR, PANELRADIATOR, TUBULARRADIATOR, BASEBOARDHEATER, FINNEDTUBEUNIT, UNITHEATER | `.USERDEFINED.`, name in `ElementType` |
 | IfcStructuralLoadCase.PredefinedType | IfcLoadGroupTypeEnum | LOAD_COMBINATION_GROUP | `.USERDEFINED.`, name in `ObjectType` |
@@ -317,15 +326,6 @@ enum lost members in that direction (#5365).
 | IfcTankType.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ElementType` |
 | IfcWasteTerminal.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminalType.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ElementType` |
-| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
-| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
-| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
-| IfcCommunicationsAppliance.PredefinedType | IfcCommunicationsApplianceTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcFooting.PredefinedType | IfcFootingTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcRelAssignsToProduct.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
-| IfcSlab.PredefinedType | IfcSlabTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 
 ## IFC2X3 → IFC4X3
 
@@ -334,10 +334,13 @@ enum lost members in that direction (#5365).
 | IfcActorRole.Role | IfcRoleEnum | COMISSIONINGENGINEER | `.USERDEFINED.`, name in `UserDefinedRole` |
 | IfcAirTerminal.PredefinedType | IfcAirTerminalTypeEnum | EYEBALL, IRIS, LINEARGRILLE, LINEARDIFFUSER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcAirTerminalType.PredefinedType | IfcAirTerminalTypeEnum | EYEBALL, IRIS, LINEARGRILLE, LINEARDIFFUSER | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
 | IfcController.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ObjectType` |
 | IfcControllerType.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ElementType` |
 | IfcElectricAppliance.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ElementType` |
+| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFlowMeter.PredefinedType | IfcFlowMeterTypeEnum | ELECTRICMETER, FLOWMETER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFlowMeterType.PredefinedType | IfcFlowMeterTypeEnum | ELECTRICMETER, FLOWMETER | `.USERDEFINED.`, name in `ElementType` |
 | IfcOwnerHistory.ChangeAction | IfcChangeActionEnum | MODIFIEDADDED, MODIFIEDDELETED | `.NOTDEFINED.` (reported) |
@@ -351,9 +354,6 @@ enum lost members in that direction (#5365).
 | IfcTankType.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ElementType` |
 | IfcWasteTerminal.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminalType.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ElementType` |
-| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
-| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
-| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 
 ## IFC4 → IFC4X3
 

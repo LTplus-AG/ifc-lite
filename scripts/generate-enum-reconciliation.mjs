@@ -114,34 +114,22 @@ for (const [from, to] of DIRECTIONS) {
   const rows = [];
   for (const [entityName, meta] of Object.entries(target.entities).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     if (meta.isAbstract) continue;
-    const attributes = meta.allAttributes ?? meta.attributes;
-    attributes.forEach((attribute, index) => {
-      const members = Object.hasOwn(target.enums, attribute.type) ? target.enums[attribute.type] : undefined;
-      const sourceMembers = members && Object.hasOwn(source.enums, attribute.type) ? source.enums[attribute.type] : undefined;
-      if (!sourceMembers) return;
-      const missing = sourceMembers.filter((m) => !members.includes(m));
-      if (missing.length === 0) return;
-      const resolution = resolveMissingEnumMember(attributes, index, members);
-      rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing, resolution, attributes });
-      const upper = entityName.toUpperCase();
-      const row = rustRows[to].get(upper) ?? { arity: attributes.length, slots: new Map() };
-      row.slots.set(index, { attribute: attribute.name, members, resolution });
-      rustRows[to].set(upper, row);
-    });
-  }
-  // #10856: every enum slot of a rename target, whatever the source enum.
-  for (const [entityName, meta] of Object.entries(target.entities).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     const upper = entityName.toUpperCase();
-    if (meta.isAbstract || !RENAME_TARGETS[to].includes(upper)) continue;
+    // #10856: a rename target gets every enum slot, whatever the source enum.
+    const renamed = RENAME_TARGETS[to].includes(upper);
     const attributes = meta.allAttributes ?? meta.attributes;
     attributes.forEach((attribute, index) => {
       const members = Object.hasOwn(target.enums, attribute.type) ? target.enums[attribute.type] : undefined;
       if (!members) return;
-      // `rows` is this direction's; `rustRows` is shared by every direction into `to`.
-      if (rows.some((r) => r.entity === entityName && r.attribute === attribute.name)) return;
-      const row = rustRows[to].get(upper) ?? { arity: attributes.length, slots: new Map() };
+      const sourceMembers = Object.hasOwn(source.enums, attribute.type) ? source.enums[attribute.type] : [];
+      let missing = sourceMembers.filter((m) => !members.includes(m));
+      if (missing.length === 0) {
+        if (!renamed) return;
+        missing = ['(renamed into this type: any member not listed)'];
+      }
       const resolution = resolveMissingEnumMember(attributes, index, members);
-      rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing: ['(renamed into this type: any member not listed)'], resolution, attributes });
+      rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing, resolution, attributes });
+      const row = rustRows[to].get(upper) ?? { arity: attributes.length, slots: new Map() };
       row.slots.set(index, { attribute: attribute.name, members, resolution });
       rustRows[to].set(upper, row);
     });

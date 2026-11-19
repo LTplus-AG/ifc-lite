@@ -7,7 +7,7 @@ import { toast } from '@/components/ui/toast';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { reportChartDependencies, type ChartDependencyPreview, type ReportSource } from '@/lib/reports/chart-dependencies';
+import { dependenciesUnreadable, reportChartDependencies, type ChartDependencyPreview, type ReportSource } from '@/lib/reports/chart-dependencies';
 import { loadDocuments } from '@/lib/document/persistence';
 import type { DocumentSpec } from '@/lib/document/types';
 import type { SavedComparison } from '@/lib/compare/savedComparisons';
@@ -134,7 +134,7 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     </li>)}</ul>}
     {preview.total > preview.entries.length && <p>{t('comparePanel.saved.dependencies.bounded', { count: preview.entries.length, total: preview.total })}</p>}
     {preview.documentPhase === 'loading' && <p>{t('comparePanel.saved.dependencies.loading')}</p>}
-    {(preview.documentPhase === 'unavailable' || preview.documentsRecovered || preview.dashboardsUnavailable || preview.omittedDashboards > 0) && <p>{t('comparePanel.saved.dependencies.unavailable')}</p>}
+    {dependenciesUnreadable(preview) && <p>{t('comparePanel.saved.dependencies.unavailable')}</p>}
     {ownPending && <p>{t('comparePanel.saved.dependencies.storagePending')}</p>}
     {sourceChanged && <p>{t('comparePanel.saved.dependencies.sourceChanged')}</p>}
     {changed && <p>{t(preview.hasQualityGates ? 'document.qualityGate.referencesChanged' : 'comparePanel.saved.dependencies.changed')}</p>}

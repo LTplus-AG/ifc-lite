@@ -40,14 +40,14 @@ function owned(host: ToolHost) {
 /** Every live and durable dependency, refusing a preview that could not read them all: a reference it
  * cannot see would be broken by the deletion. */
 async function dependencies(id: string) {
-  const [{ loadDocuments }, { reportChartDependencies }] = await Promise.all([
+  const [{ loadDocuments }, { reportChartDependencies, dependenciesUnreadable }] = await Promise.all([
     import('@/lib/document/persistence'),
     import('@/lib/reports/chart-dependencies'),
   ]);
   await useViewerStore.getState().initializeDocuments();
   const entries = await loadDocuments();
   const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
-  if (preview.documentPhase !== 'ready' || preview.documentsRecovered || preview.dashboardsUnavailable || preview.omittedDashboards > 0)
+  if (preview.documentPhase === 'loading' || dependenciesUnreadable(preview))
     throw new Error('Dashboards or Documents could not all be read, so the report’s dependencies are unknown. Retry once storage is available.');
   return preview;
 }

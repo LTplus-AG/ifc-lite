@@ -46,7 +46,7 @@ export const SCREENSHOT_SPECS = {
 /** What the tool needs from the live viewer; replaced in tests. */
 export interface ScreenshotDeps {
   /** The native capture: renders one owned frame and returns what `read` serialised, or null on failure. */
-  capture(read: (canvas: HTMLCanvasElement) => string): Promise<string | null>;
+  capture(read: (canvas: HTMLCanvasElement) => string, signal?: AbortSignal): Promise<string | null>;
   /** The camera of the frame being read (called inside `read`). */
   camera(): ViewCameraSnapshot | null;
   createCanvas(): HTMLCanvasElement;
@@ -99,7 +99,7 @@ export function createScreenshotTool(load: () => Promise<ScreenshotDeps> = nativ
         g.drawImage(canvas, 0, 0, frame.size.width, frame.size.height);
         frame.camera = deps.camera();
         return out.toDataURL(mimeType, JPEG_QUALITY);
-      });
+      }, ctx.signal);
     } catch (err) {
       fail(ToolErrorCode.UNSUPPORTED_OPERATION, `No viewport to capture: ${err instanceof Error ? err.message : String(err)}`,
         'Ask the user to open a model in the viewer tab so the 3D viewport is showing, then retry.');

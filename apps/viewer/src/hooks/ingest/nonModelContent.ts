@@ -46,7 +46,7 @@ const HTML_START = /^<(?:!doctype\s*html|html|head|body|title|meta|h[1-6]|div|p|
 const XML_ERROR_NAMES = new Set(['error', 'errors', 'errorresponse', 'exception', 'exceptionreport', 'fault', 'accessdenied']);
 const XML_ERROR_SUFFIX = /(?:Error|Exception|Fault)(?:Report|Response)?$/;
 
-/** STEP's first line, after whitespace and comments (case-insensitive, with or without the hyphen). */
+/** The STEP opening identifier (case-insensitive, with or without the hyphen). */
 const STEP_MARKER = /^ISO[- ]?10303-21/i;
 
 /**
@@ -77,7 +77,7 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const binary = !ifcName && (utf16 ? headHasControl(headText) : bytes.subarray(0, 512).some(isControl));
   const firstChar = headText.trimStart()[0] ?? '';
   const headLead = afterStepComments(headText);
-  const headIsStep = headLead !== null && STEP_MARKER.test(headLead);
+  const headIsStep = classifyStepHeader(headLead) === 'step';
   const ifcNotStep = ifcName && !headIsStep;
   // Only content that could be an error response (or is all blank so far), or IFC-named content that is not
   // plainly STEP, is read further.
@@ -104,17 +104,25 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
     return textStartsLikeStep(text) ? NON_MODEL_REASONS.utf16Step : NON_MODEL_REASONS.notStep;
   }
   if (!ifcNotStep || routed === 'ifcx' || detectPointCloudFormat('content', first)) return null;
-  // Under an IFC name everything else goes to the STEP parser: refuse what is not STEP. A blank file is the
-  // loader's to judge; an unterminated comment is not STEP unless the scan was cut short.
+  // Leave blank files and incomplete headers at the scan boundary to the loader.
   const lead = text === headText ? headLead : afterStepComments(text);
-  if (lead === null) return whole ? NON_MODEL_REASONS.notStep : null;
-  return lead === '' || STEP_MARKER.test(lead) ? null : NON_MODEL_REASONS.notStep;
+  const header = classifyStepHeader(lead);
+  return lead === '' || header === 'step' || (header === 'incomplete' && !whole) ? null : NON_MODEL_REASONS.notStep;
 }
 
 /** Whether `text`, after whitespace and STEP comments, starts like STEP: the one rule the preflight's IFC admission shares. */
 export function textStartsLikeStep(text: string): boolean {
-  const lead = afterStepComments(text);
-  return lead !== null && STEP_MARKER.test(lead);
+  return classifyStepHeader(afterStepComments(text)) === 'step';
+}
+
+/** The identifier is only a STEP header when terminated by a semicolon after optional trivia. */
+function classifyStepHeader(lead: string | null): 'step' | 'incomplete' | 'other' {
+  if (!lead) return 'incomplete';
+  const marker = STEP_MARKER.exec(lead);
+  if (!marker) return 'other';
+  const tail = afterStepComments(lead.slice(marker[0].length));
+  if (!tail || tail === '/') return 'incomplete';
+  return tail.startsWith(';') ? 'step' : 'other';
 }
 
 /** A C0 control other than tab, line feed, vertical tab, form feed or carriage return. */

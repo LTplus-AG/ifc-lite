@@ -33,6 +33,8 @@ it('#9523 recognises error responses under any model name', async () => {
     ['<!DOCTYPE html>\x00<html>Forbidden', 'a.glb', /HTML page/],
     [`<!DOCTYPE${' '.repeat(1100)}html>Access denied`, 'm.glb', /HTML page/],
     ['Error: expected ISO-10303-21 header', 'a.ifc', /neither STEP/],
+    ['ISO-10303-21: Access denied', 'house.ifc', /neither STEP/],
+    ['ISO-10303-210; Access denied', 'house.ifc', /neither STEP/],
     ['Isolation failure: access denied', 'a.ifc', /neither STEP/],
     ['[ERROR] token expired', 'house.ifc', /neither STEP/],
     ['/* Access denied', 'house.ifc', /neither STEP/],
@@ -131,6 +133,6 @@ it('#9523 refusals are classified as invalid input, not crashes', () => {
 });
 
 it('#9523 textStartsLikeStep: the shared STEP rule, past whitespace and comments', () => {
-  for (const text of ['ISO-10303-21;', '  /* x */ ISO-10303-21;', 'iso 10303-21;', 'ISO10303-21;']) assert.equal(textStartsLikeStep(text), true, text);
-  for (const text of ['/* unterminated ISO-10303-21;', 'Isolation failure', '', 'Error: expected ISO-10303-21']) assert.equal(textStartsLikeStep(text), false, text);
+  for (const text of ['ISO-10303-21;', '  /* x */ ISO-10303-21;', 'iso 10303-21;', 'ISO10303-21;', 'ISO-10303-21 /* comment */ ;']) assert.equal(textStartsLikeStep(text), true, text);
+  for (const text of ['/* unterminated ISO-10303-21;', 'Isolation failure', '', 'Error: expected ISO-10303-21', 'ISO-10303-21: denied', 'ISO-10303-21']) assert.equal(textStartsLikeStep(text), false, text);
 });

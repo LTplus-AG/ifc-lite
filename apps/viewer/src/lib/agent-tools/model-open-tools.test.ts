@@ -362,6 +362,15 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /HTML page/ });
     assert.deepEqual(calls, []);
   });
+  it('passes STEP bodies with a mistaken HTML content type to the model loader (#9523 code review)', async () => {
+    const body = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
+    for (const contentType of ['text/html; charset=utf-8', 'application/xhtml+xml']) {
+      respond = () => new Response(body, { headers: { 'content-type': contentType } });
+      await run({ url: 'https://example.com/house.ifc', mode: 'add' });
+    }
+    assert.deepEqual(calls.map(call => call.names[0]), ['house.ifc', 'house.ifc']);
+  });
+
   it('guards URL names and bodies before a replace can close the open models (#9523 code review)', async () => {
     useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
     // An encoded separator never reaches the model name.
@@ -369,7 +378,7 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.equal(calls.at(-1)!.names[0], 'house.ifc');
     // A .gltf cannot bring its external buffers along.
     await assert.rejects(run({ url: 'https://example.com/scene.gltf', mode: 'add' }), { code: 'INVALID_INPUT', message: /not \.gltf/ });
-    // An HTML content type is refused before the body is read (bodies are checked by the loader's preflight).
+    // The HTML response body is refused before the viewer can replace the model.
     respond = () => new Response('<!DOCTYPE html><title>Sign in</title>', { status: 200, headers: { 'content-type': 'text/html' } });
     const before = calls.length;
     await assert.rejects(run({ url: 'https://example.com/house.ifc', mode: 'replace' }), { code: 'UNSUPPORTED_OPERATION', message: /HTML page/ });

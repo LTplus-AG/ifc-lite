@@ -27,6 +27,7 @@ import { refsIn } from './merged-project-contexts.js';
 import { decodeEntity, getStepAttr } from './merged-subcontext.js';
 import { slotUnset, stepString } from './schema-converter-structural-source.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { namesAnyRecord } from './step-ref-scan.js';
 import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
 import { computeNormalizeFactor, toStepRealScaled } from './unit-normalize.js';
 import { viewerAxisScales } from './viewer-georef-scale.js';
@@ -159,7 +160,7 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
       if (name !== null && !EPSET_PLACEMENT.has(label(name))) continue;
       const copy = recordBody(decodeEntity(dataStore, id));
       const single = typeOf(dataStore, id) === 'IFCPROPERTYSINGLEVALUE';
-      if (name === null || copy === undefined || namesARecord(copy) || !single) records.set(id, { kind: 'keep' });
+      if (name === null || copy === undefined || namesAnyRecord(copy) || !single) records.set(id, { kind: 'keep' });
       else listEntry(records, minted, setId, copy, at);
     }
   }
@@ -176,21 +177,6 @@ function recordBody(text: string | null): string | undefined {
   if (text === null) return undefined;
   const frame = stepRecordFrame(text, { allowMissingSemicolon: true });
   return frame ? text.slice(frame.head.typeStart, frame.close + 1) : undefined;
-}
-
-/** True when a record's text references another record: a `#` and digit outside its strings and comments. */
-function namesARecord(text: string): boolean {
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === "'") {
-      // A STEP string ends at a quote that is not doubled.
-      for (i++; i < text.length && !(text[i] === "'" && text[i + 1] !== "'"); i += text[i] === "'" ? 2 : 1);
-    } else if (text.startsWith('/*', i)) {
-      const end = text.indexOf('*/', i + 2);
-      if (end < 0) return true;
-      i = end + 1;
-    } else if (text[i] === '#' && /\d/.test(text[i + 1] ?? '')) return true;
-  }
-  return false;
 }
 
 /** Each of a model's `ePSet_MapConversion` sets (any casing, as the parser finds them) with its property ids. */

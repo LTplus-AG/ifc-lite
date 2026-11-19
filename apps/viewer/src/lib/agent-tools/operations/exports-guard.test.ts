@@ -92,9 +92,15 @@ test('changesJson and mergedStep refuse a composed layer too (#10695)', async ()
   const host = viewerHost();
   const run = (operation_id: string, input: Record<string, unknown>) => dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true });
   const changes = await run('exports.changesJson', { target_model_id: 'overlay' });
+  assert.equal(changes.isError, true);
   assert.match(changes.text, /Pass target_model_id 'base'/);
-  const merged = await run('exports.mergedStep', { ...stepOptions, include_geometry: true, model_ids: ['overlay', 'base'], unit_reconciliation: 'assume-shared' });
-  assert.match(merged.text, /List 'base' in model_ids in its place/);
+  const merge = (model_ids: string[]) => run('exports.mergedStep', { ...stepOptions, include_geometry: true, model_ids, unit_reconciliation: 'assume-shared' });
+  const listed = await merge(['overlay', 'base']);
+  assert.equal(listed.isError, true);
+  assert.match(listed.text, /Drop 'overlay' from model_ids; 'base' already covers it/);
+  const missing = await merge(['overlay']);
+  assert.equal(missing.isError, true);
+  assert.match(missing.text, /List 'base' in model_ids in its place/);
 });
 
 test('a visible-only IFCX export is voided when the view changes (#10695)', async () => {

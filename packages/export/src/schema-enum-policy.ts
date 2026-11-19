@@ -50,7 +50,10 @@ const PREDEFINED_TYPE_LABEL_SLOTS = ['ObjectType', 'ElementType', 'ProcessType',
 function userDefinedLabel(attributes: readonly EnumPolicyAttribute[], name: string): number {
   const exact = attributes.findIndex((a) => a.name === `UserDefined${name}`);
   if (exact >= 0) return exact;
-  const short = attributes.flatMap((a, i) => (/^UserDefined./.test(a.name) && name.endsWith(a.name.slice(11)) ? [i] : []));
+  const short = attributes.flatMap((a, i) => {
+    const end = /^UserDefined(.+)/.exec(a.name)?.[1];
+    return end && name.endsWith(end) ? [i] : [];
+  });
   return short.length === 1 ? short[0] : -1;
 }
 

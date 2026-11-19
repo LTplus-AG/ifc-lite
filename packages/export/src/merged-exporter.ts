@@ -29,7 +29,7 @@ import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
-import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
+import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
@@ -65,9 +65,6 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONCONTEXT',
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
-
-/** Relative tolerance for comparing two length unit scale factors. */
-const UNIT_SCALE_TOLERANCE = 1e-6;
 
 /** SI prefix multipliers, for resolving prefixed area/volume units (rarely used). */
 const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
@@ -979,10 +976,7 @@ export class MergedExporter {
 
   /** True when two length unit scales are equal within relative tolerance. */
   private unitsCompatible(a: number, b: number): boolean {
-    if (a === b) return true;
-    const max = Math.max(Math.abs(a), Math.abs(b));
-    if (max === 0) return true;
-    return Math.abs(a - b) <= max * UNIT_SCALE_TOLERANCE;
+    return unitScalesEqual(a, b);
   }
 
   /**

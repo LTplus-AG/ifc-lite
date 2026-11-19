@@ -180,27 +180,39 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
   return contextId === undefined ? null : resolveContextWcsMetres(dataStore, contextId, lengthUnitScale);
 }
 
-let unresolvedGeorefs = 0;
+/** Relative tolerance for comparing two length unit scale factors. */
+const UNIT_SCALE_TOLERANCE = 1e-6;
+
+/** True when two length unit scales are equal within {@link UNIT_SCALE_TOLERANCE}. */
+export function unitScalesEqual(a: number, b: number): boolean {
+  const max = Math.max(Math.abs(a), Math.abs(b));
+  return a === b || max === 0 || Math.abs(a - b) <= max * UNIT_SCALE_TOLERANCE;
+}
 
 /**
- * The georeference of `dataStore`'s first representation context, as the values that place it on the map, or null
- * when the model's georeference sits on no such context. The parser's reading fills IFC defaults (scale 1, no
- * rotation) and resolves the map unit, so two spellings of one georeference agree; a CRS without a map unit uses
- * the project's length unit (`lengthUnitScale`), and one whose unit the parser cannot resolve matches no other.
- * Two contexts in one frame with different georeferences place the same coordinates at two places on the map, so
- * they must not be unified (#10798).
+ * A context's georeference as the values that place it on the map: `placement` the operation and CRS, `unitScale`
+ * the map unit in metres, null when the parser cannot resolve it (then it matches no other).
  */
-export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, lengthUnitScale: number): string | null {
+export interface GeorefSignature { placement: string; unitScale: number | null }
+
+/**
+ * The {@link GeorefSignature} of `dataStore`'s first representation context, or null when the model's georeference
+ * sits on no such context. It reads the parser's georeference, which resolves the map unit, and fills IFC defaults
+ * (scale 1, no rotation), so two spellings of one georeference agree; a CRS without a map unit uses the project's
+ * length unit (`lengthUnitScale`). Two contexts in one frame with different georeferences place the same
+ * coordinates at two places on the map, so they must not be unified (#10798).
+ */
+export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, lengthUnitScale: number): GeorefSignature | null {
   // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
   const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
   const { mapConversion: op, projectedCRS: crs } = extractGeoreferencingOnDemand(dataStore) ?? {};
   if (contextId === undefined || !op || op.sourceCRS !== contextId) return null;
-  if (crs?.mapUnitResolved === false) return `unresolved map unit ${++unresolvedGeorefs}`;
-  // Rounded to the precision at which the merge treats two length units as one.
-  const unitScale = Number((crs?.mapUnitScale ?? lengthUnitScale).toPrecision(6));
-  return JSON.stringify([op.operation ?? 'mapConversion', crs?.kind, crs?.name, crs?.geodeticDatum, crs?.verticalDatum,
-    crs?.mapProjection, crs?.mapZone, crs?.wellKnownText, unitScale, op.eastings, op.northings, op.orthogonalHeight,
-    op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, op.scale ?? 1, op.factorX ?? 1, op.factorY ?? 1, op.factorZ ?? 1]);
+  return {
+    placement: JSON.stringify([op.operation ?? 'mapConversion', crs?.kind, crs?.name, crs?.geodeticDatum, crs?.verticalDatum,
+      crs?.mapProjection, crs?.mapZone, crs?.wellKnownText, op.eastings, op.northings, op.orthogonalHeight,
+      op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, op.scale ?? 1, op.factorX ?? 1, op.factorY ?? 1, op.factorZ ?? 1]),
+    unitScale: crs?.mapUnitResolved === false ? null : crs?.mapUnitScale ?? lengthUnitScale,
+  };
 }
 
 /**
@@ -217,7 +229,7 @@ export interface PrimaryContextState {
    * {@link resolveModelContextGeorefSignature} of the shared context so far: the primary model's, or, when it has
    * none, that of the first later model that unified onto it. {@link planInfrastructureUnify} updates it.
    */
-  contextGeoref: string | null;
+  contextGeoref: GeorefSignature | null;
 }
 
 /** Build the {@link PrimaryContextState} for the primary model. */
@@ -247,9 +259,10 @@ function wcsSignaturesCompatible(a: WcsSignature | null, b: WcsSignature | null)
     && a.refDirection.every((value, index) => Math.abs(value - b.refDirection[index]) <= WCS_TOLERANCE_M);
 }
 
-/** True when two georeference signatures agree, or either model declares none (one georeferences the shared frame). */
-function georefSignaturesCompatible(a: string | null, b: string | null): boolean {
-  return a === null || b === null || a === b;
+/** True when two georeferences agree, or either model declares none (one georeferences the shared frame). */
+function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignature | null): boolean {
+  if (a === null || b === null) return true;
+  return a.placement === b.placement && a.unitScale !== null && b.unitScale !== null && unitScalesEqual(a.unitScale, b.unitScale);
 }
 
 /**

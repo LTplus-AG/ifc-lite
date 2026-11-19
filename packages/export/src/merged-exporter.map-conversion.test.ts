@@ -81,9 +81,7 @@ describe('merged STEP export and map conversions (#10798)', () => {
 
   it('checks each later model against a georeference an earlier one gave the shared context', async () => {
     // The primary has none, so the second model's conversion lands on its context: the third's must agree with it.
-    const result = await merge([null, at(X), at(Y)]);
-    expect(result.contexts).toHaveLength(2);
-    expect(new Set(result.sources).size).toBe(2);
+    expectApart(await merge([null, at(X), at(Y)]), 2);
   });
 
   it('tells apart the same numbers in different map units', async () => {

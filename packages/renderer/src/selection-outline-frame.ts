@@ -85,6 +85,18 @@ export function matchesHoveredMesh(mesh: Mesh, hoveredId: number, selectedModelI
   return mesh.expressId === hoveredId && !mesh.mergedSelection?.ids && !highlightBatchOf(mesh) && (selectedModelIndex === undefined || mesh.modelIndex === selectedModelIndex);
 }
 
+/**
+ * Which hover sources a frame needs (#10264 S3). `ownHover`: no selected mesh
+ * outlines the hovered entity, so it brings its own. `needsBatches`: no copy
+ * outlines it either. A batch-drawn selected entity matches only its authored
+ * meshes, so its batched pieces still need the hover batches.
+ */
+export function hoverSources(selected: readonly Mesh[], id: number | null, model: number | undefined): { ownHover: boolean; needsBatches: boolean } {
+  if (id == null) return { ownHover: false, needsBatches: false };
+  const matched = selected.filter((m) => matchesHoveredMesh(m, id, model));
+  return { ownHover: matched.length === 0, needsBatches: !matched.some((m) => m.hydrated === true || isBorrowedSelection(m)) };
+}
+
 function toSelectable(mesh: Mesh): SelectableMesh | null {
   if (!mesh.bindGroup) return null;
   const quantized = highlightBatchOf(mesh)?.quantized !== undefined;
@@ -181,17 +193,17 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
   if (source.hoveredId != null) {
     const hoveredId = source.hoveredId;
     const already = source.selectedMeshes.filter((m) => matchesHoveredMesh(m, hoveredId, source.selectedModelIndex));
-    if (already.length > 0) {
-      for (const mesh of already) {
-        const s = toSelectable(mesh);
-        if (s) hovered.push(s);
-      }
-    } else if (source.hoverBatches) {
+    for (const mesh of already) {
+      const s = toSelectable(mesh);
+      if (s) hovered.push(s);
+    }
+    // Batches come only when no copy matched (hoverSources): beside any authored meshes of the entity.
+    if (source.hoverBatches) {
       for (const batch of source.hoverBatches) {
         const uniforms = packBatchHoverUniforms(source, batch, hoveredId);
         if (uniforms) hovered.push({ vertexBuffer: batch.vertexBuffer, indexBuffer: batch.indexBuffer, indexCount: batch.indexCount, uniforms, ...(batch.quantized ? { quantized: true as const } : {}) });
       }
-    } else {
+    } else if (already.length === 0) {
       for (const piece of source.hoverPieces) {
         hovered.push({ vertexBuffer: piece.vertexBuffer, indexBuffer: piece.indexBuffer, indexCount: piece.indexCount, uniforms: packHoverUniforms(source, piece) });
       }

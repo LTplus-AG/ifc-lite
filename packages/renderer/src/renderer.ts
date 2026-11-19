@@ -202,7 +202,7 @@ import { RaycastEngine } from './raycast-engine.js';
 import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
 import { PostPassChain } from './post-pass-chain.js';
-import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
+import { buildSelectionOutlineFrame, hoverSources } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
 import { HoverBatches } from './batch-highlight.js';
 import { drawSelectionHighlights } from './selection-highlight-draw.js';
@@ -2838,11 +2838,11 @@ export class Renderer {
             const hoverId = hovered && !options.hiddenIds?.has(hovered.id)
                 && (!hasIsolatedFilter || options.isolatedIds!.has(hovered.id)) ? hovered.id : null;
             const hoverModel = hovered?.modelIndex;
-            const ownHover = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel));
+            const { ownHover, needsBatches } = hoverSources(selectedMeshesForMask, hoverId, hoverModel);
             // From the colour batches when they hold all of it (#10264 S3), else copies of its pieces.
-            const hoverBatches = ownHover ? this.hoverBatches.resolve(this.scene, hoverId, hoverModel, { device, pipeline: this.pipeline, onPipelineReady: () => this.requestRender() }) : null;
+            const hoverBatches = needsBatches && hoverId != null ? this.hoverBatches.resolve(this.scene, hoverId, hoverModel, { device, pipeline: this.pipeline, onPipelineReady: () => this.requestRender() }) : null;
             for (const batch of hoverBatches ?? []) this.scene.recordBatchDrawn(batch);
-            const hoverPieces = ownHover && !hoverBatches
+            const hoverPieces = ownHover && hoverId != null && !hoverBatches
                 ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m), this.scene.getPickGeometryRevision())) ?? []
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({

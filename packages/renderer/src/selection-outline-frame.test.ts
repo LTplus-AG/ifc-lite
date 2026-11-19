@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import { RelativeToEyeFrame } from './relative-to-eye.js';
 import { MathUtils } from './math.js';
-import { buildSelectionOutlineFrame, matchesHoveredMesh, packHoverUniforms, type SelectionOutlineSource } from './selection-outline-frame.js';
-import type { Mesh } from './types.js';
+import { buildSelectionOutlineFrame, hoverSources, matchesHoveredMesh, packHoverUniforms, type SelectionOutlineSource } from './selection-outline-frame.js';
+import type { BatchedMesh, Mesh } from './types.js';
 
 /**
  * The pure "is this the hovered mesh" predicate (#5390) that
@@ -105,6 +105,21 @@ describe('buildSelectionOutlineFrame hovers every piece (#5390)', () => {
     const { hovered } = buildSelectionOutlineFrame(base({ selectedMeshes: [selectedPiece(), selectedPiece()], hoverPieces: [piece()] }));
     assert.equal(hovered.length, 2, 'both selected pieces, not the unrelated hover copy');
     assert.ok(hovered.every((h) => h.bindGroup !== undefined));
+  });
+
+  // #10264 S3: a selected entity drawn from its batches matches only its authored meshes; its batched
+  // pieces need the hover batches beside them, or hovering it outlines the authored pieces alone.
+  it('outlines a selected batch-drawn entity from its authored meshes and its batches together', () => {
+    const authored = (): Mesh => ({ ...mesh(42), bindGroup: {} as GPUBindGroup });
+    const copy = (): Mesh => ({ ...authored(), hydrated: true });
+    assert.deepEqual(hoverSources([authored()], 42, undefined), { ownHover: false, needsBatches: true });
+    assert.deepEqual(hoverSources([authored(), copy()], 42, undefined), { ownHover: false, needsBatches: false }, 'copies already outline it');
+    assert.deepEqual(hoverSources([], 42, undefined), { ownHover: true, needsBatches: true });
+    assert.deepEqual(hoverSources([authored()], null, undefined), { ownHover: false, needsBatches: false });
+    const batch = { expressIds: [42], vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 6, origin: [0, 0, 0] } as unknown as BatchedMesh;
+    const { hovered } = buildSelectionOutlineFrame(base({ selectedMeshes: [authored()], hoverBatches: [batch], hoverPieces: [piece()] }));
+    assert.equal(hovered.length, 2, 'the authored mesh and the batch, not the copy');
+    assert.equal(hovered.filter((h) => h.indexCount === 6).length, 1);
   });
 
   it('hovers nothing when nothing is hovered', () => {

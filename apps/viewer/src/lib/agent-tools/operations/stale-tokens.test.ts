@@ -204,13 +204,32 @@ describe('IDS candidates and validation runs (#10792)', () => {
     await prepareOps('Still room');
   });
 
-  it('#36: re-tagging models between run and publish refuses the run', async () => {
+  for (const edit of [
+    { name: 'model tags', apply: () => useViewerStore.setState(s => ({ modelTags: new Map(s.modelTags) })) },
+    { name: 'tag assignments', apply: () => useViewerStore.setState(s => ({ modelTagAssignments: new Map(s.modelTagAssignments) })) },
+    { name: 'saved lenses', apply: () => useViewerStore.setState(s => ({ savedLenses: [...s.savedLenses] })) },
+  ])
+    it(`#36: editing ${edit.name} between a rules run and its publish refuses the run`, async () => {
+      const rules_json = JSON.stringify({ version: 1, name: 'Delivery rules', rules: [{
+        id: 'wall-name', name: 'Wall name is recorded',
+        applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
+        requirement: { kind: 'element', block: { groups: [{ rules: [{ kind: 'attribute', name: 'Name', op: 'isSet', value: '' }], combinator: 'AND' }], authoredAs: 'chips' } },
+      }] });
+      const run = async () => answer<{ run_id: string }>(await invoke('validation.rules.run', { rules_json, model_ids: [SAMPLE_MODEL] })).run_id;
+      const control = await run();
+      answer(await invoke('validation.publish', { run_id: control }, true));
+      const run_id = await run();
+      edit.apply();
+      const published = await invoke('validation.publish', { run_id }, true);
+      assert.equal(published.isError, true);
+      assert.match(published.text, /inputs changed/);
+    });
+
+  it('#36: an IDS run, which reads no tags or lenses, survives a lens edit', async () => {
     const { content } = answer<{ content: string }>(await invoke('ids.document.xml'));
     const { run_id } = answer<{ run_id: string }>(await invoke('validation.ids.run', { xml: content, scope: 'whole', entity_ids: [] }));
-    useViewerStore.setState(s => ({ modelTagAssignments: new Map(s.modelTagAssignments) }));
-    const published = await invoke('validation.publish', { run_id }, true);
-    assert.equal(published.isError, true);
-    assert.match(published.text, /inputs changed/);
+    useViewerStore.setState(s => ({ savedLenses: [...s.savedLenses] }));
+    answer(await invoke('validation.publish', { run_id }, true));
   });
 });
 

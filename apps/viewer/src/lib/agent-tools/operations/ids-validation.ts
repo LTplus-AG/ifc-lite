@@ -16,10 +16,13 @@ const meta = (id: string, description: string, effect: 'read' | 'configuration' 
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema: effect === 'artifact' ? artifactOutput : jsonOutput,
   policy: effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
-/** Everything a run's findings depend on: re-tagging models or editing lenses changes them as an edit does. */
-interface RunInputs { models: ViewerState['models']; mutationVersion: number; modelTags: ViewerState['modelTags']; modelTagAssignments: ViewerState['modelTagAssignments']; savedLenses: ViewerState['savedLenses'] }
-const runInputs = (s: ViewerState): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion, modelTags: s.modelTags, modelTagAssignments: s.modelTagAssignments, savedLenses: s.savedLenses });
-const sameInputs = (a: RunInputs, b: RunInputs) => (Object.keys(a) as (keyof RunInputs)[]).every(key => a[key] === b[key]);
+/** What a run's findings depend on. Information rules also read model tags and saved lenses, so re-tagging
+ * a model or editing a lens changes their findings as an edit does; IDS runs read neither. */
+interface RunInputs { models: ViewerState['models']; mutationVersion: number; modelTags?: ViewerState['modelTags']; modelTagAssignments?: ViewerState['modelTagAssignments']; savedLenses?: ViewerState['savedLenses'] }
+const runInputs = (s: ViewerState, rules = true): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion,
+  ...(rules ? { modelTags: s.modelTags, modelTagAssignments: s.modelTagAssignments, savedLenses: s.savedLenses } : {}) });
+/** `run` holds only the inputs its kind read; each is compared with the current state. */
+const sameInputs = (run: RunInputs, now: RunInputs) => (Object.keys(run) as (keyof RunInputs)[]).every(key => run[key] === now[key]);
 interface Run { report: ValidationReport; snapshot: IdsReportBlock; inputs: RunInputs }
 const hosts = new WeakMap<ToolHost, Map<string, Run>>();
 function runs(c: { host: ToolHost }) { let values = hosts.get(c.host); if (!values) { values = new Map(); hosts.set(c.host, values); const captured = values; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return values; }
@@ -64,7 +67,7 @@ export const nativeValidationOperations = [
   }, async (i, c) => {
     const [{ parseIDS }, { runIdsCheck }, { resolveRef }] = await Promise.all([import('@ifc-lite/ids'), import('@/lib/validation/run-ids-check'), import('../refs')]);
     const document = parseIDS(i.xml); for (const express_id of i.entity_ids) resolveRef(c.model, { express_id });
-    assertToolActive(c); const state = useViewerStore.getState(), inputs = runInputs(state);
+    assertToolActive(c); const state = useViewerStore.getState(), inputs = runInputs(state, false);
     const result = await runIdsCheck({ document, modelId: c.model.id, dataStore: c.model.store, mutationView: c.model.mutationView(), locale: 'en', models: state.models, signal: c.signal,
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState()))) throw new Error('Models changed during IDS validation.');

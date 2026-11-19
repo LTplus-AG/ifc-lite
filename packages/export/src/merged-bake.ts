@@ -57,9 +57,11 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
   const warnings: string[] = [];
   let parser: IfcParser | null = null;
   for (const model of models) {
+    // Warnings reach a de-duplicated list, so two models with one name are told apart by id.
+    const label = models.some(other => other !== model && other.name === model.name) ? `${model.name} (${model.id})` : model.name;
     let georef = hasGeorefEdits(model.georefMutations) ? model.georefMutations : undefined;
     if (georef && targetSchema === 'IFC2X3') {
-      warnings.push(`${model.name}: ${GEOREF_NOT_WRITTEN} ${IFC2X3_GEOREF_REFUSAL}`);
+      warnings.push(`${label}: ${GEOREF_NOT_WRITTEN} ${IFC2X3_GEOREF_REFUSAL}`);
       georef = undefined;
     }
     const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
@@ -78,7 +80,7 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
     if (georef) {
       try { exported = bake(sourceSchema === 'IFC2X3' ? targetSchema : sourceSchema, georef); } catch (error) {
         if (!isGeorefRefusal(error)) throw error;
-        warnings.push(`${model.name}: ${GEOREF_NOT_WRITTEN} ${error.message}`);
+        warnings.push(`${label}: ${GEOREF_NOT_WRITTEN} ${error.message}`);
       }
     }
     if (!exported && !viewHasMutations(model.mutationView)) {
@@ -88,7 +90,7 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
     const { schema, result } = exported ?? bake(sourceSchema);
     // A converting bake reports its conversion warnings too: the merge loop sees an already-converted store.
     const reported = schema !== sourceSchema ? result.stats.warnings : result.stats.georeferencingWarnings ?? [];
-    for (const warning of reported) warnings.push(`${model.name}: ${warning}`);
+    for (const warning of reported) warnings.push(`${label}: ${warning}`);
     parser = parser ?? new IfcParser();
     // slice() yields an exact-length ArrayBuffer-backed copy for the parser.
     const reparsed = await parser.parseColumnar(result.content.slice().buffer, {

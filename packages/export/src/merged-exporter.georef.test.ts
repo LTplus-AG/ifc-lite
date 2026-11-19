@@ -103,3 +103,13 @@ describe('MergedExporter georeference edits it cannot write (#10669)', () => {
     expect(result.stats.warnings.some(warning => /A: Georeferencing edits were not written.*IFC2X3/.test(warning))).toBe(true);
   });
 });
+
+describe('MergedExporter georeference warnings for models with one name (#10669)', () => {
+  it('names each model when two share a name, so both refusals are reported', async () => {
+    const a: MergeModelInput = { id: 'a', name: 'Same', dataStore: await parse(model('Same', '0ProjectA000000000000a')), georefMutations: GEOREF };
+    const b: MergeModelInput = { id: 'b', name: 'Same', dataStore: await parse(model('Same', '0ProjectB000000000000b')), georefMutations: GEOREF };
+    const result = await new MergedExporter([a, b]).exportAsync({ schema: 'IFC2X3' });
+    const refusals = result.stats.warnings.filter(warning => /Georeferencing edits were not written/.test(warning));
+    expect(refusals.map(warning => warning.split(':')[0])).toEqual(['Same (a)', 'Same (b)']);
+  });
+});

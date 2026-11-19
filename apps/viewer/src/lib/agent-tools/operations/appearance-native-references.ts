@@ -170,8 +170,8 @@ export const appearanceReferenceOperations = [
           if (getGlobalRenderer() !== renderer || (editing && useViewerStore.getState().appearanceReferences.get(editing.id) !== editing))
             throw new Error('Native reference inputs changed during preparation.');
           assertReferencePlacementCurrent(prepared);
-          for (const [key, row] of candidates(c)) if (row.placed) candidates(c).delete(key);
-          if (candidates(c).size >= 32) throw new Error('Reference preview capacity reached.');
+          if ([...candidates(c).values()].filter((row) => !row.placed).length >= 32)
+            throw new Error('Reference preview capacity reached.');
           candidates(c).set(token, { prepared, editing, renderer, owner, draftId });
         });
         adopted = true;

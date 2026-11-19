@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { evictOldest } from './host-handles';
 import { viewerOperation, operation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
@@ -122,12 +123,7 @@ export const appearanceCaptureOperations = [
         throw new Error('Unknown textured surface or triangle ordinal.');
       const capture = prepareCapturedRegion(i.source_model_id, mesh, i.triangles);
       capture.validate();
-      // Evict only plain previews: a creating or created token must stay answerable.
-      for (const [key, row] of owned(c)) {
-        if (owned(c).size < 32) break;
-        if (!row.creating && !row.result) owned(c).delete(key);
-      }
-      if (owned(c).size >= 32) throw new Error('Discard created capture candidates before preparing more.');
+      evictOldest(owned(c), 32, (row) => !row.creating);
       const token = crypto.randomUUID();
       owned(c).set(token, {
         capture,

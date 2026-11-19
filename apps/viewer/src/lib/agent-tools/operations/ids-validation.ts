@@ -17,19 +17,22 @@ const meta = (id: string, description: string, effect: 'read' | 'configuration' 
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema: effect === 'artifact' ? artifactOutput : jsonOutput,
   policy: effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
-/** What a run's findings depend on. Information rules also read model tags and grouping lenses, so re-tagging
- * a model or editing a grouping changes their findings as an edit does; IDS runs read neither. Lenses are
- * compared by content of the groupings only: a colour lens added from a list column changes no finding. */
-interface RunInputs { models: ViewerState['models']; mutationVersion: number; modelTags?: ViewerState['modelTags']; modelTagAssignments?: ViewerState['modelTagAssignments']; groupings?: string }
+/** What a run's findings depend on. Information rules also read model tag ids, tag assignments and grouping lenses,
+ * so re-tagging a model or editing a grouping changes their findings as an edit does; IDS runs read none of them.
+ * Tags and lenses are compared by what the rule engine reads, so renaming a tag or recolouring a lens changes nothing. */
+interface RunInputs { models: ViewerState['models']; mutationVersion: number; tagIds?: string; modelTagAssignments?: ViewerState['modelTagAssignments']; groupings?: string }
+/** The fields `customGroupingsFromLenses` hands the rule engine. */
+const groupingsSignature = (lenses: ViewerState['savedLenses']) => JSON.stringify(lenses.filter(isGroupingLens).map(lens => [lens.id, lens.name,
+  lens.capturedScope ?? null, lens.rules.map(rule => [rule.name, rule.enabled, rule.unreadableLegacy ? null : rule.groups ?? null])]));
 const runInputs = (s: ViewerState, kind: 'rules' | 'ids' = 'rules'): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion,
-  ...(kind === 'rules' ? { modelTags: s.modelTags, modelTagAssignments: s.modelTagAssignments, groupings: JSON.stringify(s.savedLenses.filter(isGroupingLens)) } : {}) });
+  ...(kind === 'rules' ? { tagIds: JSON.stringify([...s.modelTags.keys()].sort()), modelTagAssignments: s.modelTagAssignments, groupings: groupingsSignature(s.savedLenses) } : {}) });
 /** `run` holds only the inputs its kind read; each is compared with the current state. */
 const sameInputs = (run: RunInputs, now: RunInputs) => (Object.keys(run) as (keyof RunInputs)[]).every(key => run[key] === now[key]);
 interface Run { report: ValidationReport; snapshot: IdsReportBlock; inputs: RunInputs }
 const hosts = new WeakMap<ToolHost, Map<string, Run>>();
 function runs(c: { host: ToolHost }) { let values = hosts.get(c.host); if (!values) { values = new Map(); hosts.set(c.host, values); const captured = values; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return values; }
 function run(c: { host: ToolHost }, id: string) { const value = runs(c).get(id); if (!value) throw new Error('Unknown validation run owned by this host.');
-  if (!sameInputs(value.inputs, runInputs(useViewerStore.getState()))) throw new Error('Validation inputs changed. Run the check again.'); return value;
+  if (!sameInputs(value.inputs, runInputs(useViewerStore.getState(), value.inputs.groupings === undefined ? 'ids' : 'rules'))) throw new Error('Validation inputs changed. Run the check again.'); return value;
 }
 function libraryRevision(expected: number) { if (useViewerStore.getState().validationDefinitionRevision !== expected) throw new Error('Validation definitions changed. Inspect them again.'); }
 const runInput = { type: 'object' as const, properties: { run_id: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['run_id' as const], additionalProperties: false as const };
@@ -72,7 +75,7 @@ export const nativeValidationOperations = [
     assertToolActive(c); const state = useViewerStore.getState(), inputs = runInputs(state, 'ids');
     const result = await runIdsCheck({ document, modelId: c.model.id, dataStore: c.model.store, mutationView: c.model.mutationView(), locale: 'en', models: state.models, signal: c.signal,
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
-    assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState()))) throw new Error('Models changed during IDS validation.');
+    assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'ids'))) throw new Error('Models changed during IDS validation.');
     evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, inputs });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),

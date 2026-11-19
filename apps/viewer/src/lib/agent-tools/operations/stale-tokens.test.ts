@@ -230,7 +230,7 @@ describe('IDS candidates and validation runs (#10792)', () => {
   });
 
   for (const edit of [
-    { name: 'model tags', apply: () => useViewerStore.setState(s => ({ modelTags: new Map(s.modelTags) })) },
+    { name: 'the model tag set', apply: () => useViewerStore.setState(s => ({ modelTags: new Map([...s.modelTags, ['tag-new', { id: 'tag-new', name: 'Phase 2' }]]) })) },
     { name: 'tag assignments', apply: () => useViewerStore.setState(s => ({ modelTagAssignments: new Map(s.modelTagAssignments) })) },
     { name: 'a grouping lens', apply: () => {
       const lenses = useViewerStore.getState().savedLenses, index = lenses.findIndex(isGroupingLens);
@@ -249,10 +249,14 @@ describe('IDS candidates and validation runs (#10792)', () => {
       assert.match(published.text, /inputs changed/);
     });
 
-  it('#36: a rules run survives a lens that groups nothing, such as a list colour lens', async () => {
+  it('#36: a rules run survives a colour-only lens, a recoloured grouping and a renamed tag', async () => {
+    useViewerStore.setState({ modelTags: new Map([['tag-a', { id: 'tag-a', name: 'Phase 1' }]]) });
     const { run_id } = answer<{ run_id: string }>(await invoke('validation.rules.run', { rules_json, model_ids: [SAMPLE_MODEL] }));
     const lens = useViewerStore.getState().savedLenses.find(isGroupingLens)!;
-    useViewerStore.setState(s => ({ savedLenses: [...s.savedLenses, { ...lens, id: 'colour-only', rules: [] }] }));
+    useViewerStore.setState(s => ({ savedLenses: [...s.savedLenses, { ...lens, id: 'colour-only', rules: [] }],
+      modelTags: new Map([...s.modelTags].map(([id, tag]) => [id, { ...tag, name: `${tag.name} renamed` }])) })); // tag ids unchanged
+    // Recolouring a grouping lens's rules changes no grouping either.
+    useViewerStore.setState(s => ({ savedLenses: s.savedLenses.map(row => row.id === lens.id ? { ...row, rules: row.rules.map(rule => ({ ...rule, color: '#0000ff' })) } : row) }));
     answer(await invoke('validation.publish', { run_id }, true));
   });
 

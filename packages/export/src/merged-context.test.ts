@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #3789 follow-up: `getStepAttr`'s record regex (in merged-subcontext.ts, shared with this module)
+ * #3789 follow-up: `getStepAttr`'s record reader (now merged-subcontext.ts's, on step-record-frame)
  * required its type name immediately adjacent to '(' -- unlike
  * `entity-extractor.ts`'s sibling fix. Asserted through the public
  * `resolveContextWcsMetres`: when the context's own STEP line, or the

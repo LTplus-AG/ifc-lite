@@ -89,6 +89,7 @@ ${beam(42, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,0.015,0
 ${beam(43, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.3,0.008,0.012,0.01,0.16,0.018,0.01,0.0357961)')}
 ${beam(44, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,0.015,0.1,0.015,0.01,0.0507456,$,$,$)')}
 ${beam(45, 'IFCTSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.1,0.006,0.015,0.008,0.004,$,$,$)')}
+${beam(46, 'IFCUSHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.075,0.0085,0.0115,0.012,0.006,$,0.)')}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -112,8 +113,9 @@ const ORACLE: Record<number, [number, number]> = {
   264: [0, 0], // equal flanges are symmetric
   274: [0, 12.0838], // equal widths, a thicker top flange (120 x 14 below, 120 x 20 above), depth 240
   284: [0, -39.5833], // TopFlangeThickness omitted is the bottom flange's (schema rule WR3): 20 mm on both
-  // Stated IFC2X3 CentreOfGravityInX/Y on T, U, C and asymmetric I (#10377): each states IfcOpenShell 0.8.4's centroid of the
-  // filleted section, measured from the bounds centre as the IFC2x3 TC1 text defines it.
+  // Stated IFC2X3 CentreOfGravityInX/Y on T, U, C and asymmetric I (#10377): each states the centroid IfcOpenShell 0.8.4
+  // measures on the filleted section (0.8.4 meshes IfcAsymmetricIShapeProfileDef directly, which 0.8.2 did not; its sharp
+  // #244 matches the outline value to 0.0001 mm), from the bounds centre as the IFC2x3 TC1 text defines it.
   374: [0, 29.8391], // T, flange 100 x 15, 8 mm fillet: stated and used (sharp corners give 29.813)
   384: [0, 24.851], // T, flange 80 x 10: the centroid sits near the quarter point, so a distance from the flange face reads alike; computed kept
   394: [-15.9503, 0], // U 200 x 75, 12 mm fillet: stated and used (sharp corners give -15.490)
@@ -123,6 +125,7 @@ const ORACLE: Record<number, [number, number]> = {
   434: [0, 35.7961], // asymmetric I with the wider flange on top: the TC1 text says negative y, the computed sign (+y) is kept
   444: [0, -50.5055], // IFC4 arity: slot 11 is BottomFlangeEdgeRadius, never a centre of gravity
   454: [0, 29.813], // the T of #374 without a stated value
+  464: [-15.490, 0], // the U of #394 stating 0., as StruCad writes it: not a positive length, ignored
   204: [-3.553, 0], // the same square with a 20 mm radius circular void 25 mm right of the centre (IfcOpenShell tessellates the circle; the exact disc gives -3.593)
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.

@@ -33,24 +33,26 @@ pub(crate) fn carry(source: &str, converted: String, cfrom: &str, cto: &str, dro
         (from, "IFC2X3") if ifc4_like(from) => false,
         _ => return converted,
     };
+    // The head names the type; most records stop here.
+    let Some(head) = crate::step_record_frame::record_head(&converted) else { return converted };
+    let ty = head.type_name(&converted);
+    let Some(&(ifc2x3, ifc4, enum_2x3, label_2x3)) = LABEL_CARRIES.iter().find(|c| ty.eq_ignore_ascii_case(if up { c.1 } else { c.0 })) else { return converted };
     let Some(frame) = crate::step_record_frame::record_frame(&converted) else { return converted };
-    let ty = frame.head.type_name(&converted).to_ascii_uppercase();
-    let Some(&(ifc2x3, ifc4, enum_2x3, label_2x3)) = LABEL_CARRIES.iter().find(|c| ty == if up { c.1 } else { c.0 }) else { return converted };
-    let index = |schema: &str, ty: &str, name: &str| schema_attribute_names(schema, ty)?.iter().position(|n| *n == name);
     let Some(mut out) = split_top_level_args(frame.args(&converted)) else { return converted };
-    let slot = |out: &[String], i: Option<usize>| i.and_then(|i| out.get(i).cloned());
+    let index = |schema: &str, ty: &str, name: &str| schema_attribute_names(schema, ty)?.iter().position(|n| *n == name);
     if up {
         let (Some(ot), Some(e), Some(l)) = (index(cto, ifc4, "ObjectType"), index(cfrom, ifc2x3, enum_2x3), index(cfrom, ifc2x3, label_2x3)) else { return converted };
         let Some(src) = crate::step_record_frame::record_frame(source).and_then(|f| split_top_level_args(f.args(source))) else { return converted };
-        let (Some(kind), Some(label)) = (slot(&src, Some(e)), slot(&src, Some(l))) else { return converted };
-        if !is_userdefined(&kind) || !holds_value(&label) || out.get(ot).is_none_or(|v| holds_value(v)) { return converted; }
-        out[ot] = label;
+        let (Some(kind), Some(label)) = (src.get(e), src.get(l)) else { return converted };
+        if !is_userdefined(kind) || !holds_value(label) || out.get(ot).is_none_or(|v| holds_value(v)) { return converted; }
+        out[ot] = label.clone();
+        // The trim or map before this counted the label as dropped.
         if let Some(dropped) = dropped { *dropped = dropped.saturating_sub(1); }
     } else {
         let (Some(ot), Some(e), Some(l)) = (index(cto, ifc2x3, "ObjectType"), index(cto, ifc2x3, enum_2x3), index(cto, ifc2x3, label_2x3)) else { return converted };
-        let (Some(kind), Some(label), Some(object_type)) = (slot(&out, Some(e)), slot(&out, Some(l)), slot(&out, Some(ot))) else { return converted };
-        if !is_userdefined(&kind) || holds_value(&label) || !holds_value(&object_type) { return converted; }
-        out[l] = object_type;
+        let (Some(kind), Some(label), Some(object_type)) = (out.get(e), out.get(l), out.get(ot)) else { return converted };
+        if !is_userdefined(kind) || holds_value(label) || !holds_value(object_type) { return converted; }
+        out[l] = object_type.clone();
     }
     frame.with_args(&converted, &out.join(","))
 }

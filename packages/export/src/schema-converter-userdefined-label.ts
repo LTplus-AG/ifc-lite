@@ -14,6 +14,7 @@
 import { attrNameTable, type IfcSchemaVersion } from './schema-converter.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
+import { stepRecordHead } from './step-record-frame.js';
 
 /** `[IFC2X3 type, IFC4 type, IFC2X3 enum, IFC2X3 label]`; the IFC4 label is ObjectType. */
 const LABEL_CARRIES: readonly (readonly [string, string, string, string])[] = [
@@ -24,25 +25,29 @@ const LABEL_CARRIES: readonly (readonly [string, string, string, string])[] = [
 ];
 
 const holdsValue = (v: string | undefined) => v !== undefined && !['', '$', '*'].includes(v.trim());
+const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
 
 /** True when `slot` is `.USERDEFINED.` (any case) with only whitespace and comments around it. */
 function isUserDefined(slot: string | undefined): boolean {
+  if (slot === undefined) return false;
   const token = '.USERDEFINED.';
-  const start = slot === undefined ? -1 : skipStepTrivia(slot, 0);
-  return start !== -1 && slot!.slice(start, start + token.length).toUpperCase() === token
-    && skipStepTrivia(slot!, start + token.length) === slot!.length;
+  const start = skipStepTrivia(slot, 0);
+  return start !== -1 && slot.slice(start, start + token.length).toUpperCase() === token
+    && skipStepTrivia(slot, start + token.length) === slot.length;
 }
 
 /** `converted`, written from `source` between the schemas, with the label carried. */
 export function carryUserDefinedLabel(source: string, converted: string | null, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion): string | null {
-  const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
   const up = fromSchema === 'IFC2X3' && ifc4Like(toSchema);
   if (converted === null || (!up && !(toSchema === 'IFC2X3' && ifc4Like(fromSchema)))) return converted;
-  const record = readStepSlots(converted);
-  const carry = record && LABEL_CARRIES.find((c) => record.type === (up ? c[1] : c[0]));
-  if (!record || !carry) return converted;
+  // The head names the type; most records stop here.
+  const head = stepRecordHead(converted);
+  const type = head ? converted.slice(head.typeStart, head.typeEnd).toUpperCase() : '';
+  const carry = LABEL_CARRIES.find((c) => type === (up ? c[1] : c[0]));
+  const record = carry ? readStepSlots(converted) : null;
+  if (!carry || !record) return converted;
   const [ifc2x3, ifc4, kind, label] = carry;
-  const at = (schema: IfcSchemaVersion, type: string, name: string) => attrNameTable(schema)?.get(type)?.indexOf(name) ?? -1;
+  const at = (schema: IfcSchemaVersion, t: string, name: string) => attrNameTable(schema)?.get(t)?.indexOf(name) ?? -1;
   const out = [...record.slots];
   if (up) {
     const ot = at(toSchema, ifc4, 'ObjectType');
@@ -51,8 +56,9 @@ export function carryUserDefinedLabel(source: string, converted: string | null, 
     if (!src || ot < 0 || !isUserDefined(src[at(fromSchema, ifc2x3, kind)]) || !holdsValue(value) || holdsValue(out[ot])) return converted;
     out[ot] = value!;
   } else {
-    const [ot, k, l] = ['ObjectType', kind, label].map((n) => at(toSchema, ifc2x3, n));
-    if (ot < 0 || l < 0 || !isUserDefined(out[k]) || holdsValue(out[l]) || !holdsValue(out[ot])) return converted;
+    const ot = at(toSchema, ifc2x3, 'ObjectType');
+    const l = at(toSchema, ifc2x3, label);
+    if (ot < 0 || l < 0 || !isUserDefined(out[at(toSchema, ifc2x3, kind)]) || holdsValue(out[l]) || !holdsValue(out[ot])) return converted;
     out[l] = out[ot];
   }
   return `${record.prefix}${out.join(',')}${record.suffix}`;

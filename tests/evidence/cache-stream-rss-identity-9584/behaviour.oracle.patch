@@ -1,0 +1,12 @@
+diff --git a/scripts/perf/cache-stream-report.mjs b/scripts/perf/cache-stream-report.mjs
+--- a/scripts/perf/cache-stream-report.mjs
++++ b/scripts/perf/cache-stream-report.mjs
+@@ -216,7 +216,7 @@ export function summarize(rows, { minRounds = 5 } = {}) {
+       rounds: Math.min(...variants.map((v) => v.rounds)),
+       identity: {
+         hashes,
+-        agrees: true,
++        agrees: hashes.length === 1,
+         // Non-constant WITHIN one variant is non-determinism; the variants
+         // disagreeing is a changed output. They are different defects.
+         unstable: measured.some((v) => v.hashes.length > 1),

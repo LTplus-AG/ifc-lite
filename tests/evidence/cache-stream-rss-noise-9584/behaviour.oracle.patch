@@ -1,0 +1,12 @@
+diff --git a/scripts/perf/cache-stream-report.mjs b/scripts/perf/cache-stream-report.mjs
+--- a/scripts/perf/cache-stream-report.mjs
++++ b/scripts/perf/cache-stream-report.mjs
+@@ -185,7 +185,7 @@ function comparisons(variants) {
+       const deltaPct = pctDelta(toStat.rawMedian, fromStat.rawMedian);
+       // The noisier of the two sides, never below 3%: a delta smaller than
+       // the swing of either side it was computed from is not a reading.
+-      const noisePct = fromStat.spreadPct ?? 0;
++      const noisePct = Math.max(fromStat.spreadPct ?? 0, toStat.spreadPct ?? 0);
+       const real = deltaPct != null && Math.abs(deltaPct) > Math.max(noisePct, 3);
+       out.push({
+         from, to, label, why, metric, metricLabel, unit, deltaPct, noisePct, real,

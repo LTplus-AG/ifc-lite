@@ -12,11 +12,14 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
 /**
- * `values` for an IFCMAPCONVERSION into a CRS in map unit `unit` (#2 metre, #3 millimetre, $ the project's), or a
- * whole record line when `raw`; `projectUnit` is the model's length unit.
+ * `values` for an IFCMAPCONVERSION into a CRS in map unit `unit` (#2 metre, #3 millimetre, #4 a conversion-based
+ * unit of `factor` metres, $ the project's), or a whole record line when `raw`; `projectUnit` is the model's length unit.
  */
-interface Georef { values?: string; unit?: '#2' | '#3' | '$'; raw?: string; projectUnit?: '#2' | '#3' }
-const georefLines = ({ values, unit = '#2', raw }: Georef) => `#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+interface Georef { values?: string; unit?: '#2' | '#3' | '#4' | '$'; factor?: string; raw?: string; projectUnit?: '#2' | '#3' }
+const georefLines = ({ values, unit = '#2', factor = '0.3048', raw }: Georef) => `#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#4=IFCCONVERSIONBASEDUNIT(#5,.LENGTHUNIT.,'FOOT',#6);
+#5=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
+#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(${factor}),#2);
 #20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,${unit});
 ${raw ?? `#21=IFCMAPCONVERSION(#14,#20,${values});`}`;
 
@@ -88,6 +91,9 @@ describe('merged STEP export and map conversions (#10798)', () => {
     // A CRS without a map unit uses the project's.
     expectApart(await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'normalize'), 2);
     expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$' }])).contexts).toHaveLength(1);
+    // A conversion-based unit compares by its factor, not by its record's id.
+    expectApart(await merge([{ values: X, unit: '#4', factor: '0.3048' }, { values: X, unit: '#4', factor: '1.' }]), 2);
+    expect((await merge([{ values: X, unit: '#4' }, { values: X, unit: '#4' }])).contexts).toHaveLength(1);
   });
 
   it('tells apart two different rigid operations', async () => {

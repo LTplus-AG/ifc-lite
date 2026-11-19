@@ -80,6 +80,17 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expectApart(await merge([at(X), at(Y)]), 2);
   });
 
+  it('lists a kept context even when its own project listed none', async () => {
+    const moved = model('b', '0ProjectB000000000000b', null, 'IFC4').replace('#10=IFCCARTESIANPOINT((0.,0.,0.))', '#10=IFCCARTESIANPOINT((10.,0.,0.))')
+      .replace(",$,$,$,$,(#14),#9);", ",$,$,$,$,$,#9);");
+    const bytes = new TextEncoder().encode(moved);
+    const inputs = [await input('a', null, 'IFC4'), { id: 'b', name: 'b', dataStore: await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer) }];
+    const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema: 'IFC4' })).content);
+    const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
+    expect(contexts).toHaveLength(2);
+    expect([...projectContexts(content)].sort()).toEqual([...contexts].sort());
+  });
+
   it('lists a context kept for a different frame in the merged project too', async () => {
     const moved = model('b', '0ProjectB000000000000b', null, 'IFC4').replace('#10=IFCCARTESIANPOINT((0.,0.,0.))', '#10=IFCCARTESIANPOINT((10.,0.,0.))');
     const bytes = new TextEncoder().encode(moved);
@@ -99,6 +110,7 @@ describe('merged STEP export and map conversions (#10798)', () => {
     const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
     const library = content.match(/^#\d+=IFCPROJECTLIBRARY\(.*,\((#\d+)\),#\d+\);$/m)?.[1];
     expect(contexts).toHaveLength(3);
+    expect(library, 'the library keeps its context').toBeDefined();
     expect([...projectContexts(content)].sort()).toEqual(contexts.filter(id => id !== library).sort());
   });
 

@@ -39,13 +39,13 @@ const FACE_VIEWS: Record<string, { rx: number; ry: number }> = {
   left: { rx: 0, ry: 90 },
 };
 
-const FACES: { id: CubeFace; label: string; transform: (h: number) => string }[] = [
-  { id: 'front', label: 'FRONT', transform: (h) => `translateZ(${h}px)` },
-  { id: 'back', label: 'BACK', transform: (h) => `translateZ(${-h}px) rotateY(180deg)` },
-  { id: 'top', label: 'TOP', transform: (h) => `translateY(${-h}px) rotateX(90deg)` },
-  { id: 'bottom', label: 'BTM', transform: (h) => `translateY(${h}px) rotateX(-90deg)` },
-  { id: 'right', label: 'RIGHT', transform: (h) => `translateX(${h}px) rotateY(90deg)` },
-  { id: 'left', label: 'LEFT', transform: (h) => `translateX(${-h}px) rotateY(-90deg)` },
+const FACES: { id: CubeFace; transform: (h: number) => string }[] = [
+  { id: 'front', transform: (h) => `translateZ(${h}px)` },
+  { id: 'back', transform: (h) => `translateZ(${-h}px) rotateY(180deg)` },
+  { id: 'top', transform: (h) => `translateY(${-h}px) rotateX(90deg)` },
+  { id: 'bottom', transform: (h) => `translateY(${h}px) rotateX(-90deg)` },
+  { id: 'right', transform: (h) => `translateX(${h}px) rotateY(90deg)` },
+  { id: 'left', transform: (h) => `translateX(${-h}px) rotateY(-90deg)` },
 ];
 
 const ZONES_BY_FACE = Object.fromEntries(CUBE_FACES.map((f) => [f, zonesForFace(f)])) as Record<CubeFace, CubeZone[]>;
@@ -183,7 +183,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
             transform: cubeTransform(rotationX, rotationY),
           }}
         >
-          {FACES.map(({ id, label, transform }) => (
+          {FACES.map(({ id, transform }) => (
             <div
               key={id}
               className="absolute w-full h-full grid border border-foreground/30"
@@ -232,7 +232,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
                     onMouseLeave={() => setHoveredKey(null)}
                     onClick={() => handleZoneClick(zone)}
                   >
-                    {isFace ? label : null}
+                    {isFace ? <span className="uppercase">{t(`viewportLighting.viewCube.face.${id}`)}</span> : null}
                   </button>
                 );
               })}

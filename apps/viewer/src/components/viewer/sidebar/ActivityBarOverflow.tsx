@@ -64,18 +64,18 @@ export function ActivityBarOverflow({ ids, locationOf, onSelect, waiting = [] }:
             <button
               type="button"
               data-rail-overflow=""
-              aria-label={label}
+              aria-description={label}
               className={cn(
                 'relative h-9 w-10 shrink-0 inline-flex flex-col items-center justify-center gap-0.5 rounded-md transition-colors',
                 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
               )}
             >
-              <span className="flex items-center gap-0.5 text-2xs leading-none tabular-nums" aria-hidden>
-                <MoreHorizontal className="h-4 w-4" />
+              <span className="flex items-center gap-0.5 text-2xs leading-none tabular-nums">
+                <MoreHorizontal className="h-4 w-4" aria-hidden />
                 +{ids.length}
               </span>
-              <span data-rail-overflow-caption="" className="max-w-full truncate text-2xs font-medium leading-none" aria-hidden>
+              <span data-rail-overflow-caption="" className="max-w-full truncate text-2xs font-medium leading-none">
                 {t('shellChrome.activityBar.moreCaption')}
               </span>
               {/* Top-left, unlike a rail icon's corner dot: the count owns the right. */}

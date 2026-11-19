@@ -23,8 +23,9 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
 }): void {
   let open = 0;
   for (const [key, value] of handles) {
-    if (!canApply(value)) { handles.delete(key); release(value); }
-    else if (pending(value)) open++;
+    if (canApply(value)) { if (pending(value)) open++; continue; }
+    handles.delete(key);
+    try { release(value); } catch (error) { console.warn('[viewer operations] Releasing a stale candidate failed:', error); }
   }
   if (open >= cap) throw new Error(refusal);
   for (const [key, value] of handles) {
@@ -33,11 +34,16 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
   }
 }
 
-/** True while the model a candidate was prepared on is still loaded with the same store. The host's own model list
- * also covers the single-model session, whose store is not in `models`. */
-export function liveModelStores(host: ToolHost): (modelId: string, store: unknown) => boolean {
-  const live = new Map(host.models().map(model => [model.id, model.store]));
-  return (modelId, store) => live.get(modelId) === store;
+/**
+ * The one staleness test every admission site passes as `canApply`. A candidate can still apply while the model it
+ * was prepared on is loaded with the same store (the host's model list also covers the single-model session) and,
+ * unless it already applied, the revision it was prepared at is current. This is permanent staleness only: a
+ * temporary refusal such as Edit mode being off keeps the candidate.
+ */
+export function candidateStillApplies(revision: number, host?: ToolHost) {
+  const live = host ? new Map(host.models().map(model => [model.id, model.store])) : null;
+  return (entry: { revision: number; modelId?: string; store?: unknown }, applied: boolean): boolean =>
+    (!live || entry.modelId === undefined || live.get(entry.modelId) === entry.store) && (applied || entry.revision === revision);
 }
 
 /** An applied candidate's receipt write. `settled` once it resolved: admission may then evict the candidate. */

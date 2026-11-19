@@ -142,6 +142,8 @@ function batchModelIndex(batches: readonly BatchedMesh[], id: number): number | 
   const indices: (number | undefined)[] = [];
   for (const batch of batches) {
     batch.expressIds.forEach((entry, i) => { if (entry === id) indices.push(batch.modelIndices?.[i]); });
+    // A secondary lane id has no entry: it takes the batch's model when the batch has one (#10653).
+    if (batch.laneIds?.includes(id)) indices.push(soleModelIndex(batch.modelIndices ?? []));
   }
   return soleModelIndex(indices);
 }

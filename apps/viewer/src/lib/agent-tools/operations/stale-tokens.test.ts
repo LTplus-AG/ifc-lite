@@ -506,21 +506,26 @@ describe('multi-batch IDS corrections (#10792)', () => {
 
   it('#10894: an element listed twice is withheld, never split across batches', async () => {
     const express_ids = [...Array.from({ length: WALLS }, (_, i) => i + 1), 1];
-    const { converted, candidates } = answer<{ converted: { issues: Array<{ kind: string }> }; candidates: Array<{ token: string }> }>(await invoke('validation.fix.prepare',
+    const { converted, candidates } = answer<{ converted: { issues: Array<{ kind: string; element?: string }> }; candidates: Array<{ token: string }> }>(await invoke('validation.fix.prepare',
       { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value: 'yes', title: 'Mark reviewed' }));
-    assert.ok(converted.issues.some(issue => issue.kind === 'ambiguous-key'), 'the duplicate is reported, not split across batches');
-    let applied = 0;
-    for (const { token } of candidates) applied += (await applyBatch(token)).applied.length;
-    assert.equal(applied, WALLS - 1);
+    assert.deepEqual(converted.issues.filter(issue => issue.kind === 'ambiguous-key').map(issue => issue.element), [guid(1)], 'wall 1 is withheld, not split');
+    assert.equal(candidates.length, 1, 'the other 500 fit one batch');
+    const receipt = await applyBatch(candidates[0].token);
+    assert.equal(receipt.applied.length, WALLS - 1);
+    assert.equal(receipt.applied.some(row => row.globalId === guid(1)), false);
   });
 
   it('#10894: two sibling batches applied at once: one applies, the other is refused, then applies on retry', async () => {
     const [first, second] = await prepareCorrection();
+    // Both calls bind the revision when they start, and apply awaits its imports before committing, so the second to
+    // commit meets a revision the first moved.
     const results = await Promise.all([invoke('authoring.apply', { token: first }, true), invoke('authoring.apply', { token: second }, true)]);
-    assert.deepEqual(results.map(result => result.isError).sort(), [false, true]);
-    assert.match(results.find(result => result.isError)!.text, /Model replaced, closed, or edited during the operation/);
-    const refused = results[0].isError ? first : second;
-    await applyBatch(refused);
+    assert.equal(results.filter(result => result.isError).length, 1);
+    const winner = results.find(result => !result.isError)!, loser = results.find(result => result.isError)!;
+    assert.match(loser.text, /Model replaced, closed, or edited during the operation/);
+    const applied = (JSON.parse(answer<{ receipt_json: string }>(winner).receipt_json) as ModelChangeReceipt).applied.length;
+    const retried = (await applyBatch(results[0].isError ? first : second)).applied.length;
+    assert.equal(applied + retried, WALLS, 'the refused apply wrote nothing; its retry applied its whole batch');
   });
 
   it('#10894: an edit outside the correction between its batches still refuses the rest', async () => {

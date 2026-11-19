@@ -54,30 +54,31 @@ export function rememberPublishedEdit(mutation: Mutation, session: Session, type
   published.set(mutation, { session: tokenOf(session), ...types });
 }
 
-/** Send what an undo or redo step left, if it left anything to send. */
-function publishStep(state: ViewerState, modelId: string, mutation: Mutation, edit: PublishedEdit, direction: 'undo' | 'redo'): void {
+/** Send what an undo or redo step left, if it left anything; false when the room cannot be given the prior value. */
+function publishStep(state: ViewerState, modelId: string, mutation: Mutation, edit: PublishedEdit, direction: 'undo' | 'redo'): boolean {
   const { entityId, psetName, propName, attributeName } = mutation;
   if (mutation.type === 'UPDATE_ATTRIBUTE') {
-    if (!attributeName) return;
+    if (!attributeName) return true;
     if (direction === 'redo') {
       if (mutation.newValue !== undefined) state.mirrorAttributeEdit(modelId, entityId, attributeName, mutation.newValue === null ? null : String(mutation.newValue));
-      return;
+      return true;
     }
-    // An undo restores a prior value only when the edit recorded one: without it the original is not known here (a
-    // created entity's payload, a select, a reference slot). The room keeps the edited value, so the user is told.
-    if (mutation.oldValue === undefined || mutation.oldValue === null) throw new Error(`the prior ${attributeName} was not recorded`);
+    // An undo restores a prior value only when the edit recorded one (the view stores null when the caller gave
+    // none): without it the original is not known here, a created entity's payload, a select or a reference slot.
+    if (mutation.oldValue === undefined || mutation.oldValue === null) return false;
     state.mirrorAttributeEdit(modelId, entityId, attributeName, String(mutation.oldValue));
-    return;
+    return true;
   }
-  if (!psetName || !propName) return;
+  if (!psetName || !propName) return true;
   if (direction === 'undo' ? mutation.type === 'CREATE_PROPERTY' : mutation.type === 'DELETE_PROPERTY') {
     state.mirrorPropertyDelete(modelId, entityId, psetName, propName);
-    return;
+    return true;
   }
   const value = direction === 'undo' ? mutation.oldValue : mutation.newValue;
-  if (value === undefined) return;
+  if (value === undefined) return true;
   const types = direction === 'undo' ? edit.inverse ?? edit.forward : edit.forward;
   state.mirrorPropertyEdit(modelId, entityId, psetName, propName, value, types?.type ?? PropertyValueType.String, types?.dataType);
+  return true;
 }
 
 /**
@@ -89,9 +90,11 @@ export function mirrorHistoryStep(get: () => ViewerState, set: (patch: Partial<V
   modelId: string, mutation: Mutation, direction: 'undo' | 'redo'): void {
   const edit = published.get(mutation), state = get();
   if (!edit || !state.collabSession || edit.session !== tokenOf(state.collabSession) || !state.canCollabEdit()) return;
-  try { publishStep(state, modelId, mutation, edit, direction); }
+  let shared: boolean;
+  try { shared = publishStep(state, modelId, mutation, edit, direction); }
   catch (error) {
     console.error(`[collab] ${direction} of #${mutation.entityId} was not published to the room`, error);
-    set({ collabGeometryNotice: `Your ${direction} was applied locally, but could not be shared with the room.` });
+    shared = false;
   }
+  if (!shared) set({ collabGeometryNotice: `Your ${direction} was applied locally, but could not be shared with the room.` });
 }

@@ -5,9 +5,8 @@ import { discoverFilterSchema, discoverPropertyAndQuantitySchema, discoverFilter
 import { operation, emptySchema } from './contract';
 import { MAX_RESULT_BYTES } from './result-limit';
 const string = { type: 'string' };
-/** Margin under the executor's limit, so a change to how the executor measures or wraps a result cannot tip it over. */
-const RESULT_HEADROOM = 16 * 1024;
 const utf8 = new TextEncoder();
+/** Measured as the executor measures a result: UTF-8 bytes of its JSON. */
 const bytes = (value: unknown) => utf8.encode(JSON.stringify(value)).length;
 const strings = { type: 'array', items: string };
 const tuple = (...items: Record<string, unknown>[]) => ({ type: 'array', items, minItems: items.length, maxItems: items.length, additionalItems: false });
@@ -76,7 +75,6 @@ export const fieldOperations = [
   })), { type: 'object', properties: { ifc_types: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 100 }, maxItems: 100, uniqueItems: true, nullable: true } }, required: [], additionalProperties: false },
   (i, c) => discoverPropertyAndQuantitySchema(c.model.store, i.ifc_types ?? undefined, c.model.mutationView())),
   operation(meta('fields.values', 'Discover native bounded sampled material, classification, predefined-type and property-value choices. Sampling limits remain those of the native UI discovery service. The five fields share the result size limit; a field cut to fit is named in truncated.', {
-    type: 'object', properties: { ...valueLists, truncated: { type: 'array', items: { type: 'string', enum: [...VALUE_FIELDS] }, minItems: 1, uniqueItems: true } },
-    required: Object.keys(valueLists), additionalProperties: false,
-  }), emptySchema, (_, c) => boundedFieldValues(discoverFilterValues(c.model.store, c.model.mutationView()), MAX_RESULT_BYTES - RESULT_HEADROOM)),
+    ...object(valueLists), properties: { ...valueLists, truncated: { type: 'array', items: { type: 'string', enum: VALUE_FIELDS }, minItems: 1, uniqueItems: true } },
+  }), emptySchema, (_, c) => boundedFieldValues(discoverFilterValues(c.model.store, c.model.mutationView()), MAX_RESULT_BYTES)),
 ];

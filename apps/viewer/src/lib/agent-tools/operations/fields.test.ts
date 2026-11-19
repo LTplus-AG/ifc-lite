@@ -46,14 +46,14 @@ test('fields.values shares one byte budget across all five fields and names the 
   assert.equal(whole.classifications.length, 5000);
 });
 
-/** 5,000 walls, each classified under its own ~250-byte system name: over 1 MB of classification values. */
+/** 1,000 walls, each classified under its own ~1,100-byte system name: over 1 MB of classification values. */
 function oversizedStore(): Promise<IfcDataStore> {
   const lines: string[] = [];
   const guid = (n: number) => String(n).padStart(22, '0');
-  for (let i = 0; i < 5000; i++) {
+  for (let i = 0; i < 1000; i++) {
     const wall = 10 + i * 4;
     lines.push(`#${wall}=IFCWALL('${guid(wall)}',$,'Wall ${i}',$,$,$,$,$,.STANDARD.);`,
-      `#${wall + 1}=IFCCLASSIFICATION($,$,$,'System ${String(i).padStart(5, '0')} ${'x'.repeat(240)}',$,$,$);`,
+      `#${wall + 1}=IFCCLASSIFICATION($,$,$,'System ${String(i).padStart(5, '0')} ${'x'.repeat(1100)}',$,$,$);`,
       `#${wall + 2}=IFCCLASSIFICATIONREFERENCE($,'C${i}','Class ${i}',#${wall + 1},$,$);`,
       `#${wall + 3}=IFCRELASSOCIATESCLASSIFICATION('${guid(wall + 3)}',$,$,$,(#${wall}),#${wall + 2});`);
   }

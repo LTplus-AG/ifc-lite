@@ -57,7 +57,7 @@ async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IF
   const inputs = await Promise.all(georefs.map((georef, index) => input(String.fromCharCode(97 + index), georef, schema)));
   const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation })).content);
   const contexts: string[] = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
-  const sources = [...content.matchAll(/=IFC(?:MAPCONVERSION(?:SCALED)?|RIGIDOPERATION)\((?:\/\*.*?\*\/\s*)?(#\d+),/g)].map(match => match[1]);
+  const sources = [...content.matchAll(/=(?:\/\*.*?\*\/)?IFC(?:MAPCONVERSION(?:SCALED)?|RIGIDOPERATION)\((?:\/\*.*?\*\/\s*)?(#\d+),/g)].map(match => match[1]);
   return { contexts, sources };
 }
 
@@ -119,6 +119,7 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expectApart(await merge([at(X), at('1.E400,1200000.,500.,1.,0.,1.')]), 2);
     // A comment around the SourceCRS reference does not hide the operation.
     expectApart(await merge([at(X), { raw: `${METRE_CRS}\n#21=IFCMAPCONVERSION(/* source */ #14,#20,${Y});` }]), 2);
+    expectApart(await merge([at(X), { raw: `${METRE_CRS}\n#21=/* operation */IFCMAPCONVERSION(#14,#20,${Y});` }]), 2);
     // A geographic CRS's height unit is not read, so two of them are never taken as one.
     const geographic: Georef = { raw: `#20=IFCGEOGRAPHICCRS('WGS84',$,'WGS84',$,$,$,$);
 #21=IFCRIGIDOPERATION(#14,#20,IFCPLANEANGLEMEASURE(8.5),IFCPLANEANGLEMEASURE(47.3),500.);` };

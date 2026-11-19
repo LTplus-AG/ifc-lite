@@ -42,12 +42,12 @@ import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.
 
 /**
  * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
- * `/* ... *​/` comment, #3789) tolerated between the type name and `(` —
+ * `/* ... *​/` comment, #3789) tolerated after `=` and between the type name and `(` —
  * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
  * a wrapped record's attribute is silently unreadable here (`getStepAttr`
  * returns `null`), which reads identically to a genuinely-absent attribute.
  */
-const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
+const RECORD_RE = new RegExp(`^#\\d+\\s*=${STEP_TRIVIA}\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {

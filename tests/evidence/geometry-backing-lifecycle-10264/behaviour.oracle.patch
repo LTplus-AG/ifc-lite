@@ -1,0 +1,16 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
+index be2242a66f..4feaae8251 100644
+--- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
++++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
+@@ -179,7 +179,10 @@ export class StoreGeometryBackingTap {
+       else this.appendSuffix(next, meshes);
+     }
+     // Retire older generations only once everything so far has committed here.
+-    for (const old of next.retained.splice(0)) void this.registry.invalidate(old, 'Replaced by a committed generation');
++    this.enqueue(next, async () => {
++      await this.writer(next).flush();
++      for (const old of next.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by a committed generation');
++    });
+   }
+ 
+   /** Released members come from the previous generation's records, chunk by chunk (no CPU restore). */

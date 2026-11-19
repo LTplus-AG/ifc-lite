@@ -140,7 +140,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
-  it('never re-backs a released list: keeps the acknowledged generation durable and stops answering', async () => {
+  it('never backs emptied records: a released list is replayed from the acknowledged generation', async () => {
     const list = [mesh(1, 0), mesh(2, 1)];
     const store = storeWith({ rel: list });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
@@ -150,12 +150,11 @@ describe('store geometry backing tap (test/debug only)', () => {
     const recoloured = list.map((m) => carryReleasedMesh(m, { ...m, color: [1, 0, 0, 1] as [number, number, number, number] }));
     store.setState({ models: new Map([['rel', { geometryResult: { meshes: recoloured }, idOffset: 0 }]]) });
     const [status] = await tap.seal();
-    assert.equal(status.complete, false, 'no generation of emptied records is ever complete');
-    assert.match(status.error ?? '', /after a CPU release/);
-    assert.equal(tap.backing('rel'), undefined, 'readers get nothing rather than the pre-edit colours');
-    assert.equal(acknowledged.isCurrent, true, 'the sole durable copy is kept');
-    const lease = await acknowledged.reader.leaseEntity(1);
-    assert.equal(lease.meshes[0].positions.length, 9, 'with its real arrays');
+    assert.equal(status.complete, true, status.error);
+    assert.equal(acknowledged.isCurrent, false, 'retired only after the replacement committed');
+    const lease = await tap.backing('rel')!.reader.leaseEntity(1);
+    assert.equal(lease.meshes[0].positions.length, 9, 'real arrays, never the emptied ones');
+    assert.deepEqual(lease.meshes[0].color, [1, 0, 0, 1]);
     lease.release();
     await tap.stop();
   });

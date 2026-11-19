@@ -109,14 +109,15 @@ export function planAffinityRouting(
     if (w === undefined) {
       w = nextWorker;
       nextWorker = (nextWorker + 1) % workerCount;
+      keyToWorker.set(key, w);
     } else if (uses >= MAX_STICKY_KEY_JOBS) {
       w = 0;
       for (let i = 1; i < workerCount; i++) {
         if (state.workerJobs[i] < state.workerJobs[w]) w = i;
       }
+      keyToWorker.set(key, w);
       uses = 0;
     }
-    keyToWorker.set(key, w);
     state.keyUses.set(key, uses + 1);
     state.workerJobs[w]++;
     buckets[w].push(j);

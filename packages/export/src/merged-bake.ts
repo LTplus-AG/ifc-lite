@@ -29,7 +29,7 @@ function viewHasMutations(view: MutablePropertyView | undefined): boolean {
   return created.length > 0;
 }
 
-const GEOREF_NOT_WRITTEN = 'Georeferencing edits were not written; the merge uses the file\'s own georeferencing.';
+const GEOREF_NOT_WRITTEN = 'Georeferencing edits were not written.';
 
 /** True when `model` carries edits that only a bake through {@link StepExporter} can apply. */
 export function needsBake(model: MergeModelInput): boolean {
@@ -46,9 +46,9 @@ export function needsBake(model: MergeModelInput): boolean {
  * federation, GlobalId reconciliation and id offsetting are unaffected. Models
  * without edits pass through untouched (no export/parse cost).
  *
- * A georeference edit the exporter refuses (a partial position, an IFC2X3
- * source) or that `targetSchema` cannot hold (IFC2X3) is left out and named in
- * `warnings`, as single-model export does; so is one it wrote only in part.
+ * A georeference edit the exporter refuses (a partial position) or that
+ * `targetSchema` cannot hold (IFC2X3) is left out and named in `warnings`, as
+ * single-model export does; so is one it wrote only in part.
  */
 export async function bakeMutatedModels(models: readonly MergeModelInput[], targetSchema: IfcSchemaVersion): Promise<{ models: MergeModelInput[]; warnings: string[] }> {
   const baked: MergeModelInput[] = [];
@@ -63,8 +63,11 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
     const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
     // Export in the SOURCE schema so no schema conversion happens here — the
     // merge loop still converts to the requested target schema per entity.
+    // An IFC2X3 source cannot hold georeference edits, so with edits it bakes
+    // in the target schema, as single-model export and section cropping do.
+    const bakeSchema = georef && sourceSchema === 'IFC2X3' ? targetSchema : sourceSchema;
     const bake = (georefMutations: typeof georef) => new StepExporter(model.dataStore, model.mutationView).export({
-      schema: sourceSchema,
+      schema: georefMutations ? bakeSchema : sourceSchema,
       applyMutations: true,
       includeGeometry: true,
       includeQuantities: true,

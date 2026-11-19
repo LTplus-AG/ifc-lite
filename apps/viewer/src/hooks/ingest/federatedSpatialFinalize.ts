@@ -212,11 +212,12 @@ export async function finalizeFederatedSpatialPlacement(options: {
     // already-published render frame still has to be shared so absolute survey
     // coordinates retain their separation without exceeding the GPU frame.
     // This is a render-origin operation only: it never claims CRS equivalence.
+    // Load the reframer first so the frame below is read after the await.
+    const { reframeLandXmlGeometry } = await import('./landXmlLoad.js');
+    if (!options.isCurrent()) return null;
     const renderFrame = reference?.coordinateInfo
       ?? sharedRenderFrame(useViewerStore.getState().models.values());
     if (renderFrame) {
-      const { reframeLandXmlGeometry } = await import('./landXmlLoad');
-      if (!options.isCurrent()) return null;
       const meshesBeforeReframe = options.geometry.meshes.slice();
       const warnings = reframeLandXmlGeometry(options.geometry, options.landXmlDocument, renderFrame, {
         anchor: reference?.spatialReference ?? null,

@@ -42,6 +42,7 @@ import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
 import { getViewerState } from '@/store/viewerStoreHandle';
 import { GeometryUnavailableError } from '@/lib/geometry-backing/geometry-readback';
+import { geometryOwnerNeedsReadback } from '@/lib/geometry-backing/geometry-owner-residency';
 import { storeGeometryOwners } from '@/lib/geometry-backing/store-geometry-owners';
 import { releasedCopyFrom } from '@/lib/geometry-backing/store-mesh-readback';
 import type { ReleasedExportGeometry } from '@/lib/geometry-backing/export-readback';
@@ -94,11 +95,19 @@ export function withInstancedMeshes(
   }
   geometryResult = placedViewGeometry(geometryResult, undefined, modelRange?.modelId);
   const scene = getGlobalRenderer()?.getScene();
-  const all = prepared ? prepared.instanced : scene?.getAllInstancedMeshData() ?? [];
+  const live = scene?.getAllInstancedMeshData() ?? [];
+  const residentInstances = prepared ? live.filter((mesh) => {
+    const index = mesh.modelIndex ?? (getViewerState().models.size <= 1 ? 0 : undefined);
+    if (index === undefined) throw new GeometryUnavailableError('A resident instanced export has no model owner');
+    return prepared.scopeModelIndices.has(index) && !prepared.instancedModelIndices.has(index);
+  }) : live;
+  const all = prepared ? [...prepared.instanced, ...residentInstances] : residentInstances;
+  const ownerIndex = modelRange?.rendererModelIndex ?? (modelRange?.modelId
+    ? modelIndices(getViewerState().models).get(modelRange.modelId) : undefined);
   const instanced = modelRange
     ? all.filter(
         (m) => m.expressId > modelRange.idOffset && m.expressId <= modelRange.idOffset + modelRange.maxExpressId
-          && (modelRange.rendererModelIndex === undefined || m.modelIndex === modelRange.rendererModelIndex),
+          && (ownerIndex === undefined || m.modelIndex === ownerIndex),
       )
     : all;
   if (instanced.length === 0) return geometryResult;
@@ -130,19 +139,13 @@ export function geometryReleased(geometryResult?: GeometryResult, modelIds?: Ite
   const scope = modelIds === undefined ? undefined : new Set(modelIds);
   const owners = storeGeometryOwners(state);
   if (scope && [...scope].some((id) => !owners.some((owner) => owner.modelId === id))) return true;
-  if ((!geometryResult || scope) && owners.some((owner) => (!scope || scope.has(owner.modelId))
-    && !(owner.geometryResult?.meshes ?? []).every(meshIsResident))) return true;
   const renderer = getGlobalRenderer();
-  if (!renderer || !sceneGeometryReleased(renderer)) return false;
-  if (!scope) return true;
-  // Flat geometry can stay resident while another model releases. The scene's
-  // release flag is global, but surviving GPU templates still name their owner:
-  // a scoped model with released instances must continue to require readback.
-  const scene = renderer.getScene();
-  if (typeof scene.getInstancedModelIndices !== 'function') return true;
+  const scene = renderer?.getScene();
+  if (!scope && renderer && sceneGeometryReleased(renderer)) return true;
+  if (geometryResult && !scope) return false;
   const indices = modelIndices(state.models);
-  const wanted = new Set([...scope].map((id) => indices.get(id) ?? 0));
-  return scene.getInstancedModelIndices().some((index) => wanted.has(index));
+  return owners.some((owner) => (!scope || scope.has(owner.modelId))
+    && geometryOwnerNeedsReadback(owner.geometryResult?.meshes ?? [], scene, indices.get(owner.modelId) ?? 0));
 }
 
 /**

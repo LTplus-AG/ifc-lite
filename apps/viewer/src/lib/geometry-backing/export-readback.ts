@@ -26,6 +26,7 @@ import { GeometryUnavailableError, meshIsResident } from './geometry-readback';
 import { readInstancedOccurrences } from './instanced-readback';
 import { leaseStoreMeshes } from './store-mesh-readback';
 import { storeGeometryOwners } from './store-geometry-owners';
+import { geometryOwnerNeedsReadback, type GeometryOwnerScene } from './geometry-owner-residency';
 
 export const DEFAULT_EXPORT_READBACK_BYTES = 1024 * 1024 * 1024;
 
@@ -34,10 +35,14 @@ export interface ReleasedExportGeometry {
   readonly flat: ReadonlyMap<MeshData, MeshData>;
   /** Every instanced occurrence of the scope, placed in the scene frame. */
   readonly instanced: readonly MeshData[];
+  /** Renderer owner indices whose live instances were replaced from the backing. */
+  readonly instancedModelIndices: ReadonlySet<number>;
+  /** All owners requested by this export, including owners that remain resident. */
+  readonly scopeModelIndices: ReadonlySet<number>;
 }
 
 export async function prepareReleasedExport(
-  state: ViewerState, scene: Pick<SceneContents, 'placeAppearanceSource'> | undefined,
+  state: ViewerState, scene: (Pick<SceneContents, 'placeAppearanceSource'> & GeometryOwnerScene) | undefined,
   modelIds?: Iterable<string>, budgetBytes = DEFAULT_EXPORT_READBACK_BYTES,
 ): Promise<ReleasedExportGeometry> {
   const tap = activeGeometryBackingTap();
@@ -45,9 +50,15 @@ export async function prepareReleasedExport(
   // Such an entry contributes nothing to the view and needs no backing yet.
   // Preserve shard-only geometry and reject explicitly missing model owners.
   const sources = new Map(storeGeometryOwners(state).map((owner) => [owner.modelId, owner]));
-  const owners = [...(modelIds ?? sources.keys())].filter((modelId) => {
+  const indices = modelIndices(state.models);
+  const requested = [...(modelIds ?? sources.keys())];
+  const scopeModelIndices = new Set(requested.map((id) => indices.get(id) ?? 0));
+  const owners = requested.filter((modelId) => {
     const model = sources.get(modelId);
-    return !model || model.geometryResult != null || (tap?.backing(modelId)?.directory.shards.length ?? 0) > 0;
+    if (!model) return true; // Explicitly missing owners must still fail.
+    const hasShards = (tap?.backing(modelId)?.directory.shards.length ?? 0) > 0;
+    if (model.geometryResult == null && !hasShards) return false;
+    return geometryOwnerNeedsReadback(model.geometryResult?.meshes ?? [], scene, indices.get(modelId) ?? 0);
   });
   let bytes = 0;
   for (const modelId of owners) {
@@ -60,6 +71,7 @@ export async function prepareReleasedExport(
   }
   const flat = new Map<MeshData, MeshData>();
   const instanced: MeshData[] = [];
+  const instancedModelIndices = new Set<number>();
   for (const modelId of owners) {
     const meshes = sources.get(modelId)?.geometryResult?.meshes ?? [];
     const released = meshes.filter((mesh) => !meshIsResident(mesh));
@@ -74,10 +86,11 @@ export async function prepareReleasedExport(
     for (const shard of backing.directory.shards) for (const id of shard.entities) ids.add(id);
     if (ids.size === 0) continue;
     if (!scene?.placeAppearanceSource) throw new GeometryUnavailableError('No renderer to place instanced occurrences in the model frame');
-    const modelIndex = modelIndices(state.models).get(modelId) ?? 0;
+    const modelIndex = indices.get(modelId) ?? 0;
+    instancedModelIndices.add(modelIndex);
     for (const mesh of await readInstancedOccurrences(backing, ids, modelIndex, { budgetBytes: Math.max(0, budgetBytes - bytes) })) {
       instanced.push(scene.placeAppearanceSource(mesh));
     }
   }
-  return { flat, instanced };
+  return { flat, instanced, instancedModelIndices, scopeModelIndices };
 }

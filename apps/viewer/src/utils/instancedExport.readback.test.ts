@@ -266,3 +266,55 @@ it('#10887 resident scoped exports ignore another released model and preserve ge
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   }
 });
+
+it('#10887 unscoped mixed exports combine backed geometry with resident flat and instanced owners', async () => {
+  const initial = useViewerStore.getState();
+  const geometry = (id: number): GeometryResult => ({ meshes: [mesh(id, id)],
+    totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] });
+  const a = geometry(1), b = geometry(2);
+  const models = new Map([
+    ['mixed-A', { ...fixtureModel('mixed-A', { idOffset: 0 }), geometryResult: a }],
+    ['mixed-B', { ...fixtureModel('mixed-B', { idOffset: 0 }), geometryResult: b }],
+  ]);
+  useViewerStore.setState({ models, geometryResult: null });
+  const source = createStore<TapState>(() => ({ models: new Map([['mixed-A', models.get('mixed-A')!]]), geometryContentVersion: 0 }));
+  const indices = modelIndices(models);
+  // Both models may use the same entity ID (collab); model ownership decides
+  // which live instance is replaced by the backed copy.
+  const oldA = { ...mesh(77, 999), modelIndex: indices.get('mixed-A')! };
+  const liveB = { ...mesh(77, 9), modelIndex: indices.get('mixed-B')! };
+  const scene = { isGeometryDataReleased: () => false,
+    getInstancedModelIndices: () => [oldA.modelIndex, liveB.modelIndex],
+    placeAppearanceSource: (m: MeshData) => m, getAllInstancedMeshData: () => [oldA, liveB] };
+  setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+  try {
+    await geometryBackingCommand(source, undefined, { action: 'start', options: {
+      database: { name: `mixed-resident-export-${process.pid}`, locks: null },
+    } as never });
+    enqueueInstancedShards('mixed-A', [shardBytes(77)], instancedShardGeneration());
+    await geometryBackingCommand(source, undefined, { action: 'seal' });
+    releaseCpuMeshBuffers(a.meshes);
+    const combined: GeometryResult = { ...a, meshes: [...a.meshes, ...b.meshes], totalTriangles: 2, totalVertices: 6 };
+    let result: GeometryResult | undefined;
+    await assert.doesNotReject(async () => {
+      result = await withReleasedExportGeometry(() => withInstancedMeshes(combined, null));
+    }, 'resident model B needs no complete backing for the current-view export');
+    assert.ok(result);
+    assert.equal(result.meshes.length, 4);
+    assert.equal(result.totalTriangles, 4);
+    assert.equal(result.meshes.find((m) => m.expressId === 2), b.meshes[0], 'resident flat geometry is preserved');
+    const occurrences = result.meshes.filter((m) => m.expressId === 77);
+    assert.equal(occurrences.length, 2, 'one occurrence per owner, without a duplicated backed owner');
+    assert.equal(occurrences.find((m) => m.modelIndex === liveB.modelIndex), liveB, 'the resident instanced owner survives');
+    assert.notEqual(occurrences.find((m) => m.modelIndex === oldA.modelIndex), oldA, 'A uses the backed occurrence');
+    const scoped = await withReleasedExportGeometry(() => withInstancedMeshes(a, null), ['mixed-A']);
+    assert.equal(scoped.meshes.length, 2, 'a scoped preparation cannot splice in live instances of B');
+    const owned = await withReleasedExportGeometry(() => withInstancedMeshes(a,
+      { modelId: 'mixed-A', idOffset: 0, maxExpressId: 100 }));
+    assert.equal(owned.meshes.length, 2, 'known owner identity disambiguates overlapping ID ranges');
+  } finally {
+    await geometryBackingCommand(source, undefined, { action: 'stop' });
+    useViewerStore.setState(initial, true);
+    setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  }
+});

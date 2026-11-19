@@ -97,7 +97,8 @@ export function withInstancedMeshes(
 
 /**
  * `modelId`'s instanced range, owner index included: an overlapping-id collab model's occurrences fall inside the id
- * bracket too, and only the renderer index tells them apart (#10695).
+ * bracket too, and only the renderer index tells them apart (#10695). `models` must be the store's whole map: the
+ * index allocator releases any id missing from the map it is given.
  */
 export function instancedModelRangeOf(modelId: string, models: ReadonlyMap<string, { idOffset?: number; maxExpressId?: number }>): InstancedModelRange | null {
   const model = models.get(modelId);

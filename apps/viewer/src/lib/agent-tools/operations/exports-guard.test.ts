@@ -80,3 +80,32 @@ test('a composed layer is not exported as its own model (#10695)', async () => {
   const base = await json('base');
   assert.equal(base.isError, false, base.text);
 });
+
+test('changesJson and mergedStep refuse a composed layer too (#10695)', async () => {
+  resetFeaturesForTest();
+  const store = await parseHelloWall();
+  seed([model('overlay', store, { idOffset: 0, maxExpressId: 0 }), model('base', store, { idOffset: 0, maxExpressId: 5_000 })]);
+  const host = viewerHost();
+  const run = (operation_id: string, input: Record<string, unknown>) => dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true });
+  const changes = await run('exports.changesJson', { target_model_id: 'overlay' });
+  assert.match(changes.text, /Pass target_model_id 'base'/);
+  const merged = await run('exports.mergedStep', { ...stepOptions, include_geometry: true, model_ids: ['overlay', 'base'], unit_reconciliation: 'assume-shared' });
+  assert.match(merged.text, /Pass target_model_id 'base'/);
+});
+
+test('a visible-only IFCX export is voided when the view changes (#10695)', async () => {
+  resetFeaturesForTest();
+  seed([model('A', await parseHelloWall())]);
+  const host = viewerHost();
+  const getMutationView = useViewerStore.getState().getMutationView;
+  // As the STEP test: the wall is hidden when the operation reads the mutation view, after it captured the view state.
+  useViewerStore.setState({ getMutationView: (id: string) => {
+    useViewerStore.setState({ hiddenEntities: new Set([WALL_ID]), getMutationView });
+    return getMutationView(id);
+  } });
+  const result = await dispatchMainViewerTool(host, 'viewer_operation_execute', { model_id: 'A', operation_id: 'exports.modelIfcx', input: {
+    include_geometry: false, apply_mutations: true, visible_only: true, changes_only: false, only_known_properties: false } }, { canEdit: () => true });
+  assert.equal(result.isError, true, 'visible-only IFCX must not publish a stale view');
+  assert.match(result.text, /visibility/);
+});
+

@@ -58,8 +58,10 @@ describe('the .USERDEFINED. label (#10824)', () => {
       expect(run("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", 'IFC2X3', to).out, to)
         .toBe("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);");
     }
-    const down = run("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", 'IFC4X3', 'IFC2X3');
-    expect(down.out).toBe("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.NOTDEFINED.,$);");
-    expect(down.warnings.join('\n')).toContain('IFCELECTRICDISTRIBUTIONPOINT.DistributionPointFunction .DISPATCHINGBOARD.');
+    // Down, the label is UserDefinedFunction, IFC2X3's short name for it.
+    expect(run("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", 'IFC4X3', 'IFC2X3').out)
+      .toBe("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'DISPATCHINGBOARD');");
+    expect(run('#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,$);', 'IFC4', 'IFC2X3').out)
+      .toBe("#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'SOUNDPOWERLEVELUNIT');");
   });
 });

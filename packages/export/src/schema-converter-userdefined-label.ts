@@ -38,9 +38,9 @@ const isUnset = (slot: string | undefined) => slot !== undefined
   && (isToken(slot, '$') || isToken(slot, '*') || skipStepTrivia(slot, 0) === slot.length);
 
 /** `converted`, written from `source` between the schemas, with the label carried. */
-export function carryUserDefinedLabel(source: string, converted: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion): string {
+export function carryUserDefinedLabel(source: string, converted: string | null, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion): string | null {
   const up = fromSchema === 'IFC2X3' && ifc4Like(toSchema);
-  if (!up && !(toSchema === 'IFC2X3' && ifc4Like(fromSchema))) return converted;
+  if (converted === null || (!up && !(toSchema === 'IFC2X3' && ifc4Like(fromSchema)))) return converted;
   // The head names the type; most records stop here.
   const head = stepRecordHead(converted);
   const type = head ? converted.slice(head.typeStart, head.typeEnd).toUpperCase() : '';

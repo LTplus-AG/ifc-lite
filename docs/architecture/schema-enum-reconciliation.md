@@ -20,8 +20,8 @@ into, which can receive any member of the source type's enum (#10856).
 | Direction | Entity attributes | Missing member entries | Rename-target slots | Refused |
 | --- | --- | --- | --- | --- |
 | IFC4X3 → IFC4 | 108 | 402 | 7 | 0 |
-| IFC4X3 → IFC2X3 | 80 | 216 | 18 | 11 |
-| IFC4 → IFC2X3 | 60 | 111 | 14 | 8 |
+| IFC4X3 → IFC2X3 | 80 | 216 | 18 | 10 |
+| IFC4 → IFC2X3 | 60 | 111 | 14 | 7 |
 | IFC2X3 → IFC4 | 24 | 71 | 4 | 0 |
 | IFC2X3 → IFC4X3 | 23 | 71 | 3 | 0 |
 | IFC4 → IFC4X3 | 0 | 0 | 0 | 0 |
@@ -162,12 +162,12 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcControllerType.PredefinedType | IfcControllerTypeEnum | MULTIPOSITION, PROGRAMMABLE | `.USERDEFINED.`, name in `ElementType` |
 | IfcCovering.PredefinedType | IfcCoveringTypeEnum | COPING, MOLDING, SKIRTINGBOARD, TOPPING | `.USERDEFINED.`, name in `ObjectType` |
 | IfcCoveringType.PredefinedType | IfcCoveringTypeEnum | COPING, MOLDING, SKIRTINGBOARD, TOPPING | `.USERDEFINED.`, name in `ElementType` |
-| IfcDerivedUnit.UnitType | IfcDerivedUnitEnum | AREADENSITYUNIT, SOUNDPOWERLEVELUNIT, SOUNDPRESSURELEVELUNIT, TEMPERATURERATEOFCHANGEUNIT | **refused**: kept as written, reported |
+| IfcDerivedUnit.UnitType | IfcDerivedUnitEnum | AREADENSITYUNIT, SOUNDPOWERLEVELUNIT, SOUNDPRESSURELEVELUNIT, TEMPERATURERATEOFCHANGEUNIT | `.USERDEFINED.`, name in `UserDefinedType` |
 | IfcDoorPanelProperties.PanelOperation | IfcDoorPanelOperationEnum | FIXEDPANEL | `.NOTDEFINED.` (reported) |
 | IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | FREESTANDINGELECTRICHEATER, FREESTANDINGWATERCOOLER, FREESTANDINGWATERHEATER, KITCHENMACHINE | `.USERDEFINED.`, name in `ElementType` |
-| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedFunction` |
 | IfcElectricFlowStorageDeviceType.PredefinedType | IfcElectricFlowStorageDeviceTypeEnum | CAPACITOR, COMPENSATOR, INDUCTOR, RECHARGER | `.USERDEFINED.`, name in `ElementType` |
 | IfcElectricGeneratorType.PredefinedType | IfcElectricGeneratorTypeEnum | CHP, ENGINEGENERATOR, STANDALONE | `.USERDEFINED.`, name in `ElementType` |
 | IfcElementAssembly.PredefinedType | IfcElementAssemblyTypeEnum | ABUTMENT, CROSS_BRACING, DECK, DILATATIONPANEL, ENTRANCEWORKS, GRID, MAST, PIER, PYLON, RAIL_MECHANICAL_EQUIPMENT_ASSEMBLY, SHELTER, SIGNALASSEMBLY, SUMPBUSTER, SUPPORTINGASSEMBLY, SUSPENSIONASSEMBLY, TRACKPANEL, TRACTION_SWITCHING_ASSEMBLY, TRAFFIC_CALMING_DEVICE, TURNOUTPANEL | `.USERDEFINED.`, name in `ObjectType` |
@@ -183,7 +183,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcLightFixtureType.PredefinedType | IfcLightFixtureTypeEnum | SECURITYLIGHTING | `.USERDEFINED.`, name in `ElementType` |
 | IfcMemberType.PredefinedType | IfcMemberTypeEnum | ARCH_SEGMENT, STAY_CABLE, STIFFENING_RIB, STRUCTURALCABLE, SUSPENDER, SUSPENSION_CABLE, TIEBAR | `.USERDEFINED.`, name in `ElementType` |
 | IfcMetric.Benchmark | IfcBenchmarkEnum | INCLUDEDIN, INCLUDES, NOTINCLUDEDIN, NOTINCLUDES | **refused**: kept as written, reported |
-| IfcObjective.ObjectiveQualifier | IfcObjectiveEnum | CODEWAIVER, EXTERNAL, MERGECONFLICT, MODELVIEW, PARAMETER | `.NOTDEFINED.` (reported) |
+| IfcObjective.ObjectiveQualifier | IfcObjectiveEnum | CODEWAIVER, EXTERNAL, MERGECONFLICT, MODELVIEW, PARAMETER | `.USERDEFINED.`, name in `UserDefinedQualifier` |
 | IfcOutletType.PredefinedType | IfcOutletTypeEnum | DATAOUTLET, TELEPHONEOUTLET | `.USERDEFINED.`, name in `ElementType` |
 | IfcOwnerHistory.ChangeAction | IfcChangeActionEnum | NOTDEFINED | **refused**: kept as written, reported |
 | IfcPile.PredefinedType | IfcPileTypeEnum | BORED, DRIVEN, JETGROUTING | `.USERDEFINED.`, name in `ObjectType` |
@@ -241,12 +241,12 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcControllerType.PredefinedType | IfcControllerTypeEnum | PROGRAMMABLE, MULTIPOSITION | `.USERDEFINED.`, name in `ElementType` |
 | IfcCovering.PredefinedType | IfcCoveringTypeEnum | MOLDING, SKIRTINGBOARD | `.USERDEFINED.`, name in `ObjectType` |
 | IfcCoveringType.PredefinedType | IfcCoveringTypeEnum | MOLDING, SKIRTINGBOARD | `.USERDEFINED.`, name in `ElementType` |
-| IfcDerivedUnit.UnitType | IfcDerivedUnitEnum | AREADENSITYUNIT, SOUNDPOWERLEVELUNIT, SOUNDPRESSURELEVELUNIT, TEMPERATURERATEOFCHANGEUNIT | **refused**: kept as written, reported |
+| IfcDerivedUnit.UnitType | IfcDerivedUnitEnum | AREADENSITYUNIT, SOUNDPOWERLEVELUNIT, SOUNDPRESSURELEVELUNIT, TEMPERATURERATEOFCHANGEUNIT | `.USERDEFINED.`, name in `UserDefinedType` |
 | IfcDoorPanelProperties.PanelOperation | IfcDoorPanelOperationEnum | FIXEDPANEL | `.NOTDEFINED.` (reported) |
 | IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | FREESTANDINGELECTRICHEATER, FREESTANDINGWATERHEATER, FREESTANDINGWATERCOOLER, KITCHENMACHINE | `.USERDEFINED.`, name in `ElementType` |
-| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedFunction` |
 | IfcElectricGeneratorType.PredefinedType | IfcElectricGeneratorTypeEnum | CHP, ENGINEGENERATOR, STANDALONE | `.USERDEFINED.`, name in `ElementType` |
 | IfcEvaporatorType.PredefinedType | IfcEvaporatorTypeEnum | DIRECTEXPANSION | `.USERDEFINED.`, name in `ElementType` |
 | IfcFilterType.PredefinedType | IfcFilterTypeEnum | COMPRESSEDAIRFILTER | `.USERDEFINED.`, name in `ElementType` |
@@ -256,7 +256,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcLampType.PredefinedType | IfcLampTypeEnum | HALOGEN, LED, OLED | `.USERDEFINED.`, name in `ElementType` |
 | IfcLightFixtureType.PredefinedType | IfcLightFixtureTypeEnum | SECURITYLIGHTING | `.USERDEFINED.`, name in `ElementType` |
 | IfcMetric.Benchmark | IfcBenchmarkEnum | INCLUDES, NOTINCLUDES, INCLUDEDIN, NOTINCLUDEDIN | **refused**: kept as written, reported |
-| IfcObjective.ObjectiveQualifier | IfcObjectiveEnum | CODEWAIVER, EXTERNAL, MERGECONFLICT, MODELVIEW, PARAMETER | `.NOTDEFINED.` (reported) |
+| IfcObjective.ObjectiveQualifier | IfcObjectiveEnum | CODEWAIVER, EXTERNAL, MERGECONFLICT, MODELVIEW, PARAMETER | `.USERDEFINED.`, name in `UserDefinedQualifier` |
 | IfcOutletType.PredefinedType | IfcOutletTypeEnum | DATAOUTLET, TELEPHONEOUTLET | `.USERDEFINED.`, name in `ElementType` |
 | IfcOwnerHistory.ChangeAction | IfcChangeActionEnum | NOTDEFINED | **refused**: kept as written, reported |
 | IfcPile.PredefinedType | IfcPileTypeEnum | BORED, DRIVEN, JETGROUTING | `.USERDEFINED.`, name in `ObjectType` |

@@ -44,6 +44,16 @@ export type EnumResolution =
 /** The user-defined label slot a `PredefinedType` pairs with, by supertype. */
 const PREDEFINED_TYPE_LABEL_SLOTS = ['ObjectType', 'ElementType', 'ProcessType', 'ResourceType'];
 
+/** The slot `UserDefined<name>`, else the one `UserDefined<end of name>`:
+ *  IFC2X3 shortens some, pairing `DistributionPointFunction` with
+ *  `UserDefinedFunction` (#10856). */
+function userDefinedLabel(attributes: readonly EnumPolicyAttribute[], name: string): number {
+  const exact = attributes.findIndex((a) => a.name === `UserDefined${name}`);
+  if (exact >= 0) return exact;
+  const short = attributes.flatMap((a, i) => (/^UserDefined./.test(a.name) && name.endsWith(a.name.slice(11)) ? [i] : []));
+  return short.length === 1 ? short[0] : -1;
+}
+
 /**
  * Resolve a member the target enum lacks, for the enum attribute at `index`
  * of an entity whose target attribute list is `attributes`, given the target
@@ -58,7 +68,7 @@ export function resolveMissingEnumMember(
   if (members.includes('USERDEFINED')) {
     const labelIndex = attribute.name === 'PredefinedType'
       ? attributes.findIndex((a) => PREDEFINED_TYPE_LABEL_SLOTS.includes(a.name))
-      : attributes.findIndex((a) => a.name === `UserDefined${attribute.name}`);
+      : userDefinedLabel(attributes, attribute.name);
     if (labelIndex >= 0) return { kind: 'userdefined', labelIndex };
   }
   if (members.includes('NOTDEFINED')) return { kind: 'notdefined' };

@@ -44,10 +44,10 @@ function candidates(c: ViewerOperationContext) {
   let entries = hosts.get(c.host); if (!entries) { entries = new Map(); hosts.set(c.host, entries); const captured = entries; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return entries;
 }
 function remember(c: ViewerOperationContext, candidate: Candidate) {
-  // IDS candidates are bound to the document revision, not a model.
-  const stillApplies = candidateStillApplies(useViewerStore.getState().idsStudioRevision);
+  // IDS candidates are bound to the document revision, as apply's revision() checks, not to a model.
+  const revision = useViewerStore.getState().idsStudioRevision, stillApplies = candidateStillApplies();
   admitCandidate(candidates(c), { cap: 64, refusal: 'IDS candidate capacity reached; apply or discard a pending candidate.',
-    pending: entry => entry.result === undefined, canApply: entry => stillApplies(entry, entry.result !== undefined) });
+    pending: entry => entry.result === undefined, canApply: entry => stillApplies({}, entry.result !== undefined, () => entry.revision === revision) });
   const token = crypto.randomUUID(); candidates(c).set(token, candidate); return token;
 }
 const tokenSchema: JSONSchemaType<{ token: string }> = { type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false };

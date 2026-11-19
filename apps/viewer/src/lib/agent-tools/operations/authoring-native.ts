@@ -29,9 +29,10 @@ function candidates(c: OperationContext) {
 }
 function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) {
   const entries = candidates(c);
-  const revision = useViewerStore.getState().mutationVersion, stillApplies = candidateStillApplies(revision, c.host);
+  // Unchanged as candidate() checks it: the model revision the preview was made at.
+  const revision = useViewerStore.getState().mutationVersion, stillApplies = candidateStillApplies(c.host);
   admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.settled,
-    canApply: entry => stillApplies(entry, entry.receipt !== undefined) });
+    canApply: entry => stillApplies(entry, entry.receipt !== undefined, () => entry.revision === revision) });
   const token = crypto.randomUUID();
   entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
   return { token, revision, preview_json: JSON.stringify(preview) };

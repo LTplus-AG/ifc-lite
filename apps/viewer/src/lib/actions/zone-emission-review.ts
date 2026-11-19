@@ -33,16 +33,21 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
   }).result;
   const original = JSON.stringify({ proposal, snapshot, dry }), digest = batchDigest({ proposal, snapshot, dry });
   const sources = [...state.models].map(([id, model]) => ({ id, model, source: model.ifcDataStore?.source, hash: model.sourceContentHash, fingerprint: model.sourceFingerprint }));
+  /** The loaded source owners this review bound are unchanged (its evaluation snapshot is checked by validate()). */
+  const sourcesCurrent = () => {
+    const current = store.getState();
+    return sources.length === current.models.size && !sources.some(row => current.models.get(row.id) !== row.model || row.model.ifcDataStore?.source !== row.source || row.model.sourceContentHash !== row.hash || row.model.sourceFingerprint !== row.fingerprint);
+  };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');
     const current = store.getState();
     if (mutationDenial(current, proposal.modelId)) throw new Error('Native model editing is no longer allowed');
-    if (sources.length !== current.models.size || sources.some(row => current.models.get(row.id) !== row.model || row.model.ifcDataStore?.source !== row.source || row.model.sourceContentHash !== row.hash || row.model.sourceFingerprint !== row.fingerprint)) throw new Error('A loaded source owner changed after review');
+    if (!sourcesCurrent()) throw new Error('A loaded source owner changed after review');
     if (!initializing) lease.validate();
     if (JSON.stringify(readZoneEmissionSnapshot(current, proposal.modelId, proposal.zoneSetId, ref.expressId, initializing ? proposal.modelId : undefined)) !== JSON.stringify(snapshot)) throw new Error('Native evaluation, zone set, members, frame or prior output changed after review');
   };
   let used = false;
-  return { proposal, snapshot, dry, validate: () => validate(), commit(origin: string): ModelChangeReceipt {
+  return { proposal, snapshot, dry, validate: () => validate(), sourcesCurrent, commit(origin: string): ModelChangeReceipt {
     if (used) throw new Error('This reviewed native emission was already applied');
     validate();
     const batchId = crypto.randomUUID();

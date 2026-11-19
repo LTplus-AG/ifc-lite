@@ -21,6 +21,8 @@ export interface StructuralReview {
   snapshot: StructuralSnapshot;
   delta: StructuralDelta[];
   validate(): void;
+  /** Cheap and permanent: the loaded sources and edit revisions this review bound are unchanged. */
+  sourcesCurrent(): boolean;
   commit(): { rows: StructuralWriteRow[]; delta: StructuralDelta[]; batchId: string };
 }
 function sources(state: Pick<ViewerState, 'models' | 'mutationViews'>) {
@@ -67,16 +69,17 @@ export function prepareStructuralReview(store: StoreApi<ViewerState>, input: Str
   // Fresh created GUIDs are native random identities, not a promised literal preview GUID.
   // Existing records, including every shared referrer/cascade target, are captured exactly.
   const reviewSignature = JSON.stringify({ snapshot, approved: [...approved], delta: preview.delta });
+  const sourcesCurrent = (initializing = false) => captured.length === store.getState().models.size && captured.every(row => {
+    const current = store.getState(), model = current.models.get(row.id);
+    return !(model !== row.model || model?.ifcDataStore !== row.store || model?.ifcDataStore?.source !== row.source
+      || model?.sourceContentHash !== row.hash || model?.sourceFingerprint !== row.fingerprint
+      || (current.mutationViews.get(row.id) !== row.view || current.mutationViews.get(row.id)?.getMutationRevision() !== row.revision)
+        && !(initializing && row.id === proposal.modelId && !row.view && !current.mutationViews.get(row.id)?.getEffectiveChanges().length));
+  });
   const validate = (initializing = false) => {
     if (reviewSignature !== JSON.stringify({ snapshot, approved: [...approved], delta: preview.delta })) throw new Error('The reviewed Structural choices or native delta changed');
     if (signature !== JSON.stringify(proposal)) throw new Error('The reviewed Structural proposal changed');
-    if (captured.length !== store.getState().models.size || captured.some(row => {
-      const current = store.getState(), model = current.models.get(row.id);
-      return model !== row.model || model?.ifcDataStore !== row.store || model?.ifcDataStore?.source !== row.source
-        || model?.sourceContentHash !== row.hash || model?.sourceFingerprint !== row.fingerprint
-        || (current.mutationViews.get(row.id) !== row.view || current.mutationViews.get(row.id)?.getMutationRevision() !== row.revision)
-          && !(initializing && row.id === proposal.modelId && !row.view && !current.mutationViews.get(row.id)?.getEffectiveChanges().length);
-    })) throw new Error('The loaded source or native Structural graph changed after review; prepare again');
+    if (!sourcesCurrent(initializing)) throw new Error('The loaded source or native Structural graph changed after review; prepare again');
     // Apply may initialize the canonical live editor's allocator watermark after the first held-lease check.
     // It is synchronous; source/revision and exact native snapshot are checked again before the first draft write.
     if (!initializing) lease.validate();
@@ -84,7 +87,7 @@ export function prepareStructuralReview(store: StoreApi<ViewerState>, input: Str
     if (permission) throw new Error(permission);
   };
   let used = false;
-  return { proposal, approved, snapshot, delta: preview.delta, validate: () => validate(), commit: () => {
+  return { proposal, approved, snapshot, delta: preview.delta, validate: () => validate(), sourcesCurrent: () => sourcesCurrent(), commit: () => {
     if (used) throw new Error('This Structural review has already been applied');
     validate();
     const batchId = crypto.randomUUID();

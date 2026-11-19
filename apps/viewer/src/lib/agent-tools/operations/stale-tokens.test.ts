@@ -174,10 +174,30 @@ describe('reviewed model candidates (#10792)', () => {
 
   it('#19 guard: a temporary refusal such as Edit mode being off keeps prepared graph reviews', async () => {
     const { token } = answer<{ token: string }>(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+    const proposal_json = await groupProposal();
     useViewerStore.setState({ editEnabled: false });
-    assert.equal((await invoke('authoring.group.prepare', { proposal_json: await groupProposal() })).isError, true, 'refused while Edit mode is off');
-    useViewerStore.setState({ editEnabled: true });
+    try {
+      const refused = await invoke('authoring.group.prepare', { proposal_json });
+      assert.equal(refused.isError, true);
+      assert.match(refused.text, /Edit mode/i);
+    } finally { useViewerStore.setState({ editEnabled: true }); }
     answer(await invoke('authoring.graph.apply', { token }, true));
+  });
+
+  it('#19 guard: a revision bump that changes no source keeps prepared graph reviews', async () => {
+    const { token } = answer<{ token: string }>(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+    useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })); // as a schedule or appearance command does
+    answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+    answer(await invoke('authoring.graph.apply', { token }, true));
+  });
+
+  it('#19: Group reviews invalidated by a newly loaded model free the cap', async () => {
+    const proposal_json = await groupProposal();
+    for (let i = 0; i < 32; i++) answer(await invoke('authoring.group.prepare', { proposal_json }));
+    const sample = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+    // A second model changes the population every review bound, without an edit.
+    useViewerStore.setState(s => ({ models: new Map([...s.models, ['second', { ...sample, id: 'second' }]]) }));
+    answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
   });
 
   it('#52: two concurrent graph prepares cannot both take the last place', async () => {

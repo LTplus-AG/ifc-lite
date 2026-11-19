@@ -35,15 +35,15 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
 }
 
 /**
- * The one staleness test every admission site passes as `canApply`. A candidate can still apply while the model it
- * was prepared on is loaded with the same store (the host's model list also covers the single-model session) and,
- * unless it already applied, the revision it was prepared at is current. This is permanent staleness only: a
- * temporary refusal such as Edit mode being off keeps the candidate.
+ * The one staleness test every admission site passes as `canApply`: a candidate can still apply while the model it
+ * was prepared on is loaded with the same store (the host's model list also covers the single-model session) and it
+ * either already applied (a replay) or is `unchanged` since its prepare, by the same permanent check its own apply
+ * makes. Temporary refusals such as Edit mode being off are not staleness, so they keep the candidate.
  */
-export function candidateStillApplies(revision: number, host?: ToolHost) {
+export function candidateStillApplies(host?: ToolHost) {
   const live = host ? new Map(host.models().map(model => [model.id, model.store])) : null;
-  return (entry: { revision: number; modelId?: string; store?: unknown }, applied: boolean): boolean =>
-    (!live || entry.modelId === undefined || live.get(entry.modelId) === entry.store) && (applied || entry.revision === revision);
+  return (entry: { modelId?: string; store?: unknown }, applied: boolean, unchanged: () => boolean): boolean =>
+    (!live || entry.modelId === undefined || live.get(entry.modelId) === entry.store) && (applied || unchanged());
 }
 
 /** An applied candidate's receipt write. `settled` once it resolved: admission may then evict the candidate. */

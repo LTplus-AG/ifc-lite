@@ -48,6 +48,8 @@ export interface RoomReview {
   snapshot: RoomSnapshot;
   prepared: PreparedRoomCommand;
   validate(): void;
+  /** Cheap and permanent: the loaded sources and edit revisions this review bound are unchanged. */
+  sourcesCurrent(): boolean;
   commit(): RoomCommandResult;
   dispose(): void;
 }
@@ -148,7 +150,8 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
       prepared.validate();
       if (target(useViewerStore.getState(), proposal.modelId, proposal.storey, 'IfcBuildingStorey') !== storeyId) throw new Error('The current storey identity changed');
     };
-    return { proposal, snapshot, prepared, validate, commit: () => { validate(); return prepared.commit(); }, dispose: prepared.dispose };
+    return { proposal, snapshot, prepared, validate, sourcesCurrent: () => sourcesCurrent(captured, useViewerStore.getState()),
+      commit: () => { validate(); return prepared.commit(); }, dispose: prepared.dispose };
   } catch (error) { prepared.dispose(); throw error; }
 }
 

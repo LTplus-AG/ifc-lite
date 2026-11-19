@@ -193,3 +193,13 @@ test('the first-reopen snapshot note covers every first-reopen lane', () => {
     assert.match(renderMarkdown(summarize(plan, rows), plan, { segments: [] }), /stored before open 1\/1/, lane);
   }
 });
+
+test('plan.bootIdleAfterMs sets when the boot lane reads idle memory; absent keeps the 5 s default', () => {
+  withPlanDir((plan) => {
+    assert.equal(plan({}).bootIdleAfterMs, undefined);
+    assert.equal(plan({ bootIdleAfterMs: 60_000 }).bootIdleAfterMs, 60_000);
+    assert.equal(plan({ bootIdleAfterMs: 0 }).bootIdleAfterMs, 0);
+    assert.equal(plan({ bootIdleAfterMs: 300_000 }).bootIdleAfterMs, 300_000);
+    for (const bad of [-1, 300_001, '60000', null]) assert.throws(() => plan({ bootIdleAfterMs: bad }), /bootIdleAfterMs/, String(bad));
+  });
+});

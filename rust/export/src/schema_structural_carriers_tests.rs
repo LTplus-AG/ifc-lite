@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Mirrors the CausedBy cases of `packages/export/src/schema-converter-structural-carriers.test.ts` (#9668, #10597).
+//! Mirrors the CausedBy and SharedPlacement cases of `packages/export/src/schema-converter-structural-carriers.test.ts` (#9668, #10597).
 use crate::step::{export_step_with_diagnostics, StepOptions};
 
 const OWNER: &str = "#1=IFCPERSON($,'P',$,$,$,$,$,$);
@@ -216,4 +216,49 @@ fn a_varying_rewrite_counts_a_missing_caused_by_even_with_free_ids_10597() {
         assert_eq!(warnings.iter().any(|w| w.contains("CausedBy has no slot")), expected == 1);
         assert_eq!(stats.attribute_values_dropped, expected, "{out}");
     }
+}
+
+fn shared(second: &str, list: &str) -> String {
+    model("IFC2X3", &format!("#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#9,$,.RIGID_JOINED_MEMBER.);
+#21=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,{second},$,$);
+#22=IFCBEAM('1wng2kJ6bGvgWud8Cpi0D9',#5,'Beam',$,$,#10,$,$);
+#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$);
+#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,{list},$,#30);"))
+}
+const MODEL_SHARED: &str = "#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);";
+
+#[test]
+fn reports_a_shared_placement_it_writes_9668() {
+    let (up, warnings) = convert(&shared("#9", "(#20,#21,#22)"), "IFC4");
+    assert_eq!(record(&up, 30), MODEL_SHARED);
+    assert!(warnings.contains("SharedPlacement is written as the local placement"), "{warnings}");
+}
+
+#[test]
+fn places_by_neither_model_an_item_two_models_group_9668() {
+    let two = shared("#10", "(#20,#21,#22)").replace("#31=", "#14=IFCLOCALPLACEMENT($,#8);
+#23=IFCSTRUCTURALCURVEMEMBER('1XciGbSFPUkgAKmWK4M6tc',#5,'M2',$,$,#14,$,.RIGID_JOINED_MEMBER.);
+#32=IFCSTRUCTURALANALYSISMODEL('4rBQGmCZHSd9Yn0gS5NyiS',#5,'Model 2',$,$,.LOADING_3D.,$,$,$);
+#33=IFCRELASSIGNSTOGROUP('2rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#21,#23),$,#32);
+#31=");
+    let (up, _) = convert(&two, "IFC4");
+    assert!(record(&up, 21).contains(",'N',$,$,#10,"), "{up}");
+    assert!(record(&up, 30).ends_with(",$);") && record(&up, 32).ends_with(",$);"), "{up}");
+}
+
+#[test]
+fn reports_a_shared_placement_ifc2x3_cannot_hold_as_lost_9668() {
+    let ifc4 = model("IFC4", "#13=IFCGRIDPLACEMENT($,$,$);
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#13,$,.RIGID_JOINED_MEMBER.,$);
+#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#13);
+#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#20),$,#30);");
+    assert!(convert(&ifc4, "IFC2X3").1.contains("IFCSTRUCTURALANALYSISMODEL.SharedPlacement has no slot in IFC2X3; its value is omitted"));
+}
+
+#[test]
+fn reads_no_placement_when_a_grouped_item_cannot_be_read_9668() {
+    // A slot holding only a comment does not split, so the item's placement is unknown.
+    let unread = shared("#9", "(#20,#21,#22)").replace(",'N',$,$,#9,$,$);", ",'N',$,$,#9,/* */,$);");
+    let (up, _) = convert(&unread, "IFC4");
+    assert!(record(&up, 30).ends_with(",$);"), "{up}");
 }

@@ -156,7 +156,13 @@ pub(crate) fn execute(
     let (result, telemetry) = crate::telemetry_transaction::capture(|| {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let had_triangles = mesh.triangle_count() > 0;
+            let measure = (context.rect_opening_count() > 0)
+                .then(|| CutMeasure::new(&mesh));
             let cut = execution.apply_void_context(mesh, context, id);
+            if let Some(measure) = measure.filter(|_| execution.effects.borrow().attempted_rectangular_cut()) {
+                let unchanged = measure.is_some_and(|before| before.matches(&cut));
+                execution.push(Effect::MeasuredRectangularCut(id, unchanged));
+            }
             // Every path that can empty a host (analytic rectangle, 2D,
             // prism, engulf) does so only when the openings' union covers
             // it; the kernel paths refuse an empty result. So an empty cut
@@ -172,6 +178,44 @@ pub(crate) fn execute(
         result,
         effects: execution.finish(),
         telemetry,
+    }
+}
+
+struct CutMeasure {
+    area: f64,
+    volume: f64,
+    reference: [f64; 3],
+    origin: [f64; 3],
+}
+
+impl CutMeasure {
+    fn new(mesh: &Mesh) -> Option<Self> {
+        use crate::mesh_check::{signed_volume_about, surface_area, volume_reference};
+        let area = surface_area(mesh)?;
+        let reference = volume_reference(mesh);
+        let volume = signed_volume_about(mesh, &reference).abs();
+        (area > 0.0 && volume.is_finite()).then_some(Self {
+            area, volume, reference, origin: mesh.origin,
+        })
+    }
+
+    fn matches(&self, mesh: &Mesh) -> bool {
+        use crate::mesh_check::{signed_volume_about, surface_area};
+        // Allow small geometric changes from placement and cut cleanup.
+        const RELATIVE_TOLERANCE: f64 = 1.0e-3;
+        let within_tolerance = |before: f64, after: f64| {
+            (before - after).abs() <= before * RELATIVE_TOLERANCE
+        };
+        let Some(area) = surface_area(mesh) else { return false };
+        if !within_tolerance(self.area, area) {
+            return false;
+        }
+        // Reuse the same world reference in the result's frame. This keeps the
+        // contribution of an untouched open face stable if the bounds shrink.
+        let reference = std::array::from_fn(|axis| {
+            self.reference[axis] + (self.origin[axis] - mesh.origin[axis])
+        });
+        within_tolerance(self.volume, signed_volume_about(mesh, &reference).abs())
     }
 }
 

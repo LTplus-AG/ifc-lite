@@ -390,7 +390,9 @@ setMaterialLayerIndex(/* per-element layer buildup columns, see the .d.ts */): v
 clearPrePassCache(): void;
 ```
 
-`getPipelineDiagnostics()` returns a plain object with `schemaVersion: 1`.
+`getPipelineDiagnostics()` returns a plain object with `schemaVersion: 2`.
+In version 2, `silentNoOps` counts clean rectangular cuts whose area and
+volume stayed within 0.1% of the original. Version 1 used equal triangle counts.
 Its additive fields `refusedInputElements` count attempted jobs that refused
 input (a retry counts again), while `refusedPrepassRecords` counts distinct
 semantically refused record IDs per `IfcAPI` worker. Syntax/decode failures

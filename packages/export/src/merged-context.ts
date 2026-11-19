@@ -186,7 +186,8 @@ const COORDINATE_OPERATION_STEP_TYPES: readonly string[] = [...MAP_CONVERSION_ST
 
 /**
  * `id`'s attributes from `from` on, for comparing two records by value: a number where one parses, else the raw
- * text, and a reference as its target's type and attributes, `depth` levels deep.
+ * text, and a reference as its target's type and attributes, up to `depth` levels deep (a bound, not a need: a
+ * conversion-based map unit's factor sits four levels below a coordinate operation).
  */
 function stepValues(dataStore: IfcDataStore, id: number, from: number, depth: number): unknown[] {
   const values: unknown[] = [];
@@ -220,8 +221,8 @@ export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, leng
       if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
       const target = refId(getStepAttr(dataStore, id, 1));
       const mapUnit = target === null ? null : getStepAttr(dataStore, target, 6);
-      // The target CRS is resolved two levels deep, so its map unit compares by value.
-      return JSON.stringify([type, ...stepValues(dataStore, id, 1, 2), mapUnit === null || mapUnit === '$' ? lengthUnitScale : null]);
+      // The target CRS and its map unit compare by value, a conversion-based unit by its factor.
+      return JSON.stringify([type, ...stepValues(dataStore, id, 1, 8), mapUnit === null || mapUnit === '$' ? lengthUnitScale : null]);
     }
   }
   return null;

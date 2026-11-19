@@ -17,6 +17,7 @@ import { mirrorCreateEntityRedo, mirrorSourceEntityRestore } from './mutation-co
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh } from './mutation-mesh-stash.js';
 import { isTargetTombstoned } from './mutation-redo-remote-guard.js';
 import { toast } from '@/components/ui/toast';
+import { mirrorHistoryStep } from './mutation-room-history.js';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
@@ -80,7 +81,9 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
   // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
-  } else if (mutation.setOverlay) {
+    return;
+  }
+  if (mutation.setOverlay) {
     // A whole-set edit carries its set's overlay rows from right before (#5965).
     view.restoreSetOverlay(mutation.setOverlay.before);
   } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
@@ -204,6 +207,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else {
     reportUnreplayable('undo', mutation.type, mutation.entityId);
   }
+  mirrorHistoryStep(get, set, modelId, mutation, 'undo');
 }
 
 /** Re-apply `mutation` to `view` (one redo step, stacks untouched). */
@@ -212,7 +216,9 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
   // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
-  } else if (mutation.setOverlay) {
+    return;
+  }
+  if (mutation.setOverlay) {
     // ...and from right after, so redo lands the edit exactly again (#5965).
     view.restoreSetOverlay(mutation.setOverlay.after);
   } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
@@ -302,4 +308,5 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else {
     reportUnreplayable('redo', mutation.type, mutation.entityId);
   }
+  mirrorHistoryStep(get, set, modelId, mutation, 'redo');
 }

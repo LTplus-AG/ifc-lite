@@ -10,6 +10,7 @@ const fields: Record<DocumentBlock['kind'], readonly string[]> = {
   text: [...shared, 'text', 'style', 'font', 'fontSize', 'textColor', 'backgroundColor'], image: [...shared, 'height', 'align', 'caption'],
   chart: [...shared, 'chart', 'snapshot', 'height', 'fontSize'], topic: [...shared, 'guid', 'snapshot'], spacer: ['height'], 'page-break': [],
   table: [...shared, 'source', 'maxRows', 'caption', 'headerBackground', 'headerTextColor', 'groupOrder'],
+  'quality-gate': ['scale', 'title', 'titleFontSize', 'titleTextColor', 'titleBackgroundColor', 'clashReportId', 'row'],
   'ids-report': [...shared, 'variant', 'specificationsOnly', 'benchmarks', 'showStamp'], 'manual-report': [...shared, 'variant', 'benchmarks', 'showStamp'],
 };
 function record(value: unknown): Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected a native settings object.'); return value as Record<string, unknown>; }

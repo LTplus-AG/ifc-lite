@@ -348,7 +348,7 @@ test('#7186 native Flavor file export/import preserves captured Lens output and 
   } finally { await host.dispose(); }
 });
 
-test('#7186 native Document captured List replays through file, durable storage and existing Document backup; versions1..12 remain readable', async () => {
+test('#7186 native Document captured List replays through file, durable storage and existing Document backup; versions 1 through 13 remain readable', async () => {
   const { clearContentDatabase } = await import('@/test/content-fixture');
   const { coverSheetDocument } = await import('@/lib/document/presets');
   const { DOCUMENT_VERSION, listCopyForDocument } = await import('@/lib/document/types');
@@ -363,7 +363,8 @@ test('#7186 native Document captured List replays through file, durable storage 
   const definition = preview.artifact.definition;
   const document = { ...coverSheetDocument(), blocks: [{ kind: 'table' as const, id: 'captured-table',
     source: { kind: 'list' as const, list: listCopyForDocument(definition, 'document-list-copy') }, maxRows: 10 }] };
-  assert.equal(document.version, 13, 'native document compatibility version protects executable captured List semantics');
+  const capturedListVersion = 13;
+  assert.equal(document.version, DOCUMENT_VERSION);
   const run = async (doc: import('@/lib/document/types').DocumentSpec) => {
     const block = doc.blocks[0];
     if (block.kind !== 'table' || block.source.kind !== 'list') throw new Error('Expected native table');
@@ -379,7 +380,10 @@ test('#7186 native Document captured List replays through file, durable storage 
   assert.ok(stored); assert.equal(await run(stored), 1);
   const backup = parseContentBackup(JSON.stringify(createContentBackup({ document: [stored], validation: [], comparison: [] })));
   assert.equal(await run(backup.libraries.document[0]), 1, 'existing Document backup codec keeps its executable captured List population');
-  for (let version = 1; version < DOCUMENT_VERSION; version++) {
+  const firstCapturedVersion = parseDocumentFile(JSON.stringify({ ...document, version: capturedListVersion }));
+  assert.equal(firstCapturedVersion.version, DOCUMENT_VERSION);
+  assert.equal(await run(firstCapturedVersion), 1, 'version 13 keeps its executable captured List population');
+  for (let version = 1; version < capturedListVersion; version++) {
     const legacy = { ...document, version, blocks: document.blocks.map(block => ({ ...block,
       source: { kind: 'list', list: { ...block.source.list, capturedScope: undefined } } })) };
     const migrated = parseDocumentFile(JSON.stringify(legacy));

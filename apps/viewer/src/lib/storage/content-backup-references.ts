@@ -13,6 +13,10 @@ export function rebindContentDocument(document: DocumentSpec,
       const bound = block.chart[key], id = bound && ids.get(bound);
       if (id) return { ...block, chart: { ...block.chart, [key]: id } };
     }
+    if (block.kind === 'quality-gate') {
+      const clashReportId = clashReports.get(block.clashReportId);
+      if (clashReportId) return { ...block, clashReportId };
+    }
     if ((block.kind === 'ids-report' || block.kind === 'manual-report') && block.savedReportId) {
       const id = validation.get(block.savedReportId);
       if (id) return { ...block, savedReportId: id };
@@ -36,6 +40,10 @@ export function rebindCommittedDocument(current: DocumentSpec, before: unknown, 
         const id = (block.chart as Record<string, unknown>)[key], now = next.chart[key];
         if (typeof id === 'string' && now && id !== now) ids.set(id, now);
       }
+    }
+    if (block.kind === 'quality-gate' && next?.kind === 'quality-gate'
+      && typeof block.clashReportId === 'string' && block.clashReportId !== next.clashReportId) {
+      clashReports.set(block.clashReportId, next.clashReportId);
     }
     if ((block.kind === 'ids-report' || block.kind === 'manual-report') && (next?.kind === 'ids-report' || next?.kind === 'manual-report')
       && next.kind === block.kind && typeof block.savedReportId === 'string' && next.savedReportId

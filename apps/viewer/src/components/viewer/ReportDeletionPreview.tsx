@@ -127,17 +127,17 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     onCancel();
   };
   return <div className="space-y-2 rounded border p-2 text-xs" data-report-deletion-preview role="alert">
-    <p>{t('comparePanel.saved.dependencies.warning', { name: captured.current.name })}</p>
-    <p>{t('comparePanel.saved.dependencies.count', { count: preview.total })}</p>
+    <p>{t(preview.hasQualityGates ? 'document.qualityGate.deleteWarning' : 'comparePanel.saved.dependencies.warning', { name: captured.current.name })}</p>
+    <p>{t(preview.hasQualityGates ? 'document.qualityGate.referenceCount' : 'comparePanel.saved.dependencies.count', { count: preview.total })}</p>
     {preview.entries.length > 0 && <ul className="list-disc pl-4">{preview.entries.map(entry => <li key={entry.key}>
-      {t(`comparePanel.saved.dependencies.${entry.family}`)}: {entry.name} — {entry.chart}
+      {t(`comparePanel.saved.dependencies.${entry.family}`)}: {entry.name} — {entry.qualityGate && !entry.chart ? t('document.block.kindQualityGate') : entry.chart}
     </li>)}</ul>}
     {preview.total > preview.entries.length && <p>{t('comparePanel.saved.dependencies.bounded', { count: preview.entries.length, total: preview.total })}</p>}
     {preview.documentPhase === 'loading' && <p>{t('comparePanel.saved.dependencies.loading')}</p>}
     {(preview.documentPhase === 'unavailable' || preview.documentsRecovered || preview.dashboardsUnavailable || preview.omittedDashboards > 0) && <p>{t('comparePanel.saved.dependencies.unavailable')}</p>}
     {ownPending && <p>{t('comparePanel.saved.dependencies.storagePending')}</p>}
     {sourceChanged && <p>{t('comparePanel.saved.dependencies.sourceChanged')}</p>}
-    {changed && <p>{t('comparePanel.saved.dependencies.changed')}</p>}
+    {changed && <p>{t(preview.hasQualityGates ? 'document.qualityGate.referencesChanged' : 'comparePanel.saved.dependencies.changed')}</p>}
     <div className="flex flex-wrap gap-2">
       <Button variant="destructive" size="sm" disabled={busy || ownPending || sourceChanged || changed || !acknowledged || preview.documentPhase === 'loading'} onClick={() => void remove()}>
         {t('clashTools.savedReports.confirmDeleteButton')}

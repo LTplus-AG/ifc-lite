@@ -14,6 +14,7 @@ import { TEXT_STYLES } from '@/lib/document/compose-text';
 import { DOCUMENT_FONT_FAMILIES } from '@/lib/document/text-typography';
 import { tableHeaderStyle } from '@/lib/table-header-style';
 import { topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
+import { qualityGateRingSvg } from '@/lib/document/quality-gate-block';
 import { ringSvg } from '@/lib/validation/manual/ring';
 import { blockScale, type DocumentBlock } from '@/lib/document/types';
 import type { DocumentLabelFormatter } from '@/lib/document/document-labels';
@@ -119,6 +120,8 @@ function Item({ item, block, origin, props, lineBreak, children }: { item: Drawn
       savedComparison={block.kind === 'chart' && isRecordedChart(block.chart)}
       style={style} scale={scale} measure={measure} />;
     case 'snapshot': return <span style={style} className="flex items-center justify-center border border-dashed border-neutral-300 text-xs text-neutral-500">{t('document.print.snapshot')}</span>;
+    case 'quality-gate-ring':
+      return <img style={style} src={`data:image/svg+xml,${encodeURIComponent(qualityGateRingSvg(item))}`} alt={item.display} />;
     case 'ring': {
       const name = block.kind === 'manual-report' ? block.checklistName : block.kind === 'ids-report' ? block.sourceName : '';
       const description = item.counts.total === 0 ? t('manualValidation.ring.empty', { name })

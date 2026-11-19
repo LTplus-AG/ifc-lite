@@ -6,6 +6,8 @@ import type { CapturedSectionPlane } from './section-plane-position';
 export interface CreateViewpointOptions {
   /** Include a snapshot image */
   includeSnapshot?: boolean;
+  /** With `includeSnapshot`, a capture whose frame fails returns null instead of a camera-only viewpoint. */
+  requireSnapshot?: boolean;
   /** Already-rendered PNG; camera/clipping still use the canonical conversion. */ snapshotOverride?: string;
   /** Exact cut rendered by a 2D section snapshot, independent of 3D clipping. */ capturedSectionPlane?: CapturedSectionPlane;
   /** Include selected entities */

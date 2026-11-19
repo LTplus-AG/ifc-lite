@@ -15,12 +15,14 @@ export const cityJsonExportOperations = [viewerOperation<{ target_model_id: stri
   const model = nativeStepTarget(i.target_model_id);
   // CityJSON reads only the model and its edits, not view state, so the narrower export checkpoint applies.
   const check = exportCheckpoint(c, [model.id]); check();
-  const engine = await cityJsonEngine.load();
+  const engine = await cityJsonEngine.load(); check();
   const { getMutationView, georefMutations } = useViewerStore.getState();
-  const produced = await produceNativeCityJson(engine, model, getMutationView, georefMutations.get(model.id), i.sequence).catch((error: unknown) => {
+  const produced = await produceNativeCityJson(engine, model, getMutationView, georefMutations.get(model.id), i.sequence, check).catch((error: unknown) => {
     const refusal = engine.cityJsonRefusalReason(error);
-    if (refusal === null) console.error('CityJSON export failed:', error);
-    throw new Error(refusal ?? (error instanceof Error ? error.message : String(error)), { cause: error });
+    if (refusal !== null) throw new Error(refusal, { cause: error });
+    console.error('CityJSON export failed:', error);
+    // Rethrown as is, so a checkpoint's state-changed or cancelled error keeps its code.
+    throw error instanceof Error ? error : new Error(String(error), { cause: error });
   });
   return nativeArtifact(c, produced.blob, produced.filename, { warnings: produced.warnings }, check);
 })];

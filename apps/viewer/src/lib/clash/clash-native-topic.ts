@@ -35,6 +35,8 @@ interface TopicOptions {
   isCurrent: () => boolean;
   signal?: AbortSignal;
   commit?: <T>(write: () => T) => T;
+  /** Create nothing when the snapshot frame fails, rather than a camera-only topic (the agent operation's contract). */
+  requireSnapshot?: boolean;
 }
 /** The run is still wanted but the scene or camera changed under the capture (a cancelled run returns null). */
 export class StaleCaptureError extends Error {
@@ -91,6 +93,7 @@ export async function createNativeClashTopic(options: TopicOptions): Promise<{ g
     () =>
       captureNativeBcfViewpoint(getGlobalRenderer(), getGlobalCanvas(), {
         includeSnapshot: true,
+        requireSnapshot: options.requireSnapshot,
         includeSelection: !focused,
         includeHidden: true,
         // Only a group capture stops early when stale: it re-checks the framed camera and

@@ -66,7 +66,7 @@ export function createNativeClashRuntime(
     discardSolidPresentation,
     publish: options.publish,
   });
-  const focus = createClashFocus({ installClashIsolation, installClashGhost });
+  const focus = createClashFocus({ installClashIsolation, installClashGhost, signal: options.signal });
   return {
     ...detection,
     ...focus,

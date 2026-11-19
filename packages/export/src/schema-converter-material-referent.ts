@@ -42,7 +42,7 @@ export const downgradesMaterial = (from: string, to: string): boolean => to === 
 export interface MaterialSource {
   /** The UPPERCASE type of a record the export writes; undefined for one it does not. */
   typeOf(id: number): string | undefined;
-  /** Its slots as written. */
+  /** Its slots as written; undefined for a record the export does not write. */
   slots(id: number): readonly string[] | undefined;
 }
 

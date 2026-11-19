@@ -130,9 +130,6 @@ export const UNJUDGED_BY_DESIGN = {
   // auto_merge_conditions read (scripts/ci-viewer-select-status.mjs). The
   // merge queue still runs every viewer shard.
   'viewer-tests-selected': 'sample of the viewer suite; gates queue entry through the PR viewer selection status, not the run',
-  // Posts that status as pending before the build, so the gate cannot open
-  // before the tests report. It tests nothing.
-  'viewer-selection-pending': 'posts the pending PR viewer selection status; tests nothing',
 };
 
 /**

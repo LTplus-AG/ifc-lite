@@ -154,7 +154,7 @@ test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and only 
   // PRs (scripts/ci-viewer-select.mjs). Its pass certifies nothing and the
   // merge queue runs every shard. Adding another entry is a decision; make it
   // here, not by loosening this line.
-  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), ['viewer-tests-selected', 'viewer-selection-pending']);
+  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), ['viewer-tests-selected']);
 });
 
 test('every exemption carries a stated reason', () => {

@@ -9,6 +9,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { setGlobalRendererRef } from '../hooks/useBCF.js';
 import { resolveInstancedExportGate, withInstancedMeshes } from './instancedExport.js';
+import { modelIndices } from '@/lib/model-placement/model-indices';
 
 function mesh(expressId: number, verts: number, tris: number): MeshData {
   return {
@@ -140,7 +141,7 @@ describe('resolveInstancedExportGate', () => {
     ]);
     const result = resolveInstancedExportGate('b', models);
     assert.equal(result.canExport, true);
-    assert.deepEqual(result.instancedModelRange, { modelId: 'b', idOffset: 50, maxExpressId: 30 });
+    assert.deepEqual(result.instancedModelRange, { modelId: 'b', idOffset: 50, maxExpressId: 30, rendererModelIndex: modelIndices(models).get('b') });
   });
 
   // `null` (no filter) is safe ONLY when this is provably the sole loaded
@@ -156,5 +157,21 @@ describe('resolveInstancedExportGate', () => {
     const result = resolveInstancedExportGate(undefined, new Map());
     assert.equal(result.canExport, true);
     assert.equal(result.instancedModelRange, null);
+  });
+});
+
+describe('instanced range owner (#10695)', () => {
+  afterEach(() => {
+    setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  });
+
+  it('the KMZ range keeps an overlapping-id model\'s instanced occurrences out', () => {
+    // A collab model can share the id bracket; only the renderer model index tells its occurrences apart.
+    const models = new Map([['A', { idOffset: 0, maxExpressId: 10 }], ['B', { idOffset: 0, maxExpressId: 10 }]]);
+    const index = modelIndices(models);
+    setRenderer([{ ...mesh(5, 3, 1), modelIndex: index.get('A') }, { ...mesh(5, 3, 1), modelIndex: index.get('B') }]);
+    const { instancedModelRange } = resolveInstancedExportGate('A', models);
+    const out = withInstancedMeshes(baseGeometry(), instancedModelRange);
+    assert.deepEqual(out.meshes.map(m => m.modelIndex), [undefined, index.get('A')]);
   });
 });

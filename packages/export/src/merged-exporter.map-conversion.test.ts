@@ -216,11 +216,12 @@ describe('merged STEP export and map conversions (#10798)', () => {
 
   it('tells apart the same numbers in different map units', async () => {
     expectApart(await merge([at(X), { values: X, unit: '#3' }]), 2);
-    // A CRS without a map unit uses the project's.
-    expectApart(await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'normalize'), 2);
+    // A CRS without a map unit is read as metres whatever the project unit, as the viewer reads it (#10886).
+    for (const strategy of ['normalize', 'assume-shared'] as const) {
+      const unitless = await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', strategy);
+      expect([unitless.contexts.length, unitless.sources.length, unitless.crs]).toEqual([1, 1, 1]);
+    }
     expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$' }])).contexts).toHaveLength(1);
-    // Under assume-shared the caller says every model is in the primary's unit, so the map unit is the primary's too.
-    expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'assume-shared')).contexts).toHaveLength(1);
     // Two spellings of one georeference (an explicit metre and the project's metre, an omitted and a unit scale) are
     // not equal records, so neither is dropped: each keeps its own context and operation (#10873).
     expectApart(await merge([at(X), { values: X, unit: '$' }]), 2);

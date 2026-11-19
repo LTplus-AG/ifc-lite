@@ -115,8 +115,10 @@ pub struct CacheStats {
     pub total_triangles: u64,
     pub cache_bytes: u64,
     /// Distinct chunk grid cells. A cell's chunk stays open until the 8 MiB
-    /// soft cap or the end of the pass closes it, so this times the cap (plus
-    /// one oversized mesh) bounds the geometry a build holds at once.
+    /// soft cap or the end of the pass closes it, and each holds under the
+    /// cap plus at most one more mesh of any size, so the geometry a build
+    /// holds at once is bounded per cell: this times the cap, plus one mesh
+    /// per cell.
     pub chunk_cells: u64,
     /// The most serialized record bytes the open chunks held at once: the
     /// measured side of that bound.

@@ -136,7 +136,8 @@ inside a container with `--memory=3g --memory-swap=3g`. Neither was verified fro
 
 ## Streaming native `.ifclite` writer (#9584 slice 3, `ifc-build-cache`)
 
-**Accepted: `build_cache_to_path` runs the pipeline with `retain_meshes` off and spools each chunk as it closes; its output is byte-identical to the in-memory `build_cache`, and it drops the retained mesh set from the peak. Local evidence only, not acceptance evidence.**
+**Measured locally, acceptance pending: `build_cache_to_path` runs the pipeline with `retain_meshes` off and spools each chunk as it closes; its output is byte-identical to the in-memory `build_cache`, and on a shared host it drops the retained mesh set from the peak. These figures are diagnostic. The verdict is the fleet-admitted paired run on this PR's merge base `ee77162e0` and head, recorded here when it is attached.**
+- The base below is slice 2 before the rebase (`5093d52f3`), not the merge base `ee77162e0`; the fleet run measures against the latter.
 - Byte identity: base (slice 2, `5093d52f3`) in-memory, branch in-memory and branch streamed caches compared with `cmp` on every model below: all identical. Tests: `rust/cache/tests/streamed_matches_in_memory.rs`, `src/stream_tests.rs` (1-, 7- and 1024-job batches).
 - Peak RSS (`/usr/bin/time -l`, MiB, mean of 2 runs, release, Apple M2 Pro 10-core 16 GB, macOS 26.5.2, shared host with load 4-6). Floor is `examples/pipeline_floor.rs` (the same geometry pass, meshes dropped, nothing written); "data model" is `ifc-build-cache --no-geometry`; cells x 8 MiB bounds the open chunks, "open" is the measured peak of them:
 

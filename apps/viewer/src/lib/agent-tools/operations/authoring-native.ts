@@ -9,6 +9,7 @@ import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
 import { operation, emptySchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
+import { admitCandidate } from './host-handles';
 
 const previewOutput = { type: 'object', properties: { token: { type: 'string' }, preview_json: { type: 'string' }, revision: { type: 'integer' } }, required: ['token', 'preview_json', 'revision'], additionalProperties: false };
 const receiptOutput = { type: 'object', properties: { receipt_json: { type: 'string' }, persisted: { type: 'boolean' } }, required: ['receipt_json', 'persisted'], additionalProperties: false };
@@ -20,7 +21,7 @@ const meta = (id: string, owner: string, description: string, write = false) => 
   outputSchema: write ? receiptOutput : previewOutput });
 interface Candidate {
   modelId: string; store: OperationContext['model']['store']; revision: number;
-  authoring?: ModelAuthoringPreview; properties?: ModelChangePreview; receipt?: ModelChangeReceipt;
+  authoring?: ModelAuthoringPreview; properties?: ModelChangePreview; receipt?: ModelChangeReceipt; persisted?: boolean;
 }
 const owned = new WeakMap<ToolHost, Map<string, Candidate>>();
 function candidates(c: OperationContext) {
@@ -28,21 +29,37 @@ function candidates(c: OperationContext) {
 }
 function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) {
   const entries = candidates(c);
-  if (entries.size >= 64) throw new Error('At most 64 reviewed model candidates may be retained by a host.');
+  // A candidate whose model was closed or replaced can never apply.
+  admitCandidate(entries, 64, 'At most 64 reviewed model candidates may be retained by a host.', entry => !entry.receipt,
+    entry => useViewerStore.getState().models.get(entry.modelId)?.ifcDataStore !== entry.store);
   const token = crypto.randomUUID(), revision = useViewerStore.getState().mutationVersion;
   entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
   return { token, revision, preview_json: JSON.stringify(preview) };
 }
-function candidate(c: OperationContext, token: string) {
+function ownedCandidate(c: OperationContext, token: string) {
   const saved = candidates(c).get(token);
   if (!saved || saved.modelId !== c.model.id || saved.store !== c.model.store) throw new Error('Unknown reviewed candidate for this host and model.');
+  return saved;
+}
+function candidate(c: OperationContext, token: string) {
+  const saved = ownedCandidate(c, token);
   if (!saved.receipt && saved.revision !== useViewerStore.getState().mutationVersion) throw new Error('Model changed since preview; prepare again.');
   return saved;
 }
-async function persist(receipt: ModelChangeReceipt) {
+/** Write an applied candidate's receipt once. A replay returns it unwritten, so it never overwrites the
+ * library row the Changes panel has since marked undone; only a failed first write is retried. */
+export async function persistReceipt(holder: { persisted?: boolean }, receipt: ModelChangeReceipt): Promise<boolean> {
+  if (holder.persisted) return true;
   const { modelChangeLibrary } = await import('@/lib/actions/receipts');
-  const persisted = await modelChangeLibrary.put(receipt.id, receipt);
-  return { receipt_json: JSON.stringify(receipt), persisted };
+  holder.persisted = await modelChangeLibrary.put(receipt.id, receipt);
+  return holder.persisted;
+}
+async function persist(saved: Candidate, receipt: ModelChangeReceipt) {
+  return { receipt_json: JSON.stringify(receipt), persisted: await persistReceipt(saved, receipt) };
+}
+/** Drop candidates a caller prepared and will not hand back, such as the earlier batches of a failed multi-batch prepare. */
+export function discardCandidates(c: OperationContext, tokens: readonly string[]): void {
+  for (const token of tokens) candidates(c).delete(token);
 }
 
 export async function preparePropertyCandidate(c: OperationContext, proposal: string) {
@@ -76,7 +93,7 @@ export const authoringOperations = [
   }),
   operation<{ token: string }>(meta('authoring.apply', 'model', 'Apply every ready row of the exact prepared model/attribute/property candidate as a native transaction. Refuses an incomplete/conflicting preview; repeated apply returns the same receipt.', true), tokenInput, async (i, c) => {
     const saved = candidate(c, i.token);
-    if (saved.receipt) return persist(saved.receipt);
+    if (saved.receipt) return persist(saved, saved.receipt);
     const [{ commitModelAuthoring }, { commitModelChanges }] = await Promise.all([import('@/lib/actions/model-authoring-commit'), import('@/lib/actions/model-change-commit')]);
     candidate(c, i.token); assertToolActive(c);
     const preview = saved.authoring ?? saved.properties!;
@@ -89,9 +106,10 @@ export const authoringOperations = [
       if (!result.ok) throw new Error(`Native commit refused: ${result.reason}${result.detail ? `: ${result.detail}` : ''}`);
       return result;
     });
-    saved.receipt = outcome.receipt; return persist(outcome.receipt);
+    saved.receipt = outcome.receipt; return persist(saved, outcome.receipt);
   }),
   operation<{ token: string }>({ ...meta('authoring.discard', 'model', 'Discard a prepared model candidate without applying it.'), outputSchema: { type: 'object', properties: { discarded: { type: 'boolean' } }, required: ['discarded'], additionalProperties: false } }, tokenInput, (i, c) => {
-    candidate(c, i.token); candidates(c).delete(i.token); return { discarded: true };
+    // No revision check: a stale candidate is exactly the one worth discarding.
+    ownedCandidate(c, i.token); candidates(c).delete(i.token); return { discarded: true };
   }),
 ];

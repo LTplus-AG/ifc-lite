@@ -9,3 +9,22 @@
 export function evictOldest<K, V>(handles: Map<K, V>, cap: number): void {
   while (handles.size >= cap) handles.delete(handles.keys().next().value as K);
 }
+
+/**
+ * Make room for one more reviewed candidate. Only `pending` candidates count against `cap`, and a host full of
+ * them is refused with `refusal`. Candidates that can never apply (`gone`) are dropped; applied ones share the
+ * cap and the oldest goes first. Call it again after any await: a concurrent prepare may have taken the room.
+ */
+export function admitCandidate<K, V>(handles: Map<K, V>, cap: number, refusal: string,
+  pending: (value: V) => boolean, gone: (value: V) => boolean = () => false): void {
+  let open = 0;
+  for (const [key, value] of handles) {
+    if (gone(value)) handles.delete(key);
+    else if (pending(value)) open++;
+  }
+  if (open >= cap) throw new Error(refusal);
+  for (const [key, value] of handles) {
+    if (handles.size < cap) break;
+    if (!pending(value)) handles.delete(key);
+  }
+}

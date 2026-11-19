@@ -71,9 +71,13 @@ export const zoneOperations = [
     type: 'object', properties: { ...idInput.properties, basis, format: { type: 'string', enum: ['csv', 'parquet'] } }, required: ['set_id', 'basis', 'format'], additionalProperties: false,
   }, async (i, c) => {
     const { exportZoneTable } = await import('@/hooks/useZoneTableExport'); assertToolActive(c); const zoneSet = set(i.set_id), identity = JSON.stringify(zoneSet);
+    // The table reads models, geometry and assignments, not only the set: Parquet encoding awaits, so check them all, as zones.geometry.export does.
+    const before = useViewerStore.getState();
     let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
     const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });
-    assertToolActive(c); if (identity !== JSON.stringify(set(i.set_id))) throw new Error('Zone configuration changed during export.');
+    assertToolActive(c); const now = useViewerStore.getState();
+    if (identity !== JSON.stringify(set(i.set_id)) || now.models !== before.models || now.geometryUpdateTick !== before.geometryUpdateTick
+      || now.mutationVersion !== before.mutationVersion || now.zoneAssignments !== before.zoneAssignments) throw new Error('Zone configuration, models or assignments changed during export.');
     if (!captured) return out({ result, artifact: null }); const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: captured.mime, data: captured.bytes }); return out({ result, artifact });
   }),
 ];

@@ -37,13 +37,19 @@ function owned(host: ToolHost) {
   }
   return map;
 }
+/** Every live and durable dependency, refusing a preview that could not read them all: a reference it
+ * cannot see would be broken by the deletion. */
 async function dependencies(id: string) {
   const [{ loadDocuments }, { reportChartDependencies }] = await Promise.all([
     import('@/lib/document/persistence'),
     import('@/lib/reports/chart-dependencies'),
   ]);
+  await useViewerStore.getState().initializeDocuments();
   const entries = await loadDocuments();
-  return reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
+  const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
+  if (preview.documentPhase !== 'ready' || preview.documentsRecovered || preview.dashboardsUnavailable || preview.omittedDashboards > 0)
+    throw new Error('Dashboards or Documents could not all be read, so the report’s dependencies are unknown. Retry once storage is available.');
+  return preview;
 }
 export const clashReportOperations = [
   viewerOperation(
@@ -184,9 +190,17 @@ export const clashReportOperations = [
       )
         throw new Error('Deletion target or dependencies changed. Preview again.');
       let staged = false;
+      // The library also runs this on a later storage retry, after this call has ended or lost its grant.
+      // Refusing then (not throwing) lets the library restore the report instead of leaving it hidden.
       const guard = async () => {
-        const latest = await dependencies(candidate.report.id);
-        assertToolActive(c);
+        let latest: Awaited<ReturnType<typeof dependencies>>;
+        try {
+          latest = await dependencies(candidate.report.id);
+          assertToolActive(c);
+        } catch (error) {
+          console.warn('[Clash reports] Deletion guard refused:', error);
+          return false;
+        }
         const now = useViewerStore.getState();
         if (
           now.deleteSavedClashReport !== candidate.action ||

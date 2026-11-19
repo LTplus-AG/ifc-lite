@@ -15,11 +15,16 @@ const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) })
 const meta = (id: string, description: string, effect: 'read' | 'configuration' | 'artifact' = 'read') => ({ id, owner: 'validation', description, effects: [effect],
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema: effect === 'artifact' ? artifactOutput : jsonOutput,
   policy: effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
-interface Run { report: ValidationReport; snapshot: IdsReportBlock; models: ReturnType<typeof useViewerStore.getState>['models']; mutationVersion: number }
+type ViewerState = ReturnType<typeof useViewerStore.getState>;
+/** Everything a run's findings depend on: re-tagging models or editing lenses changes them as an edit does. */
+interface RunInputs { models: ViewerState['models']; mutationVersion: number; modelTags: ViewerState['modelTags']; modelTagAssignments: ViewerState['modelTagAssignments']; savedLenses: ViewerState['savedLenses'] }
+const runInputs = (s: ViewerState): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion, modelTags: s.modelTags, modelTagAssignments: s.modelTagAssignments, savedLenses: s.savedLenses });
+const sameInputs = (a: RunInputs, b: RunInputs) => (Object.keys(a) as (keyof RunInputs)[]).every(key => a[key] === b[key]);
+interface Run { report: ValidationReport; snapshot: IdsReportBlock; inputs: RunInputs }
 const hosts = new WeakMap<ToolHost, Map<string, Run>>();
 function runs(c: { host: ToolHost }) { let values = hosts.get(c.host); if (!values) { values = new Map(); hosts.set(c.host, values); const captured = values; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return values; }
 function run(c: { host: ToolHost }, id: string) { const value = runs(c).get(id); if (!value) throw new Error('Unknown validation run owned by this host.');
-  const state = useViewerStore.getState(); if (value.models !== state.models || value.mutationVersion !== state.mutationVersion) throw new Error('Validation inputs changed. Run the check again.'); return value;
+  if (!sameInputs(value.inputs, runInputs(useViewerStore.getState()))) throw new Error('Validation inputs changed. Run the check again.'); return value;
 }
 function libraryRevision(expected: number) { if (useViewerStore.getState().validationDefinitionRevision !== expected) throw new Error('Validation definitions changed. Inspect them again.'); }
 const runInput = { type: 'object' as const, properties: { run_id: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['run_id' as const], additionalProperties: false as const };
@@ -59,21 +64,24 @@ export const nativeValidationOperations = [
   }, async (i, c) => {
     const [{ parseIDS }, { runIdsCheck }, { resolveRef }] = await Promise.all([import('@ifc-lite/ids'), import('@/lib/validation/run-ids-check'), import('../refs')]);
     const document = parseIDS(i.xml); for (const express_id of i.entity_ids) resolveRef(c.model, { express_id });
-    assertToolActive(c); const state = useViewerStore.getState(), revision = state.mutationVersion;
+    assertToolActive(c); const state = useViewerStore.getState(), inputs = runInputs(state);
     const result = await runIdsCheck({ document, modelId: c.model.id, dataStore: c.model.store, mutationView: c.model.mutationView(), locale: 'en', models: state.models, signal: c.signal,
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
-    assertToolActive(c); if (state.models !== useViewerStore.getState().models || revision !== useViewerStore.getState().mutationVersion) throw new Error('Models changed during IDS validation.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, models: state.models, mutationVersion: revision });
+    assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState()))) throw new Error('Models changed during IDS validation.');
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, inputs });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ express_ids: number[]; pset: string; name: string; facet_data_type: string; raw_value: string; title: string }>(meta('validation.fix.prepare', 'Draft a native IDS property correction from explicit target IDs and a supplied raw value. Uses native type inference, IDS-to-model unit conversion and expected-value capture, then the existing properties review/apply service.'), {
     type: 'object', properties: { express_ids: { type: 'array', maxItems: 1000, minItems: 1, items: { type: 'integer', minimum: 1 } }, pset: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 }, facet_data_type: { type: 'string', maxLength: 100 }, raw_value: { type: 'string', maxLength: 2000 }, title: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['express_ids', 'pset', 'name', 'facet_data_type', 'raw_value', 'title'], additionalProperties: false,
   }, async (i, c) => {
-    const [{ idsCorrectionToModelChanges }, { preparePropertyCandidate }, { resolveRef }] = await Promise.all([import('@/lib/actions/ids-changes'), import('./authoring-native'), import('../refs')]);
+    const [{ idsCorrectionToModelChanges }, { preparePropertyCandidate, discardCandidates }, { resolveRef }] = await Promise.all([import('@/lib/actions/ids-changes'), import('./authoring-native'), import('../refs')]);
     for (const express_id of i.express_ids) resolveRef(c.model, { express_id }); assertToolActive(c);
     const converted = idsCorrectionToModelChanges(useViewerStore.getState(), { modelId: c.model.id, target: { psetName: i.pset, propName: i.name }, expressIds: i.express_ids, rawValue: i.raw_value, title: i.title,
       ...(i.facet_data_type ? { facetDataType: i.facet_data_type } : {}) });
-    const candidates = []; for (const batch of converted.batches) candidates.push(await preparePropertyCandidate(c, JSON.stringify(batch)));
+    // All batches or none: a later failure discards the candidates already staged.
+    const candidates: Awaited<ReturnType<typeof preparePropertyCandidate>>[] = [];
+    try { for (const batch of converted.batches) candidates.push(await preparePropertyCandidate(c, JSON.stringify(batch))); }
+    catch (error) { discardCandidates(c, candidates.map(row => row.token)); throw error; }
     return out({ converted, candidates });
   }),
   operation<{ rules_json: string; model_ids: string[] }>(meta('validation.rules.run', 'Run a canonical information-rule definition over an explicit loaded model population through the shared native rule executor. Pending edits are materialized by its canonical effective-store path. Returns a host-owned, revision-bound run handle; native cancellation is forwarded.'), {
@@ -85,10 +93,10 @@ export const nativeValidationOperations = [
     const parsed = parseRuleSetFile(JSON.parse(i.rules_json)); if (!parsed.ok) throw new Error(parsed.error); assertToolActive(c);
     const s = useViewerStore.getState(), models = evaluatorModelsFromState(s).filter(model => i.model_ids.includes(model.id));
     if (models.length !== i.model_ids.length || !i.model_ids.includes(c.model.id)) throw new Error('Every explicit model must be currently loaded, and include the selected model.');
-    const revision = s.mutationVersion;
+    const inputs = runInputs(s);
     const result = await runInformationCheck({ ruleSet: parsed.file, models, definedModelTagIds: definedModelTagIdsOf(s), reportModels: s.models, signal: c.signal });
-    assertToolActive(c); if (s.models !== useViewerStore.getState().models || revision !== useViewerStore.getState().mutationVersion) throw new Error('Models changed during validation. Discarded result.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, models: s.models, mutationVersion: revision });
+    assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState()))) throw new Error('Models changed during validation. Discarded result.');
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, inputs });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ run_id: string; offset: number; limit: number }>(meta('validation.results', 'Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification.'), {

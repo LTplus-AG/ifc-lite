@@ -9,6 +9,8 @@ import type { ToolHost } from '../types';
 import { operation, emptySchema, referenceSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
+import { admitCandidate } from './host-handles';
+import { persistReceipt } from './authoring-native';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const tokenInput = { type: 'object' as const, properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['token' as const], additionalProperties: false as const };
@@ -17,7 +19,7 @@ const meta = (id: string, owner: string, description: string, write = false) => 
   effects: write ? ['model'] as const : ['read'] as const, capability: write ? 'commands-and-edits' as const : 'read' as const,
   implementation: 'native-store' as const, policy: write ? { model: 'native-reviewed' as const } : undefined, outputSchema: jsonOutput });
 interface Review { room?: import('@/lib/actions/room-review').RoomReview; preview: object; validate(): void; commit(): ModelChangeReceipt; dispose?(): void }
-interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt }
+interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt; persisted?: boolean }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) {
   let entries = hosts.get(c.host);
@@ -80,9 +82,11 @@ export const graphAuthoringOperations = [
   ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
-    if (owned(c).size >= 32) throw new Error('At most 32 graph review candidates may be retained.');
+    const admit = () => admitCandidate(owned(c), 32, 'At most 32 graph review candidates may be retained.', entry => !entry.receipt);
+    admit();
     const review = await prepare(kind, i.proposal_json, c);
-    try { assertToolActive(c); review.validate(); } catch (error) { review.dispose?.(); throw error; }
+    // Again after the await: a concurrent prepare may have taken the last place.
+    try { assertToolActive(c); review.validate(); admit(); } catch (error) { review.dispose?.(); throw error; }
     const token = crypto.randomUUID(); owned(c).set(token, { modelId: c.model.id, store: c.model.store, review });
     return { token, preview_json: JSON.stringify(review.preview) };
   })),
@@ -94,8 +98,7 @@ export const graphAuthoringOperations = [
       entry.receipt = c.commit(() => { review.validate(); return review.commit(); });
       review.dispose?.(); entry.review = undefined;
     }
-    const { modelChangeLibrary } = await import('@/lib/actions/receipts');
-    const persisted = await modelChangeLibrary.put(entry.receipt.id, entry.receipt); return output({ receipt: entry.receipt, persisted });
+    return output({ receipt: entry.receipt, persisted: await persistReceipt(entry, entry.receipt) });
   }),
   operation<{ token: string }>(meta('authoring.graph.discard', 'model', 'Dispose a native graph or Room preview and release its native handles.'), tokenInput, (i, c) => {
     const entry = owned(c).get(i.token);

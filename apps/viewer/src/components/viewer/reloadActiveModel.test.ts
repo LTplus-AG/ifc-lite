@@ -27,6 +27,7 @@ beforeEach(() => {
 afterEach(() => {
   Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
   useViewerStore.getState().clearAllModels();
+  useViewerStore.setState({ mergeLayersPendingReload: false, geometryModePendingReload: false });
 });
 
 function activate(patch: Record<string, unknown>): void {
@@ -37,15 +38,35 @@ describe('reloadActiveModelInPlace', () => {
   it('re-loads the retained source File', async () => {
     const file = new File(['ISO-10303-21;'], 'local.ifc');
     activate({ sourceFile: file });
-    await reloadActiveModelInPlace(loadFile, 'test', () => { notices++; });
+    await reloadActiveModelInPlace(loadFile, () => { notices++; });
     assert.deepEqual(loads, [file]);
     assert.equal(notices, 0);
     assert.equal(pageReloads, 0);
   });
 
+  it('acknowledges both pending settings before starting one reload (#10469)', async () => {
+    const file = new File(['ISO-10303-21;'], 'local.ifc');
+    activate({ sourceFile: file });
+    useViewerStore.setState({ mergeLayersPendingReload: true, geometryModePendingReload: true });
+
+    await reloadActiveModelInPlace(async (source) => {
+      assert.equal(useViewerStore.getState().mergeLayersPendingReload, false);
+      assert.equal(useViewerStore.getState().geometryModePendingReload, false);
+      loads.push(source);
+
+      // A setting changed while the replacement is loading needs its own reload.
+      const state = useViewerStore.getState();
+      state.setMergeLayers(!state.mergeLayers);
+    }, () => { notices++; });
+
+    assert.deepEqual(loads, [file]);
+    assert.equal(useViewerStore.getState().mergeLayersPendingReload, true);
+    assert.equal(useViewerStore.getState().geometryModePendingReload, false);
+  });
+
   it('tells the user a server-processed model is unchanged, and loads nothing', async () => {
     activate({ processedModel: { sha256: 'a'.repeat(64), bytes: 1000 } });
-    await reloadActiveModelInPlace(loadFile, 'test', () => { notices++; });
+    await reloadActiveModelInPlace(loadFile, () => { notices++; });
     assert.deepEqual(loads, [], 'no load on zero bytes');
     assert.equal(notices, 1);
     assert.equal(pageReloads, 0, 'a page reload would drop a model opened in code');
@@ -53,7 +74,7 @@ describe('reloadActiveModelInPlace', () => {
 
   it('falls back to a page reload for a model with no source of either kind', async () => {
     activate({});
-    await reloadActiveModelInPlace(loadFile, 'test', () => { notices++; });
+    await reloadActiveModelInPlace(loadFile, () => { notices++; });
     assert.deepEqual(loads, []);
     assert.equal(pageReloads, 1);
   });

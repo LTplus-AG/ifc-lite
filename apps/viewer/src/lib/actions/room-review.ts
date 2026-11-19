@@ -151,27 +151,22 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     // the storey's room meshes only, so any remesh drops the review early (it can be prepared again). It does not check
     // mesh order, duplication, origin, id or type, which the lease does, so those can keep a review admitted until
     // validate() refuses it. Positions are held weakly; released meshes share one empty positions array, so each key
-    // holds every indices array captured with it. A packed flat batch can leave positions undefined, so those meshes
-    // are only counted.
+    // holds every indices array captured with it. A mesh without a positions buffer cannot be bound, so such geometry
+    // reads as changed: the review is dropped, never kept unbound.
     const geometry = current.models.get(proposal.modelId)?.geometryResult;
     const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1;
     const buffers = new WeakMap<object, Set<unknown>>();
-    let unbuffered = 0;
+    let bindable = true;
     for (const mesh of geometry?.meshes ?? []) {
-      if (!isWeakKey(mesh.positions)) { unbuffered++; continue; }
+      if (!isWeakKey(mesh.positions)) { bindable = false; continue; }
       const indices = buffers.get(mesh.positions) ?? new Set();
       indices.add(mesh.indices); buffers.set(mesh.positions, indices);
     }
     const content = current.geometryContentVersion;
     const geometryCurrent = (state: ViewerState) => {
       const now = state.models.get(proposal.modelId)?.geometryResult;
-      if (!now || now.coordinateInfo !== frame || state.geometryContentVersion !== content || now.meshes.length !== meshCount) return false;
-      let missing = 0;
-      for (const mesh of now.meshes) {
-        if (!isWeakKey(mesh.positions)) missing++;
-        else if (buffers.get(mesh.positions)?.has(mesh.indices) !== true) return false;
-      }
-      return missing === unbuffered;
+      return bindable && !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length === meshCount
+        && now.meshes.every(mesh => isWeakKey(mesh.positions) && buffers.get(mesh.positions)?.has(mesh.indices) === true);
     };
     const validate = () => {
       signal.throwIfAborted();

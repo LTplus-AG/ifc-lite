@@ -564,6 +564,11 @@ describe('Room review admission probe (#10792)', () => {
     const empty = new Float32Array(0);
     withGeometry(mesh => ({ ...mesh, positions: empty }));
     const released = await prepareRoomReview(roomProposal(), new AbortController().signal);
-    try { assert.equal(released.sourcesCurrent(), true); } finally { released.dispose(); }
+    try {
+      assert.equal(released.sourcesCurrent(), true);
+      // A mesh left without a positions buffer cannot be bound: it reads as changed, and does not throw.
+      withGeometry(mesh => ({ ...mesh, positions: undefined as unknown as Float32Array }));
+      assert.equal(released.sourcesCurrent(), false);
+    } finally { released.dispose(); }
   });
 });

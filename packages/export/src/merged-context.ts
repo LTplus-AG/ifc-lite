@@ -39,6 +39,7 @@ import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
 import { BARE_REF_RE } from './reference-collector.js';
 import { getStepAttr, groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
+import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {
@@ -252,6 +253,7 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
  * the parent means every child must be retained too, not just remapped in
  * isolation. Mutates `sharedRemap`/`skipEntityIds`, and records a unified
  * model's georeference on `firstModelContext.contextGeoref` when it had none.
+ * Returns the model's top-level contexts it kept, for {@link listKeptContexts}.
  *
  * `lengthUnitScale` is the scale THIS model's raw WCS coordinates resolve
  * under. Under assume-shared the caller asserts raw coordinates are already
@@ -271,7 +273,7 @@ export function planInfrastructureUnify(
   lengthUnitScale: number,
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
-): void {
+): number[] {
   // Computed once, up front — not per type in the loop below — so its result
   // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
@@ -314,4 +316,32 @@ export function planInfrastructureUnify(
     sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);
     skipEntityIds.add(thisIds[0]);
   }
+  return modelContextIds.filter(id => !sharedRemap.has(id));
+}
+
+/** 0-based attribute index of `IfcProject.RepresentationContexts` (IFC2X3 and IFC4). */
+const PROJECT_REPRESENTATION_CONTEXTS_ATTR = 7;
+
+/**
+ * List `contextIds` in the merged project's RepresentationContexts (#10798). A compatible later model's IfcProject
+ * folds into the primary's, so a top-level context of it that was kept rather than unified (a different frame or
+ * georeference, or a second context) belongs to no project otherwise. Only ids written to `lines` are listed.
+ */
+export function listKeptContexts(lines: string[], projectId: number | undefined, contextIds: readonly number[]): void {
+  if (projectId === undefined || contextIds.length === 0) return;
+  const wanted = new Set(contextIds), written: number[] = [];
+  let projectIndex = -1;
+  lines.forEach((line, index) => {
+    const id = Number(/^#(\d+)/.exec(line)?.[1]);
+    if (id === projectId) projectIndex = index;
+    else if (wanted.has(id)) written.push(id);
+  });
+  const text = projectIndex < 0 ? undefined : lines[projectIndex];
+  const frame = text === undefined || written.length === 0 ? null : stepRecordFrame(text, { allowMissingSemicolon: true });
+  const args = frame ? splitTopLevelStepArguments(frameArgs(text!, frame)) : null;
+  if (!frame || !args || args.length <= PROJECT_REPRESENTATION_CONTEXTS_ATTR) return;
+  const listed = args[PROJECT_REPRESENTATION_CONTEXTS_ATTR].trim();
+  const items = listed === '$' ? [] : [listed.replace(/^\(|\)$/g, '')].filter(Boolean);
+  args[PROJECT_REPRESENTATION_CONTEXTS_ATTR] = `(${[...items, ...written.map(id => `#${id}`)].join(',')})`;
+  lines[projectIndex] = withFrameArgs(text!, frame, args.join(','));
 }

@@ -53,17 +53,23 @@ const X = '2600000.,1200000.,500.,1.,0.,1.';
 const Y = '2700000.,1200000.,500.,1.,0.,1.';
 const at = (values: string): Georef => ({ values });
 
+/** The ids the merged IfcProject lists in RepresentationContexts. */
+const projectContexts = (content: string) =>
+  content.match(/^#\d+=IFCPROJECT\(.*,\((#[\d,#]*)\),#\d+\);$/m)?.[1].split(',') ?? [];
+
 async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IFC4', unitReconciliation?: 'normalize' | 'assume-shared') {
   const inputs = await Promise.all(georefs.map((georef, index) => input(String.fromCharCode(97 + index), georef, schema)));
   const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation })).content);
   const contexts: string[] = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
   const sources = [...content.matchAll(/=\s*(?:\/\*.*?\*\/\s*)?IFC(?:MAPCONVERSION(?:SCALED)?|RIGIDOPERATION)\((?:\/\*.*?\*\/\s*)?(#\d+),/g)].map(match => match[1]);
-  return { contexts, sources };
+  return { contexts, sources, listed: projectContexts(content) };
 }
 
 /** Every georeference sits on its own context, each a context of the file. */
-function expectApart({ contexts, sources }: Awaited<ReturnType<typeof merge>>, count: number) {
+function expectApart({ contexts, sources, listed }: Awaited<ReturnType<typeof merge>>, count: number) {
   expect(contexts).toHaveLength(count);
+  // A context kept apart still belongs to the merged project.
+  expect([...listed].sort()).toEqual([...contexts].sort());
   expect(sources).toHaveLength(count);
   expect(new Set(sources).size).toBe(count);
   expect(sources.every(source => contexts.includes(source))).toBe(true);
@@ -72,6 +78,16 @@ function expectApart({ contexts, sources }: Awaited<ReturnType<typeof merge>>, c
 describe('merged STEP export and map conversions (#10798)', () => {
   it('keeps a second model with a different map conversion on its own context', async () => {
     expectApart(await merge([at(X), at(Y)]), 2);
+  });
+
+  it('lists a context kept for a different frame in the merged project too', async () => {
+    const moved = model('b', '0ProjectB000000000000b', null, 'IFC4').replace('#10=IFCCARTESIANPOINT((0.,0.,0.))', '#10=IFCCARTESIANPOINT((10.,0.,0.))');
+    const bytes = new TextEncoder().encode(moved);
+    const inputs = [await input('a', null, 'IFC4'), { id: 'b', name: 'b', dataStore: await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer) }];
+    const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema: 'IFC4' })).content);
+    const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
+    expect(contexts).toHaveLength(2);
+    expect([...projectContexts(content)].sort()).toEqual([...contexts].sort());
   });
 
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {

@@ -31,10 +31,12 @@ const EXEMPT_AT: Readonly<Record<SchemaVersionWithRegistry, string>> = {
   IFC4X3: '0 b c 1x 1y 2g 3g 41 4a 59 5a 5m 63',
 };
 
-/** The entity names of `schema` with PredefinedType and a label attribute, sorted. */
+/** True for an attribute list with PredefinedType and a label attribute. */
+const candidate = (names: readonly string[]) => names.includes('PredefinedType') && names.some((a) => LABELS.includes(a));
+
+/** The entity names of `schema` that are {@link candidate}s, sorted. */
 function candidates(schema: SchemaVersionWithRegistry): string[] {
-  const table = attrNameTable(schema) ?? new Map<string, readonly string[]>();
-  return [...table].filter(([, n]) => n.includes('PredefinedType') && n.some((a) => LABELS.includes(a))).map(([t]) => t).sort();
+  return [...(attrNameTable(schema) ?? [])].filter(([, n]) => candidate(n)).map(([t]) => t).sort();
 }
 
 const EXEMPT_SETS = new Map<SchemaVersionWithRegistry, ReadonlySet<string>>();
@@ -52,10 +54,8 @@ function exempt(schema: SchemaVersionWithRegistry): ReadonlySet<string> {
 /** `[PredefinedType index, label index]` when `entityType` has the rule in `schema`. */
 export function userDefinedRule(schema: SchemaVersionWithRegistry, entityType: string): readonly [number, number] | undefined {
   const names = attrNameTable(schema)?.get(entityType);
-  const predefined = names?.indexOf('PredefinedType') ?? -1;
-  const label = names?.findIndex((n) => LABELS.includes(n)) ?? -1;
-  if (predefined < 0 || label < 0 || exempt(schema).has(entityType)) return undefined;
-  return [predefined, label];
+  if (!names || !candidate(names) || exempt(schema).has(entityType)) return undefined;
+  return [names.indexOf('PredefinedType'), names.findIndex((n) => LABELS.includes(n))];
 }
 
 /** True when converted `args` under `rule` say `.USERDEFINED.` and leave the label unset. */

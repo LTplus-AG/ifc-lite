@@ -34,20 +34,11 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { asSourceBytes, extractGeoreferencingOnDemand, STEP_TRIVIA } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
 import { BARE_REF_RE } from './reference-collector.js';
-import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
-
-/**
- * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
- * `/* ... *​/` comment, #3789) tolerated after `=` and between the type name and `(` —
- * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
- * a wrapped record's attribute is silently unreadable here (`getStepAttr`
- * returns `null`), which reads identically to a genuinely-absent attribute.
- */
-const RECORD_RE = new RegExp(`^#\\d+\\s*=${STEP_TRIVIA}\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
+import { getStepAttr, groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {
@@ -63,39 +54,6 @@ const WCS_TOLERANCE_M = 1e-6;
 
 /** 0-based attribute index of `IfcGeometricRepresentationSubContext.ParentContext`. */
 const SUBCONTEXT_PARENT_CONTEXT_ATTR = 6;
-
-function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
-  const source = dataStore.source;
-  if (!source) return null;
-  // @raw-entity-enumeration-ok point lookup for source bytes; MergeExporter bakes each edited input through STEP export and reparses it before this reader runs
-  const ref = dataStore.entityIndex.byId.get(expressId);
-  if (!ref) return null;
-  return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
-}
-
-/**
- * Extract one 0-based STEP attribute of `expressId`'s entity, or null if
- * unreadable.
- *
- * `splitTopLevelStepArguments` returning null (a malformed record, OR — since
- * #4162's per-slot check — a well-formed record whose split it cannot vouch
- * for) is one more way to land here, same as no source bytes or no regex
- * match: every caller of this function already reads null as "unresolvable,
- * treat permissively" (see {@link resolveContextWcsMetres}'s and
- * {@link parseVector}'s doc comments) and falls back to NOT unifying rather
- * than acting on a guess — the safe direction for a WCS/frame comparison,
- * unlike a unit conversion (`unit-normalize.ts`'s `rescaleEntityLengths`,
- * which throws instead: there is no permissive fallback for "this length is
- * in the wrong unit").
- */
-function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number): string | null {
-  const text = decodeEntity(dataStore, expressId);
-  const match = text?.match(RECORD_RE);
-  if (!match) return null;
-  const args = splitTopLevelStepArguments(match[1]);
-  const raw = args?.[index];
-  return raw === undefined ? null : raw.trim();
-}
 
 /** A `#N` reference, with STEP trivia (a comment, #3789) tolerated around it. */
 function refId(raw: string | null): number | null {

@@ -44,3 +44,8 @@ export interface StepGeoreferencingOptions {
     sourceCrs?: readonly number[];
   };
 }
+
+/** True when `edits` would change an IfcProjectedCRS or IfcMapConversion. */
+export function hasGeorefEdits(edits: StepGeoreferencingOptions['georefMutations']): boolean {
+  return Object.keys(edits?.projectedCRS ?? {}).length > 0 || Object.keys(edits?.mapConversion ?? {}).length > 0;
+}

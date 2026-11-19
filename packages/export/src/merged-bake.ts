@@ -6,7 +6,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { MergeModelInput } from './merged-exporter.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
-import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
+import { hasGeorefEdits } from './step-coordinate-options.js';
 import { StepExporter } from './step-exporter.js';
 
 /**
@@ -27,10 +27,6 @@ function viewHasMutations(view: MutablePropertyView | undefined): boolean {
   if (muts.length > 0) return true;
   const created = typeof view.getNewEntities === 'function' ? view.getNewEntities() : [];
   return created.length > 0;
-}
-
-function hasGeorefEdits(edits: StepGeoreferencingOptions['georefMutations']): boolean {
-  return Object.keys(edits?.projectedCRS ?? {}).length > 0 || Object.keys(edits?.mapConversion ?? {}).length > 0;
 }
 
 /** True when `model` carries edits that only a bake through {@link StepExporter} can apply. */

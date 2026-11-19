@@ -22,14 +22,12 @@ test('a keyed retry runs again after the operation family failed to load (#10669
   resetFeaturesForTest();
   useViewerStore.setState({ models: new Map(), ifcDataStore: null, mutationVersion: 0, envExposure: 1 });
   const host = viewerHost();
-  const load = operationLoaders.environment;
   const broken = mock.method(operationLoaders, 'environment', () => Promise.reject(new Error('Failed to fetch dynamically imported module')));
   const request = { operation_id: 'environment.exposure', input: { value: 1.2 }, idempotency_key: 'retry' };
   const failed = await execute(host, request);
   assert.equal(failed.isError, true);
   assert.match(failed.text, /dynamically imported module/);
   broken.mock.restore();
-  assert.equal(operationLoaders.environment, load);
   const retried = await execute(host, request);
   assert.equal(retried.isError, false, retried.text);
   assert.equal(useViewerStore.getState().envExposure, 1.2);

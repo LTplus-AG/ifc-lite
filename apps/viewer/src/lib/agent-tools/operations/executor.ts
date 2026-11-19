@@ -137,8 +137,7 @@ export async function executeOperation(
   const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, artifacts };
   check();
   if (!args.background) {
-    let forget = () => {};
-    const run = async () => {
+    const run = async (forget = () => {}) => {
       // Nothing native has run yet, so a keyed retry of this failure may run again (#10669).
       try { await entry.load?.(); check(); } catch (error) { forget(); throw error; }
       try {
@@ -159,9 +158,8 @@ export async function executeOperation(
     applied.set(host, prior);
     // Keep failed outcomes once the native handler ran: retrying a partially dispatched UI action must not duplicate it.
     if (prior.size >= 100) invalid('Host idempotency capacity reached (100 requests). Reconnect before creating further keyed requests.');
-    const key = args.idempotency_key, request: AppliedRequest = { signature, store: model?.store, result: run() };
-    // run() reaches its first catch only after awaiting the load, so this is set by then.
-    forget = () => { if (prior.get(key) === request) prior.delete(key); };
+    const key = args.idempotency_key, request: AppliedRequest = { signature, store: model?.store, result: Promise.resolve() };
+    request.result = run(() => { if (prior.get(key) === request) prior.delete(key); });
     prior.set(key, request);
     return request.result;
   }

@@ -33,6 +33,7 @@ function sameGeometry(a: ViewerState['geometryResult'] | undefined, b: ViewerSta
   if (!a || !b || a.meshes.length !== b.meshes.length || !sameExcept(a, b, 'meshes')) return false;
   return a.meshes.every((mesh, index) => sameExcept(mesh, b.meshes[index], 'color'));
 }
+/** Stricter than streaming-refresh's sameModelsExceptGeometry, which also ignores retained geometry. */
 function sameModels(a: ViewerState['models'], b: ViewerState['models']) {
   if (a === b) return true;
   return a.size === b.size && [...a].every(([id, model]) => {
@@ -47,6 +48,8 @@ function validate(candidate: Candidate) {
   if (!sameModels(state.models, candidate.models) || state.mutationVersion !== candidate.revision || !sameGeometry(state.geometryResult, candidate.geometry)
     || state.geometryContentVersion !== candidate.content
     || JSON.stringify(zoneSet(candidate.setId)) !== candidate.configuration) throw new Error('Zone/model inputs changed after review.');
+  // Equal but for colour: track the current objects, so the next check is an identity check, not another walk.
+  candidate.models = state.models; candidate.geometry = state.geometryResult;
   const permission = mutationPermissionForModels(state, candidate.modelIds); if (!permission.allowed) throw new Error(`Native write refused: ${permission.reason}`);
 }
 export const zoneWriteOperations = [

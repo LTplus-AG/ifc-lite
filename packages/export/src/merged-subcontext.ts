@@ -35,13 +35,15 @@ import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
 /**
- * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
- * `/* ... *​/` comment, #3789) tolerated after `=` and between the type name and `(` —
- * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
- * a wrapped record's attribute is silently unreadable here (`getStepAttr`
- * returns `null`), which reads identically to a genuinely-absent attribute.
+ * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a `/* ... *​/`
+ * comment, #3789) tolerated wherever a record allows it: around `=`, between
+ * the type name and `(`, and before `;`. Without it a wrapped record's
+ * attribute is silently unreadable here (`getStepAttr` returns `null`), which
+ * reads identically to a genuinely-absent attribute. This is wider than the
+ * parser's `extractEntity`, which reads no comment after `=`: a coordinate
+ * operation found here that the parser cannot read is kept apart as unread.
  */
-const RECORD_RE = new RegExp(`^#\\d+\\s*=${STEP_TRIVIA}\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
+const RECORD_RE = new RegExp(`^#\\d+${STEP_TRIVIA}\\s*=\\s*${STEP_TRIVIA}\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)${STEP_TRIVIA}\\s*;?${STEP_TRIVIA}\\s*$`);
 
 /** 0-based attribute index of `IfcGeometricRepresentationSubContext.ContextIdentifier`. */
 const CONTEXT_IDENTIFIER_ATTR = 0;
@@ -53,7 +55,7 @@ const USER_DEFINED_TARGET_VIEW_ATTR = 9;
 function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
   const source = dataStore.source;
   if (!source) return null;
-  // @raw-entity-enumeration-ok decode one source subcontext's STEP byte span during an overlay-free merge
+  // @raw-entity-enumeration-ok decode one record's STEP byte span for the merge's context reads; MergeExporter bakes each edited input through STEP export and reparses it first
   const ref = dataStore.entityIndex.byId.get(expressId);
   if (!ref) return null;
   return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);

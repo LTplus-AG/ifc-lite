@@ -16,6 +16,12 @@ export async function compressGzip(file: File | ArrayBuffer): Promise<Blob> {
   return new Response(compressedStream).blob();
 }
 
+export async function compressedUploadForm(file: File | ArrayBuffer): Promise<FormData> {
+  const form = new FormData();
+  form.append('file', await compressGzip(file), file instanceof File ? file.name : 'model.ifc');
+  return form;
+}
+
 export function parseRequestSignal(caller: AbortSignal | undefined, timeout: number): AbortSignal {
   const deadline = AbortSignal.timeout(timeout);
   return caller ? AbortSignal.any([caller, deadline]) : deadline;

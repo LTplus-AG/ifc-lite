@@ -20,7 +20,7 @@ import { withNarrowedCoordinateSpace,
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 import { dataModelQuery, parquetStreamQuery, parseQuery } from './parse-query.js';
 import { computeFileHash } from './file-hash.js';
-import { compressGzip, parseRequestSignal } from './parse-request.js';
+import { compressGzip, compressedUploadForm, parseRequestSignal } from './parse-request.js';
 import { assertProcessedModelHash, isProcessedModelRef, type ProcessedModelRef } from './processed-model.js';
 import type { ParseRequestOptions, ParseStreamOptions } from './parse-options.js';
 import { serverErrorFromResponse, IfcServerError } from './server-error.js';
@@ -105,6 +105,13 @@ export class IfcServerClient {
   }
 
   /** The streaming route; with `hash` (already normalized), the bodiless ask for a stored result. */
+  private postParse(url: string, signal?: AbortSignal, body?: FormData, extraHeaders?: Record<string, string>): Promise<Response> {
+    return fetch(url, {
+      method: 'POST', headers: this.authHeaders(extraHeaders), body,
+      signal: parseRequestSignal(signal, this.timeout),
+    });
+  }
+
   private streamUrl(options?: ParseStreamOptions, hash?: string): string {
     return `${this.baseUrl}/api/v1/parse/parquet-stream${parquetStreamQuery(options, hash)}`;
   }
@@ -145,19 +152,8 @@ export class IfcServerClient {
    */
   async parse(file: File | ArrayBuffer, options?: ParseRequestOptions): Promise<ParseResponse> {
     options?.signal?.throwIfAborted();
-    // Compress file before upload for faster transfer
-    const compressedFile = await compressGzip(file);
-    const fileName = file instanceof File ? file.name : 'model.ifc';
-
-    const formData = new FormData();
-    formData.append('file', compressedFile, fileName);
-
-    const response = await fetch(`${this.baseUrl}/api/v1/parse${parseQuery(options)}`, {
-      method: 'POST',
-      headers: this.authHeaders(),
-      body: formData,
-      signal: parseRequestSignal(options?.signal, this.timeout),
-    });
+    const formData = await compressedUploadForm(file);
+    const response = await this.postParse(`${this.baseUrl}/api/v1/parse${parseQuery(options)}`, options?.signal, formData);
 
     if (!response.ok) {
       throw await this.handleError(response);
@@ -284,7 +280,7 @@ export class IfcServerClient {
 
     if (isProcessedModelRef(file)) { // the reference is the whole request: no hash, no upload, a miss is an error
       const start = performance.now();
-      const response = await fetch(this.streamUrl(options, assertProcessedModelHash(file.sha256)), { method: 'POST', headers: this.authHeaders(), signal: parseRequestSignal(options?.signal, this.timeout) });
+      const response = await this.postParse(this.streamUrl(options, assertProcessedModelHash(file.sha256)), options?.signal);
       if (!response.ok) throw await this.handleError(response);
       return consumeParquetStream(response, onBatch, start);
     }
@@ -349,12 +345,7 @@ export class IfcServerClient {
     formData.append('file', file instanceof File ? file : new Blob([file]), fileName);
 
     const uploadStart = performance.now();
-    const response = await fetch(this.streamUrl(options), {
-      method: 'POST',
-      headers: this.authHeaders(),
-      body: formData,
-      signal: parseRequestSignal(options?.signal, this.timeout),
-    });
+    const response = await this.postParse(this.streamUrl(options), options?.signal, formData);
 
     if (!response.ok) {
       throw await this.handleError(response);
@@ -429,12 +420,7 @@ export class IfcServerClient {
     formData.append('file', uploadFile as Blob, fileName);
 
     const uploadStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet${parseQuery(options, true)}`, {
-      method: 'POST',
-      headers: this.authHeaders(),
-      body: formData,
-      signal: parseRequestSignal(options?.signal, this.timeout),
-    });
+    const response = await this.postParse(`${this.baseUrl}/api/v1/parse/parquet${parseQuery(options, true)}`, options?.signal, formData);
     const uploadTime = performance.now() - uploadStart;
     console.log(`[client] Upload and processing completed in ${uploadTime.toFixed(0)}ms`);
 
@@ -664,19 +650,8 @@ export class IfcServerClient {
       );
     }
 
-    // Compress file before upload for faster transfer
-    const compressedFile = await compressGzip(file);
-    const fileName = file instanceof File ? file.name : 'model.ifc';
-
-    const formData = new FormData();
-    formData.append('file', compressedFile, fileName);
-
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet/optimized${parseQuery(options)}`, {
-      method: 'POST',
-      headers: this.authHeaders(),
-      body: formData,
-      signal: parseRequestSignal(options?.signal, this.timeout),
-    });
+    const formData = await compressedUploadForm(file);
+    const response = await this.postParse(`${this.baseUrl}/api/v1/parse/parquet/optimized${parseQuery(options)}`, options?.signal, formData);
 
     if (!response.ok) {
       throw await this.handleError(response);
@@ -765,13 +740,7 @@ export class IfcServerClient {
       file instanceof File ? file.name : 'model.ifc'
     );
 
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/stream${parseQuery(options)}`, {
-      method: 'POST',
-      body: formData,
-      // Don't set Content-Type header - browser will set it with boundary for FormData
-      headers: this.authHeaders({ Accept: 'text/event-stream' }),
-      signal: parseRequestSignal(options?.signal, this.timeout),
-    });
+    const response = await this.postParse(`${this.baseUrl}/api/v1/parse/stream${parseQuery(options)}`, options?.signal, formData, { Accept: 'text/event-stream' });
 
     if (!response.ok) {
       throw await this.handleError(response);

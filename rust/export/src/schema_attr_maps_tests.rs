@@ -178,4 +178,7 @@ fn ifc2x3_property_subtypes_upgrade_to_the_ifc4_supertype_10777() {
     assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 1, "Properties");
     let profile = convert_step_line("#5=IFCSTRUCTURALSTEELPROFILEPROPERTIES('P',#9,12.5,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4X3", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap();
     assert_eq!(profile, "#5=IFCPROFILEPROPERTIES($,$,$,#9);");
+    // IFC5 has no attribute list to map onto, so the record keeps its IFC2X3 name and layout.
+    let ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
+    assert_eq!(convert_step_line(ifc5, "IFC2X3", "IFC5", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap(), ifc5);
 }

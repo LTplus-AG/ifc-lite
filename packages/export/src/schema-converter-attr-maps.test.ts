@@ -78,6 +78,8 @@ describe('attribute maps (#10763)', () => {
       targetType: 'IFCMATERIALPROPERTIES', kind: 'lossy',
       droppedAttributes: ['DynamicViscosity', 'YoungModulus', 'ShearModulus', 'PoissonRatio', 'ThermalExpansionCoefficient'],
     });
+    const ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
+    expect(convertStepLine(ifc5, 'IFC2X3', 'IFC5'), 'IFC5 has no attribute list to map onto').toBe(ifc5);
     expect(classifyEntityTypeConversion('IFCRIBPLATEPROFILEPROPERTIES', 'IFC2X3', 'IFC4X3').droppedAttributes)
       .toEqual(['ProfileName', 'Thickness', 'RibHeight', 'RibWidth', 'RibSpacing', 'Direction']);
   });

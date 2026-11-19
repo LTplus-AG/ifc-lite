@@ -30,7 +30,7 @@ export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySe
       model.sourceContentHash, view, view?.getMutationRevision());
   }
   if (!modelIds || modelIds.has('legacy') || modelIds.has('__legacy__')) {
-    const legacyView = s.mutationViews.get('__legacy__');
+    const legacyView = s.getMutationView('__legacy__');
     identity.push(s.ifcDataStore, s.ifcDataStore?.source, legacyView, legacyView?.getMutationRevision());
   }
   return identity;

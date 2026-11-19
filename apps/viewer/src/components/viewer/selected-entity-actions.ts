@@ -15,8 +15,7 @@ export function selectedEntityActionTarget(s: ViewerState = useViewerStore.getSt
   // Prefer the store-backed resolver, which includes overlay allocated ids.
   const ref = s.resolveGlobalIdFromModels(id) ?? resolveEntityRef(id);
   const store = ref.modelId === 'legacy' ? s.ifcDataStore : s.models.get(ref.modelId)?.ifcDataStore;
-  const view = s.mutationViews.get(ref.modelId)
-    ?? (ref.modelId === 'legacy' ? s.mutationViews.get('__legacy__') ?? s.mutationViews.get('default') : undefined);
+  const view = s.getMutationView(ref.modelId);
   if (!store || view?.isDeleted(ref.expressId)) return null;
   return view?.getNewEntity(ref.expressId) || store.entities.expressId.includes(ref.expressId) ? id : null;
 }

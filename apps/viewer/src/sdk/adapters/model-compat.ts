@@ -26,6 +26,15 @@ export const LEGACY_MUTATION_MODEL_ID = '__legacy__';
 
 export const LEGACY_MUTATION_MODEL_IDS: readonly string[] = [LEGACY_MUTATION_MODEL_ID, LEGACY_MODEL_ID, 'legacy'];
 
+/** Resolve historical keys in the same order for every legacy model reader. */
+export function getLegacyMutationView<T>(views: ReadonlyMap<string, T>): T | undefined {
+  for (const id of LEGACY_MUTATION_MODEL_IDS) {
+    const view = views.get(id);
+    if (view !== undefined) return view;
+  }
+  return undefined;
+}
+
 export function isLegacyMutationRef(state: Pick<ViewerState, 'models'>, modelId: string): boolean {
   return state.models.size === 0 && LEGACY_MUTATION_MODEL_IDS.includes(modelId);
 }

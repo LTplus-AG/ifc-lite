@@ -12,7 +12,7 @@ import { modelEditTarget, readModelEditTarget } from './mutation-modelling-recor
 import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
-import { isLegacyMutationRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
+import { getLegacyMutationView, isLegacyMutationRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
@@ -1060,14 +1060,10 @@ export const createMutationSlice: StateCreator<
   // Mutation View Management
   getMutationView: (modelId) => {
     const state = get();
-    if (isLegacyMutationRef(state, modelId)) {
-      for (const id of LEGACY_MUTATION_MODEL_IDS) {
-        const view = state.mutationViews.get(id);
-        if (view) return view;
-      }
-      return null;
-    }
-    return state.mutationViews.get(modelId) ?? null;
+    const view = isLegacyMutationRef(state, modelId)
+      ? getLegacyMutationView(state.mutationViews)
+      : state.mutationViews.get(modelId);
+    return view ?? null;
   },
 
   registerMutationView: (modelId, view) => {
@@ -1121,8 +1117,7 @@ export const createMutationSlice: StateCreator<
     // Apply the shared edit-mode, role, and model gate before touching the
     // overlay, undo/redo, dirty state, or collaboration mirror (#5901).
     if (!canMutateData(get(), modelId)) return null;
-    const state = get();
-    const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     if (dataType !== undefined) {
@@ -1147,8 +1142,7 @@ export const createMutationSlice: StateCreator<
   deleteProperty: (modelId, entityId, psetName, propName) => {
     // Shared mutation gate before the local commit — see setProperty.
     if (!canMutateData(get(), modelId)) return null;
-    const state = get();
-    const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.deleteProperty(entityId, psetName, propName);
@@ -1168,7 +1162,7 @@ export const createMutationSlice: StateCreator<
     // creation isn't mirrored yet, which is all the more reason a read-only
     // role must not accumulate local-only psets in a shared session.)
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.createPropertySet(entityId, psetName, properties);
@@ -1184,7 +1178,7 @@ export const createMutationSlice: StateCreator<
     // `createPropertySet` and `deleteProperty` were both given the gate and
     // this one was not.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.deletePropertySet(entityId, psetName);
@@ -1209,7 +1203,7 @@ export const createMutationSlice: StateCreator<
     // Gating here at least stops an unauthorised writer, and stops the local
     // state diverging further than it already does.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.setQuantity(entityId, qsetName, quantName, value, quantityType, unit);
@@ -1222,7 +1216,7 @@ export const createMutationSlice: StateCreator<
   createQuantitySet: (modelId, entityId, qsetName, quantities) => {
     // See setQuantity above — same omission, same reason.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.createQuantitySet(entityId, qsetName, quantities);
@@ -1236,8 +1230,7 @@ export const createMutationSlice: StateCreator<
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
     // Shared mutation gate before the local commit — see setProperty.
     if (!canMutateData(get(), modelId)) return null;
-    const state = get();
-    const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.setAttribute(entityId, attrName, value, oldValue);
@@ -1256,7 +1249,7 @@ export const createMutationSlice: StateCreator<
     // Shared mutation gate before the local commit — see setProperty. Reclassing an
     // entity is an attribute write like any other, and `setAttribute` is gated.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     let mutation: Mutation | null = null;
@@ -1930,7 +1923,7 @@ export const createMutationSlice: StateCreator<
   },
 
   getMutationsForModel: (modelId) => {
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     return view ? view.getMutations() : [];
   },
 

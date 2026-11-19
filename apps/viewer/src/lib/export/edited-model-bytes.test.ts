@@ -13,10 +13,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { QuantityType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 import { resolveTerrainSelection } from './landXmlTerrainExport';
+import { storesWithMutationViews } from '@/components/viewer/lists/list-builder-discovery';
 import { configureMutationView } from '@/utils/configureMutationView';
 
 // Loaded at runtime: the changed-test oracle removes new production files, and
@@ -103,6 +105,10 @@ it('LandXML preflight sees pending edits in the legacy single-model session (#10
     };
     assert.equal(await read('default'), 'Edited terrain', 'the canonical overlay wins over an earlier alias');
     assert.equal(await read('legacy'), 'Edited terrain');
+    useViewerStore.getState().setAttribute('default', 11, 'Name', 'Visible with both overlays', 'Wall B');
+    assert.equal(await read('legacy', 11), 'Visible with both overlays');
+    useViewerStore.getState().undo('default');
+    assert.equal(await read('legacy', 11), 'Wall B');
     useViewerStore.getState().clearMutationView('legacy');
     assert.equal(await read('legacy'), 'Terrain', 'clear discards the canonical overlay through an alias');
     assert.equal(await read('default'), 'Terrain', 'clear also discards the earlier alias overlay');
@@ -124,6 +130,18 @@ it('LandXML preflight sees pending edits in the legacy single-model session (#10
       assert.equal(await read(alias, 11), 'Wall B');
       assert.equal(await mutate.redo(alias), true);
       assert.equal(await read(alias, 11), 'Second edit');
+      const state = useViewerStore.getState();
+      assert.ok(state.createPropertySet('__legacy__', 10, 'Pset_Alias', [{ name: 'Marker', value: 'Legacy' }]));
+      assert.ok(state.createQuantitySet('__legacy__', 10, 'Qto_Alias', [{ name: 'ItemCount', value: 3, quantityType: QuantityType.Count }]));
+      assert.ok(state.setQuantity('__legacy__', 10, 'Qto_Alias', 'ItemCount', 4));
+      const listSources = storesWithMutationViews([store], state.models, state.mutationViews);
+      assert.equal(listSources[0].view?.getAttributeMutationsForEntity(10)[0]?.value, 'Pending terrain');
+      const bytesWithSets = new TextDecoder().decode(mod.editedModelBytes(store, state.getMutationView(alias)));
+      assert.match(bytesWithSets, /'Pset_Alias'/);
+      assert.match(bytesWithSets, /'Qto_Alias'/);
+      assert.ok(state.deletePropertySet('__legacy__', 10, 'Pset_Alias'));
+      const bytesWithoutSet = new TextDecoder().decode(mod.editedModelBytes(store, state.getMutationView(alias)));
+      assert.doesNotMatch(bytesWithoutSet, /'Pset_Alias'/);
       useViewerStore.getState().clearMutationView(alias);
     }
   } finally {

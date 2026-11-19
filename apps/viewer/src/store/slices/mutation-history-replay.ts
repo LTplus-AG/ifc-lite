@@ -26,12 +26,22 @@ import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags
 import { remeshForBatch } from '@/lib/remesh/remesh-registry.js';
 import { moveChangeSetEntries, recordHistory } from './mutation-history-record.js';
 import { isGeorefMutation } from './mutation-history-prune.js';
+import { isLegacyMutationRef } from '@/sdk/adapters/model-compat';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
 type Direction = 'undo' | 'redo';
 type StackKey = 'undoStacks' | 'redoStacks';
+
+function viewForHistory(state: ViewerState, modelId: string, mutation: Mutation) {
+  // Older histories can still refer to a separate historical overlay. Replay
+  // the mutation against the view that wrote it if that view is still present.
+  if (isLegacyMutationRef(state, modelId) && isLegacyMutationRef(state, mutation.modelId)) {
+    return state.mutationViews.get(mutation.modelId) ?? state.getMutationView(modelId);
+  }
+  return state.getMutationView(modelId);
+}
 
 function stackKeys(direction: Direction): { source: StackKey; destination: StackKey } {
   return direction === 'undo'
@@ -109,8 +119,7 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
         flush();
         set((s) => georefPatch(s, modelId, inverseTarget, direction === 'undo' ? 'redo' : 'undo'));
       } else {
-        const state = get();
-        const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
+        const view = viewForHistory(get(), modelId, inverseTarget);
         if (!view) break;
         if (direction === 'undo') applyRedoToView(get, set, modelId, view, inverseTarget);
         else applyUndoToView(get, set, modelId, view, inverseTarget);
@@ -128,9 +137,7 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
       replayGeorefStep(set, modelId, mutation, direction);
       continue;
     }
-    // A history entry addresses its own overlay when it is still registered.
-    const state = get();
-    const view = state.mutationViews.get(modelId) ?? state.getMutationView(modelId);
+    const view = viewForHistory(get(), modelId, mutation);
     if (!view) break;
     if (direction === 'undo') applyUndoToView(get, set, modelId, view, mutation);
     else applyRedoToView(get, set, modelId, view, mutation);

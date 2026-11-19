@@ -26,6 +26,7 @@ import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dis
 import type { ToolHost } from '../types';
 import { viewerOperation } from './registry';
 import { idsOperations } from './ids-studio';
+import { isGroupingLens } from '@/lib/lens/custom-groupings';
 import { clashSettings } from './clash-native';
 
 let host: ToolHost;
@@ -74,7 +75,10 @@ describe('reviewed model candidates (#10792)', () => {
     answer(await invoke('authoring.discard', { token }));
     for (let i = 0; i < 64; i++) await prepareRename(`Name ${i}`);
     assert.equal((await invoke('properties.prepare', { proposal_json: rename('One too many') })).isError, true, 'a host of 64 pending candidates is full');
-    await seedAuthoringSample(); // the same model id, a new store: the 64 can never apply
+    // An edit makes all 64 unapplyable ('Model changed since preview'), so they no longer hold their places.
+    useViewerStore.getState().setAttribute(SAMPLE_MODEL, store.entities.getExpressIdByGlobalId(BACK_WALL), 'Description', 'Second edit');
+    for (let i = 0; i < 64; i++) await prepareRename(`After edit ${i}`);
+    await seedAuthoringSample(); // the same model id, a new store: these 64 can never apply either
     await prepareRename('After reload');
   });
 
@@ -210,15 +214,24 @@ describe('IDS candidates and validation runs (#10792)', () => {
     assert.equal(useViewerStore.getState().idsStudioState!.doc.ids.specifications[0].name, 'Once');
   });
 
-  it('#63: applied candidates do not use up pending capacity', async () => {
+  it('#63: applied and outdated candidates do not use up pending capacity', async () => {
     for (let i = 0; i < 64; i++) answer(await invoke('ids.candidate.apply', { token: await prepareOps(`Name ${i}`) }, true));
+    for (let i = 0; i < 64; i++) await prepareOps(`Pending ${i}`);
+    const full = await invoke('ids.operations.prepare', { document_revision: useViewerStore.getState().idsStudioRevision,
+      ops_json: JSON.stringify([setSpecTextOp(specId(), 'name', 'One too many')]) });
+    assert.equal(full.isError, true, 'a host of 64 pending candidates is full');
+    useViewerStore.getState().idsStudioDispatch([setSpecTextOp(specId(), 'name', 'Edited in the panel')]); // all 64 are now outdated
     await prepareOps('Still room');
   });
 
   for (const edit of [
     { name: 'model tags', apply: () => useViewerStore.setState(s => ({ modelTags: new Map(s.modelTags) })) },
     { name: 'tag assignments', apply: () => useViewerStore.setState(s => ({ modelTagAssignments: new Map(s.modelTagAssignments) })) },
-    { name: 'saved lenses', apply: () => useViewerStore.setState(s => ({ savedLenses: [...s.savedLenses] })) },
+    { name: 'a grouping lens', apply: () => {
+      const lenses = useViewerStore.getState().savedLenses, index = lenses.findIndex(isGroupingLens);
+      assert.ok(index >= 0, 'a grouping lens to edit');
+      useViewerStore.setState({ savedLenses: lenses.map((lens, i) => i === index ? { ...lens, name: `${lens.name} (edited)` } : lens) });
+    } },
   ])
     it(`#36: editing ${edit.name} between a rules run and its publish refuses the run`, async () => {
       const rules_json = JSON.stringify({ version: 1, name: 'Delivery rules', rules: [{
@@ -235,6 +248,18 @@ describe('IDS candidates and validation runs (#10792)', () => {
       assert.equal(published.isError, true);
       assert.match(published.text, /inputs changed/);
     });
+
+  it('#36: a rules run survives a lens that groups nothing, such as a list colour lens', async () => {
+    const rules_json = JSON.stringify({ version: 1, name: 'Delivery rules', rules: [{
+      id: 'wall-name', name: 'Wall name is recorded',
+      applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
+      requirement: { kind: 'element', block: { groups: [{ rules: [{ kind: 'attribute', name: 'Name', op: 'isSet', value: '' }], combinator: 'AND' }], authoredAs: 'chips' } },
+    }] });
+    const { run_id } = answer<{ run_id: string }>(await invoke('validation.rules.run', { rules_json, model_ids: [SAMPLE_MODEL] }));
+    const lens = useViewerStore.getState().savedLenses.find(isGroupingLens)!;
+    useViewerStore.setState(s => ({ savedLenses: [...s.savedLenses, { ...lens, id: 'colour-only', rules: [] }] }));
+    answer(await invoke('validation.publish', { run_id }, true));
+  });
 
   it('#36: an IDS run, which reads no tags or lenses, survives a lens edit', async () => {
     const { content } = answer<{ content: string }>(await invoke('ids.document.xml'));

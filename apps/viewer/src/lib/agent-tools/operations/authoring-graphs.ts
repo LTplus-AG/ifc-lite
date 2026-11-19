@@ -9,8 +9,7 @@ import type { ToolHost } from '../types';
 import { operation, emptySchema, referenceSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
-import { admitCandidate } from './host-handles';
-import { persistReceipt } from './authoring-native';
+import { admitCandidate, persistReceipt } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const tokenInput = { type: 'object' as const, properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['token' as const], additionalProperties: false as const };

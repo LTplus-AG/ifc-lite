@@ -9,6 +9,7 @@ import type { ValidationReport } from '@ifc-lite/ids';
 import type { IdsReportBlock } from '@/lib/document/ids-report-types';
 import type { ToolHost } from '../types';
 import { evictOldest } from './host-handles';
+import { isGroupingLens } from '@/lib/lens/custom-groupings';
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const artifactOutput = { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer' } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
@@ -16,11 +17,12 @@ const meta = (id: string, description: string, effect: 'read' | 'configuration' 
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema: effect === 'artifact' ? artifactOutput : jsonOutput,
   policy: effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
-/** What a run's findings depend on. Information rules also read model tags and saved lenses, so re-tagging
- * a model or editing a lens changes their findings as an edit does; IDS runs read neither. */
-interface RunInputs { models: ViewerState['models']; mutationVersion: number; modelTags?: ViewerState['modelTags']; modelTagAssignments?: ViewerState['modelTagAssignments']; savedLenses?: ViewerState['savedLenses'] }
+/** What a run's findings depend on. Information rules also read model tags and grouping lenses, so re-tagging
+ * a model or editing a grouping changes their findings as an edit does; IDS runs read neither. Lenses are
+ * compared by content of the groupings only: a colour lens added from a list column changes no finding. */
+interface RunInputs { models: ViewerState['models']; mutationVersion: number; modelTags?: ViewerState['modelTags']; modelTagAssignments?: ViewerState['modelTagAssignments']; groupings?: string }
 const runInputs = (s: ViewerState, kind: 'rules' | 'ids' = 'rules'): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion,
-  ...(kind === 'rules' ? { modelTags: s.modelTags, modelTagAssignments: s.modelTagAssignments, savedLenses: s.savedLenses } : {}) });
+  ...(kind === 'rules' ? { modelTags: s.modelTags, modelTagAssignments: s.modelTagAssignments, groupings: JSON.stringify(s.savedLenses.filter(isGroupingLens)) } : {}) });
 /** `run` holds only the inputs its kind read; each is compared with the current state. */
 const sameInputs = (run: RunInputs, now: RunInputs) => (Object.keys(run) as (keyof RunInputs)[]).every(key => run[key] === now[key]);
 interface Run { report: ValidationReport; snapshot: IdsReportBlock; inputs: RunInputs }

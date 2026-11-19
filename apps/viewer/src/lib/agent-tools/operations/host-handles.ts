@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 
 /**
  * Make room for one more host-owned handle (run, candidate) by dropping the oldest.
@@ -28,4 +29,13 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
     if (handles.size < cap) break;
     if (!pending(value)) handles.delete(key);
   }
+}
+
+/** Write an applied candidate's receipt once. A replay returns it unwritten, so it never overwrites the
+ * library row the Changes panel has since marked undone; only a failed first write is retried. */
+export function persistReceipt(holder: { persisting?: Promise<boolean> }, receipt: ModelChangeReceipt): Promise<boolean> {
+  // Held while in flight too, so a concurrent replay never issues a second write.
+  holder.persisting ??= import('@/lib/actions/receipts').then(({ modelChangeLibrary }) => modelChangeLibrary.put(receipt.id, receipt))
+    .then(ok => { if (!ok) holder.persisting = undefined; return ok; }, (error: unknown) => { holder.persisting = undefined; throw error; });
+  return holder.persisting;
 }

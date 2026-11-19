@@ -9,7 +9,7 @@ import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
 import { operation, emptySchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { admitCandidate } from './host-handles';
+import { admitCandidate, persistReceipt } from './host-handles';
 
 const previewOutput = { type: 'object', properties: { token: { type: 'string' }, preview_json: { type: 'string' }, revision: { type: 'integer' } }, required: ['token', 'preview_json', 'revision'], additionalProperties: false };
 const receiptOutput = { type: 'object', properties: { receipt_json: { type: 'string' }, persisted: { type: 'boolean' } }, required: ['receipt_json', 'persisted'], additionalProperties: false };
@@ -29,12 +29,12 @@ function candidates(c: OperationContext) {
 }
 function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) {
   const entries = candidates(c);
-  // A candidate whose model was closed or replaced can never apply. The host's own model list also covers
-  // the single-model session, whose store is not in `models`.
-  const live = new Map(c.host.models().map(model => [model.id, model.store]));
-  admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.',
-    pending: entry => !entry.receipt, gone: entry => live.get(entry.modelId) !== entry.store });
-  const token = crypto.randomUUID(), revision = useViewerStore.getState().mutationVersion;
+  // A candidate whose model was closed, replaced or edited since its preview can never apply. The host's own
+  // model list also covers the single-model session, whose store is not in `models`.
+  const live = new Map(c.host.models().map(model => [model.id, model.store])), revision = useViewerStore.getState().mutationVersion;
+  admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.receipt,
+    gone: entry => live.get(entry.modelId) !== entry.store || (!entry.receipt && entry.revision !== revision) });
+  const token = crypto.randomUUID();
   entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
   return { token, revision, preview_json: JSON.stringify(preview) };
 }
@@ -47,14 +47,6 @@ function candidate(c: OperationContext, token: string) {
   const saved = ownedCandidate(c, token);
   if (!saved.receipt && saved.revision !== useViewerStore.getState().mutationVersion) throw new Error('Model changed since preview; prepare again.');
   return saved;
-}
-/** Write an applied candidate's receipt once. A replay returns it unwritten, so it never overwrites the
- * library row the Changes panel has since marked undone; only a failed first write is retried. */
-export function persistReceipt(holder: { persisting?: Promise<boolean> }, receipt: ModelChangeReceipt): Promise<boolean> {
-  // Held while in flight too, so a concurrent replay never issues a second write.
-  holder.persisting ??= import('@/lib/actions/receipts').then(({ modelChangeLibrary }) => modelChangeLibrary.put(receipt.id, receipt))
-    .then(ok => { if (!ok) holder.persisting = undefined; return ok; }, (error: unknown) => { holder.persisting = undefined; throw error; });
-  return holder.persisting;
 }
 async function persist(saved: Candidate, receipt: ModelChangeReceipt) {
   return { receipt_json: JSON.stringify(receipt), persisted: await persistReceipt(saved, receipt) };

@@ -13,7 +13,7 @@ import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
 /**
  * `values` for an IFCMAPCONVERSION into a CRS in map unit `unit` (#2 metre, #3 millimetre, #4 a conversion-based
- * unit of `factor` metres, $ the project's), or whole CRS and operation records when `raw`; `projectUnit` is the model's length unit.
+ * unit of `factor` metres, $ the project's), or, with `raw`, the given CRS and operation records instead; `projectUnit` is the model's length unit.
  */
 interface Georef { values?: string; unit?: '#2' | '#3' | '#4' | '$'; factor?: string; raw?: string; projectUnit?: '#2' | '#3' }
 const georefLines = ({ values, unit = '#2', factor = '0.3048', raw }: Georef) => `#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);

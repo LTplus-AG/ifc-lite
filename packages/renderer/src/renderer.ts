@@ -229,6 +229,7 @@ export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions,
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
 import { recoverRendererDevice, rendererDestroyedError, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
+import type { ReleasedSceneRebuild } from './released-scene-recovery.js';
 
 
 /**
@@ -393,7 +394,7 @@ export class Renderer {
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviceLossSequence = 0;
     private readonly recovery = {
-        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null,
+        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null, releasedRebuild: null as ReleasedSceneRebuild | null,
     };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. Null under `@ifc-lite/renderer/core`. */
     private readonly deviationComputer: DeviationComputer | null = pointCloudSupport()?.createDeviationComputer() ?? null;
@@ -832,6 +833,8 @@ export class Renderer {
     recoverDevice(): Promise<DeviceRecoveryResult> {
         return recoverRendererDevice(this as unknown as RendererRecoveryHost);
     }
+    /** Lets `recoverDevice` rebuild a scene whose CPU geometry was released (#10264); `null` refuses it again. */
+    setReleasedSceneRebuild(rebuild: ReleasedSceneRebuild | null): void { this.recovery.releasedRebuild = rebuild; }
 
     /**
      * `onLossDetected` for every `runGuardedGpuUpload` call below (#4885):

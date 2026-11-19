@@ -9,6 +9,7 @@ import type { SceneRecoveryHost } from './scene-device-recovery.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { PointCloudRenderer, ResolvedPointCloudRenderOptions } from './pointcloud/point-cloud-renderer.js';
 import type { Scene } from './scene.js';
+import { recoverReleasedScene, type ReleasedSceneRebuild } from './released-scene-recovery.js';
 
 /** GPU-only content that cannot be reconstructed after a device loss. */
 export type DeviceRecoveryOmission =
@@ -50,6 +51,8 @@ export interface RendererRecoveryHost {
     pointCloudOptions: Readonly<ResolvedPointCloudRenderOptions> | null;
     /** The latest `device.lost` settlement while already latched: the replacement's own loss. */
     replacementLostInfo: { message: string; reason: string } | null;
+    /** The host's rebuild for a released scene (#10264); without it such a scene is refused. */
+    releasedRebuild: ReleasedSceneRebuild | null;
   };
   deviceLost: boolean;
   destroyed: boolean;
@@ -156,7 +159,10 @@ async function recoverRendererDeviceOnce(
     console.error('[Renderer] Failed to prepare the CPU scene for device recovery:', error);
     return { ok: false, reason: 'cold-restore-failed', error };
   }
-  if (!prepared.ok) return prepared;
+  if (!prepared.ok) {
+    const rebuild = host.recovery.releasedRebuild;
+    return prepared.reason === 'cpu-geometry-released' && rebuild ? recoverReleasedScene(host, generation, rebuild) : prepared;
+  }
   if (generation !== host.initGeneration || host.destroyed) {
     return invalidatedRecovery(host);
   }

@@ -3608,6 +3608,9 @@ export class Scene {
     this.instancedDevice = undefined;
   }
 
+  /** Device recovery of a released scene (#10264): drop every flat and instanced piece, keep placements. */
+  resetReleasedForRebuild(): void { this.destroyAllInstancedTemplates(); this.clearFlatGeometry(); this.setEphemeralStreamingMode(false); }
+
   clear(): void {
     this.modelTranslations.clear(); // clearFlatGeometry() below moves clearEpoch
     // GPU-instancing templates own their vertex/index/instance buffers. (Freed slots are holes whose

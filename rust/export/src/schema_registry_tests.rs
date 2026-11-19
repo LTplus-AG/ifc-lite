@@ -265,14 +265,12 @@ fn no_same_named_type_passes_a_different_attribute_through_by_position_10763_108
 fn rename_targets_are_the_converters_10856() {
     let schemas = ["IFC2X3", "IFC4", "IFC4X3"];
     let mut produced = std::collections::BTreeSet::new();
-    for from in schemas {
-        for to in schemas.into_iter().filter(|to| *to != from) {
-            for ty in ifc_lite_core::IFC_TYPES.iter() {
-                let name = ty.name().to_ascii_uppercase();
-                if super::schema_attribute_names(from, &name).is_none() { continue; }
-                if let Some(target) = super::rename_type(&name, from, to).filter(|t| super::schema_attribute_names(to, t).is_some()) {
-                    produced.insert((to, target));
-                }
+    // Each source schema's own catalog: IFC_TYPES is IFC4X3's and lacks
+    // IFC2X3-only names such as IFCELECTRICDISTRIBUTIONPOINT.
+    for (from, name, ..) in RETYPE_ROWS.iter().filter(|r| schemas.contains(&r.0)) {
+        for to in schemas.into_iter().filter(|to| to != from) {
+            if let Some(target) = super::rename_type(name, from, to).filter(|t| super::schema_attribute_names(to, t).is_some()) {
+                produced.insert((to, target));
             }
         }
     }
@@ -280,3 +278,4 @@ fn rename_targets_are_the_converters_10856() {
     assert!(produced.len() > 20, "anti-vacuity: {}", produced.len());
     assert_eq!(listed, produced, "update RENAME_TARGETS in scripts/generate-enum-reconciliation.mjs and regenerate");
 }
+

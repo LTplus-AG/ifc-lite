@@ -18,11 +18,11 @@ enum lost members in that direction (#5365).
 
 | Direction | Entity attributes | Missing member entries | Refused |
 | --- | --- | --- | --- |
-| IFC4X3 → IFC4 | 108 | 407 | 0 |
+| IFC4X3 → IFC4 | 110 | 409 | 0 |
 | IFC4X3 → IFC2X3 | 80 | 232 | 11 |
 | IFC4 → IFC2X3 | 46 | 111 | 4 |
 | IFC2X3 → IFC4 | 20 | 71 | 0 |
-| IFC2X3 → IFC4X3 | 20 | 71 | 0 |
+| IFC2X3 → IFC4X3 | 23 | 74 | 0 |
 | IFC4 → IFC4X3 | 0 | 0 | 0 |
 
 ## IFC4X3 → IFC4
@@ -135,8 +135,10 @@ enum lost members in that direction (#5365).
 | IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
 | IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
 | IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFooting.PredefinedType | IfcFootingTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcRelAssignsToProduct.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 
 ## IFC4X3 → IFC2X3
 
@@ -323,6 +325,9 @@ enum lost members in that direction (#5365).
 | IfcTankType.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ElementType` |
 | IfcWasteTerminal.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminalType.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 
 ## IFC4 → IFC4X3
 

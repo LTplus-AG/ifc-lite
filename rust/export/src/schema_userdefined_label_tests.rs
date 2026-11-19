@@ -111,10 +111,13 @@ fn the_plan_before_the_carry_drops_and_counts_the_label_10824() {
 /// DistributionPointFunction), and both are reported.
 #[test]
 fn a_point_or_board_member_the_target_lacks_is_reconciled_10856() {
-    assert_eq!(
-        convert("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", "IFC2X3", "IFC4").0,
-        "#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);"
-    );
+    for to in ["IFC4", "IFC4X3"] {
+        assert_eq!(
+            convert("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", "IFC2X3", to).0,
+            "#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);",
+            "{to}"
+        );
+    }
     assert_eq!(
         convert("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", "IFC4X3", "IFC2X3").0,
         "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.NOTDEFINED.,$);"

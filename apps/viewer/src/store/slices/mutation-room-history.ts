@@ -16,8 +16,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
-import { attributeNamesForStore } from '@/lib/collab/schema-attribute-names.js';
-import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
+import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
 
 interface ValueTypes { type: PropertyValueType; dataType?: string }
 type Session = NonNullable<ViewerState['collabSession']>;
@@ -62,10 +61,11 @@ export function rememberPublishedEdit(mutation: Mutation, session: Session, type
 function ownAttributeValue(state: ViewerState, view: MutablePropertyView, modelId: string, entityId: number, attrName: string): unknown {
   const store = state.models.get(modelId)?.ifcDataStore ?? (state.models.size === 0 ? state.ifcDataStore : null);
   const entity = view.getNewEntity(entityId) ?? store?.getEntity?.(entityId);
-  if (!entity) return undefined;
-  const index = (store ? attributeNamesForStore(store, entity.type) : getAttributeNamesAcrossSchemas(entity.type)).indexOf(attrName);
-  const value = index < 0 ? undefined : entity.attributes[index] ?? null;
+  if (!store || !entity) return undefined;
+  const index = attributeNamesForStore(store, entity.type).indexOf(attrName);
+  if (index < 0 || referenceAttributeSlotsForStore(store, entity.type)[index]) return undefined;
   // Only a plain value: the forward mirror only ever sent user-typed text, never a reference or a list.
+  const value = entity.attributes[index] ?? null;
   return value === null || ['string', 'number', 'boolean'].includes(typeof value) ? value : undefined;
 }
 
@@ -76,7 +76,12 @@ function publishStep(state: ViewerState, view: MutablePropertyView, modelId: str
     if (!attributeName) return;
     const value = direction === 'redo' ? mutation.newValue
       : mutation.oldValue ?? ownAttributeValue(state, view, modelId, entityId, attributeName);
-    if (value !== undefined) state.mirrorAttributeEdit(modelId, entityId, attributeName, value === null ? null : String(value));
+    // The room has the edited value; leaving it there unannounced would hide the divergence.
+    if (value === undefined) {
+      if (direction === 'undo') throw new Error(`the original ${attributeName} could not be read to restore it`);
+      return; // A redo with no new value applied nothing locally either.
+    }
+    state.mirrorAttributeEdit(modelId, entityId, attributeName, value === null ? null : String(value));
     return;
   }
   if (!psetName || !propName) return;

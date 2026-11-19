@@ -80,13 +80,17 @@ describe('authoring.room.prepare through the operation executor (#10908)', () =>
   it('releases the native preparation it refuses', async (t) => {
     if (!ensureRoomWasm(t)) return;
     await setup();
-    const free = mock.method(SpacePlateHandle.prototype, 'free');
+    // A split works on a duplicate of the cached plate and holds it until its preparation is applied or disposed.
+    const plates: SpacePlateHandle[] = [], freed = new Set<SpacePlateHandle>();
+    const duplicate = SpacePlateHandle.prototype.duplicate, free = SpacePlateHandle.prototype.free;
+    const dup = mock.method(SpacePlateHandle.prototype, 'duplicate', function (this: SpacePlateHandle) { const plate = duplicate.call(this); plates.push(plate); return plate; });
+    const fre = mock.method(SpacePlateHandle.prototype, 'free', function (this: SpacePlateHandle) { freed.add(this); return free.call(this); });
     const stop = alongsideRemesh(() => useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })));
     try {
-      // A split holds a native plate until its preparation is applied or disposed.
       const refused = await prepare({ action: 'edit', operation: { kind: 'split', a: [21, 20], b: [21, 23] }, tolerance: .01 });
       assert.match(refused.text, /Model replaced, closed, or edited during the operation/);
-      assert.ok(free.mock.callCount() > 0, 'the refused preparation freed its plate');
-    } finally { stop(); free.mock.restore(); }
+      assert.equal(plates.length, 1, 'the split duplicated one plate');
+      assert.ok(freed.has(plates[0]), 'the refused preparation freed the plate it held');
+    } finally { stop(); dup.mock.restore(); fre.mock.restore(); }
   });
 });

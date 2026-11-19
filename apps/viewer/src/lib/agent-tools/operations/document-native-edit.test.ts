@@ -26,7 +26,7 @@ it('#10525 pages large native documents and edits text without resending or losi
   assert.ok(await useViewerStore.getState().upsertDocument(document));
   const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   const commit = <T,>(write: () => T): T => write();
-  const context: ViewerOperationContext = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
+  const context: ViewerOperationContext = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
   const run = async <T,>(id: string, input: unknown): Promise<T> => { const entry = [...analyticsDocumentOperations, ...documentNativeEditOperations].find(row => row.id === id); assert.ok(entry); assert.equal(entry.needs, 'viewer'); const result = await entry.execute(input, context); entry.validateResult(JSON.parse(JSON.stringify(result))); return result as T; };
   const library = await run<{ documents: { id: string; revision: string }[] }>('document.library', { offset: 0, limit: 50 });
   assert.ok(JSON.stringify(library).length < 32000); assert.doesNotMatch(JSON.stringify(library), /data:image/);

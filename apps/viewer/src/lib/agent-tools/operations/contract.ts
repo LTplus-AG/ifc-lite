@@ -19,8 +19,8 @@ export interface ViewerOperationContext extends ToolCallContext {
    * the executor compares later state with the model entry that write produced, but only when the entry changed in
    * its geometry alone and no edit moved the revision; any other change still refuses the operation. A geometry change
    * by someone else inside `work` cannot be told apart, so the operation must validate the geometry it read (Room
-   * preparation does, through its geometry lease). A value the closing check refuses is passed to `release`. */
-  ownGeometry<T>(work: () => Promise<T>, release?: (value: T) => void): Promise<T>;
+   * preparation does, through its geometry lease). A value the closing check refuses is passed to `release`, which frees what it owns. */
+  ownGeometry<T>(work: () => Promise<T>, release: (value: T) => void): Promise<T>;
   progress?: (detail: { phase: string; done: number; total: number }) => void;
 }
 export interface OperationContext extends ViewerOperationContext { model: ReadyModel }

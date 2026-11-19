@@ -58,7 +58,7 @@ async function seed(count: 1 | 2 = 1) {
   const commit = <T,>(write: () => T): T => { context.signal?.throwIfAborted(); context.checkpoint?.(); return write(); };
   context = { model: { ...model, store: model.store }, host, commit,
     commitAsync: async <T,>(write: () => Promise<T>): Promise<T> => { context.signal?.throwIfAborted(); context.checkpoint?.(); return write(); },
-    ownGeometry: work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
+    ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
 }
 async function run<T>(id: string, input: unknown = {}, activeContext: OperationExecutionContext = context): Promise<T> {
   const entry: Operation | undefined = entries.find(row => row.id === id); assert.ok(entry, id);

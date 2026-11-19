@@ -20,8 +20,11 @@ export const NO_NATIVE_RENDERER = 'Native viewport renderer is not ready.';
  * pixels synchronously (WebGPU discards the canvas after presentation).
  * Throws when no renderer is mounted; resolves null when the capture failed.
  */
-export async function captureNativeViewport(read: (canvas: HTMLCanvasElement) => string): Promise<string | null> {
+export async function captureNativeViewport(
+  read: (canvas: HTMLCanvasElement) => string,
+  signal?: AbortSignal,
+): Promise<string | null> {
   const renderer = getGlobalRenderer();
   if (!renderer) throw new Error(NO_NATIVE_RENDERER);
-  return captureViewportFrame(renderer, { read });
+  return captureViewportFrame(renderer, { read, signal });
 }

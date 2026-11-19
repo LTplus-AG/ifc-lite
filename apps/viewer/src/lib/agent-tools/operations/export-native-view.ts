@@ -20,7 +20,7 @@ export const exportNativeViewOperations = [
     type: 'object', properties: { scope: { type: 'string', const: 'current-view' } }, required: ['scope'], additionalProperties: false,
   } satisfies JSONSchemaType<{ scope: 'current-view' }>, async (_, c) => {
     const s = useViewerStore.getState(); const check = nativeExportGuard(c, [...s.models.keys()]); check();
-    const image = await captureNativeViewport(canvas => canvas.toDataURL('image/png')); check(); if (!image?.startsWith('data:image/png;base64,')) throw new Error('Native viewport did not produce a PNG.');
+    const image = await captureNativeViewport(canvas => canvas.toDataURL('image/png'), c.signal); check(); if (!image?.startsWith('data:image/png;base64,')) throw new Error('Native viewport did not produce a PNG.');
     const bytes = dataUrlToBytes(image); if (!bytes) throw new Error('Native viewport did not produce a PNG.');
     return nativeArtifact(c, new Blob([bytes], { type: 'image/png' }), modelExportFilename(activeModelName(s), 'png', '_screenshot'), { scope: 'current-view' }, check);
   }),

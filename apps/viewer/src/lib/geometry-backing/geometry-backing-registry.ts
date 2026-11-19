@@ -91,6 +91,7 @@ export class ModelGeometryBacking {
 export class GeometryBackingRegistry {
   private readonly models = new Map<string, ModelGeometryBacking>();
   private readonly generations = new Map<string, number>();
+  private closed = false;
 
   private constructor(private readonly db: BackingDatabase) {}
 
@@ -102,14 +103,18 @@ export class GeometryBackingRegistry {
   /** Whether closed pages' leftovers can be detected (Web Locks). */
   get sweepsStaleSessions(): boolean { return this.db.sweeps; }
 
-  /** Start a new generation for `modelId`, ending and deleting the previous one first. */
+  /** Atomically replace the current generation, then await the previous one's disposal. */
   async begin(modelId: string, options: ModelBackingOptions = {}): Promise<ModelGeometryBacking> {
-    await this.invalidate(modelId);
+    if (this.closed) throw new GeometryBackingFailedError('Geometry backing registry is closed');
+    const previous = this.models.get(modelId);
     const generation = (this.generations.get(modelId) ?? 0) + 1;
     this.generations.set(modelId, generation);
     const backing = new ModelGeometryBacking(this.db, modelId, generation,
       `${modelId}\u0000${generation}`, options);
     this.models.set(modelId, backing);
+    // Publish before awaiting disposal: a concurrent begin must retire this
+    // generation, rather than create a second untracked live backing.
+    if (previous) await previous.dispose();
     return backing;
   }
 
@@ -134,6 +139,7 @@ export class GeometryBackingRegistry {
 
   /** Free storage of every model and give up this page's session. */
   async close(): Promise<void> {
+    this.closed = true;
     const models = [...this.models.keys()];
     try {
       await Promise.all(models.map((modelId) => this.invalidate(modelId, 'Geometry backing closed')));

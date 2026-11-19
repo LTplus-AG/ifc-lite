@@ -139,7 +139,9 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
     const view = mesh[field];
     if (view !== undefined) slots[field] = slot(view);
   }
-  const record: MeshRecord = { fields, arrays, slots };
+  // Snapshot mutable tuples and metadata now, rather than when a queued IDB
+  // transaction eventually starts after the producer has edited the mesh.
+  const record: MeshRecord = { fields: structuredClone(fields), arrays, slots };
   if (mesh.texture) {
     const { rgba, width, height, repeatS, repeatT } = mesh.texture;
     slots.textureRgba = slot(rgba);

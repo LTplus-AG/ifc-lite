@@ -102,6 +102,12 @@ export class BackingWriter {
         this.sources.push(...encoded.sources);
         this.uncommitted += encoded.bytes;
         if (this.builder.bytes >= this.chunkBytes) this.seal();
+        // A single append can contain a model's entire resident mesh list.
+        // Stop after the first mesh crossing the bound, before copying more.
+        if (this.uncommitted > this.queueBytes) {
+          await this.room();
+          this.usable();
+        }
       }
     } catch (error) {
       throw this.fail(error, 'Geometry could not be encoded for local backing');

@@ -94,6 +94,8 @@ export class BackingReader {
     this.fence(signal);
     const key = [this.db.session, this.backingId, index];
     const requested: number[] = [];
+    // Pin live weak-cache hits across the transaction completion await too.
+    const loaded = new Map<number, Uint32Array>();
     const { record, fetched } = await this.db.read([CHUNKS, SOURCES], (tx) => {
       const request = tx.objectStore(CHUNKS).get(key);
       const fetched = new Map<number, unknown>();
@@ -103,7 +105,12 @@ export class BackingReader {
           const source = mesh.appearance?.source;
           if (!source || !('pooled' in source)) continue;
           const id = source.pooled;
-          if (requested.includes(id) || this.sources.get(id)?.deref()) continue;
+          if (requested.includes(id) || loaded.has(id)) continue;
+          const existing = this.sources.get(id)?.deref();
+          if (existing) {
+            loaded.set(id, existing);
+            continue;
+          }
           requested.push(id);
           const sourceRequest = tx.objectStore(SOURCES).get([this.db.session, this.backingId, id]);
           sourceRequest.onsuccess = () => { fetched.set(id, sourceRequest.result); };
@@ -113,7 +120,6 @@ export class BackingReader {
     });
     this.fence(signal);
     if (!record) throw new GeometryNotBackedError(`Backed chunk ${index} is missing from storage`);
-    const loaded = new Map<number, Uint32Array>();
     for (const id of requested) {
       const indices = fetched.get(id);
       if (!(indices instanceof Uint32Array)) throw new GeometryNotBackedError(`Canonical source ${id} of chunk ${index} is missing`);
@@ -182,6 +188,7 @@ export class BackingReader {
 
   /** Lease the given chunks together; all or nothing. */
   async leaseChunks(indices: readonly number[], options: ReadOptions = {}): Promise<MeshLease> {
+    this.fence(options.signal);
     const held: Decoded[] = [];
     let released = false;
     const release = () => {

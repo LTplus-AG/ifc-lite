@@ -47,7 +47,7 @@ export function encodeShardRecord(shard: DecodedInstancedShard): EncodedShard {
   const entities = new Set<number>();
   const instances = shard.instances.map((instance) => {
     refuseUnknown(instance, INSTANCE_FIELDS, 'occurrence');
-    if (instance.templateIndex < 0 || instance.templateIndex >= templates.length) {
+    if (!Number.isInteger(instance.templateIndex) || instance.templateIndex < 0 || instance.templateIndex >= templates.length) {
       throw new RangeError(`Instanced occurrence of ${instance.entityId} names missing template ${instance.templateIndex}`);
     }
     entities.add(instance.entityId);

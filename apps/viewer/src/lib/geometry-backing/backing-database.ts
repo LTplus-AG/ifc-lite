@@ -166,12 +166,14 @@ export class BackingDatabase {
 
   private async sweepStaleSessions(): Promise<void> {
     if (!this.locks) return;
-    const snapshot = await this.locks.query();
-    const held = new Set((snapshot.held ?? []).map((lock) => lock.name));
     const sessions = await this.read([SESSIONS], (tx) => {
       const request = tx.objectStore(SESSIONS).getAllKeys();
       return () => request.result;
     });
+    // Session publication follows lock acquisition. Read keys first so a new
+    // page cannot publish after our lock snapshot and be mistaken for dead.
+    const snapshot = await this.locks.query();
+    const held = new Set((snapshot.held ?? []).map((lock) => lock.name));
     const stale = sessions.filter((key): key is string => typeof key === 'string'
       && key !== this.session && !held.has(`${LOCK_PREFIX}${key}`));
     if (stale.length === 0) return;

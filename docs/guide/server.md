@@ -219,6 +219,11 @@ const client = new IfcServerClient({
 
 ### Parse Methods
 
+Pass an `AbortSignal` in the parse options to cancel a request or stop reading
+its response. The client's request timeout still applies. If the caller cancels
+a Parquet cache probe, the client stops without starting an upload.
+
+
 #### parseParquet (Recommended)
 
 Best for most use cases - roughly 15x smaller payloads than JSON.

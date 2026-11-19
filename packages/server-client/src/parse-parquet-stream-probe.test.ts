@@ -221,6 +221,26 @@ describe('parseParquetStream hash probe', () => {
     expect(timeout).toBeGreaterThan(5_000);
   });
 
+  it('does not start an upload after the caller aborts the hash probe (#10469)', async () => {
+    const controller = new AbortController();
+    let onSent!: () => void;
+    const sent = new Promise<void>(resolve => { onSent = resolve; });
+    const fetchMock = vi.fn().mockResolvedValue(streamResponse()).mockImplementationOnce((_url: string, { signal }: RequestInit) => {
+      onSent();
+      return new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+        controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const pending = client().parseParquetStream(file(), () => {}, { signal: controller.signal });
+    const cancelled = expect(pending).rejects.toBeInstanceOf(DOMException);
+    await sent;
+    controller.abort();
+    await cancelled;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('sends the layout signal on the probe, since it selects the cache entry', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 404 }));
     vi.stubGlobal('fetch', fetchMock);

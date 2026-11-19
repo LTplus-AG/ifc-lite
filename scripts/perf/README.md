@@ -17,15 +17,14 @@ and menus) five times per edit: on the mutation, a follow-up commit, the mesh
 swap and the idle structure build. Each panel render also re-resolved every
 storey row's membership up to three times, and once the session has edits
 each resolution re-reads the relationship overlay. The worker meshes the
-column in under 1 ms; its reply waits behind this main-thread work.
+column almost at once; its reply waits behind this main-thread work.
 
 Rows are now memoized with one stable handler object, unchanged tree rows
 keep their objects across rebuilds and projections, and row membership is
 resolved once per input generation and view revision. Paired local
-diagnostics (Apple M5 Pro, Metal, quiet shared host, three interleaved runs
-of five edits per side) cut the edit median by about a fifth and the undo
-median by about a quarter; with the hierarchy unmounted the same probe sat
-about 30% below base, which bounds this lever. Not admission-qualified.
+diagnostics improved the edit and undo medians; unmounting the hierarchy
+entirely bounds what this lever can reach. The figures and the run protocol
+are in the PR; none of them is admission-qualified.
 
 Lesson: narrowing panel subscriptions (#9978) cost more synchronous
 publication than it saved. Cutting what each render does inside the panel

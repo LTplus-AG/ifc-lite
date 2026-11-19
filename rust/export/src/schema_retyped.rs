@@ -42,7 +42,7 @@ pub(crate) fn apply(line: String, cfrom: &str, cto: &str, dropped: Option<&mut u
     let Some(frame) = crate::step_record_frame::record_frame(&line) else { return line };
     let Some(mut args) = split_top_level_args(frame.args(&line)) else { return line };
     let Some(slot) = args.get_mut(index) else { return line };
-    let value = slot.trim();
+    let Some(value) = sole_value(slot) else { return line };
     let written = if up {
         let Some(member) = value.strip_prefix('.').and_then(|v| v.strip_suffix('.')) else { return line };
         format!("'{member}'")
@@ -60,6 +60,19 @@ pub(crate) fn apply(line: String, cfrom: &str, cto: &str, dropped: Option<&mut u
     };
     *slot = written;
     frame.with_args(&line, &args.join(","))
+}
+
+/// The one enum or string token in `slot`, past the whitespace and comments
+/// around it; `None` for anything else.
+fn sole_value(slot: &str) -> Option<&str> {
+    let bytes = slot.as_bytes();
+    let start = ifc_lite_core::parser::skip_step_trivia(bytes, 0)?;
+    let end = match bytes.get(start)? {
+        b'\'' => ifc_lite_core::step_encoding::step_string_literal_end(bytes, start)?,
+        b'.' => start + 2 + slot[start + 1..].find('.')?,
+        _ => return None,
+    };
+    (ifc_lite_core::parser::skip_step_trivia(bytes, end)? == bytes.len()).then(|| &slot[start..end])
 }
 
 #[cfg(test)]

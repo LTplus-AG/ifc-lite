@@ -270,7 +270,8 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
  * WCS frame agrees with the primary model's (origin in metres AND
  * axis/refDirection orientation, so a differing length unit or a rotated frame
  * doesn't produce a false match) and its georeference agrees with the one on
- * the shared context (#10798); a mismatch leaves it un-remapped — kept as
+ * the shared context (#10798), and, when both carry a coordinate operation,
+ * both operations target a CRS (#10873); a mismatch leaves it un-remapped — kept as
  * this model's own root — so its untouched coordinates are never
  * re-interpreted against the wrong frame.
  *

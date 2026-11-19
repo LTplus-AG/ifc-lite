@@ -175,6 +175,9 @@ describe('merged STEP export and map conversions (#10798)', () => {
     const plans = await merge([planAt('0.'), planAt('500.')], 'IFC4X3');
     expect(plans.contexts).toHaveLength(4);
     expect(new Set(plans.sources).size, 'one operation per context').toBe(plans.sources.length);
+    expect(plans.sources.every(source => plans.contexts.includes(source))).toBe(true);
+    // B's model context, kept apart, is listed in the merged project; the plan contexts were never listed.
+    expect(plans.listed).toEqual([plans.contexts[0], plans.contexts[2]]);
   });
 
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {

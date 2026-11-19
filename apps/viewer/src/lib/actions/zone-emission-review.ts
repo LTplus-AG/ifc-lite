@@ -17,8 +17,9 @@ import { parseZoneEmissionProposal, type ZoneEmissionProposal } from './zone-emi
 import type { ModelChangeReceipt } from './model-change-commit';
 import { batchDigest } from './model-change-preview';
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
-/** One signature per assignments Map and set, shared by every retained review: the sync replaces the Map rather
- * than mutating it, so a rebuilt Map is signed once, however many reviews probe it. */
+/** One signature per assignments Map and set, shared by every retained review. Relies on the assignment sync
+ * replacing the Map (and its records) on every change rather than editing them in place, so a rebuilt Map is signed
+ * once, however many reviews probe it. */
 const signatures = new WeakMap<ZoneAssignmentsByElement, Map<string, string>>();
 function setAssignmentSignature(assignments: ZoneAssignmentsByElement, setId: string): string {
   let bySet = signatures.get(assignments);

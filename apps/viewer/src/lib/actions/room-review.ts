@@ -98,6 +98,7 @@ function sourceIdentitiesCurrent(captured: ReturnType<typeof sources>, state: Vi
     return !!model && model.ifcDataStore === row.store && model.ifcDataStore?.source === row.source && model.sourceContentHash === row.hash;
   });
 }
+const isBuffer = (value: unknown): value is object => typeof value === 'object' && value !== null;
 function sourcesCurrent(captured: ReturnType<typeof sources>, state: ViewerState): boolean {
   return sourceIdentitiesCurrent(captured, state) && captured.every(row => state.mutationViews.get(row.id) === row.view
     && state.mutationViews.get(row.id)?.getMutationRevision() === row.revision);
@@ -146,16 +147,22 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     const captured = sources(current);
     // What the geometry lease read, cheaply and without re-capturing it: the target model's frame and mesh buffers by
     // identity. A recolour copies meshes with the same buffers; a remesh, re-frame or in-place vertex edit changes one.
-    // Held weakly, so a remesh or a geometry release can still free the old buffers.
+    // Keyed weakly by positions, so a remesh can still free the old buffers. Released meshes share one empty positions
+    // array, so each key holds every indices array captured with it. Order and duplication are not checked: that can
+    // only keep a review admitted that apply then refuses, never drop one that would apply.
     const geometry = current.models.get(proposal.modelId)?.geometryResult;
     const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1;
-    const buffers = new WeakMap<object, object>(); // each mesh's positions to its own indices
-    for (const mesh of geometry?.meshes ?? []) buffers.set(mesh.positions, mesh.indices);
+    const buffers = new WeakMap<object, Set<unknown>>();
+    for (const mesh of geometry?.meshes ?? []) {
+      if (!isBuffer(mesh.positions)) continue;
+      const captured = buffers.get(mesh.positions) ?? new Set();
+      captured.add(mesh.indices); buffers.set(mesh.positions, captured);
+    }
     const content = current.geometryContentVersion;
     const geometryCurrent = (state: ViewerState) => {
       const now = state.models.get(proposal.modelId)?.geometryResult;
       return !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length === meshCount
-        && now.meshes.every(mesh => buffers.get(mesh.positions) === mesh.indices);
+        && now.meshes.every(mesh => !isBuffer(mesh.positions) || buffers.get(mesh.positions)?.has(mesh.indices) === true);
     };
     const validate = () => {
       signal.throwIfAborted();

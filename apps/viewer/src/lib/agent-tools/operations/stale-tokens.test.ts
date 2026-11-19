@@ -148,10 +148,12 @@ describe('reviewed model candidates (#10792)', () => {
   it('#20: unsaved receipts do not lock the host out; the library keeps them for its own retry', async () => {
     const refused = refuseContentWrites();
     try {
-      const applied = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token: await prepareRename() }, true));
+      const token = await prepareRename();
+      const applied = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token }, true));
       assert.equal(applied.persisted, false);
       const receipt = JSON.parse(applied.receipt_json) as ModelChangeReceipt;
       for (let i = 0; i < 64; i++) await prepareRename(`Name ${i}`); // the 64th evicts the applied candidate
+      assert.match((await invoke('authoring.apply', { token }, true)).text, /Unknown reviewed candidate/, 'the applied one was the one evicted');
       assert.ok(storedReceipt(receipt.id), 'the receipt survives as the library\'s draft');
       assert.notEqual(useModelChangeReceipts.getState().status.items[receipt.id], 'saved');
     } finally { refused.mock.restore(); }
@@ -552,6 +554,12 @@ describe('Room review admission probe (#10792)', () => {
       withGeometry(mesh => ({ ...mesh, color: [1, 0, 0, 1] })); // a recolour copies meshes with the same buffers
       assert.equal(review.sourcesCurrent(), true);
       review.validate();
+      // Released meshes share one empty positions array with different indices; that alone changes nothing.
+      const shared = new Float32Array(0);
+      const released = useViewerStore.getState().models.get(ROOM_MODEL)!.geometryResult!.meshes.map(mesh => ({ ...mesh, positions: shared }));
+      useViewerStore.setState(s => ({ models: new Map(s.models).set(ROOM_MODEL, { ...s.models.get(ROOM_MODEL)!, geometryResult: { ...s.models.get(ROOM_MODEL)!.geometryResult!, meshes: released } }) }));
+      const releasedReview = await prepareRoomReview(roomProposal(), new AbortController().signal);
+      try { assert.equal(releasedReview.sourcesCurrent(), true, 'shared positions with distinct indices stay current'); } finally { releasedReview.dispose(); }
       withGeometry(mesh => ({ ...mesh, positions: mesh.positions.slice() })); // a remesh replaces the buffers
       assert.equal(review.sourcesCurrent(), false);
     } finally { review.dispose(); }

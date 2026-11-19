@@ -15,7 +15,7 @@ export function evictOldest<K, V>(handles: Map<K, V>, cap: number): void {
 /**
  * Make room for one more reviewed candidate. Every admission site answers one question, `canApply`: could this
  * candidate still apply (or, once applied, replay)? Those that cannot are dropped and `release`d. Of the rest, only
- * `pending` ones count against `cap`, and a host full of them is refused with `refusal`; settled ones share the cap
+ * `pending` ones count against `cap`, and a host full of them is refused with `refusal`; the others share the cap
  * and the oldest goes first. Call it again after any await: a concurrent prepare may have taken the room.
  */
 export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending, canApply, release = () => {} }: {

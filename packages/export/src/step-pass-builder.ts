@@ -34,6 +34,7 @@ import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { documentLinksApply } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
+import { effectiveCreatedRecord } from './effective-source-record.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
@@ -342,23 +343,26 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     if (pair) pass.enums.structural.fromStore(dataStore, sourceSchema, schema, source);
     pass.enums.documents.fromSource(source, sourceSchema, schema); // #10846
   }
-  // #10763: what a downgraded IfcMaterialProperties.Material names, from the effective types and the
-  // edited source slots, read at conversion, after the collection phase fills `modifiedAttributes`.
-  // A referent the export does not write resolves to nothing; an overlay-created one has no source
-  // slots, so only a created IfcMaterial (its type alone) resolves.
+  // #10763: what a downgraded IfcMaterialProperties.Material names, from the records this export
+  // writes: the effective types (retypes, deletions, overlay-created records), each record's slots as
+  // written (a source one with its edits, a created one as authored), read at conversion, after the
+  // collection phase fills `modifiedAttributes`. A record the export does not write has no type.
   if (schema === 'IFC2X3' && (sourceSchema === 'IFC4' || sourceSchema === 'IFC4X3')) {
     const source = new SourceRecords(dataStore);
     const read = new Map<number, readonly string[] | undefined>();
-    const slots = (id: number) => {
-      if (read.has(id)) return read.get(id);
-      const text = effective.isOverlayCreated(id) ? undefined : source.text(id), type = source.type(id);
-      const edited = text === undefined || !type ? undefined
-        : readStepSlots(applySourceLineMutations(mutationView, id, text, type, pass.modifiedAttributes.get(id), sourceSchema, pass.overlayActive).text)?.slots;
-      read.set(id, edited);
-      return edited;
+    const written = (id: number): string | undefined => {
+      if (mutationView && effective.isOverlayCreated(id)) {
+        try { return effectiveCreatedRecord(mutationView, id, sourceSchema)?.text; } catch { return undefined; }
+      }
+      const text = source.text(id), type = source.type(id);
+      return text === undefined || !type ? undefined
+        : applySourceLineMutations(mutationView, id, text, type, pass.modifiedAttributes.get(id), sourceSchema, pass.overlayActive).text;
     };
-    // A referent the export does not write resolves to nothing, as in Rust.
-    pass.enums.materials.arm({ typeOf: (id) => (pass.willBeEmitted(id) ? effective.typeOf(id) : undefined), slots }, sourceSchema, schema);
+    const slots = (id: number) => {
+      if (!read.has(id)) { const text = written(id); read.set(id, text === undefined ? undefined : readStepSlots(text)?.slots); }
+      return read.get(id);
+    };
+    pass.enums.materials.rearm({ typeOf: (id) => (pass.willBeEmitted(id) ? effective.typeOf(id) : undefined), slots });
   }
   // The same object, deliberately. See the file header.
   return pass;

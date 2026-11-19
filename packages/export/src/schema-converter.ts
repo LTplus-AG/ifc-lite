@@ -292,12 +292,12 @@ export function convertStepLine(
   enums?: EnumReconciliation,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  let converted = retypeInPlace(convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural), fromSchema, toSchema); // #10778
+  const kept = enums ? enums.materials.apply(line, fromSchema, toSchema) : line; // #10763: null when Material names no one IfcMaterial
+  let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural), fromSchema, toSchema);
   converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema); // #10824
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema), toSchema)), withheldRefIds);
-  const kept = toSchema === 'IFC2X3' && enums ? enums.materials.apply(converted) : converted;
-  if (toSchema === 'IFC2X3') return kept === null ? null : (slots ?? new Ifc2x3SlotFill()).apply(kept);
+  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
   if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
   return converted;
 }

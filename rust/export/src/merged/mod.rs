@@ -152,6 +152,13 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
 
 /// Merge several parsed models into one STEP/IFC string, honoring per-model
 /// visibility, spatial-merge strategies, and unit reconciliation.
+/// A model's material records as the merge writes them (#10763): its ids
+/// offset, its references rewritten, the records it leaves out left out.
+fn add_materials(checks: &mut ConversionChecks, content: &[u8], source_schema: &str, included: &HashSet<u32>, plan: &plan::ModelPlan, offset: u32) {
+    let written = |id: u32| included.contains(&id) && !plan.skip.contains(&id) && !plan.shared_remap.contains_key(&id);
+    checks.materials.add_model(content, crate::schema_convert::canon(source_schema), &|id, _| written(id).then(|| id.saturating_add(offset)), &|bytes| rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied()));
+}
+
 pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (String, MergedStats) {
     let schema = header::output_schema(models, opts);
 
@@ -227,7 +234,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
-    let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
+    let mut checks = ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema))); // #5307, #5365, #10763
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
@@ -292,7 +299,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
 
         // Emit.
         let source_schema = detect_schema(model.content);
-        let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
+        let converting = crate::schema_convert::needs_conversion(&source_schema, &schema); add_materials(&mut checks, model.content, &source_schema, &included, &plan, offset); // #10763
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -365,7 +372,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             };
 
             let ty = index.type_of.get(&id).map_or("", String::as_str);
-            let Some(mut final_text) = parents.claim(ty, final_text, !is_first && compatible) else { continue };
+            let Some(mut final_text) = (!final_text.is_empty()).then_some(final_text).and_then(|t| parents.claim(ty, t, !is_first && compatible)) else { continue }; // empty: not written (#10763)
 
             if let Some(local_guid) = plan.local_guids.get(&id) {
                 let mut emitted = read_leading_guid(&final_text)

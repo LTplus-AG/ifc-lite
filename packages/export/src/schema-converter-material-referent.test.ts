@@ -2,7 +2,8 @@
 /** #10763, as Rust `schema_material_referent_tests.rs`: the IfcMaterial a downgraded IfcMaterialProperties names. */
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
 import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 
@@ -71,5 +72,48 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(await edited((view) => view.setPositionalAttribute(12, 0, '#8'))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");
     // The record's own Material edited to a material.
     expect(await edited((view) => view.setPositionalAttribute(5, 3, '#9'))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#9,(#6),'d','Pset_x');");
+  });
+
+  // Hosted CodeRabbit on #10781: the referents are the records the export writes.
+  const LAYERED = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);\n#12=IFCMATERIALLAYER(#9,0.1,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10,#12),'Wall',$);\n#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#13);`;
+  const editedExport = async (data: string, edit: (view: MutablePropertyView, editor: StoreEditor) => void) => {
+    const store = await parse(model('IFC4', `${BASE}\n${data}`));
+    const view = new MutablePropertyView(null, 'm');
+    edit(view, new StoreEditor(store, view));
+    const result = new StepExporter(store, view).export({ schema: 'IFC2X3', applyMutations: true });
+    return { lines: new TextDecoder().decode(result.content).split('\n'), warnings: result.stats.warnings };
+  };
+
+  it('resolves through an overlay-created layer as written', async () => {
+    let created = 0;
+    const { lines } = await editedExport('', (_view, editor) => {
+      const layer = editor.addEntity('IfcMaterialLayer', ['#8', 0.2, null, null, null, null, null]);
+      created = editor.addEntity('IfcMaterialProperties', ['Q', null, ['#6'], `#${layer.expressId}`]).expressId;
+    });
+    expect(lines.find((l) => l.startsWith(`#${created}=`))).toBe(`#${created}=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),$,'Q');`);
+  });
+
+  it('does not name a material retyped away', async () => {
+    const { lines, warnings } = await editedExport("#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#8);", (view) => view.setEntityType(8, 'IfcMaterialLayer'));
+    expect(lines.find((l) => l.startsWith('#5='))).toBeUndefined();
+    expect(warnings.join('\n')).toContain('IfcMaterialProperties record(s) were not written');
+  });
+
+  it('leaves a deleted layer out of its set, so the surviving layer names the material', async () => {
+    const { lines, warnings } = await editedExport(LAYERED, (view) => view.deleteEntity(12));
+    expect(lines.find((l) => l.startsWith('#5='))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");
+    expect(warnings.join('\n')).not.toContain('IfcMaterialProperties record(s)');
+  });
+
+  it("resolves each merged model's referents in the merge's id space", async () => {
+    const one = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10),'Wall',$);\n#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#13);`;
+    const models: MergeModelInput[] = [];
+    for (const [id, data] of [['one', one], ['two', LAYERED]]) models.push({ id, name: id, dataStore: await parse(model('IFC4', `${BASE}\n${data}`)) });
+    const result = new MergedExporter(models).export({ schema: 'IFC2X3' });
+    const out = new TextDecoder().decode(result.content);
+    // The first model's set names one material; the second's names two, so its record is not written.
+    expect(out.split('\n').filter((l) => l.includes('=IFCEXTENDEDMATERIALPROPERTIES('))).toEqual(["#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');"]);
+    expect(out).not.toContain('IFCMATERIALPROPERTIES(');
+    expect(result.stats.warnings.join('\n')).toContain('1 IfcMaterialProperties record(s) were not written');
   });
 });

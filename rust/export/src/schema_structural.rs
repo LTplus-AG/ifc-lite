@@ -165,7 +165,7 @@ mod diagnostic_tests {
             ("#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77);", "IFC2X3", "IFC4", "CausedBy"),
             ("#50=IFCSTRUCTURALPOINTCONNECTION('id',#1,$,$,$,$,$,#22,#77);", "IFC4", "IFC2X3", "ConditionCoordinateSystem"),
         ] {
-            let mut checks = ConversionChecks::new();
+            let mut checks = ConversionChecks::default();
             let out = convert_step_line(source, from, to, 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
             assert!(!out.contains("#77"));
             assert!(checks.warnings().iter().any(|w| w.contains(field) && w.contains("omitted")), "{:?}", checks.warnings());
@@ -177,7 +177,7 @@ mod diagnostic_tests {
     fn physical_analytical_link_retains_both_objects_in_ifc4_9668() {
         let source = "#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);";
         for target in ["IFC4", "IFC4X3", "IFC5"] {
-            let mut checks = ConversionChecks::new();
+            let mut checks = ConversionChecks::default();
             let out = convert_step_line(source, "IFC2X3", target, 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
             assert_eq!(out, "#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
             assert!(checks.warnings().iter().any(|w| w.contains("the relationship kind is not kept in the target file")));
@@ -217,7 +217,7 @@ mod review_regressions {
     #[test]
     fn native_ifc2x3_varying_action_is_unconverted_and_warned_9668() {
         let source = "#50=IFCSTRUCTURALPLANARACTIONVARYING('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,#88,(#23));";
-        let mut checks = ConversionChecks::new();
+        let mut checks = ConversionChecks::default();
         let out = convert_step_line(source, "IFC2X3", "IFC4", 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
         assert_eq!(out, source);
         assert!(checks.warnings().iter().any(|w| w.contains("record remains unconverted; output does not conform to IFC4")));

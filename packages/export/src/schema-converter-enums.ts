@@ -77,7 +77,12 @@ export class EnumReconciliation {
   /** Values a target slot's type cannot hold (#10847). */
   readonly forms = new ValueForms();
   /** The IfcMaterial a downgraded IfcMaterialProperties names (#10763). */
-  readonly materials = new MaterialReferents();
+  readonly materials: MaterialReferents;
+
+  /** `materials`: the export's material records (#10763); without them every downgraded IfcMaterialProperties is left out and reported. */
+  constructor(materials = new MaterialReferents()) {
+    this.materials = materials;
+  }
   private readonly losses = new Map<Loss, Map<string, number>>();
   /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */
   private readonly unlabelled = new Map<string, number>();

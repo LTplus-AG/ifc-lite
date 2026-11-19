@@ -161,6 +161,8 @@ export interface ChunkSkewDeps {
   rememberReload: (now: number) => boolean;
   /** Record that a reload is in flight, so consequential exceptions can be dropped. */
   markReloadPending: (now: number) => void;
+  /** The reload was refused: ask the user to reload instead (#10684). */
+  reportRefused: () => void;
 }
 
 const defaultDeps: ChunkSkewDeps = {
@@ -202,11 +204,13 @@ const defaultDeps: ChunkSkewDeps = {
   markReloadPending: (now) => {
     reloadPendingSince = now;
   },
+  // Wired by installChunkVersionSkewRecovery; a bare call has no notice to raise.
+  reportRefused: () => {},
 };
 
 /** What the handler decided, exposed for tests and for the caller's own logging. */
 export type ChunkSkewOutcome =
-  /** Debounced or storage unusable - Vite re-throws, the error surfaces. */
+  /** Offline, debounced or storage unusable - Vite re-throws, the error surfaces. */
   | 'surfaced'
   /** A reload was triggered. The import still rejects (arm 2) or continues (arm 1). */
   | 'reloaded';
@@ -230,8 +234,12 @@ export function handlePreloadError(
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'surfaced';
 
   const now = deps.now();
-  if (deps.hasRecentReload(now)) return 'surfaced'; // already tried; do not loop
-  if (!deps.rememberReload(now)) return 'surfaced'; // could not bound the retry
+  // Already tried (do not loop), or the retry cannot be bounded. Either way the
+  // user reloads instead, as the wasm sibling does when its reload is refused.
+  if (deps.hasRecentReload(now) || !deps.rememberReload(now)) {
+    deps.reportRefused();
+    return 'surfaced';
+  }
 
   deps.markReloadPending(now);
   deps.reload();
@@ -310,11 +318,12 @@ let installed = false;
  * chunk failing to load; this handles a LAZY chunk (exporters / ids / bcf /
  * sandbox ...) 404ing after a newer deploy ships fresh hashes mid-session.
  */
-export function installChunkVersionSkewRecovery(): void {
+export function installChunkVersionSkewRecovery(onReloadRefused: () => void): void {
   if (installed || typeof window === 'undefined') return;
   installed = true;
+  const deps: ChunkSkewDeps = { ...defaultDeps, reportRefused: onReloadRefused };
   window.addEventListener('vite:preloadError', (event) => {
-    handlePreloadError(event as VitePreloadErrorEvent);
+    handlePreloadError(event as VitePreloadErrorEvent, deps);
   });
 }
 

@@ -6,7 +6,8 @@ import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useFederatedGeometry } from './useFederatedGeometry';
 import { useFilteredGeometry } from './useFilteredGeometry';
 import { modelIndices } from '@/lib/model-placement/model-indices';
-import { lazy, Suspense, useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { Suspense, useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { createPortal } from 'react-dom';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { useAuthoredGridOverlay } from './useAuthoredGridOverlay';
@@ -82,7 +83,7 @@ import { isFeatureEnabled } from '@/lib/features';
  * geometry streaming, scene overlays, and interaction tools.
  */
 // Lazy: the scan-to-BIM overlay (#6894) and its mesh builder stay out of the entry chunk.
-const ScanDetectionOverlay = lazy(() => import('./useScanDetectionOverlay')
+const ScanDetectionOverlay = lazyChunk(() => import('./useScanDetectionOverlay')
   .then((m) => ({ default: m.ScanDetectionOverlay }))
   .catch((error: unknown) => {
     console.warn('[scan-to-bim] the detection overlay could not load', error);

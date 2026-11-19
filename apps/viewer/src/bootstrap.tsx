@@ -50,6 +50,7 @@ import './lib/placement-edit.boot';
 import { startLocales } from './i18n/locales.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
 import { installChunkVersionSkewRecovery } from './lib/chunk-version-skew';
+import { reportStaleDeployment } from './lib/stale-deployment';
 import { scheduleWasmPrewarm, scheduleFastPath } from './lib/wasm-prewarm';
 import { initializeUserContent } from './lib/storage/content-boot';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
@@ -112,7 +113,7 @@ export function prepareViewer(): void {
   // ships fresh hashes mid-session. Vite dispatches `vite:preloadError` for that;
   // reload once (sessionStorage-bounded) to pull the matching new chunks. See
   // chunk-version-skew.ts for why the reload must NOT suppress Vite's re-throw.
-  installChunkVersionSkewRecovery();
+  installChunkVersionSkewRecovery(reportStaleDeployment);
 
   // Pull the geometry engine binary down while the user is still deciding which
   // file to open, instead of on the click that opens it. See wasm-prewarm.ts.

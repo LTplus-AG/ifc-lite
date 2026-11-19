@@ -22,7 +22,8 @@
  * the kernel exactly as the `on` build does.
  */
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { useViewerStore } from '@/store';
 import { chooseGeometryKernel, requestedGeometryKernel, type GeometryKernel } from '@/store/geometryKernel';
 import { hasRetainedGeometryModel } from '@/store/retainedGeometry';
@@ -90,7 +91,7 @@ export function beginLazy(
   return deferredLoad(retry, importer);
 }
 
-const LazyChip = lazy(() => loadRetainedKernel().then((kernel) => ({ default: kernel.Chip })));
+const LazyChip = lazyChunk(() => loadRetainedKernel().then((kernel) => ({ default: kernel.Chip })));
 
 function Chip({ reload }: { reload: (file: File) => unknown }) {
   const open = useViewerStore((state) => hasRetainedGeometryModel(state.models));
@@ -98,7 +99,7 @@ function Chip({ reload }: { reload: (file: File) => unknown }) {
   return <Suspense fallback={null}><LazyChip reload={reload} /></Suspense>;
 }
 
-const LazySetting = lazy(() => import('@/components/viewer/settings/GeometryKernelSetting')
+const LazySetting = lazyChunk(() => import('@/components/viewer/settings/GeometryKernelSetting')
   .then((module) => ({ default: module.GeometryKernelSetting })));
 
 function prefetch(kernel: GeometryKernel): void {

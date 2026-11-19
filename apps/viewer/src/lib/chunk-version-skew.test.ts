@@ -28,6 +28,8 @@ function makeEvent(payload: unknown): VitePreloadErrorEvent & { defaultPrevented
 interface Harness {
   deps: ChunkSkewDeps;
   reloads: number;
+  /** How many times the user was asked to reload instead. */
+  refused: number;
   pendingAt: number | null;
   /** Epoch-ms of the last recorded reload, mirroring the sessionStorage key. */
   stored: number | null;
@@ -49,6 +51,7 @@ function makeDeps(opts: {
 } = {}): Harness {
   const h: Harness = {
     reloads: 0,
+    refused: 0,
     pendingAt: null,
     stored: opts.lastReloadAt ?? null,
     clock: opts.now ?? 1_000_000,
@@ -67,6 +70,7 @@ function makeDeps(opts: {
       return true;
     },
     markReloadPending: (now) => { h.pendingAt = now; },
+    reportRefused: () => { h.refused += 1; },
   };
   return h;
 }
@@ -241,6 +245,24 @@ describe('handlePreloadError', () => {
     assert.equal(h.reloads, 0);
   });
 
+  // #10684: the wasm sibling already raised the reload notice when its reload
+  // was refused; this one let the failure reach each call site on its own.
+  it('asks the user to reload when the automatic reload is refused, and only then', () => {
+    const fresh = makeDeps();
+    handlePreloadError(makeEvent(new Error('error loading dynamically imported module: /assets/x.js')), fresh.deps);
+    assert.equal(fresh.refused, 0, 'a reload is coming; no notice');
+
+    const spent = makeDeps({ lastReloadAt: 999_000 });
+    assert.equal(handlePreloadError(makeEvent(new Error('error loading dynamically imported module: /assets/x.js')), spent.deps), 'surfaced');
+    assert.equal(spent.refused, 1, 'budget spent');
+
+    for (const opts of [{ unreadable: true }, { unwritable: true }]) {
+      const h = makeDeps(opts);
+      handlePreloadError(makeEvent(new Error('boom')), h.deps);
+      assert.equal(h.refused, 1, JSON.stringify(opts));
+    }
+  });
+
   it('marks the reload pending only on the path that actually reloads', () => {
     const h = makeDeps({ now: 5_000 });
     handlePreloadError(makeEvent(new Error('boom')), h.deps);
@@ -321,6 +343,7 @@ it('offline panel imports surface without navigation or spending reload recovery
     assert.equal(h.reloads, 0);
     assert.equal(h.stored, null, 'offline failures do not consume the reload budget');
     assert.equal(h.pendingAt, null, 'offline errors are not suppressed as reload noise');
+    assert.equal(h.refused, 0, 'a reload cannot help offline, so none is asked for');
     network.onLine = true;
     assert.equal(handlePreloadError(event, h.deps), 'reloaded', 'online deploy-skew recovery still works');
     assert.equal(h.reloads, 1);

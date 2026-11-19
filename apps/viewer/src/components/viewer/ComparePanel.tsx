@@ -9,7 +9,8 @@
  * `useCompareOverlay`) and listed here. Row click selects + frames the element.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { GitCompareArrows, ChevronLeft } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -27,7 +28,7 @@ import { CompareSetupControls } from './compare/CompareSetupControls';
 import { CompareRunControls } from './compare/CompareRunControls';
 import { SavedComparisonLibrary } from './compare/SavedComparisonLibrary';
 import { CompareExportBar } from './compare/CompareExportBar';
-const CompareAnalysisSections = lazy(() => import('./compare/CompareAnalysisSections').then(module => ({ default: module.CompareAnalysisSections })));
+const CompareAnalysisSections = lazyChunk(() => import('./compare/CompareAnalysisSections').then(module => ({ default: module.CompareAnalysisSections })));
 import { AnalysisPanel, AnalysisStaleRegion } from './analysis/AnalysisPanel';
 import { AnalysisEmptyState } from './analysis/AnalysisEmptyState';
 import { loadDemoRevisions } from '@/lib/tours/demo-kit';

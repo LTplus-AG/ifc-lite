@@ -431,6 +431,12 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     expect(merged).toMatch(new RegExp(`^${shared}=IFCPROPERTYSINGLEVALUE\\('Scale',\\$,IFCREAL\\(0\\.5\\),\\$\\);$`, 'm'));
   });
 
+  it('keeps the Description of the Scale property it replaces', async () => {
+    const { merged } = await mergeEPSets([{ unit: 'm', easting: null },
+      { unit: 'mm', easting: 2600100, mapUnit: 'MILLIMETRE', scaleRecord: "IFCPROPERTYSINGLEVALUE('Scale','grid',IFCREAL(0.5),$)" }]);
+    expect(merged).toMatch(/=IFCPROPERTYSINGLEVALUE\('Scale','grid',IFCREAL\(500\.\),\$\);/);
+  });
+
   it('rescales a length in the ePSet_MapConversion that is no placement property', async () => {
     const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, { unit: 'mm', easting: 2600100, mapUnit: 'METRE', extraLength: true }]);
     expect(merged).toContain("IFCPROPERTYSINGLEVALUE('SourceLength',$,IFCLENGTHMEASURE(1.),$)");

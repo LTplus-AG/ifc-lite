@@ -72,8 +72,8 @@ export interface GeorefNormalizePlan {
 const CRS_UNIT_ATTR = { IFCPROJECTEDCRS: 6, IFCGEOGRAPHICCRS: 5 };
 /** 0-based index of `IfcMapConversion.Scale`. */
 const SCALE_ATTR = 7;
-/** 0-based `IfcPropertySet.Name` and `.HasProperties`, `IfcPropertySingleValue.Name` and `.Unit`. */
-const PSET_NAME_ATTR = 2, PSET_PROPERTIES_ATTR = 4, PROPERTY_NAME_ATTR = 0, PROPERTY_UNIT_ATTR = 3;
+/** 0-based `IfcPropertySet.Name` and `.HasProperties`, `IfcPropertySingleValue.Name`, `.Description` and `.Unit`. */
+const PSET_NAME_ATTR = 2, PSET_PROPERTIES_ATTR = 4, PROPERTY_NAME_ATTR = 0, PROPERTY_DESCRIPTION_ATTR = 1, PROPERTY_UNIT_ATTR = 3;
 const METRE_UNIT = 'IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)';
 /** The ePSet_MapConversion placement properties, by the names the parser reads (`EPSET_TRANSFORM_PROPERTIES`). */
 const EPSET_PLACEMENT = new Set(['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale']);
@@ -172,7 +172,7 @@ function planEPSets(dataStore: IfcDataStore): number[][] {
  * Unit; null when the set's property list cannot be read. A property that cannot be read is passed over, as the
  * parser passes it over.
  */
-function propertiesOf(dataStore: IfcDataStore, setId: number): Array<{ at: number; name: string; editable: boolean }> | null {
+function propertiesOf(dataStore: IfcDataStore, setId: number): Array<{ at: number; name: string; description: string; editable: boolean }> | null {
   const list = getStepAttr(dataStore, setId, PSET_PROPERTIES_ATTR);
   if (list === null) return null;
   const properties = [];
@@ -180,7 +180,7 @@ function propertiesOf(dataStore: IfcDataStore, setId: number): Array<{ at: numbe
     const id = Number(ref.slice(1)), name = getStepAttr(dataStore, id, PROPERTY_NAME_ATTR);
     if (name === null) continue;
     const editable = typeOf(dataStore, id) === 'IFCPROPERTYSINGLEVALUE' && slotUnset(getStepAttr(dataStore, id, PROPERTY_UNIT_ATTR) ?? '$');
-    properties.push({ at, name: label(name), editable });
+    properties.push({ at, name: label(name), description: getStepAttr(dataStore, id, PROPERTY_DESCRIPTION_ATTR) ?? '$', editable });
   }
   return properties;
 }
@@ -190,14 +190,14 @@ function planViewerEPSet(dataStore: IfcDataStore, conversion: MapConversion, crs
   plan: { records: Map<number, GeorefRecord>; minted: MintedRecords; unkept: number[]; implicitUnit: number[]; scaleLeft: number[] },
   modelScale: number, primaryScale: number): void {
   const { records, minted, unkept, implicitUnit, scaleLeft } = plan;
-  // Gives the set a new `name` property of `value` in place of the last one so named (the one the parser reads), or
-  // appended when it has none. The old record is left as it is, for any other set that lists it too. False when the
+  // Gives the set a new `name` property of `value` (with the replaced one's Description) in place of the last one so
+  // named (the one the parser reads), or appended when it has none. The old record is left as it is, for any other set that lists it too. False when the
   // property is no editable single value, or the set cannot be read, and the set is left as it is.
   const write = (setId: number, name: string, value: string): boolean => {
     const of = propertiesOf(dataStore, setId);
     const last = of?.filter(property => property.name === name).at(-1);
     if (!of || (last !== undefined && !last.editable)) return false;
-    const text = `IFCPROPERTYSINGLEVALUE('${name}',$,${value},$)`;
+    const text = `IFCPROPERTYSINGLEVALUE('${name}',${last?.description ?? '$'},${value},$)`;
     minted.refOf(text);
     records.set(setId, { kind: 'list', attr: PSET_PROPERTIES_ATTR, mint: text, at: last?.at });
     return true;

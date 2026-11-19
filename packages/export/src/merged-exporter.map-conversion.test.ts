@@ -171,7 +171,10 @@ describe('merged STEP export and map conversions (#10798)', () => {
 #16=IFCAXIS2PLACEMENT2D(#17,$);
 #17=IFCCARTESIANPOINT((${x},0.));
 #21=IFCRIGIDOPERATION(#14,#15,IFCLENGTHMEASURE(10.),IFCLENGTHMEASURE(20.),0.);` });
-    expect((await merge([planAt('0.'), planAt('500.')], 'IFC4X3')).contexts).toHaveLength(3);
+    // Two operations into contexts cannot be told equal, so B's model context stays apart with its own operation.
+    const plans = await merge([planAt('0.'), planAt('500.')], 'IFC4X3');
+    expect(plans.contexts).toHaveLength(4);
+    expect(new Set(plans.sources).size, 'one operation per context').toBe(plans.sources.length);
   });
 
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {

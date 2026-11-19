@@ -313,9 +313,15 @@ export function planInfrastructureUnify(
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
   // Two georeferences that differ keep this model's context, and its conversion with it, as its own root (#10798).
   const georef = resolveModelContextGeorefSignature(dataStore, lengthUnitScale);
+  const modelContextIds = modelInfra.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
+  // A context holds one coordinate operation (HasCoordinateOperation SET [0:1], #10873). Two that can be told equal,
+  // both into a CRS, become one below; two that cannot (either into another context) keep this context apart.
+  const own = modelContextIds.length > 0 ? contextOperation(dataStore, modelContextIds[0]) : null;
+  const shared = firstModelContext.contextOperation;
   const contextsCompatible = wcsSignaturesCompatible(firstModelContext.contextWcs,
     resolveModelContextWcs(dataStore, lengthUnitScale))
-    && georefSignaturesCompatible(firstModelContext.contextGeoref, georef);
+    && georefSignaturesCompatible(firstModelContext.contextGeoref, georef)
+    && !(own && shared && (own.crs === null || shared.crs === null));
   // Only the model's FIRST top-level context is (positionally) unified below;
   // any later sibling context — a model with both a 'Model' and a 'Plan'
   // context, say — is always retained. A subcontext may therefore unify ONLY
@@ -323,26 +329,21 @@ export function planInfrastructureUnify(
   // child of a retained sibling must stay with its parent, or its shape
   // representations get re-anchored onto the primary's frame while the parent
   // keeps its own.
-  const modelContextIds = modelInfra.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
   const firstContextIds = firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
   const unifiedContextId = contextsCompatible && modelContextIds.length > 0 && firstContextIds.length > 0
     ? modelContextIds[0]
     : null;
   // This model's georeference now lands on the shared context, so a later model must agree with it too.
   if (unifiedContextId !== null) firstModelContext.contextGeoref ??= georef;
-  // A context holds one coordinate operation (HasCoordinateOperation SET [0:1]): a later model's identical one maps
-  // onto the shared context's, with its CRS, instead of becoming a second (#10873). The first one to arrive is shared.
-  const own = unifiedContextId === null ? null : contextOperation(dataStore, unifiedContextId);
-  const shared = firstModelContext.contextOperation;
-  // Only an operation into a CRS on both sides: one into another context says nothing about that context's frame.
-  if (own && shared && own.crs !== null && shared.crs !== null) {
+  // A unified context's identical operation maps onto the shared one, with its CRS; the first to arrive is shared.
+  if (unifiedContextId !== null && own && shared && own.crs !== null && shared.crs !== null) {
     sharedRemap.set(own.operation, shared.operation);
     sharedRemap.set(own.crs, shared.crs);
     // The CRS's WKT goes with it (IfcCoordinateReferenceSystem.WellKnownText is SET [0:1]).
     // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
     const wkt = (dataStore.entityIndex.byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === own.crs);
     for (const id of [own.operation, own.crs, ...wkt]) skipEntityIds.add(id);
-  } else if (own && !shared) firstModelContext.contextOperation = offsetOperation(own, modelOffset);
+  } else if (unifiedContextId !== null && own && !shared) firstModelContext.contextOperation = offsetOperation(own, modelOffset);
   for (const [type, firstIds] of firstModelInfraMap) {
     const thisIds = modelInfra.get(type);
     if (!thisIds || firstIds.length === 0 || thisIds.length === 0) continue;

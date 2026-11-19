@@ -30,4 +30,3 @@ export function attachmentsForSend(value: ComposerAttachmentValue): AssistantAtt
     ...(value.rooms ? { rooms: roomAttachmentText(value.rooms), roomSnapshot: value.rooms } : {}),
   };
 }
-

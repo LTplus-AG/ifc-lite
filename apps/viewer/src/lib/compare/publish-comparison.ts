@@ -65,4 +65,3 @@ export function publishCompareResult(built: BuiltPair): {
   store.setCompareSelectedKey(null);
   return { result, matchByContent };
 }
-

@@ -55,6 +55,7 @@ export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent
     },
     scene: renderer && !instancedReleased ? renderer.getScene() : null,
     instancedReleased,
+    hasInstanced: (modelId) => hasInstancedShards(modelId),
     backing,
     isCurrent,
   });

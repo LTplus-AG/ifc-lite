@@ -52,6 +52,8 @@ export interface DrawingGeometryDeps {
   scene: InstancedScene | null;
   /** Whether instanced occurrences must come from the backings (scene CPU templates released). */
   instancedReleased: boolean;
+  /** Whether the model ever streamed instanced shards (the store's record, independent of any backing). */
+  hasInstanced(modelId: string): boolean;
   /** The model's current backing generation, if any. */
   backing(modelId: string): ModelGeometryBacking | undefined;
   /** False once a newer drawing request superseded this one: the next batch aborts the read. */
@@ -105,6 +107,15 @@ export class DrawingGeometry {
     // Pin every generation this drawing reads now: a later generation must
     // never answer a pass that started on this one.
     for (const modelId of releasedModels) this.pinned.set(modelId, usableBacking(deps.backing(modelId), modelId));
+    // Instanced occurrences come only from the backing once the scene let go of
+    // them: a model that streamed shards but whose backing holds none is incomplete.
+    if (deps.instancedReleased) {
+      for (const modelId of deps.visibleModels) {
+        if (deps.hasInstanced(modelId) && this.pinned.get(modelId)?.directory.shards.length === 0) {
+          throw new GeometryUnavailableError(`Model ${modelId} streamed instanced geometry its backing does not hold`);
+        }
+      }
+    }
     this.released = releasedModels.size > 0;
   }
 

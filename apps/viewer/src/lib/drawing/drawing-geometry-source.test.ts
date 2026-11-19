@@ -132,7 +132,7 @@ function deps(w: World, overrides: Partial<DrawingGeometryDeps> = {}): DrawingGe
   return {
     modelOf, visibleModels: ['a', 'b'], modelIndexOf: (id) => MODELS[id as 'a' | 'b'].index,
     translationFor: (id) => PLACEMENT[id], typeOf: (id) => TYPES.get(id), scene: residentScene(w),
-    instancedReleased: false, backing: (id) => w.backings.get(id), isCurrent: () => true, ...overrides,
+    instancedReleased: false, hasInstanced: () => true, backing: (id) => w.backings.get(id), isCurrent: () => true, ...overrides,
   };
 }
 
@@ -280,6 +280,21 @@ describe('drawing geometry source over released geometry', () => {
     const resident = new DrawingGeometry([], deps(w, { scene: listedOnly }));
     await assert.rejects(new Drawing2DGenerator().generateFromSource(resident.source(keepAll, { instanced: true }), CONFIGS[0][1], OPTIONS),
       /no resident occurrence geometry/);
+    await w.registry.close();
+  });
+
+  it('refuses a released model whose backing lost the instanced shards it streamed', async () => {
+    const w = await world();
+    const flatOnly = await w.registry.begin('a', { chunkBytes: 512 });
+    await flatOnly.writer.append(flatModel('a').map(({ modelIndex: _index, ...mesh }) => mesh));
+    await flatOnly.writer.close();
+    w.backings.set('a', flatOnly);
+    release(w);
+    assert.throws(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true })),
+      /streamed instanced geometry its backing does not hold/);
+    // A model that never had instancing needs no shards.
+    assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true,
+      hasInstanced: (id) => id !== 'a' })));
     await w.registry.close();
   });
 });

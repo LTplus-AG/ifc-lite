@@ -57,6 +57,10 @@ export const exportNativeAnonymizedOperations = [
     const check = nativeExportGuard(c, [i.target_model_id]); check(); const p = await prepare(i, check);
     if (JSON.stringify([...p.included].sort((a, b) => a - b)) !== JSON.stringify([...i.expected_included_ids].sort((a, b) => a - b))) throw new Error('Native anonymized membership changed since preview.');
     const out = produceAnonymizedExport({ store: p.store, fileStem: i.file_stem, includedIds: p.included, options: toAnonymizeOptions(i.anonymize) });
-    return nativeArtifact(c, new Blob([new Uint8Array(out.result.content)], { type: 'text/plain' }), out.filename, { ...out.result.stats, truncated: p.related.truncated }, check);
+    // Named fields only, so a new stat reaches the agent on purpose. The zeroed placements' original coordinates are
+    // what anonymizing removed: the agent gets how many, not where (#10695). truncated: expansion hit its budget (#10794).
+    const { entityCount, includedRootEntityCount, prunedRelationshipIds, droppedPropertySetIds, droppedPropertyReferenceIds, warnings, zeroedPlacements } = out.result.stats;
+    return nativeArtifact(c, new Blob([new Uint8Array(out.result.content)], { type: 'text/plain' }), out.filename, { entityCount, includedRootEntityCount,
+      prunedRelationshipIds, droppedPropertySetIds, droppedPropertyReferenceIds, warnings, zeroedPlacementCount: zeroedPlacements.length, truncated: p.related.truncated }, check);
   }),
 ];

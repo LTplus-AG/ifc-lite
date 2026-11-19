@@ -16723,7 +16723,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "fields.values",
     "version": 1,
     "owner": "hierarchy",
-    "description": "Discover native bounded sampled material, classification, predefined-type and property-value choices. Sampling limits remain those of the native UI discovery service.",
+    "description": "Discover native bounded sampled material, classification, predefined-type and property-value choices. Sampling limits remain those of the native UI discovery service. The five fields share the result size limit; a field cut to fit is named in truncated.",
     "needs": "model",
     "effects": [
       "read"
@@ -16770,6 +16770,21 @@ export const operationContracts: readonly OperationContract[] = [
               "type": "string"
             }
           }
+        },
+        "truncated": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "materials",
+              "classificationSystems",
+              "classifications",
+              "predefinedTypes",
+              "propertyValues"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
         }
       },
       "required": [

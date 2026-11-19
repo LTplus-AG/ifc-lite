@@ -13,8 +13,15 @@
 
 import { useViewerStore } from '@/store';
 import { showLoadError as reportLoadError } from '@/lib/analytics';
+import { classifyLoadError } from '@/lib/load-errors';
+import { formatLoadError } from '@/lib/load-error-message';
 
-/** Show `message` as this load's failure; `retry` defaults to re-running this load. */
+/**
+ * Show `message` as this load's failure; `retry` defaults to re-running this
+ * load. A browser without WebAssembly SIMD (#10784) gets the translated
+ * explanation and no Retry, since it fails the same way. That holds also when a
+ * format branch passed the raw engine text under its own code.
+ */
 export type LoadFailureReporter = (message: string, code: string, retry?: (() => void) | null) => void;
 
 export function loadFailureReporter(
@@ -25,10 +32,12 @@ export function loadFailureReporter(
   onLoadError: ((message: string) => void) | undefined,
 ): LoadFailureReporter {
   return (message, code, retry = retryThisLoad) => {
-    const shown = activity.fail(message);
+    const rawSimd = code !== 'wasm_simd_unsupported' && classifyLoadError(message) === 'wasm_simd_unsupported';
+    const noSimd = rawSimd || code === 'wasm_simd_unsupported';
+    const shown = activity.fail(rawSimd ? formatLoadError(message) : message);
     onLoadError?.(shown);
     const { setError, setLastLoadRetry } = useViewerStore.getState();
-    reportLoadError(setError, setLastLoadRetry, shown, code, retry, file);
+    reportLoadError(setError, setLastLoadRetry, shown, noSimd ? 'wasm_simd_unsupported' : code, noSimd ? null : retry, file);
   };
 }
 

@@ -47,6 +47,8 @@ export function formatLoadError(err: unknown, fileName?: string, context?: unkno
         `This usually means the app updated in the background, or a proxy/antivirus blocked it. ` +
         `Please reload the page (Ctrl/Cmd+Shift+R). If it persists, check your network or extensions.`
       );
+    case 'wasm_simd_unsupported':
+      return translate('viewportLighting.container.loadErrorCard.wasmSimdUnsupported');
     case 'out_of_memory':
       return (
         `Ran out of memory while processing ${subject}. ` +

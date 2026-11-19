@@ -13111,7 +13111,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "authoring.room.prepare",
     "version": 1,
     "owner": "model",
-    "description": "Prepare the canonical room proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.",
+    "description": "Prepare the canonical room proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures. Room preparation remeshes the storey walls first, so it runs through viewer_operation_execute with the edit grant, in the foreground.",
     "needs": "model",
     "effects": [
       "view"

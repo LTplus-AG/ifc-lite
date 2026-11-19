@@ -7,7 +7,8 @@
  * re-resolved each storey row's membership on every panel render. Through the
  * hook the panel uses: an edit the tree does not show keeps its row objects
  * (the input the memoized rows compare), a real change still shows, and
- * a storey's members are resolved once per input generation. Real STEP store, real actions.
+ * a storey's members are resolved once per input generation and view
+ * revision. Real STEP store, real actions.
  */
 
 import '@/test/setup-dom.js';

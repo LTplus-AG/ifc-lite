@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { memo, useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { HierarchyNode, type HierarchyNodeProps } from './HierarchyNode';
 import type { TreeNode } from './types';
 
@@ -18,19 +18,27 @@ export interface HierarchyRowCallbacks extends NodeHandlers {
 }
 
 /**
- * Row handlers for the panel's lifetime that call the callbacks of the last
- * committed render, so a row re-renders only when what it shows changes (#10535).
+ * Forwards each handler read to the latest callback of that name. Built here,
+ * not in the hook, so the trap closes over only `latest` and the names, never
+ * a render's callbacks; the proxy presents exactly the callbacks interface.
+ */
+function forwardToLatest(latest: { readonly current: HierarchyRowCallbacks }, names: string[]): HierarchyRowCallbacks {
+  return new Proxy(Object.fromEntries(names.map((key) => [key, key])), {
+    get: (target, key) => Object.hasOwn(target, key)
+      ? (...args: unknown[]) => Reflect.apply(Reflect.get(latest.current, key), undefined, args) : undefined,
+  }) as unknown as HierarchyRowCallbacks;
+}
+
+/**
+ * A handlers object for the panel's lifetime whose members call the callbacks
+ * of the last committed render, so a row re-renders only when what it shows
+ * changes (#10535). The object is stable; each member read is a new forwarder.
  */
 export function useStableRowHandlers(callbacks: HierarchyRowCallbacks): HierarchyRowCallbacks {
   const latest = useRef(callbacks);
   // Published at commit, so a discarded render never leaves rows calling its callbacks.
   useLayoutEffect(() => { latest.current = callbacks; });
-  // Each handler read returns a forwarder to the latest callback of that name. The
-  // target holds only the names, so the first render's closures are not kept; the
-  // proxy presents exactly the callbacks interface, which the cast states.
-  return useState(() => new Proxy(Object.fromEntries(Object.keys(callbacks).map((key) => [key, key])), {
-    get: (names, key) => key in names ? (...args: unknown[]) => Reflect.apply(Reflect.get(latest.current, key), undefined, args) : undefined,
-  }) as unknown as HierarchyRowCallbacks)[0];
+  return useState(() => forwardToLatest(latest, Object.keys(callbacks)))[0];
 }
 
 type RowValues = Omit<HierarchyNodeProps, 'virtualRow' | 'onNodeClick' | 'rowRef' | 'onRowFocus' | keyof NodeHandlers>;
@@ -40,7 +48,7 @@ export interface HierarchyRowProps extends RowValues {
   index: number;
   start: number;
   size: number;
-  /** Stable for the panel's lifetime (`useStableRowHandlers`). */
+  /** One object for the panel's lifetime (`useStableRowHandlers`). */
   handlers: HierarchyRowCallbacks;
   /** The section keyboard's stable row registration and focus callbacks. */
   registerRow: (nodeId: string, el: HTMLElement | null) => void;
@@ -50,9 +58,7 @@ export interface HierarchyRowProps extends RowValues {
 function Row({ section, index, start, size, handlers, registerRow, focusRow, ...values }: HierarchyRowProps) {
   const { node } = values;
   const { click, ...nodeHandlers } = handlers;
-  // Stable so a re-render does not unregister and re-register the row element.
-  const rowRef = useCallback((el: HTMLElement | null) => registerRow(node.id, el), [registerRow, node.id]);
-  return <HierarchyNode {...values} {...nodeHandlers} virtualRow={{ start, size }} rowRef={rowRef} onRowFocus={() => focusRow(node.id)}
+  return <HierarchyNode {...values} {...nodeHandlers} virtualRow={{ start, size }} rowRef={(el) => registerRow(node.id, el)} onRowFocus={() => focusRow(node.id)}
     onNodeClick={(_: TreeNode, event: ActivationEvent) => click(node, event, section, index)} />;
 }
 

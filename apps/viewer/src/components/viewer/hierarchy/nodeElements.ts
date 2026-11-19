@@ -93,9 +93,9 @@ export function createNodeElementsResolver(
   /** Row id to [views' revisions, elements]. */
   const resolved = new Map<string, [string, number[]]>();
   return (node) => {
-    // Only a model's contribution header inside a unified storey has a `contrib-` id.
+    // Only a model's contribution header inside a unified storey has a `contrib-` id (treeDataBuilder).
     if (!MEMBERSHIP_ROWS.has(node.type) && !node.id.startsWith('contrib-')) return resolve(node);
-    // SDK raw writes advance the views' revisions without a mutationVersion.
+    // SDK raw, skip-history and remote writes advance the views' revisions without a viewer mutationVersion.
     const revision = node.modelIds.map((id) => mutationViews.get(id)?.getMutationRevision()).join();
     const cached = resolved.get(node.id);
     if (cached?.[0] === revision) return cached[1];

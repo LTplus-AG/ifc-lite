@@ -37,6 +37,7 @@ export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: st
 export type FiledProcessedModelRequest = ProcessedModelRequest & Pick<ProcessedModelSource, 'serverUrl'>;
 let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
+const hostRequestListeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`); a model named in the page URL then yields. */
 let hostRequested = false;
 type PageUrlParameter = 'processed' | 'model' | 'room';
@@ -77,6 +78,7 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
   const override = options?.serverUrl;
   const request = override == null ? normalizedRequest(model) : { ...normalizedRequest(model), serverUrl: cleanServerUrl(override) };
   hostRequested = true;
+  for (const listener of [...hostRequestListeners]) listener();
   fileRequest(request);
 }
 
@@ -133,4 +135,11 @@ export function takeProcessedModelRequest(): FiledProcessedModelRequest | null {
 export function onProcessedModelRequest(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
+}
+
+
+/** Called for a valid host request before the viewer can consume it. */
+export function onHostProcessedModelRequest(listener: () => void): () => void {
+  hostRequestListeners.add(listener);
+  return () => { hostRequestListeners.delete(listener); };
 }

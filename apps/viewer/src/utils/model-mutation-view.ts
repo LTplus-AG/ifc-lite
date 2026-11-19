@@ -42,7 +42,7 @@ export function discardOverlappingRetainedEdits(
 
 /** Source-only views carry no work to reload, and must not retain an old allocator floor. */
 export function discardUnchangedMutationViews(state: Partial<Pick<import('@/store').ViewerState, 'mutationViews' | 'clearMutationView' | 'georefMutations' | 'scheduleSourceModelId' | 'scheduleIsEdited' | 'scheduleData'>>): void {
-  // Georeference and schedule edits live outside the view; clearing it would drop their dirty flag and history.
+  // Retain views associated with unsaved georeference or schedule work as well as overlay edits.
   const modelIds = [...state.mutationViews ?? []]
     .filter(([modelId, view]) => !view.hasPendingChanges() && view.getMutationCount() === 0 && !hasPendingWorkOutsideView(state, modelId))
     .map(([modelId]) => modelId);

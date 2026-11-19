@@ -257,6 +257,18 @@ test('#10353 server proof: a refusal seen only by the poll makes events inside i
   assert.equal(precise.sourcePostBeforeDecision, false);
 });
 
+test('#10445 server proof: the open polling-window boundary is provably before the decision', () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const polled = { ms: 2031, event: 'store-error', windowMs: 2000, text: "This IFC file exceeds this tab's local processing memory budget" };
+  for (const [ms, expected] of [[30, true], [31, true], [32, null], [2030, null], [2031, false], [2032, false]]) {
+    const summary = serverAttemptSummary([polled], { watching: true, tracker: withRequests({ after: [ms] }) });
+    assert.equal(summary.attemptBeforeDecision, expected, `request at ${ms} ms relative to (31, 2031]`);
+    if (ms === 31) assert.equal(expectFlags(summary, SERVER_FIRST).pass, true, 'the boundary request satisfies server-first');
+  }
+  const precise = serverAttemptSummary([{ ...polled, windowMs: 0 }], { watching: true, tracker: withRequests({ after: [2031] }) });
+  assert.equal(precise.attemptBeforeDecision, false, 'simultaneous events are not strictly ordered');
+});
+
 test('#10353 server proof: unreported instrumentation gives null, and null never passes', async () => {
   const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
   const dialog = { ms: 5, event: 'dialog', text: 'This model may exceed available memory' };

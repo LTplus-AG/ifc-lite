@@ -36,7 +36,7 @@ export function serverAttemptSummary(timeline, { watching, tracker }) {
   const before = (ms, observed) => {
     if (!observed || !pickKnown || firstDecisionMs === null) return null;
     if (ms === null || ms === undefined || ms >= firstDecisionMs) return false;
-    return ms < firstDecisionMs - windowMs ? true : null;
+    return ms <= firstDecisionMs - windowMs ? true : null;
   };
   const trackerReported = tracker?.reported === true;
   const facts = trackerReported ? tracker.facts : null;

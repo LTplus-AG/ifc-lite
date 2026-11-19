@@ -59,9 +59,13 @@ describe('the .USERDEFINED. label (#10824)', () => {
         .toBe("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);");
     }
     // Down, the label is UserDefinedFunction, IFC2X3's short name for it.
-    expect(run("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", 'IFC4X3', 'IFC2X3').out)
-      .toBe("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'DISPATCHINGBOARD');");
-    expect(run('#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,$);', 'IFC4', 'IFC2X3').out)
-      .toBe("#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'SOUNDPOWERLEVELUNIT');");
+    expect(run("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", 'IFC4X3', 'IFC2X3'))
+      .toEqual({ out: "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'DISPATCHINGBOARD');", warnings: [] });
+    expect(run('#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,$);', 'IFC4', 'IFC2X3'))
+      .toEqual({ out: "#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'SOUNDPOWERLEVELUNIT');", warnings: [] });
+    // A label already set keeps its value; the member name is reported lost.
+    const occupied = run("#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,'dB');", 'IFC4', 'IFC2X3');
+    expect(occupied.out).toBe("#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'dB');");
+    expect(occupied.warnings.join('\n')).toMatch(/label slot already held a value.*IFCDERIVEDUNIT\.UnitType \.SOUNDPOWERLEVELUNIT\./);
   });
 });

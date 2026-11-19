@@ -150,3 +150,14 @@ test('text booleans from evidence preview and commit as booleans against a boole
   assert.equal(views.get('A')!.getPropertyValue(102, 'Pset_Notes', 'Flag'), 'true', 'a text property keeps text');
   assert.equal(views.get('A')!.getPropertyValue(102, 'Pset_WallCommon', 'IsExternal'), false, 'the conflicting row was not written');
 });
+
+test('undoing a reviewed edit to an unset attribute leaves it unset, not an empty string (#10810)', async () => {
+  const { views } = await install();
+  const preview = previewModelChanges(useViewerStore.getState(), batch([
+    { op: 'attribute.set', target: { globalId: W1 }, name: 'Description', expected: '', value: 'Described' },
+  ]));
+  assert.ok(commitModelChanges(useViewerStore, preview, new Set([0]), 'test').ok);
+  assert.equal(useViewerStore.getState().undoStacks.get('A')?.at(-1)?.oldValue, null, 'the prior is recorded as unset');
+  useViewerStore.getState().undo('A');
+  assert.deepEqual(views.get('A')!.getAttributeMutationsForEntity(101), [], 'no overlay is left, so the source $ stands');
+});

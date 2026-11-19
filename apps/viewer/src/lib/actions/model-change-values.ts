@@ -10,7 +10,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import type { ViewerState } from '@/store';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
-import type { ChangeScalar, ModelChange } from '@ifc-lite/ai/artifacts';
+import { EDITABLE_ATTRIBUTES, type ChangeScalar, type ModelChange } from '@ifc-lite/ai/artifacts';
 
 /** A value that cannot be compared or written by this layer (lists, references). */
 export const UNSUPPORTED_VALUE = Symbol('unsupported-value');
@@ -66,6 +66,14 @@ export function currentValue(reader: ModelReader, expressId: number, change: Mod
 export function effectiveAttribute(reader: ModelReader, expressId: number, name: string): string {
   const { dataStore, view } = reader;
   return effectiveListStringAttribute(dataStore, view, expressId, name, () => baseAttribute(dataStore, expressId, name));
+}
+
+/**
+ * The value an undo of an edit to attribute `name` restores: the effective string, null when unset, or undefined for
+ * an attribute this reader cannot read (anything but IfcRoot's editable strings).
+ */
+export function attributeUndoPrior(reader: ModelReader, expressId: number, name: string): string | null | undefined {
+  return (EDITABLE_ATTRIBUTES as readonly string[]).includes(name) ? effectiveAttribute(reader, expressId, name) || null : undefined;
 }
 
 const TEXT_BOOLEAN = /^(true|false)$/i;

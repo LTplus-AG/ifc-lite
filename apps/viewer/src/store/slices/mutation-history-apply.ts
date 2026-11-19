@@ -106,6 +106,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
     }
   } else if (mutation.type === 'DELETE_PROPERTY') {
     if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
+      // The delete recorded the row's types, so the property returns as it was, not as text.
       view.setProperty(
         mutation.entityId,
         mutation.psetName,
@@ -113,7 +114,8 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
         mutation.oldValue,
         mutation.valueType,
         undefined,
-        true // skipHistory
+        true, // skipHistory
+        mutation.dataType,
       );
     }
   } else if (mutation.type === 'CREATE_QUANTITY') {
@@ -241,7 +243,9 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
     replayQuantityMutation(view, mutation, 'redo', true);
   } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (mutation.attributeName && mutation.newValue !== undefined) {
-      view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.newValue), undefined, true);
+      // As the forward edit wrote it: a null is the attribute cleared, never the text 'null'.
+      const value = mutation.newValue === null ? '$' : String(mutation.newValue);
+      view.setAttribute(mutation.entityId, mutation.attributeName, value, undefined, true);
     }
   } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
     const index = positionalIndex(mutation.attributeName);

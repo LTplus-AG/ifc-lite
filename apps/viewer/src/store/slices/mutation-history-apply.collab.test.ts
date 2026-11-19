@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { WALL_ID, model, parseHelloWall, seed } from '@/test/agent-tools-fixture';
+import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 
 const initial = useViewerStore.getState();
 /** A fresh session handle: undo replays inside its transaction. */
@@ -27,6 +28,7 @@ beforeEach(async () => {
     mirrorPropertyEdit: (...args) => { mirrored.push(['edit', ...args]); },
     mirrorPropertyDelete: (...args) => { mirrored.push(['delete', ...args]); },
     mirrorAttributeEdit: (...args) => { mirrored.push(['attribute', ...args]); },
+    mirrorPlacementEdit: (...args) => { mirrored.push(['placement', ...args]); },
   });
 });
 afterEach(() => useViewerStore.setState(initial));
@@ -122,5 +124,53 @@ describe('undo and redo publish what the forward edit published (#10695)', () =>
     useViewerStore.setState({ canCollabEdit: () => false });
     state().undo('hello');
     assert.deepEqual(take(), []);
+  });
+});
+
+describe('undo and redo the room did not get, or got differently (#10810)', () => {
+  const view = () => state().getMutationView('hello')!;
+
+  it('an edit to an unset attribute: undo publishes it unset, and drops the local overlay', () => {
+    state().setAttribute('hello', WALL_ID, 'Description', 'Typed', null);
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Description', '$']]);
+    assert.deepEqual(view().getAttributeMutationsForEntity(WALL_ID), []);
+  });
+
+  it('an SDK attribute edit: undo publishes the value it replaced', () => {
+    useViewerStore.setState({ editEnabled: true });
+    createMutateAdapter(useViewerStore).setAttribute({ modelId: 'hello', expressId: WALL_ID }, 'Name', 'Renamed');
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Name', 'Wall']]);
+  });
+
+  it('a move: undo moves the room copy back, redo forward again', () => {
+    const moved = state().translateEntity('hello', WALL_ID, [1, 0, 0]);
+    assert.ok(moved.ok, 'reason' in moved ? moved.reason : '');
+    assert.deepEqual(take().filter(call => call[0] === 'placement'), [['placement', 'hello', WALL_ID, [1, 0, 0]]]);
+    state().undo('hello');
+    assert.deepEqual(take(), [['placement', 'hello', WALL_ID, [-1, -0, -0]]]);
+    state().redo('hello');
+    assert.deepEqual(take(), [['placement', 'hello', WALL_ID, [1, 0, 0]]]);
+  });
+
+  it('undoing a property delete restores its type locally too, not text', () => {
+    state().deleteProperty('hello', WALL_ID, 'Pset_WallCommon', 'IsExternal');
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['edit', 'hello', WALL_ID, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean, 'IFCBOOLEAN']]);
+    const row = view().getForEntity(WALL_ID).find(set => set.name === 'Pset_WallCommon')?.properties.find(p => p.name === 'IsExternal');
+    assert.equal(row?.type, PropertyValueType.Boolean);
+  });
+
+  it('redoing an edit that cleared an attribute clears it again, never the text \'null\'', () => {
+    state().setAttribute('hello', WALL_ID, 'Description', null as unknown as string, 'Before');
+    state().undo('hello');
+    take();
+    state().redo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Description', '$']]);
+    assert.deepEqual(view().getAttributeMutationsForEntity(WALL_ID), [{ name: 'Description', value: '$' }]);
   });
 });

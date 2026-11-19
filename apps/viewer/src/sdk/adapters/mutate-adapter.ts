@@ -9,6 +9,7 @@ import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-vi
 import { newMutationBatchId } from '../../store/slices/mutation-batch-tags.js';
 import { openBackendWriteCapture, trackBackendWrite, type BackendWriteCapture } from './backend-write-capture.js';
 import { mutationDenial } from '../../store/mutation-permission.js';
+import { attributeUndoPrior, modelReader } from '@/lib/actions/model-change-values';
 
 export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
   const assertCanEdit = (operation: string, modelId: string): void => {
@@ -43,7 +44,9 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, ref.modelId);
       if (!getOrCreateMutationView(store, ref.modelId)) return undefined;
-      state.setAttribute?.(normalizedModelId, ref.expressId, attrName, value);
+      // The value before the edit, so its undo restores it here and in a collab room.
+      const reader = modelReader(state, normalizedModelId);
+      state.setAttribute?.(normalizedModelId, ref.expressId, attrName, value, reader ? attributeUndoPrior(reader, ref.expressId, attrName) : undefined);
       return undefined;
     },
     deleteProperty(ref: EntityRef, psetName: string, propName: string) {

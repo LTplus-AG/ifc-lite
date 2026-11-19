@@ -202,6 +202,15 @@ describe('attribute editor commits only real, valid changes (#5872)', () => {
     assert.equal(undo().length, 2, 'the freed GUID commits');
   });
 
+  it('filling an empty attribute records it as unset, so a room undo can restore it (#10810)', () => {
+    const forward = useViewerStore.getState().setAttribute, priors: unknown[] = [];
+    useViewerStore.setState({ setAttribute: (...args) => { priors.push(args[4]); return forward(...args); } });
+    const input = openEditor(mount('Description', ''), 'empty');
+    type(input, 'Filled');
+    key(input, 'Enter');
+    assert.deepEqual(priors, [null]);
+  });
+
   it('editing a value this session blanked records the blank as the undo value', () => {
     useViewerStore.getState().setAttribute('m', 1, 'Description', '', undefined);
     const input = openEditor(mount('Description', ''), 'empty');

@@ -98,7 +98,8 @@ function write(state: ViewerState, modelId: string, expressId: number, change: M
       break;
     }
     case 'attribute.set':
-      written = state.setAttribute(modelId, expressId, change.name, change.value, typeof before === 'string' ? before : '');
+      // `before` is the effective IfcRoot string, '' when unset: recorded as unset, so undo restores `$`, not ''.
+      written = state.setAttribute(modelId, expressId, change.name, change.value, typeof before === 'string' ? before || null : undefined);
       break;
   }
   if (!written) throw new Error(`The model refused ${changeField(change)} on ${change.target.globalId}`);

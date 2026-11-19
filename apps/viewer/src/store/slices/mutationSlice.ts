@@ -63,7 +63,7 @@ export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
-import { mirroredSession, propertyBefore, rememberPublishedEdit } from './mutation-room-history.js';
+import { mirroredSession, propertyBefore, rememberPublishedEdit, rememberPublishedMove } from './mutation-room-history.js';
 import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
 import { hasPendingScheduleEdits } from './pending-outside-view.js';
@@ -348,7 +348,8 @@ export interface MutationSlice extends CostUndoMethods {
     entityId: number,
     attrName: string,
     value: string,
-    oldValue?: string
+    /** The value before the edit, which undo restores (null: it was unset); omitted when the caller does not know it. */
+    oldValue?: string | null
   ) => Mutation | null;
 
   /**
@@ -1145,7 +1146,6 @@ export const createMutationSlice: StateCreator<
     const view = get().getMutationView(modelId);
     if (!view) return null;
 
-    const session = mirroredSession(get(), modelId), previous = session ? propertyBefore(view, entityId, psetName, propName) : undefined;
     const mutation = view.deleteProperty(entityId, psetName, propName);
     if (!mutation) return null;
 
@@ -1154,7 +1154,9 @@ export const createMutationSlice: StateCreator<
     // Mirror into the collab CRDT — room model only, gated in the callee. See
     // the note in `setProperty`.
     get().mirrorPropertyDelete(modelId, entityId, psetName, propName);
-    if (session) rememberPublishedEdit(mutation, session, { inverse: previous });
+    // The delete recorded the row's types, which its undo restores here and in the room.
+    const session = mirroredSession(get(), modelId);
+    if (session) rememberPublishedEdit(mutation, session, mutation.valueType === undefined ? {} : { inverse: { type: mutation.valueType, dataType: mutation.dataType } });
 
     return mutation;
   },
@@ -1235,7 +1237,8 @@ export const createMutationSlice: StateCreator<
     const view = get().getMutationView(modelId);
     if (!view) return null;
 
-    const mutation = view.setAttribute(entityId, attrName, value, oldValue);
+    // An unset prior has no value to restore locally: the undo drops the overlay.
+    const mutation = view.setAttribute(entityId, attrName, value, oldValue ?? undefined);
 
     set((state) => recordHistory(state, modelId, [mutation]));
 
@@ -1243,7 +1246,7 @@ export const createMutationSlice: StateCreator<
     // the note in `setProperty`.
     get().mirrorAttributeEdit(modelId, entityId, attrName, value);
     const session = mirroredSession(get(), modelId);
-    if (session) rememberPublishedEdit(mutation, session);
+    if (session) rememberPublishedEdit(mutation, session, oldValue === undefined ? {} : { attributePrior: oldValue });
 
     return mutation;
   },
@@ -1400,6 +1403,7 @@ export const createMutationSlice: StateCreator<
     // Mirror the move to peers as the entity's canonical placement
     // (`usd::xformop`). No-op outside a collab session.
     get().mirrorPlacementEdit(modelId, expressId, delta);
+    rememberPublishedMove(get(), modelId, mutation, expressId, delta);
 
     return { ok: true, newCoordinates: pointToMetres(dataStore, nativeNext) };
   },
@@ -1466,6 +1470,7 @@ export const createMutationSlice: StateCreator<
       }
       // Mirror the move to peers as the entity's placement (`usd::xformop`).
       get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
+      rememberPublishedMove(get(), modelId, mutation, expressId, [dx, dy, dz]);
     }
     return { ok: true, newCoordinates: position };
   },

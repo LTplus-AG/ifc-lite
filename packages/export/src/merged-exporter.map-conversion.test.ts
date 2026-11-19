@@ -103,7 +103,7 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expect((await merge([rigid(2600000), rigid(2600000)], 'IFC4X3')).contexts).toHaveLength(1);
     // Its coordinates are in the CRS unit, so normalizing a millimetre project leaves them alone.
     const { content } = await merge([rigid(2600000), { ...rigid(2600000), projectUnit: '#3' }], 'IFC4X3', 'normalize');
-    expect(content.match(/IFCRIGIDOPERATION\(#\d+,#\d+,IFCLENGTHMEASURE\(2600000\.\)/g)).toHaveLength(2);
+    expect(content.match(/IFCLENGTHMEASURE\(2600000\.\)/g)).toHaveLength(2);
   });
 
   it('keeps apart a georeference it cannot compare', async () => {

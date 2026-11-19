@@ -19,6 +19,7 @@
 
 import { assertProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
 import { SERVER_URL, USE_SERVER } from '@/utils/ifcConfig';
+import type { ViewerRuntimeConfig } from './features/runtime-config';
 
 /** A stored result to open: the reference (`bytes` 0 when unknown) and the name to show. */
 export interface ProcessedModelRequest extends ProcessedModelRef {
@@ -37,8 +38,10 @@ export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: st
 export type FiledProcessedModelRequest = ProcessedModelRequest & Pick<ProcessedModelSource, 'serverUrl'>;
 let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
-/** A host asked for a model (`openProcessedModel`); a model named in the page URL then yields. */
+/** A host asked for a model (`openProcessedModel`, or the configuration's start model); a model named in the page URL then yields. */
 let hostRequested = false;
+/** Any processed model was requested (host, configuration or page URL); the browser-side fast path then stays off. */
+let anyRequested = false;
 type PageUrlParameter = 'processed' | 'model' | 'room';
 const ignoredLogged = new Set<PageUrlParameter>();
 
@@ -108,6 +111,7 @@ export function pageUrlModelAllowed(parameter: PageUrlParameter): boolean {
 /** Tests only: forget host requests, the waiting request and the ignored-parameter log. */
 export function resetProcessedModelRequestsForTests(): void {
   hostRequested = false;
+  anyRequested = false;
   ignoredLogged.clear();
   pending = null;
 }
@@ -117,9 +121,25 @@ function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest 
   return { sha256, bytes: processedModelSize(model.bytes), name: model.name || 'model.ifc' };
 }
 
+/** A processed model was asked for on this page: it is meshed on the server, so nothing needs warming in the browser. */
+export function processedModelRequested(): boolean {
+  return anyRequested;
+}
+
 function fileRequest(request: FiledProcessedModelRequest): void {
+  anyRequested = true;
   pending = request;
   for (const listener of [...listeners]) listener();
+}
+
+/**
+ * Apply a host configuration's processing members (`server`, `open`). Called
+ * once by `mountViewer`, after the feature set is fixed: the server first, so
+ * the model opens from it.
+ */
+export function applyProcessingConfig(config: Pick<ViewerRuntimeConfig, 'server' | 'open'> | undefined): void {
+  if (config?.server) setProcessingServerUrl(config.server.url);
+  if (config?.open) openProcessedModel(config.open.processedModel); // a host request: the page URL yields
 }
 
 /** The mounted viewer's side: take the waiting request, once. */

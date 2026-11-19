@@ -231,7 +231,7 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
   return a.placement === b.placement && a.unitScale !== null && b.unitScale !== null && unitScalesEqual(a.unitScale, b.unitScale);
 }
 
-/** 0-based attribute index of `IfcProject.RepresentationContexts` (IFC2X3 and IFC4). */
+/** 0-based attribute index of `IfcContext.RepresentationContexts` (IfcProject in IFC2X3 and IFC4, IfcProjectLibrary). */
 const PROJECT_REPRESENTATION_CONTEXTS_ATTR = 7;
 
 /** The `#N` references in an attribute slot of references (`$` has none); its comments are not read. */
@@ -322,19 +322,19 @@ export function planInfrastructureUnify(
     sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);
     skipEntityIds.add(thisIds[0]);
   }
-  // Only the contexts this model's own IfcProject listed: one an IfcProjectLibrary owns stays the library's.
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this is the merged input's current project
-  const projectId = (dataStore.entityIndex.byType.get('IFCPROJECT') ?? [])[0];
-  const owned = projectId === undefined ? '' : getStepAttr(dataStore, projectId, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '';
-  const listed = new Set(refsIn(owned).map(ref => Number(ref.slice(1))));
-  return modelContextIds.filter(id => !sharedRemap.has(id) && listed.has(id));
+  // A context an IfcProjectLibrary owns stays the library's; every other kept one joins the merged project.
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current libraries
+  const libraries = dataStore.entityIndex.byType.get('IFCPROJECTLIBRARY') ?? [];
+  const libraryOwned = new Set(libraries.flatMap(id => refsIn(getStepAttr(dataStore, id, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '')
+    .map(ref => Number(ref.slice(1)))));
+  return modelContextIds.filter(id => !sharedRemap.has(id) && !libraryOwned.has(id));
 }
 
 /**
  * List `contextIds` in the merged project's RepresentationContexts (#10798). A compatible later model's IfcProject
  * folds into the primary's, so a top-level context of it that was kept rather than unified (a different frame or
- * georeference, or a second context its own project listed) belongs to no project otherwise. Only ids written to
- * `lines` are listed.
+ * georeference, or a second context, unless an IfcProjectLibrary owns it) belongs to no project otherwise. Only
+ * ids written to `lines` are listed.
  */
 export function listKeptContexts(lines: string[], projectId: number | undefined, contextIds: readonly number[]): void {
   if (projectId === undefined || contextIds.length === 0) return;

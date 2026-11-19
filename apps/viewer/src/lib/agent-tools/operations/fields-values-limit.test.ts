@@ -44,6 +44,9 @@ test('fields.values returns a result under the executor limit for a model whose 
   assert.ok(bytes(values) <= MAX_RESULT_BYTES);
   assert.deepEqual(values.truncated, ['classificationSystems']);
   assert.deepEqual(values.classificationSystems, sampled.classificationSystems.slice(0, values.classificationSystems.length));
+  // The cut keeps a real prefix and spends the budget: it leaves less than one name unused (each is about 1.1 KB).
+  assert.ok(values.classificationSystems.length > 0, 'the cut field keeps a prefix');
+  assert.ok(bytes(values) > MAX_RESULT_BYTES - 2 * bytes(sampled.classificationSystems[0]) - 200, `${bytes(values)} bytes leaves budget unused`);
   assert.deepEqual(values.classifications, sampled.classifications, 'the smaller classification field stays whole');
   assert.deepEqual(values.predefinedTypes, sampled.predefinedTypes);
 });

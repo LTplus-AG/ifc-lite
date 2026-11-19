@@ -29,6 +29,10 @@ function answer<T>(result: AgentToolResult): T {
   return (value?.native_json === undefined ? value : JSON.parse(value.native_json)) as T;
 }
 const prepare = () => invoke('authoring.room.prepare', { proposal_json: JSON.stringify(roomEnvelope()) });
+async function setup() {
+  await seedReviewedRoom();
+  host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+}
 /** Run `change` in the same store update as the operation's own wall remesh, as an outside writer racing it would. */
 function alongsideRemesh(change: () => void) {
   const geometry = useViewerStore.getState().models.get(MODEL)?.geometryResult;
@@ -46,8 +50,7 @@ describe('authoring.room.prepare through the operation executor (#10908)', () =>
 
   it('prepares despite its own wall remesh, and the token applies', async (t) => {
     if (!ensureRoomWasm(t)) return;
-    await seedReviewedRoom();
-    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    await setup();
     const geometry = useViewerStore.getState().models.get(MODEL)?.geometryResult;
     const { token } = answer<{ token: string }>(await prepare());
     assert.notEqual(useViewerStore.getState().models.get(MODEL)?.geometryResult, geometry, 'the prepare did remesh the walls');
@@ -58,16 +61,14 @@ describe('authoring.room.prepare through the operation executor (#10908)', () =>
 
   it('still refuses a prepare when an edit lands while it runs', async (t) => {
     if (!ensureRoomWasm(t)) return;
-    await seedReviewedRoom();
-    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    await setup();
     const stop = alongsideRemesh(() => useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })));
     try { assert.match((await prepare()).text, /Model replaced, closed, or edited during the operation/); } finally { stop(); }
   });
 
   it('still refuses a prepare when something other than geometry replaces the model entry while it runs', async (t) => {
     if (!ensureRoomWasm(t)) return;
-    await seedReviewedRoom();
-    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    await setup();
     const stop = alongsideRemesh(() => useViewerStore.setState(s => {
       const model = s.models.get(MODEL)!;
       return { models: new Map(s.models).set(MODEL, { ...model, name: `${model.name} (renamed)` }) };

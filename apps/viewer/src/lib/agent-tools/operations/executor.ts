@@ -48,9 +48,10 @@ function boundedResult(result: unknown): unknown {
 
 /** A model entry a remesh replaced: the same entry apart from its geometry and the pre-alignment tail it carries. */
 const GEOMETRY_FIELDS = new Set(['geometryResult', 'preAlignment']);
-function geometryOnly(before: object, after: object): boolean {
-  const a = before as Record<string, unknown>, b = after as Record<string, unknown>;
-  return [...new Set([...Object.keys(a), ...Object.keys(b)])].every(key => GEOMETRY_FIELDS.has(key) || a[key] === b[key]);
+function geometryOnly<T extends object>(before: T, after: T): boolean {
+  for (const key in before) if (!GEOMETRY_FIELDS.has(key) && before[key] !== after[key]) return false;
+  for (const key in after) if (!GEOMETRY_FIELDS.has(key) && !(key in before)) return false;
+  return true;
 }
 
 /** Native services perform writes synchronously after this final live grant check. */
@@ -144,8 +145,8 @@ export async function executeOperation(
   const ownGeometry = async <T>(work: () => Promise<T>): Promise<T> => {
     check();
     const value = await work();
-    const now = model ? useViewerStore.getState().models.get(model.id) : undefined;
-    if (nativeModel && now && useViewerStore.getState().mutationVersion === activeRevision && geometryOnly(nativeModel, now)) nativeModel = now;
+    const state = useViewerStore.getState(), now = model ? state.models.get(model.id) : undefined;
+    if (nativeModel && now && state.mutationVersion === activeRevision && geometryOnly(nativeModel, now)) nativeModel = now;
     check();
     return value;
   };

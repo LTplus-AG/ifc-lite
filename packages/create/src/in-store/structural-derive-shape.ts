@@ -194,11 +194,12 @@ const STATED_CENTRE: Record<string, { arity: number; x?: number; y?: number }> =
 
 /**
  * The offset along one axis from a stated centre of gravity, which carries the fillets the sharp-cornered shape lacks,
- * or the computed one. EXPRESS types the value as a positive length, so a zero or negative value (TC1's L note says
- * stated values "are already negative values", ifclshapeprofiledef.htm) is invalid and ignored. AxisVM's L agrees with the TC1 reading (IfcOpenShell puts the
- * centroid of its 75 x 75 x 6 angle with fillets 17.085 mm off; the file states 17.07184). A valid value is used only
- * when it is within 10% of the computed offset's magnitude, and with the computed sign: the direction TC1 gives (-y for
- * the asymmetric I) assumes the wider flange at the bottom, which a wider top flange reverses.
+ * or the computed one. AxisVM's L agrees with the TC1 reading (IfcOpenShell puts the centroid of its 75 x 75 x 6 angle
+ * with fillets 17.085 mm off; the file states 17.07184). The value is used only when it is within 10% of the computed
+ * offset's magnitude, and with the computed sign: the direction TC1 gives (-y for the asymmetric I) assumes the wider
+ * flange at the bottom, which a wider top flange reverses. A zero or negative value never comes within 10% of a positive
+ * offset, so it is ignored. That follows EXPRESS, which types the attribute as a positive length, over TC1's L note,
+ * which says the stated values "are already negative values" (ifclshapeprofiledef.htm).
  */
 function statedOffset(a: readonly unknown[], slot: number | undefined, computed: number, halfExtent: number): number {
   const value = slot === undefined ? null : num(a[slot]);
@@ -207,7 +208,7 @@ function statedOffset(a: readonly unknown[], slot: number | undefined, computed:
   // flange face), the same centroid is `halfExtent - offset` away. Near the quarter point the two readings are within
   // 20%, so a stated value cannot say which one it is: keep the computed offset. From the far fibre it is
   // `halfExtent + offset`, never within 10%.
-  if (value === null || value <= 0 || Math.abs(halfExtent - offset - offset) <= 0.2 * offset) return computed;
+  if (value === null || Math.abs(halfExtent - offset - offset) <= 0.2 * offset) return computed;
   return Math.abs(value - offset) <= 0.1 * offset ? Math.sign(computed) * value : computed;
 }
 

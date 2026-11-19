@@ -129,9 +129,9 @@ const ORACLE: Record<number, [number, number]> = {
   434: [0, 35.7961], // asymmetric I with the wider flange on top: the TC1 text says negative y, the computed sign (+y) is kept
   444: [0, -50.5055], // IFC4 arity: slot 11 is BottomFlangeEdgeRadius, never a centre of gravity
   454: [0, 29.813], // the T of #374 without a stated value
-  464: [-15.490, 0], // the U of #394 stating 0.: ignored
-  474: [-16.531, -16.531], // the angle of #224 stating 0.,0.: ignored on both axes
-  484: [-15.490, 0], // the U of #394 stating -0.0159503: not a positive length, ignored
+  464: [-15.490, 0], // the U of #394 stating 0.: outside 10%, ignored
+  474: [-16.531, -16.531], // the angle of #224 stating 0.,0.: outside 10%, ignored on both axes
+  484: [-15.490, 0], // the U of #394 stating -0.0159503, as TC1's L note would have it: the sign is never folded, so outside 10%
   204: [-3.553, 0], // the same square with a 20 mm radius circular void 25 mm right of the centre (IfcOpenShell tessellates the circle; the exact disc gives -3.593)
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.

@@ -150,6 +150,10 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(referents.warnings().join()).toContain('#7 (unreadable)');
     expect(referents.apply("/* was #3 */#9=IFCMATERIALPROPERTIES('P',$,(#6),$);", 'IFC4', 'IFC2X3')).toBeNull();
     expect(referents.warnings().join()).toContain('#9 (no Material)');
+    // A referent whose slots cannot be read is named so, not blamed for naming several materials.
+    const unread = new MaterialReferents({ typeOf: (id) => (id === 13 ? 'IFCMATERIALLAYERSET' : undefined), slots: () => undefined });
+    expect(unread.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", 'IFC4', 'IFC2X3')).toBeNull();
+    expect(unread.warnings().join()).toContain('#5 (an unread record)');
     // A record without its ';' is rewritten without one.
     const layered = new MaterialReferents({ typeOf: (id) => ({ 8: 'IFCMATERIAL', 10: 'IFCMATERIALLAYER' })[id], slots: (id) => (id === 10 ? ['#8', '0.2', '$', '$', '$', '$', '$'] : undefined) });
     expect(layered.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#10)", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8)");

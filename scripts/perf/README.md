@@ -8,6 +8,17 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Post-cut sliver bisection removed (#10511)
+
+The native mesh census found one changed wall across the capped fixture
+corpus. ISSUE_171 #528 retained its enclosure and surface area with fewer
+triangles. The cut paths still canonicalize vertices to preserve closure.
+The aspect threshold now only gates the rebuild, and the prism path still
+checks closure before adopting it.
+
+The native load probe kept byte-identical meshes on FZK-Haus, ISSUE_129 and
+Holter, and the optimized WebAssembly engine shrank.
+
 ## Consolidation runs each retention variant once
 
 **Shipped, output-identical.** A consolidation that retains a healthy fold or

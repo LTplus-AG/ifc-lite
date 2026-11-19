@@ -11,7 +11,7 @@
 //! dropping one turns it red:
 //!
 //! - ParamRect before Bool2d (both fixtures eligible on one host);
-//! - malformed recut before the flap clip, and the sliver refinement kept;
+//! - malformed recut before the flap clip;
 //! - a rejected frame retry restoring the first run's diagnostics;
 //! - the coaxial union before the disjoint-batch plan.
 //!
@@ -134,8 +134,8 @@ fn param_rect_is_tried_before_bool2d() {
     assert!((removed - 0.2).abs() < 1e-3, "removed {removed}");
 }
 
-/// The exact tail's post passes run recut -> flap clip, after the sliver
-/// refinement. On an OPEN host (top face missing) the recut and the clip do
+/// The exact tail's post passes run recut -> flap clip after vertex
+/// canonicalization. On an OPEN host (top face missing) the recut and the clip do
 /// not commute, so the expected result is composed here from the same passes
 /// in the frozen order and the swapped order is shown to differ.
 ///
@@ -145,10 +145,10 @@ fn param_rect_is_tried_before_bool2d() {
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
 fn malformed_recut_runs_before_the_flap_clip() {
-    let host = without_faces_facing(&box_mesh([-2.0, -0.1, 0.0], [2.0, 0.1, 3.0]), 2);
+    let host = without_faces_facing(&box_mesh([-2.0, -0.4, 0.0], [2.0, 0.4, 3.0]), 2);
     // A box cutter carrying far "fin" triangles 9 m off the wall: malformed,
     // so the exact passes skip it and only the recut carves it.
-    let mut cutter = box_mesh([-0.5, -0.3, 1.0], [0.5, 0.3, 2.0]);
+    let mut cutter = box_mesh([-0.5, -0.6, 1.0], [0.5, 0.6, 2.0]);
     let base = (cutter.positions.len() / 3) as u32;
     for y in [9.0f32, -9.0] {
         for (dx, dz) in [(0.0, 0.0), (0.05, 0.0), (0.0, 0.05)] {
@@ -169,11 +169,10 @@ fn malformed_recut_runs_before_the_flap_clip() {
             [wall_max.x, wall_max.y, wall_max.z],
         );
     };
-    let refined = crate::facet_weld::refine_high_aspect_slivers(&welded);
-    let mut expected = refined.clone();
+    let mut expected = welded.clone();
     recut_malformed_openings(&mut expected, &ctx.malformed_opening_boxes());
     clip(&mut expected);
-    let mut swapped = refined;
+    let mut swapped = welded;
     clip(&mut swapped);
     recut_malformed_openings(&mut swapped, &ctx.malformed_opening_boxes());
     assert!(!same_mesh(&expected, &swapped), "the fixture must tell the two orders apart");
@@ -182,13 +181,8 @@ fn malformed_recut_runs_before_the_flap_clip() {
     assert!(same_mesh(&out, &expected), "recut must run before the flap clip");
 }
 
-/// The exact tail ends with the #1007 sliver pass under the census rule
-/// (`facet_weld::adopt`). A long, thin wall cut by a mesh cutter comes out
-/// closed, with no sliver by the census measure and no triangle thinner than
-/// the wall's own 4 m x 0.2 m top face, which is 20:1 however it is split.
-/// The tail has run the pass: putting its output through the pass again
-/// changes nothing. Bisecting regardless, as the tail used to, leaves a
-/// thinner triangle than the cut had.
+/// A long, thin wall cut by a mesh cutter stays closed and adds no triangle
+/// thinner than the wall's own 4 m × 0.2 m top face (#10511).
 #[test]
 fn exact_tail_output_keeps_no_sliver() {
     use crate::mesh_check::triangle_shape;
@@ -199,10 +193,6 @@ fn exact_tail_output_keeps_no_sliver() {
     let (shape, uncut) = (triangle_shape(&out), triangle_shape(&host));
     assert_eq!(shape.slivers, 0, "sliver of {}:1 left by the exact tail", shape.max_aspect);
     assert!(shape.max_aspect <= uncut.max_aspect + 1e-6, "{} past the wall's own {}", shape.max_aspect, uncut.max_aspect);
-    let again = crate::facet_weld::refine_slivers_if_better(out.clone());
-    assert!((&again.positions, &again.indices) == (&out.positions, &out.indices), "the tail must have run the pass");
-    let bisected = triangle_shape(&crate::facet_weld::refine_high_aspect_slivers(&out));
-    assert!(bisected.max_aspect > shape.max_aspect, "the fixture must tell the rule from the bare bisection");
 }
 
 /// `R_z(deg)` then translate to `at`, applied to f32 positions.

@@ -131,8 +131,8 @@ impl Execution {
         let mut committed_cutter_volume = 0.0;
         // AABB (host-local frame) of every COMMITTED cutter prism, captured
         // post-extension: the region the cut actually re-triangulated. Feeds the
-        // scoped sliver refinement below (#1007 targets rim slivers, not the
-        // host's own authored long-thin faces). 1 mm pad = the batch/veto margin,
+        // scoped vertex canonicalization below, where only rim slivers can
+        // trigger the rebuild. A 1 mm pad matches the batch/veto margin,
         // comfortably covering the seam vertices shared with kept host fragments.
         const REFINE_REGION_PAD: f64 = 1.0e-3;
         let mut refine_boxes: Vec<([f64; 3], [f64; 3])> = Vec::new();
@@ -233,12 +233,10 @@ impl Execution {
             defer(4);
             return None;
         }
-        // Rim-sliver refinement (#1007), only when this cut is FINAL: with a
-        // residual the exact kernel still cuts this mesh and refines its own
-        // output, and refining first would hand the arrangement midpoint-split
-        // geometry it re-fragments (#1167).
+        // Canonicalize rim vertices after the final cut. When a residual
+        // cutter remains, the exact path canonicalizes its own output.
         if residual_idx.is_empty() && consolidated_closure.is_directed_closed() {
-            out = super::rim_refine::refine_rim_slivers(out, &refine_boxes, boundary);
+            out = super::rim_refine::canonicalize_rim_vertices(out, &refine_boxes, boundary);
         }
         // The finalizer cleans before the ulp weld so discarded slivers cannot
         // choose a surviving seam coordinate, then audits the exact mesh it

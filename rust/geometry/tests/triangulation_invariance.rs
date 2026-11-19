@@ -1477,9 +1477,8 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     // sub-cell kink vertices returns it to 0 and moves 4,500 triangles), so it
     // is pinned rather than chased. CI runs this mode (`test.yml`, census job).
     //
-    // The post-cut sliver pass keeps a bisection only when the mesh census's
-    // sliver measure improves (`facet_weld::adopt`), so the triangles it used
-    // to add are gone: #12381 7552 -> 7424 (11110 -> 10982 with the prism route
+    // The post-cut sliver pass began rejecting low-quality bisections in
+    // #10381, removing those extra triangles: #12381 7552 -> 7424 (11110 -> 10982 with the prism route
     // off) on the same surface (2905.7543 m2 either way, 3442 -> 3374 slivers),
     // and #32810 3207 -> 3064 (3224 -> 3096). #32810's three open edges close
     // with them (3/3 -> 0/0, both triangulators; 1257.4454 m2 either way).
@@ -1512,9 +1511,8 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
         // cleanup stays closed: 3/3/3 -> 0/0/0 and 3207 -> 3064 triangles,
         // volume 881.2597 m3 against IfcOpenShell 0.8.2's 881.3038 (-0.005%).
         //
-        // `facet_weld::adopt`: #12381 5884 -> 5756, volume unchanged. The
-        // sliver pass no longer keeps bisections the census measure does not
-        // improve.
+        // #10381 rejected low-quality bisections: #12381 5884 -> 5756,
+        // volume unchanged.
         [(12381, 0, 0, 0, 5322), (32810, 0, 0, 0, 3060)]
     };
     for &alt in triangulators {
@@ -1574,7 +1572,7 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // exact incoming-main tuples; keep the stronger closed result.
                 // Triangle counts here fell when the post-cut sliver pass
                 // stopped bisecting where the census's sliver measure does not
-                // improve (`facet_weld::adopt`). Each host keeps its surface:
+                // improve (#10381). Each host keeps its surface:
                 // areas agree to 7e-6 and every one is closed before and
                 // after. 154 -> 26.
                 //
@@ -1877,8 +1875,8 @@ END-ISO-10303-21;"##
 /// - every count holds and the pair is an IDENTICAL row (1.4x and 1.6x);
 /// - the cut emits MORE triangles, and a grown `tris` files under `improved`,
 ///   which requires no bless. The 1.6x cut read that way while the post-cut
-///   sliver pass bisected its narrower jambs; the pass keeps a bisection only
-///   when the census's sliver measure improves, so both scales now give the
+///   sliver pass bisected its narrower jambs. #10381 rejected those
+///   bisections, so both scales now give the
 ///   32 triangles of a box with a hole. That reading is shown on the measured
 ///   row with its count raised.
 ///
@@ -2101,7 +2099,7 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // IfcOpenShell 0.8.2 to 0.005% or better (worst: #358944, +220 cm3 of 4.156 m3).
 // 2 -> 1. #1320395 (open 13 -> 0) closed once the post-cut sliver pass stopped
 // keeping a bisection the census's sliver measure does not improve
-// (`facet_weld::adopt`): unbisected, its cut is closed.
+// (#10381). The unbisected cut is closed.
 // Site-frame cut (#10435): 1 -> 0. #423069 (open 3 -> 0, 0.828724 m3 against
 // IfcOpenShell 0.8.2 at 0.828794) closes once the host is cut in its site's
 // frame.

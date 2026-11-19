@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
+import type { ToolHost } from '../types';
 
 /**
  * Make room for one more host-owned handle (run, candidate) by dropping the oldest.
@@ -12,16 +13,17 @@ export function evictOldest<K, V>(handles: Map<K, V>, cap: number): void {
 }
 
 /**
- * Make room for one more reviewed candidate. Only `pending` candidates count against `cap`, and a host full of
- * them is refused with `refusal`. Candidates that can never apply (`gone`) are dropped and `release`d; applied ones share the
- * cap and the oldest goes first. Call it again after any await: a concurrent prepare may have taken the room.
+ * Make room for one more reviewed candidate. Every admission site answers one question, `canApply`: could this
+ * candidate still apply (or, once applied, replay)? Those that cannot are dropped and `release`d. Of the rest, only
+ * `pending` ones count against `cap`, and a host full of them is refused with `refusal`; settled ones share the cap
+ * and the oldest goes first. Call it again after any await: a concurrent prepare may have taken the room.
  */
-export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending, gone = () => false, release = () => {} }: {
-  cap: number; refusal: string; pending: (value: V) => boolean; gone?: (value: V) => boolean; release?: (value: V) => void;
+export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending, canApply, release = () => {} }: {
+  cap: number; refusal: string; pending: (value: V) => boolean; canApply: (value: V) => boolean; release?: (value: V) => void;
 }): void {
   let open = 0;
   for (const [key, value] of handles) {
-    if (gone(value)) { handles.delete(key); release(value); }
+    if (!canApply(value)) { handles.delete(key); release(value); }
     else if (pending(value)) open++;
   }
   if (open >= cap) throw new Error(refusal);
@@ -29,6 +31,13 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
     if (handles.size < cap) break;
     if (!pending(value)) handles.delete(key);
   }
+}
+
+/** True while the model a candidate was prepared on is still loaded with the same store. The host's own model list
+ * also covers the single-model session, whose store is not in `models`. */
+export function liveModelStores(host: ToolHost): (modelId: string, store: unknown) => boolean {
+  const live = new Map(host.models().map(model => [model.id, model.store]));
+  return (modelId, store) => live.get(modelId) === store;
 }
 
 /** An applied candidate's receipt write. `settled` once it resolved: admission may then evict the candidate. */

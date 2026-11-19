@@ -159,6 +159,17 @@ describe('reviewed model candidates (#10792)', () => {
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
   });
 
+  it('#19: 32 Group reviews an edit invalidated free the cap for a fresh prepare', async () => {
+    const proposal_json = await groupProposal();
+    for (let i = 0; i < 32; i++) answer(await invoke('authoring.group.prepare', { proposal_json }));
+    assert.equal((await invoke('authoring.group.prepare', { proposal_json })).isError, true, 'a host of 32 pending reviews is full');
+    // Any edit to the model, a membership change included, moves the mutation revision each review captured, so
+    // validate() refuses all 32.
+    const store = useViewerStore.getState().models.get(SAMPLE_MODEL)!.ifcDataStore!;
+    useViewerStore.getState().setAttribute(SAMPLE_MODEL, store.entities.getExpressIdByGlobalId(BACK_WALL), 'Description', 'Edited after review');
+    answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+  });
+
   it('#52: two concurrent graph prepares cannot both take the last place', async () => {
     const proposal_json = await groupProposal();
     for (let i = 0; i < 31; i++) answer(await invoke('authoring.group.prepare', { proposal_json }));

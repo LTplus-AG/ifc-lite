@@ -9,7 +9,7 @@ import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
 import { operation, emptySchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { admitCandidate, persistReceipt, type ReceiptHolder } from './host-handles';
+import { admitCandidate, liveModelStores, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const previewOutput = { type: 'object', properties: { token: { type: 'string' }, preview_json: { type: 'string' }, revision: { type: 'integer' } }, required: ['token', 'preview_json', 'revision'], additionalProperties: false };
 const receiptOutput = { type: 'object', properties: { receipt_json: { type: 'string' }, persisted: { type: 'boolean' } }, required: ['receipt_json', 'persisted'], additionalProperties: false };
@@ -29,12 +29,10 @@ function candidates(c: OperationContext) {
 }
 function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) {
   const entries = candidates(c);
-  // A candidate whose model was closed, replaced or edited since its preview can never apply. The host's own
-  // model list also covers the single-model session, whose store is not in `models`.
-  const live = new Map(c.host.models().map(model => [model.id, model.store]));
-  const revision = useViewerStore.getState().mutationVersion;
+  // An unapplied candidate applies only on its model's store at the revision it previewed (as candidate() checks).
+  const live = liveModelStores(c.host), revision = useViewerStore.getState().mutationVersion;
   admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.settled,
-    gone: entry => live.get(entry.modelId) !== entry.store || (!entry.receipt && entry.revision !== revision) });
+    canApply: entry => live(entry.modelId, entry.store) && (entry.receipt !== undefined || entry.revision === revision) });
   const token = crypto.randomUUID();
   entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
   return { token, revision, preview_json: JSON.stringify(preview) };

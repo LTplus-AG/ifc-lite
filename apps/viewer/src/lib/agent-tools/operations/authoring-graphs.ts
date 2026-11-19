@@ -9,7 +9,7 @@ import type { ToolHost } from '../types';
 import { operation, emptySchema, referenceSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
-import { admitCandidate, persistReceipt, type ReceiptHolder } from './host-handles';
+import { admitCandidate, liveModelStores, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const tokenInput = { type: 'object' as const, properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['token' as const], additionalProperties: false as const };
@@ -28,6 +28,11 @@ function owned(c: OperationContext) {
     c.host.lifetimeSignal?.addEventListener('abort', () => { for (const candidate of captured.values()) candidate.review?.dispose?.(); captured.clear(); }, { once: true });
   }
   return entries;
+}
+/** Whether a prepared review would still pass the validation apply runs before it commits. */
+function reviewApplies(review: Review | undefined): boolean {
+  try { review?.validate(); return review !== undefined; }
+  catch { return false; } // the refusal apply would raise is the answer, not a failure to report
 }
 const output = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
 function proposalModel(value: { modelId: string }, c: OperationContext) { if (value.modelId !== c.model.id) throw new Error('The proposal must name the selected model.'); }
@@ -81,11 +86,13 @@ export const graphAuthoringOperations = [
   ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
-    // A review of a closed or replaced model can never apply; dropping it releases its native handles.
+    // An unapplied review applies only while its own validate() passes, the check apply runs; one that no longer
+    // does (its model closed, replaced or edited, its Group membership changed) is dropped and its native handles released.
     const admit = () => {
-      const live = new Map(c.host.models().map(model => [model.id, model.store]));
+      const live = liveModelStores(c.host);
       admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.settled,
-        gone: entry => live.get(entry.modelId) !== entry.store, release: entry => entry.review?.dispose?.() });
+        canApply: entry => live(entry.modelId, entry.store) && (entry.receipt !== undefined || reviewApplies(entry.review)),
+        release: entry => entry.review?.dispose?.() });
     };
     admit();
     const review = await prepare(kind, i.proposal_json, c);

@@ -7,6 +7,7 @@ import { viewerOperation as operation, emptySchema, pointSchema, type ViewerOper
 import { assertToolActive } from '../cancellation';
 import type { ZoneSet } from '@/lib/zones/types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
+import { zoneAssignmentSignature } from './authoring-zone-writes';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const artifactOutput = { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer' } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };
@@ -72,12 +73,12 @@ export const zoneOperations = [
   }, async (i, c) => {
     const { exportZoneTable } = await import('@/hooks/useZoneTableExport'); assertToolActive(c); const zoneSet = set(i.set_id), identity = JSON.stringify(zoneSet);
     // The table reads models, geometry and assignments, not only the set: Parquet encoding awaits, so check them all, as zones.geometry.export does.
-    const before = useViewerStore.getState();
+    const before = useViewerStore.getState(), assignments = zoneAssignmentSignature(before.zoneAssignments, i.set_id);
     let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
     const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });
     assertToolActive(c); const now = useViewerStore.getState();
     if (identity !== JSON.stringify(set(i.set_id)) || now.models !== before.models || now.geometryUpdateTick !== before.geometryUpdateTick
-      || now.mutationVersion !== before.mutationVersion || now.zoneAssignments !== before.zoneAssignments) throw new Error('Zone configuration, models or assignments changed during export.');
+      || now.mutationVersion !== before.mutationVersion || zoneAssignmentSignature(now.zoneAssignments, i.set_id) !== assignments) throw new Error('Zone configuration, models or assignments changed during export.');
     if (!captured) return out({ result, artifact: null }); const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: captured.mime, data: captured.bytes }); return out({ result, artifact });
   }),
 ];

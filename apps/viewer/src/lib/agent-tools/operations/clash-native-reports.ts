@@ -44,10 +44,11 @@ async function dependencies(id: string) {
     import('@/lib/document/persistence'),
     import('@/lib/reports/chart-dependencies'),
   ]);
-  await useViewerStore.getState().initializeDocuments();
   const entries = await loadDocuments();
   const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
-  if (preview.documentPhase === 'loading' || dependenciesUnreadable(preview))
+  // Opening the library is a configuration effect of its own, so a read does not do it here.
+  if (preview.documentPhase === 'loading') throw new Error('The Documents library is not open yet. Run document.initialize, then prepare again.');
+  if (dependenciesUnreadable(preview))
     throw new Error('Dashboards or Documents could not all be read, so the report’s dependencies are unknown. Retry once storage is available.');
   return preview;
 }

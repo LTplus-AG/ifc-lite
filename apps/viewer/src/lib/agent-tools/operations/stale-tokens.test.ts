@@ -89,6 +89,23 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(storedReceipt(receipt.id)?.status, 'undone');
   });
 
+  it('#20: a replay while the first receipt write is in flight does not write again', async () => {
+    const token = await prepareRename();
+    let writes = 0, replay: Promise<AgentToolResult> | undefined;
+    const put = modelChangeLibrary.put;
+    modelChangeLibrary.put = (...args) => {
+      writes++;
+      replay ??= invoke('authoring.apply', { token }, true); // the agent retries while the receipt is being saved
+      return put(...args);
+    };
+    try {
+      const first = answer<{ receipt_json: string }>(await invoke('authoring.apply', { token }, true));
+      assert.ok(replay);
+      assert.equal(answer<{ receipt_json: string }>(await replay).receipt_json, first.receipt_json);
+    } finally { modelChangeLibrary.put = put; }
+    assert.equal(writes, 1);
+  });
+
   it('#20: replaying an applied graph token keeps its undone receipt too', async () => {
     const { token } = answer<{ token: string }>(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
     const { receipt } = answer<{ receipt: ModelChangeReceipt }>(await invoke('authoring.graph.apply', { token }, true));
@@ -121,6 +138,18 @@ describe('multi-batch IDS corrections (#10792)', () => {
     const step = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n${body}\nENDSEC;\nEND-ISO-10303-21;\n`;
     seed([model('walls', await parseStep(new TextEncoder().encode(step)))]);
     newHost();
+  });
+
+  it('#19 guard: a single-model session keeps its earlier candidates', async () => {
+    const sample = useViewerStore.getState().models.get('walls')!;
+    useViewerStore.setState({ models: new Map(), ifcDataStore: sample.ifcDataStore, activeModelId: null,
+      mutationViews: new Map([['default', useViewerStore.getState().mutationViews.get('walls')!]]) });
+    modelId = 'default';
+    const renameLegacy = (value: string) => JSON.stringify({ version: 1, kind: 'model.changes', title: 'Name', changes: [
+      { op: 'attribute.set', target: { globalId: guid(1), modelId: 'default', ifcClass: 'IfcWall', name: 'Wall 1' }, name: 'Name', expected: 'Wall 1', value }] });
+    const first = answer<{ token: string }>(await invoke('properties.prepare', { proposal_json: renameLegacy('First') })).token;
+    answer(await invoke('properties.prepare', { proposal_json: renameLegacy('Second') }));
+    answer(await invoke('authoring.discard', { token: first })); // still held: the second prepare dropped nothing
   });
 
   it('#68: a correction whose later batch fails stages none of its batches', async () => {
@@ -200,8 +229,16 @@ describe('saved clash report deletion (#10792)', () => {
     return useViewerStore.getState().savedClashReports[0].id;
   }
 
-  it('#2: deletion prepare refuses while dashboards cannot be read', async () => {
+  it('#2: deletion prepare refuses while documents are unopened or dashboards cannot be read', async () => {
     const id = await savedReport();
+    answer(await invoke('document.initialize', {}, true));
+    const opened = useViewerStore.getState().documentsStorage;
+    useViewerStore.setState({ documentsStorage: { ...opened, phase: 'loading' } }); // as before the library is opened
+    const unopened = await invoke('clash.reports.delete.prepare', { id });
+    assert.equal(unopened.isError, true);
+    assert.match(unopened.text, /document.initialize/);
+    useViewerStore.setState({ documentsStorage: opened });
+    answer(await invoke('clash.reports.delete.prepare', { id }));
     localStorage.setItem('ifc-lite-dashboards', '{}');
     const prepared = await invoke('clash.reports.delete.prepare', { id });
     assert.equal(prepared.isError, true);
@@ -210,6 +247,7 @@ describe('saved clash report deletion (#10792)', () => {
 
   it('#1: a storage retry after the deleting call lost its grant restores the report', async () => {
     const id = await savedReport();
+    answer(await invoke('document.initialize', {}, true));
     const { token } = answer<{ token: string }>(await invoke('clash.reports.delete.prepare', { id }));
     let grant = true;
     const refused = refuseContentWrites();
@@ -257,10 +295,14 @@ END-ISO-10303-21;
   });
   afterEach(() => { useViewerStore.setState(initial); resetFeaturesForTest(); });
 
-  it('#23: writeback refuses when assignments were refreshed after review', async () => {
-    const { token } = answer<{ token: string }>(await invoke('zones.writeback.prepare', { set_id: 'set-1', model_ids: ['m1'], basis: 'mesh', action: 'write' }));
-    useViewerStore.setState({ zoneAssignments: assignments() });
-    const applied = await invoke('zones.writeback.apply', { token }, true);
+  it('#23: writeback refuses changed assignments, not an identical rebuild', async () => {
+    const prepare = async () => answer<{ token: string }>(await invoke('zones.writeback.prepare', { set_id: 'set-1', model_ids: ['m1'], basis: 'mesh', action: 'write' })).token;
+    const rebuilt = await prepare();
+    useViewerStore.setState({ zoneAssignments: assignments() }); // what the sync does after any geometry tick, a recolour included
+    answer(await invoke('zones.writeback.apply', { token: rebuilt }, true));
+    const changed = await prepare();
+    useViewerStore.setState({ zoneAssignments: new Map([[WALL_ID, { 'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: true, touchedZoneIds: ['z-a'] } }]]) as never });
+    const applied = await invoke('zones.writeback.apply', { token: changed }, true);
     assert.equal(applied.isError, true);
     assert.match(applied.text, /assignments changed/);
   });

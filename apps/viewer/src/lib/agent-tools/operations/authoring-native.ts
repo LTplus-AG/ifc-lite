@@ -21,7 +21,7 @@ const meta = (id: string, owner: string, description: string, write = false) => 
   outputSchema: write ? receiptOutput : previewOutput });
 interface Candidate {
   modelId: string; store: OperationContext['model']['store']; revision: number;
-  authoring?: ModelAuthoringPreview; properties?: ModelChangePreview; receipt?: ModelChangeReceipt; persisted?: boolean;
+  authoring?: ModelAuthoringPreview; properties?: ModelChangePreview; receipt?: ModelChangeReceipt; persisting?: Promise<boolean>;
 }
 const owned = new WeakMap<ToolHost, Map<string, Candidate>>();
 function candidates(c: OperationContext) {
@@ -29,9 +29,11 @@ function candidates(c: OperationContext) {
 }
 function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) {
   const entries = candidates(c);
-  // A candidate whose model was closed or replaced can never apply.
+  // A candidate whose model was closed or replaced can never apply. The host's own model list also covers
+  // the single-model session, whose store is not in `models`.
+  const live = new Map(c.host.models().map(model => [model.id, model.store]));
   admitCandidate(entries, 64, 'At most 64 reviewed model candidates may be retained by a host.', entry => !entry.receipt,
-    entry => useViewerStore.getState().models.get(entry.modelId)?.ifcDataStore !== entry.store);
+    entry => live.get(entry.modelId) !== entry.store);
   const token = crypto.randomUUID(), revision = useViewerStore.getState().mutationVersion;
   entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
   return { token, revision, preview_json: JSON.stringify(preview) };
@@ -48,11 +50,11 @@ function candidate(c: OperationContext, token: string) {
 }
 /** Write an applied candidate's receipt once. A replay returns it unwritten, so it never overwrites the
  * library row the Changes panel has since marked undone; only a failed first write is retried. */
-export async function persistReceipt(holder: { persisted?: boolean }, receipt: ModelChangeReceipt): Promise<boolean> {
-  if (holder.persisted) return true;
-  const { modelChangeLibrary } = await import('@/lib/actions/receipts');
-  holder.persisted = await modelChangeLibrary.put(receipt.id, receipt);
-  return holder.persisted;
+export function persistReceipt(holder: { persisting?: Promise<boolean> }, receipt: ModelChangeReceipt): Promise<boolean> {
+  // Held while in flight too, so a concurrent replay never issues a second write.
+  holder.persisting ??= import('@/lib/actions/receipts').then(({ modelChangeLibrary }) => modelChangeLibrary.put(receipt.id, receipt))
+    .then(ok => { if (!ok) holder.persisting = undefined; return ok; }, (error: unknown) => { holder.persisting = undefined; throw error; });
+  return holder.persisting;
 }
 async function persist(saved: Candidate, receipt: ModelChangeReceipt) {
   return { receipt_json: JSON.stringify(receipt), persisted: await persistReceipt(saved, receipt) };

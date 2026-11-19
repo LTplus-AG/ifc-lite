@@ -19,7 +19,7 @@ const meta = (id: string, owner: string, description: string, write = false) => 
   effects: write ? ['model'] as const : ['read'] as const, capability: write ? 'commands-and-edits' as const : 'read' as const,
   implementation: 'native-store' as const, policy: write ? { model: 'native-reviewed' as const } : undefined, outputSchema: jsonOutput });
 interface Review { room?: import('@/lib/actions/room-review').RoomReview; preview: object; validate(): void; commit(): ModelChangeReceipt; dispose?(): void }
-interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt; persisted?: boolean }
+interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt; persisting?: Promise<boolean> }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) {
   let entries = hosts.get(c.host);

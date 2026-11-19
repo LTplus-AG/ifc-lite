@@ -8,15 +8,20 @@ import { operation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
+import type { ZoneAssignmentsByElement } from '@/lib/zones/types';
 import { evictOldest } from './host-handles';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, effect: 'read' | 'model' | 'artifact' = 'read') => ({ id, owner: 'zones', description, effects: [effect],
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema,
   policy: effect === 'model' ? { model: 'native-reviewed' as const } : effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
+/** The set's assignments by content: the assignment sync rebuilds an identical Map after every geometry tick, a recolour included. */
+export function zoneAssignmentSignature(assignments: ZoneAssignmentsByElement, setId: string): string {
+  return JSON.stringify([...assignments].flatMap(([id, sets]) => sets[setId] ? [[id, sets[setId]]] : []));
+}
 interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ReturnType<typeof useViewerStore.getState>['models']; revision: number; geometry: unknown; configuration: string;
   /** The assignments the preview table showed; a refresh after prepare would write other elements. */
-  assignments: ReturnType<typeof useViewerStore.getState>['zoneAssignments']; result?: unknown }
+  assignments: string; result?: unknown }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) { let value = hosts.get(c.host); if (!value) { value = new Map(); hosts.set(c.host, value); } return value; }
 function zoneSet(id: string) { const set = useViewerStore.getState().zoneSets.find(row => row.id === id); if (!set) throw new Error('Unknown zone set.'); return set; }
@@ -25,7 +30,7 @@ function validate(candidate: Candidate) {
   // geometryResult: a geometry-only update changes the proved volumes without touching models or mutationVersion.
   // (Not geometryUpdateTick, which a recolour also bumps.)
   if (state.models !== candidate.models || state.mutationVersion !== candidate.revision || state.geometryResult !== candidate.geometry || JSON.stringify(zoneSet(candidate.setId)) !== candidate.configuration) throw new Error('Zone/model inputs changed after review.');
-  if (state.zoneAssignments !== candidate.assignments) throw new Error('Zone assignments changed after review. Prepare again.');
+  if (zoneAssignmentSignature(state.zoneAssignments, candidate.setId) !== candidate.assignments) throw new Error('Zone assignments changed after review. Prepare again.');
   const permission = mutationPermissionForModels(state, candidate.modelIds); if (!permission.allowed) throw new Error(`Native write refused: ${permission.reason}`);
 }
 export const zoneWriteOperations = [
@@ -37,7 +42,7 @@ export const zoneWriteOperations = [
     const current = [...state.models].filter(([, model]) => model.ifcDataStore).map(([id]) => id).sort();
     if (JSON.stringify([...i.model_ids].sort()) !== JSON.stringify(current) || !i.model_ids.includes(c.model.id)) throw new Error('model_ids must explicitly name every currently loaded IFC target.');
     const set = zoneSet(i.set_id), rows = buildZoneTable(set, i.basis);
-    const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult, configuration: JSON.stringify(set), assignments: state.zoneAssignments };
+    const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult, configuration: JSON.stringify(set), assignments: zoneAssignmentSignature(state.zoneAssignments, i.set_id) };
     validate(candidate); evictOldest(owned(c), 32); const token = crypto.randomUUID(); owned(c).set(token, candidate);
     return out({ token, action: i.action, model_ids: i.model_ids, rows, undo: 'explicit-native-remove; not history Undo', partial_outcomes: true });
   }),

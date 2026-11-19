@@ -21,8 +21,8 @@
 import { attrNameTable, type IfcSchemaVersion } from './schema-converter.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { SourceRecords, slotRef, slotUnset, type SourceStore } from './schema-converter-structural-source.js';
-import { readStepSlots } from './step-argument-parser.js';
-import { stepRecordHead } from './step-record-frame.js';
+import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
+import { frameArgs, stepRecordFrame, stepRecordHead, withFrameArgs } from './step-record-frame.js';
 import { remapEntityText } from './merged-remap.js';
 
 /** The member lists of the IFC4 material sets. */
@@ -103,18 +103,17 @@ export class MaterialReferents {
     if (!head || head.typeEnd - head.typeStart !== PROPERTIES.length || line.slice(head.typeStart, head.typeEnd).toUpperCase() !== PROPERTIES) return line;
     const at = attrNameTable(from as IfcSchemaVersion)?.get(PROPERTIES)?.indexOf('Material') ?? -1;
     if (at < 0) return line;
-    // `convertRecord` also accepts a record without its ';', so it is read the same way here.
-    const bare = !line.trimEnd().endsWith(';');
+    // Framed as `convertRecord` frames it, which also accepts a record without its ';'.
     // A record that cannot be read is not checked, so it is left out too.
-    const record = readStepSlots(bare ? `${line};` : line);
-    const named = slotRef(record?.slots[at]);
+    const frame = stepRecordFrame(line, { allowMissingSemicolon: true });
+    const slots = frame ? splitTopLevelStepArguments(frameArgs(line, frame)) : null;
+    const named = slotRef(slots?.[at]);
     const material = named === null ? null : this.resolve(named, from);
-    if (record && material !== null) { // `record &&` only narrows: no record, no material
+    if (frame && slots && material !== null) { // `frame && slots` only narrows: unread, no material
       if (material === named) return line;
-      const slots = [...record.slots];
-      slots[at] = `#${material}`;
-      const out = `${record.prefix}${slots.join(',')}${record.suffix}`;
-      return bare ? out.slice(0, -1) : out; // the ';' it was read with is the last character
+      const out = [...slots];
+      out[at] = `#${material}`;
+      return withFrameArgs(line, frame, out.join(','));
     }
     // Named as Rust names it: a material record by its type, anything else as unread.
     const type = named === null ? undefined : this.source.typeOf(named);
@@ -139,7 +138,8 @@ export class MaterialReferents {
  */
 export function materialPropertiesNotWritten(store: Pick<SourceStore, 'entityIndex'> & Partial<Pick<SourceStore, 'source'>>, from: string, to: string): { ids: number[]; attributes: readonly string[] } {
   const attributes = attrNameTable(from as IfcSchemaVersion)?.get(PROPERTIES) ?? [];
-  if (!downgradesMaterial(from, to)) return { ids: [], attributes };
+  // As `apply`: no downgrade, or no Material to check, writes each one.
+  if (!downgradesMaterial(from, to) || !attributes.includes('Material')) return { ids: [], attributes };
   const { entityIndex, source: bytes } = store;
   // @raw-entity-enumeration-ok this report reads a parsed source's own index, not a live view
   const all = entityIndex.byType.get(PROPERTIES) ?? [];

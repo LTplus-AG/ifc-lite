@@ -191,6 +191,10 @@ fn an_unreadable_record_is_left_out_10763() {
     let src = model("IFC4", "#8=IFCMATERIAL('Concrete',$,$);");
     let mut scanned = super::MaterialReferents::scan(src.as_bytes(), "IFC4", "IFC2X3", true, &|_, _| true);
     assert_eq!(scanned.apply(5, "#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);", "IFC4", &mut 0).as_deref(), Some("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);"));
-    assert_eq!(scanned.apply(7, "#7=IFCMATERIALPROPERTIES('P',$,(#6,#8);", "IFC4", &mut 0), None);
+    let commented = "#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);/* c */";
+    assert_eq!(scanned.apply(5, commented, "IFC4", &mut 0).as_deref(), Some(commented), "a comment after the ';' is no missing ';'");
+    let mut lost = 0;
+    assert_eq!(scanned.apply(7, "#7=IFCMATERIALPROPERTIES('P',$,(#6,#8);", "IFC4", &mut lost), None);
+    assert_eq!(lost, 1, "an unread record counts");
     assert!(scanned.warnings().concat().contains("#7 (an unread record)"));
 }

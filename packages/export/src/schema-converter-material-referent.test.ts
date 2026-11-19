@@ -132,7 +132,13 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
   it('leaves out and names a record it cannot read (/code-review)', () => {
     const referents = new MaterialReferents({ typeOf: (id) => (id === 8 ? 'IFCMATERIAL' : undefined), slots: () => undefined });
     expect(referents.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);");
+    const commented = "#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);/* c */";
+    expect(referents.apply(commented, 'IFC4', 'IFC2X3'), "a comment after the ';' is no missing ';'").toBe(commented);
     expect(referents.apply("#7=IFCMATERIALPROPERTIES('P',$,(#6,#8);", 'IFC4', 'IFC2X3')).toBeNull();
     expect(referents.warnings().join()).toContain('#7 (an unread record)');
+    // A record without its ';' is rewritten without one.
+    const layered = new MaterialReferents({ typeOf: (id) => ({ 8: 'IFCMATERIAL', 10: 'IFCMATERIALLAYER' })[id], slots: (id) => (id === 10 ? ['#8', '0.2', '$', '$', '$', '$', '$'] : undefined) });
+    expect(layered.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#10)", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8)");
+    expect(layered.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#10);/* c */", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);/* c */");
   });
 });

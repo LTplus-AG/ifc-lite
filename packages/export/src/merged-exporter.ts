@@ -30,7 +30,7 @@ import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.j
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
-import { appendMetreUnit, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan, type MetreUnit } from './merged-georef-normalize.js';
+import { MintedRecords, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan } from './merged-georef-normalize.js';
 import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
@@ -100,8 +100,8 @@ interface MergeSetup {
   firstModelContext: PrimaryContextState;
   /** Kept top-level contexts that a folded model's own IfcProject listed, as output ids (#10798). */
   keptContexts: number[];
-  /** The metre unit a normalized model's CRS without a map unit is given (#10886). */
-  metreUnit: MetreUnit;
+  /** Records a normalized model's georeference names, written once past every model's ids (#10886, #10915). */
+  minted: MintedRecords;
   /** IfcProject express ids of the primary model. */
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
@@ -535,7 +535,7 @@ export class MergedExporter {
       isFirstModel = false;
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
-    appendMetreUnit(allEntityLines, setup.metreUnit);
+    setup.minted.appendTo(allEntityLines);
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
@@ -701,7 +701,7 @@ export class MergedExporter {
       isFirstModel = false;
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
-    appendMetreUnit(allEntityLines, setup.metreUnit);
+    setup.minted.appendTo(allEntityLines);
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
     // Assembly phase
@@ -845,7 +845,7 @@ export class MergedExporter {
       firstModelInfraMap,
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale, firstModelOffset),
       keptContexts: [],
-      metreUnit: { id: nextAvailableId, used: false },
+      minted: new MintedRecords(nextAvailableId),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
       parentClaims: new InverseClaims(options.schema || 'IFC4'),
@@ -895,7 +895,7 @@ export class MergedExporter {
         volumeFactor: computeNormalizeFactor(modelVolume, setup.primaryVolumeScale),
         effectiveScale: setup.primaryScale,
         normalized: true,
-        georef: planGeorefNormalize(model.dataStore, setup.metreUnit, modelScale, setup.primaryScale),
+        georef: planGeorefNormalize(model.dataStore, setup.minted, modelScale, setup.primaryScale),
       };
     }
     // auto: federate the differing-unit model, coordinates untouched.

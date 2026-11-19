@@ -13,7 +13,7 @@
 //! [0:1]`), so a reference listed again keeps its first document and the
 //! extra listing is reported. Types come from the source, so only an unedited
 //! full export arms it. Twin of `schema-converter-document-links.ts`.
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use crate::schema_structural_axes::list_items;
 use crate::schema_structural_links::{slot_ref, slot_unset};
 
@@ -22,11 +22,12 @@ const REF: &str = "IFCDOCUMENTREFERENCE";
 
 #[derive(Default)]
 pub(crate) struct DocumentLinks {
-    /// The converted type and the index of its link slot.
-    slot: Option<(&'static str, usize)>,
+    /// The index of the link slot in the converted record.
+    at: usize,
     /// Converted record id -> the value its link slot takes.
     fill: HashMap<u32, String>,
-    /// Source records whose dropped link value `fill` writes on the other side.
+    /// Source records whose dropped link value `fill` writes on the other side
+    /// (Rust counts dropped values per record; TypeScript does not).
     restored: HashSet<u32>,
     /// Listings of a reference past its first document.
     listed_again: usize,
@@ -44,41 +45,42 @@ impl DocumentLinks {
         let up = from == "IFC2X3" && ifc4(to);
         let mut links = Self::default();
         if !(up || (to == "IFC2X3" && ifc4(from))) { return links; }
-        // The few document records, kept ones only, by type.
-        let mut records: HashMap<u32, (bool, Vec<String>)> = HashMap::new();
-        let mut order = Vec::new();
+        // The side that holds the link in the source, its slot, and the slot it moves to.
+        let (holder, target, read_at, write_at) = if up {
+            (DOC, REF, index(from, DOC, "DocumentReferences"), index(to, REF, "ReferencedDocument"))
+        } else {
+            (REF, DOC, index(from, REF, "ReferencedDocument"), index(to, DOC, "DocumentReferences"))
+        };
+        let (Some(read_at), Some(at), Some(arity)) = (read_at, write_at, crate::schema_convert::schema_attribute_names(from, holder).map(<[_]>::len)) else { return links };
+        links.at = at;
+        // Kept records only: the holders' link slots, in file order, and the targets' ids.
+        let (mut holders, mut targets) = (Vec::new(), HashSet::new());
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, end)) = scanner.next_entity() {
-            let is_doc = ty.eq_ignore_ascii_case(DOC);
-            if !(is_doc || ty.eq_ignore_ascii_case(REF)) || !kept(id, start) { continue; }
-            let Some((_, slots)) = crate::step_log::read_slots(&String::from_utf8_lossy(&content[start..end])) else { continue };
-            if crate::schema_convert::schema_attribute_names(from, if is_doc { DOC } else { REF }).is_some_and(|names| names.len() == slots.len()) {
-                records.insert(id, (is_doc, slots));
-                order.push(id);
+            if ty.eq_ignore_ascii_case(target) && kept(id, start) {
+                targets.insert(id);
+            } else if ty.eq_ignore_ascii_case(holder) && kept(id, start) {
+                let Some((_, mut slots)) = crate::step_log::read_slots(&String::from_utf8_lossy(&content[start..end])) else { continue };
+                if slots.len() == arity { holders.push((id, slots.swap_remove(read_at))); }
             }
         }
-        let is = |id: u32, doc: bool| records.get(&id).is_some_and(|r| r.0 == doc);
         if up {
-            let (Some(list_at), Some(at)) = (index(from, DOC, "DocumentReferences"), index(to, REF, "ReferencedDocument")) else { return links };
-            links.slot = Some((REF, at));
-            for &doc in order.iter().filter(|&&id| is(id, true)) {
-                let Some(listed) = list_items(&records[&doc].1[list_at]) else { continue };
+            for (doc, listed) in holders {
+                let Some(listed) = list_items(&listed) else { continue };
                 let mut whole = !listed.is_empty();
                 for reference in listed.iter().map(|m| slot_ref(m)) {
-                    match reference.filter(|&r| is(r, false)) {
-                        Some(r) if !links.fill.contains_key(&r) => drop(links.fill.insert(r, format!("#{doc}"))),
-                        Some(_) => { links.listed_again += 1; whole = false; }
+                    match reference.filter(|r| targets.contains(r)).map(|r| links.fill.entry(r)) {
+                        Some(Entry::Vacant(e)) => drop(e.insert(format!("#{doc}"))),
+                        Some(Entry::Occupied(_)) => { links.listed_again += 1; whole = false; }
                         None => whole = false,
                     }
                 }
                 if whole { links.restored.insert(doc); }
             }
         } else {
-            let (Some(doc_at), Some(at)) = (index(from, REF, "ReferencedDocument"), index(to, DOC, "DocumentReferences")) else { return links };
-            links.slot = Some((DOC, at));
             let mut lists: HashMap<u32, Vec<String>> = HashMap::new();
-            for &reference in order.iter().filter(|&&id| is(id, false)) {
-                let Some(doc) = slot_ref(&records[&reference].1[doc_at]).filter(|&d| is(d, true)) else { continue };
+            for (reference, doc) in holders {
+                let Some(doc) = slot_ref(&doc).filter(|d| targets.contains(d)) else { continue };
                 lists.entry(doc).or_default().push(format!("#{reference}"));
                 links.restored.insert(reference);
             }
@@ -90,10 +92,11 @@ impl DocumentLinks {
     /// `line`, converted from source record `id`, with its link slot written;
     /// a value this restores is taken back out of `dropped`.
     pub(crate) fn apply(&self, id: u32, line: String, dropped: &mut usize) -> String {
+        if self.fill.is_empty() { return line; }
         if self.restored.contains(&id) { *dropped = dropped.saturating_sub(1); }
-        let (Some(value), Some((ty, at))) = (self.fill.get(&id), self.slot) else { return line };
+        let Some(value) = self.fill.get(&id) else { return line };
         match crate::step_log::read_slots(&line) {
-            Some((t, slots)) if t == ty && slots.get(at).is_some_and(|s| slot_unset(s)) => crate::step_log::replace_argument(&line, at, value).unwrap_or(line),
+            Some((_, slots)) if slots.get(self.at).is_some_and(|s| slot_unset(s)) => crate::step_log::replace_argument(&line, self.at, value).unwrap_or(line),
             _ => line,
         }
     }

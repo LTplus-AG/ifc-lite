@@ -332,11 +332,11 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
   // Structural and document-link prepasses read source types and references, so only an unedited full export arms them.
-  // The schema pair is tested first: no other export reads the options here.
-  const pair = (sourceSchema === 'IFC2X3' && schema === 'IFC4') || (sourceSchema === 'IFC4' && schema === 'IFC2X3');
-  if ((pair || documentLinksApply(sourceSchema, schema)) && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly
+  // The schema pair is tested first (the document pairs include the structural ones): no other export reads the options here.
+  if (documentLinksApply(sourceSchema, schema) && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly
     && !options.subsetEntityIds && !excludeGeometry && options.includeRelationships !== false) {
     const source = new SourceRecords(dataStore);
+    const pair = (sourceSchema === 'IFC2X3' && schema === 'IFC4') || (sourceSchema === 'IFC4' && schema === 'IFC2X3');
     if (pair) pass.enums.structural.fromStore(dataStore, sourceSchema, schema, source);
     pass.enums.documents.fromSource(source, sourceSchema, schema); // #10846
   }

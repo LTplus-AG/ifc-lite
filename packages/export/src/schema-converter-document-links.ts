@@ -19,7 +19,6 @@ import { attrNameTable, type IfcSchemaVersion } from './schema-converter.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { slotRef, slotUnset, type SourceRecords } from './schema-converter-structural-source.js';
 import { readStepSlots } from './step-argument-parser.js';
-import { stepRecordHead } from './step-record-frame.js';
 
 const DOC = 'IFCDOCUMENTINFORMATION';
 const REF = 'IFCDOCUMENTREFERENCE';
@@ -30,57 +29,58 @@ export const documentLinksApply = (from: string, to: string): boolean =>
   (from === 'IFC2X3' && ifc4Like(to)) || (to === 'IFC2X3' && ifc4Like(from));
 
 export class DocumentLinks {
-  /** The converted type and the index of its link slot. */
-  private slot: { type: string; at: number } | null = null;
+  /** The index of the link slot in the converted record; -1 until armed. */
+  private at = -1;
   /** Converted record id -> the value its link slot takes. */
   private readonly fill = new Map<number, string>();
   private listedAgain = 0;
 
   fromSource(source: SourceRecords, from: string, to: string): void {
     if (!documentLinksApply(from, to)) return;
-    const at = (schema: string, type: string, name: string) => attrNameTable(schema as IfcSchemaVersion)?.get(type)?.indexOf(name) ?? -1;
-    // A record whose slot count is not the source schema's is not read.
-    const read = (type: string) => source.ids(type).flatMap((id) => {
+    const names = (schema: string, type: string) => attrNameTable(schema as IfcSchemaVersion)?.get(type);
+    const up = from === 'IFC2X3';
+    // The side that holds the link in the source, its slot, and the slot it moves to.
+    const [holder, target] = up ? [DOC, REF] : [REF, DOC];
+    const readAt = names(from, holder)?.indexOf(up ? 'DocumentReferences' : 'ReferencedDocument') ?? -1;
+    const at = names(to, target)?.indexOf(up ? 'ReferencedDocument' : 'DocumentReferences') ?? -1;
+    if (readAt < 0 || at < 0) return;
+    const targets = new Set(source.ids(target));
+    // A holder whose slot count is not the source schema's is not read.
+    const holders = source.ids(holder).flatMap((id) => {
       const slots = source.slots(id);
-      return slots && slots.length === attrNameTable(from as IfcSchemaVersion)?.get(type)?.length ? [{ id, slots }] : [];
+      return slots && slots.length === names(from, holder)!.length ? [{ id, link: slots[readAt] }] : [];
     });
-    const refs = read(REF);
-    const docs = read(DOC);
-    const isRef = new Set(refs.map((r) => r.id)), isDoc = new Set(docs.map((d) => d.id));
-    if (from === 'IFC2X3') {
-      const listAt = at(from, DOC, 'DocumentReferences'), slotAt = at(to, REF, 'ReferencedDocument');
-      if (listAt < 0 || slotAt < 0) return;
-      this.slot = { type: REF, at: slotAt };
-      for (const doc of docs) {
-        for (const member of listItems(doc.slots[listAt]) ?? []) {
+    if (up) {
+      for (const { id: doc, link } of holders) {
+        for (const member of listItems(link) ?? []) {
           const ref = slotRef(member);
-          if (ref === null || !isRef.has(ref)) continue;
+          if (ref === null || !targets.has(ref)) continue;
           if (this.fill.has(ref)) this.listedAgain++;
-          else this.fill.set(ref, `#${doc.id}`);
+          else this.fill.set(ref, `#${doc}`);
         }
       }
     } else {
-      const docAt = at(from, REF, 'ReferencedDocument'), slotAt = at(to, DOC, 'DocumentReferences');
-      if (docAt < 0 || slotAt < 0) return;
-      this.slot = { type: DOC, at: slotAt };
       const lists = new Map<number, string[]>();
-      for (const ref of refs) {
-        const doc = slotRef(ref.slots[docAt]);
-        if (doc !== null && isDoc.has(doc)) lists.set(doc, [...(lists.get(doc) ?? []), `#${ref.id}`]);
+      for (const { id: ref, link } of holders) {
+        const doc = slotRef(link);
+        if (doc === null || !targets.has(doc)) continue;
+        const list = lists.get(doc) ?? [];
+        list.push(`#${ref}`);
+        lists.set(doc, list);
       }
       for (const [doc, members] of lists) this.fill.set(doc, `(${members.join(',')})`);
     }
+    if (this.fill.size > 0) this.at = at;
   }
 
   /** `line`, already converted, with its link slot written. */
   apply(line: string): string {
-    const value = this.slot && this.fill.get(Number(/^\s*#(\d+)/.exec(line)?.[1]));
-    if (!value || !this.slot) return line;
-    const head = stepRecordHead(line);
-    const record = head && line.slice(head.typeStart, head.typeEnd).toUpperCase() === this.slot.type ? readStepSlots(line) : null;
-    if (!record || !slotUnset(record.slots[this.slot.at])) return line;
+    if (this.at < 0) return line;
+    const value = this.fill.get(Number(/^\s*#(\d+)/.exec(line)?.[1]));
+    const record = value ? readStepSlots(line) : null;
+    if (!record || !slotUnset(record.slots[this.at])) return line;
     const slots = [...record.slots];
-    slots[this.slot.at] = value;
+    slots[this.at] = value!;
     return `${record.prefix}${slots.join(',')}${record.suffix}`;
   }
 

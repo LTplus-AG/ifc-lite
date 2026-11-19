@@ -257,14 +257,13 @@ describe('multi-batch IDS corrections (#10792)', () => {
     answer(await invoke('authoring.discard', { token: first })); // still held: the second prepare dropped nothing
   });
 
+  const renameWall = (value: string, current = 'Wall 1') => JSON.stringify({ version: 1, kind: 'model.changes', title: 'Name', changes: [
+    { op: 'attribute.set', target: { globalId: guid(1), modelId: 'walls', ifcClass: 'IfcWall', name: current }, name: 'Name', expected: current, value }] });
+
   it('#68: a refused correction evicts no applied candidate', async () => {
-    const renameWall = (value: string) => JSON.stringify({ version: 1, kind: 'model.changes', title: 'Name', changes: [
-      { op: 'attribute.set', target: { globalId: guid(1), modelId: 'walls', ifcClass: 'IfcWall', name: 'Wall 1' }, name: 'Name', expected: 'Wall 1', value }] });
     const applied = answer<{ token: string }>(await invoke('properties.prepare', { proposal_json: renameWall('Applied') })).token;
     answer(await invoke('authoring.apply', { token: applied }, true));
-    const renameWall2 = (value: string) => JSON.stringify({ version: 1, kind: 'model.changes', title: 'Name', changes: [
-      { op: 'attribute.set', target: { globalId: guid(1), modelId: 'walls', ifcClass: 'IfcWall', name: 'Applied' }, name: 'Name', expected: 'Applied', value }] });
-    for (let i = 0; i < 63; i++) answer(await invoke('properties.prepare', { proposal_json: renameWall2(`Name ${i}`) }));
+    for (let i = 0; i < 63; i++) answer(await invoke('properties.prepare', { proposal_json: renameWall(`Name ${i}`, 'Applied') }));
     // 63 pending plus two batches cannot fit; the refusal comes before batch one could evict the applied candidate.
     const express_ids = Array.from({ length: WALLS }, (_, i) => i + 1);
     const fix = await invoke('validation.fix.prepare', { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value: 'yes', title: 'Mark reviewed' });
@@ -273,8 +272,6 @@ describe('multi-batch IDS corrections (#10792)', () => {
   });
 
   it('#68: a correction whose later batch fails stages none of its batches', async () => {
-    const renameWall = (value: string) => JSON.stringify({ version: 1, kind: 'model.changes', title: 'Name', changes: [
-      { op: 'attribute.set', target: { globalId: guid(1), modelId: 'walls', ifcClass: 'IfcWall', name: 'Wall 1' }, name: 'Name', expected: 'Wall 1', value }] });
     for (let i = 0; i < 63; i++) answer(await invoke('properties.prepare', { proposal_json: renameWall(`Name ${i}`) }));
     // The first batch takes the 64th place and the second is refused.
     const express_ids = Array.from({ length: WALLS }, (_, i) => i + 1);

@@ -27,7 +27,7 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
     handles.delete(key);
     try { release(value); } catch (error) { console.warn('[viewer operations] Releasing a stale candidate failed:', error); }
   }
-  // Refused before anything settled is evicted, so a refusal leaves the host as it was.
+  // Refused before any candidate that can still apply is evicted (only stale ones are gone by now).
   if (open + count > cap) throw new Error(refusal);
   for (const [key, value] of handles) {
     if (handles.size + count <= cap) break;

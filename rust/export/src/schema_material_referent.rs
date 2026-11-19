@@ -50,7 +50,7 @@ pub(crate) struct MaterialReferents {
 }
 
 /// Whether `line` is a material record (IFCMATERIAL*), read from its head alone.
-pub(crate) fn is_material(line: &str) -> bool {
+fn is_material(line: &str) -> bool {
     crate::step_record_frame::record_head(line).is_some_and(|h| h.type_name(line).get(..MATERIAL.len()).is_some_and(|p| p.eq_ignore_ascii_case(MATERIAL)))
 }
 
@@ -85,6 +85,11 @@ fn resolve(records: &HashMap<u32, Record>, gone: &std::collections::HashSet<u32>
 }
 
 impl MaterialReferents {
+    /// The schema a `from` record is read in, when this export downgrades it.
+    fn schema_for(&self, from: &str) -> Option<&'static str> {
+        ifc4_family(from).filter(|_| self.armed)
+    }
+
     /// For an export to `to` (canonical), with no records yet: a merge adds each model's.
     pub(crate) fn for_target(to: &str) -> Self {
         Self { armed: to == "IFC2X3", records: HashMap::new(), gone: Default::default(), dropped: BTreeMap::new() }
@@ -93,16 +98,18 @@ impl MaterialReferents {
     /// One source converted from `from` to `to`, with its `kept` material records.
     pub(crate) fn scan(content: &[u8], from: &str, to: &str, kept: &dyn Fn(u32, usize) -> bool) -> Self {
         let mut out = Self::for_target(to);
-        out.add_model(content, from, &|id, start| kept(id, start).then_some(id), &|bytes| String::from_utf8_lossy(bytes).into_owned());
+        out.add_model(content, from, MATERIAL, &|id, start| kept(id, start).then_some(id), &|bytes| String::from_utf8_lossy(bytes).into_owned());
         out
     }
 
     /// Adds a model's material records: `id_of` gives a record's id in the
     /// export (`None`: not written by it), `text_of` its text in the export's id space.
-    pub(crate) fn add_model(&mut self, content: &[u8], from: &str, id_of: &dyn Fn(u32, usize) -> Option<u32>, text_of: &dyn Fn(&[u8]) -> String) {
-        let Some(schema) = ifc4_family(from).filter(|_| self.armed) else { return };
-        // A file without a material record needs no pass.
-        if !content.windows(MATERIAL.len()).any(|w| w.eq_ignore_ascii_case(MATERIAL.as_bytes())) { return; }
+    /// `gate`: a type a model must hold to be scanned (a merge needs IFCMATERIALPROPERTIES;
+    /// a single export, whose log may create one, any IFCMATERIAL record).
+    pub(crate) fn add_model(&mut self, content: &[u8], from: &str, gate: &str, id_of: &dyn Fn(u32, usize) -> Option<u32>, text_of: &dyn Fn(&[u8]) -> String) {
+        let Some(schema) = self.schema_for(from) else { return };
+        // A file without a record of `gate` needs no pass.
+        if !content.windows(gate.len()).any(|w| w.eq_ignore_ascii_case(gate.as_bytes())) { return; }
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, end)) = scanner.next_entity() {
             if !ty.get(..MATERIAL.len()).is_some_and(|p| p.eq_ignore_ascii_case(MATERIAL)) { continue; }
@@ -119,7 +126,7 @@ impl MaterialReferents {
     /// record, as written, in `from`) replaces its record or, no longer a
     /// material (a retype), leaves the table.
     pub(crate) fn with_effective<'l>(&mut self, from: &str, keep: impl Fn(u32) -> bool, lines: impl IntoIterator<Item = (u32, &'l str)>) {
-        let Some(schema) = ifc4_family(from).filter(|_| self.armed) else { return };
+        let Some(schema) = self.schema_for(from) else { return };
         let gone: Vec<u32> = self.records.keys().copied().filter(|id| !keep(*id)).collect();
         for id in gone { self.records.remove(&id); self.gone.insert(id); }
         for (id, line) in lines {
@@ -146,7 +153,7 @@ impl MaterialReferents {
         repointed: &HashMap<u32, BTreeMap<usize, String>>,
         copies: &[crate::step_cow::Copy],
     ) {
-        if !self.armed || ifc4_family(from).is_none() { return; }
+        if self.schema_for(from).is_none() { return; }
         let material = |id: &u32| spans.get(id).map(|&(s, e)| String::from_utf8_lossy(&content[s..e])).filter(|l| is_material(l));
         let edited_ids: std::collections::HashSet<&u32> = muts.keys().chain(repointed.keys()).collect();
         let mut lines: Vec<(u32, String)> = edited_ids.into_iter().filter_map(|id| {
@@ -164,7 +171,7 @@ impl MaterialReferents {
     /// `line`, record `id` in `from` before conversion, naming the material its
     /// `Material` resolves to; `None` when it names none, adding its values to `dropped`.
     pub(crate) fn apply<'l>(&mut self, id: u32, line: &'l str, from: &str, dropped: &mut usize) -> Option<Cow<'l, str>> {
-        let Some(schema) = ifc4_family(from).filter(|_| self.armed) else { return Some(line.into()) };
+        let Some(schema) = self.schema_for(from) else { return Some(line.into()) };
         // The head names the type; most records stop before their slots are split.
         let Some(head) = crate::step_record_frame::record_head(line) else { return Some(line.into()) };
         if !head.type_name(line).eq_ignore_ascii_case(PROPERTIES) { return Some(line.into()); }

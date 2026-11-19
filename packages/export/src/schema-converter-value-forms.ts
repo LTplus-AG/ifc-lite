@@ -19,7 +19,7 @@ import { withoutComments } from './step-comment-skip.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
-import { skipStepTrivia } from './step-slot-grammar.js';
+import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 
 interface Rule {
   readonly index: number;
@@ -86,7 +86,8 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   const form = valueForm(body);
   const to = form === null ? undefined : rule.forms.get(prefix + form);
   if (to === undefined) return { value, lost: 0 };
-  const close = body.lastIndexOf(')'), n = Number(body);
+  // The shared STEP number grammar gates the integer form; `wholeDecimal` reads the digits.
+  const close = body.lastIndexOf(')'), n = parseStepNumber(body);
   const fixed = to === null ? null
     : to.startsWith('T:') ? `${to.slice(2)}(${body})`
     : to === 'U' ? (close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim())

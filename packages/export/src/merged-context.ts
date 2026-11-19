@@ -183,8 +183,26 @@ export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, leng
   };
 }
 
-/** A context's coordinate operation and its target CRS (null when the target is no CRS). */
-export interface ContextOperation { operation: number; crs: number | null }
+/**
+ * A context's coordinate operation, its target CRS (null when the target is no CRS), and `record`: both records, and
+ * the CRS's WKT, by value. Two operations merge only when their records are equal in every attribute.
+ */
+export interface ContextOperation { operation: number; crs: number | null; record: string }
+
+/**
+ * A record's attributes by value: numbers parsed, `$` as null, a reference as its target's record, `depth` levels
+ * deep. `skip` leaves attributes out (an operation's SourceCRS and TargetCRS, which differ by id).
+ */
+function recordValue(dataStore: IfcDataStore, id: number, depth: number, skip: readonly number[] = []): unknown[] {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this is the merged input's current record
+  const values: unknown[] = [dataStore.entityIndex.byId.get(id)?.type ?? null];
+  for (let index = 0, raw = getStepAttr(dataStore, id, 0); raw !== null; raw = getStepAttr(dataStore, id, ++index)) {
+    if (skip.includes(index)) continue;
+    const ref = refId(raw), number = Number(raw);
+    values.push(ref !== null && depth > 0 ? recordValue(dataStore, ref, depth - 1) : raw === '$' ? null : Number.isNaN(number) ? raw : number);
+  }
+  return values;
+}
 
 /** A coordinate operation's TargetCRS that is a CRS record; IFC4X3 also allows another context there. */
 const CRS_TYPES = new Set(['IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS']);
@@ -197,7 +215,11 @@ function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOp
     for (const id of byType.get(type) ?? []) {
       if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
       const target = refId(getStepAttr(dataStore, id, 1));
-      return { operation: id, crs: target !== null && CRS_TYPES.has(byId.get(target)?.type?.toUpperCase() ?? '') ? target : null };
+      const crs = target !== null && CRS_TYPES.has(byId.get(target)?.type?.toUpperCase() ?? '') ? target : null;
+      const wkt = crs === null ? [] : (byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === crs);
+      const record = JSON.stringify([recordValue(dataStore, id, 4, [0, 1]), crs === null ? null : recordValue(dataStore, crs, 4),
+        wkt.map(text => recordValue(dataStore, text, 0, [1]))]);
+      return { operation: id, crs, record };
     }
   }
   return null;
@@ -239,7 +261,7 @@ export function resolvePrimaryContextState(
 }
 
 const offsetOperation = (operation: ContextOperation | null, offset: number): ContextOperation | null =>
-  operation && { operation: operation.operation + offset, crs: operation.crs === null ? null : operation.crs + offset };
+  operation && { ...operation, operation: operation.operation + offset, crs: operation.crs === null ? null : operation.crs + offset };
 
 /**
  * True when two resolved WCS frames are the same within tolerance, OR
@@ -271,8 +293,8 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
  * axis/refDirection orientation, so a differing length unit or a rotated frame
  * doesn't produce a false match) and its georeference agrees with the one on
  * the shared context (#10798), and, when both carry a coordinate operation,
- * both operations target a CRS (#10873); a mismatch leaves it un-remapped — kept as
- * this model's own root — so its untouched coordinates are never
+ * both are into a CRS and equal in every attribute (#10873); a mismatch leaves it un-remapped, kept as
+ * this model's own root, so its untouched coordinates are never
  * re-interpreted against the wrong frame.
  *
  * Its subcontexts (`IFCGEOMETRICREPRESENTATIONSUBCONTEXT`) go through
@@ -315,14 +337,14 @@ export function planInfrastructureUnify(
   // Two georeferences that differ keep this model's context, and its conversion with it, as its own root (#10798).
   const georef = resolveModelContextGeorefSignature(dataStore, lengthUnitScale);
   const modelContextIds = modelInfra.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
-  // A context holds one coordinate operation (HasCoordinateOperation SET [0:1], #10873). Two that can be told equal,
-  // both into a CRS, become one below; two that cannot (either into another context) keep this context apart.
+  // A context holds one coordinate operation (HasCoordinateOperation SET [0:1], #10873). Two equal in every attribute,
+  // both into a CRS, become one below; any other pair keeps this context apart, so no record is lost.
   const own = modelContextIds.length > 0 ? contextOperation(dataStore, modelContextIds[0]) : null;
   const shared = firstModelContext.contextOperation;
   const contextsCompatible = wcsSignaturesCompatible(firstModelContext.contextWcs,
     resolveModelContextWcs(dataStore, lengthUnitScale))
     && georefSignaturesCompatible(firstModelContext.contextGeoref, georef)
-    && !(own && shared && (own.crs === null || shared.crs === null));
+    && !(own && shared && (own.crs === null || shared.crs === null || own.record !== shared.record));
   // Only the model's FIRST top-level context is (positionally) unified below;
   // any later sibling context — a model with both a 'Model' and a 'Plan'
   // context, say — is always retained. A subcontext may therefore unify ONLY

@@ -37,7 +37,7 @@ import {
   type IfcSchemaVersion,
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
-import { isStrictAttrPrefix } from './schema-converter-renames.js';
+import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { isRootedEntityType } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
@@ -143,16 +143,17 @@ export function classifyEntityTypeConversion(
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
 
-  if (isStrictAttrPrefix(tgtAttrs, srcAttrs, upper)) {
-    const dropped = srcAttrs.slice(tgtAttrs.length);
+  // #10758: the converter writes `$` where a schema replaced an attribute in place.
+  const replaced = replacedSlot(upper, srcAttrs, tgtAttrs);
+  const replacedName = replaced === undefined ? [] : [srcAttrs[replaced]];
+  // A pad drops nothing past the source's own length, so one branch serves both.
+  if (isStrictAttrPrefix(tgtAttrs, srcAttrs, upper) || isStrictAttrPrefix(srcAttrs, tgtAttrs, upper)) {
+    const dropped = [...replacedName, ...srcAttrs.slice(tgtAttrs.length)];
     return {
       targetType: newType,
       kind: dropped.length > 0 ? 'lossy' : upper === newType ? 'identity' : 'renamed',
       droppedAttributes: dropped,
     };
-  }
-  if (isStrictAttrPrefix(srcAttrs, tgtAttrs, upper)) {
-    return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
   if (upper !== newType && BY_NAME_ATTR_REMAP_TYPES.has(upper)) {
     const dropped = srcAttrs.filter((name) => !tgtAttrs.includes(name));

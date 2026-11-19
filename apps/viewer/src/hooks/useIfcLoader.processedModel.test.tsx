@@ -316,6 +316,30 @@ it("a host request filed before the viewer mounts wins over ?processed= in the p
 });
 
 function ModelUrlEntry() { useModelUrlAutoload(); return null; }
+for (const hash of [sha256, 'malformed'] as const) {
+  it(`a ${hash === sha256 ? 'valid' : 'malformed'} processed link does not start a second model load (#10469)`, async () => {
+    stubWebGpu();
+    const fetched: string[] = [];
+    mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+      fetched.push(String(input));
+      return new Response(null, { status: 404 });
+    });
+    window.history.replaceState(null, '', `/?model=other.ifc&processed=${hash}&bytes=123&name=stored.ifc`);
+    // Match ViewerLayout's ordering, where the model URL hook comes first.
+    await act(async () => { root.render(<><ModelUrlEntry /><Probe fromUrl /></>); });
+    if (hash === sha256) {
+      await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the processed model loads'); });
+      assert.deepEqual(asked, [{ sha256, bytes: 123 }]);
+      assert.equal(model()?.name, 'stored.ifc');
+    } else {
+      await act(async () => { await waitFor(() => useViewerStore.getState().error !== null, 'the processed link is refused'); });
+      assert.deepEqual(asked, []);
+    }
+    assert.deepEqual(fetched.filter(url => url.endsWith('/other.ifc')), []);
+    if (hash !== sha256) assert.match(useViewerStore.getState().error ?? '', /model link is incomplete or damaged/);
+  });
+}
+
 it("a host request filed before the viewer mounts also wins over ?model= in the page URL", async () => {
   stubWebGpu();
   const fetched: string[] = [];

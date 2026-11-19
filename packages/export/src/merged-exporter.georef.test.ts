@@ -146,6 +146,7 @@ describe('mergeWarningLabel (#10669)', () => {
       [{ id: 'b (c)', name: 'A' }, { id: 'z', name: 'A' }, { id: 'c)', name: 'A (b' }, { id: 'w', name: 'A (b' }],
       [{ id: 'x', name: 'A (b)' }, { id: 'y', name: 'A (b)' }, { id: 'b) (x', name: 'A' }, { id: 'v', name: 'A' }],
       [{ id: 'q"', name: 'A' }, { id: 'r', name: 'A' }, { id: 's', name: 'A ("q\\"")' }],
+      [{ id: ' (', name: 'A' }, { id: 'z', name: 'A' }, { id: '"', name: 'A ("' }, { id: 'w', name: 'A ("' }],
     ];
     for (const models of sets) expect(new Set(labels(models)).size, JSON.stringify(labels(models))).toBe(models.length);
     expect(labels([{ id: 'a', name: 'House' }, { id: 'b', name: 'Terrain' }])).toEqual(['House', 'Terrain']);

@@ -234,6 +234,9 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
 /** 0-based attribute index of `IfcProject.RepresentationContexts` (IFC2X3 and IFC4). */
 const PROJECT_REPRESENTATION_CONTEXTS_ATTR = 7;
 
+/** The `#N` references in an attribute slot of references (`$` has none); its comments are not read. */
+const refsIn = (slot: string): string[] => slot.replace(/\/\*[\s\S]*?\*\//g, '').match(/#\d+/g) ?? [];
+
 /**
  * Plan the whole shared-infrastructure dedup for one model — `MergedExporter`
  * delegates its entire "remap and skip duplicate infrastructure" step here.
@@ -323,7 +326,7 @@ export function planInfrastructureUnify(
   // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this is the merged input's current project
   const projectId = (dataStore.entityIndex.byType.get('IFCPROJECT') ?? [])[0];
   const owned = projectId === undefined ? '' : getStepAttr(dataStore, projectId, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '';
-  const listed = new Set([...owned.matchAll(/#(\d+)/g)].map(match => Number(match[1])));
+  const listed = new Set(refsIn(owned).map(ref => Number(ref.slice(1))));
   return modelContextIds.filter(id => !sharedRemap.has(id) && listed.has(id));
 }
 
@@ -347,10 +350,8 @@ export function listKeptContexts(lines: string[], projectId: number | undefined,
   const text = lines[projectIndex], frame = stepRecordFrame(text, { allowMissingSemicolon: true });
   const args = frame && splitTopLevelStepArguments(frameArgs(text, frame));
   if (!frame || !args || args.length <= PROJECT_REPRESENTATION_CONTEXTS_ATTR) return;
-  // The slot holds references only, so its comments can go: `(#2) /* c */` and `$ /* c */` read as the list.
-  const listed = args[PROJECT_REPRESENTATION_CONTEXTS_ATTR].replace(/\/\*[\s\S]*?\*\//g, '').trim();
-  const items = listed === '$' ? [] : listed.replace(/^\(|\)$/g, '').split(',').map(item => item.trim()).filter(Boolean);
-  args[PROJECT_REPRESENTATION_CONTEXTS_ATTR] = `(${[...items, ...written.map(id => `#${id}`)].join(',')})`;
+  // The slot holds references only, so it is rewritten from them: `(#2) /* c */` and `$ /* c */` read as the list.
+  args[PROJECT_REPRESENTATION_CONTEXTS_ATTR] = `(${[...refsIn(args[PROJECT_REPRESENTATION_CONTEXTS_ATTR]), ...written.map(id => `#${id}`)].join(',')})`;
   lines[projectIndex] = withFrameArgs(text, frame, args.join(','));
 }
 

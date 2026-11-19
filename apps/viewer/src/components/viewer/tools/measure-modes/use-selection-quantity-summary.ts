@@ -60,7 +60,7 @@ export function useSelectionQuantitySummary() {
       models.size > 0
         ? [...models.values()].map((m) => m.geometryResult?.meshes)
         : [geometryResult?.meshes],
-    ), models),
+    ), models, geometryResult),
     [models, geometryResult],
   );
 
@@ -271,9 +271,11 @@ export function useSelectionQuantitySummary() {
 function withReleasedMeshAreas(
   areas: Map<number, MeshAreaEntry>,
   models: ReadonlyMap<string, { geometryResult?: { meshes: MeshData[] } | null }>,
+  legacyGeometry?: { meshes: MeshData[] } | null,
 ): Map<number, MeshAreaEntry> {
   const metadata = releasedGeometryMetadata();
-  for (const [modelId, model] of models) {
+  const sources = models.size > 0 ? models : new Map([['__legacy__', { geometryResult: legacyGeometry }]]);
+  for (const [modelId, model] of sources) {
     const answered = new Set<number>();
     for (const mesh of model.geometryResult?.meshes ?? []) {
       if (!isReleasedMesh(mesh) || answered.has(mesh.expressId)) continue;

@@ -33,6 +33,36 @@ async function released(list: MeshData[]) {
 }
 
 describe('store mesh readback for cut and export tools', () => {
+  it('#10887 tool readback preserves a copy with its origin cleared', async () => {
+    const list = [{ ...mesh(1, 0), origin: [10, 0, 0] as [number, number, number] }];
+    const { registry, source } = await released(list);
+    try {
+      const current = carryReleasedMesh(list[0], { ...list[0], origin: undefined });
+      const lease = await leaseStoreMeshes(source, [{ modelId: 'm', meshes: list }], [current]);
+      try {
+        assert.equal(lease.meshes[0].origin, undefined, 'current scalar absence overrides the stored offset');
+      } finally { lease.release(); }
+    } finally { await registry.close(); }
+  });
+
+  it('#10887 a slab considers every placement of copies from the same model', async () => {
+    const list = [mesh(1, 0)];
+    const { registry, source } = await released(list);
+    try {
+      const translated = carryReleasedMesh(list[0], { ...list[0], origin: [100, 0, 0], modelIndex: 2 });
+      for (const wanted of [[list[0], translated], [translated, list[0]]]) {
+        const lease = await leaseStoreMeshes(source, [{ modelId: 'm', meshes: list }], wanted,
+          { slab: { normal: [1, 0, 0], min: 100.5, max: 100.5 } });
+        try {
+          const placed = lease.meshes.find((copy) => copy.modelIndex === 2);
+          assert.ok(placed, 'the translated copy must survive even when the first copy misses the slab');
+          assert.deepEqual(placed.origin, [100, 0, 0]);
+          assert.deepEqual([...placed.positions], [0, 0, 0, 1, 0, 0, 0, 0, 1]);
+        } finally { lease.release(); }
+      }
+    } finally { await registry.close(); }
+  });
+
   it('slab geometry: boxes and cut planes, cardinal and custom', () => {
     assert.equal(boxMeetsSlab([0, 0, 0], [1, 1, 1], { normal: [0, 1, 0], min: 0.5, max: 0.6 }), true);
     assert.equal(boxMeetsSlab([0, 2, 0], [1, 3, 1], { normal: [0, 1, 0], min: 0.5, max: 0.6 }), false);

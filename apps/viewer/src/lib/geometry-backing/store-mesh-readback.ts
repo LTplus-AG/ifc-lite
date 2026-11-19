@@ -45,13 +45,11 @@ const RECORD_FIELDS = new Set<keyof MeshData>(['positions', 'normals', 'indices'
  * reapplied exactly as on the resident copy.
  */
 export function mergeReleased(copy: MeshData, record: MeshData): MeshData {
-  const merged: MeshData = { ...record };
-  for (const key of Object.keys(copy) as Array<keyof MeshData>) {
-    if (RECORD_FIELDS.has(key)) continue;
-    const value = copy[key];
-    // Lanes a release leaves on the mesh (entityIds, uvs) are current there.
-    if (value === undefined) continue;
-    (merged as unknown as Record<string, unknown>)[key] = value;
+  const merged: MeshData = { ...copy };
+  const fields = merged as unknown as Partial<Record<keyof MeshData, unknown>>;
+  for (const key of RECORD_FIELDS) {
+    if (Object.hasOwn(record, key)) fields[key] = record[key];
+    else delete fields[key];
   }
   return merged;
 }
@@ -97,7 +95,7 @@ export async function leaseStoreMeshes(
   try {
     // Released members by model: store index -> the wanted meshes it answers.
     const needed = new Map<string, Map<number, MeshData[]>>();
-    const offsets = new Map<string, number[]>();
+    const offsets = new Map<MeshData, number[]>();
     for (const mesh of wanted) {
       if (meshIsResident(mesh)) continue;
       const found = canonicalStoreMesh(mesh, owner);
@@ -107,10 +105,8 @@ export async function leaseStoreMeshes(
       byIndex.set(index, [...(byIndex.get(index) ?? []), mesh]);
       needed.set(modelId, byIndex);
       // A placed copy's frame differs from the backed (store) frame by its origin shift.
-      if (!offsets.has(modelId)) {
-        const o = mesh.origin ?? [0, 0, 0], so = found.source.origin ?? [0, 0, 0];
-        offsets.set(modelId, [o[0] - so[0], o[1] - so[1], o[2] - so[2]]);
-      }
+      const o = mesh.origin ?? [0, 0, 0], so = found.source.origin ?? [0, 0, 0];
+      offsets.set(mesh, [o[0] - so[0], o[1] - so[1], o[2] - so[2]]);
     }
     const budget = options.budgetBytes ?? DEFAULT_STORE_READBACK_BYTES;
     let leasedBytes = 0;
@@ -123,17 +119,21 @@ export async function leaseStoreMeshes(
       if (total !== lists.get(modelId)!.length) {
         throw new GeometryUnavailableError(`Model ${modelId}'s backing holds ${total} meshes, its store list ${lists.get(modelId)!.length}`);
       }
-      const delta = offsets.get(modelId)!;
-      const slab = options.slab && (() => {
-        const shift = options.slab.normal[0] * delta[0] + options.slab.normal[1] * delta[1] + options.slab.normal[2] * delta[2];
-        return { normal: options.slab.normal, min: options.slab.min - shift, max: options.slab.max - shift };
-      })();
       let start = 0;
       for (const chunk of chunks) {
         const end = start + chunk.meshCount;
         let hit = false;
-        for (const index of byIndex.keys()) if (index >= start && index < end) { hit = true; break; }
-        if (hit && (!slab || boxMeetsSlab(chunk.min, chunk.max, slab))) {
+        for (const [index, copies] of byIndex) {
+          if (index < start || index >= end) continue;
+          hit = copies.some((copy) => {
+            if (!options.slab) return true;
+            const { normal, min, max } = options.slab, delta = offsets.get(copy)!;
+            const shift = normal[0] * delta[0] + normal[1] * delta[1] + normal[2] * delta[2];
+            return boxMeetsSlab(chunk.min, chunk.max, { normal, min: min - shift, max: max - shift });
+          });
+          if (hit) break;
+        }
+        if (hit) {
           leasedBytes += chunk.bytes;
           if (leasedBytes > budget) throw new GeometryUnavailableError(`Released geometry readback exceeds its ${budget}-byte bound`);
           const lease = await backing.reader.leaseChunks([chunk.index], options);

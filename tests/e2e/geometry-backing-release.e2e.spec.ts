@@ -95,8 +95,8 @@ async function toolProbe(page: Page, modelId: string): Promise<Record<string, un
     }
     return { exportDigest: hash(unkeyed), exportedMeshes: exported.meshes.length,
       instancedExported: exported.meshes.filter((m) => m.occurrenceKey?.includes(':inst:')).length,
-      planLines: planLines.length, planDigest: planLines.join('|').length + ':' + planLines.slice(0, 40).join('|'),
-      capPolygons: polygons.length, capDigest: polygons.join('|').length + ':' + polygons.slice(0, 50).join('|'),
+      planLines: planLines.length, planDigest: planLines,
+      capPolygons: polygons.length, capDigest: polygons,
       centre: { target, min, max }, areas: [...areas].sort((x, y) => x[0] - y[0]).map(([k, v]) => [k, round(v.area), v.incomplete]) };
   }, [DRAWING, modelId, digestSource()] as const);
 }

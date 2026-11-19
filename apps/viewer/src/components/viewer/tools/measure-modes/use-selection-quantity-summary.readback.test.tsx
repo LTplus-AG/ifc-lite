@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import { cleanup, render } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
@@ -21,7 +22,8 @@ function Summary() {
   return <output>{JSON.stringify(summary?.meshArea)}</output>;
 }
 
-it('#10887 a partly released entity reports its whole backed area or no area', async () => {
+for (const legacy of [false, true]) {
+it(`#10887 a partly released ${legacy ? 'legacy' : 'federated'} entity reports its whole backed area or no area`, async () => {
   const initial = useViewerStore.getState();
   const piece = (width: number): MeshData => ({ expressId: 42, ifcType: 'IfcWall',
     positions: Float32Array.from([0, 0, 0, width, 0, 0, 0, 2, 0]),
@@ -31,11 +33,18 @@ it('#10887 a partly released entity reports its whole backed area or no area', a
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false,
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 6, y: 2, z: 0 } },
       shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 6, y: 2, z: 0 } } } };
-  useViewerStore.setState({ models: new Map([['m', {
-    ...fixtureModel('m'), geometryResult: geometry, ifcDataStore: null,
-  }]]), geometryResult: geometry, ifcDataStore: null, activeModelId: 'm',
-  selectedEntity: { modelId: 'm', expressId: 42 }, selectedEntitiesSet: new Set() });
-  const store = useViewerStore as unknown as StoreApi<TapState>;
+  const modelId = legacy ? '__legacy__' : 'm';
+  const models = new Map([[modelId, {
+    ...fixtureModel(modelId), geometryResult: geometry, ifcDataStore: null,
+  }]]);
+  useViewerStore.setState({ models: legacy ? new Map() : models,
+    geometryResult: geometry, ifcDataStore: null, activeModelId: legacy ? null : modelId,
+    selectedEntity: { modelId: legacy ? 'legacy' : modelId, expressId: 42 }, selectedEntitiesSet: new Set() });
+  // The backing's model-aware adapter remains stable while the legacy hook
+  // reads its supported geometryResult-only view of the same live geometry.
+  const store = legacy
+    ? createStore<TapState>(() => ({ models, geometryContentVersion: 0 }))
+    : useViewerStore as unknown as StoreApi<TapState>;
   const area = () => {
     const ui = render(<Summary />);
     const value = JSON.parse(ui.querySelector('output')!.textContent!);
@@ -44,7 +53,7 @@ it('#10887 a partly released entity reports its whole backed area or no area', a
   };
   try {
     await geometryBackingCommand(store, undefined, { action: 'start', options: {
-      database: { name: `mixed-area-${process.pid}`, locks: null },
+      database: { name: `mixed-area-${process.pid}-${legacy}`, locks: null },
     } as never });
     const rows = await geometryBackingCommand(store, undefined, { action: 'seal' });
     assert.ok(rows.every((row) => 'complete' in row && row.complete));
@@ -59,3 +68,4 @@ it('#10887 a partly released entity reports its whole backed area or no area', a
     useViewerStore.setState(initial, true);
   }
 });
+}

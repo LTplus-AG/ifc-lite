@@ -34,6 +34,8 @@ export interface InstancedShardQueueEvent {
   readonly modelIds: ReadonlySet<string>;
   /** `enqueued` only: the shards this call queued (their bytes are read, never detached). */
   readonly shards?: readonly PendingInstancedShard[];
+  /** `discarded` only: a full discard, which also moved the queue generation. */
+  readonly full?: boolean;
 }
 
 type Listener = (event: InstancedShardQueueEvent) => void;
@@ -139,7 +141,7 @@ export function discardInstancedShards(modelId?: string): void {
   const dropped = modelId === undefined ? pending : pending.filter((shard) => shard.modelId === modelId);
   if (dropped.length === 0) return;
   pending = modelId === undefined ? [] : pending.filter((shard) => shard.modelId !== modelId);
-  emit({ kind: 'discarded', modelIds: modelIdsOf(dropped) });
+  emit({ kind: 'discarded', modelIds: modelIdsOf(dropped), full: modelId === undefined });
 }
 
 /** A producer's statement that `modelId`'s whole shard set for `generation` is enqueued: `count` shards, zero included. */

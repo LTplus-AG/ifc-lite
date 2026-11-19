@@ -1,0 +1,20 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
+index 734ba76..5137a50 100644
+--- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
++++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
+@@ -119,6 +119,7 @@ export class StoreGeometryBackingTap {
+     tap.stops.push(subscribeInstancedShards((event) => {
+       // Discarded, never uploaded: the backing holds shards the scene will not draw.
+       // A full discard already moved the generation: shards of the next one are fresh again.
++      if (event.kind === 'discarded') { for (const id of event.modelIds) tap.abandon(id, instancedShardGeneration() - (event.full ? 1 : 0)); return; }
+       if (event.kind !== 'enqueued' || !event.shards) return;
+       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
+       for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
+@@ -339,6 +340,7 @@ export class StoreGeometryBackingTap {
+   /** Close every model's writer and acknowledge complete generations. */
+   async seal(): Promise<ModelBackingStatus[]> {
+     // A statement holds only while its queue generation does: a full discard since (even of nothing) voids it.
++    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, instancedShardGeneration())) this.abandon(modelId, tracked.supplied!);
+     await this.whenIdle();
+     let acknowledged = false;
+     for (const [modelId, tracked] of this.tracked) {

@@ -22,7 +22,9 @@
  *   A content-version bump may move occurrences, so a model that had shards
  *   is then reported `instancedLost` and never complete (fail closed) until a
  *   fresh shard set arrives AND its producer states that set whole for the
- *   model (`completeInstancedShardSupply`), shard for shard. So is a model whose shards were
+ *   model (`completeInstancedShardSupply`), shard for shard; a discard of
+ *   those shards before upload, or a full discard before the seal, voids it
+ *   (`instanced-resupply.ts`). So is a model whose shards were
  *   enqueued before the tap started (the queue's revision is ahead of what
  *   the tap saw): those shards never reached the backing.
  * Appends for one model are chained in order; a writer failure is reported in
@@ -40,6 +42,7 @@ import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
 import { collectMeshAreas, type MeshAreaEntry } from '@/components/viewer/tools/measure-modes/mesh-area';
+import { acceptStatement, admitShard, type ResupplyState, statementVoided } from './instanced-resupply';
 import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
 import { type PreviousGeneration, replayStoreList } from './generation-replay';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
@@ -51,7 +54,7 @@ export interface TapState {
   geometryContentVersion: number;
 }
 
-interface Tracked {
+interface Tracked extends ResupplyState {
   /** Registry key of this generation: generations stage side by side. */
   key: string;
   backing?: ModelGeometryBacking;
@@ -66,11 +69,6 @@ interface Tracked {
   consumed: number;
   chain: Promise<void>;
   failure?: Error;
-  instancedLost: boolean;
-  /** Shard-queue generation when instancing was lost; only a newer one can re-supply current transforms. */
-  lostAtQueueGeneration?: number;
-  /** Fresh shards after the loss, per queue generation; whole only on a matching supply statement. */
-  resupply?: { generation: number; received: number; broken?: boolean };
   shards: number;
   /** Instanced occurrences backed; empty shard records are not instancing. */
   occurrences: number;
@@ -121,6 +119,9 @@ export class StoreGeometryBackingTap {
     tap.stops.push(store.subscribe((state) => tap.sync(state)));
     tap.stops.push(subscribeInstancedShardSupply((supply) => tap.onSupply(supply)));
     tap.stops.push(subscribeInstancedShards((event) => {
+      // Discarded, never uploaded: the backing holds shards the scene will not draw.
+      // A full discard already moved the generation: shards of the next one are fresh again.
+      if (event.kind === 'discarded') { for (const id of event.modelIds) tap.abandon(id, instancedShardGeneration() - (event.full ? 1 : 0)); return; }
       if (event.kind !== 'enqueued' || !event.shards) return;
       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
       for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
@@ -198,7 +199,7 @@ export class StoreGeometryBackingTap {
       // Lost instancing is sticky: no later edit may fall back to pre-loss (stale) occurrences.
       chain: Promise.resolve(), instancedLost: shards === 'lost' || (shards === 'carry' && !!previous?.instancedLost),
       lostAtQueueGeneration: shards === 'lost' ? instancedShardGeneration() : previous?.lostAtQueueGeneration,
-      resupply: shards === 'carry' ? previous?.resupply : undefined, shards: 0, occurrences: 0, areas: new Map(),
+      resupply: shards === 'carry' ? previous?.resupply : undefined, supplied: shards === 'carry' ? previous?.supplied : undefined, shards: 0, occurrences: 0, areas: new Map(),
       retained: previous ? [...previous.retained, previous.key] : [] };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       next.backing = await this.registry.begin(key, this.options);
@@ -271,15 +272,7 @@ export class StoreGeometryBackingTap {
       tracked = this.tracked.get(modelId)!;
     }
     const target = tracked;
-    if (target.instancedLost) {
-      // Only a supply after the loss (the shard queue was reset since) can carry current transforms,
-      // and only the model's supply statement proves it whole (`onSupply`); until then it stays lost.
-      const generation = instancedShardGeneration();
-      if (target.lostAtQueueGeneration === undefined || generation === target.lostAtQueueGeneration) return;
-      // A second reset mid-supply leaves superseded fresh shards behind: never whole.
-      const resupply = (target.resupply ??= { generation, received: 0 });
-      if (resupply.generation !== generation) resupply.broken = true;
-    }
+    if (!admitShard(target, instancedShardGeneration())) return; // `instanced-resupply.ts`
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.
     const shard = decodeInstancedShard(bytes.slice(0));
@@ -301,11 +294,15 @@ export class StoreGeometryBackingTap {
   /** Lost instancing is whole again only by the model's own statement, matched shard for shard. */
   private onSupply(supply: InstancedShardSupply): void {
     const tracked = this.stopped ? undefined : this.tracked.get(supply.modelId);
-    if (!tracked?.instancedLost || tracked.lostAtQueueGeneration === undefined || supply.generation === tracked.lostAtQueueGeneration) return;
-    const resupply = tracked.resupply ?? { generation: supply.generation, received: 0 };
-    if (resupply.broken || resupply.generation !== supply.generation || resupply.received !== supply.count) return;
-    tracked.instancedLost = false;
-    tracked.lostAtQueueGeneration = tracked.resupply = undefined;
+    if (tracked) acceptStatement(tracked, supply);
+  }
+
+  /** Instancing whose shards were dropped before upload: a fresh lost generation, never carrying the abandoned shards. */
+  private abandon(modelId: string, lostAt: number): void {
+    const tracked = this.stopped ? undefined : this.tracked.get(modelId);
+    if (!tracked || !this.store.getState().models.has(modelId)) return;
+    this.regenerate(modelId, tracked.meshes, 'lost');
+    this.tracked.get(modelId)!.lostAtQueueGeneration = lostAt;
   }
 
   private enqueue(tracked: Tracked, step: () => Promise<void>): void {
@@ -345,6 +342,8 @@ export class StoreGeometryBackingTap {
 
   /** Close every model's writer and acknowledge complete generations. */
   async seal(): Promise<ModelBackingStatus[]> {
+    // A statement holds only while its queue generation does: a full discard since (even of nothing) voids it.
+    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, instancedShardGeneration())) this.abandon(modelId, tracked.supplied!);
     await this.whenIdle();
     let acknowledged = false;
     for (const [modelId, tracked] of this.tracked) {
@@ -354,6 +353,7 @@ export class StoreGeometryBackingTap {
         // Only a verified, complete, still-current replacement may retire what it replaces.
         if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure) return;
         acknowledged ||= this.acknowledged.get(modelId) !== tracked;
+        tracked.supplied = undefined;
         this.acknowledged.set(modelId, tracked);
         for (const old of tracked.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by an acknowledged generation');
       }));

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
-import { completeInstancedShardSupply, discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { completeInstancedShardSupply, discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
@@ -254,21 +254,98 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
-  it('a second reset during a re-supply never completes it', async () => {
-    const store = storeWith({ r2: [mesh(1)] });
+  for (const scope of ['global', 'model'] as const) {
+    it(`#10888 a statement then a ${scope} discard of its queued shards, then seal: incomplete, old copy kept, abandoned shards never carried`, async () => {
+      const id = `dz-${scope}`;
+      const store = storeWith({ [id]: [mesh(1)] });
+      const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+      enqueueInstancedShards(id, [shardBytes(77), shardBytes(78)], instancedShardGeneration());
+      await tap.seal();
+      const acknowledged = tap.backing(id)!;
+      const idsOf = async (backing: typeof acknowledged) => {
+        const ids: number[] = [];
+        for await (const shard of backing.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+        return ids.sort();
+      };
+      store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+      discardInstancedShards();
+      const fresh = instancedShardGeneration();
+      enqueueInstancedShards(id, [shardBytes(80), shardBytes(81)], fresh);
+      completeInstancedShardSupply(id, 2, fresh); // matched: accepted
+      // The load is abandoned before the drain uploads anything.
+      if (scope === 'global') discardInstancedShards(); else discardInstancedShards(id);
+      let [status] = await tap.seal();
+      assert.equal(status.complete, false, 'the scene never received the stated set');
+      assert.equal(acknowledged.isCurrent, true, 'the acknowledged copy stays durable');
+      assert.deepEqual(await idsOf(acknowledged), [77, 78]);
+      // A later, real re-supply must hold only its own shards.
+      discardInstancedShards();
+      const next = instancedShardGeneration();
+      enqueueInstancedShards(id, [shardBytes(90)], next);
+      completeInstancedShardSupply(id, 1, next);
+      [status] = await tap.seal();
+      assert.equal(status.complete, true, status.error ?? 'incomplete');
+      assert.deepEqual(await idsOf(tap.backing(id)!), [90], 'never the abandoned 80, 81 nor the stale 77, 78');
+      await tap.stop();
+    });
+  }
+
+  it('#10888 a full discard after the statement voids it even when it dropped nothing (generation fence)', async () => {
+    const store = storeWith({ dg: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
-    enqueueInstancedShards('r2', [shardBytes(77)], instancedShardGeneration());
+    enqueueInstancedShards('dg', [shardBytes(77)], instancedShardGeneration());
     await tap.seal();
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     discardInstancedShards();
-    enqueueInstancedShards('r2', [shardBytes(80)], instancedShardGeneration());
-    discardInstancedShards(); // superseded mid-supply: shard 80 belongs to an abandoned load
-    enqueueInstancedShards('r2', [shardBytes(81)], instancedShardGeneration());
-    completeInstancedShardSupply('r2', 1, instancedShardGeneration());
+    const fresh = instancedShardGeneration();
+    completeInstancedShardSupply('dg', 0, fresh); // an empty replacement, nothing queued
+    discardInstancedShards(); // nothing pending: no event, only the generation moves
     const [status] = await tap.seal();
-    assert.equal(status.complete, false, 'the backing would hold an abandoned shard');
+    assert.equal(status.complete, false, 'the empty statement belonged to a superseded generation');
     await tap.stop();
   });
+
+  it('drained (uploaded) fresh shards keep their statement through the seal', async () => {
+    const store = storeWith({ dd: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('dd', [shardBytes(77)], instancedShardGeneration());
+    await tap.seal();
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    discardInstancedShards();
+    const fresh = instancedShardGeneration();
+    enqueueInstancedShards('dd', [shardBytes(80)], fresh);
+    completeInstancedShardSupply('dd', 1, fresh);
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    const [status] = await tap.seal();
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
+    await tap.stop();
+  });
+
+  for (const uploaded of [false, true]) {
+    it(`a second reset during a re-supply ${uploaded ? 'after the first fresh shard was uploaded never completes' : 'drops the abandoned shard, so only the next set is backed'}`, async () => {
+      const id = `r2-${uploaded}`;
+      const store = storeWith({ [id]: [mesh(1)] });
+      const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+      enqueueInstancedShards(id, [shardBytes(77)], instancedShardGeneration());
+      await tap.seal();
+      store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+      discardInstancedShards();
+      enqueueInstancedShards(id, [shardBytes(80)], instancedShardGeneration());
+      if (uploaded) drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+      discardInstancedShards(); // superseded mid-supply: shard 80 belongs to an abandoned load
+      enqueueInstancedShards(id, [shardBytes(81)], instancedShardGeneration());
+      completeInstancedShardSupply(id, 1, instancedShardGeneration());
+      const [status] = await tap.seal();
+      if (uploaded) assert.equal(status.complete, false, 'shard 80 is in the backing, and nothing proves it current');
+      else {
+        assert.equal(status.complete, true, status.error ?? 'incomplete');
+        const ids: number[] = [];
+        for await (const shard of tap.backing(id)!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+        assert.deepEqual(ids, [81]);
+      }
+      await tap.stop();
+    });
+  }
 
   it('notifies metadata consumers whenever availability changes in place', async () => {
     const list = [mesh(1)];

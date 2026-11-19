@@ -43,38 +43,39 @@ fn rule<'a>(rows: &'a [&'a str], form: &str) -> Option<Option<&'a str>> {
     })
 }
 
-/// `value` in the target's form (`None` to drop it), and the members it dropped.
+/// `value` in the target's form (`None` to drop it), and how many values that lost.
 fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     let Some(start) = skip_step_trivia(value.as_bytes(), 0) else { return (Some(value.to_owned()), 0) };
-    let body = &value[start..];
-    if body.starts_with('(') {
+    if value[start..].starts_with('(') {
         let Some(members) = list_items(value) else { return (Some(value.to_owned()), 0) };
-        let (mut kept, mut dropped) = (Vec::new(), 0);
+        let (mut kept, mut lost) = (Vec::new(), 0);
         for member in &members {
-            let (fixed, lost) = fix(member, &format!("{prefix}A"), rows);
-            dropped += lost + usize::from(fixed.is_none());
+            let (fixed, n) = fix(member, &format!("{prefix}A"), rows);
+            lost += n;
             kept.extend(fixed);
         }
-        if dropped == 0 && kept == members { return (Some(value.to_owned()), 0); }
-        return ((!kept.is_empty()).then(|| format!("({})", kept.join(","))), dropped);
+        if lost == 0 && kept == members { return (Some(value.to_owned()), 0); }
+        return ((!kept.is_empty()).then(|| format!("({})", kept.join(","))), lost);
     }
-    let Some(form) = value_form(body) else { return (Some(value.to_owned()), 0) };
-    match rule(rows, &format!("{prefix}{form}")) {
-        None => (Some(value.to_owned()), 0),
-        Some(None) => (None, 0),
-        Some(Some("U")) => (body.find('(').zip(body.rfind(')')).map(|(open, close)| body[open + 1..close].trim().to_owned()), 0),
-        Some(Some(to)) if to.ends_with('I') => {
-            let n: Option<f64> = body.trim().parse().ok();
-            (n.filter(|n| n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64)), 0)
-        }
-        Some(Some(to)) => (Some(format!("{}({})", &to[2..], body.trim())), 0),
-    }
+    // Classified and converted without comments, so a trailing `/* .. */` changes nothing.
+    let body = crate::step_slot::without_comments(value);
+    let Some(to) = value_form(&body).and_then(|form| rule(rows, &format!("{prefix}{form}"))) else { return (Some(value.to_owned()), 0) };
+    let fixed = match to {
+        None => None,
+        Some(to) if to.starts_with("T:") => Some(format!("{}({body})", &to[2..])),
+        Some("U") => body.find('(').zip(body.rfind(')')).map(|(open, close)| body[open + 1..close].trim().to_owned()),
+        Some(_) => body.parse::<f64>().ok().filter(|n| n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64)),
+    };
+    let lost = usize::from(fixed.is_none());
+    (fixed, lost)
 }
 
 /// Value-form reconciliation for one export: rewrites, and names what it dropped.
 #[derive(Default)]
 pub(crate) struct ValueForms {
+    /// Per `TYPE.Attribute`: values dropped, and those that left a required slot `$`.
     dropped: BTreeMap<String, usize>,
+    emptied: BTreeMap<String, usize>,
 }
 
 impl ValueForms {
@@ -91,13 +92,13 @@ impl ValueForms {
         // A record whose arity is not the target's is left alone: slot i need not be attribute i.
         if crate::schema_convert::schema_attribute_names(cto, &ty).map(<[_]>::len) != Some(args.len()) { return line; }
         let mut changed = false;
-        for &(index, attribute, rows) in slots {
+        for &(index, attribute, required, rows) in slots {
             let Some(slot) = args.get_mut(usize::from(index)) else { continue };
-            let (fixed, members) = fix(slot, "", rows);
-            let lost = members + usize::from(fixed.is_none());
+            let (fixed, lost) = fix(slot, "", rows);
             if lost > 0 {
                 *dropped += lost;
-                *self.dropped.entry(format!("{ty}.{attribute}")).or_default() += lost;
+                let into = if fixed.is_none() && required { &mut self.emptied } else { &mut self.dropped };
+                *into.entry(format!("{ty}.{attribute}")).or_default() += lost;
             }
             let value = fixed.unwrap_or_else(|| "$".to_owned());
             if value != *slot {
@@ -108,12 +109,16 @@ impl ValueForms {
         if changed { frame.with_args(&line, &args.join(",")) } else { line }
     }
 
-    /// One warning naming every slot a value was dropped from (#10847).
+    /// One warning per kind, naming every slot a value was dropped from (#10847).
     pub(crate) fn warnings(&self) -> Vec<String> {
-        if self.dropped.is_empty() { return Vec::new(); }
-        let total: usize = self.dropped.values().sum();
-        let sites: Vec<&str> = self.dropped.keys().map(String::as_str).collect();
-        vec![format!("{total} value(s) of a type the target slot does not accept were written as $: {} (#10847).", sites.join(", "))]
+        let line = |where_: &BTreeMap<String, usize>, what: &str| {
+            let total: usize = where_.values().sum();
+            let sites: Vec<&str> = where_.keys().map(String::as_str).collect();
+            (!where_.is_empty()).then(|| format!("{total} value(s) of a type the target slot does not accept {what}: {} (#10847).", sites.join(", ")))
+        };
+        line(&self.dropped, "were written as $").into_iter()
+            .chain(line(&self.emptied, "left a slot the target requires as $, so the file is not valid against its header"))
+            .collect()
     }
 }
 

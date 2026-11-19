@@ -25,14 +25,15 @@
  * IfcTextStyleTextModel) is kept: a line converter cannot read the
  * referenced record's type.
  *
- * Two rejections convert without loss instead, written `FORM>TO`:
+ * Three rejections convert instead, written `FORM>TO`:
  *  - `R>T:NAME`: an untyped value of the source's own defined type NAME, in
  *    a target select that takes NAME typed, is wrapped as `NAME(value)`
  *    (IFC4 IfcParameterValue -> IFC4X3 IfcCurveMeasureSelect);
  *  - `T:NAME>U`: a typed NAME value, in a target slot of type NAME, is
  *    unwrapped;
  *  - `R>I`: a real with no fraction, in an integer slot, is written as that
- *    integer (IFC4X3 made IfcCountMeasure an INTEGER); any other real is dropped.
+ *    integer (IFC4X3 made IfcCountMeasure an INTEGER); a fractional real is
+ *    dropped, so this one is lossless only for whole numbers.
  *
  * Pure, and free of package imports, so `scripts/generate-value-forms.mjs`
  * runs the same policy over the registries to write the reviewed ledger and
@@ -49,6 +50,7 @@ export interface ValueFormRegistry {
 export interface ValueFormAttribute {
   readonly name: string;
   readonly type: string;
+  readonly optional?: boolean;
   readonly isList?: boolean;
   readonly isSet?: boolean;
   readonly isArray?: boolean;
@@ -186,6 +188,8 @@ export interface ValueFormSlot {
   readonly attribute: string;
   readonly sourceType: string;
   readonly targetType: string;
+  /** The target requires the slot, so a dropped value leaves the record invalid. */
+  readonly required: boolean;
   readonly rejected: readonly string[];
 }
 
@@ -229,7 +233,7 @@ export function valueFormSlotsOf(source: Registry, target: Registry, from: strin
     if (DECIDED_ELSEWHERE.includes(`${type}.${tgt.name}`)) return;
     const src = srcAttrs.find((a) => a.name === name);
     const rejected = src ? rejectedForms(source, src, target, tgt) : [];
-    if (rejected.length) out.push({ type, entity, index, attribute: tgt.name, sourceType: src!.type, targetType: tgt.type, rejected });
+    if (rejected.length) out.push({ type, entity, index, attribute: tgt.name, sourceType: src!.type, targetType: tgt.type, required: !tgt.optional, rejected });
   });
   return out;
 }

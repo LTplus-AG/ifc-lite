@@ -30,6 +30,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
 import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 import { readStepSlots } from './step-argument-parser.js';
 
@@ -58,7 +59,8 @@ describe('convertStepLine matches the shared cross-language upconversion sweep',
 
   it('every case agrees with the Rust converter', () => {
     const mismatches = fixture.cases
-      .map((c) => ({ c, got: convertStepLine(c.line, c.from, c.to) }))
+      // The export's own collector, as the Rust half's exporter runs it (#10847 checks value forms).
+      .map((c) => ({ c, got: convertStepLine(c.line, c.from, c.to, undefined, undefined, undefined, undefined, new EnumReconciliation()) }))
       .filter(({ c, got }) => got !== c.expect)
       .map(({ c, got }) => `${c.from}->${c.to} [${c.why}]\n  in     ${c.line}\n  expect ${c.expect}\n  got    ${got}`);
     expect(mismatches).toEqual([]);

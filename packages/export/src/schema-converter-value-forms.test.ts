@@ -44,6 +44,18 @@ describe('value forms a target slot rejects (#10847)', () => {
     expect(convert("#5=IFCQUANTITYCOUNT('n',$,$,2.5,$);", 'IFC4', 'IFC4X3').out).toBe("#5=IFCQUANTITYCOUNT('n',$,$,$,$);");
   });
 
+  it('reads past a trailing comment, counts each rejected member once, and names an emptied required slot', () => {
+    expect(convert("#5=IFCQUANTITYCOUNT('n',$,$,3. /* c */,$);", 'IFC4', 'IFC4X3').out).toBe("#5=IFCQUANTITYCOUNT('n',$,$,3,$);");
+    expect(convert("#5=IFCQUANTITYCOUNT('n',$,$,3 /* see */,$);", 'IFC4', 'IFC4X3').out).toBe("#5=IFCQUANTITYCOUNT('n',$,$,3 /* see */,$);");
+    expect(convert('#5=IFCFILLAREASTYLETILES(#1,(#2,#3),1.);', 'IFC2X3', 'IFC4')).toEqual({
+      out: '#5=IFCFILLAREASTYLETILES($,$,1.);',
+      warnings: ['3 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCFILLAREASTYLETILES.Tiles, IFCFILLAREASTYLETILES.TilingPattern (#10847).'],
+    });
+    expect(convert("#5=IFCQUANTITYCOUNT('n',$,$,2.5,$);", 'IFC4', 'IFC4X3').warnings).toEqual([
+      '1 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCQUANTITYCOUNT.CountValue (#10847).',
+    ]);
+  });
+
   it('leaves convertStepLine without a reconciliation object unchanged (callers opt in)', () => {
     expect(convertStepLine("#5=IFCCLASSIFICATION('src','1',#9,'name');", 'IFC2X3', 'IFC4')).toBe("#5=IFCCLASSIFICATION('src','1',#9,'name',$,$,$);");
   });

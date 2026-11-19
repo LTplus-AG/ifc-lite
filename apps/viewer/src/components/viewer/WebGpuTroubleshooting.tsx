@@ -17,7 +17,7 @@ export function WebGpuDisabledCaption() {
         href="https://ifclite.dev/docs/guide/cli/"
         target="_blank"
         rel="noopener noreferrer"
-        className="text-primary hover:underline"
+        className="text-primary underline underline-offset-2"
       >
         {t('webgpuTroubleshooting.disabledCaption.cliLink')}
       </a>{' '}
@@ -26,7 +26,7 @@ export function WebGpuDisabledCaption() {
         href="https://ifclite.dev/docs/guide/mcp/"
         target="_blank"
         rel="noopener noreferrer"
-        className="text-primary hover:underline"
+        className="text-primary underline underline-offset-2"
       >
         {t('webgpuTroubleshooting.disabledCaption.mcpLink')}
       </a>

@@ -59,7 +59,7 @@ export const viewportLightingFr = {
   "viewportLighting.container.processedModel.notPrimary": "Un modèle traité ne peut être ouvert que comme premier modèle.",
   "viewportLighting.container.processedModel.noServer": "Aucun serveur de traitement n'est configuré pour cette visionneuse : les modèles traités ne peuvent pas être ouverts.",
   "viewportLighting.container.processedModel.unreachable": "Le serveur de traitement configuré est injoignable depuis cette page.",
-  "viewportLighting.container.processedModel.unsupported": "Ce navigateur ne peut pas ouvrir les modèles traités : la prise en charge de Parquet lui manque.",
+  "viewportLighting.container.processedModel.unsupported": "Impossible d’initialiser le décodeur Parquet nécessaire à l’ouverture de ce modèle traité.",
   "viewportLighting.container.processedModel.notStored": "Ce modèle n'est pas (encore) disponible sur le serveur.",
   "viewportLighting.container.processedModel.forbidden": "Vous n'avez pas accès à ce modèle.",
   "viewportLighting.container.processedModel.busy": "Le serveur de traitement est occupé. Réessayez dans un instant.",

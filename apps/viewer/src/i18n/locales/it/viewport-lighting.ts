@@ -59,7 +59,7 @@ export const viewportLightingIt = {
   "viewportLighting.container.processedModel.notPrimary": "Un modello elaborato può essere aperto solo come primo modello.",
   "viewportLighting.container.processedModel.noServer": "Per questo visualizzatore non è configurato alcun server di elaborazione, quindi i modelli elaborati non possono essere aperti.",
   "viewportLighting.container.processedModel.unreachable": "Il server di elaborazione configurato non è raggiungibile da questa pagina.",
-  "viewportLighting.container.processedModel.unsupported": "Questo browser non può aprire i modelli elaborati: manca il supporto Parquet necessario.",
+  "viewportLighting.container.processedModel.unsupported": "Non è stato possibile inizializzare il decoder Parquet necessario per aprire questo modello elaborato.",
   "viewportLighting.container.processedModel.notStored": "Questo modello non è (ancora) disponibile sul server.",
   "viewportLighting.container.processedModel.forbidden": "Non hai accesso a questo modello.",
   "viewportLighting.container.processedModel.busy": "Il server di elaborazione è occupato. Riprova tra un momento.",

@@ -59,6 +59,9 @@ pub(in crate::router::voids) fn refine_dense_host(mut result: Mesh, ctx: &VoidCo
 pub(in crate::router::voids) struct PreparedCutters<'a> {
     synth_rect: Vec<CutterKind>,
     non_rect_openings: Vec<&'a CutterKind>,
+    #[cfg(feature = "csg_manifold_gate")]
+    // Same order as the synthesized prefix of ordered().
+    pub(in crate::router::voids) unextended_rectangles: Vec<[Point3<f64>; 2]>,
 }
 
 impl<'a> PreparedCutters<'a> {
@@ -88,9 +91,13 @@ pub(in crate::router::voids) fn cutters<'a>(
     // borrowed `&CutterKind`s below.
     let mut synth_rect: Vec<CutterKind> = Vec::new();
     let mut non_rect_openings: Vec<&CutterKind> = Vec::new();
+    #[cfg(feature = "csg_manifold_gate")]
+    let mut unextended_rectangles = Vec::new();
     for opening in &ctx.merged_openings {
         match opening {
             CutterKind::Rectangular(open_min, open_max, extrusion_dir) => {
+                #[cfg(feature = "csg_manifold_gate")]
+                unextended_rectangles.push([*open_min, *open_max]);
                 // Penetration axis: the authored extrusion dir when present,
                 // else inferred from how the box pierces the host (issue
                 // #1337). Carrying a concrete dir downstream keeps the
@@ -127,5 +134,9 @@ pub(in crate::router::voids) fn cutters<'a>(
             other => non_rect_openings.push(other),
         }
     }
-    PreparedCutters { synth_rect, non_rect_openings }
+    PreparedCutters {
+        synth_rect, non_rect_openings,
+        #[cfg(feature = "csg_manifold_gate")]
+        unextended_rectangles,
+    }
 }

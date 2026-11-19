@@ -59,10 +59,6 @@ updates:
       # (HelpHint popovers, IconButton aria-describedby). Upgrade the whole
       # family together, with the popover patch rebased, in a hand-made PR.
       - dependency-name: "@radix-ui/*"
-      # axe-core 4.14 flags new contrast and accessible-name violations
-      # against the viewer axe baselines (#10614).
-      - dependency-name: "@axe-core/playwright"
-        versions: ["4.14.x"]
 
   - package-ecosystem: cargo
     directory: /

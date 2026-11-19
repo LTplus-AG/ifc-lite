@@ -162,14 +162,26 @@ it('the load option lowercases a hash for the model record, and refuses a malfor
   assert.equal(useViewerStore.getState().lastLoadRetry, null);
 });
 
-it('a browser without Parquet support is told so instead of falling back to an upload', async () => {
-  mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => false);
+it('retries decoder initialization and opens the same processed model (#10469)', async () => {
+  stubWebGpu();
+  let attempts = 0;
+  mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => ++attempts > 1);
   mock.method(console, 'error', () => {});
   await act(async () => { root.render(<Probe />); });
   await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+
+  assert.equal(model()?.loadState, 'error');
+  assert.equal(asked.length, 0, 'wait for decoder initialization before requesting the model');
   assert.equal(uploads, 0);
-  assert.match(useViewerStore.getState().error ?? '', /cannot open processed models/);
-  assert.equal(useViewerStore.getState().lastLoadRetry, null);
+  const retry = useViewerStore.getState().lastLoadRetry;
+  assert.ok(retry, 'a failed Parquet initialization offers Retry');
+  assert.match(useViewerStore.getState().error ?? '', /initialize the Parquet decoder/);
+  await act(async () => { retry(); });
+  await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'processed retry completes'); });
+  assert.equal(attempts, 2);
+  assert.deepEqual(asked, [processedModel]);
+  assert.equal(uploads, 0);
+  assert.equal(engineInits, 0);
 });
 
 for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of unknown size (${String(bytes)}) streams, since the streamed route works at any size`, async () => {

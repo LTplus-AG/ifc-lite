@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Rust half of the structural carrier parity pin (#10597): CausedBy as a
-//! 'Causes' relationship, both directions, and the upgrade's SharedPlacement. The TypeScript half is
+//! 'Causes' relationship, both directions, the upgrade's SharedPlacement, and how a load-case or
+//! thickness property set is read: in full or not at all, at any arity. The TypeScript half is
 //! `packages/export/src/structural-carriers.parity.test.ts`; both read one fixture.
 
 #[derive(serde::Deserialize)]

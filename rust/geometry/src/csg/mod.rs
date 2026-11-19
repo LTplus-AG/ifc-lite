@@ -187,6 +187,12 @@ impl ClippingProcessor {
         self.failures.borrow().len()
     }
 
+    /// Discard the failures of a cut replaced by a certified same-host retry.
+    #[cfg(feature = "csg_manifold_gate")]
+    pub(crate) fn truncate_failures(&self, checkpoint: usize) {
+        self.failures.borrow_mut().truncate(checkpoint);
+    }
+
     /// Whether any failure recorded since index `since` (a prior
     /// [`failure_count`](Self::failure_count)) was an `OperandTooLarge`
     /// rejection. HISTORICAL: only the deleted BSP polygon cap ever

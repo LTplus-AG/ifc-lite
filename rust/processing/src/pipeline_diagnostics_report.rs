@@ -60,7 +60,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn c4_10a_report_preserves_v1_and_projects_native_refusals_7782() {
+    fn c4_10a_report_projects_native_refusals_in_the_current_schema_7782() {
         let stats = ProcessingStats {
             refused_input_elements: 2,
             refused_prepass_records: 1,

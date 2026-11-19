@@ -581,6 +581,11 @@ describe.skipIf(!ifcopenshellAvailable())('records renamed or replaced in place 
       expect(records.map((line, i) => line.endsWith(tails[i])), records.join('\n')).toEqual([true, true]);
       const output = join(directory, `${from}-to-${to}.ifc`);
       writeFileSync(output, text);
+      files.push(source, output);
+    }
+    runValidateOrThrow(files);
+  }, IFCOPENSHELL_TEST_TIMEOUT_MS);
+});
 
 /** #10778: IfcMonetaryUnit.Currency, an enum in IFC2X3 and a label in IFC4, in both directions. */
 const currencyFile = (schema: string, unit: string): string => [

@@ -58,6 +58,7 @@ import { getAllAttributesForEntity, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { findOuterArgs, mapOutsideStepStrings } from './step-outer-args.js';
+import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
 const LENGTH_MEASURE_TYPES = new Set([
@@ -69,8 +70,7 @@ const LENGTH_MEASURE_TYPES = new Set([
 /**
  * Entity types whose numeric content must NEVER be rescaled: unit definitions
  * (the numbers *are* the unit) and georeferencing (offsets live in the CRS unit).
- * `IFCMAPCONVERSION` is matched by prefix to also catch schema variants; `IFCRIGIDOPERATION`'s coordinates are
- * in the CRS unit too.
+ * {@link isRescaleExcluded} also excludes every coordinate operation type.
  */
 const RESCALE_EXCLUDED_TYPES = new Set([
   'IFCUNITASSIGNMENT', 'IFCSIUNIT', 'IFCCONVERSIONBASEDUNIT', 'IFCCONTEXTDEPENDENTUNIT',
@@ -79,7 +79,7 @@ const RESCALE_EXCLUDED_TYPES = new Set([
 ]);
 
 function isRescaleExcluded(typeUpper: string): boolean {
-  return RESCALE_EXCLUDED_TYPES.has(typeUpper) || typeUpper.startsWith('IFCMAPCONVERSION') || typeUpper === 'IFCRIGIDOPERATION';
+  return RESCALE_EXCLUDED_TYPES.has(typeUpper) || COORDINATE_OPERATION_STEP_TYPES.includes(typeUpper);
 }
 
 /**

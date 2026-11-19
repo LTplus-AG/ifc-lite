@@ -36,6 +36,9 @@ export const MAP_CONVERSION_STEP_TYPES: readonly string[] = [
   'IFCMAPCONVERSIONSCALED',
 ];
 
+/** Every STEP type a coordinate operation can be written as: the map conversions and IFC4X3's rigid operation. */
+export const COORDINATE_OPERATION_STEP_TYPES: readonly string[] = [...MAP_CONVERSION_STEP_TYPES, 'IFCRIGIDOPERATION'];
+
 /**
  * Collect `IFCMAPCONVERSION` (and, transitively, the `IFCPROJECTEDCRS` it
  * names) when the closure already contains the `IFCGEOMETRICREPRESENTATIONCONTEXT`

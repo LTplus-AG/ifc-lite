@@ -19,6 +19,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # Keep a range that already admits the new version and update only the
+    # lockfile; exact pins and ranges that exclude it are still raised. The
+    # default (`auto`, which acts as `increase` for this private root) narrowed
+    # the published ids-agent peer range `@anthropic-ai/sdk ^1.6.0` to `^1.8.0`
+    # on a minor bump (#10616).
+    versioning-strategy: increase-if-necessary
     groups:
       npm-minor-and-patch:
         update-types:
@@ -63,10 +69,6 @@ updates:
       # which the viewer's Gaussian decoder refuses (#10613).
       - dependency-name: "@playcanvas/splat-transform"
         versions: ["3.11.x"]
-      # axe-core 4.14 flags new contrast and accessible-name violations
-      # against the viewer axe baselines (#10614).
-      - dependency-name: "@axe-core/playwright"
-        versions: ["4.14.x"]
 
   - package-ecosystem: cargo
     directory: /

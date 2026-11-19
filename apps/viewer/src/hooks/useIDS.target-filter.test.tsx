@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import '@/test/content-fixture.js';
-import { afterEach, it } from 'node:test';
+import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -16,6 +16,8 @@ import { render, click, cleanup } from '@/test/render';
 import { IDSTargetFilter } from '@/components/viewer/IDSTargetFilter';
 import { IDSPanel } from '@/components/viewer/IDSPanel';
 import { useIDS } from './useIDS';
+import { posthog } from '@/lib/analytics';
+import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { resolveIdsTargetFilter } from '@/lib/ids/resolve-target-filter';
 
 const IFC = `ISO-10303-21;
@@ -38,7 +40,7 @@ let api: ReturnType<typeof useIDS> | undefined;
 function Probe() { api = useIDS({ autoApplyColors: false }); return null; }
 const originalWorker = globalThis.Worker;
 afterEach(() => {
-  cleanup(); api = undefined;
+  cleanup(); api = undefined; mock.restoreAll();
   if (originalWorker === undefined) delete (globalThis as { Worker?: unknown }).Worker;
   else globalThis.Worker = originalWorker;
   useViewerStore.setState({ idsTargetFilter: null, idsDocument: null, idsLoading: false, models: new Map(), mutationViews: new Map() });
@@ -78,6 +80,23 @@ it('refuses an empty editor definition rather than silently widening scope (#103
   const ids = await resolveIdsTargetFilter(useViewerStore.getState(), 'M', data,
     [{ combinator: 'AND', rules: [Rule.name('eq', 'Missing wall')] }]);
   assert.deepEqual(ids, [], 'a valid filter with no matches stays an explicit empty subset');
+});
+
+it('shows an empty-filter refusal without reporting it to error tracking (#10753)', async () => {
+  await seed();
+  const controls = render(<IDSTargetFilter modelId="M" />);
+  const input = controls.querySelector<HTMLInputElement>('input[type="checkbox"]');
+  assert.ok(input);
+  click(input);
+  const capture = mock.method(posthog, 'captureException', () => undefined);
+  const jobsBefore = useActivityJournal.getState().jobs.length;
+  const outcome: { report?: IDSValidationReport | null } = {};
+  await act(async () => { outcome.report = await api!.runValidation('M'); });
+  assert.equal(outcome.report, null);
+  assert.equal(useViewerStore.getState().idsError, 'Add at least one object filter before running a filtered IDS check.',
+    'the panel still explains the refusal');
+  assert.equal(capture.mock.callCount(), 0, 'an expected input refusal is not a runtime exception');
+  assert.equal(useActivityJournal.getState().jobs.length, jobsBefore, 'no job, so no failed check in the activity tray');
 });
 
 it('keeps filtered IDs model-local in a federation and validates the requested model (#10371)', async () => {

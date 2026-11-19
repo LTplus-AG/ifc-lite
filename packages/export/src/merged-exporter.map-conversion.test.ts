@@ -120,6 +120,7 @@ describe('merged STEP export and map conversions (#10798)', () => {
     // A comment around the SourceCRS reference does not hide the operation.
     expectApart(await merge([at(X), { raw: `${METRE_CRS}\n#21=IFCMAPCONVERSION(/* source */ #14,#20,${Y});` }]), 2);
     expectApart(await merge([at(X), { raw: `${METRE_CRS}\n#21=/* operation */IFCMAPCONVERSION(#14,#20,${Y});` }]), 2);
+    expectApart(await merge([at(X), { raw: `${METRE_CRS}\n#21=IFCMAPCONVERSION(#14,#20,${Y}) /* c */;` }]), 2);
     expectApart(await merge([at(X), { raw: `${METRE_CRS}\n#21/* id */ = IFCMAPCONVERSION(#14,#20,${Y}) /* end */;` }]), 2);
     // A geographic CRS's height unit is not read, so two of them are never taken as one.
     const geographic: Georef = { raw: `#20=IFCGEOGRAPHICCRS('WGS84',$,'WGS84',$,$,$,$);

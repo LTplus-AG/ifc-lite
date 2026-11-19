@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { evictOldest } from './host-handles';
 import { viewerOperation, operation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import type { ToolHost } from '../types';
+import { evictOldest } from './host-handles';
 import { nativeCapturedSurfaces } from '@/lib/appearance/appearance-native-capture';
 import { coordinationModelAdder } from '@/services/coordination-loader';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
@@ -167,21 +167,20 @@ export const appearanceCaptureOperations = [
       if (!renderer || appearanceRevision(c.model.id) !== saved.revision)
         throw new Error('Capture destination or native renderer changed.');
       saved.creating = true;
-      let result: Awaited<ReturnType<typeof createIfcFromCapturedMesh>>;
       try {
-        result = await c.commitAsync(() =>
+        const result = await c.commitAsync(() =>
           createIfcFromCapturedMesh(c.model.id, saved.containerId, saved.capture, renderer, {
             Name: saved.Name,
             signal: c.signal,
             onProgress: () => c.checkpoint?.(),
           }),
         );
+        saved.result = result;
+        selectCreatedAppearanceObject(c.model.id, result);
+        return out(result);
       } finally {
         saved.creating = false;
       }
-      saved.result = result;
-      selectCreatedAppearanceObject(c.model.id, result);
-      return out(result);
     },
   ),
   operation<{ token: string }>(

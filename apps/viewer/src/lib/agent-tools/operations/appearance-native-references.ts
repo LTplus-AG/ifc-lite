@@ -49,6 +49,11 @@ function release(value: Candidate) {
   value.renderer.getReferenceImages().remove(value.draftId);
   appearanceAssets.releaseOwner(value.owner);
 }
+/** Placed candidates hold no preview resources; only live previews count toward the cap. */
+function assertPreviewCapacity(c: ViewerOperationContext) {
+  for (const [token, row] of candidates(c)) if (row.placed) candidates(c).delete(token);
+  if (candidates(c).size >= 32) throw new Error('Reference preview capacity reached.');
+}
 function candidates(c: ViewerOperationContext) {
   let map = hosts.get(c.host);
   if (!map) {
@@ -139,9 +144,7 @@ export const appearanceReferenceOperations = [
         renderer = getGlobalRenderer();
       if (!source || JSON.stringify(source) !== i.expected_source || !renderer || (i.edit_reference_id && !editing))
         throw new Error('Reference source/edit identity or renderer changed.');
-      // Placed candidates hold no preview resources; only live previews count toward the cap.
-      for (const [token, row] of candidates(c)) if (row.placed) candidates(c).delete(token);
-      if (candidates(c).size >= 32) throw new Error('Reference preview capacity reached.');
+      assertPreviewCapacity(c);
       const owner = { kind: 'draft' as const, id: crypto.randomUUID() },
         draftId = `agent-reference:${crypto.randomUUID()}`;
       let adopted = false;
@@ -154,24 +157,21 @@ export const appearanceReferenceOperations = [
           owner,
           c.signal,
         );
+        const assertInputsCurrent = () => {
+          if (getGlobalRenderer() !== renderer || (editing && useViewerStore.getState().appearanceReferences.get(editing.id) !== editing))
+            throw new Error('Native reference inputs changed during preparation.');
+          assertReferencePlacementCurrent(prepared);
+        };
         assertToolActive(c);
-        if (
-          getGlobalRenderer() !== renderer ||
-          useViewerStore.getState().appearanceSources.find((item) => item.id === source.id) !== source ||
-          placementFrameKey(useViewerStore.getState()) !== prepared.record.frameKey
-        )
-          throw new Error('Native reference inputs changed during preparation.');
+        assertInputsCurrent();
         await renderer
           .getReferenceImages()
           .set({ ...prepared.record, id: draftId, corners: prepared.corners, bitmap: prepared.bitmap }, c.signal);
         assertToolActive(c);
         const token = crypto.randomUUID();
         c.commit(() => {
-          if (getGlobalRenderer() !== renderer || (editing && useViewerStore.getState().appearanceReferences.get(editing.id) !== editing))
-            throw new Error('Native reference inputs changed during preparation.');
-          assertReferencePlacementCurrent(prepared);
-          if ([...candidates(c).values()].filter((row) => !row.placed).length >= 32)
-            throw new Error('Reference preview capacity reached.');
+          assertInputsCurrent();
+          assertPreviewCapacity(c);
           candidates(c).set(token, { prepared, editing, renderer, owner, draftId });
         });
         adopted = true;

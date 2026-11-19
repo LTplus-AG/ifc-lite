@@ -53,12 +53,10 @@ export function reportMapUnitUnsupported(warnings: string[], unitName: string): 
   console.warn(`[StepExporter] ${message}`);
 }
 
-export function resolveMapUnitReference(unitName: string, newGeorefLines: string[], effective: EffectiveEntityIndex, ctx: GeorefContext): number | null {
+export function resolveMapUnitReference(unitName: string, newGeorefLines: string[], ctx: GeorefContext): number | null {
   const normalized = normalizeMapUnitName(unitName);
-  const existing = findLengthUnitReference(normalized, effective, ctx);
-  if (existing !== null) {
-    return existing;
-  }
+  // Always a fresh unit entity, never the project's or another record's: an existing entity can be edited
+  // (or re-pointed) by the generic API after the planner decided, and the CRS would then carry a unit nobody chose.
 
   // A metre, with or without an SI prefix. `MILLIMETRE` KEEPS its prefix: the
   // map unit is the scale of the entire coordinate reference system, so
@@ -93,6 +91,17 @@ export function resolveMapUnitReference(unitName: string, newGeorefLines: string
   // so omitting it is schema-valid. Refuse, and let the caller say so in
   // `stats.warnings` the way the two map-conversion refusals do (#3274).
   return null;
+}
+
+/**
+ * Whether {@link resolveMapUnitReference} can write `unitName` as an
+ * `IfcNamedUnit` — the same whole-name rule, exposed so a caller that must
+ * refuse an unsupported unit BEFORE writing (the SDK's `bim.georef`) asks the
+ * writer instead of keeping a second list that could drift from it.
+ */
+export function isExpressibleMapUnit(unitName: string): boolean {
+  const normalized = normalizeMapUnitName(unitName);
+  return siPrefixOf(normalized) !== undefined || normalized === 'FOOT' || normalized === 'US SURVEY FOOT';
 }
 
 /** Every `IfcSIPrefix` member, longest first so `MILLI` cannot shadow `MILLIMICRO`-style

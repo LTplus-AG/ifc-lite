@@ -23,11 +23,16 @@
     "projection-depth.gpu.ts",
     "selection-mask-depth.gpu.ts",
     "selection-mask-depth.e2e.spec.ts",
+    "edge-line-continuity.gpu.ts",
+    "edge-line-continuity.e2e.spec.ts",
     "projection-texture.gpu.ts",
     "projection-texture.e2e.spec.ts",
     "selective-clipping.gpu.ts",
     "selective-clipping.e2e.spec.ts",
     "perspective-distance-depth.gpu.ts",
-    "perspective-distance-depth.e2e.spec.ts"
+    "perspective-distance-depth.e2e.spec.ts",
+    "gpu-batch-pick.config.ts",
+    "gpu-batch-pick.e2e.spec.ts",
+    "gpu-entity-visibility.e2e.spec.ts"
   ]
 }

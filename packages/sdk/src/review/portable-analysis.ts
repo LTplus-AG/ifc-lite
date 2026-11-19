@@ -98,7 +98,8 @@ function isModel(v: unknown): v is SavedRunModel {
 }
 
 function isClashRef(v: unknown, keys: ReadonlySet<string>): boolean {
-  return record(v) && text(v.key) && text(v.model) && keys.has(v.model) && anyText(v.tag) && optional(v.name, anyText) && count(v.expressId);
+  return record(v) && text(v.key) && text(v.model) && keys.has(v.model) && anyText(v.tag) && optional(v.name, anyText)
+    && optional(v.keyAmbiguous, value => value === true) && count(v.expressId);
 }
 
 const DISTANCE_NAMES = ['Infinity', '-Infinity', 'NaN'];

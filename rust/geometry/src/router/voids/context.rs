@@ -47,7 +47,7 @@ impl VoidContext {
     /// Rectangular openings in the merged set: what every cut path records as
     /// `HostOpeningDiagnostic::rect_boxes_processed`, so the silent-no-op
     /// detector reads one quantity whichever path cut the host.
-    pub(super) fn rect_opening_count(&self) -> usize {
+    pub(crate) fn rect_opening_count(&self) -> usize {
         self.merged_openings
             .iter()
             .filter(|o| matches!(o, CutterKind::Rectangular(..)))

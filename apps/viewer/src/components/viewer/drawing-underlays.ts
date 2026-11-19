@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { DXF_TEXT_LINE_HEIGHT_FACTOR } from '@/lib/drawing/dxf-text-layout';
+import { dxfTextLineOffset } from '@/lib/drawing/dxf-text-layout';
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): CanvasTextBaseline {
@@ -74,7 +74,10 @@ export function drawDxfUnderlaysScreenSpace(
 
     for (const text of data.texts) {
       const fontPx = worldHeightToScreenPx(text.height);
-      if (fontPx < 4) continue; // declutter when zoomed far out
+      // Aligned text can grow past its estimated height once measured, so it is
+      // decluttered by its fitted size further down instead.
+      const fitsUniformly = text.fitUniform && text.fitWidth !== undefined && text.fitWidth > 0 && !text.text.includes('\n');
+      if (fontPx < 4 && !fitsUniformly) continue; // declutter when zoomed far out
       const anchor = modelToScreen(text.x, text.y);
       const tip = modelToScreen(text.x + text.dirX, text.y + text.dirY);
       const sx = tip.x - anchor.x;
@@ -89,8 +92,21 @@ export function drawDxfUnderlaysScreenSpace(
       ctx.translate(anchor.x, anchor.y);
       ctx.rotate(angle);
       const lines = text.text.split('\n');
+      const fitPx = text.fitWidth !== undefined && Number.isFinite(text.fitWidth) && text.fitWidth > 0 && lines.length === 1
+        ? worldHeightToScreenPx(text.fitWidth) : 0;
       for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i], 0, i * fontPx * DXF_TEXT_LINE_HEIGHT_FACTOR);
+        // Exact span: stretch by the measured width; otherwise the width estimate.
+        let stretch = text.widthScale && text.widthScale > 0 ? text.widthScale : 1;
+        if (fitPx) {
+          const measured = ctx.measureText(lines[i]).width;
+          if (Number.isFinite(measured) && measured > 0) stretch = fitPx / measured;
+        }
+        if (fitPx && text.fitUniform && fontPx * stretch < 4) continue; // fitted size still too small
+        ctx.save();
+        // Aligned text scales height with width (uniform); fit/width-factor text stretches width only.
+        if (stretch !== 1) ctx.scale(stretch, fitPx && text.fitUniform ? stretch : 1);
+        ctx.fillText(lines[i], 0, dxfTextLineOffset(i, lines.length, text.valign, fontPx, text.lineSpacingFactor));
+        ctx.restore();
       }
       ctx.restore();
     }

@@ -415,7 +415,8 @@ model (properties + spatial hierarchy) with `fetchDataModel`:
 const result = await client.parseParquet(file);
 
 // Data model (properties + hierarchy) for a known cache key:
-const dataModelBuffer = await client.fetchDataModel(result.cache_key);
+const controller = new AbortController();
+const dataModelBuffer = await client.fetchDataModel(result.cache_key, { signal: controller.signal });
 ```
 
 `getCached(key)` is the lower-level lookup for the JSON `parse()` cache: pass
@@ -435,7 +436,14 @@ fills it in the background after its `complete` event, which is the one case
 `GET /api/v1/parse/data-model/{key}` answers `202` for (a fill genuinely
 running for that key — keep polling). Everything else is `404`: no data model
 was ever written for that key and none is in flight, so a client should stop
-polling rather than retry forever. `fetchDataModel` treats `404` as terminal:
+polling rather than retry forever. Both `fetchDataModel` and `fetchSymbolic` return
+`null` for a missing cache entry (404) or when all attempts report pending (202).
+HTTP errors, exhausted network/timeout retries, decoding errors, and caller
+cancellation reject the promise. Pass `{ maxRetries, signal }` as the second
+argument to cancel an in-flight request or retry delay; the numeric retry-count
+form remains supported. Catch failures when properties or symbols are optional.
+
+`fetchDataModel` treats `404` as terminal:
 
 ```typescript
 import { decodeDataModel } from '@ifc-lite/server-client';
@@ -445,13 +453,18 @@ const result = await client.parseParquet(file);
 // After parseParquet/parseParquetOptimized this is already cached; after the
 // streaming route it may still be 202 for a moment, so fetchDataModel polls
 // on 202 and gives up on 404.
-const dataModel = await client.fetchDataModel(result.cache_key);
+try {
+  const dataModel = await client.fetchDataModel(result.cache_key);
 
-if (dataModel) {
-  const decoded = await decodeDataModel(dataModel);
-  console.log(`Entities: ${decoded.entities.size}`);
-  console.log(`Property sets: ${decoded.propertySets.size}`);
+  if (dataModel) {
+    const decoded = await decodeDataModel(dataModel);
+    console.log(`Entities: ${decoded.entities.size}`);
+    console.log(`Property sets: ${decoded.propertySets.size}`);
+  }
+} catch (error) {
+  console.warn('Optional model properties are unavailable; keep the geometry:', error);
 }
+
 ```
 
 #### Rooted-only entities table (opt-in)
@@ -474,6 +487,14 @@ document and spatial tables name still resolves in the entities table. Those
 tables are byte-identical to the default payload's, `entity_id`s are unchanged,
 and the kept rows stay in file order. The response header's
 `data_model_stats.entity_count` still counts the whole model, in both variants.
+
+Asking for it is also the cheaper way to parse a large model. The narrowing is
+applied before the entity metadata is built, not after (issue #9582), so a
+rooted request never materialises the rows it is going to drop. Measured on the
+real route, a rooted parse of a large architectural model peaks at roughly half
+the server's resident memory and finishes materially sooner than the default
+variant; the table it produces is the same one either way, byte for byte. The
+harness and the measured deltas are in `scripts/perf/README.md` under #9582.
 
 The two variants are separate cache entries (`-datamodel-v8` and
 `-datamodel-rooted-v8`), and each is served only to a request that names it, so
@@ -1046,6 +1067,61 @@ the upload.
     file names a key nothing was written under, so it answers 404 and the
     client uploads. That is correct, just not a saving. `GET /cache/check`
     behaves the same way, for the same reason.
+
+### Opening a stored result without the file
+
+A host that keeps the IFC on its own server, has had it processed once, and
+only wants a browser to show the result has no file to hash or upload. It
+passes a `ProcessedModelRef` in place of the file:
+
+```typescript
+// The SHA-256 of the IFC bytes the server parsed names the stored result (for .ifcZIP or gzip, the unpacked IFC, not the archive); `bytes` is its size (optional, not sent; the viewer streams a model of unknown size).
+const stored = { sha256: 'c0ffee…', bytes: 46_000_000 };
+const result = await client.parseParquetStream(stored, (batch) => {
+  console.log(`${batch.meshes.length} meshes`);
+});
+const dataModel = await client.fetchDataModel(result.cache_key);
+```
+
+`parseParquet` takes the same reference. Neither hashes or uploads anything,
+and a miss rejects with an `IfcServerError` (`404`, `NOT_FOUND`) instead of
+falling back to an upload: there are no bytes to send. Store the result with
+the layout the client asks for (`parquet_layout=shared-shapes`, and
+`stream_shapes=cross-batch` on the stream route), because the layout is part of
+the cache identity.
+
+The viewer has the same entry. Built with `VITE_IFC_SERVER_URL` (an absolute
+URL, or a same-origin path such as `/ifc` behind a reverse proxy), it opens
+
+```
+/?processed=<sha256>&bytes=<source size>&name=<file name>
+```
+
+from the server alone: no IFC is requested, and there is no local fallback.
+A host that builds its own entry does the same without a URL, and can name the
+server at runtime instead of at build time:
+
+<!-- docs-check: skip -->
+```typescript
+import { openProcessedModel } from '@/lib/processed-model';
+
+// Only this request and its Retry use /ifc; local uploads keep the global server.
+openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
+```
+
+The call may come before the viewer mounts; the request waits for it, and a
+`?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
+A collaboration link (`?room=`) is refused the same way. If its join is still in progress,
+the viewer leaves it before it can hydrate or seed the host's model. A call after the join
+has finished does not leave the room.
+The `serverUrl` option applies only to this request and its Retry; it does not redirect local uploads.
+Without it, the load asks the global server as it stands when the load runs.
+`setProcessingServerUrl(url)` explicitly sets the global server. This URL replaces
+`VITE_IFC_SERVER_URL` for every server request, so in a build with
+`VITE_USE_SERVER=true` it also receives the uploads of IFC files opened from
+disk. `VITE_USE_SERVER` still decides whether such uploads happen at all.
+The hash selects a result; it is not a credential. Decide who may read a result
+where the server is served, with its token or the proxy in front of it.
 
 ### Client-Side Streaming
 

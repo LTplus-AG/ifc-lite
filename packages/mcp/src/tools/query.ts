@@ -11,7 +11,9 @@
  * straight from these results.
  */
 
-import { extractGeoreferencingOnDemand, extractLengthUnitScale } from '@ifc-lite/parser';
+import { extractLengthUnitScale } from '@ifc-lite/parser';
+import { georeferencingReadTool } from './georef.js';
+import { georeferencingCheckTool } from './georef-doctor.js';
 import type { ComparisonOp, EntityData, QueryFilter } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
 import { findByGlobalId, fmtInt, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
@@ -607,17 +609,6 @@ const classificationsList: Tool = {
   },
 };
 
-const georeferencing: Tool = {
-  name: 'georeferencing',
-  description: 'Coordinate reference system, MapConversion, project north and true north.',
-  scope: 'read',
-  inputSchema: { type: 'object', properties: { model_id: { type: 'string' } }, additionalProperties: false },
-  handler(input, ctx) {
-    const m = resolveModel(ctx, input.model_id as string | undefined);
-    return okResult('Georeferencing', { georeferencing: extractGeoreferencingOnDemand(m.store) ?? null });
-  },
-};
-
 const units: Tool = {
   name: 'units',
   description: 'Length unit scale (factor that converts stored lengths to meters) and other unit metadata.',
@@ -643,6 +634,7 @@ export const entityQueryTools: Tool[] = [
   propertiesUnique,
   materialsList,
   classificationsList,
-  georeferencing,
+  georeferencingReadTool,
+  georeferencingCheckTool,
   units,
 ];

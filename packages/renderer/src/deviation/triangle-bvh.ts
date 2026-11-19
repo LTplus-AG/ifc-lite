@@ -41,7 +41,7 @@ export interface TriangleBVHResult {
   nodeCount: number;
   /** Number of source meshes folded into this BVH. */
   meshCount: number;
-  /** Aggregate bounds of all triangles. */
+  /** Aggregate bounds of all triangles, relative to the supplied anchor. */
   bounds: { min: [number, number, number]; max: [number, number, number] };
 }
 
@@ -61,9 +61,10 @@ const LEAF_FLAG = 0x80000000;
  */
 export function buildTriangleBVH(
   meshes: ReadonlyArray<MeshData>,
-  options: { maxTrisPerLeaf?: number } = {},
+  options: { maxTrisPerLeaf?: number; anchor?: readonly [number, number, number] } = {},
 ): TriangleBVHResult {
   const maxTrisPerLeaf = options.maxTrisPerLeaf ?? 16;
+  const anchor = options.anchor ?? [0, 0, 0];
 
   // Pass 1: flatten meshes into a triangle list with precomputed
   // centroids + AABBs. This array stays in CPU memory only long
@@ -82,12 +83,11 @@ export function buildTriangleBVH(
     const indices = mesh.indices;
     if (!positions || positions.length === 0) continue;
     // Positions are in the element's local frame (world = origin + position).
-    // The deviation scan runs in world space, so fold the per-mesh origin into
-    // the triangle buffer / centroids / AABBs. The face normal below uses
-    // differences and is origin-invariant. No-op when origin is absent/[0,0,0].
-    const ox = mesh.origin ? mesh.origin[0] : 0;
-    const oy = mesh.origin ? mesh.origin[1] : 0;
-    const oz = mesh.origin ? mesh.origin[2] : 0;
+    // Subtract the shared f64 anchor before narrowing triangles, centroids
+    // and AABBs to f32 (#10094 item 1). Normals are translation-invariant.
+    const ox = (mesh.origin?.[0] ?? 0) - anchor[0];
+    const oy = (mesh.origin?.[1] ?? 0) - anchor[1];
+    const oz = (mesh.origin?.[2] ?? 0) - anchor[2];
     const n = indices ? indices.length : positions.length / 3;
     for (let i = 0; i + 2 < n; i += 3) {
       const i0 = indices ? indices[i]     * 3 : (i)     * 3;

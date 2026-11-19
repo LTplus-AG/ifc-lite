@@ -18,7 +18,9 @@
  * separate components landing later.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { isAiChatAvailable } from '@/components/viewer/surface-command-features';
+import { useBundleReview } from './useBundleReview';
+import { useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -34,9 +36,6 @@ import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
 import { RepairQueuePanel } from './RepairQueuePanel';
-import type { ExtensionInstallSummary } from '@/services/extensions/host';
-import { ExtensionInstallError } from '@/services/extensions/host';
-import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
 import { useViewerStore } from '@/store';
 import { HelpHint } from './HelpHint';
 import { useTranslation } from '@/i18n';
@@ -56,8 +55,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const installed = useInstalledExtensions();
   const handleFork = useForkExtension();
   const { runTests, isRunning } = useRunExtensionTests();
-  const pendingAuthoredBundle = useViewerStore((s) => s.pendingAuthoredBundle);
-  const setPendingAuthoredBundle = useViewerStore((s) => s.setPendingAuthoredBundle);
   /** Empty-state "describe in chat" CTA + Sparkles button. */
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
@@ -66,15 +63,11 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const activeFlavor = useActiveFlavor(host);
   const activeFlavorName = activeFlavor ? localizedFlavorName(activeFlavor, t) : undefined;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pending, setPending] = useState<{
-    bytes: Uint8Array;
-    summary: ExtensionInstallSummary;
-    previousGrants?: readonly string[];
-    previousVersion?: string;
-  } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { pending, setPending, handleFiles, handleApprove, busy } = useBundleReview(host);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
+  // Ideas, chat authoring and forks land in the AI chat; a host can switch it off (`lib/features`).
+  const ai = isAiChatAvailable();
   /** Deep-link entry point (Command Palette "Author an extension…"). */
   const extensionsRequestedView = useViewerStore((s) => s.extensionsRequestedView);
   const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);
@@ -86,102 +79,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
     }
   }, [extensionsRequestedView, setExtensionsRequestedView]);
 
-  const handleFiles = useCallback(
-    async (files: FileList | null) => {
-      if (!files || files.length === 0) return;
-      const file = files[0];
-      if (!file.name.toLowerCase().endsWith('.iflx')) {
-        toast.error(t('extensionsFlavors.extensionsPanel.toast.expectedBundle', { filename: file.name }));
-        return;
-      }
-      try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const preview = await host.previewBundle(bytes);
-        if (!preview.ok) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.bundleUnpackFailed', { error: preview.errors[0]?.message ?? t('extensionsFlavors.extensionsPanel.unknownError') }));
-          return;
-        }
-        // Detect upgrade: same id already installed → pass the previous
-        // grants into the review screen so it can surface a diff.
-        const records = await host.listInstalled();
-        const existing = records.find((r) => r.id === preview.value.id);
-        setPending({
-          bytes,
-          summary: preview.value,
-          previousGrants: existing?.grantedCapabilities,
-          previousVersion: existing ? `v${existing.version}` : undefined,
-        });
-      } catch (err) {
-        toast.error(t('extensionsFlavors.extensionsPanel.toast.readFileFailed', { error: err instanceof Error ? err.message : String(err) }));
-      }
-    },
-    [host, t],
-  );
-
-  // Authoring loop hand-off: when the chat panel produces a clean
-  // bundle, it stashes the bytes in `pendingAuthoredBundle` and opens
-  // the Extensions panel. Pick them up on mount, route through the
-  // standard preview → Capability Review flow.
-  useEffect(() => {
-    if (!pendingAuthoredBundle) return;
-    // Don't clobber a capability review already on screen (e.g. from a
-    // file import). Leave the authored bundle queued — the effect
-    // re-runs once `pending` clears.
-    if (pending) return;
-    const bytes = pendingAuthoredBundle;
-    void (async () => {
-      try {
-        const preview = await host.previewBundle(bytes);
-        if (!preview.ok) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.authoredBundleUnpackFailed', { error: preview.errors[0]?.message ?? t('extensionsFlavors.extensionsPanel.unknownError') }));
-          setPendingAuthoredBundle(null);
-          return;
-        }
-        const records = await host.listInstalled();
-        const existing = records.find((r) => r.id === preview.value.id);
-        setPending({
-          bytes,
-          summary: preview.value,
-          previousGrants: existing?.grantedCapabilities,
-          previousVersion: existing ? `v${existing.version}` : undefined,
-        });
-        setPendingAuthoredBundle(null);
-      } catch (err) {
-        toast.error(t('extensionsFlavors.extensionsPanel.toast.authoredBundlePreviewFailed', { error: err instanceof Error ? err.message : String(err) }));
-        setPendingAuthoredBundle(null);
-      }
-    })();
-  }, [pendingAuthoredBundle, pending, host, setPendingAuthoredBundle, t]);
-
-  const handleApprove = useCallback(
-    async (grants: string[]) => {
-      // Two guards: pending may have been cleared by a parallel cancel,
-      // and busy stops a double-click from kicking off two installs of
-      // the same bytes.
-      if (!pending || busy) return;
-      setBusy(true);
-      try {
-        const status = await host.installFromBytes(pending.bytes, grants);
-        toast.success(t('extensionsFlavors.extensionsPanel.toast.installed', { id: status.id, version: status.version }));
-        setPending(null);
-      } catch (err) {
-        if (err instanceof ExtensionStorageQuotaError) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.storageFull'));
-        } else if (err instanceof ExtensionInstallError) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.installRejected', {
-            error: err.validationErrors[0]?.message ?? err.message,
-          }));
-        } else {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.installFailed', {
-            error: err instanceof Error ? err.message : String(err),
-          }));
-        }
-      } finally {
-        setBusy(false);
-      }
-    },
-    [host, pending, busy, t],
-  );
 
   return (
     <Tabs value={view} onValueChange={(value) => setView(value as typeof view)} className="flex flex-col h-full">
@@ -238,6 +135,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           ref={fileInputRef}
           type="file"
           accept=".iflx"
+          disabled={busy}
           className="hidden"
           onChange={(e) => {
             void handleFiles(e.target.files);
@@ -259,7 +157,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
             { id: 'repair', label: t('extensionsFlavors.extensionsPanel.tab.repair'), Icon: Wrench },
             { id: 'audit', label: t('extensionsFlavors.extensionsPanel.tab.audit'), Icon: FileText },
           ] as const
-        ).map(({ id, label, Icon }) => {
+        ).filter(({ id }) => id !== 'ideas' || ai).map(({ id, label, Icon }) => {
           return (
             <TabsTrigger
               key={id}
@@ -279,7 +177,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
       <TabsContent value={view} className="mt-0 flex-1 min-h-0 flex flex-col">
       {view === 'audit' ? (
         <AuditLogPanel />
-      ) : view === 'ideas' ? (
+      ) : view === 'ideas' && ai ? (
         <IdeasPanel />
       ) : view === 'repair' ? (
         <RepairQueuePanel />
@@ -288,12 +186,13 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors ${
           dragOver ? 'bg-primary/5' : ''
         }`}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        aria-disabled={busy}
+        onDragOver={(e) => { e.preventDefault(); if (!busy) setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          void handleFiles(e.dataTransfer.files);
+          if (!busy) void handleFiles(e.dataTransfer.files);
         }}
       >
         <UnavailablePlacements />
@@ -309,7 +208,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
 
             <div className="flex flex-col gap-2 w-full max-w-sm mt-2">
               {/* 1. Author via chat — most discoverable for new users. */}
-              <Button
+              {ai && <Button
                 variant="default"
                 size="sm"
                 onClick={() => {
@@ -320,17 +219,17 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
               >
                 <Sparkles className="mr-2 h-3.5 w-3.5" />
                 {t('extensionsFlavors.extensionsPanel.emptyState.describeInChat')}
-              </Button>
+              </Button>}
 
               {/* 2. Browse curated starter ideas. */}
-              <Button
+              {ai && <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setView('ideas')}
               >
                 <Lightbulb className="mr-2 h-3.5 w-3.5" />
                 {t('extensionsFlavors.extensionsPanel.emptyState.browseIdeas')}
-              </Button>
+              </Button>}
 
               {/* 3. Drop / import an .iflx file from elsewhere. */}
               <Button
@@ -364,13 +263,13 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <IconButton
+                    {ai && <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.forkAriaLabel', { id: record.id })}
                       tooltip={t('extensionsFlavors.extensionsPanel.row.forkTitle')}
                       onClick={() => handleFork(record.id)}
                     >
                       <GitFork className="h-3.5 w-3.5" />
-                    </IconButton>
+                    </IconButton>}
                     <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.runTestsAriaLabel', { id: record.id })}
                       disabled={isRunning(record.id)}
@@ -444,7 +343,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           summary={pending.summary}
           previousGrants={pending.previousGrants}
           previousVersion={pending.previousVersion}
-          onApprove={handleApprove}
+          busy={busy}
+        onApprove={handleApprove}
           onCancel={() => setPending(null)}
         />
       )}

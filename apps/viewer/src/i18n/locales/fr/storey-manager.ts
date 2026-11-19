@@ -5,6 +5,17 @@
 import type { Catalogue } from '../../registry';
 
 export const storeyManagerFr = {
+  "storeyManager.insert.before": "Actuel",
+  "storeyManager.insert.after": "Après insertion",
+  "storeyManager.notice.columnNotResized": {"one": "{count} poteau : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "many": "{count} poteaux : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "other": "{count} poteaux : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté"},
+  "storeyManager.notice.columnAttachmentUnresolved": {"one": "{count} poteau : hauteur conservée, car la cible supérieure enregistrée est introuvable", "many": "{count} poteaux : hauteur conservée, car la cible supérieure enregistrée est introuvable", "other": "{count} poteaux : hauteur conservée, car la cible supérieure enregistrée est introuvable"},
+  "storeyManager.notice.beamNotResized": {"one": "{count} poutre : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "many": "{count} poutres : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "other": "{count} poutres : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté"},
+  "storeyManager.notice.beamAttachmentUnresolved": {"one": "{count} poutre : hauteur conservée, car la cible supérieure enregistrée est introuvable", "many": "{count} poutres : hauteur conservée, car la cible supérieure enregistrée est introuvable", "other": "{count} poutres : hauteur conservée, car la cible supérieure enregistrée est introuvable"},
+  "storeyManager.notice.memberNotResized": {"one": "{count} barre : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "many": "{count} barres : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "other": "{count} barres : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté"},
+  "storeyManager.notice.memberAttachmentUnresolved": {"one": "{count} barre : hauteur conservée, car la cible supérieure enregistrée est introuvable", "many": "{count} barres : hauteur conservée, car la cible supérieure enregistrée est introuvable", "other": "{count} barres : hauteur conservée, car la cible supérieure enregistrée est introuvable"},
+  "storeyManager.notice.curtainWallNotResized": {"one": "{count} mur-rideau : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "many": "{count} murs-rideaux : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "other": "{count} murs-rideaux : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté"},
+  "storeyManager.notice.curtainWallAttachmentUnresolved": {"one": "{count} mur-rideau : hauteur conservée, car la cible supérieure enregistrée est introuvable", "many": "{count} murs-rideaux : hauteur conservée, car la cible supérieure enregistrée est introuvable", "other": "{count} murs-rideaux : hauteur conservée, car la cible supérieure enregistrée est introuvable"},
+  "storeyManager.notice.elementNotResized": {"one": "{count} élément : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "many": "{count} éléments : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté", "other": "{count} éléments : hauteur conservée lors du déplacement, car le corps ou la liaison ne peut pas être ajusté"},
   "storeyManager.title": "Étages",
   "storeyManager.subtitle": "{model} · {count} étages",
   "storeyManager.open": "Gérer les étages…",
@@ -116,7 +127,7 @@ export const storeyManagerFr = {
   "storeyManager.delete": "Supprimer {storey}",
   "storeyManager.deleted": "{storey} supprimé",
   "storeyManager.undo": "Annuler",
-  "storeyManager.undoStale": "Suppression non annulée : des modifications ultérieures existent. Annulez-les d’abord depuis la barre d’outils.",
+  "storeyManager.undoStale": "Annulation impossible : des modifications ont suivi cette action. Annulez-les d’abord dans la barre d’outils.",
   "storeyManager.delete.title": {
     "one": "{storey} contient {count} élément",
     "many": "{storey} contient {count} éléments",
@@ -139,6 +150,7 @@ export const storeyManagerFr = {
   "storeyManager.readOnly": "Les étages peuvent être consultés mais pas modifiés : {reason}",
   "storeyManager.error": "Impossible de lire les étages : {reason}",
   "storeyManager.drawOn": "Dessiner sur",
+  "storeyManager.copy.back": "Revenir aux étages",
   "storeyManager.copy.title": "Copier vers les étages…",
   "storeyManager.copy.empty": "Sélectionnez les éléments à copier",
   "storeyManager.copy.all": "Sélectionner tous les étages",
@@ -151,8 +163,8 @@ export const storeyManagerFr = {
   "storeyManager.copy.done": {"one": "{count} élément copié vers {targets}", "other": "{count} éléments copiés vers {targets}"},
   "storeyManager.copy.stale": "Le modèle a changé. Préparez à nouveau les copies.",
   "storeyManager.wallTarget": "Jusqu’à {storey} ({elevation} m)",
-  'storeyManager.copy.from': 'Depuis l’étage',
-  'storeyManager.copy.to': 'Jusqu’à l’étage',
+  "storeyManager.copy.from": "Depuis l’étage",
+  "storeyManager.copy.to": "Jusqu’à l’étage",
   "storeyManager.copy.readOnly": "La copie est indisponible : {reason}",
   "storeyManager.copy.working": "Copie en cours…",
   "storeyManager.wallNextMissing": "Étage supérieur suivant (aucun pour le moment)",
@@ -169,5 +181,5 @@ export const storeyManagerFr = {
   "storeyManager.copy.newElements": {"one": "{count} nouvel élément", "other": "{count} nouveaux éléments"},
   "storeyManager.copy.undoStale": "Annulation impossible : des modifications ont suivi cette copie. Annulez-les d’abord depuis la barre d’outils.",
   "storeyManager.insert.move": "{storey} passe de {from} à {to} m",
-  "storeyManager.impact.wallTops": {"one": "Met à jour {count} sommet de mur", "other": "Met à jour {count} sommets de murs"},
+  "storeyManager.impact.wallTops": {"one": "met à jour {count} sommet de mur", "other": "met à jour {count} sommets de murs"},
 } satisfies Catalogue;

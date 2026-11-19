@@ -27,6 +27,9 @@ import { completeIdsBcfViewpoints } from './idsBcfViewpoints';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 
 export interface RunIdsBcfExportParams {
+  /** Host-owned artifact sink; browser callers retain the native download default. */
+  emit?: (blob: Blob, filename: string) => void | Promise<void>;
+  signal?: AbortSignal;
   report: ValidationReport;
   settings: IDSBCFExportSettings;
   models: Map<string, FederatedModel>;
@@ -56,7 +59,10 @@ export async function runIdsBcfExport({
   setBcfExportProgress,
   setBcfProject,
   setBcfPanelVisible,
+  emit = downloadBlob,
+  signal,
 }: RunIdsBcfExportParams): Promise<void> {
+  signal?.throwIfAborted();
   const {
     topicGrouping,
     includePassingEntities,
@@ -111,7 +117,7 @@ export async function runIdsBcfExport({
 
   const exportOptions: IDSBCFExportOptions = {
     author: bcfAuthor || document?.info.author || 'ids-validator@ifc-lite',
-    projectName: `IDS Report - ${document?.info.title ?? 'Untitled'}`,
+    projectName: `IDS Report${report.targetScope ? ` (filtered, ${report.targetScope.entityCount} candidates)` : ''} - ${document?.info.title ?? 'Untitled'}`,
     topicGrouping,
     includePassingEntities,
     maxTopics: IDS_BCF_MAX_TOPICS,
@@ -127,6 +133,10 @@ export async function runIdsBcfExport({
     },
     exportOptions,
   );
+  if (report.targetScope) {
+    const note = `Filtered population: ${report.targetScope.entityCount} candidates. This is not a whole-model validation.`;
+    for (const topic of bcfProject.topics.values()) topic.description = [note, topic.description].filter(Boolean).join('\n\n');
+  }
   await completeIdsBcfViewpoints(
     bcfProject, report, entityBounds, getGlobalRenderer(), toViewerGlobalId,
     useViewerStore.getState().cameraCallbacks.resolveHighlightIds,
@@ -135,11 +145,13 @@ export async function runIdsBcfExport({
   // Entity bounds (and so the framing cameras) are in the render frame; BCF is world (#4806).
   projectViewpointsToWorld(bcfProject, bcfWorldOffset(models, legacyGeometryResult));
 
+  signal?.throwIfAborted();
   // Phase 4: Write BCF and download
   setBcfExportProgress({ phase: 'writing', current: 1, total: 2, message: 'Writing BCF file...' });
 
   const blob = await writeBCF(bcfProject);
-  downloadBlob(blob, bcfExportFilename(`ids-report-${new Date().toISOString().split('T')[0]}`));
+  signal?.throwIfAborted();
+  await emit(blob, bcfExportFilename(`ids-report-${new Date().toISOString().split('T')[0]}`));
   trackExportCompleted({ format: 'bcfzip', surface: 'ids_panel' });
 
   // Phase 5: Load into BCF panel if requested
@@ -148,8 +160,7 @@ export async function runIdsBcfExport({
     setBcfPanelVisible(true);
   }
 
+  // The caller owns clearing this after a delay: it knows whether a newer
+  // export has started since.
   setBcfExportProgress({ phase: 'done', current: 1, total: 1, message: 'Export complete!' });
-
-  // Clear progress after a delay
-  setTimeout(() => setBcfExportProgress(null), 2000);
 }

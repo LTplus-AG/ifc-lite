@@ -36,6 +36,8 @@ function Harness(props: { tool: string; moves: Moves }) {
       setTarget: (x: number, y: number, z: number) => { pose.target = { x, y, z }; },
       getPosition: () => ({ ...pose.position }),
       getTarget: () => ({ ...pose.target }),
+      getUp: () => ({ x: 0, y: 1, z: 0 }),
+      setUp: () => {},
       pan: () => { props.moves.pan++; },
       stopInertia: () => {},
       getRotation: () => ({ azimuth: 0, elevation: 0 }),

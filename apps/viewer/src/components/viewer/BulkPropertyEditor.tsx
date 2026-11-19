@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { createModelMutationView } from '@/utils/model-mutation-view';
 import { useBulkExecutionScroll } from './useBulkExecutionScroll';
 import { useDialogOperation } from './authoring-operation';
 import { bulkDraftKey, useBulkCompletedDraft, useBulkTargetSource } from './useBulkDraft';
@@ -41,17 +43,14 @@ import {
 } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
-import { canMutate, mutationDenialKey, mutationPermissionForModels } from '@/store/mutation-permission';
-import { configureMutationView } from '@/utils/configureMutationView';
+import { canMutateData, mutationDenialKey, dataMutationPermissionForModels } from '@/store/mutation-permission';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
   BulkQueryEngine,
-  MutablePropertyView,
   type BulkAction,
   type BulkQueryPreview,
   type BulkQueryResult,
 } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { FilterGroupEditor, type FilterGroupEditorState } from './FilterGroupEditor';
@@ -87,7 +86,6 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const mutationViews = useViewerStore((s) => s.mutationViews);
   // The engine writes directly to a mutation view, so its live callback and
   // the Execute affordance both consult the same viewer permission policy.
-  const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabEditRole = useViewerStore((s) => s.collabRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
@@ -100,9 +98,9 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const targetGroups = useBulkTargets(open, targetSource, models);
   const editDenialReason = useMemo(() => {
     const ids = targetSource === 'query' ? [selectedModelId] : targetGroups.keys();
-    const result = mutationPermissionForModels(useViewerStore.getState(), ids);
+    const result = dataMutationPermissionForModels(useViewerStore.getState(), ids);
     return result.allowed ? undefined : result.reason;
-  }, [editEnabled, collabEditRole, models, legacyIfcDataStore, selectedModelId, targetSource, targetGroups]);
+  }, [collabEditRole, models, legacyIfcDataStore, selectedModelId, targetSource, targetGroups]);
   const canEditInSession = editDenialReason === undefined;
   const denialId = useId();
 
@@ -194,9 +192,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
 
     // Create new mutation view with on-demand property extractor
     const dataStore = selectedModel.ifcDataStore;
-    mutationView = new MutablePropertyView(dataStore.properties || null, selectedModelId);
-
-    configureMutationView(mutationView, dataStore as IfcDataStore);
+    mutationView = createModelMutationView(dataStore, selectedModelId);
 
     // Register the mutation view
     registerMutationView(selectedModelId, mutationView);
@@ -211,7 +207,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     const dataStore = selectedModel.ifcDataStore;
     return new BulkQueryEngine(
       dataStore.entities, mutationView, dataStore.spatialHierarchy || null, dataStore.strings || null,
-      () => canMutate(useViewerStore.getState(), selectedModelId),
+      () => canMutateData(useViewerStore.getState(), selectedModelId),
       dataStore.schemaVersion,
       (containerId) => effectiveSpatialMembers(dataStore, mutationView, containerId),
     );
@@ -223,8 +219,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     for (const modelId of targetGroups.keys()) {
       const dataStore = models.get(modelId)?.ifcDataStore;
       if (!dataStore || getMutationView(modelId)) continue;
-      const view = new MutablePropertyView(dataStore.properties || null, modelId);
-      configureMutationView(view, dataStore);
+      const view = createModelMutationView(dataStore, modelId);
       registerMutationView(modelId, view);
     }
   }, [open, targetSource, targetGroups, models, getMutationView, registerMutationView]);
@@ -238,7 +233,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       if (!dataStore || !view) continue;
       engines.set(modelId, new BulkQueryEngine(dataStore.entities, view,
         dataStore.spatialHierarchy || null,
-        dataStore.strings || null, () => canMutate(useViewerStore.getState(), modelId), dataStore.schemaVersion,
+        dataStore.strings || null, () => canMutateData(useViewerStore.getState(), modelId), dataStore.schemaVersion,
         (containerId) => effectiveSpatialMembers(dataStore, view, containerId)));
     }
     return engines;

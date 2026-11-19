@@ -76,13 +76,13 @@ describe('change sets collect the edits that enter history (#6232 D4)', () => {
     store().setAttribute('A', 1, 'Name', 'Wall', 'Old');
     store().createPropertySet('A', 1, 'Pset_New', []);
     store().setQuantity('A', 1, 'Qto_Test', 'Length', 2);
-    store().setGeorefFields('A', 'mapConversion', [{ field: 'Eastings', value: 10, oldValue: 0 }]);
+    store().setGeorefFields('A', 'mapConversion', [{ field: 'eastings', value: 10, oldValue: 0 }]);
     const view = store().mutationViews.get('A')!;
     const batch = [view.setProperty(5, 'Pset_Bulk', 'X', '1', PropertyValueType.Label), view.setProperty(6, 'Pset_Bulk', 'X', '1', PropertyValueType.Label)];
     store().recordMutationBatch('A', batch);
     pushCreateEntityUndo(useViewerStore.setState, 'A', 42, 'IFCCOSTITEM');
     const recorded = store().undoStacks.get('A')!.map((m) => m.id);
-    assert.equal(recorded.length, 7);
+    assert.equal(recorded.length, 9, 'the georef edit also records its two completed coordinates (northings, orthogonalHeight)');
     assert.deepEqual(ids(id), recorded, 'the set holds exactly what history holds, in order');
   });
 

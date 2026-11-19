@@ -43,7 +43,7 @@
  * removed without re-running detection.
  */
 
-import { pairKey, summarizeClashes, type Clash, type ClashElementRef, type ClashResult } from '@ifc-lite/clash';
+import { clashElementIdentity, pairKey, summarizeClashes, type Clash, type ClashElementRef, type ClashResult } from '@ifc-lite/clash';
 
 /** Which granularity a rule matches at. */
 export type ClashExclusionKind = 'typeAny' | 'typePair' | 'elementPair';
@@ -139,14 +139,15 @@ export function typePairExclusion(tagA: string, tagB: string): ClashExclusionRul
  * `model` is the viewer's per-load `crypto.randomUUID()`, so persisting it
  * into the rule identity would make the rule match nothing after the next
  * reload while the panel still lists it as enabled. Same choice, same reason,
- * as `clashReviewKey` in `@ifc-lite/clash`.
+ * as `clashReviewKey` in `@ifc-lite/clash`. Ambiguous keys use the engine's
+ * reference-disambiguated identity; a renumbered source needs a new decision.
  */
 export function elementPairExclusion(a: ClashElementRef, b: ClashElementRef): ClashExclusionRule {
   return {
     id: newId(),
     kind: 'elementPair',
-    a: a.key,
-    b: b.key,
+    a: clashElementIdentity(a),
+    b: clashElementIdentity(b),
     label: label(elementLabel(a), elementLabel(b)),
     enabled: true,
     createdAt: Date.now(),
@@ -158,7 +159,7 @@ export function exclusionMatches(rule: ClashExclusionRule, a: ClashElementRef, b
   // One-sided: either side carrying the class is enough, which is what makes
   // the rule independent of which element the engine put on side A.
   if (rule.kind === 'typeAny') return a.tag === rule.a || b.tag === rule.a;
-  const target = rule.kind === 'typePair' ? pairKey(a.tag, b.tag) : pairKey(a.key, b.key);
+  const target = rule.kind === 'typePair' ? pairKey(a.tag, b.tag) : pairKey(clashElementIdentity(a), clashElementIdentity(b));
   return target === pairKey(rule.a, rule.b);
 }
 

@@ -38,6 +38,8 @@ export interface MeshSourceDeps {
   toLocal(p: RVec3): { local: Vec2; elevation: number } | null;
   /** Resolve a renderer (global) id to its model entity. */
   entityOf?(globalId: number): { modelId: string; expressId: number } | null;
+  /** Construction placement uses the increment on broad surfaces; explicit centres remain targets. */
+  suppressSurfacePoints?: boolean;
 }
 
 export interface MeshSource extends SnapSource {
@@ -82,7 +84,7 @@ export function createMeshSource(deps: MeshSourceDeps, id = 'mesh'): MeshSource 
       const t = pick.snapTarget;
       const kind = t ? KIND[t.type] : undefined;
       const owner = entity(t?.expressId ?? pick.intersection?.expressId);
-      if (t && kind) {
+      if (t && kind && !(deps.suppressSurfacePoints && t.type === 'face')) {
         const at = deps.toLocal(t.position);
         if (at) {
           const c: SnapCandidate = { kind, local: at.local, elevation: at.elevation, source: 'mesh', entity: owner };
@@ -104,7 +106,7 @@ export function createMeshSource(deps: MeshSourceDeps, id = 'mesh'): MeshSource 
         }
       }
       // The plain surface hit, so a face under the cursor still names its entity.
-      if (pick.intersection && kind !== 'face') {
+      if (pick.intersection && kind !== 'face' && !deps.suppressSurfacePoints) {
         const at = deps.toLocal(pick.intersection.point);
         if (at) out.push({ kind: 'face', local: at.local, elevation: at.elevation, source: 'mesh', entity: owner });
       }

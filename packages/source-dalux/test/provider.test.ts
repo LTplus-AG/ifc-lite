@@ -76,10 +76,14 @@ describe('DaluxBuildProvider', () => {
     expect(provider.manifest.capabilities).toEqual({
       containerListing: 'flat-subtree',
       listFilesIsRecursive: true,
-      revisionHistory: false,
+      // `listRevisions` now reconstructs history from version sets
+      // (`revision-methods.ts`) -- see `provider.test.ts`'s and
+      // `revision-methods.test.ts`'s own coverage of that method.
+      revisionHistory: true,
       downloadHistoricalRevisions: true,
       changeDetection: true,
       search: false,
+      writeBack: ['new-version', 'new-file', 'new-location'],
       // #2613: Dalux opts into the eager file sweep -- its own UI has no
       // per-folder "load more files" concept, so the host must keep draining
       // a folder's file listing in full rather than paging it incrementally.

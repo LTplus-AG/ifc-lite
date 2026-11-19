@@ -59,6 +59,8 @@ export const mcpPlaygroundEn = {
   'mcp.playgroundChat.placeholderNoKey': 'Set an Anthropic key first.',
   'mcp.playgroundChat.placeholderAddNote': 'Add a note (or just send to validate the attached file)…',
   'mcp.playgroundChat.placeholderDefault': 'Ask the agent — drop a .ids onto the chat to validate it.',
+  'mcp.playgroundChat.stopped': 'Stopped',
+  'mcp.playgroundChat.finishingTool': 'Finishing previous tool… Press Stop again to release Send. Its outcome may remain unknown.',
   'mcp.playgroundChat.send': 'Send',
   'mcp.playgroundChat.footerHintNoAttachments':
     'BYOK · {tools} tools · enter to send · ⇧+enter for newline · drop files to attach',

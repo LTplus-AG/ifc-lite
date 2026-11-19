@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { resolveViewHiddenEntities, type StructuralVisibilityState } from './structural-view';
 import { isEntityVisible } from '@ifc-lite/renderer';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
@@ -67,7 +68,7 @@ export interface EffectiveGeometry {
 }
 
 /** True only when loaded geometry exists and the effective drawable set is empty. */
-export type VisibleResultState = Pick<ViewerState, 'models' | 'geometryResult' | 'hiddenEntities'>;
+export type VisibleResultState = StructuralVisibilityState & Pick<ViewerState, 'geometryResult'>;
 
 export function isVisibleResultEmpty(state: VisibleResultState, geometry: EffectiveGeometry): boolean {
   if (state.models.size === 0) return false;
@@ -79,7 +80,7 @@ export function isVisibleResultEmpty(state: VisibleResultState, geometry: Effect
   ));
   if (!hasSource) return false;
   if (geometry.pointClouds.some((asset) => asset.chunk.pointCount > 0)) return false;
-  const hidden = state.hiddenEntities;
+  const hidden = resolveViewHiddenEntities(state);
   const isolated = geometry.isolatedIds;
   for (const mesh of geometry.meshes ?? []) {
     if (mesh.entityIds?.length) {

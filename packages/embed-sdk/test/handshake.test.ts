@@ -117,3 +117,72 @@ describe('handshake timeout', () => {
     await expect(h.created).resolves.toBeDefined();
   });
 });
+
+// Implicit-state audit P4: a timed-out handshake must tear the instance down.
+// Before the fix, create() rejected but left the iframe mounted, the window
+// `message` listener attached and the READY handler armed, so a late READY
+// still posted the bearer token into an iframe the host had given up on.
+describe('handshake timeout tears the instance down (audit P4)', () => {
+  it('P4: removes the iframe from the container when the handshake times out', async () => {
+    vi.useFakeTimers();
+    h = mount({ timeout: 500 });
+    expect(h.container.querySelector('iframe')).not.toBeNull();
+    const assertion = expect(h.created).rejects.toThrow(/handshake timed out/);
+    await vi.advanceTimersByTimeAsync(500);
+    await assertion;
+    expect(h.container.querySelector('iframe')).toBeNull();
+  });
+
+  it('P4: a READY arriving after the timeout does not post the bearer token', async () => {
+    vi.useFakeTimers();
+    h = mount({ timeout: 500, token: 'secret-bearer' });
+    const assertion = expect(h.created).rejects.toThrow(/handshake timed out/);
+    await vi.advanceTimersByTimeAsync(500);
+    await assertion;
+    h.emit('READY', { version: PROTOCOL_VERSION });
+    expect(h.posted).toEqual([]);
+  });
+
+  it('P4: detaches the window message listener when the handshake times out', async () => {
+    vi.useFakeTimers();
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+    try {
+      h = mount({ timeout: 500 });
+      const assertion = expect(h.created).rejects.toThrow(/handshake timed out/);
+      await vi.advanceTimersByTimeAsync(500);
+      await assertion;
+      expect(removeSpy.mock.calls.some(([type]) => type === 'message')).toBe(true);
+    } finally {
+      removeSpy.mockRestore();
+    }
+  });
+
+  it('P4: a host retrying into the same container after a timeout ends with one iframe, not a stack', async () => {
+    vi.useFakeTimers();
+    h = mount({ timeout: 500 });
+    const first = expect(h.created).rejects.toThrow(/handshake timed out/);
+    await vi.advanceTimersByTimeAsync(500);
+    await first;
+    const retry = mount({ container: h.container, timeout: 500 });
+    try {
+      expect(h.container.querySelectorAll('iframe')).toHaveLength(1);
+      const second = expect(retry.created).rejects.toThrow(/handshake timed out/);
+      await vi.advanceTimersByTimeAsync(500);
+      await second;
+      expect(h.container.querySelectorAll('iframe')).toHaveLength(0);
+    } finally {
+      retry.cleanup();
+    }
+  });
+
+  it('P4: an INIT_ACK arriving after the timeout leaves create() rejected', async () => {
+    vi.useFakeTimers();
+    h = mount({ timeout: 500 });
+    h.emit('READY', { version: PROTOCOL_VERSION });
+    const assertion = expect(h.created).rejects.toThrow(/handshake timed out/);
+    await vi.advanceTimersByTimeAsync(500);
+    await assertion;
+    h.emit('INIT_ACK');
+    await expect(h.created).rejects.toThrow(/handshake timed out/);
+  });
+});

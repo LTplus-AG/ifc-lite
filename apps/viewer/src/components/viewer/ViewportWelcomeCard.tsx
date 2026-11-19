@@ -10,9 +10,9 @@
  * line (`WelcomeFooterChips`) under both.
  *
  * One filled action, then everything else in the theme's plain ink and muted
- * ink (#8802 R6): the format list is ordinary text at the muted token, not a
- * dimmed monospace run, and the agent link left the sample list, where it
- * read as a third sample model.
+ * ink (#8802 R6): the format list (`WelcomeFormats`) is ordinary text at those
+ * two tokens, not a dimmed monospace run, and the agent link left the sample
+ * list, where it read as a third sample model.
  *
  * Opening your own model is the primary action. The demo project, which was
  * the first button from #5840 to the redesign, now sits with the other
@@ -23,26 +23,27 @@
  * module-size allowlist at a frozen budget.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
+import { isPanelAvailable } from '@/lib/panels/availability';
+import { isSurfaceCommandAvailable } from './surface-command-features';
+import { surfaceCommand } from './surface-command-registry';
 import { useEffect, useState } from 'react';
 import { Upload, Cloud, PackagePlus, Building2, GitMerge, ShieldCheck } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
 import { loadDemoProjectVia } from '@/lib/tours/demo-kit';
-import { MODEL_FILE_EXTENSIONS } from '@/services/supported-model-files';
 import { useViewerStore } from '@/store';
 import type { WebGPUStatus } from '@/hooks/useWebGPU';
 import { getCachedFile, type RecentFileEntry } from '@/lib/recent-files';
+import { WelcomeFormats } from './welcome/WelcomeFormats';
 import { WelcomeRecentFiles } from './welcome/WelcomeRecentFiles';
 import { WebGpuDisabledCaption } from './WebGpuTroubleshooting';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { trackUiEvent } from '@/lib/analytics';
 import { onFieldTelemetry } from '@/lib/perf/fieldTelemetryLoader';
-
-/** Formats named under the actions, derived from the one extension list so
- *  the copy can never advertise less (or more) than the picker accepts. */
-const MODEL_FORMATS_LABEL = MODEL_FILE_EXTENSIONS.join(' ');
+import { markLoadIntent } from '@/lib/load-intent';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 const ACTION = `inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold whitespace-nowrap transition-colors ${FOCUS} disabled:cursor-not-allowed disabled:opacity-45`;
@@ -63,6 +64,13 @@ export interface ViewportWelcomeCardProps {
   loadFile: (file: File) => Promise<void>;
 }
 
+/** No way to pick a model on this page (`lib/features`): the page that embeds the viewer opens one. */
+export function hostOpensModel(): boolean {
+  return !isFeatureEnabled('files.local') && !isFeatureEnabled('files.samples') && !isPanelAvailable('sources')
+    && !isFeatureEnabled('files.federation-setup')
+    && !isSurfaceCommandAvailable(surfaceCommand('file:new-blank', 'palette'));
+}
+
 export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentFiles, loadFile }: ViewportWelcomeCardProps) {
   const { t } = useTranslation();
   const actionsDisabled = !webgpu.supported || webgpu.checking;
@@ -79,6 +87,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   // The sample the tours use ships with the viewer (#5840) and goes through
   // the same `loadFile` as every other open.
   const loadDemo = async () => {
+    markLoadIntent(); // the sample is fetched before the load starts
     // Which way in a first visit takes; the panel empty state reports the same pair.
     trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'load_sample' });
     setDemoLoading(true);
@@ -93,6 +102,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   };
 
   const loadLayersDemo = () => {
+    markLoadIntent(); // the demo stack chunk loads before its models do
     void import('@/lib/layers/demo-stack')
       .then((m) => m.loadDemoLayerStack())
       .catch((err: unknown) => {
@@ -102,6 +112,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
   };
 
   const openRecent = async (file: RecentFileEntry) => {
+    markLoadIntent(); // read from the recent-file cache before the load starts
     const cached = await getCachedFile(file);
     if (cached) {
       await loadFile(cached);
@@ -110,21 +121,29 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
     onOpenClick();
   };
 
-  const hasRecent = recentFiles.length > 0;
+  // What a host switched off (`lib/features`) is left out, not disabled.
+  const local = isFeatureEnabled('files.local');
+  const samples = isFeatureEnabled('files.samples');
+  const sources = isPanelAvailable('sources');
+  const blank = isSurfaceCommandAvailable(surfaceCommand('file:new-blank', 'palette'));
+  const hasRecent = local && recentFiles.length > 0;
+  const hostOpens = hostOpensModel();
 
   return (
     <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="flex w-full max-w-[500px] flex-col">
       <h2 className="text-4xl font-extrabold leading-[1.05] tracking-[-0.035em] text-foreground md:text-5xl">
-        {t('viewportLighting.container.emptyState.heading')}
+        {hostOpens ? t('viewportLighting.container.emptyState.hostOpens.heading') : t('viewportLighting.container.emptyState.heading')}
       </h2>
-      <p className={`mt-4 text-base leading-relaxed ${MUTED}`}>
-        {hasRecent
-          ? t('viewportLighting.container.emptyState.lead.returning')
-          : t('viewportLighting.container.emptyState.lead.firstVisit')}
-      </p>
+      {(local || hostOpens) && <p className={`mt-4 text-base leading-relaxed ${MUTED}`}>
+        {hostOpens
+          ? t('viewportLighting.container.emptyState.hostOpens.lead')
+          : hasRecent
+            ? t('viewportLighting.container.emptyState.lead.returning')
+            : t('viewportLighting.container.emptyState.lead.firstVisit')}
+      </p>}
 
       <div className="mt-7 flex flex-wrap items-center gap-1">
-        <button
+        {local && <button
           type="button"
           onClick={() => {
             trackUiEvent('onboarding_surface', { surface: 'welcome_card', action: 'open_file' });
@@ -141,8 +160,8 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
                 ? t('viewportLighting.container.emptyState.openButton.open')
                 : t('viewportLighting.container.emptyState.openButton.required')}
           </span>
-        </button>
-        <button
+        </button>}
+        {sources && <button
           type="button"
           onClick={() => useViewerStore.getState().openPanelInHome('sources')}
           disabled={actionsDisabled}
@@ -152,26 +171,21 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
           {/* Provider-neutral: this opens the Cloud Sources panel, which
               lists every registered provider. */}
           <span>{t('viewportLighting.container.emptyState.openFromCloud')}</span>
-        </button>
-        <button type="button" onClick={onStartBlank} disabled={actionsDisabled} className={SECONDARY}>
+        </button>}
+        {blank && <button type="button" onClick={onStartBlank} disabled={actionsDisabled} className={SECONDARY}>
           <PackagePlus className="h-4 w-4" aria-hidden="true" />
           <span>{t('viewportLighting.container.emptyState.startBlank')}</span>
-        </button>
+        </button>}
       </div>
 
-      <p className={`mt-3 text-xs leading-relaxed ${MUTED}`}>
-        {webgpu.supported ? (
-          <>
-            <span>{t('viewportLighting.container.emptyState.dragDropHint')}</span>{' '}
-            {/* Its own line: a list that breaks mid-run reads as ragged noise. */}
-            <span data-welcome-formats="" className="block">{MODEL_FORMATS_LABEL}</span>
-          </>
-        ) : <WebGpuDisabledCaption />}
-      </p>
+      {(local || !webgpu.supported) && <p className={`mt-3 text-xs leading-relaxed ${MUTED}`}>
+        {webgpu.supported ? t('viewportLighting.container.emptyState.dragDropHint') : <WebGpuDisabledCaption />}
+      </p>}
+      {webgpu.supported && local && <WelcomeFormats />}
 
-      <WelcomeRecentFiles files={recentFiles} disabled={actionsDisabled} onOpen={(file) => { void openRecent(file); }} />
+      {local && <WelcomeRecentFiles files={recentFiles} disabled={actionsDisabled} onOpen={(file) => { void openRecent(file); }} />}
 
-      <section className="mt-8">
+      {samples && <section className="mt-8">
         <h3 className={`mb-1 text-xs font-medium ${MUTED}`}>{t('viewportLighting.container.emptyState.noModel.heading')}</h3>
         <div className="flex flex-col">
           <button type="button" onClick={() => { void loadDemo(); }} disabled={actionsDisabled || demoLoading} className={SAMPLE}>
@@ -183,21 +197,22 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
           </button>
           {/* The Layers demo stack (#1717). Desktop only: multi-file .ifcx
               layering is not a phone workflow. */}
-          <button type="button" onClick={loadLayersDemo} disabled={actionsDisabled} className={`${SAMPLE} hidden md:flex`}>
+          {isPanelAvailable('layers') && <button type="button" onClick={loadLayersDemo} disabled={actionsDisabled} className={`${SAMPLE} hidden md:flex`}>
             <span className={SAMPLE_TITLE}>
               <GitMerge className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{t('viewportLighting.container.emptyState.layersDemo')}</span>
             </span>
             <span className={`text-xs ${MUTED}`}>{t('viewportLighting.container.emptyState.noModel.layersHint')}</span>
-          </button>
+          </button>}
         </div>
-      </section>
+      </section>}
 
       {/* Privacy footnote (#5119). The SAME catalogue key as `PrivacyBanner`
           in KeyboardShortcutsDialog.tsx — one key, two call sites, pinned by
           ViewportWelcomeCard.privacy.test.tsx. Clicking deep-links to the
-          About tab, where the WASM / F12-verification detail lives. */}
-      <button
+          About tab, where the WASM / F12-verification detail lives. It is a
+          claim about local files, so it goes when a host switched those off. */}
+      {local && <button
         type="button"
         onClick={() => window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'about' } }))}
         title={t('viewportLighting.container.emptyState.privacyDetailsHint')}
@@ -205,7 +220,7 @@ export function ViewportWelcomeCard({ webgpu, onOpenClick, onStartBlank, recentF
       >
         <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
         <span>{t('keyboardShortcuts.privacy.banner')}</span>
-      </button>
+      </button>}
     </div>
   );
 }

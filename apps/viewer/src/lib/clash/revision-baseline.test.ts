@@ -146,7 +146,8 @@ function coverageWithKeys(
 ): ClashRuleCoverage {
   const keysA = Array.from({ length: matchedA }, (_, i) => `2N1SPBejP08uMKa3Ea${rule}${String(i).padStart(6, '0')}`);
   const keysB = Array.from({ length: matchedB }, (_, i) => `1O2SPBejP08uMKa3Fb${rule}${String(i).padStart(6, '0')}`);
-  return { rule, matchedA, matchedB, fromMembersA, fromMembersB, matchedKeysA: keysA, matchedKeysB: keysB };
+  return { rule, matchedA, matchedB, fromMembersA, fromMembersB, matchedKeysA: keysA, matchedKeysB: keysB,
+    matchedElements: keysA.map((key, ref) => ({ model: 'm1', key, ref })) };
 }
 
 describe('saveRevisionBaseline size (#3953: matchedKeysA/B growth from #3947)', () => {
@@ -183,6 +184,7 @@ describe('saveRevisionBaseline size (#3953: matchedKeysA/B growth from #3947)', 
       for (const entry of coverage) {
         assert.strictEqual(Object.hasOwn(entry, 'matchedKeysA'), false);
         assert.strictEqual(Object.hasOwn(entry, 'matchedKeysB'), false);
+        assert.strictEqual(Object.hasOwn(entry, 'matchedElements'), false, '#9259 per-load members never persist into a revision baseline');
       }
     },
   );

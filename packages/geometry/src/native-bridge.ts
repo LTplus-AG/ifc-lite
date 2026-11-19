@@ -71,7 +71,6 @@ interface NativeGeometryCacheStreamStatus {
   errorMessage?: string;
 }
 
-const NATIVE_CACHE_PREFETCH_WINDOW = 2;
 const MAX_DEFERRED_BATCHES_PER_DRAIN = 4;
 const MAX_DEFERRED_MESHES_PER_DRAIN = 8192;
 const MAX_DEFERRED_DRAIN_MS = 10;
@@ -99,12 +98,6 @@ function yieldToEventLoop(): Promise<void> {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => resolve();
     channel.port2.postMessage(null);
-  });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    globalThis.setTimeout(resolve, ms);
   });
 }
 
@@ -208,119 +201,6 @@ export class NativeBridge implements IPlatformBridge {
           drainStartedAt = performance.now();
         }
       }
-    }
-  }
-
-  private async processEventDrivenNativeStream<TArgs extends Record<string, unknown>>(
-    command: string,
-    args: TArgs,
-    options: StreamingOptions,
-    streamStartTime: number
-  ): Promise<GeometryStats> {
-    if (!this.listen) {
-      throw new Error(`Event API unavailable, ${command} requires Tauri event support`);
-    }
-
-    const pendingBatches: DeferredNativeBatchPayload[] = [];
-    let drainPromise: Promise<void> | null = null;
-    let drainError: Error | null = null;
-    const scheduleDrain = () => {
-      if (drainPromise) return;
-      drainPromise = (async () => {
-        try {
-          await this.drainDeferredBatches(pendingBatches, options, streamStartTime);
-        } catch (error) {
-          drainError = error instanceof Error ? error : new Error(String(error));
-        } finally {
-          drainPromise = null;
-          if (pendingBatches.length > 0 && !drainError) {
-            scheduleDrain();
-          }
-        }
-      })();
-    };
-
-    const unlisten = await this.listen<{
-      meshes: NativeMeshData[];
-      progress: NativeStreamingProgress;
-      telemetry?: NativeBatchTelemetryPayload;
-    }>('geometry-batch', (event) => {
-      pendingBatches.push({
-        type: 'mesh-array',
-        meshes: event.payload.meshes,
-        progress: event.payload.progress,
-        telemetry: event.payload.telemetry,
-      });
-      scheduleDrain();
-    });
-    const unlistenPacked = await this.listen<NativePackedGeometryBatch>('geometry-packed-batch', (event) => {
-      pendingBatches.push({
-        type: 'packed',
-        payload: event.payload,
-      });
-      scheduleDrain();
-    });
-    const unlistenColorUpdate = await this.listen<NativeColorUpdatePayload>('geometry-color-update', (event) => {
-      const updates = new Map<number, [number, number, number, number]>();
-      for (const entry of event.payload.updates) {
-        updates.set(entry.expressId, entry.color);
-      }
-      if (updates.size > 0) {
-        options.onColorUpdate?.(updates);
-      }
-    });
-
-    try {
-      const stats = await this.invoke!<{
-        totalMeshes: number;
-        totalVertices: number;
-        totalTriangles: number;
-        parseTimeMs: number;
-        entityScanTimeMs?: number;
-        lookupTimeMs?: number;
-        preprocessTimeMs?: number;
-        geometryTimeMs: number;
-        totalTimeMs?: number;
-        firstChunkReadyTimeMs?: number;
-        firstChunkPackTimeMs?: number;
-        firstChunkEmittedTimeMs?: number;
-        firstChunkEmitTimeMs?: number;
-        // Full GeometryDiagnostics from the native pass. Read both key spellings:
-        // the inner contract is camelCase (Rust `rename_all`), but the helper may
-        // forward the outer `ProcessingStats` field as snake_case or camelCase.
-        geometryDiagnostics?: GeometryDiagnostics;
-        geometry_diagnostics?: GeometryDiagnostics;
-      }>(command, args);
-
-      const result: GeometryStats = {
-        totalMeshes: stats.totalMeshes,
-        totalVertices: stats.totalVertices,
-        totalTriangles: stats.totalTriangles,
-        parseTimeMs: stats.parseTimeMs,
-        entityScanTimeMs: stats.entityScanTimeMs,
-        lookupTimeMs: stats.lookupTimeMs,
-        preprocessTimeMs: stats.preprocessTimeMs,
-        geometryTimeMs: stats.geometryTimeMs,
-        totalTimeMs: stats.totalTimeMs,
-        firstChunkReadyTimeMs: stats.firstChunkReadyTimeMs,
-        firstChunkPackTimeMs: stats.firstChunkPackTimeMs,
-        firstChunkEmittedTimeMs: stats.firstChunkEmittedTimeMs,
-        firstChunkEmitTimeMs: stats.firstChunkEmitTimeMs,
-        diagnostics: stats.geometryDiagnostics ?? stats.geometry_diagnostics,
-      };
-
-      while (drainPromise) {
-        await drainPromise;
-      }
-      if (drainError) {
-        throw drainError;
-      }
-
-      return result;
-    } finally {
-      unlisten();
-      unlistenPacked();
-      unlistenColorUpdate();
     }
   }
 
@@ -428,37 +308,47 @@ export class NativeBridge implements IPlatformBridge {
         }
       })();
     };
-    const unlisten = await this.listen<{
-      meshes: NativeMeshData[];
-      progress: NativeStreamingProgress;
-      telemetry?: NativeBatchTelemetryPayload;
-    }>('geometry-batch', (event) => {
-      pendingBatches.push({
-        type: 'mesh-array',
-        meshes: event.payload.meshes,
-        progress: event.payload.progress,
-        telemetry: event.payload.telemetry,
-      });
-      scheduleDrain();
-    });
-    const unlistenPacked = await this.listen<NativePackedGeometryBatch>('geometry-packed-batch', (event) => {
-      pendingBatches.push({
-        type: 'packed',
-        payload: event.payload,
-      });
-      scheduleDrain();
-    });
-    const unlistenColorUpdate = await this.listen<NativeColorUpdatePayload>('geometry-color-update', (event) => {
-      const updates = new Map<number, [number, number, number, number]>();
-      for (const entry of event.payload.updates) {
-        updates.set(entry.expressId, entry.color);
-      }
-      if (updates.size > 0) {
-        options.onColorUpdate?.(updates);
-      }
-    });
+    // Tauri event names are app-global: tag this stream so a concurrent one
+    // (another load, another bridge, another window) cannot feed it batches.
+    // A shell that does not echo `jobId` yet still gets its untagged events.
+    const jobId = crypto.randomUUID();
+    const listen = this.listen;
+    const forThisJob = <T>(handler: (payload: T) => void) => (event: { payload: T & { jobId?: string } }) => {
+      if (event.payload.jobId !== undefined && event.payload.jobId !== jobId) return;
+      handler(event.payload);
+    };
+    // Registered inside the try, so a listen() that rejects releases the
+    // listeners already registered instead of leaking them for the app's life.
+    const unlisteners: Array<() => void> = [];
 
     try {
+      unlisteners.push(await listen<{
+        meshes: NativeMeshData[];
+        progress: NativeStreamingProgress;
+        telemetry?: NativeBatchTelemetryPayload;
+      }>('geometry-batch', forThisJob((payload) => {
+        pendingBatches.push({
+          type: 'mesh-array',
+          meshes: payload.meshes,
+          progress: payload.progress,
+          telemetry: payload.telemetry,
+        });
+        scheduleDrain();
+      })));
+      unlisteners.push(await listen<NativePackedGeometryBatch>('geometry-packed-batch', forThisJob((payload) => {
+        pendingBatches.push({ type: 'packed', payload });
+        scheduleDrain();
+      })));
+      unlisteners.push(await listen<NativeColorUpdatePayload>('geometry-color-update', forThisJob((payload) => {
+        const updates = new Map<number, [number, number, number, number]>();
+        for (const entry of payload.updates) {
+          updates.set(entry.expressId, entry.color);
+        }
+        if (updates.size > 0) {
+          options.onColorUpdate?.(updates);
+        }
+      })));
+
       // Call native streaming command
       const stats = await this.invoke!<{
         totalMeshes: number;
@@ -476,7 +366,7 @@ export class NativeBridge implements IPlatformBridge {
         firstChunkEmitTimeMs?: number;
         geometryDiagnostics?: GeometryDiagnostics;
         geometry_diagnostics?: GeometryDiagnostics;
-      }>('get_geometry_streaming', { buffer });
+      }>('get_geometry_streaming', { buffer, jobId });
 
       const result: GeometryStats = {
         totalMeshes: stats.totalMeshes,
@@ -508,10 +398,15 @@ export class NativeBridge implements IPlatformBridge {
       options.onError?.(error instanceof Error ? error : new Error(String(error)));
       throw error;
     } finally {
-      // Clean up event listener
-      unlisten();
-      unlistenPacked();
-      unlistenColorUpdate();
+      // Each release on its own: a throwing unlisten must neither skip the
+      // rest nor replace the stream's own outcome.
+      for (const unlisten of unlisteners) {
+        try {
+          unlisten();
+        } catch (error) {
+          console.warn('[NativeBridge] Failed to unlisten a geometry stream event:', error);
+        }
+      }
     }
   }
 

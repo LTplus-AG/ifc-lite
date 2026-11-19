@@ -15,7 +15,7 @@ export function parquetRelationshipRows(
 ): { SourceId: number[]; TargetId: number[]; RelType: string[]; RelId: number[] } {
   const rows = { SourceId: [] as number[], TargetId: [] as number[], RelType: [] as string[], RelId: [] as number[] };
   const overlay = view ? resolveEffectiveRelationshipOverlay(store, {
-    createdEntities: () => view.getNewEntities(),
+    createdEntities: () => view.readNewEntities?.() ?? view.getNewEntities(),
     mutatedEntityIds: () => {
       const ids = new Set<number>([
         ...view.getTypeMutations().keys(),

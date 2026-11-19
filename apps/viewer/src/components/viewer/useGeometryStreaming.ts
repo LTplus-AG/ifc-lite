@@ -19,7 +19,7 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
  */
 
 import { useEffect, useRef } from 'react';
-import { decodeInstancedShard } from '@ifc-lite/geometry';
+import { useViewerStore } from '@/store';
 import type { MeshData } from '@ifc-lite/geometry';
 import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
 import { toast } from '../ui/toast.js';
@@ -27,7 +27,7 @@ import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { geometryMeshKey } from './geometry-mesh-key';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
-import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
+import { placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
@@ -37,13 +37,14 @@ import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
 let linearFitHintShown = false;
 
-import { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 export { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 
 import { refitCompletedStreamBounds } from './streamingCompletionBounds.js';
 import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
 import { usePlacementMutationDrain } from './usePlacementMutationDrain.js';
+import { useInstancedShardDrain } from './useInstancedShardDrain.js';
 import { useFinalizationRecoveryWake } from './useFinalizationRecoveryWake.js';
+import { registerFinalizePending } from '@/lib/scene-settled';
 import type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
 export type { UseGeometryStreamingParams } from './geometry-streaming-params.js';
 
@@ -88,7 +89,6 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pendingMeshRemovals,
     pendingMeshTranslations,
     pendingMeshRotations,
-    pendingInstancedShards,
     currentLevelY,
     modelIdToIndex,
     modelIdToOffset,
@@ -99,12 +99,12 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pruneGeometryMeshes,
     clearPendingMeshTranslations,
     clearPendingMeshRotations,
-    clearInstancedShards,
     releaseGeometryAfterFinalize = false,
     onGeometryReleased,
   } = params;
 
   const [finalizeWake, wakeAfterFailure] = useFinalizationRecoveryWake(gpuRecoveryEpoch);
+  const triangleSourceSceneRef = useRef<ReturnType<NonNullable<typeof rendererRef.current>['getScene']> | null>(null);
   const processedMeshIdsRef = useRef<Set<string>>(new Set());
   const lastGeometryLengthRef = useRef(0);
   const lastGeometryRef = useRef<MeshData[] | null>(null);
@@ -122,8 +122,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     renderer: NonNullable<typeof rendererRef.current>; geometry: typeof geometry; replacement: number; scene: ReturnType<NonNullable<typeof rendererRef.current>['getScene']>;
     trace: ReturnType<typeof activeLoadTrace>; running: boolean; attempts: number;
   } | null>(null);
-  // A scheduled drain is not a completed finalization. Keep its same-load
-  // ownership across recovery cleanup, but never finalize a replacement load.
+  // A scheduled drain is not a completed finalization: keep same-load ownership across recovery cleanup, never finalize a replacement.
   useEffect(() => {
     const pending = pendingFinalizeRef.current;
     if (!geometry || (geometry.length === 0 && (pending?.geometry?.length ?? 0) > 0)) {
@@ -141,7 +140,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       pending.geometry = geometry;
     }
   }, [geometry, geometryReplacementVersion, isStreaming, rendererRef.current, isInitialized, gpuRecoveryEpoch]);
-  useEffect(() => () => { pendingFinalizeRef.current = null; }, []);
+  useEffect(() => { const off = registerFinalizePending(() => pendingFinalizeRef.current !== null || (prevIsStreamingRef.current && Boolean(rendererRef.current?.getGPUDevice()))); return () => { off(); pendingFinalizeRef.current = null; }; }, []); // a seen stream is not settled until it is finalized
   const lastContentVersionRef = useRef(geometryContentVersion ?? 0);
   const prevModelCountRef = useRef(modelCount);
   const queuePumpTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
@@ -212,10 +211,15 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     if (!renderer || !isInitialized) return;
 
+    const scene = renderer.getScene();
+    scene.setTriangleCountReplayComplete?.(false);
     const device = renderer.getGPUDevice();
     if (!device) return;
-
-    const scene = renderer.getScene();
+    if (triangleSourceSceneRef.current !== scene) {
+      triangleSourceSceneRef.current = scene;
+      processedMeshIdsRef.current.clear();
+      lastGeometryLengthRef.current = 0; lastGeometryRef.current = null;
+    }
     const currentLength = geometry.length;
 
     // In-place mutation detection: when geometryContentVersion bumps, mesh
@@ -267,7 +271,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     // Adopted snapshot batches own the scene until their meshes arrive.
     if (isCleared && adoptedSceneOutlivesEmptyGeometry(scene)) return;
-    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef })) return;
+    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef }, isStreaming)) {
+      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
+      return;
+    }
 
     if (isCleared) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
@@ -278,6 +285,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // A filtered/released flat snapshot must keep its existing reset behavior.
       lastGeometryRef.current = geometryKernel === 'retained' && lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
         && scene.getInstancedModelIndices().length > 0 ? geometry : null;
+      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
       renderer.requestRender();
       return;
     }
@@ -309,20 +317,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       lastGeometryLengthRef.current = 0;
       lastGeometryRef.current = geometry;
     } else if (currentLength === lastLength) {
-      // No mesh-count change, so the queueMeshes / appendToBatches block
-      // below would be a no-op. But we MUST still reach the camera-fit
-      // block — the streaming-complete re-render (isStreaming flips
-      // false, geometry array length stays at the final mesh count)
-      // arrives here, and that's the FIRST render where path 2
-      // (`computeBounds(geometry)` fallback when shiftedBounds is empty)
-      // is allowed to fire. Pre-fix the early return short-circuited
-      // the camera fit entirely; the user reported 33 meshes streamed
-      // with the viewport stuck at the default ±100 m bounds (issue
-      // #859 / PR #871 deploy preview, `linear-placement-of-signal.ifc`).
-      //
-      // Skip only when the camera is already fitted or there's nothing
-      // to fit to.
+      // Completion can arrive with unchanged length after the last streaming
+      // append. Publish source completion before a camera-only early return.
       if (cameraFittedRef.current || currentLength === 0) {
+        if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
         return;
       }
       // Otherwise fall through so the camera-fit block at the bottom of
@@ -401,9 +399,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           ensureQueuePump();
         } else {
           // Non-streaming: process immediately (visibility toggles, etc.)
-          // The production crash path: this effect is where a failed
-          // createBuffer escaped into React's commit phase and unmounted the
-          // viewport, blanking the canvas.
+          // Keep failed GPU allocation inside the upload error boundary.
           const uploaded = runGpuUpload('appendToBatches:non-streaming', () => {
             scene.appendToBatches(newMeshes, device, pipeline, false);
             return true;
@@ -419,18 +415,18 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             }
           }
         }
+      } else {
+        appendFailed = true;
+        for (const key of claimedMeshKeys) processedMeshIdsRef.current.delete(key);
       }
     }
 
-    // The incremental/fast path tracks progress by length rather than by
-    // key, so it needs the same rollback: leaving this un-advanced is what
-    // makes the failed append retryable there.
     if (!appendFailed) {
       lastGeometryLengthRef.current = currentLength;
+      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
     }
 
-    // ── Fit camera ──
-    //
+    // Fit a loaded source once; authoring keeps the user camera.
     // Pre-#871 the branching here was structured as
     //   if (coordinateInfo?.shiftedBounds) { try to fit }
     //   else if (geometry.length > 0) { fall back }
@@ -444,7 +440,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // to the user. Compute the size first so the branch reflects
     // whether the data is actually usable, not just whether the
     // property exists.
-    if (!cameraFittedRef.current) {
+    if (useViewerStore.getState().session) cameraFittedRef.current = true;
+    else if (!cameraFittedRef.current) {
       const fitStart = performance.now();
       // The adaptive fit picks an SE-isometric pose for compact models
       // (today's behaviour) but switches to a side-on-along-the-alignment
@@ -536,7 +533,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
 
     renderer.requestRender();
-  }, [geometryKernel, geometry, geometryVersion, geometryReplacementVersion, geometryContentVersion, appearanceSourceGeometry, coordinateInfo, isInitialized, gpuRecoveryEpoch, isStreaming, modelCount]);
+  }, [geometryKernel, geometry, geometryVersion, geometryReplacementVersion, geometryContentVersion, appearanceSourceGeometry, coordinateInfo, isInitialized, gpuRecoveryEpoch, isStreaming, modelCount, rendererRef.current]);
 
   useEffect(() => {
     return () => {
@@ -678,50 +675,12 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   }, [pendingMeshColorUpdates, isInitialized, gpuRecoveryEpoch, clearPendingMeshColorUpdates]);
 
   // ─── GPU-instancing shards ───────────────────────────────────────────
-  // The geometry worker collates each batch into an IFNS shard; the loader
-  // pushes the raw bytes into pendingInstancedShards, tagged with the owning
-  // model's id. Drain here: decode, re-home each occurrence's id onto that
-  // model's express-id space, and upload under that model's modelIndex
-  // (#1912 — a federated model's shards used to be dropped before ever
-  // reaching this drain, since the loader only forwarded the primary's).
-  useEffect(() => {
-    if (pendingInstancedShards === null || !isInitialized) return;
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    const device = renderer.getGPUDevice();
-    const scene = renderer.getScene();
-    if (!device) return;
-
-    if (pendingInstancedShards.length > 0) {
-      const trace = activeLoadTrace(); // #6979: shards only arrive while a load streams
-      for (const { modelId, bytes } of pendingInstancedShards) {
-        // CRITICAL: never let a shard decode/upload throw OUT of this effect.
-        // addInstancedShard creates GPU buffers; on a degraded
-        // backend whose device is being lost (e.g. CI's SwiftShader), createBuffer
-        // throws — and an uncaught throw in a React effect tears down the Viewport
-        // subtree via the error boundary, unmounting the <canvas> entirely. Instanced
-        // overlays are non-essential, so swallow per-shard failures: the flat geometry
-        // still renders.
-        try {
-          const shard = trace.span('instanced.decode', () => decodeInstancedShard(new Uint8Array(bytes)));
-          if (!shard) continue;
-          applyFederationOffsetToShard(shard, modelIdToOffset?.get(modelId) ?? 0);
-          liftNewInstancedOccurrences(shard, currentLevelY ?? new Map());
-          const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
-          trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
-        } catch (err) {
-          console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
-        }
-      }
-      if (geometryKernel === 'retained' && geometry?.length === 0 && !appearanceSourceGeometry?.length && scene.getInstancedModelIndices().length > 0) {
-        fitInstanceOnlyBounds({ renderer, cameraFittedRef, cameraSnapshotRef,
-          geometryBoundsRef, finalBoundsRefittedRef, lastFitPolicyKindRef, complete: false });
-        lastGeometryRef.current = geometry;
-      }
-      renderer.requestRender();
-    }
-    clearInstancedShards();
-  }, [geometryKernel, pendingInstancedShards, modelIdToIndex, modelIdToOffset, isInitialized, gpuRecoveryEpoch, clearInstancedShards]);
+  // Decoded, re-homed onto each model's express-id space (#1912) and uploaded
+  // under its modelIndex by a queue subscription, not a store-driven effect
+  // (NEW-1: two store writes and a Viewport render per streamed batch).
+  useInstancedShardDrain({ rendererRef, isInitialized, gpuRecoveryEpoch, geometryKernel, geometry,
+    appearanceSourceGeometry, currentLevelY, modelIdToIndex, modelIdToOffset, cameraFittedRef,
+    cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef, lastFitPolicyKindRef, lastGeometryRef });
 
   usePlacementMutationDrain({ rendererRef, isInitialized, gpuRecoveryEpoch,
     kind: 'translations', pending: pendingMeshTranslations, clearPending: clearPendingMeshTranslations });

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `mesh_check`: the one home for "is this triangle soup closed, paired,
-//! manifold, and how much does it enclose".
+//! manifold, how much does it enclose, and how thin are its triangles".
 //!
 //! Before this module each gate hand-rolled its own edge-pairing hash walk, with
 //! its own vertex key and its own degenerate rule. [`EdgeLedger`] is that walk
@@ -34,9 +34,11 @@
 //! The module is `pub(crate)`, and `pub` under the `test-support` feature so
 //! the shared test oracles can delegate to it.
 
+mod area;
 mod closure;
 mod hairline;
 mod ledger;
+mod shape;
 mod volume;
 
 #[cfg(test)]
@@ -50,5 +52,9 @@ pub use closure::{
     edge_multiplicity_defects, is_watertight, strictly_paired_at, undirected_defect_count,
     ClosureVerdict, EdgeMultiplicityDefects,
 };
+pub(crate) use area::surface_area;
 pub use ledger::{Degenerate, EdgeLedger, Key3, VertexKey};
+pub use shape::triangle_shape;
+#[cfg(feature = "test-support")]
+pub use shape::TriangleShape;
 pub use volume::{signed_volume, signed_volume_about, volume_reference};

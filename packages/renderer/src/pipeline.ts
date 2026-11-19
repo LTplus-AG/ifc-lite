@@ -11,7 +11,7 @@ import { WebGPUDevice } from './device.js';
 import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { ghostShaderSource } from './shaders/ghost.wgsl.js';
-import { INSTANCED_VERTEX_BUFFERS, MESH_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { INSTANCED_VERTEX_BUFFERS, MESH_VERTEX_BUFFERS, TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { OpaqueDrawVariants, type OpaqueDrawKind, type OpaqueDrawMode } from './opaque-draw-variants.js';
 import { opaqueFastShaderSource } from './shaders/main-opaque-fast.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
@@ -48,6 +48,7 @@ export class RenderPipeline {
     private makeGhostPipelineAsync: ((quantized: boolean) => Promise<GPURenderPipeline>) | null = null;
     private readonly ghostPipelines = new Map<boolean, GPURenderPipeline | null>();
     private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
+    private texturedSelectionPipeline: GPURenderPipeline;
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
     private transparentPipeline: GPURenderPipeline;  // Pipeline for transparent meshes with alpha blending
     private overlayPipeline: GPURenderPipeline | null = null;  // deprecated equal-depth overlay (#6076); built only if getOverlayPipeline() is called
@@ -320,6 +321,8 @@ export class RenderPipeline {
         } as GPURenderPipelineDescriptor;
 
         this.selectionPipeline = this.visibility.create(selectionPipelineDescriptor);
+        this.texturedSelectionPipeline = this.visibility.create({ ...selectionPipelineDescriptor,
+            vertex: { ...selectionPipelineDescriptor.vertex, buffers: TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } });
 
         // Create transparent pipeline descriptor (same shader, but with alpha blending)
         const transparentPipelineDescriptor: GPURenderPipelineDescriptor = {
@@ -797,6 +800,8 @@ export class RenderPipeline {
         }
         return this.instancedTransparentPipeline;
     }
+
+    getTexturedSelectionPipeline(): GPURenderPipeline { return this.texturedSelectionPipeline; }
 
     getSelectionPipeline(): GPURenderPipeline {
         return this.selectionPipeline;

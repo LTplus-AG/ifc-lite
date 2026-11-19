@@ -171,9 +171,11 @@ export function CesiumPlacementGizmo({
   // of edit mode — the tab shows the saved anchor and an "edit" toggle even
   // before a drag session starts.
   useEffect(() => {
-    publishPlacementGeorefContext({ modelId, mapConversion, baseMapConversion, projectedCRS, coordinateInfo, lengthUnitScale });
+    publishPlacementGeorefContext({ modelId, mapConversion, baseMapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+      canEdit: controller.canEdit, unavailableReason: controller.readOnlyCoordinateOperation
+        ? 'properties.georef.coordinateOperationReadOnlyNotice' : 'cesiumGeo.placement.requiresProjectedCrs' });
     return () => publishPlacementGeorefContext(null);
-  }, [modelId, mapConversion, baseMapConversion, projectedCRS, coordinateInfo, lengthUnitScale]);
+  }, [modelId, mapConversion, baseMapConversion, projectedCRS, coordinateInfo, lengthUnitScale, controller.canEdit, controller.readOnlyCoordinateOperation]);
 
   // Surface the docked `placement` panel's Georeference tab (#5505) whenever
   // an edit session starts (the "Move georef" toolbar/ribbon toggle), the

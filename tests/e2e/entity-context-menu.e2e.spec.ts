@@ -53,7 +53,7 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
   }, undefined, { timeout: 180_000 });
 
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  const modelWorkspace = page.locator('[data-command-id="tool:edit-mode"]');
   await modelWorkspace.click();
   await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
 
@@ -224,7 +224,7 @@ test('Revit assembly Duplicate carries both beams and removes the full subgraph 
         [...state.models.values()].every((m) => m.ifcDataStore && (m.geometryResult?.meshes.length ?? 0) > 0);
     }, undefined, { timeout: 180_000 });
     await page.getByRole('tab', { name: 'Author', exact: true }).click();
-    await page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true }).click();
+    await page.locator('[data-command-id="tool:edit-mode"]').click();
     const before = await page.evaluate(async () => {
       const moduleUrl = '/src/store/index.ts';
       const module = await import(moduleUrl);
@@ -318,4 +318,48 @@ test('Revit assembly Duplicate carries both beams and removes the full subgraph 
     try { await server.close(); }
     finally { await rm(cacheDir, { recursive: true, force: true }); }
   }
+});
+
+// The menu used to render inline at z-50 ahead of the z-50 ribbon in DOM order,
+// so a menu shifted up against the top edge had its header painted over by the
+// ribbon, and a menu taller than the window ran past the bottom with no scroll.
+test('entity menu stays above the ribbon and inside a short window', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto('/?model=/samples/building-architecture.ifc');
+  await page.waitForFunction(() => {
+    const state = globalThis.__ifc_lite_viewer_store__?.getState();
+    return state?.models.size === 1 && !state.loading &&
+      [...state.models.values()].every((model) => model.ifcDataStore && (model.geometryResult?.meshes.length ?? 0) > 0);
+  }, undefined, { timeout: 180_000 });
+  await openWallMenu(page);
+  const menu = page.getByRole('menu', { name: 'Entity actions' });
+  await expect(menu).toBeVisible();
+  // Radix renders the content off-screen until it has measured the anchor, so
+  // poll the geometry instead of reading it once.
+  await expect.poll(() => menu.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const header = element.firstElementChild!.getBoundingClientRect();
+    const hit = document.elementFromPoint(header.left + header.width / 2, header.top + header.height / 2);
+    return {
+      headerOnTop: hit != null && element.contains(hit),
+      insideWindow: rect.top >= 0 && rect.bottom <= innerHeight,
+      overflows: element.scrollHeight > element.clientHeight,
+    };
+  }), { message: 'header unobstructed, menu inside the window, extra rows scroll' })
+    .toEqual({ headerOnTop: true, insideWindow: true, overflows: true });
+
+  // A wheel over the menu scrolls it to the rows below the fold; it must not
+  // trip the scene-movement dismissal meant for wheels over the viewport.
+  const box = (await menu.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 1000);
+  const lastRow = menu.getByRole('menuitem', { name: 'Export anonymized…', exact: true });
+  await expect(lastRow).toBeInViewport();
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  // A wheel over the viewport still moves the camera and closes the menu.
+  await page.mouse.move(box.x + box.width + 150, box.y + box.height / 2);
+  await page.mouse.wheel(0, 100);
+  await expect(menu).toBeHidden();
 });

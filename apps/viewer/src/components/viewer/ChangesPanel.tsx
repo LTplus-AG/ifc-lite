@@ -3,13 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useState } from 'react';
-import { Focus, History, RotateCcw, X } from 'lucide-react';
+import { Bot, Focus, History, RotateCcw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
+import { isFeatureEnabled } from '@/lib/features';
 import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
 import { useModelChangeReceipts } from '@/lib/actions/receipts';
+import { agentChangeLabelFor, useAgentChangeLabels } from '@/lib/changes/agent-change-labels';
 import { ReceiptList } from './actions/ReceiptList';
 import { inverseMutationTargets, pruneInverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { changeOperations, type ChangeOperation } from '@/lib/changes/change-operations';
@@ -24,9 +26,13 @@ function refusalKey(reason: RevertRefusal): TranslationKey {
   switch (reason) {
     case 'stale': return 'changesPanel.revertStale';
     case 'workflow-running': return 'mutationPermission.workflowRunning';
+    case 'switched-off': return 'mutationPermission.switchedOff';
     case 'edit-mode':
     case 'collab-role':
     case 'model-unavailable': return 'changesPanel.revertPermission';
+    case 'properties-loading': return 'mutationPermission.propertiesLoading';
+    case 'properties-failed': return 'mutationPermission.propertiesFailed';
+    case 'id-space-exhausted': return 'mutationPermission.idSpaceExhausted';
     case 'newer-conflict': return 'changesPanel.revertUnavailable';
     case 'shared-room': return 'changesPanel.revertSharedRoom';
     case 'missing-view':
@@ -52,6 +58,7 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
   }, [undoStacks, mutationBatchTags, mutationVersion]);
 
   const receipts = useModelChangeReceipts(state => state.entries);
+  const agentLabels = useAgentChangeLabels(state => state.byBatch);
   const reviewedTitle = (operation: ChangeOperation) =>
     receipts.find(receipt => receipt.batches.some(batch => operation.id === `batch:${batch.batchId}`))?.title;
   const revert = (operation: ChangeOperation) => {
@@ -71,10 +78,14 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
     <div className="min-h-0 flex-1 overflow-y-auto">
       {rows.length === 0
         ? <p className="p-3 text-xs text-muted-foreground">{t('changesPanel.empty')}</p>
-        : <ol className="divide-y">{rows.map(operation => <li key={operation.id} className="space-y-2 p-3">
+        : <ol className="divide-y">{rows.map(operation => {
+          const agent = agentChangeLabelFor(agentLabels, operation.id);
+          return <li key={operation.id} className="space-y-2 p-3" data-change-author={agent ? 'agent' : undefined}>
           <div className="flex items-center gap-2">
+            {agent && <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
             <span className="min-w-0 flex-1 truncate text-xs font-medium">
-              {reviewedTitle(operation) ?? operation.modelIds.map(id => models.get(id)?.name ?? id).join(', ')}
+              {agent ? t('changesPanel.byAgent', { field: agent })
+                : reviewedTitle(operation) ?? operation.modelIds.map(id => models.get(id)?.name ?? id).join(', ')}
             </span>
             <span className="text-2xs text-muted-foreground">{t('changesPanel.rowCount', { count: operation.mutations.length })}</span>
             <Button type="button" variant="outline" size="sm" onClick={() => revert(operation)}>
@@ -99,12 +110,13 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
               </button>
             </li>;
           })}</ul>
-        </li>)}</ol>}
+        </li>;
+        })}</ol>}
     </div>
     <ReceiptList />
-    <div className="flex flex-wrap gap-2 border-t p-3">
+    {isFeatureEnabled('export.files') && <div className="flex flex-wrap gap-2 border-t p-3">
       <ExportChangesButton surface="changes_panel" trigger={<Button type="button" size="sm" disabled={!hasExportableChanges}>{t('exportChangesButton.buttonLabel')}</Button>} />
       <ExportDialog surface="changes_panel" initialChangesOnly trigger={<Button type="button" variant="outline" size="sm" disabled={rows.length === 0}>{deltaLabel}</Button>} />
-    </div>
+    </div>}
   </div>;
 }

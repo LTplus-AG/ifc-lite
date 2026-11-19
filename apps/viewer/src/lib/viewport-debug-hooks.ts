@@ -2,11 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readPerfFlag } from './perf/flags.js';
+import { sceneIdentityEnabled, tappedSceneSnapshots, resetSceneIdentityTap } from './perf/sceneIdentityTap.js';
 import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
+import { isSceneSettled } from '@/lib/scene-settled';
+import { geometryRestoreBackstopFires } from './geometry-restore-gate.js';
+import type { PickParityRequest } from './perf/pickParity.js';
 
 /** One resident part of an owner as plain data: no buffers, no live objects. */
 export interface ScenePartSnapshot {
@@ -105,12 +110,33 @@ export function installViewportDebugHooks(
   annotationLineVertexCount: () => number,
 ): void {
   const host = globalThis as Record<string, unknown>;
+  const restoreHook = host.__ifc_lite_geometry_restore_test__ as { backstopFires?: number; geometryRestoreBackstopFires?: () => number } | undefined;
+  if (restoreHook) restoreHook.geometryRestoreBackstopFires = geometryRestoreBackstopFires;
   const timingFlag = readPerfFlag('gpuFrameTiming');
   // Opt-in only: a renderer starts with timing off, so the default install
   // still just stores the renderer (#5895 witness contract).
   if (timingFlag === true || timingFlag === 1 || timingFlag === '1') renderer.setGpuFrameTiming(true);
+  // Scoreboard identity pass only (`?perf.sceneIdentity=1`): hash what the scene holds, after the timer.
+  if (sceneIdentityEnabled()) {
+    host.__ifc_lite_scene_identity__ = async (opts?: { perElement?: boolean }) => {
+      const scene = renderer.getScene();
+      const { scenePieceIdentity } = await import('./perf/sceneIdentity.js');
+      // The viewer's own settled check (queued meshes, streaming fragments, pending shards too), so the
+      // scoreboard never hashes a scene that is still filling in (review #9863).
+      const { isSceneSettled } = await import('./scene-settled.js');
+      const settled = isSceneSettled();
+      const tap = tappedSceneSnapshots();
+      const pieces = scenePieceIdentity(scene);
+      return { settled, hydrating: scene.isSceneSnapshotHydrating(), finalizing: scene.isFinalizeInProgress(), instancedEntities: scene.getInstancedEntityCount(),
+        pieces: { pieces: pieces.pieces, elements: pieces.elements, sig: pieces.sig, ...(opts?.perElement ? { perElement: pieces.perElement } : {}) },
+        snapshots: tap.snapshots, pending: tap.pending };
+    };
+  }
   // Constant-time read of the renderer-owned snapshot; no scene collection walks.
   host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
+  // Constant-time: the viewer's own settled rule (store not streaming, no pending shards, no queued meshes,
+  // no streaming fragments, no finalize running). The load scoreboard gates its interactive mark on it.
+  host.__ifc_lite_scene_settled__ = () => isSceneSettled();
   host.__ifc_lite_render_stats__ = () => ({
     gpuTiming: renderer.getGpuFrameTiming(),
     adapter: renderer.getAdapterInfo(),
@@ -140,6 +166,25 @@ export function installViewportDebugHooks(
       raw: base64(frame.rgba), duplicate: base64(frame.duplicate), png: await encodeColorFrame(Promise.resolve(frame)) };
   };
   host.__ifc_lite_capture_color_frame__ = () => encodeColorFrame(renderer.captureColorFrame());
+  // CPU geometry still referenced on the main thread, by holder (#10264). One walk per call, loaded on first use.
+  host.__ifc_lite_cpu_geometry_held__ = async () => {
+    const { measureCpuGeometryHeld } = await import('./perf/cpuGeometryHeld.js');
+    const state = useViewerStore.getState();
+    return measureCpuGeometryHeld({ models: state.models.values(), geometryResult: state.geometryResult,
+      removedMeshes: state.removedMeshes.values(), renderer });
+  };
+  // GPU click pick vs the exact CPU raycast over a texel grid, under the current
+  // hide/isolate (#10264 S1). Loaded on first use; drives no frame or load path.
+  host.__ifc_lite_pick_parity__ = async (request: Omit<PickParityRequest, 'options' | 'isAnnotationOwner'>) => {
+    const { runPickParity } = await import('./perf/pickParity.js');
+    const { hiddenIds, isolatedIds } = visibility();
+    const isAnnotationOwner = (globalId: number): boolean => {
+      const ref = resolveEntityRef(globalId);
+      const type = useViewerStore.getState().models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId) ?? '';
+      return /^Ifc(Annotation|Grid|GridAxis)$/i.test(type);
+    };
+    return runPickParity(renderer, { ...request, isAnnotationOwner, options: { hiddenIds: new Set(hiddenIds), isolatedIds: isolatedIds ? new Set(isolatedIds) : null } });
+  };
   // The camera's world view-projection, the matrix every mesh draw packs as
   // `uniforms.viewProj` (the depth nudge reads its projection from it, #6729).
   host.__ifc_lite_view_projection__ = () => Array.from(renderer.getCamera().getViewProjMatrix().m);
@@ -212,11 +257,16 @@ export function installViewportDebugHooks(
 }
 
 export function clearViewportDebugHooks(): void {
+  resetSceneIdentityTap();
   const host = globalThis as Record<string, unknown>;
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_frame__;
+  delete host.__ifc_lite_scene_settled__;
   delete host.__ifc_lite_render_stats__;
+  delete host.__ifc_lite_scene_identity__;
   delete host.__ifc_lite_capture_color_frame__;
+  delete host.__ifc_lite_cpu_geometry_held__;
+  delete host.__ifc_lite_pick_parity__;
   delete host.__ifc_lite_capture_color_diagnostic__;
   delete host.__ifc_lite_view_projection__;
   delete host.__ifc_lite_render_visibility__;

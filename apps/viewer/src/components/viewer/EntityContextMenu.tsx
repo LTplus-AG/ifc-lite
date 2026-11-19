@@ -29,7 +29,7 @@ import { CommandMenuItem, DuplicateItems, ExtensionContextItems } from './Entity
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveContextType, sameEffectiveTypeIds } from './EntityContextMenu.effective-selection';
 import { sameEffectiveStoreyIds } from './EntityContextMenu.effective-storey';
-import { surfaceCommand, type SurfaceCommandId } from './surface-commands';
+import { surfaceCommand, type SurfaceCommandId } from './surface-command-registry';
 import { runSurfaceCommand } from './surface-command-run';
 
 export function EntityContextMenu() {
@@ -104,15 +104,21 @@ export function EntityContextMenu() {
   }, [contextMenu.isOpen, contextMenu.screenX, contextMenu.screenY]);
 
   // The pointer/keyboard outside dismissal belongs to Radix. Keep the scene
-  // movement guards: a wheel or viewport resize invalidates the anchor.
+  // movement guards: a wheel or viewport resize invalidates the anchor. A
+  // wheel over the menu itself (or its submenu) scrolls a menu capped to a
+  // short window, so it must not close it.
   useEffect(() => {
     if (!contextMenu.isOpen) return;
     const handleDismiss = () => closeContextMenu();
+    const handleWheel = (event: WheelEvent) => {
+      if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
+      closeContextMenu();
+    };
     window.addEventListener('resize', handleDismiss);
-    window.addEventListener('wheel', handleDismiss, { passive: true });
+    window.addEventListener('wheel', handleWheel, { passive: true });
     return () => {
       window.removeEventListener('resize', handleDismiss);
-      window.removeEventListener('wheel', handleDismiss);
+      window.removeEventListener('wheel', handleWheel);
     };
   }, [contextMenu.isOpen, closeContextMenu]);
 

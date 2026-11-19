@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { SchemaRegistry } from './generated/schema-registry-by-version.js';
 
-const indexes = new WeakMap<SchemaRegistry['entities'], { signature: string; names: Map<string, string> }>();
+const indexes = new WeakMap<SchemaRegistry['entities'], { keys: readonly string[]; names: Map<string, string> }>();
 
 /** Ordered entity keys captured for one finite operation; definitions remain live. */
 export interface SchemaEntityNameSnapshot {
@@ -22,8 +22,27 @@ function indexNames(keys: readonly string[]): Map<string, string> {
 
 /** Capture key order once. Create a fresh snapshot after registry key changes. */
 export function createSchemaEntityNameSnapshot(registry: SchemaRegistry): SchemaEntityNameSnapshot {
-  const names = indexNames(Object.keys(registry.entities));
+  const names = entityNameIndex(registry.entities);
   return { registry, resolve: type => names.get(type.toUpperCase()) };
+}
+
+/** The same key list in the same order. A serialised signature answered this
+ * too, at one `JSON.stringify` of every entity name per lookup: about 18
+ * microseconds, paid per record by any reader without a snapshot (#9906). */
+function sameKeys(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function entityNameIndex(entities: SchemaRegistry['entities']): Map<string, string> {
+  const keys = Object.keys(entities);
+  let index = indexes.get(entities);
+  if (!index || !sameKeys(index.keys, keys)) {
+    index = { keys, names: indexNames(keys) };
+    indexes.set(entities, index);
+  }
+  return index.names;
 }
 
 /** Resolve the first own registry key matching the IFC name, case-insensitively.
@@ -32,14 +51,5 @@ export function createSchemaEntityNameSnapshot(registry: SchemaRegistry): Schema
  */
 export function getCanonicalEntityName(registry: SchemaRegistry, type: string, snapshot?: SchemaEntityNameSnapshot): string | undefined {
   if (snapshot?.registry === registry) return snapshot.resolve(type);
-  const entities = registry.entities;
-  const keys = Object.keys(entities);
-  const signature = JSON.stringify(keys);
-  let index = indexes.get(entities);
-  if (!index || index.signature !== signature) {
-    const names = indexNames(keys);
-    index = { signature, names };
-    indexes.set(entities, index);
-  }
-  return index.names.get(type.toUpperCase());
+  return entityNameIndex(registry.entities).get(type.toUpperCase());
 }

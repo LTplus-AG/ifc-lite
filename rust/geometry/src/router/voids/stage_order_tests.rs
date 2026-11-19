@@ -11,7 +11,7 @@
 //! dropping one turns it red:
 //!
 //! - ParamRect before Bool2d (both fixtures eligible on one host);
-//! - malformed recut before the flap clip, and the sliver refinement kept;
+//! - malformed recut before the flap clip;
 //! - a rejected frame retry restoring the first run's diagnostics;
 //! - the coaxial union before the disjoint-batch plan.
 //!
@@ -134,8 +134,8 @@ fn param_rect_is_tried_before_bool2d() {
     assert!((removed - 0.2).abs() < 1e-3, "removed {removed}");
 }
 
-/// The exact tail's post passes run recut -> flap clip, after the sliver
-/// refinement. On an OPEN host (top face missing) the recut and the clip do
+/// The exact tail's post passes run recut -> flap clip after vertex
+/// canonicalization. On an OPEN host (top face missing) the recut and the clip do
 /// not commute, so the expected result is composed here from the same passes
 /// in the frozen order and the swapped order is shown to differ.
 ///
@@ -145,10 +145,10 @@ fn param_rect_is_tried_before_bool2d() {
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
 fn malformed_recut_runs_before_the_flap_clip() {
-    let host = without_faces_facing(&box_mesh([-2.0, -0.1, 0.0], [2.0, 0.1, 3.0]), 2);
+    let host = without_faces_facing(&box_mesh([-2.0, -0.4, 0.0], [2.0, 0.4, 3.0]), 2);
     // A box cutter carrying far "fin" triangles 9 m off the wall: malformed,
     // so the exact passes skip it and only the recut carves it.
-    let mut cutter = box_mesh([-0.5, -0.3, 1.0], [0.5, 0.3, 2.0]);
+    let mut cutter = box_mesh([-0.5, -0.6, 1.0], [0.5, 0.6, 2.0]);
     let base = (cutter.positions.len() / 3) as u32;
     for y in [9.0f32, -9.0] {
         for (dx, dz) in [(0.0, 0.0), (0.05, 0.0), (0.0, 0.05)] {
@@ -169,11 +169,10 @@ fn malformed_recut_runs_before_the_flap_clip() {
             [wall_max.x, wall_max.y, wall_max.z],
         );
     };
-    let refined = crate::facet_weld::refine_high_aspect_slivers(&welded);
-    let mut expected = refined.clone();
+    let mut expected = welded.clone();
     recut_malformed_openings(&mut expected, &ctx.malformed_opening_boxes());
     clip(&mut expected);
-    let mut swapped = refined;
+    let mut swapped = welded;
     clip(&mut swapped);
     recut_malformed_openings(&mut swapped, &ctx.malformed_opening_boxes());
     assert!(!same_mesh(&expected, &swapped), "the fixture must tell the two orders apart");
@@ -182,33 +181,18 @@ fn malformed_recut_runs_before_the_flap_clip() {
     assert!(same_mesh(&out, &expected), "recut must run before the flap clip");
 }
 
-/// Longest / shortest edge, as `facet_weld` measures a sliver.
-fn worst_aspect(mesh: &Mesh) -> f64 {
-    let at = |i: u32| {
-        let b = i as usize * 3;
-        Vector3::new(mesh.positions[b] as f64, mesh.positions[b + 1] as f64, mesh.positions[b + 2] as f64)
-    };
-    mesh.indices
-        .chunks_exact(3)
-        .map(|t| {
-            let e = [(at(t[0]) - at(t[1])).norm(), (at(t[1]) - at(t[2])).norm(), (at(t[2]) - at(t[0])).norm()];
-            e.iter().copied().fold(0.0, f64::max) / e.iter().copied().fold(f64::INFINITY, f64::min)
-        })
-        .fold(0.0, f64::max)
-}
-
-/// The exact tail ends with the #1007 sliver refinement: a long, thin wall cut
-/// by a mesh cutter keeps no triangle past the 8:1 bar. Without the pass the
-/// wall's 4 m x 0.2 m top face alone is a 20:1 pair.
+/// A long, thin wall cut by a mesh cutter stays closed and adds no triangle
+/// thinner than the wall's own 4 m × 0.2 m top face (#10511).
 #[test]
 fn exact_tail_output_keeps_no_sliver() {
+    use crate::mesh_check::triangle_shape;
     let host = box_mesh([-2.0, -0.1, 0.0], [2.0, 0.1, 3.0]);
-    assert!(worst_aspect(&host) > 8.0, "the fixture must start with slivers");
     let ctx = context(vec![mesh_cutter([-0.5, -0.3, 1.0], [0.5, 0.3, 2.0], Some(Vector3::y()))]);
     let out = GeometryRouter::new().cut_in_frame(host.clone(), &ctx, 1, world_host_bounds(&host), false);
     assert!(crate::exact_topology::strict_closed_mesh(&out));
-    let aspect = worst_aspect(&out);
-    assert!(aspect <= 8.0 + 1e-6, "sliver of {aspect}:1 left by the exact tail");
+    let (shape, uncut) = (triangle_shape(&out), triangle_shape(&host));
+    assert_eq!(shape.slivers, 0, "sliver of {}:1 left by the exact tail", shape.max_aspect);
+    assert!(shape.max_aspect <= uncut.max_aspect + 1e-6, "{} past the wall's own {}", shape.max_aspect, uncut.max_aspect);
 }
 
 /// `R_z(deg)` then translate to `at`, applied to f32 positions.

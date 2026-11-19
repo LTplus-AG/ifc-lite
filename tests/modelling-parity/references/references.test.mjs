@@ -210,3 +210,9 @@ test('#9304 another element mesh cannot certify an unmeasured roof', () => {
   assert.doesNotThrow(() => requireRoofMeshes(model,[1],tris));
   assert.doesNotThrow(() => requireRoofMeshes(model,[],new Map()));
 });
+
+test('#9328 triangle extraction includes transitive roof descendants and terminates cycles', async () => {
+  const { roofTriangleIds } = await import('./extract-target.mjs');
+  const model={partsOf:new Map([[1,[2]],[2,[3]],[3,[1]]])};
+  assert.deepEqual([...roofTriangleIds(model,[1])].sort(),[1,2,3]);
+});

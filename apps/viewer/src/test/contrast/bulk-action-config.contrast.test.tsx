@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { PropertyValueType } from '@ifc-lite/data';
 import { BulkActionConfig } from '@/components/viewer/bulk-property-editor-action-config.js';
 import { cleanup, render } from '@/test/render.js';
-import { closeContrastBrowser, measureTextContrastOnSurface, type Theme } from './render-harness.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, measureTextContrastOnSurface, type Theme } from './render-harness.js';
 import { WCAG_AA_NORMAL_TEXT } from './wcag.js';
 
 afterEach(cleanup);
@@ -16,7 +16,7 @@ after(closeContrastBrowser);
 
 describe('BulkActionConfig found-count contrast (#5812)', () => {
   for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
-    it(`measures both rendered found-count annotations in ${theme}`, async () => {
+    it(`measures both rendered found-count annotations in ${theme}`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
       const container = render(<BulkActionConfig onTargetSourceChange={() => {}}
         actionType="SET_PROPERTY"
         onActionTypeChange={() => {}}

@@ -13,7 +13,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type { MeshData } from '@ifc-lite/geometry';
-import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
+import PROJ_ORACLE from '../../test/proj-oracle.js';
 import { enuFrameAt } from './geo-ecef.js';
 import { bakeGlobeTiles, GLOBE_TILE_M } from './globe-glb.js';
 import { buildMergedGLB } from './cesium-glb.js';

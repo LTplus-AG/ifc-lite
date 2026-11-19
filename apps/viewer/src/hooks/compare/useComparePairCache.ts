@@ -5,10 +5,13 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import { useViewerStore } from '@/store';
 import { isCurrentFor, type BuiltPair } from './comparePairCache';
+import { invalidateAbortableRun } from '../analysisRunCancellation';
 
 /** Explicit native-model ownership (#8042). Invalidate synchronously with the
- * store, before another caller can reuse the cache; results outlive disposal. */
-export function useComparePairCache(epoch: MutableRefObject<number>) {
+ * store, before another caller can reuse the cache; results outlive disposal.
+ * Invalidating also aborts the in-flight extraction (`active`, A2): a session
+ * reset or a pair change used to leave it fingerprinting a pair nobody waits on. */
+export function useComparePairCache(epoch: MutableRefObject<number>, active: MutableRefObject<AbortController | null>) {
   const builtRef = useRef<BuiltPair | null>(null);
   useEffect(() => {
     const release = () => {
@@ -24,7 +27,7 @@ export function useComparePairCache(epoch: MutableRefObject<number>) {
         || state.compareKeyProperty !== previous.compareKeyProperty
         || !state.models.has(state.compareBaseModelId ?? '')
         || !state.models.has(state.compareHeadModelId ?? '')) {
-        epoch.current += 1;
+        invalidateAbortableRun(epoch, active);
         release();
         if (state.compareRunning) state.setCompareRunning(false);
         return;
@@ -35,13 +38,13 @@ export function useComparePairCache(epoch: MutableRefObject<number>) {
     });
     return () => {
       unsubscribe();
-      epoch.current += 1;
+      invalidateAbortableRun(epoch, active);
       release();
       // This hook owns the panel run; its superseded continuation cannot clear
       // progress once unmounted, so release the UI flag with the native owner.
       const state = useViewerStore.getState();
       if (state.compareRunning) state.setCompareRunning(false);
     };
-  }, [epoch]);
+  }, [epoch, active]);
   return builtRef;
 }

@@ -7,14 +7,30 @@
 # auto-merge waits without saying why. Agents watching a PR wake on new comments,
 # so post one naming the open threads. It posts again only when that set changes,
 # and never when there are none, so a clean review or a summary comment stays quiet.
-# `workflow_run` covers reviewers that run here, whose token raises no review
-# event; `pull_request_review` covers external apps such as CodeRabbit and Bugbot.
-# Checks out no code.
+# `workflow_run` covers the one reviewer that runs here and opens threads, Claude
+# review, whose token raises no review event; `pull_request_review` covers people
+# and external apps such as CodeRabbit and Bugbot.
+#
+# FORK PRs. There, `pull_request_review` gets a read-only token and cannot
+# comment, so the job skips it, and Claude review skips forks. Test's completion
+# is what posts for them: `workflow_run` gets a write token, and Test finishes
+# late enough that the reviews exist. That is a LIMIT, not a fix: a review on a
+# fork PR after its last Test run, or on a fork PR whose base is not `main` (Test
+# runs only for `main`), gets no notice until the next push. For a same-repo PR
+# the job skips Test
+# completions. That run takes no runner, and its `notify` check lands on the
+# default branch's head commit, not on the PR, and is no required context, so
+# it cannot turn anything green.
+#
+# PR-Agent review is not a trigger: it opens no review threads (one
+# conversation comment per lane, scripts/review/pr-agent-publish.mjs). A thread
+# someone unresolves by hand raises no event a workflow can subscribe to, so it
+# waits for the next review. Checks out no code.
 name: PR unresolved threads
 
 on:
   workflow_run:
-    workflows: [Test, Claude review, PR-Agent review]
+    workflows: [Test, Claude review]
     types: [completed]
   pull_request_review:
     types: [submitted]
@@ -24,32 +40,68 @@ permissions:
 
 jobs:
   notify:
-    if: github.event_name == 'pull_request_review' || contains(fromJSON('["pull_request","pull_request_target"]'), github.event.workflow_run.event)
+    # A Mergify batch PR is closed within minutes and carries no review threads.
+    # A review on a fork PR cannot comment, and Test counts only for fork PRs;
+    # see the header.
+    if: >-
+      (github.event_name == 'pull_request_review' &&
+      github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event.workflow_run.event == 'pull_request' &&
+      !startsWith(github.event.workflow_run.head_branch, 'mergify/merge-queue/') &&
+      (github.event.workflow_run.name == 'Claude review' ||
+      github.event.workflow_run.head_repository.full_name != github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # One notice per PR at a time, so two finishing runs cannot post it twice.
+    # One notice per PR at a time, so two finishing runs cannot post it twice, and
+    # a burst of reviews collapses to the newest pending job, which reads the
+    # threads as they are when it starts. Keyed on the PR number where the event
+    # carries one. A fork PR's `workflow_run` does not, so it keys on the SHA, and
+    # Test completions for two SHAs of one fork PR can run side by side.
     concurrency:
-      group: pr-unresolved-threads-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
+      group: pr-unresolved-threads-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha }}
     steps:
       - name: Post the open threads
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           REVIEWED_PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           owner=${REPO%/*}
           name=${REPO#*/}
+          # GitHub now and then answers a read with an empty body, which gh reports
+          # as "unexpected end of JSON input" and which failed this step (run
+          # 42883172181). The same reads for the same PR succeed on other runs,
+          # so retry them; three failures in a row still fail the step. The
+          # comment below is a write and is not retried, so it cannot post twice.
+          read_api() {
+            local attempt out
+            for attempt in 1 2 3; do
+              # Captured per attempt: gh prints an error body to stdout, and a
+              # failed attempt's output must not reach the caller.
+              if out=$(gh api "$@"); then
+                printf '%s\n' "$out"
+                return 0
+              fi
+              echo "::warning::gh api ${*:1:3} failed (attempt $attempt of 3)" >&2
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
+            done
+            return 1
+          }
           pr=$REVIEWED_PR
-          if [ -z "$pr" ]; then
-            pr=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')
+          # A deleted fork leaves no head repository, so no owner to look up.
+          if [ -z "$pr" ] && [ -n "$HEAD_OWNER" ]; then
+            # By head branch, not commits/{sha}/pulls: that returns nothing for a
+            # commit that lives only on a fork (checked on #9680).
+            pr=$(read_api -X GET "repos/$REPO/pulls" -f state=open -f head="$HEAD_OWNER:$HEAD_BRANCH" --jq '.[0].number // empty')
           fi
           if [ -z "$pr" ]; then
-            echo "no open PR for $SHA"
+            echo "no open PR for $HEAD_OWNER:$HEAD_BRANCH"
             exit 0
           fi
-          data=$(gh api graphql -F owner="$owner" -F name="$name" -F pr="$pr" -f query='
+          data=$(read_api graphql -F owner="$owner" -F name="$name" -F pr="$pr" -f query='
             query($owner: String!, $name: String!, $pr: Int!) {
               repository(owner: $owner, name: $name) {
                 pullRequest(number: $pr) {

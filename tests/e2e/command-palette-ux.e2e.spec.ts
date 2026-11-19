@@ -130,7 +130,9 @@ test.describe('#8946 unloaded palette UX', () => {
         }
         await expectSearchTop(search, initial!.y);
         await search.fill('secton');
-        await expect(options.first()).toContainText('Section');
+        // #8947: a visible-name typo outranks a match in Down's hidden section keyword.
+        await expect(options.first()).toHaveAttribute('data-command-id', 'tool:section');
+        await expect(options.first()).toHaveAttribute('aria-label', 'Section');
         await expectSearchTop(search, initial!.y);
 
         await search.fill('Settings');

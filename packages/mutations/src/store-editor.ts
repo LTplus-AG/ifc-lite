@@ -18,8 +18,8 @@
  */
 
 import { prepareEntityOperations } from './prepare-entity-operations.js';
-import { highestExistingExpressId } from './express-id-watermark.js';
-import { sourceEntityRef, storeHasSourceEntity } from './source-entity-index.js';
+import { highestExistingExpressId, rescanHighestExpressId } from './express-id-watermark.js';
+import { sourceEntityData, sourceEntityRef, storeHasSourceEntity } from './source-entity-index.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import { IFC_ENTITY_NAMES, QuantityType, PropertyValueType } from '@ifc-lite/data';
@@ -79,7 +79,7 @@ export class StoreEditor {
    * Prepare image/worker resources before calling this. Returned entity IDs are
    * valid after success; the draft editor is detached after this callback. */
   runAtomic<T>(edit: (draft: StoreEditor) => T): T {
-    return this.view.runAtomic(draft => edit(new StoreEditor(this.store, draft)));
+    return this.view.runAtomic(draft => edit(this.forkPreparedEditor(draft)));
   }
 
   /** Cooperatively prepare owned entity operations without exposing a draft.
@@ -107,7 +107,7 @@ export class StoreEditor {
    * no-op.
    */
   refreshWatermark(): void {
-    const fresh = highestExistingExpressId(this.store);
+    const fresh = rescanHighestExpressId(this.store);
     if (fresh > this.maxExistingId) {
       this.maxExistingId = fresh;
     }
@@ -286,11 +286,12 @@ export class StoreEditor {
   getNewEntity(expressId: number): NewEntity | null {
     return this.view.getNewEntity(expressId);
   }
+  readNewEntity(expressId: number): NewEntity | null { return this.view.readNewEntity?.(expressId) ?? this.view.getNewEntity(expressId); }
 
   /** Whether an id resolves to a live source or overlay entity. */
   hasEntity(expressId: number): boolean {
     return Number.isSafeInteger(expressId) && expressId > 0 && !this.view.isDeleted(expressId)
-      && (this.view.getNewEntity(expressId) !== null || storeHasSourceEntity(this.store, expressId));
+      && (this.view.hasNewEntity(expressId) || storeHasSourceEntity(this.store, expressId));
   }
 
   /** All overlay-created entities, in insertion order. */
@@ -301,6 +302,11 @@ export class StoreEditor {
   /** The live overlay this editor writes to, for effective read boundaries. */
   getMutationView(): MutablePropertyView {
     return this.view;
+  }
+
+  /** One source record's bytes and rebased span for read-only integrity checks. */
+  getSourceEntityData(expressId: number): { source: Uint8Array; ref: EntityRef } | null {
+    return sourceEntityData(this.store, expressId);
   }
 
   /** The schema declared by the loaded model, if the store exposes it. */
@@ -324,8 +330,8 @@ export class StoreEditor {
       || type;
     const retype = this.view.getEntityTypeMutation(expressId);
     if (retype) return canonical(retype.newType);
-    const created = this.view.getNewEntity(expressId);
-    if (created) return canonical(created.type);
+    const created = this.view.getNewEntityType(expressId);
+    if (created) return canonical(created);
     // Both halves of the source index, like `hasEntity` (#5222).
     const sourceType = sourceEntityRef(this.store, expressId)?.type;
     return sourceType ? canonical(sourceType) : undefined;

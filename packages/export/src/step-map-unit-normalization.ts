@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { SCHEMA_REGISTRY, SI_PREFIX_MULTIPLIERS } from '@ifc-lite/parser';
+import { SI_PREFIX_MULTIPLIERS } from '@ifc-lite/parser';
+import { ifc4Registry } from './ifc4-registry.js';
 import { readStepSlots, splitTopLevelListItems, type StepRecordSlots } from './step-argument-parser.js';
 import { attrIndex, stepSourceSchema } from './subset-entity-reader.js';
 import { resolveExpressBase, toStepReal } from './step-serialization.js';
@@ -15,7 +16,12 @@ const ref = (token: string | undefined): number | undefined => token?.match(/^#(
 // Slots keep authored whitespace: `IFCSIUNIT(*, .LENGTHUNIT., $, .METRE.)` is valid STEP.
 const enumeration = (token: string | undefined): string => token?.trim().replaceAll('.', '').toUpperCase() ?? '';
 const real = (token: string | undefined): number => token !== undefined && /^[+-]?[0-9]+\.[0-9]*(?:E[+-]?[0-9]+)?$/i.test(token) ? Number(token) : NaN;
-const definedTypes = new Map(Object.keys(SCHEMA_REGISTRY.types).map(name => [name.toUpperCase(), name]));
+// Built on first use: loading this module must not decode the IFC4 registry.
+let definedTypes: Map<string, string> | undefined;
+function getDefinedTypes(): Map<string, string> {
+  if (definedTypes === undefined) definedTypes = new Map(Object.keys(ifc4Registry().types).map(name => [name.toUpperCase(), name]));
+  return definedTypes;
+}
 const maps = new Set(['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED']);
 
 /** Opt-in coordinate metadata phases on the emitted model, before Rust planning. */
@@ -129,7 +135,7 @@ function lengthUnitFactor(id: number, records: Map<number, RecordEntry>): number
     if (measure?.type !== 'IFCMEASUREWITHUNIT') return undefined;
     const value = measure.slots[0]?.trim();
     const typed = /^([A-Z][A-Z0-9_]*)\(([^()]+)\)$/i.exec(value ?? '');
-    const base = typed ? resolveExpressBase(definedTypes.get(typed[1].toUpperCase()) ?? typed[1]) : 'REAL';
+    const base = typed ? resolveExpressBase(getDefinedTypes().get(typed[1].toUpperCase()) ?? typed[1]) : 'REAL';
     const token = typed ? typed[2] : value;
     const scale = base === 'REAL' || base === 'NUMBER' ? real(token)
       : base === 'INTEGER' && token !== undefined && /^[+-]?[0-9]+$/.test(token) ? Number(token) : NaN;

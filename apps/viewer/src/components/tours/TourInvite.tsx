@@ -23,7 +23,7 @@ import { dismissInvite, isInviteDismissed, isTourCompleted } from '@/lib/tours/s
 import { trackUiEvent } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 
-export function TourInvite({ leading }: { leading?: ReactNode } = {}) {
+export function TourInvite({ leading, prompt }: { leading?: ReactNode; prompt?: ReactNode } = {}) {
   const { t } = useTranslation();
   const isMobile = useViewerStore((s) => s.isMobile);
   const [hidden, setHidden] = useState(() => {
@@ -35,6 +35,7 @@ export function TourInvite({ leading }: { leading?: ReactNode } = {}) {
 
   return (
     <>
+      {prompt}
       {leading}
       <button
         type="button"

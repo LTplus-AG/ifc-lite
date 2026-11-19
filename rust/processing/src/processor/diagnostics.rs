@@ -15,6 +15,8 @@
 
 use rustc_hash::FxHashMap;
 
+type HostReport = (FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>, u64);
+
 /// Every request-local diagnostic sink for one native geometry pass.
 ///
 /// Request-local, not process-global: each is filled from this pass's own
@@ -28,13 +30,14 @@ pub(super) struct DiagnosticCollectors {
     /// Per-job router CSG diagnostics (parity with the wasm path's
     /// `drain_and_log_csg_diagnostics`).
     pub(super) csg_failures: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
-    /// Opening classification + per-host opening diagnostics.
+    /// Opening classification and host reports with the measured no-op count.
     pub(super) classification: std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
-    pub(super) host_diags:
-        std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
+    pub(super) host_diags: std::sync::Mutex<HostReport>,
     /// rect_fast engagement, drained per-job router so this pass's `rectFast`
     /// is isolated from any concurrent geometry pass.
     pub(super) rect_fast: std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
+    /// Safety-policy refusals, independent of unsupported/failed geometry.
+    pub(super) budget_refusals: std::sync::Mutex<(u64, Vec<ifc_lite_geometry::BudgetRefusal>)>,
     /// Dropped representation items by IFC type: no processor for the type, or
     /// the processor errored. Non-empty means the model has elements whose
     /// geometry the router refused to build.
@@ -64,8 +67,9 @@ impl DiagnosticCollectors {
             audit,
             csg_failures: std::sync::Mutex::new(FxHashMap::default()),
             classification: std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default()),
-            host_diags: std::sync::Mutex::new(FxHashMap::default()),
+            host_diags: std::sync::Mutex::default(),
             rect_fast: std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default()),
+            budget_refusals: std::sync::Mutex::new((0, Vec::new())),
             unsupported_items: std::sync::Mutex::new(FxHashMap::default()),
             backstop: std::sync::atomic::AtomicU64::new(0),
             oversized_ref_drops: std::sync::atomic::AtomicU64::new(0),
@@ -148,7 +152,13 @@ impl DiagnosticCollectors {
     /// across jobs mirrors the wasm batch router's accumulate-then-drain, giving
     /// the same GeometryDiagnostics counts.
     pub(super) fn drain_router(&self, router: &ifc_lite_geometry::GeometryRouter) {
-        let drain = crate::execution::RouterDrain::take(router);
+        let (total, refusals) = router.take_budget_refusal_report();
+        if total > 0 {
+            let mut log = self.budget_refusals.lock().unwrap_or_else(|p| p.into_inner());
+            log.0 += total;
+            keep_budget_details(&mut log.1, refusals);
+        }
+        let (drain, no_ops) = crate::execution::RouterDrain::take_with_rectangular_no_ops(router);
         let cls = drain.classification;
         if cls.rectangular != 0 || cls.diagonal != 0 || cls.non_rectangular != 0 {
             if let Ok(mut acc) = self.classification.lock() {
@@ -157,12 +167,11 @@ impl DiagnosticCollectors {
                 acc.non_rectangular += cls.non_rectangular;
             }
         }
-        let host_diags = drain.hosts;
-        if !host_diags.is_empty() {
+        if !drain.hosts.is_empty() {
             if let Ok(mut acc) = self.host_diags.lock() {
-                // Product ids are disjoint across jobs (one product = one job), so
-                // this is an insert; `extend` is robust if that ever changes.
-                acc.extend(host_diags);
+                acc.0.extend(drain.hosts);
+                // Product IDs are disjoint across jobs.
+                acc.1 += no_ops;
             }
         }
         // Content-hash oversized-ref refusals (#3421/#3752), diagnostic only.
@@ -265,13 +274,11 @@ pub(super) fn distinct_refusals(
     ids.len() as u64
 }
 
-/// Build the full `GeometryDiagnostics` contract from the drained sinks -- the
-/// SAME shape the wasm batch path surfaces, so a native consumer and a browser
-/// consumer see identical diagnostics. `None` when nothing diagnostic-worthy
-/// happened (mirrors the wasm `is_empty` skip).
+/// Build the same diagnostics as the browser. Skip an empty report.
 pub(super) fn collate(
+    budget_refusals: std::sync::Mutex<(u64, Vec<ifc_lite_geometry::BudgetRefusal>)>,
     classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
-    host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
+    host_diag_collector: std::sync::Mutex<HostReport>,
     rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
     unsupported_item_collector: std::sync::Mutex<FxHashMap<String, u64>>,
     csg_failures: &FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
@@ -282,7 +289,7 @@ pub(super) fn collate(
     let classification = classification_collector
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let host_diags = host_diag_collector
+    let (host_diags, no_ops) = host_diag_collector
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let rect_fast = rect_fast_collector
@@ -300,7 +307,10 @@ pub(super) fn collate(
         WORST_HOSTS_LIMIT,
         oversized_ref_drops,
         &unsupported_items,
-    );
+        budget_refusals.into_inner().unwrap_or_else(|p| p.into_inner()),
+    )
+    .with_measured_silent_no_ops(no_ops);
+    super::budget_report::warn_if_refused(&diag);
     (!diag.is_empty()).then_some(diag)
 }
 
@@ -343,4 +353,46 @@ pub(super) fn warn_if_dropped(unsupported_items: &FxHashMap<String, u64>) {
         "Representation items dropped (no processor, or the processor failed) — \
          these elements are missing or incomplete in the output"
     );
+}
+
+/// Jobs drain in whatever order the pool finishes them, and the result cache
+/// and fingerprint hash this list, so keep the sixteen smallest by a fixed key
+/// rather than the first sixteen to arrive: the same set, in the same order,
+/// whatever the scheduling. Still bounded, so memory does not grow per job.
+fn keep_budget_details(kept: &mut Vec<ifc_lite_geometry::BudgetRefusal>, more: Vec<ifc_lite_geometry::BudgetRefusal>) {
+    // A sorted insert into at most sixteen, not a sort: the wasm engine links
+    // this drain, and a slice sort costs it ~17 KB of generic sort code.
+    fn key(r: &ifc_lite_geometry::BudgetRefusal) -> (Option<u32>, u32, &str, u32, u64, Option<&str>, Option<&str>) {
+        (r.product_id, r.source_id, &r.budget, r.limit, r.reached, r.product_type.as_deref(), r.global_id.as_deref())
+    }
+    for refusal in more {
+        let at = kept.partition_point(|k| key(k) <= key(&refusal));
+        if at < 16 {
+            kept.insert(at, refusal);
+            kept.truncate(16);
+        }
+    }
+}
+
+#[cfg(test)]
+mod budget_detail_tests {
+    use super::keep_budget_details;
+
+    fn refusal(product: u32) -> ifc_lite_geometry::BudgetRefusal {
+        serde_json::from_value(serde_json::json!({ "budget": "mapped attempts", "limit": 3, "reached": 4,
+            "sourceId": product + 1000, "productId": product, "productType": "IfcWall", "GlobalId": null })).unwrap()
+    }
+
+    #[test]
+    fn the_kept_details_do_not_depend_on_drain_order() {
+        let drain = |order: &[u32]| {
+            let mut kept = Vec::new();
+            order.chunks(3).for_each(|job| keep_budget_details(&mut kept, job.iter().map(|&p| refusal(p)).collect()));
+            kept.iter().map(|r| r.product_id).collect::<Vec<_>>()
+        };
+        let forward: Vec<u32> = (1..=20).collect();
+        let backward: Vec<u32> = (1..=20).rev().collect();
+        assert_eq!(drain(&forward), drain(&backward));
+        assert_eq!(drain(&forward), (1..=16).map(Some).collect::<Vec<_>>());
+    }
 }

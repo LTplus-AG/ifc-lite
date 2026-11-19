@@ -88,11 +88,12 @@ pub(super) fn emit(planned: &mut Planned, buckets: &Buckets, supported: &support
         // tries the certified original source-boundary partition.
         if !accepted {
             if let Some(candidate) = source_boundary::build(plans, buckets) {
-                let source_indices = candidate.indices.len();
+                let source_indices = candidate.indices.clone();
                 if let Some(candidate) = complete_conformed_candidate(candidate, true, true) {
                     // Cleanup must not erase a certified boundary or a whole
-                    // closed component while leaving the remainder paired.
-                    if candidate.indices.len() == source_indices
+                    // closed component while leaving the remainder paired, nor
+                    // re-split it: the bar's sliver repair keeps the count.
+                    if candidate.indices == source_indices
                         && crate::exact_topology::strict_closed_mesh(&candidate)
                         && super::preservation::public_weld_closed(&candidate)
                         && !supported_cells::has_uncertified_needle(&candidate, supported)

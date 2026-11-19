@@ -20,7 +20,7 @@ pub use structural::{mapped_item_representation_id, pds_representation_ids, prod
 pub(crate) mod unwrap;
 mod walk;
 pub use select::{meshed_representations, Select};
-pub use walk::{Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor, MAX_WALK_LEVELS};
+pub use walk::{Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkBudgetRefusal, WalkRefusal, WalkVisitor, MAX_WALK_LEVELS};
 
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
@@ -114,7 +114,13 @@ fn product_shape_with_type_check(
         return Ok(None);
     }
     let shape = decoder.resolve_ref(attr)?.ok_or(ShapeError::Unresolved)?;
-    if check_type && shape.ifc_type != IfcType::IfcProductDefinitionShape {
+    // IFC2X3 types `Representation` as the then non-abstract
+    // `IfcProductRepresentation`, and AxisVM writes one for every structural
+    // curve member (#9668). Admitted for structural members only: elsewhere
+    // it stays malformed (#7781).
+    let bare_structural = shape.ifc_type == IfcType::IfcProductRepresentation
+        && element.ifc_type.is_subtype_of(IfcType::IfcStructuralMember);
+    if check_type && shape.ifc_type != IfcType::IfcProductDefinitionShape && !bare_structural {
         return Err(ShapeError::NotAProductDefinitionShape(shape.ifc_type));
     }
     let list = shape.get(2).ok_or(ShapeError::MissingRepresentations)?;

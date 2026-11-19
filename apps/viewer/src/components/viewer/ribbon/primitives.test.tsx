@@ -18,7 +18,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { Box } from 'lucide-react';
-import { cleanup, click, render } from '@/test/render.js';
+import { activate, cleanup, click, render } from '@/test/render.js';
 import { RibbonContentLargeButton, RibbonContentSmallButton, type RibbonContentButtonProps } from './primitives.js';
 
 // @ts-expect-error #5878: the content primitive cannot take a free-form command label.
@@ -64,6 +64,20 @@ describe('aria-disabled ribbon content buttons (#8802)', () => {
       assert.equal(onClick.mock.callCount(), 0, 'activation runs nothing');
     });
   }
+
+  // #9296 review: Enter on the tab-row Model button dropped focus to <body>.
+  it('keeps focus after keyboard activation and releases it after a pointer click', () => {
+    const onClick = mock.fn();
+    const container = render(<RibbonContentSmallButton icon={Box} contentLabel="Export" contentSource="export" contentId="test" onClick={onClick} />);
+    const button = container.querySelector('button');
+    assert.ok(button);
+    activate(button, 'Enter');
+    assert.equal(onClick.mock.callCount(), 1);
+    assert.equal(document.activeElement === button, true, 'keyboard activation keeps focus');
+    click(button, { detail: 1 });
+    assert.equal(onClick.mock.callCount(), 2);
+    assert.equal(document.activeElement === button, false, 'a pointer click releases focus');
+  });
 
   it('an enabled button still runs its handler', () => {
     const onClick = mock.fn();

@@ -136,7 +136,7 @@ function scriptedWorker() {
   let listener: ((event: { data: unknown }) => void) | undefined;
   const worker = {
     postMessage: (msg: Record<string, unknown>) => { sent.push(msg); },
-    addEventListener: (_type: string, l: (event: { data: unknown }) => void) => { listener = l; },
+    addEventListener: (type: string, l: (event: { data: unknown }) => void) => { if (type === 'message') listener = l; },
   };
   const info = { totalPointCount: 1, bbox: { min: [0, 0, 0], max: [0, 0, 0] }, hasColor: false, hasClassification: false, hasIntensity: false };
   return {

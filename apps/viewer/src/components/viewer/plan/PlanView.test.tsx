@@ -15,7 +15,7 @@ import { installLayout } from '@/test/dom-layout.js';
 installLayout();
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cleanup, click, render } from '@/test/render.js';
@@ -130,6 +130,27 @@ describe('PlanView (#6232 M2.4)', () => {
     assert.equal(undoDepth(), before + 1, 'the double-click committed the slab as one undo step');
   });
 
+  it('a hidden plan requests no cut, and showing it cuts the current storey (#9296 review)', async () => {
+    const real = Drawing2DGenerator.prototype.generate;
+    let cuts = 0;
+    Drawing2DGenerator.prototype.generate = function (...args: Parameters<typeof real>) { cuts += 1; return real.apply(this, args); };
+    try {
+      let show = () => {};
+      const Pane = () => { const [hidden, setHidden] = useState(true); show = () => setHidden(false); return <PlanView layout="split" hidden={hidden} />; };
+      // The first cut also loads the cutter, so give each phase time to start one.
+      const within = async (ms: number) => { for (let t = 0; t < ms && cuts === 0; t += 100) await wait(100); };
+      act(() => setWallMeshes(BOX));
+      render(<Pane />);
+      await settle(); await within(5000);
+      assert.equal(cuts, 0, 'no cut while the plan is hidden');
+      act(() => show());
+      await settle(); await within(5000);
+      assert.ok(cuts > 0, 'showing the plan cuts it');
+    } finally {
+      Drawing2DGenerator.prototype.generate = real;
+    }
+  });
+
   it('a cut that throws says "Cut failed" instead of reading as an empty storey, and Retry re-runs it (#6394 review)', async () => {
     const real = Drawing2DGenerator.prototype.generate;
     let fail = true;
@@ -216,10 +237,25 @@ describe('PlanView: a grabbed room corner (#6232 A4b review)', () => {
     const ui = render(<PlanView layout="split" />);
     await settle();
     const svg = ui.querySelector('[data-plan-canvas]')! as SVGSVGElement;
-    const [x, y] = [sX(FIT, 4), sY(FIT, 0)];
+    // #9896 projection edges can refit the plan after entry. Use its painted
+    // wall axis to locate the same real room corner, rather than the old fit.
+    const state = useViewerStore.getState();
+    const axes = storeyWallAxes(state.models.get(MODEL_ID)!.ifcDataStore!, state.mutationViews.get(MODEL_ID)!, STOREY);
+    const axis = axes.find(a => Math.abs(a.b[0] - a.a[0]) > 1e-6);
+    assert.ok(axis, 'the fixture has a wall axis with horizontal extent');
+    const line = svg.querySelector(`[data-plan-axis="${axis.expressId}"]`);
+    assert.ok(line, 'the actual plan paints that axis');
+    const scale = (Number(line.getAttribute('x2')) - Number(line.getAttribute('x1'))) / (axis.b[0] - axis.a[0]);
+    assert.ok(Number.isFinite(scale) && scale > 0, 'the painted plan has a usable scale');
+    const [x, y] = [Number(line.getAttribute('x1')) + (4 - axis.a[0]) * scale,
+      Number(line.getAttribute('y1')) + axis.a[1] * scale];
     pointer(svg, 'pointermove', x, y);
     pointer(svg, 'pointerdown', x, y, { buttons: 1 });
     const drag = () => (getCommandRuntime().gesture as RoomPlaceGesture).edit.drag;
+    const grabbed = drag();
+    // The rendered frame locates the click; this independent world-space
+    // oracle prevents grabbing another corner from satisfying these tests.
+    assert.ok(grabbed && near(grabbed.from, [4, 0]), `expected the [4,0] room corner, got ${JSON.stringify(grabbed?.from)}`);
     return { svg, drag, x, y };
   }
 
@@ -265,18 +301,18 @@ describe('PlanView: a grabbed room corner (#6232 A4b review)', () => {
 });
 
 describe('ModelWorkspaceSplit layouts (#6232 M2.4)', () => {
-  it('Plan | Split | 3D switch from the plan header, the rail toggle brings the plan back, the 3D view never remounts', () => {
+  it('Plan | Split | 3D switch from the plan header, the workspace bar brings the plan back, the 3D view never remounts', () => {
     act(() => useViewerStore.getState().setModelLayout('split'));
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
     const probe = ui.querySelector('[data-probe-3d]');
     assert.ok(ui.querySelector('[data-plan-view]'), 'split shows the plan');
-    const radio = (name: string) => [...ui.querySelectorAll('[role="radio"]')].find((b) => b.textContent === name)!;
+    const radio = (name: string) => [...ui.querySelectorAll('[role="radio"]')].find((b) => b.textContent?.startsWith(name))!;
 
     click(radio('3D'));
     assert.equal(useViewerStore.getState().modelLayout, '3d');
-    assert.equal(ui.querySelector('[data-plan-view]'), null, '3D alone');
-    click(ui.querySelector('[data-rail-tool="plan"]')!);
-    assert.equal(useViewerStore.getState().modelLayout, 'split', 'the rail toggle restores the split');
+    assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true', '3D alone');
+    click(radio('Split'));
+    assert.equal(useViewerStore.getState().modelLayout, 'split', 'the bar restores the split');
     click(radio('Plan'));
     assert.equal(useViewerStore.getState().modelLayout, 'plan');
     assert.ok(ui.querySelector('[data-plan-view]'));

@@ -61,6 +61,94 @@ export function modelsInShareScope(
 }
 
 /**
+ * Can this model go into a room slot? A slot is seeded one of two ways, and a
+ * model needs a store one of them can read: `seedFromStep` reads STEP records,
+ * `seedFromIfcx` re-parses an IFCX `source`. A point cloud or a load still in
+ * flight has no store at all. A tabular store has one, but unless it is IFCX
+ * its `source` holds its reader's own format (a `.3dm`), so neither path can
+ * carry it. Both the seed and the dialog's seedable count ask here, so what
+ * the dialog promises is what the seed delivers.
+ */
+export function isSeedableModel(model: Pick<FederatedModel, 'ifcDataStore' | 'schemaVersion'>): boolean {
+  const store = model.ifcDataStore;
+  if (!store) return false;
+  return store.sourceKind !== 'tabular' || (model.schemaVersion ?? store.schemaVersion) === 'IFC5';
+}
+
+/**
+ * A model the seed must drop although it HAS a store. Stricter than "not
+ * seedable": a store-less model (GLB, point cloud, a load in flight) fails
+ * `isSeedableModel` too, never had anything to share, and is not refused.
+ */
+const isRefusedModel = (m: FederatedModel): boolean => Boolean(m.ifcDataStore) && !isSeedableModel(m);
+
+/**
+ * The models in scope a share WILL carry: exactly what {@link buildShareSeed}
+ * puts in the room, as one expression the dialog and the mint can both ask.
+ *
+ * Asking it twice is what went wrong: the dialog's notice was chosen from a
+ * seedable count taken over scope `'all'` while the mint decided over the
+ * SELECTED scope, so an `'active'` share of a `.3dm` beside a loaded IFC
+ * promised a partial share and then created no room at all.
+ */
+export function seedableModelsInScope(
+  models: ReadonlyMap<string, FederatedModel>,
+  activeModelId: string | null,
+  scope: ShareScope,
+): FederatedModel[] {
+  return modelsInShareScope(models, activeModelId, scope).filter(isSeedableModel);
+}
+
+/**
+ * The models in scope that this share will NOT carry, by name, and only the
+ * ones whose exclusion is worth saying out loud: a model that HAS a store the
+ * seed cannot read.
+ *
+ * A model with no store at all is deliberately not named. A GLB, a point
+ * cloud and a load still in flight have nothing to put in a room and never
+ * did; those workspaces have always minted a room and the dialog has always
+ * said nothing, and the `.3dm` work is no reason to change that. What is new
+ * is a model that looks shareable — it is loaded, it has entities, it is in
+ * the hierarchy — and is still dropped, which is the case that was silent.
+ *
+ * Named for the Share dialog's notice, so it reads as the counterpart of the
+ * Export dialog's "left out of the merged file" line.
+ */
+export function unshareableModelsInScope(
+  models: ReadonlyMap<string, FederatedModel>,
+  activeModelId: string | null,
+  scope: ShareScope,
+): string[] {
+  return modelsInShareScope(models, activeModelId, scope)
+    .filter(isRefusedModel)
+    .map((m) => m.name);
+}
+
+/**
+ * Is EVERY model in scope one the seed must refuse? Then the share has
+ * nothing to put in a room and nothing that was ever going to go in one, so
+ * the mint is declined and the dialog says so.
+ *
+ * The one place that rule lives. The Share dialog's sentence, the scope
+ * field's caption and `useShareRoomCreation`'s mint guard all ask here, so a
+ * line the owner reads cannot disagree with what the button does.
+ *
+ * Note what it is NOT: "nothing is seedable". A GLB or a point cloud has no
+ * store and never seeded anything, and those workspaces mint an empty owner
+ * room (#4444, and `buildShareSeed`'s always-a-seed invariant). Loading a
+ * `.3dm` beside one is no reason to take that session away — it is named in
+ * the dialog instead.
+ */
+export function shareRefusesEveryModel(
+  models: ReadonlyMap<string, FederatedModel>,
+  activeModelId: string | null,
+  scope: ShareScope,
+): boolean {
+  const inScope = modelsInShareScope(models, activeModelId, scope);
+  return inScope.length > 0 && inScope.every(isRefusedModel);
+}
+
+/**
  * Build the seed `startCollab` consumes. ALWAYS a seed, even an empty one:
  * `startCollab` tells an owner from a recipient by the presence of `seed`,
  * so an owner with nothing seedable (the only model still loading, a GLB or
@@ -76,9 +164,9 @@ export function buildShareSeed(
   georefMutations?: ReadonlyMap<string, GeorefMutationDataLike>,
 ): CollabSeedInput {
   const seedModels: CollabSeedModel[] = [];
-  for (const m of modelsInShareScope(models, activeModelId, scope)) {
-    const store = m.ifcDataStore;
-    if (!store) continue;
+  for (const m of seedableModelsInScope(models, activeModelId, scope)) {
+    // `isSeedableModel` already refused a store-less model; this narrows it.
+    const store = m.ifcDataStore!;
     const isIfcx = (m.schemaVersion ?? store.schemaVersion) === 'IFC5';
     seedModels.push({
       modelId: m.id,

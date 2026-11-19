@@ -1,0 +1,12 @@
+--- a/rust/export/src/cityjson/vertices.rs
++++ b/rust/export/src/cityjson/vertices.rs
+@@ -136,9 +136,6 @@
+     let mut at: HashMap<u32, usize> = HashMap::new();
+     for item in out {
+         let k = key(&item);
+-        if at.contains_key(&k) {
+-            return Vec::new();
+-        }
+         if let Some(&j) = at.get(&k) {
+             // Close the loop that started at this vertex's first visit; the
+             // vertex itself stays on the stack for the ring that continues.

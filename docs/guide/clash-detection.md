@@ -204,3 +204,61 @@ const csv = tableToCsv(CLASH_TABLE_COLUMNS, rows);
 ```
 
 For the full API, see the [`@ifc-lite/clash` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/clash).
+
+## Object quality gates
+
+The viewer's Clash tab shows a quality gate for each rule in the last run.
+Configure separate category ranges for clash checks and duplicate checks under
+**Configure quality gates**. Each category has an inclusive minimum percentage,
+a name and a color; the next category starts where the preceding one ends.
+The first category starts at zero. Defaults are Failed below 90%, Partially
+passed from 90% to below 95%, and Passed from 95% through 100%. Classification
+uses the full precision percentage; the displayed value uses at least one decimal place and increases precision
+when needed to stay within the measured category.
+
+The score is `100 × (checked unique objects − affected unique objects) / checked unique objects`.
+Checked objects are the union of the rule's matched sides. Both objects of a
+finding count as affected, with each object counted once using its model and
+per-load entity reference. Multiple meshes or GPU-instanced occurrences of one
+IFC object share that reference and count once. Repeated GlobalIds do not merge
+distinct checked objects. Duplicate checks count all involved objects, rather than excess
+copies. Hiding rows, changing review status or applying result exclusions does
+not improve the score: it uses the raw engine findings. Void/host exclusions
+applied during detection still apply and are recorded on the gate. This percentage does
+not measure clash severity; one critical clash can still need action even when
+the percentage is high.
+
+An empty matched side, or fewer than two distinct checked objects, is **Not evaluated**. Missing object coverage is **Coverage
+unavailable**, truncated runs are **Incomplete run**, and changed models make a
+live result **Outdated run**. These states never receive a passing category.
+The checked population is the geometry objects eligible for the check, not every
+IFC entity in the file.
+
+For files containing repeated GlobalIds, clash IDs now include entity references
+to distinguish the affected objects. Comparing a new run against an older saved
+run can therefore show resolved and added findings. Establish a new baseline
+after upgrading. Ordinary identifiers retain their previous IDs. Keys, model
+IDs and rule IDs containing whitespace or a reserved encoding prefix are now
+escaped to prevent identity collisions.
+Review decisions and element-pair exclusions also distinguish repeated-key
+objects by entity reference. They do not carry over if those ambiguous objects
+are renumbered: review them again rather than applying a decision to the wrong
+object. Detection-time exclusions remain key-based and cover every occurrence
+of a key, as requested by the caller.
+Integrations should use `clashElementIdentity(ref)` for element-pair decisions;
+the engine marks repeated-key endpoints with `keyAmbiguous` while retaining
+their original `key` for model lookups and exports.
+This migration also applies to SDK review findings, CLI JSON, MCP clash rows,
+and sandbox `bim.clash` results: they expose the changed keys or IDs. Renew
+stored ID-based references as well as comparison baselines after upgrading.
+Renew existing viewer element-pair exclusions for keys containing whitespace or
+a reserved encoding prefix; their stored identities use the previous encoding.
+
+**Saved clash reports** captures the gate, the current category policy and model
+identities with the run's rule and tolerances. Later preference edits leave that
+evidence unchanged. Expand a saved report's **Quality gates**, then choose
+**Add quality gates to Documentation** to create an independent document with
+colored rings, counts, rule names, model identities, tolerances and capture time.
+The document embeds its images and literal text, so it remains usable after the
+saved report or source models are removed. Older reports without object coverage
+remain readable but do not acquire a retrospective score.

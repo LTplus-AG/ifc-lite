@@ -13,6 +13,7 @@
  * `slabUndersideWorld` and accept the class in `storey-attachment.ts`.
  */
 
+import { roofUndersideWorld } from '../wall-roof-clip.js';
 import { getModelLengthUnitScale } from '../edit/length-unit-scale.js';
 import { resolveSlabEditChain } from '../edit/slab-edit.js';
 import type { EditTarget } from '../edit/target.js';
@@ -43,7 +44,7 @@ export function attachedTopTarget(
   target: EditTarget, elementId: number, kind: AttachedKind, attachment: TopAttachment, from: number, ownDelta: number, targetDelta: number,
 ): number | null {
   if (attachment.kind === 'storey') return from + targetDelta - ownDelta;
-  const underside = attachment.targetElementId === undefined ? null : slabUndersideWorld(target, attachment.targetElementId);
+  const underside = attachment.targetElementId === undefined ? null : roofUndersideWorld(target, attachment.targetElementId) ?? slabUndersideWorld(target, attachment.targetElementId);
   const origin = attachedTopWorldOrigin(target, elementId, kind);
   if (underside === null || origin === null || !Number.isFinite(origin)) return null;
   return underside + targetDelta - (origin + ownDelta);

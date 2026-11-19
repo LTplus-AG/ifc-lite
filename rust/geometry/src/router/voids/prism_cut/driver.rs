@@ -16,10 +16,10 @@ use super::frame::{obb_overlaps, PrismFrame};
 use super::kit::{dot, V3};
 use super::opening_prism::prepare_prism;
 use super::ptri::{mesh_from_ptris, ptris_from_mesh, PTri};
-use super::{defer, finish, finish_cut_verdict, record_cut, tjunction_close};
+use super::{defer, finish, finish_cut_verdict, reconsolidate, record_cut, tjunction_close};
 use crate::math::aabb::Aabb3;
 use crate::mesh::Mesh;
-use crate::mesh_check::{closed_enough_to_emit, ClosureVerdict};
+use crate::mesh_check::closed_enough_to_emit;
 use crate::program::openings::execute::Execution;
 
 // ─────────────────────────────── the driver ─────────────────────────────────
@@ -131,8 +131,8 @@ impl Execution {
         let mut committed_cutter_volume = 0.0;
         // AABB (host-local frame) of every COMMITTED cutter prism, captured
         // post-extension: the region the cut actually re-triangulated. Feeds the
-        // scoped sliver refinement below (#1007 targets rim slivers, not the
-        // host's own authored long-thin faces). 1 mm pad = the batch/veto margin,
+        // scoped vertex canonicalization below, where only rim slivers can
+        // trigger the rebuild. A 1 mm pad matches the batch/veto margin,
         // comfortably covering the seam vertices shared with kept host fragments.
         const REFINE_REGION_PAD: f64 = 1.0e-3;
         let mut refine_boxes: Vec<([f64; 3], [f64; 3])> = Vec::new();
@@ -223,71 +223,20 @@ impl Execution {
         // watertight-preserving), collapsing each planar face back to a few
         // large triangles — 2-3x fewer output triangles on the advanced_model
         // walls, matching the exact kernel's tessellation density.
-        let consolidated = crate::csg::ClippingProcessor::consolidate_prism_cut(out, mesh);
+        let (consolidated, consolidated_closure) =
+            reconsolidate::consolidate(out, mesh, || mesh_from_ptris(&tris, mesh));
         let boundary = consolidated.boundary;
         out = consolidated.mesh;
-        let consolidated_closure = ClosureVerdict::for_mesh(&out);
         if consolidated_closure.closed_enough_to_emit()
             && !consolidated_change_is_measurable(mesh, &out)
         {
             defer(4);
             return None;
         }
-        // WATERTIGHT SLIVER REFINEMENT (#1007): the per-triangle CDT can emit a
-        // high-aspect corner sliver at an opening rim (a far-corner triangle
-        // fanned to two rim vertices) — the visible roof-slope chamfer the
-        // exact path also produces and repairs. Run the SAME lockstep-bisection
-        // pass the exact kernel output gets (targets aspect <= 8:1, watertight
-        // by construction), so the analytic cut meets the same rim-quality bar.
-        // The pass fixes one edge per internal round (64 max); the analytic
-        // cut can carry more rim fans than that, so drive it to a (bounded)
-        // fixpoint — each iteration is a no-op clone once no sliver remains.
-        // SELF-CHECKED application, and ONLY when this cut is FINAL (no
-        // residual): with a residual, the exact kernel still cuts this mesh and
-        // runs its own sliver refinement on ITS output — refining first would
-        // hand the arrangement midpoint-split geometry it re-fragments (#1167).
-        // On a hairline-tolerated output the lockstep split can also see just
-        // one side of an overlapping chain pair and amplify the sub-grid
-        // mismatch, and the split slivers can fall below the clean-degenerate
-        // grid — so accept the refined mesh only when it is STRICTLY closed
-        // and a cleaned probe stays at least hairline-closed.
+        // Canonicalize rim vertices after the final cut. When a residual
+        // cutter remains, the exact path canonicalizes its own output.
         if residual_idx.is_empty() && consolidated_closure.is_directed_closed() {
-            // SCOPED to the committed cutters' padded AABBs: #1007's target is
-            // the high-aspect corner sliver the CUT emits at an opening rim, and
-            // every rim-incident sliver touches its cutter's box. The unscoped
-            // pass also bisected the host's own authored long-thin faces (a thin
-            // steel wall is legitimately full of >8:1 quads), inflating output
-            // triangles and paying the full lockstep fixpoint on every
-            // analytic-cut host (the Holter 4.1.x regression).
-            //
-            // Refine straight off `out` first: the scoped pass returns the input
-            // unchanged when no in-region sliver fires (the common clean-cut
-            // case), and for a NO-OP fixpoint `refined == out` byte-for-byte, so
-            // the upfront clone, the probe clean, and the closure audits decided
-            // nothing. Only a fixpoint that actually split an edge pays the
-            // probe + self-check audits. Same 6-refine budget as before
-            // (1 here + up to 5 below). This refinement is not a replacement
-            // for the router's source-triangle cleanup and does not promise
-            // hygienic output. The probe informs acceptance; `finish_cut`
-            // closure-audits and prefers a clean result, but may return its
-            // explicit compatibility result (#4797).
-            let mut refined =
-                crate::facet_weld::refine_high_aspect_slivers_within(&out, &refine_boxes);
-            if refined.indices.len() != out.indices.len() {
-                for _ in 0..5 {
-                    let next =
-                        crate::facet_weld::refine_high_aspect_slivers_within(&refined, &refine_boxes);
-                    if next.indices.len() == refined.indices.len() {
-                        break;
-                    }
-                    refined = next;
-                }
-                let mut probe = refined.clone();
-                probe.clean_degenerate();
-                if finish::can_adopt_refinement(boundary, &refined, &probe) {
-                    out = refined;
-                }
-            }
+            out = super::rim_refine::canonicalize_rim_vertices(out, &refine_boxes, boundary);
         }
         // The finalizer cleans before the ulp weld so discarded slivers cannot
         // choose a surviving seam coordinate, then audits the exact mesh it

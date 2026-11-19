@@ -52,6 +52,9 @@ export const idsTeardown = defineSliceTeardown(
   {
     'session-reset': () => ({
       idsPanelVisible: false,
+      // Resetting the flag alone does not end the run: the in-flight IDS/rule-set
+      // run ends itself on `analysisRunGeneration`, which the model slice's
+      // contribution bumps in this same patch (A1, `hooks/analysisRunGuard.ts`).
       idsLoading: false,
       idsProgress: null,
       idsError: null,

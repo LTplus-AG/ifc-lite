@@ -23,6 +23,7 @@ import { boxHoldingPlane, planeRange, type RangeBounds } from '@/lib/section/sec
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { setClashColorsFromTheme } from '@/lib/clash/clash-colors';
+import { isGeometryHeld } from '@/lib/pick-gating';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 
 export interface UseRenderUpdatesParams {
@@ -68,6 +69,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
   // The other cutting planes (#7545) clip on their own; a change to one must draw a frame.
   const inactiveSectionPlanes = useViewerStore((s) => s.inactiveSectionPlanes);
   const extraCaps = useViewerStore((s) => s.sectionExtraCaps);
+  const geometryHeld = useViewerStore((s) => isGeometryHeld(s));
   const {
     rendererRef,
     isInitialized,
@@ -130,6 +132,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
+    if (geometryHeld) { renderer.clearSection2DOverlay(); renderer.requestRender(); return; }
 
     if (activeTool === 'section' && drawing2D && drawingIsThisPlanes && capOverlayHasContent(drawing2D) && show3DOverlay) {
       const { polygons, lines } = capOverlayInput(drawing2D, showHiddenLines, fillMode);
@@ -149,7 +152,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     }
 
     renderer.requestRender();
-  }, [drawing2D, drawingIsThisPlanes, activeTool, sectionPlane, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines]);
+  }, [drawing2D, drawingIsThisPlanes, activeTool, sectionPlane, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, geometryHeld]);
 
   // The other cutting planes' caps (#7545), and the section box's face caps (#8696), which ride the
   // same path as face-picked planes. A cap is uploaded only while it was cut for the plane's CURRENT
@@ -158,6 +161,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
+    if (geometryHeld) { renderer.clearSection2DExtraOverlays([]); return; }
     const shown = activeTool === 'section' && show3DOverlay
       ? [...inactiveSectionPlanes.filter((p) => p.enabled && !p.box), ...boxCapPlanes]
       : [];
@@ -174,7 +178,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
       );
     }
     renderer.requestRender();
-  }, [extraCaps, inactiveSectionPlanes, boxCapPlanes, boxFillMode, activeTool, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, fillMode]);
+  }, [extraCaps, inactiveSectionPlanes, boxCapPlanes, boxFillMode, activeTool, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, fillMode, geometryHeld]);
 
   // Re-render when visibility, selection, or section plane changes
   useEffect(() => {
@@ -182,7 +186,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     if (!renderer || !isInitialized) return;
 
     renderer.requestRender();
-  }, [hiddenEntities, isolatedEntities, ghostExceptEntities, selectedEntityId, selectedEntityIds, selectedModelIndex, isInitialized, sectionPlane, inactiveSectionPlanes, activeTool, sectionRange, coordinateInfo?.buildingRotation]);
+  }, [hiddenEntities, isolatedEntities, ghostExceptEntities, selectedEntityId, selectedEntityIds, selectedModelIndex, isInitialized, sectionPlane, inactiveSectionPlanes, activeTool, sectionRange, coordinateInfo?.buildingRotation, geometryHeld]);
 }
 
 export default useRenderUpdates;

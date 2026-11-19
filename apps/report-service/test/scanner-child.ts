@@ -68,7 +68,7 @@ export async function runningContainer(scratch: string): Promise<string> {
         const result = await docker(["inspect", "--format", "{{.State.Running}}", name]);
         if (result.stdout.trim() === "true") return name;
       } catch (error) {
-        if (!(error instanceof Error && error.message.includes("No such object"))) throw error;
+        if (!(error instanceof Error && /no such object/i.test(error.message))) throw error;
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 30));

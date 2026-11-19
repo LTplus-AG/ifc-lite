@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateIfcGuid, isValidIfcGuid, ifcGuidToUuid, uuidToIfcGuid } from '@ifc-lite/encoding';
-import { IfcParser, extractScheduleOnDemand } from '@ifc-lite/parser';
+import { IfcParser, extractScheduleOnDemand, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { IfcCreator } from './ifc-creator.js';
 
 describe('IfcCreator', () => {
@@ -401,6 +401,157 @@ describe('IfcCreator', () => {
     expect(find('IFCCOLUMN')).toMatch(/,\$\);$/);
     expect(find('IFCBEAM')).toMatch(/,\$\);$/);
     expect(find('IFCRELSEQUENCE')).toMatch(/,\.FINISH_START\.\);$/);
+  });
+
+  // #9359: every line IfcCreator writes must match the target schema's attribute
+  // count, enum members and required slots (entities-<schema>.ts via the registry).
+  const stepAttrs = (line: string) => {
+    const body = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+    const out: string[] = [];
+    let depth = 0, inStr = false, cur = '';
+    for (const ch of body) {
+      if (ch === "'") inStr = !inStr;
+      if (!inStr && ch === '(') depth++;
+      if (!inStr && ch === ')') depth--;
+      if (!inStr && depth === 0 && ch === ',') { out.push(cur); cur = ''; } else cur += ch;
+    }
+    out.push(cur);
+    return out;
+  };
+  const buildEveryCreator = (schema: 'IFC2X3' | 'IFC4' | 'IFC4X3') => {
+    const creator = new IfcCreator({ Schema: schema });
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const wall = creator.addIfcWall(storey, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 });
+    creator.addIfcWallDoor(wall, { Position: [1, 0, 0], Width: 0.9, Height: 2.1 });
+    creator.addIfcWallWindow(wall, { Position: [4, 0, 1], Width: 1.2, Height: 1.2 });
+    creator.addIfcSlab(storey, { Position: [0, 0, 0], Thickness: 0.2, Width: 5, Depth: 5, Openings: [{ Position: [1, 1, 0], Width: 1, Height: 1 }] });
+    creator.addIfcDoor(storey, { Position: [1, 2, 0], Width: 0.9, Height: 2.1 });
+    creator.addIfcWindow(storey, { Position: [1, 2, 0], Width: 1.2, Height: 1.5 });
+    creator.addIfcPlate(storey, { Position: [1, 2, 0], Width: 1, Depth: 1, Thickness: 0.01 });
+    creator.addIfcMember(storey, { Start: [0, 0, 0], End: [2, 0, 0], Width: 0.1, Height: 0.1 });
+    creator.addIfcIShapeBeam(storey, { Start: [0, 0, 0], End: [3, 0, 0], OverallWidth: 0.2, OverallDepth: 0.4, WebThickness: 0.01, FlangeThickness: 0.02 });
+    creator.addIfcLShapeMember(storey, { Start: [0, 0, 0], End: [2, 0, 0], Depth: 0.1, Width: 0.1, Thickness: 0.01 });
+    creator.addIfcTShapeMember(storey, { Start: [0, 0, 0], End: [2, 0, 0], FlangeWidth: 0.1, Depth: 0.1, WebThickness: 0.01, FlangeThickness: 0.01 });
+    creator.addIfcUShapeMember(storey, { Start: [0, 0, 0], End: [2, 0, 0], Depth: 0.1, FlangeWidth: 0.05, WebThickness: 0.01, FlangeThickness: 0.01 });
+    creator.addIfcCurtainWall(storey, { Start: [0, 3, 0], End: [3, 3, 0], Height: 3 });
+    creator.addIfcBuildingElementProxy(storey, { Position: [5, 5, 0], Width: 1, Depth: 1, Height: 1 });
+    creator.addIfcPile(storey, { Position: [6, 6, 0], Length: 5, Diameter: 0.4 });
+    creator.addElement(storey, { IfcType: 'IFCMEMBER', Placement: { Location: [0, 0, 0] }, Profile: { ProfileType: 'AREA', Depth: 0.2, Width: 0.1, WallThickness: 0.01, Girth: 0.02 } as never, Depth: 2 });
+    creator.addElement(storey, { IfcType: 'IFCBUILDINGELEMENTPROXY', Placement: { Location: [0, 0, 0] }, Profile: { ProfileType: 'AREA', XDim: 1, YDim: 1 } as never, Depth: 0.01 });
+    creator.addAxisElement(storey, { IfcType: 'IFCFLOWSEGMENT', Start: [0, 0, 0], End: [2, 0, 0], Profile: { ProfileType: 'AREA', XDim: 0.1, YDim: 0.1 } as never });
+    creator.addIfcMaterial(wall, { Name: 'Concrete', Category: 'Concrete' });
+    creator.addIfcMaterial(wall, { Name: 'Build-up', Layers: [{ Name: 'Brick', Thickness: 0.1 }, { Name: 'Air', Thickness: 0.05, IsVentilated: true }] } as never);
+    const t1 = creator.addIfcTask({ Name: 'T1' });
+    const t2 = creator.addIfcTask({ Name: 'T2', Identification: 'A-2' });
+    creator.addIfcRelSequence(t1, t2, {});
+    return creator.toIfc().content.split('\n');
+  };
+
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('writes every creator line schema-valid in %s (#9359)', (schema) => {
+    const registry = getSchemaRegistryForVersion(schema);
+    const byUpper = new Map(Object.keys(registry.entities).map(name => [name.toUpperCase(), name]));
+    const checked = new Set<string>();
+    for (const line of buildEveryCreator(schema)) {
+      const tag = /^#\d+=([A-Z0-9]+)\(/.exec(line)?.[1];
+      if (!tag) continue;
+      const entity = byUpper.get(tag);
+      expect(entity, `${tag} is not an ${schema} entity`).toBeDefined();
+      const schemaAttrs = registry.entities[entity!].allAttributes ?? [];
+      const values = stepAttrs(line);
+      expect(values.length, line).toBe(schemaAttrs.length);
+      schemaAttrs.forEach((attr, i) => {
+        if (!attr.optional) expect(values[i], `${entity}.${attr.name} is required in ${line}`).not.toBe('$');
+        const token = /^\.([A-Z_0-9]+)\.$/.exec(values[i])?.[1];
+        const enumValues = registry.enums[attr.type];
+        if (enumValues && token) expect(enumValues, `${entity}.${attr.name} in ${line}`).toContain(token);
+      });
+      checked.add(tag);
+    }
+    for (const tag of ['IFCDOOR', 'IFCWINDOW', 'IFCOPENINGELEMENT', 'IFCPLATE', 'IFCMEMBER', 'IFCCURTAINWALL', 'IFCBUILDINGELEMENTPROXY',
+      'IFCPILE', 'IFCFLOWSEGMENT', 'IFCISHAPEPROFILEDEF', 'IFCLSHAPEPROFILEDEF', 'IFCTSHAPEPROFILEDEF', 'IFCUSHAPEPROFILEDEF',
+      'IFCCSHAPEPROFILEDEF', 'IFCMATERIAL', 'IFCMATERIALLAYER', 'IFCMATERIALLAYERSET', 'IFCTASK', 'IFCRELSEQUENCE', 'IFCSTYLEDITEM']) {
+      expect(checked, tag).toContain(tag);
+    }
+  });
+
+  it('wraps IFC2X3 styles once per style and nests site → building → storey placements (#9359)', () => {
+    const lines = buildEveryCreator('IFC2X3');
+    const byId = new Map(lines.map(l => [/^#(\d+)=/.exec(l)?.[1], l] as const));
+    const styled = lines.filter(l => l.includes('=IFCSTYLEDITEM('));
+    const refs = new Set(styled.map(l => /,\(#(\d+)\),/.exec(l)![1]));
+    expect(styled.length).toBeGreaterThan(refs.size);
+    expect(lines.filter(l => l.includes('=IFCPRESENTATIONSTYLEASSIGNMENT(')).length).toBe(refs.size);
+    for (const ref of refs) {
+      const style = /=IFCPRESENTATIONSTYLEASSIGNMENT\(\(#(\d+)\)\);$/.exec(byId.get(ref) ?? '')?.[1];
+      expect(byId.get(style!)).toContain('=IFCSURFACESTYLE(');
+    }
+    const placementOf = (tag: string) => stepAttrs(lines.find(l => l.includes(`=${tag}(`))!)[5].slice(1);
+    const site = placementOf('IFCSITE'), building = placementOf('IFCBUILDING'), storey = placementOf('IFCBUILDINGSTOREY');
+    expect(building).not.toBe(site);
+    expect(stepAttrs(byId.get(building)!)[0]).toBe(`#${site}`);
+    expect(stepAttrs(byId.get(storey)!)[0]).toBe(`#${building}`);
+    expect(stepAttrs(byId.get(building)!)[1]).toBe(stepAttrs(byId.get(site)!)[1]); // identity relative transform
+  });
+
+  it('keeps IFC4 styled items and the shared site/building placement unchanged', () => {
+    const lines = buildEveryCreator('IFC4');
+    expect(lines.join('\n')).not.toContain('IFCPRESENTATIONSTYLEASSIGNMENT');
+    const placementOf = (tag: string) => stepAttrs(lines.find(l => l.includes(`=${tag}(`))!)[5];
+    expect(placementOf('IFCBUILDING')).toBe(placementOf('IFCSITE'));
+  });
+
+  it('maps a generic IFC2X3 proxy PredefinedType onto CompositionType (#9359)', () => {
+    const creator = new IfcCreator({ Schema: 'IFC2X3' });
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const proxy = (PredefinedType?: string) => creator.addElement(storey, { IfcType: 'IFCBUILDINGELEMENTPROXY', Placement: { Location: [0, 0, 0] }, Profile: { ProfileType: 'AREA', XDim: 1, YDim: 1 } as never, Depth: 0.1, PredefinedType });
+    proxy('NOTDEFINED');
+    proxy('PARTIAL');
+    expect(() => proxy('USERDEFINED')).toThrow(/CompositionType must be one of COMPLEX, ELEMENT, PARTIAL in IFC2X3; got USERDEFINED/);
+    const proxies = creator.toIfc().content.split('\n').filter(l => l.includes('=IFCBUILDINGELEMENTPROXY('));
+    expect(proxies.map(l => stepAttrs(l)[8])).toEqual(['$', '.PARTIAL.']);
+    expect(() => creator.addElement(storey, { IfcType: 'IFCMEMBER', Placement: { Location: [0, 0, 0] }, Profile: { ProfileType: 'AREA', XDim: 1, YDim: 1 } as never, Depth: 1, PredefinedType: 'BRACE' }))
+      .toThrow(/IfcMember has no PredefinedType attribute in IFC2X3/);
+  });
+
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('writes generic door/window/stair/proxy tails from the %s schema (#9359)', (schema) => {
+    const creator = new IfcCreator({ Schema: schema });
+    const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const profile = { ProfileType: 'AREA', XDim: 1, YDim: 1 } as never;
+    for (const IfcType of ['IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCBUILDINGELEMENTPROXY', 'IFCMEMBER', 'IFCFLOWSEGMENT']) {
+      creator.addElement(storey, { IfcType, Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 1 });
+      creator.addAxisElement(storey, { IfcType, Start: [0, 0, 0], End: [1, 0, 0], Profile: profile, PredefinedType: IfcType === 'IFCFLOWSEGMENT' || (schema === 'IFC2X3' && IfcType !== 'IFCSTAIR') ? undefined : 'NOTDEFINED' });
+    }
+    expect(() => creator.addElement(storey, { IfcType: 'IFCDOOR', Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 1, PredefinedType: 'NOT_A_DOOR' }))
+      .toThrow(schema === 'IFC2X3' ? /IfcDoor has no PredefinedType attribute in IFC2X3/ : /IfcDoor.PredefinedType must be one of/);
+    const registry = getSchemaRegistryForVersion(schema);
+    const byUpper = new Map(Object.keys(registry.entities).map(name => [name.toUpperCase(), name]));
+    let checked = 0;
+    for (const line of creator.toIfc().content.split('\n')) {
+      const tag = /^#\d+=([A-Z0-9]+)\(/.exec(line)?.[1];
+      if (!tag || !['IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCBUILDINGELEMENTPROXY', 'IFCMEMBER', 'IFCFLOWSEGMENT'].includes(tag)) continue;
+      const attrs = registry.entities[byUpper.get(tag)!].allAttributes ?? [];
+      const values = stepAttrs(line);
+      expect(values.length, line).toBe(attrs.length);
+      attrs.forEach((attr, i) => {
+        const token = /^\.([A-Z_0-9]+)\.$/.exec(values[i])?.[1];
+        if (token) expect(registry.enums[attr.type], `${tag}.${attr.name} in ${line}`).toContain(token);
+        if (!attr.optional) expect(values[i], `${tag}.${attr.name} in ${line}`).not.toBe('$');
+      });
+      checked++;
+    }
+    expect(checked).toBe(12);
+  });
+
+  it('refuses IFC4-only scheduling data in IFC2X3 instead of writing invalid records (#9359)', () => {
+    const creator = new IfcCreator({ Schema: 'IFC2X3' });
+    const t1 = creator.addIfcTask({ Name: 'T1' });
+    const t2 = creator.addIfcTask({ Name: 'T2' });
+    expect(() => creator.addIfcTask({ Name: 'T3', ScheduleStart: '2026-03-02T07:00:00' })).toThrow(/task times, LongDescription and PredefinedType are not supported for IFC2X3/);
+    expect(() => creator.addIfcTask({ Name: 'T4', LongDescription: 'handoff' })).toThrow(/not supported for IFC2X3/);
+    expect(() => creator.addIfcTask({ Name: 'T5', PredefinedType: 'CONSTRUCTION' })).toThrow(/not supported for IFC2X3/);
+    expect(() => creator.addIfcRelSequence(t1, t2, { TimeLag: 'P1D' })).toThrow(/TimeLag durations \(IfcLagTime\) are not supported for IFC2X3/);
+    expect(() => creator.addIfcWorkSchedule({ Name: 'WS', StartTime: '2026-03-01T00:00:00' })).toThrow(/addIfcWorkSchedule: work controls .* are not supported for IFC2X3/);
+    expect(() => creator.addIfcWorkPlan({ Name: 'WP', StartTime: '2026-03-01T00:00:00' })).toThrow(/addIfcWorkPlan: work controls .* are not supported for IFC2X3/);
   });
 
   it('attaches a simple material via IfcRelAssociatesMaterial', () => {

@@ -13,9 +13,10 @@
  */
 
 import type { Point2D, Polygon2D, CutSegment, DrawingPolygon, EntityKey } from './types.js';
-import { makeEntityKey, colorKey } from './types.js';
+import { makeEntityKey } from './types.js';
 import type { OpenSurfaceIndex } from './open-surface.js';
 import { findOpenChainSegments } from './open-chains.js';
+import { layerKey, layerStamp } from './cut-layer.js';
 import {
   EPSILON,
   point2DDistance,
@@ -24,6 +25,8 @@ import {
   ensureCCW,
   ensureCW,
 } from './math.js';
+
+import { removeCollinearRingVertices } from './polygon-helpers.js';
 
 export { simplifyPolygon, polygonBounds } from './polygon-helpers.js';
 
@@ -49,6 +52,11 @@ interface Loop {
 export class PolygonBuilder {
   /** Tolerance for vertex matching */
   private tolerance: number;
+  /**
+   * Float32 rounding noise of the entity being processed (`maxAbs · 2⁻²²`,
+   * set by `withScaleAwareTolerance`). Floors the collinear-vertex tolerance.
+   */
+  private float32NoiseFloor = 0;
 
   constructor(tolerance: number = 0.0001) {
     this.tolerance = tolerance;
@@ -99,11 +107,14 @@ export class PolygonBuilder {
       if (Math.abs(b.y) > maxAbs) maxAbs = Math.abs(b.y);
     }
     const original = this.tolerance;
-    this.tolerance = Math.max(original, maxAbs * 2 ** -22);
+    const originalFloor = this.float32NoiseFloor;
+    this.float32NoiseFloor = maxAbs * 2 ** -22;
+    this.tolerance = Math.max(original, this.float32NoiseFloor);
     try {
       return fn();
     } finally {
       this.tolerance = original;
+      this.float32NoiseFloor = originalFloor;
     }
   }
 
@@ -172,7 +183,7 @@ export class PolygonBuilder {
         this.routeOpenChains(key, allSegments, openSurfaces, new Set()),
       );
       // Only entities that cut into >1 material get per-layer fills (hence a base).
-      const colors = new Set(entitySegments.map((s) => colorKey(s.color)));
+      const colors = new Set(entitySegments.map(layerKey));
       if (colors.size < 2) continue;
       // Colourless build ⇒ closed-loop path (the combined section is closed).
       const base = this.withScaleAwareTolerance(allSegments, () =>
@@ -199,19 +210,18 @@ export class PolygonBuilder {
   /**
    * Build polygons for a single entity.
    *
-   * Sub-groups the entity's segments by material colour so an
-   * `IfcMaterialLayerSet` wall/slab — sliced into one sub-mesh (hence one
-   * colour) per layer — reconstructs as one polygon set per layer, each
-   * carrying that layer's colour. A single-material entity yields exactly one
-   * colour group and is built identically to before, with no colour stamped
-   * (so renderers keep their per-`ifcType` / per-entity fill for it).
+   * Sub-groups the entity's segments by layer (colour and `IfcMaterial`), so an
+   * `IfcMaterialLayerSet` wall/slab (one sub-mesh per layer) reconstructs as one
+   * polygon set per layer carrying its colour and material, even when two layers
+   * share a colour. A single-material entity yields exactly one group and is built
+   * as before, with no fill colour stamped (renderers keep their per-`ifcType` / per-entity fill).
    */
   private buildEntityPolygons(segments: CutSegment[]): DrawingPolygon[] {
     if (segments.length === 0) return [];
 
     const byColor = new Map<string, CutSegment[]>();
     for (const seg of segments) {
-      const key = colorKey(seg.color);
+      const key = layerKey(seg);
       let bucket = byColor.get(key);
       if (!bucket) {
         bucket = [];
@@ -220,14 +230,14 @@ export class PolygonBuilder {
       bucket.push(seg);
     }
 
-    // Only a genuinely multi-material cut (≥2 colours) gets per-layer fills;
+    // Only a genuinely multi-layer cut (≥2 colour/material keys) gets per-layer fills;
     // ordinary elements stay colourless so existing fill rules apply.
     const multiMaterial = byColor.size > 1;
 
     const out: DrawingPolygon[] = [];
     for (const groupSegments of byColor.values()) {
-      const groupColor = multiMaterial ? groupSegments[0].color : undefined;
-      for (const p of this.buildColorGroupPolygons(groupSegments, groupColor)) out.push(groupSegments[0].color ? { ...p, sourceColor: groupSegments[0].color } : p);
+      const layer = groupSegments[0];
+      for (const p of this.buildColorGroupPolygons(groupSegments, multiMaterial ? layer.color : undefined)) out.push({ ...p, ...layerStamp(layer) });
     }
     return out;
   }
@@ -252,7 +262,20 @@ export class PolygonBuilder {
 
     // Build closed loops. Multi-material (per-layer) groups additionally STITCH
     // disconnected open band segments at the interface chords (see `buildLoops`).
-    const loops = this.buildLoops(segments2D, color !== undefined);
+    // Tessellation splits (a triangle edge crossing the cut plane) leave
+    // collinear vertices on straight faces; drop them so ring vertices are real
+    // corners. The tolerance is far below the weld tolerance so finely
+    // tessellated arcs keep their vertices, but never below the float32
+    // rounding noise of the source coordinates: an origin-less element ~100 m
+    // out rounds each coordinate by a few µm, which pushes a split point on a
+    // sloped face off its chord by more than 1% of the weld tolerance. The
+    // floor uses the same LOCAL magnitude as the weld floor, so an element
+    // placed far away through its RTC origin is not given a looser one.
+    const collinearTolerance = Math.max(this.tolerance * 0.01, this.float32NoiseFloor);
+    const loops = this.buildLoops(segments2D, color !== undefined).map((loop) => ({
+      ...loop,
+      points: removeCollinearRingVertices(loop.points, collinearTolerance),
+    }));
 
     if (loops.length === 0) return [];
 

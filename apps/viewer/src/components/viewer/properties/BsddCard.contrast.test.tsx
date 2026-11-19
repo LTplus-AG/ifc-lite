@@ -42,6 +42,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { BsddCard } from './BsddCard.js';
 import { registerLocale, setLocale } from '@/i18n';
+import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 // ---------------------------------------------------------------------------
 // Network stub for services/bsdd.ts's fetchClassInfo, which calls the
@@ -87,8 +89,10 @@ function render(node: ReactElement): HTMLElement {
   return host;
 }
 
+const initialStore = useViewerStore.getState();
 afterEach(() => {
   if (root) act(() => root!.unmount());
+  useViewerStore.setState(initialStore, true);
   host?.remove();
   root = null;
   host = null;
@@ -160,6 +164,8 @@ describe('BsddCard property tooltip contrast (production component)', () => {
       'properties.bsdd.editedCount': '[edited {countDisplay}]',
     });
     setLocale('ar-EG');
+    // The add actions follow the data permission, which needs a loaded IFC model (#9296).
+    useViewerStore.setState(fixtureModels(fixtureModel('m1', { entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall' }] })));
     render(<BsddCard entityType="IfcWall" modelId="m1" entityId={1} existingPsets={[]} existingProps={new Set()} />);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
     const header = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Pset_WallCommon'));

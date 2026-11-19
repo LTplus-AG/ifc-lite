@@ -192,7 +192,7 @@ describe('typeVisibility over the model as edited (#5249)', () => {
     view.deleteEntity(8);
     view.setEntityType(9, 'IfcSpace', null, 'IfcWall');
     useViewerStore.setState({
-      models: new Map([['m1', createFederatedModel({ ifcDataStore: dataStore as never, maxExpressId: 100 })]]),
+      models: new Map([['m1', createFederatedModel({ ifcDataStore: dataStore as never, maxExpressId: 9 })]]),
       mutationViews: new Map([['m1', view]]),
       hiddenEntities: new Set(),
       classFilter: null,

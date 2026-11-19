@@ -25,6 +25,24 @@ Each drawing includes:
 | **Architectural symbols** | Door swings, window frames, stair arrows |
 | **Annotations** | Dimensions and labels |
 
+IFC export includes the active model's Distance measurements, linear dimensions
+and entity-bound tags as `IfcAnnotation` curves and text. Tags retain a relationship
+to their element. Reopening the IFC restores these editable markups; an unchanged
+re-export preserves their STEP records. This applies to IFC2X3, IFC4 and IFC4X3.
+IFC export refuses a project length-unit change while annotations outside the current drawing would be retained; keep the original project units to preserve those frames without altering their geometry.
+
+## Element tags in the viewer
+
+In a plan or section drawing, choose **Tag** and click a door, window or space.
+Door and window tags show the IFC `Tag` (or a `Mark` property), falling back to
+`Name`. Space tags show `Name` and, when available,
+`Qto_SpaceBaseQuantities.NetFloorArea` in m². Labels read the current model data,
+so property edits update them. Regenerated drawings anchor tags to the element's
+cut centroid. Use **Select** to drag a tag's offset, or select it and press Delete.
+Tags are saved with the drawing markup and included in SVG, DXF, scaled PDF and
+sheet PDF exports. Scaled PDF uses `~` for the approximate-area symbol because
+its built-in font does not contain `≈`.
+
 ## Construction profiles
 
 Construction projection extracts constant `IfcExtrudedAreaSolid` profiles from
@@ -166,6 +184,11 @@ document.getElementById('drawing').innerHTML = svg;
 ```
 
 ### DXF Export
+
+Distance measurements and explicit linear dimensions share the same dimension graphics in SVG, DXF and PDF. DXF writes their segments and labels once on `IFC-DIMENSIONS`. Invalid or zero-length graphics are omitted using `isDxfDimensionExportable`, the same rule the download warning uses. Dimensions from another cut are reported separately and counted only once.
+
+For DWG delivery, export DXF and convert it with the free [ODA File Converter](https://www.opendesign.com/guestfiles/oda_file_converter) on your computer. The viewer exports DXF directly; the converter is a separate application.
+
 
 Drawings can also be exported as ASCII DXF R12 (`AC1009`) — the universal
 CAD interop baseline. Coordinates are written verbatim in the drawing's own
@@ -340,7 +363,9 @@ In the IFClite viewer:
 
 Wheel zoom follows the pointer and uses the input magnitude, including pixel,
 line and page wheel deltas. Hold Ctrl or Cmd for fine zoom. A trackpad pinch
-zooms normally unless that modifier key is physically held.
+zooms normally unless that modifier key is physically held. A notch eases in
+over roughly 0.2 s, as in the 3D view, and a pan or the zoom buttons stop it.
+**Settings → Display → Navigation → Wheel zoom speed** applies here too.
 
 The navigation preset also applies to the Drawing panel: Default uses vertical
 wheel movement to zoom and horizontal movement to pan; Navisworks uses vertical
@@ -484,3 +509,7 @@ When using the Select / Pan tool (or after pressing Escape to exit a creation to
 ### Selective section cutting
 
 `SectionPlaneConfig.sectionExcludedIds` accepts a `ReadonlySet<number>` of mesh `expressId` values to keep whole. `SectionCutter`, `cutMeshesStreaming` and `GPUSectionCutter` omit those meshes before producing segments and polygons, so they contribute neither caps, hatch regions nor cut outlines. Pass the renderer's same full scene-ID set when producing its primary and extra-plane caps. An absent or empty set cuts every mesh as usual.
+
+### Material identity on section polygons
+
+`DrawingPolygon.materialId` carries the source mesh’s `IfcMaterial` ID when available. Layers with different material IDs remain separate polygons even when their colours match. The ID uses the same model/federation ID space as `entityId`; resolve both through the host’s model resolver. It is absent for meshes without material identity and for combined opaque base polygons spanning several layers. CPU and GPU section cutters carry it through to polygon reconstruction.

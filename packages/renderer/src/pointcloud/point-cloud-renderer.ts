@@ -17,8 +17,9 @@ import { assertModelTranslation } from '../model-translation.js';
 
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { PointCloudHandleIds } from './point-cloud-handle-ids.js';
-import { exactPlacement, PointCloudPlacements, unionPointCloudBounds } from './point-cloud-placement.js';
-import { PointCloudVisibility } from './point-cloud-visibility.js';
+import { exactPlacement, requirePointCloudOrigin, PointCloudPlacements, unionPointCloudBounds, withPointCloudOrigins } from './point-cloud-placement.js';
+import { PointCloudVisibility, type PointCloudEntityFilter } from './point-cloud-visibility.js';
+import { isEntityVisible } from '../entity-visibility.js';
 import { PointRenderPipeline, POINT_QUAD_VERTS, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import {
   appendChunkToNode,
@@ -63,7 +64,7 @@ export type { PointColorMode, PointSizeMode };
  *                       cloud — usually the best default for nav.
  */
 
-export interface PointCloudDrawState {
+export interface PointCloudDrawState extends PointCloudEntityFilter {
   /** column-major view-projection matrix (16 floats) */
   viewProj: Float32Array;
   /** Shared RTE camera frame; point paths may not derive another rebase. */
@@ -208,24 +209,23 @@ export class PointCloudRenderer {
 
   // ─── one-shot API (IFCx) ──────────────────────────────────────────────────
 
-  /**
-   * Replace every IFCx-owned asset with `assets`. Streamed assets are
-   * untouched. Use this from the viewer's IFCx sync hook.
-   */
+  /** Replace every IFCx-owned asset with `assets`; streamed assets are untouched. */
   setAssets(assets: ReadonlyArray<PointCloudAsset>): void {
     this.clearOwner('ifcx');
-    for (const asset of assets) {
-      if (asset.chunk.pointCount === 0) continue; // streamed identity descriptors carry no geometry
-      this.addAsset(asset);
-    }
+    this.addAssets(assets.filter((asset) => asset.chunk.pointCount > 0)); // streamed descriptors carry no geometry
   }
 
-  addAsset(asset: PointCloudAsset): PointCloudAssetHandle {
+  /** A bad origin skips that cloud with a warning instead of throwing halfway through the batch (#10029). */
+  addAssets(assets: ReadonlyArray<PointCloudAsset>): void { withPointCloudOrigins(assets, (asset, origin) => this.uploadAsset(asset, origin)); }
+
+  addAsset(asset: PointCloudAsset): PointCloudAssetHandle { return this.uploadAsset(asset, requirePointCloudOrigin(asset)); }
+  private uploadAsset(asset: PointCloudAsset, origin: Float64Array | undefined): PointCloudAssetHandle {
     const node = uploadAssetToGpu(this.device, this.pipeline, asset);
     const id = this.handleIds.allocate();
     this.nodes.set(id, node);
     this.nodeOwners.set(id, 'ifcx');
     this.visibility.add(id);
+    if (origin) this.placements.align(node, origin);
     this.placements.translate(node, this.modelTranslations.get(asset.modelIndex ?? 0) ?? [0, 0, 0]);
     return { id };
   }
@@ -387,8 +387,7 @@ export class PointCloudRenderer {
     const viewportW = Math.max(1, state.viewport?.width ?? 1);
     const viewportH = Math.max(1, state.viewport?.height ?? 1);
 
-    for (const [id, node] of this.nodes) {
-      if (!this.visibility.visible(id)) continue;
+    for (const node of this.visibleNodes(state)) {
       const drawable = writePointCloudUniforms(
         this.device,
         this.uniformScratch,
@@ -435,14 +434,14 @@ export class PointCloudRenderer {
   }
 
   /** Picker snapshot uses each visible splat's exact model matrix. */
-  getPickNodes(): Array<{
+  getPickNodes(filter?: PointCloudEntityFilter): Array<{
     expressId: number;
     modelIndex?: number;
     model?: Float32Array;
     rteOrigin?: [number, number, number];
     chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
   }> {
-    return buildPickNodeSources(this.visibleNodes());
+    return buildPickNodeSources(this.visibleNodes(filter));
   }
 
   /** CPU spatial-index snapshot for measurement snapping (#1860), with the
@@ -459,7 +458,7 @@ export class PointCloudRenderer {
     return buildRayQuerySources(this.visibleNodes(), this.options.classMask);
   }
 
-  private *visibleNodes(): IterableIterator<PointCloudNode> {
-    for (const [id, node] of this.nodes) if (this.visibility.visible(id)) yield node;
+  private *visibleNodes(filter?: PointCloudEntityFilter): IterableIterator<PointCloudNode> {
+    for (const [id, node] of this.nodes) if (this.visibility.visible(id) && (this.nodeOwners.get(id) !== 'ifcx' || isEntityVisible(node.meta.expressId, filter?.hiddenIds, filter?.isolatedIds))) yield node;
   }
 }

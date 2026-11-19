@@ -42,11 +42,15 @@ import { undoPendingMutations } from './mutation-undo.js';
 import { hostedPlaceTools } from './hosted-place.js';
 import { joinWallsTool } from './wall-join.js';
 import { hostedEditTool } from './hosted-edit.js';
+import { modellingC5Tools } from './modelling-c5.js';
 import { copyElementsTools } from './copy-elements.js';
 import { physicalEditTool } from './physical-edit.js';
 import { roomCommandTool } from './room-command.js';
 import { designPlaceTools } from './design-place.js';
+import { storeyFollowUpTools } from './storey-follow-ups.js';
 import { storeyTools } from './storeys.js';
+import { georeferencingWriteTool } from './georef.js';
+import { georeferencingFixTool } from './georef-doctor.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -361,8 +365,10 @@ export const mutationTools: Tool[] = [
   ...hostedPlaceTools,
   ...designPlaceTools,
   ...storeyTools,
+  ...storeyFollowUpTools,
   hostedEditTool,
   ...copyElementsTools,
+  ...modellingC5Tools,
   physicalEditTool,
   roomCommandTool,
   joinWallsTool,
@@ -371,6 +377,8 @@ export const mutationTools: Tool[] = [
   entitySetAttribute,
   entityCreate,
   entityDelete,
+  georeferencingWriteTool,
+  georeferencingFixTool,
   mutationBatch,
   mutationDiff,
   mutationUndo,

@@ -46,6 +46,11 @@ blake3 = { version = "1.8", features = ["wasm32_simd"] }
 # yielding two hashes. Licence: (MIT OR Apache-2.0) AND Unicode-3.0.
 unicode-normalization = "0.1"
 
+# The per-entity content projection. Reusing `DataFingerprintInput` rather than
+# restating it means "what counts as content" is decided in one place, by the
+# engine whose answer is already pinned byte-for-byte against the TypeScript
+# oracle.
+ifc-lite-diff = { workspace = true }
 
 [lints]
 workspace = true

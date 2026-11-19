@@ -13,7 +13,7 @@ mod caching;
 mod brep_signatures;
 mod config;
 mod content_hash;
-mod diagnostics;
+pub(crate) mod diagnostics;
 mod diagnostics_recording;
 mod diagnostics_checked;
 pub(crate) mod frame_parts;
@@ -41,8 +41,8 @@ pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 pub(crate) use diagnostics::ClassificationKind;
 pub use diagnostics::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown, ClassificationStats,
-    ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
-    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
+    BudgetRefusal, ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
+    HostBbox, RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
 pub use mapped_cache_ownership::AccountedMappedItemCache;
@@ -166,6 +166,8 @@ pub struct GeometryRouter {
     /// and `process_element_with_submeshes_and_voids` first attempt to slice
     /// single-solid elements by their `IfcMaterialLayerSetUsage` buildup.
     material_layer_index: Option<Arc<MaterialLayerIndex>>,
+    /// The frame a voided host is being cut in (`transforms::cut_frame`).
+    cut_frame: transforms::cut_frame::CutFrameSlot,
     /// Boolean / CSG failures attributed by IFC product express ID. Populated
     /// by the void-subtraction path (`apply_void_context`) when the BSP
     /// kernel falls back to the un-cut host. Drainable via
@@ -185,6 +187,7 @@ pub struct GeometryRouter {
     /// get cut?" from a console log alone. Drainable via
     /// [`Self::take_host_opening_diagnostics`].
     host_opening_diagnostics: RefCell<FxHashMap<u32, HostOpeningDiagnostic>>,
+    unchanged_rectangular_cuts: RefCell<FxHashMap<u32, bool>>,
     /// REQUEST-LOCAL rect_fast fast-path engagement counters. Accumulated per-cut
     /// by [`Self::record_rect_fast`] into THIS router (not a process-global), so a
     /// native server running concurrent geometry passes — each with its own router
@@ -256,11 +259,13 @@ impl GeometryRouter {
             length_unit_refused: false,
             config: RouterConfig::default(),
             material_layer_index: None,
+            cut_frame: transforms::cut_frame::CutFrameSlot::default(),
             csg_failures: RefCell::new(FxHashMap::default()),
             stopped_csg_failures: RefCell::new(FxHashMap::default()),
             csg_scope: CsgScopeState::default(),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
+            unchanged_rectangular_cuts: RefCell::new(FxHashMap::default()),
             rect_fast_stats: RefCell::new(crate::rect_fast::RectFastStats::default()),
             layer_slice_diag: RefCell::new(Vec::new()),
             voids_consumed_hosts: RefCell::new(FxHashSet::default()),
@@ -357,7 +362,7 @@ impl GeometryRouter {
     /// `IFC_LITE_DEDUP_EXTRA=1` or [`Self::set_build_dedup_extra_override`].
     /// Default OFF keeps native==wasm identical.
     pub fn build_dedup_extra_enabled() -> bool {
-        match DEDUP_EXTRA_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        match DEDUP_EXTRA_OVERRIDE.load(std::sync::atomic::Ordering::Acquire) {
             0 => return false,
             1 => return true,
             _ => {}
@@ -368,14 +373,8 @@ impl GeometryRouter {
 
     /// Test-only: force [`Self::build_dedup_extra_enabled`] on/off (`None` = env).
     pub fn set_build_dedup_extra_override(v: Option<bool>) {
-        DEDUP_EXTRA_OVERRIDE.store(
-            match v {
-                None => -1,
-                Some(false) => 0,
-                Some(true) => 1,
-            },
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        let raw = match v { None => -1, Some(false) => 0, Some(true) => 1 };
+        crate::output_policy::mutate(|| DEDUP_EXTRA_OVERRIDE.store(raw, std::sync::atomic::Ordering::Release));
     }
 
     /// Inject a shared item-dedup cache (see [`Self::new_dedup_cache`]) into this
@@ -608,9 +607,10 @@ impl GeometryRouter {
         self.config.rtc_offset = offset;
     }
 
-    /// Get the current RTC offset
+    /// Get the current RTC offset. Zero while a voided host is cut in its
+    /// root frame, which applies the offset afterwards (`transforms::cut_frame`).
     pub fn rtc_offset(&self) -> (f64, f64, f64) {
-        self.config.rtc_offset
+        if self.in_cut_frame() { (0.0, 0.0, 0.0) } else { self.config.rtc_offset }
     }
 
     /// Check if RTC offset is active (non-zero)

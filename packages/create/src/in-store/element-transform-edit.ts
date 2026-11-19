@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { prepareGeneratedRoomUpdate } from './generated-room-update.js';
+import { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
 import { editOwnershipRefusal } from '@ifc-lite/export';
 import { planElementTransform, type TransformPlan, type TransformRefusal } from './element-transform-plan.js';
 import { rotateBy, unrotateBy } from './element-transform-frames.js';
@@ -11,7 +12,7 @@ import { rotateProductYaw, resolveRotationState, verticalRefDirectionRefusal } f
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { toNativeLength } from './anchor.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
-import { carryWallJoinsInStore } from './element-transform-joins.js';
+import { assertCarriedJoinsMoveTogether, carryWallJoinsInStore } from './element-transform-joins.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { EditTarget } from './edit/target.js';
 
@@ -78,6 +79,7 @@ function transformElementsInDraft(input: ElementTransformInput): ElementTransfor
     const nativeDelta: [number, number, number] = [toNativeLength(unit, parentDelta[0]), toNativeLength(unit, parentDelta[1]), 0];
     return { ...step, parentDelta, nativeDelta };
   });
+  if (prepared.some(step => step.turn !== 0 || Math.hypot(...step.delta) > 1e-9)) assertCarriedJoinsMoveTogether(input, plan);
   const writtenIds: number[] = [];
   for (const { root, delta, turn, nativeDelta } of prepared) {
     if (Math.hypot(...delta) > 1e-9) {
@@ -111,7 +113,7 @@ function transformElementsInDraft(input: ElementTransformInput): ElementTransfor
     if (Math.hypot(dx, dy) > 1e-9) {
       if (input.translate) input.translate(root.expressId, [dx, dy, 0], input.editor);
       else {
-        const result = translateProduct(input.dataStore, input.view, input.editor, root.expressId, nativeDelta);
+        const result = translateProduct(input.dataStore, input.view, input.editor, root.expressId, nativeDelta, { refreshAttachedTops: false });
         if (!result.ok) throw new Error(result.reason);
       }
     }
@@ -124,8 +126,9 @@ function transformElementsInDraft(input: ElementTransformInput): ElementTransfor
     }
   }
   const joined = input.carryJoins ? input.carryJoins(plan, input.editor) : carryWallJoinsInStore(input, plan, input.op.kind === 'rotate' ? input.op.angle : 0);
+  const attached = refreshTopAttachmentsInStore(input, plan.roots.map(root => root.expressId), [...plan.roots.map(root => root.expressId), ...plan.carried, ...joined]);
   return {
-    remesh: [...new Set([...plan.roots.map(root => root.expressId), ...plan.carried, ...joined, ...updateRooms()])],
+    remesh: [...new Set([...plan.roots.map(root => root.expressId), ...plan.carried, ...joined, ...attached, ...updateRooms()])],
     hostsChanged: joined.length > 0,
     notices,
   };

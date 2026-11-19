@@ -13,6 +13,8 @@ import type { SnapOptions, SnapTarget } from '@ifc-lite/renderer';
 import type { MeasurePoint, SnapVisualization } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { useViewerStore } from '@/store';
+import { isGeometryHeld } from '@/lib/pick-gating';
 
 /**
  * The snap options of every Measure point raycast. With Snap off nothing
@@ -99,6 +101,7 @@ export function updateSnapViz(
  * visualisation. Returns null when nothing is hit.
  */
 export function pickMeasurePoint(ctx: MouseHandlerContext, x: number, y: number): MeasurePoint | null {
+  if (isGeometryHeld(useViewerStore.getState())) return null;
   const { canvas, renderer, camera } = ctx;
   // Use magnetic snap for better edge locking
   const currentLock = ctx.edgeLockStateRef.current;

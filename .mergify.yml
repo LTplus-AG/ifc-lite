@@ -1,26 +1,34 @@
-# Batches PRs for the merge queue: one full `Test` run on a temporary
-# `mergify/merge-queue/*` PR covers up to five PRs, and a failure is split to find
-# the culprit. Ordinary PR pushes keep the fast lane (scripts/ci-pr-lane.mjs).
+# The merge queue tests each PR on its own: one full `Test` run on a temporary
+# `mergify/merge-queue/*` PR per queued PR. Ordinary PR pushes keep the fast lane
+# (scripts/ci-pr-lane.mjs).
 #
-# A batch is tested only at its TIP, but Mergify then squashes each PR onto
-# `main` as its own commit, so every commit before the tip lands untested. For
-# code that is a small gap. For a PR that edits tests/perf-ratchets/*.json it is
-# the common case: a lowering PR moves a ceiling down to what main measured
-# hours earlier, and when a later PR in the same batch shrinks the bundle, the
-# tip passes while the lowering commit alone is above its new ceiling. That is
-# how #8459 turned main red at c306ff57d4: batch #8497 failed its ratchet, and
-# the retry batch #8501 passed only because #8411, also in it, cut eager JS.
-# So ceiling PRs get their own queue with batch_size 1: the commit that lands is
-# the tip that was tested (scripts/perf-ratchet/merge-queue.test.mjs).
+# NO BATCHES: the Mergify plan refuses `batch_size` above 1, and one queue
+# asking for it stops every queue (#10506). Parallel checks test up to
+# `max_parallel_checks` PRs at once, each stacked on the ones ahead, so the
+# commit that lands is the tree that was tested. A full run is ~50 jobs against
+# 60 hosted runners, so two overlapping runs already queue for runners; raise it
+# only with more runners.
+#
+# A labelled PR (other than Version Packages) enters the queue only once it is
+# ready: `PR review signal` green and no unresolved review thread
+# (`auto_merge_conditions`, at the foot). The label can go on early. Once
+# queued, a push, removing the label, or a new review thread takes it out and
+# its queue run is lost: main's branch protection requires resolved
+# conversations, and Mergify adds that to every queue's conditions itself.
+#
+# Ceiling PRs (tests/perf-ratchets/*.json) keep their own queue, from when
+# batches landed untested commits (#8459, c306ff57d4).
 #
 # The Version Packages PR (`changeset-release/main`) consumes every pending
 # changeset, so it is only correct against `main` exactly as it was generated.
-# Batched or stacked with PRs that carry changesets, its tested tree holds
-# changesets it did not consume and the late-changeset gate fails (#8621, #8630).
-# So it gets its own queue of one, first in priority, interrupting running
-# checks so it is tested on `main` itself rather than on top of other PRs.
-# release-pr-freshness.yml drafts it, which leaves the queue, whenever `main`
-# moves under it.
+# Stacked on PRs that carry changesets, its tested tree holds changesets it did
+# not consume and the late-changeset gate fails (#8621, #8630). So it gets its
+# own queue, first in priority, interrupting running checks so it is tested on
+# `main` itself rather than on top of other PRs. release-pr-freshness.yml drafts
+# it, which leaves the queue, whenever `main` moves under it.
+merge_queue:
+  max_parallel_checks: 2
+
 priority_rules:
   - name: Version Packages release first
     conditions:
@@ -29,10 +37,14 @@ priority_rules:
     allow_checks_interruption: true
 
 queue_rules:
+  # Every queue also requires the `CLA` status on the PR itself (cla.yml). The
+  # CLA gate does not re-check Mergify's own draft PRs, because their commits come
+  # from PRs that already passed; this condition is what makes that true.
   - name: release
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - head=changeset-release/main
     merge_conditions:
       - check-success=Build + WASM + Rust + Node
@@ -40,30 +52,44 @@ queue_rules:
       - check-success=Rust tests (feature builds)
     batch_size: 1
     merge_method: squash
+    # #10273: do not inherit agent trailers from individual commit messages.
+    # Credit actual commit authors; PR descriptions should omit agent credits.
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers:
+        - co-authored-by
 
   - name: default
     # TRIAL: only labelled PRs. GitHub's own queue stays on until this is proven.
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - -head=changeset-release/main
       - -files~=^tests/perf-ratchets/
-    # Skipped jobs do not satisfy check-success, so a batch that ran only the fast
+    # Skipped jobs do not satisfy check-success, so a queue run that ran only the fast
     # lane cannot merge even if branch detection in test.yml ever broke.
     merge_conditions:
       - check-success=Build + WASM + Rust + Node
       - check-success=Viewer tests (shard 0)
       - check-success=Rust tests (feature builds)
-    batch_size: 5
-    batch_max_wait_time: 10 min
-    batch_max_failure_resolution_attempts: 3
+    batch_size: 1
     merge_method: squash
+    # #10273: do not inherit agent trailers from individual commit messages.
+    # Credit actual commit authors; PR descriptions should omit agent credits.
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers:
+        - co-authored-by
 
   # Ceiling edits, one at a time (see the header). Same gate as `default`.
   - name: ceilings
     queue_conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - -head=changeset-release/main
       - files~=^tests/perf-ratchets/
     merge_conditions:
@@ -72,12 +98,20 @@ queue_rules:
       - check-success=Rust tests (feature builds)
     batch_size: 1
     merge_method: squash
+    # #10273: do not inherit agent trailers from individual commit messages.
+    # Credit actual commit authors; PR descriptions should omit agent credits.
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+      trailers:
+        - co-authored-by
 
 pull_request_rules:
   - name: queue PRs labelled for the Mergify trial
     conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - -head=changeset-release/main
       - -files~=^tests/perf-ratchets/
     actions:
@@ -88,6 +122,7 @@ pull_request_rules:
     conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - -head=changeset-release/main
       - files~=^tests/perf-ratchets/
     actions:
@@ -98,10 +133,20 @@ pull_request_rules:
     conditions:
       - label=mergify-trial
       - -draft
+      - status-success=CLA
       - head=changeset-release/main
     actions:
       queue:
         name: release
 
+# Auto-merge is what queues a labelled PR (#8526); pull_request_rules do not
+# run (Workflow Automation is not activated on this repo). This gate keeps a PR
+# out until its review has landed, so threads are found before a queue run
+# starts rather than during it.
 merge_protections_settings:
-  auto_merge_conditions: true
+  auto_merge_conditions:
+    - or:
+      - head=changeset-release/main
+      - and:
+        - check-success=PR review signal
+        - "#review-threads-unresolved=0"

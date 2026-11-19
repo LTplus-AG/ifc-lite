@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { join } from 'node:path';
 import { parseExpressSchema } from '../src/express-parser.js';
 import { generateTypeScript } from '../src/typescript-generator.js';
@@ -156,21 +157,22 @@ describe('Integration Tests', () => {
       console.log('\n✓ Generated TypeScript is well-formed');
     });
 
-    it('should generate complete schema registry', () => {
+    it('should generate complete schema registry', async () => {
       const schemaPath = join(process.cwd(), 'schemas', 'IFC4_ADD2_TC1.exp');
       const content = readFileSync(schemaPath, 'utf-8');
       const schema = parseExpressSchema(content);
       const code = generateTypeScript(schema);
 
-      expect(code.schemaRegistry).toContain('export const SCHEMA_REGISTRY');
-      expect(code.schemaRegistry).toContain('entities: {');
-      expect(code.schemaRegistry).toContain('types: {');
-      expect(code.schemaRegistry).toContain('enums: {');
-      expect(code.schemaRegistry).toContain('selects: {');
-
-      // Check for helper functions
-      expect(code.schemaRegistry).toContain('export function getEntityMetadata');
-      expect(code.schemaRegistry).toContain('export function isKnownEntity');
+      // The registry is a compact string decoded at run time: run the module.
+      const js = ts.transpileModule(code.schemaRegistry, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+      const mod = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+      const registry = mod.SCHEMA_REGISTRY;
+      expect(Object.keys(registry.entities)).toHaveLength(schema.entities.length);
+      expect(Object.keys(registry.types)).toHaveLength(schema.types.length);
+      expect(Object.keys(registry.enums)).toHaveLength(schema.enums.length);
+      expect(Object.keys(registry.selects)).toHaveLength(schema.selects.length);
+      expect(mod.getEntityMetadata('IFCWALL')?.inheritanceChain?.at(-1)).toBe('IfcWall');
+      expect(mod.isKnownEntity('IfcWall')).toBe(true);
 
       console.log('✓ Schema registry includes all sections');
     });

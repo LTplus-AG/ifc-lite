@@ -45,6 +45,7 @@ import {
   executeBasketClear,
 } from '@/store/basket/basketCommands';
 import { getSmartBasketInputFromStore, isBasketIsolationActiveFromStore } from '@/store/basketVisibleSet';
+import { playNativePresentation, stopPresentationPlayback, usePresentationPlayback } from '@/lib/presentation/playback';
 import { PresentationViewCard } from './PresentationViewCard';
 
 export function PresentationPanel() {
@@ -53,10 +54,8 @@ export function PresentationPanel() {
   const [savingThumbnail, setSavingThumbnail] = useState(false);
   const [editingViewId, setEditingViewId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
-  const [playingAll, setPlayingAll] = useState(false);
+  const playingAll = usePresentationPlayback().state === 'running';
   const stripRef = useRef<HTMLDivElement>(null);
-  const stopPlayRef = useRef(false);
-  const loopPlayRef = useRef(false);
 
   const pinboardEntities = useViewerStore((s) => s.pinboardEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
@@ -117,18 +116,7 @@ export function PresentationPanel() {
     stripRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
   }, []);
 
-  const toTransitionMs = useCallback((value: number | null | undefined) => {
-    if (!value || !Number.isFinite(value) || value <= 0) return 700;
-    return Math.max(150, Math.min(15000, Math.round(value)));
-  }, []);
-
-  const wait = useCallback((ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms)), []);
-
-  const stopPlayAll = useCallback(() => {
-    stopPlayRef.current = true;
-    loopPlayRef.current = false;
-    setPlayingAll(false);
-  }, []);
+  const stopPlayAll = useCallback(() => { stopPresentationPlayback(); }, []);
 
   /**
    * Activate a saved view. Resolves `false` when the activator chunk could not
@@ -157,31 +145,11 @@ export function PresentationPanel() {
 
   const startPlayAll = useCallback(async (loop = false) => {
     if (playingAll || basketViews.length === 0) return;
-    stopPlayRef.current = false;
-    loopPlayRef.current = loop;
-    setPlayingAll(true);
-
     try {
-      const orderedViews = [...basketViews];
-      do {
-        for (const view of orderedViews) {
-          if (stopPlayRef.current) break;
-          if (!(await activateSavedView(view.id))) {
-            // The activator chunk is gone. Reuse the normal stop signal so the
-            // `while` below also ends and the finally block resets the UI, and
-            // do not wait out this view's transition on the way out.
-            stopPlayRef.current = true;
-            break;
-          }
-          const transitionMs = toTransitionMs(view.transitionMs);
-          await wait(transitionMs + 180);
-        }
-      } while (loopPlayRef.current && !stopPlayRef.current && orderedViews.length > 0);
-    } finally {
-      loopPlayRef.current = false;
-      setPlayingAll(false);
-    }
-  }, [activateSavedView, basketViews, playingAll, toTransitionMs, wait]);
+      const result = await playNativePresentation(basketViews.map(view => view.id), { repetitions: loop ? 0 : 1 });
+      if (result.state === 'failed') console.warn('[presentation-panel] playback failed', result.error);
+    } catch (error) { console.warn('[presentation-panel] could not start playback', error); }
+  }, [basketViews, playingAll]);
 
   const setViewTransitionDuration = useCallback(async (viewId: string, currentTransitionMs: number | null) => {
     const defaultSeconds = currentTransitionMs && currentTransitionMs > 0
@@ -324,7 +292,6 @@ export function PresentationPanel() {
                 onEditingNameChange={setEditingName}
                 onSetTransition={() => setViewTransitionDuration(view.id, view.transitionMs)}
                 onDelete={() => {
-                  if (playingAll) stopPlayAll();
                   if (editingViewId === view.id) cancelRename();
                   removeBasketView(view.id);
                 }}

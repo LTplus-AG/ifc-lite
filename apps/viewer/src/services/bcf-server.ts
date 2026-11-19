@@ -24,6 +24,7 @@ import {
 import type { BcfServerConfig } from './bcf-server-config.js';
 import { bcfServerProfile, relayedFetch } from './bcf-server-profiles.js';
 import { completeSignIn, loadApi } from './bcf-server-session.js';
+import { bcfFetch } from './bcf-server-fetch.js';
 import { withTokenRelay } from './bcf-token-relay.js';
 export {
   clearBcfServerConfig,
@@ -53,15 +54,17 @@ export async function signInToBcfServer(
   serverUrl: string,
   username: string,
   password: string,
+  signal?: AbortSignal,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
-  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
+  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl, fetchFn: bcfFetch(signal) });
   const token = await api.requestPasswordToken({
     tokenUrl: requireSecureTokenUrl(authInfo.oauth2_token_url),
     username,
     password,
+    fetchFn: bcfFetch(signal),
   });
-  return completeSignIn(baseUrl, token);
+  return completeSignIn(baseUrl, token, undefined, signal);
 }
 
 /**
@@ -73,6 +76,7 @@ export async function signInToBcfServer(
 export async function signInWithToken(
   serverUrl: string,
   accessToken: string,
+  signal?: AbortSignal,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
   const token = { access_token: accessToken.trim() };
@@ -82,8 +86,8 @@ export async function signInWithToken(
   // ambiguous address costs one unauthenticated `/auth` request and the
   // token then goes to exactly one address. An address that already names a
   // path is unambiguous and skips discovery entirely.
-  const baseUrl = await api.resolveBcfServiceBaseUrl({ baseUrl: serverUrl });
-  return completeSignIn(baseUrl, token);
+  const baseUrl = await api.resolveBcfServiceBaseUrl({ baseUrl: serverUrl, fetchFn: bcfFetch(signal) });
+  return completeSignIn(baseUrl, token, undefined, signal);
 }
 
 /**
@@ -95,15 +99,17 @@ export async function signInWithClientCredentials(
   serverUrl: string,
   clientId: string,
   clientSecret: string,
+  signal?: AbortSignal,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
-  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
+  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl, fetchFn: bcfFetch(signal) });
   const token = await api.requestClientCredentialsToken({
     tokenUrl: requireSecureTokenUrl(authInfo.oauth2_token_url),
     clientId,
     clientSecret,
+    fetchFn: bcfFetch(signal),
   });
-  return completeSignIn(baseUrl, token, { clientId, clientSecret });
+  return completeSignIn(baseUrl, token, { clientId, clientSecret }, signal);
 }
 
 /**
@@ -254,7 +260,7 @@ export function connectedTokenSource(config: BcfServerConfig): {
  * refresh surfaces as a BcfAuthenticationError from the request that
  * needed it.
  */
-export async function createConnectedClient(): Promise<BcfApiClient> {
+export async function createConnectedClient(signal?: AbortSignal): Promise<BcfApiClient> {
   const api = await loadApi();
   const config = loadBcfServerConfig();
   if (!config) throw new Error('Not connected to a BCF server');
@@ -262,7 +268,7 @@ export async function createConnectedClient(): Promise<BcfApiClient> {
   // A profiled server (buildagil) serves another version segment and is
   // reached only through its same-origin relay.
   const profile = bcfServerProfile(config.serverUrl);
-  const send = profile ? relayedFetch(profile) : (input: string, init?: RequestInit) => fetch(input, init);
+  const send = bcfFetch(signal, profile ? relayedFetch(profile) : undefined);
   return new api.BcfApiClient({
     baseUrl: config.serverUrl,
     ...(profile ? { version: profile.version } : {}),
@@ -292,13 +298,15 @@ export async function pullBcfServerProject(
   projectId: string,
   projectName: string,
   onProgress?: (progress: BcfSyncProgress) => void,
+  signal?: AbortSignal,
 ): Promise<BcfProjectFetchResult> {
   const api = await loadApi();
   const started = loadBcfServerConfig();
-  const client = await createConnectedClient();
+  const client = await createConnectedClient(signal);
   // buildagil ignores `$skip`: its profile pages topics by modified_date.
   const topicPaging = bcfServerProfile(started?.serverUrl ?? '')?.topicPaging;
   const result = await api.fetchProjectAsBCF(client, projectId, { onProgress, ...(topicPaging ? { topicPaging } : {}) });
+  signal?.throwIfAborted();
   if (!result.project.name) result.project.name = projectName;
   const current = loadBcfServerConfig();
   if (started && current && isSameBcfAccount(current, started)) {

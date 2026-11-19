@@ -1,5 +1,27 @@
 # @ifc-lite/collab-server
 
+## 0.9.2
+
+### Patch Changes
+
+- [#9486](https://github.com/LTplus-AG/ifc-lite/pull/9486) [`0d9951f`](https://github.com/LTplus-AG/ifc-lite/commit/0d9951f1d4411334e5f180ee06cbc5bb602cda9f) Thanks [@louistrue](https://github.com/louistrue)! - Fix `stop()` never resolving while a peer is connected. The `noServer` WebSocketServer's `close()` callback waits for every client to leave, and `stop()` awaited it before unloading rooms, which is the only thing that closes peer sockets. `stop()` now:
+  
+  1. stops accepting connections without waiting;
+  2. calls the new `RoomManager.shutdown()`, which stops the idle sweep and latches the manager closed (from that moment every `getOrCreate` is refused, so a join still in setup cannot load a room that outlives the server) and then unloads every room, giving each its final compaction and closing its peers;
+  3. closes sockets that never reached a room with 1001, and terminates whatever has not closed after a bounded grace period.
+  
+  `stop()` is idempotent. If a room fails to unload, the socket drain still runs and `stop()` then rejects. The entrypoint's access-control flush now runs on SIGTERM with peers attached.
+  
+  `RoomManager.unloadAll()` still evicts every room and leaves the manager, including its idle sweep, serving; only `shutdown()` stops the sweep. When a room fails to unload, `unloadAll()` now lets every other room finish its final compaction first and logs each failure, then rejects with the first failure's original error, as before.
+
+- [#9489](https://github.com/LTplus-AG/ifc-lite/pull/9489) [`56d60cd`](https://github.com/LTplus-AG/ifc-lite/commit/56d60cd05aa3363e28f21ea4c62831bce4a3fe30) Thanks [@louistrue](https://github.com/louistrue)! - Fix an unload/reload race that could lose room updates. A room's final compaction on unload replaces the persisted log, so a fresh instance of the same room loaded and written to while that compaction was in flight could have its update wiped. `getOrCreate` now waits for an in-flight unload of the same room. `sweepIdle` re-checks each candidate before unloading it, so a room a peer joined meanwhile stays loaded. A destroyed room refuses new connections (`addConnection` returns `false`), and the join path retries into the reloaded room instead of registering a ghost peer. `unloadAll` also waits for unloads the idle sweep already started.
+  
+  Each room now has at most one persistence write in flight, and `destroy()` waits for it before its final compaction. Two compactions in flight could otherwise race on the same temp file, or an older periodic snapshot could land after a reload had appended. Updates that arrive while a write runs are merged (`Y.mergeUpdates`) into a single pending append, so a slow backend cannot build an unbounded queue. On unload that pending append is dropped, because the final compaction already contains it, and if the final compaction fails the full state is appended instead.
+- Updated dependencies [[`a6a6331`](https://github.com/LTplus-AG/ifc-lite/commit/a6a63314fa4c5da2696e394c727e57dee461ba66), [`440bcfe`](https://github.com/LTplus-AG/ifc-lite/commit/440bcfee4ed9136b94536863641fd639d1bb762a), [`14de48e`](https://github.com/LTplus-AG/ifc-lite/commit/14de48e75922802a99fed061e475e6848d1359b5), [`6e880d7`](https://github.com/LTplus-AG/ifc-lite/commit/6e880d75bc21f085b054e0fc940140517ddb7da3)]:
+  - @ifc-lite/ifcx@4.7.0
+  - @ifc-lite/collab@0.11.0
+  - @ifc-lite/diff@0.13.2
+
 ## 0.9.1
 
 ### Patch Changes

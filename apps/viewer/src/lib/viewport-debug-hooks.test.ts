@@ -4,7 +4,8 @@
 
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Renderer } from '@ifc-lite/renderer';
+import type { Renderer, SceneSnapshot } from '@ifc-lite/renderer';
+import { tapSceneSnapshot, tappedSceneSnapshots } from './perf/sceneIdentityTap.js';
 import { clearViewportDebugHooks, installViewportDebugHooks } from './viewport-debug-hooks';
 
 afterEach(clearViewportDebugHooks);
@@ -63,3 +64,27 @@ for (const gate of [undefined, 'false', 'true', 'internal-unqualified']) {
     } finally { env.VITE_GAUSSIAN_SPLATS = previous; }
   });
 }
+
+it('#9990 viewport teardown drops old taps without letting pending hashes settle a new viewport', async () => {
+  const host = globalThis as Record<string, unknown>;
+  const saved = host.location;
+  host.location = { search: '?perf.sceneIdentity=1', href: 'http://x/?perf.sceneIdentity=1' };
+  const snapshot: SceneSnapshot = { policy: 'p', pieceCount: 0, nextSplitId: 0, sharedFrameOrigins: [], activeBuckets: [], batches: [] };
+  try {
+    tapSceneSnapshot('written', snapshot);
+    assert.equal(tappedSceneSnapshots().pending, 1);
+    clearViewportDebugHooks();
+    assert.deepEqual(tappedSceneSnapshots(), { snapshots: [], pending: 0 });
+    tapSceneSnapshot('adopted', snapshot);
+    assert.equal(tappedSceneSnapshots().pending, 1);
+    for (let i = 0; i < 50 && tappedSceneSnapshots().pending > 0; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    const current = tappedSceneSnapshots();
+    assert.equal(current.pending, 0, 'an old callback cannot decrement the new viewport counter');
+    assert.equal(current.snapshots.length, 1, 'old taps cannot reappear after the import resolves');
+    assert.equal(current.snapshots[0].kind, 'adopted');
+    assert.ok(current.snapshots[0].sig, 'the new viewport hash was completed');
+  } finally {
+    host.location = saved;
+    clearViewportDebugHooks();
+  }
+});

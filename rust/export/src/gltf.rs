@@ -484,39 +484,23 @@ struct Buffer {
 
 // ── Build ───────────────────────────────────────────────────────────────────
 
-/// Precomputed visibility filter. The express-id allow/deny lists and the hidden-type
-/// set are hashed ONCE per export instead of linearly scanned per mesh — `mesh_visible`
-/// ran `Vec::contains` over `opts.hidden`/`opts.isolated`/`opts.hidden_types` for every
-/// mesh, i.e. O(meshes × filter_len), and on the bounded path it ran in BOTH passes.
-/// Same decisions as the old scan, so no output changes.
+/// Precomputed visibility filter: the shared id/type filters
+/// ([`crate::visibility::ElementFilter`], hashed once per export) plus glTF's
+/// geometry sanity gate.
 struct VisibilityFilter {
-    hidden: FxHashSet<u32>,
-    isolated: FxHashSet<u32>,
-    isolated_active: bool,
-    hidden_types: FxHashSet<String>,
+    ids: crate::visibility::ElementFilter,
 }
 
 impl VisibilityFilter {
     fn new(opts: &GltfOptions) -> Self {
-        Self {
-            hidden: opts.hidden.iter().copied().collect(),
-            isolated: opts.isolated.iter().flatten().copied().collect(),
-            isolated_active: opts.isolated.is_some(),
-            hidden_types: opts.hidden_types.iter().cloned().collect(),
-        }
+        Self { ids: crate::visibility::ElementFilter::new(&opts.hidden, opts.isolated.as_deref(), &opts.hidden_types) }
     }
 
     fn visible(&self, mesh: &MeshData) -> bool {
         if mesh.geometry_class == crate::mesh_input::GEOM_CLASS_INSTANCED_TYPE {
             return false; // instanced type library duplicates occurrence geometry
         }
-        if self.hidden.contains(&mesh.express_id) {
-            return false;
-        }
-        if self.isolated_active && !self.isolated.contains(&mesh.express_id) {
-            return false;
-        }
-        if self.hidden_types.contains(&mesh.ifc_type) {
+        if !self.ids.keeps(mesh.express_id, &mesh.ifc_type) {
             return false;
         }
         // Geometry sanity: matching, non-empty, triangulated.

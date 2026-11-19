@@ -96,7 +96,7 @@ export function PlaneOutline({ corners, className, allowOffscreen = false }: Pla
   if (!svgLayer) return null;
 
   return createPortal(
-    <polygon
+    <polygon aria-hidden="true"
       ref={polygonRef}
       style={{ display: 'none' }}
       data-scene-primitive="plane-outline"

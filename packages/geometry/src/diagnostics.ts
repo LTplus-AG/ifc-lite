@@ -19,14 +19,17 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 4 — that constant carries
-   * the per-version changelog and is the single source of truth). Bumped on
-   * field renames, field removals, and count-semantics changes; also on an
-   * additive field whose absence a consumer must tell apart from a real zero,
-   * which is why 2 (removed `guardSaved`), 3 (added `totalUnsupportedItems`)
-   * and 4 (`totalUnsupportedItems` also counts unmeshable openings) all
-   * bumped. A purely additive optional field that no consumer gates on does
-   * not bump.
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 6). Bumped on field
+   * renames/removals and count-semantics changes; also on an additive field
+   * whose absence a consumer must tell apart from a real zero. A purely
+   * additive optional field that no consumer gates on does not bump.
+   *
+   * - 2: removed the permanently dead `guardSaved` signal.
+   * - 3: added `totalUnsupportedItems` / `unsupportedItemsByType`.
+   * - 4: unsupported counts also include unmeshable openings.
+   * - 5: work-budget refusals carry budget, demand and product/source identity
+   *   separately from unsupported items.
+   * - 6: `silentNoOps` measures area and volume instead of triangle counts.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of
@@ -51,11 +54,11 @@ export interface GeometryDiagnostics {
   /** Failure counts by stable reason label, sorted desc by count. */
   failuresByReason: Array<{ reason: string; count: number }>;
   /**
-   * Hosts where rectangular cutters ran, the triangle count was unchanged, and NO
-   * failure was recorded (cut attempted, geometry not modified) - the highest-
-   * signal "looks wrong but did not error" indicator. Hosts that failed are
-   * excluded (they are loud failures counted in totalCsgFailures, not silent).
-   * Batch-summed upper bound.
+   * Hosts where rectangular cutters ran without a recorded failure and left
+   * area and volume within 0.1% of the original (schema 6 onward). Older
+   * payloads compared triangle counts. Batch-summed upper bound over the
+   * contributing batches. When mixed versions are folded, only measured
+   * batches contribute to a schema 6 count.
    */
   silentNoOps: number;
   /** rect_fast fast-path engagement (perf observability). */
@@ -115,6 +118,34 @@ export interface GeometryDiagnostics {
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */
   unsupportedItemsByType?: Array<{ reason: string; count: number }>;
+  /** Complete safety-policy refusal count (v5); details are capped at sixteen. */
+  totalBudgetRefusals?: number;
+  budgetRefusals?: Array<{
+    budget: string;
+    limit: number;
+    reached: number;
+    sourceId: number;
+    productId: number | null;
+    productType: string | null;
+    GlobalId: string | null;
+  }>;
+}
+
+type BudgetRefusalDetail = NonNullable<GeometryDiagnostics['budgetRefusals']>[number];
+
+/** null sorts first, as Rust orders `None` before `Some`. */
+const cmpNullable = <T extends number | string>(x: T | null, y: T | null): number =>
+  x === y ? 0 : x === null ? -1 : y === null ? 1 : x < y ? -1 : 1;
+
+/**
+ * The key the native pool keeps refusal details by (processing's
+ * `keep_budget_details`), so a merge keeps the same sixteen whichever worker
+ * finishes first, and the same ones as a native load.
+ */
+function compareBudgetRefusals(x: BudgetRefusalDetail, y: BudgetRefusalDetail): number {
+  return cmpNullable(x.productId, y.productId) || cmpNullable(x.sourceId, y.sourceId)
+    || cmpNullable(x.budget, y.budget) || cmpNullable(x.limit, y.limit) || cmpNullable(x.reached, y.reached)
+    || cmpNullable(x.productType, y.productType) || cmpNullable(x.GlobalId, y.GlobalId);
 }
 
 /** Cap on the merged worst-hosts detail list (matches the Rust WORST_HOSTS_LIMIT). */
@@ -154,7 +185,12 @@ export function mergeGeometryDiagnostics(
   if (!a) return b ?? null;
   if (!b) return a;
 
-  const schemaVersion = Math.max(a.schemaVersion ?? 0, b.schemaVersion ?? 0);
+  const aVersion = a.schemaVersion ?? 0;
+  const bVersion = b.schemaVersion ?? 0;
+  const schemaVersion = Math.max(aVersion, bVersion);
+  const measuredCutSchema = 6;
+  const silentNoOps = (schemaVersion < measuredCutSchema || aVersion >= measuredCutSchema ? a.silentNoOps : 0)
+    + (schemaVersion < measuredCutSchema || bVersion >= measuredCutSchema ? b.silentNoOps : 0);
 
   const failuresByReason = mergeReasonCounts(a.failuresByReason, b.failuresByReason);
 
@@ -215,7 +251,7 @@ export function mergeGeometryDiagnostics(
       total: a.classification.total + b.classification.total,
     },
     failuresByReason,
-    silentNoOps: a.silentNoOps + b.silentNoOps,
+    silentNoOps,
     rectFast: {
       fired: a.rectFast.fired + b.rectFast.fired,
       openingsCut: a.rectFast.openingsCut + b.rectFast.openingsCut,
@@ -229,6 +265,14 @@ export function mergeGeometryDiagnostics(
     oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
     ...unsupportedFields,
+    ...(a.totalBudgetRefusals !== undefined || b.totalBudgetRefusals !== undefined
+      || a.budgetRefusals !== undefined || b.budgetRefusals !== undefined
+      ? {
+        totalBudgetRefusals: (a.totalBudgetRefusals ?? a.budgetRefusals?.length ?? 0)
+          + (b.totalBudgetRefusals ?? b.budgetRefusals?.length ?? 0),
+        budgetRefusals: [...(a.budgetRefusals ?? []), ...(b.budgetRefusals ?? [])].sort(compareBudgetRefusals).slice(0, 16),
+      }
+      : {}),
   };
 }
 

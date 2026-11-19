@@ -1,0 +1,47 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+// #9668: a physical frame the structural derivation turns into members, nodes and one footing support.
+/** Two 3 m columns, the right one on a footing, and a 6 m beam on their tops, in metres. */
+export const FRAME = new TextEncoder().encode(`ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('frame.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#7),#9);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#6,$);
+#9=IFCUNITASSIGNMENT((#91));
+#91=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCLOCALPLACEMENT($,#6);
+#30=IFCBUILDINGSTOREY('0storey000000000000000',$,'Level 0',$,$,#20,$,$,.ELEMENT.,0.);
+#31=IFCRELAGGREGATES('0aggr00000000000000000',$,$,$,#1,(#30));
+#40=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,0.3,0.3);
+#41=IFCDIRECTION((0.,0.,1.));
+#42=IFCEXTRUDEDAREASOLID(#40,$,#41,3.);
+#43=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#42));
+#44=IFCPRODUCTDEFINITIONSHAPE($,$,(#43));
+#45=IFCCARTESIANPOINT((6.,0.,0.));
+#46=IFCAXIS2PLACEMENT3D(#45,$,$);
+#47=IFCLOCALPLACEMENT(#20,#46);
+#50=IFCCOLUMN('0colLeft00000000000000',$,'C1',$,$,#20,#44,$,$);
+#51=IFCCOLUMN('0colRight0000000000000',$,'C2',$,$,#47,#44,$,$);
+#60=IFCCARTESIANPOINT((0.,0.,3.));
+#61=IFCCARTESIANPOINT((6.,0.,3.));
+#62=IFCPOLYLINE((#60,#61));
+#63=IFCSHAPEREPRESENTATION(#7,'Axis','Curve3D',(#62));
+#64=IFCPRODUCTDEFINITIONSHAPE($,$,(#63));
+#65=IFCBEAM('0beam00000000000000000',$,'B1',$,$,#20,#64,$,$);
+#70=IFCCARTESIANPOINT((5.4,-0.6,-0.5));
+#71=IFCAXIS2PLACEMENT3D(#70,$,$);
+#72=IFCLOCALPLACEMENT(#20,#71);
+#73=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.2,1.2);
+#74=IFCCARTESIANPOINT((0.6,0.6,0.));
+#75=IFCAXIS2PLACEMENT3D(#74,$,$);
+#76=IFCEXTRUDEDAREASOLID(#73,#75,#41,0.5);
+#77=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#76));
+#78=IFCPRODUCTDEFINITIONSHAPE($,$,(#77));
+#79=IFCFOOTING('0footing00000000000000',$,'F1',$,$,#72,#78,$,.PAD_FOOTING.);
+#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0contain00000000000000',$,$,$,(#50,#51,#65,#79),#30);
+ENDSEC;
+END-ISO-10303-21;`);

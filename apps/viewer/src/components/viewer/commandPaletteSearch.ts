@@ -67,7 +67,7 @@ interface CommandBase {
 export type Command = CommandBase & (
   | { registryOwned: true; labelKey: TranslationKey; runtimeSource?: never;
       labelKeyParams?: never }
-  | { registryOwned?: never; runtimeSource: 'recent-file' | 'script-template' | 'tour' | 'extension-command' | 'extension-export';
+  | { registryOwned?: never; runtimeSource: 'recent-file' | 'script-template' | 'tour' | 'extension-command' | 'extension-export' | 'extension-widget';
       labelKey?: TranslationKey; labelKeyParams?: TranslationParameters }
 );
 
@@ -98,8 +98,15 @@ const CATEGORY_POSITION = {
 export const CATEGORY_ORDER = (Object.keys(CATEGORY_POSITION) as Category[])
   .sort((a, b) => CATEGORY_POSITION[a] - CATEGORY_POSITION[b]);
 
+// Contextual actions belong in browse only while they can act. Search keeps the full catalogue.
+const ACTIVE_ONLY_BROWSE_IDS = new Set([
+  'file:cancel-load', 'file:retry-load', 'file:dismiss-load-error', 'vis:reset-filters',
+]);
+
 /** Group browse rows, including extension and Learn commands, in one place. */
 export function browseCommands(commands: readonly Command[], recentIds: readonly string[]) {
+  const browseRows = commands.filter(command =>
+    !ACTIVE_ONLY_BROWSE_IDS.has(command.id) || command.availability?.status === 'available');
   const grouped: { category: Category; items: FlatItem[] }[] = [];
   const flatItems: FlatItem[] = [];
   const addGroup = (category: Category, rows: readonly Command[]) => {
@@ -112,11 +119,11 @@ export function browseCommands(commands: readonly Command[], recentIds: readonly
     grouped.push({ category, items });
   };
 
-  addGroup('Recent', recentIds.slice(0, MAX_RECENT)
-    .map((id) => commands.find((command) => command.id === id))
-    .filter((command): command is Command => command !== undefined));
+  addGroup('Recent', recentIds
+    .map((id) => browseRows.find((command) => command.id === id))
+    .filter((command): command is Command => command !== undefined).slice(0, MAX_RECENT));
   for (const category of CATEGORY_ORDER) {
-    if (category !== 'Recent') addGroup(category, commands.filter((command) => command.category === category));
+    if (category !== 'Recent') addGroup(category, browseRows.filter((command) => command.category === category));
   }
   return { grouped, flatItems };
 }
@@ -161,7 +168,11 @@ export function rankCommand(cmd: Command, query: string, displayLabel?: string, 
   const label = Math.max(score(query, cmd.label), score(query, displayLabel ?? ''));
   const keywords = score(query, cmd.keywords);
   const category = Math.max(score(query, cmd.category), score(query, displayCategory ?? ''));
-  return Math.max(label, keywords >= 400 ? 300 : keywords, category >= 400 ? 200 : category);
+  // A typo in the visible name must beat the same typo in hidden metadata
+  // ("secton" → Section, ahead of Down's "section" keyword, #8947).
+  return Math.max(label >= 400 ? label : label > 0 ? 100 + label : 0,
+    keywords >= 400 ? 300 : keywords > 0 ? 50 + keywords : 0,
+    category >= 400 ? 200 : category);
 }
 
 /** Equal matches use most-recent usage, then the original registry order. */

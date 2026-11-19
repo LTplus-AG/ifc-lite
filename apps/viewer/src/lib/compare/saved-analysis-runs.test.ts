@@ -95,6 +95,8 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     const after = await session(pair, { A: 'A-session-2' });
     const { saved, bound } = roundTrip(base, before, after);
     assert.ok(saved.kind === 'clash');
+    assert.ok(base.kind === 'clash' && base.result.ruleCoverage?.some(coverage => coverage.matchedElements?.length), '#9259 the native run held per-load object members');
+    assert.ok(saved.result.ruleCoverage?.every(coverage => !Object.hasOwn(coverage, 'matchedElements')), '#9259 portable evidence strips per-load members');
     assert.ok(!JSON.stringify(saved).includes('"A"'), 'no session model id is stored');
     assert.equal(saved.models[0].sourceContentHash, (await sourceHashes()).A);
     assert.ok(bound.ok);
@@ -289,6 +291,9 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
       [key, key === id ? { ...m, idOffset: by } : m])) });
     const shifted = { ...result, clashes: result.clashes.map(c => ({ ...c,
       a: c.a.model === 'B' ? { ...c.a, ref: c.a.ref + 50_000 } : c.a, b: c.b.model === 'B' ? { ...c.b, ref: c.b.ref + 50_000 } : c.b })) };
+    // #9430: ambiguity provenance must survive portability, not silently
+    // collapse repeated-GlobalId decisions back to the bare durable key.
+    for (const clash of shifted.clashes) clash.a = { ...clash.a, keyAmbiguous: true };
     const before = offset(plain, 'B', 50_000);
     const { saved, bound } = roundTrip(capture(before, { kind: 'clash', result: shifted }, ['A', 'B']), before, offset(plain, 'B', 7));
     assert.ok(saved.kind === 'clash' && bound.ok && bound.run.kind === 'clash');
@@ -296,12 +301,17 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     let checked = 0;
     for (const [i, clash] of saved.result.clashes.entries()) for (const side of ['a', 'b'] as const) {
       const ref = clash[side];
+      assert.equal(ref.keyAmbiguous, shifted.clashes[i][side].keyAmbiguous);
+      assert.equal(bound.run.result.clashes[i][side].keyAmbiguous, ref.keyAmbiguous);
       if (ref.model !== keyOfB || ref.key.startsWith('expressid:')) continue;
       assert.equal(pair.head.ifcDataStore.entities.getGlobalId(ref.expressId), ref.key.split(':')[0], 'the stored id is the file\'s own');
       assert.equal(bound.run.result.clashes[i][side].ref, ref.expressId + 7, 'rebuilt at the new offset');
       checked++;
     }
     assert.ok(checked > 0);
+    const first = saved.result.clashes[0];
+    assert.equal(decodeSavedAnalysisRun({ ...saved, result: { ...saved.result,
+      clashes: [{ ...first, a: { ...first.a, keyAmbiguous: 'invalid' } }] } }), null, 'untrusted ambiguity flags are validated (#9430)');
   });
 
   it('a capture whose model was closed cannot be saved; the stored payload is strict', async t => {

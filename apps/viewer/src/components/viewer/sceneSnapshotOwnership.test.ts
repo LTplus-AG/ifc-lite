@@ -34,6 +34,7 @@ describe('sceneSnapshotKey', () => {
     const key = sceneSnapshotKey('p', 'model', visibility);
     assert.equal(sceneSnapshotKey('p', 'model', { ...visibility }), key);
     assert.notEqual(sceneSnapshotKey('other', 'model', visibility), key);
+    assert.notEqual(sceneSnapshotKey('p', 'model', visibility, 'physical'), key, '#9923 mode belongs to the saved snapshot key');
     assert.notEqual(sceneSnapshotKey('p', 'types', visibility), key);
     assert.notEqual(sceneSnapshotKey('p', 'model', { ...visibility, spaces: true }), key);
   });
@@ -42,7 +43,7 @@ describe('sceneSnapshotKey', () => {
 describe('takeSceneSnapshotGeometry', () => {
   const adoption = {};
   beforeEach(() => { hydrates = true; hydrations = []; removedShards = []; fits = []; withdrawPendingSceneSnapshot(adoption); takeSnapshotModelArrival(); });
-  const take = (geometry: MeshData[], modelCount = 0, target = refs()) => takeSceneSnapshotGeometry(geometry, modelCount, renderer, target);
+  const take = (geometry: MeshData[], modelCount = 0, target = refs()) => takeSceneSnapshotGeometry(geometry, modelCount, renderer, target, true);
 
   it('hydrates with the synced geometry once, and records it as streamed and fitted', () => {
     const geometry = [mesh(), mesh()];

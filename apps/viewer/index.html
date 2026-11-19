@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <!-- The viewer themes itself, light and dark (#9718). Declaring both keeps a
+       browser from force-darkening the page: Samsung Internet's dark mode and
+       Chrome's auto dark theme invert the DOM but not the WebGPU canvas, which
+       left dark chrome and a dark-on-white ViewCube over a light model view. -->
+  <meta name="color-scheme" content="light dark">
   <title>IFClite Viewer</title>
   <script>
     // Apply theme before first paint to prevent flash of wrong theme.
@@ -192,10 +197,9 @@
   <!-- Web App Manifest (PWA support) -->
   <link rel="manifest" href="/manifest.json">
   
-  <!-- Material Symbols font for IFC class icons -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap">
+  <!-- The Material Symbols font for IFC class icons is linked from
+       src/lib/features/icon-font.ts at mount: a host can switch hosted
+       third-party requests off. -->
 
   <!-- Theme colors -->
   <meta name="theme-color" content="#7aa2f7">

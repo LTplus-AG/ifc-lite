@@ -15,14 +15,26 @@
 //! stays exported from [`super::oversized_ids`] (its original, still public
 //! name) so no caller-visible API changes.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 /// Set once, because a swappable sink invites a reset race between two loads
 /// on different threads and nothing here needs one.
 pub(super) static REPORT_SINK: OnceLock<fn(&str)> = OnceLock::new();
 
+/// Every diagnostic emitted so far in this process, from any thread.
+static EMITTED: AtomicU64 = AtomicU64::new(0);
+
+/// The number of scan diagnostics emitted so far in this process. A result
+/// cache must not store a pass that emitted one: a replay never scans, so the
+/// host would silently lose the "this file may be incomplete" warning.
+pub fn scan_report_events() -> u64 {
+    EMITTED.load(Ordering::SeqCst)
+}
+
 /// Route a diagnostic `message` to the installed sink, or stderr by default.
 pub(super) fn emit(message: &str) {
+    EMITTED.fetch_add(1, Ordering::SeqCst);
     match REPORT_SINK.get() {
         Some(sink) => sink(&format!("[ifc-lite] {message}")),
         None => eprintln!("[ifc-lite] {message}"),

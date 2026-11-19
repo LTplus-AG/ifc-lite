@@ -48,6 +48,16 @@ export async function mountNative(t: TestContext, model = 'openai/gpt-free') {
   const ui = render(<BimReactContext.Provider value={bim}><ExtensionHostContext.Provider value={chromeHost}><ChatPanel /></ExtensionHostContext.Provider></BimReactContext.Provider>);
   return { ui, pair, bim };
 }
+/** Plain proxy replies need no parsed IFC or WASM runtime. */
+export function mountProxy() {
+  act(() => {
+    useViewerStore.getState().clearChatMessages();
+    useViewerStore.setState({ chatActiveModel: 'openai/gpt-free', chatAutoExecute: false });
+    clearApiKeys();
+  });
+  const bim = createBimContext({ backend: new LocalBackend(useViewerStore) });
+  return render(<BimReactContext.Provider value={bim}><ExtensionHostContext.Provider value={chromeHost}><ChatPanel /></ExtensionHostContext.Provider></BimReactContext.Provider>);
+}
 export function send(ui: HTMLElement, prompt = 'Count the walls using a script') {
   const input = ui.querySelector<HTMLTextAreaElement>('textarea[aria-label="Chat message"]'); assert.ok(input);
   type(input, prompt);

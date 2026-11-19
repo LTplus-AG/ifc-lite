@@ -128,13 +128,16 @@ describe('section reference export composition (#6615)', () => {
     const multiline = [{...vectors[0],texts:[{...vectors[0].texts[0],text:'Upper\nLower'}]}];
     drawDxfUnderlaysPdf(doc,multiline,(x,y)=>({x:x*10,y:y*10}),10);
     const pdf = doc.output();
-    const leadings = [...pdf.matchAll(/([\d.]+) TL/g)].map(match=>Number(match[1]));
-    const expected = vectors[0].texts[0].height * 10 * 72 / 25.4 * 1.3;
-    assert.ok(leadings.some(value=>Math.abs(value-expected)<0.01),'PDF text advances by 1.3 times its physical font height');
-    assert.match(pdf,/\(Upper\) Tj/); assert.match(pdf,/\(Lower\) Tj/); assert.match(pdf,/T\*/);
+    // Each line is placed on its own baseline (jsPDF's own stacking ignores rotation).
+    const starts = [...pdf.matchAll(/([-\d.]+) ([-\d.]+) (?:Tm|Td)\n\((Upper|Lower)\) Tj/g)]
+      .map(match=>({x:Number(match[1]),y:Number(match[2])}));
+    assert.equal(starts.length,2);
+    const expected = vectors[0].texts[0].height * 10 * 72 / 25.4 * 5 / 3;
+    assert.ok(Math.abs(Math.hypot(starts[1].x-starts[0].x,starts[1].y-starts[0].y)-expected)<0.01,
+      'PDF text advances by AutoCAD\'s 5/3 times its physical font height');
   });
 
-  it('keeps multiline DXF spacing at 1.3 text heights after placement/georeference scale (#6615)', () => {
+  it('keeps multiline DXF spacing at 5/3 text heights after placement/georeference scale (#6615)', () => {
     const underlay = importDxf(['0','SECTION','2','HEADER','9','$INSUNITS','70','6','0','ENDSEC',
       '0','SECTION','2','ENTITIES','0','MTEXT','8','labels','10','2','20','3','40','0.2','1','Upper\\PLower',
       '0','ENDSEC','0','EOF'].join('\n'));
@@ -150,7 +153,7 @@ describe('section reference export composition (#6615)', () => {
       assert.equal(texts.length,2);
       assert.ok(texts[0].kind==='text' && texts[1].kind==='text');
       const delta = {x:texts[1].x-texts[0].x,y:texts[1].y-texts[0].y};
-      assert.ok(Math.abs(Math.hypot(delta.x,delta.y)-1.56)<1e-5,'line gap is 1.3 times the mapped 1.2 metre height');
+      assert.ok(Math.abs(Math.hypot(delta.x,delta.y)-2)<1e-5,'line gap is 5/3 times the mapped 1.2 metre height');
       const direction = mapped.texts[0];
       assert.ok(Math.abs(delta.x*direction.dirX+delta.y*direction.dirY)<1e-5,'lines advance perpendicular to the rotated baseline');
     }
@@ -166,7 +169,8 @@ describe('section reference export composition (#6615)', () => {
       assert.ok(texts[0].kind==='text' && texts[1].kind==='text');
       // Final Front Y flip makes negative drawing-Y positive screen-Y;
       // Side flips both axes, rotating the baseline and its perpendicular.
-      assert.ok(Math.abs(texts[1].y-texts[0].y-(axis==='front'?-0.26:0.26))<1e-9);
+      const gap = 0.2 * 5 / 3; // 0.2 m text, AutoCAD's 5/3 pitch
+      assert.ok(Math.abs(texts[1].y-texts[0].y-(axis==='front'?-gap:gap))<1e-6, 'DXF coordinates are written to 6 decimals');
     }
   });
 });

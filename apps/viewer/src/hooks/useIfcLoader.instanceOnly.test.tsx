@@ -10,6 +10,7 @@ import { useViewerStore } from '@/store';
 import { loadTracer } from '@/lib/perf/loadTrace';
 import { advance, waitFor } from '@/test/render.js';
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
+import { subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { hook, skip, blankFile } from '@/test/blank-ifc-loader-harness.js';
 
 // Loader scheduling invariant, not kernel parity: real parser/loader/store,
@@ -43,12 +44,12 @@ for (const flat of [false, true]) {
       yield { type: 'complete', coordinateInfo, totalMeshes: flat ? 1 : 2 };
     });
     const state = useViewerStore.getState(), calls: string[] = [];
-    const append = state.appendGeometryBatch, shards = state.appendInstancedShards;
+    const append = state.appendGeometryBatch;
+    const offShards = subscribeInstancedShards(event => { if (event.kind === 'enqueued') calls.push('shards'); });
     // Publish forwarding observers through Zustand so the mounted hook gets
     // the new callbacks; directly mutating an old state object would not.
     await act(async () => useViewerStore.setState({
       appendGeometryBatch: (...args: Parameters<typeof append>) => { calls.push(`append:${args[1].length}`);return append(...args); },
-      appendInstancedShards: (...args: Parameters<typeof shards>) => { calls.push('shards');return shards(...args); },
     }));
     const id = crypto.randomUUID(), pending = hook.loadFile(blankFile('METRE'), { kind: 'primary', modelId: id });
     try {
@@ -70,7 +71,8 @@ for (const flat of [false, true]) {
       assert.equal(useViewerStore.getState().geometryStreamingActive, true);
     } finally {
       release();releaseFlat();await act(async () => pending);
-      await act(async () => useViewerStore.setState({ appendGeometryBatch: append, appendInstancedShards: shards }));
+      offShards();
+      await act(async () => useViewerStore.setState({ appendGeometryBatch: append }));
     }
     assert.equal(useViewerStore.getState().models.get(id)?.loadState, 'complete');
   });

@@ -19,11 +19,11 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import * as Y from 'yjs';
-import type { WebSocket } from 'ws';
 import type { Persistence } from './persistence.js';
 import type { Principal } from './auth.js';
-import { canWrite } from './auth.js';
-import { closeExpiredConnections, isPrincipalExpired, sweepExpiredAcrossRooms } from './principal-expiry.js';
+import { closeExpiredConnections, sweepExpiredAcrossRooms } from './principal-expiry.js';
+import { writeFrameRejection } from './write-frame-gate.js';
+import { RoomWriter } from './room-writer.js';
 import type { VerifyDecision, VerifyMessageFn, RoomOptions, PeerConnection } from './room-types.js';
 import {
   noopAuditSink,
@@ -32,6 +32,7 @@ import {
   type AuditSink,
 } from './audit-log.js';
 import { createRateLimiter, type RateLimitOptions } from './rate-limit.js';
+import { safeSend } from './safe-send.js';
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -42,22 +43,6 @@ const MESSAGE_AWARENESS = 1;
  * message, which is the point. See `Room.sendKeepalive`.
  */
 const EMPTY_AWARENESS_UPDATE = new Uint8Array([0]);
-
-// Inner sync-message subtypes (mirror y-protocols/sync constants) used for
-// the cheap pre-verify frame peek. Kept local so the peek never has to call
-// the full readSyncMessage (which applies payloads to the doc as a side
-// effect). Step2 (1) and Update (2) carry a doc-mutating payload.
-const SYNC_STEP2 = syncProtocol.messageYjsSyncStep2;
-const SYNC_UPDATE = syncProtocol.messageYjsUpdate;
-
-/**
- * Hard ceiling on a single sync write-frame, enforced before the
- * path-lock verifier parses it through a throwaway Y.Doc. Bounds the
- * O(update_size) allocation an attacker can force per message. 8 MB is
- * far above any legitimate incremental Y update; whole-doc state lands
- * via persistence, not a single wire frame.
- */
-const MAX_SYNC_PAYLOAD_BYTES = 8 * 1024 * 1024;
 
 /**
  * Hard ceiling on a single awareness frame. Presence/cursor payloads are
@@ -76,8 +61,7 @@ export class Room {
   readonly awareness: Awareness;
   private readonly conns = new Set<PeerConnection>();
   private readonly persistence: Persistence;
-  private updatesSinceCompact = 0;
-  private readonly compactEvery: number;
+  private readonly writer: RoomWriter; // one write in flight; see room-writer.ts
   private readonly auditSink: AuditSink;
   private readonly rateLimitFor: (principal: Principal) => RateLimitOptions;
   private readonly verifyMessage?: VerifyMessageFn;
@@ -100,7 +84,12 @@ export class Room {
     // clearing it cannot broadcast a removal for a peer no client ever saw.
     this.awareness.setLocalState(null);
     this.persistence = opts.persistence;
-    this.compactEvery = opts.compactEvery ?? 1000;
+    this.writer = new RoomWriter({
+      roomId: id,
+      persistence: opts.persistence,
+      compactEvery: opts.compactEvery ?? 1000,
+      snapshot: () => Y.encodeStateAsUpdate(this.doc),
+    });
     this.auditSink = opts.auditSink ?? noopAuditSink;
     const rl = opts.rateLimit;
     this.rateLimitFor = typeof rl === 'function' ? rl : () => rl ?? {};
@@ -111,9 +100,7 @@ export class Room {
     this.awareness.on('update', this.onAwarenessUpdate);
   }
 
-  setCounters(counters: { update?: () => void; reject?: (reason: string) => void }): void {
-    this.counters = counters;
-  }
+  setCounters(counters: { update?: () => void; reject?: (reason: string) => void }): void { this.counters = counters; }
 
   /**
    * Append an audit-log entry for this room.
@@ -181,7 +168,9 @@ export class Room {
     return this.conns.size;
   }
 
-  addConnection(conn: PeerConnection): void {
+  /** Registers the peer; false (and nothing registered) once destroyed. */
+  addConnection(conn: PeerConnection): boolean {
+    if (this.destroyed) return false;
     if (!conn.limiter) {
       conn.limiter = createRateLimiter(this.rateLimitFor(conn.principal));
     }
@@ -203,6 +192,7 @@ export class Room {
       );
       safeSend(conn.ws, encoding.toUint8Array(aenc));
     }
+    return true;
   }
 
   /**
@@ -293,53 +283,13 @@ export class Room {
     }
   }
 
-  /**
-   * Cheap pre-verify guard. Peeks the outer + inner frame type without
-   * applying anything to the doc and, for sync write-frames, enforces the
-   * role gate, the per-connection rate limiter, and a payload-size bound.
-   * Returns `false` (already audited + counted) when the frame is rejected;
-   * `true` when it is safe to continue to verifyMessage / dispatch.
-   *
-   * A frame whose header can't be peeked is waved through — the downstream
-   * decode in dispatchMessage owns the `malformed` audit so we don't
-   * double-count it here.
-   */
+  /** See write-frame-gate.ts; a rejection is audited and counted here. */
   private preCheckWriteFrame(conn: PeerConnection, msg: Uint8Array): boolean {
-    let outerType: number;
-    let subtype: number;
-    try {
-      const decoder = decoding.createDecoder(msg);
-      outerType = decoding.readVarUint(decoder);
-      if (outerType !== MESSAGE_SYNC) return true;
-      subtype = decoding.peekVarUint(decoder);
-    } catch {
-      // Unreadable header: let dispatchMessage produce the malformed audit.
-      return true;
-    }
-    const isWriteFrame = subtype === SYNC_UPDATE || subtype === SYNC_STEP2;
-    if (!isWriteFrame) return true;
-    // Immediate half of the #3441 expiry re-check; see principal-expiry.ts.
-    if (isPrincipalExpired(conn.principal, Date.now())) {
-      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'expired' });
-      this.counters.reject?.('expired');
-      return false;
-    }
-    if (!canWrite(conn.principal)) {
-      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'role' });
-      this.counters.reject?.('role');
-      return false;
-    }
-    if (conn.limiter && !conn.limiter.tryConsume(1)) {
-      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'rate-limit' });
-      this.counters.reject?.('rate-limit');
-      return false;
-    }
-    if (msg.byteLength > MAX_SYNC_PAYLOAD_BYTES) {
-      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'sync-size' });
-      this.counters.reject?.('sync-size');
-      return false;
-    }
-    return true;
+    const reason = writeFrameRejection(conn, msg);
+    if (reason === null) return true;
+    this.audit(conn.principal, 'reject', shortHash(msg), { reason });
+    this.counters.reject?.(reason);
+    return false;
   }
 
   /** Decode + dispatch a verified frame. May throw on malformed input. */
@@ -406,26 +356,8 @@ export class Room {
       if (conn === origin) continue;
       safeSend(conn.ws, message);
     }
-    void this.persistAndMaybeCompact(update);
+    this.writer.enqueue(update);
   };
-
-  private async persistAndMaybeCompact(update: Uint8Array): Promise<void> {
-    try {
-      await this.persistence.append(this.id, update);
-      this.updatesSinceCompact++;
-      if (this.updatesSinceCompact >= this.compactEvery) {
-        const merged = Y.encodeStateAsUpdate(this.doc);
-        await this.persistence.compact(this.id, merged);
-        this.updatesSinceCompact = 0;
-      }
-    } catch (err) {
-      // Persistence failures are logged but never block sync — the
-      // in-memory state is still consistent across peers, and the next
-      // successful append/compact catches up.
-      // eslint-disable-next-line no-console
-      console.error(`[collab-server] persistence error for room ${this.id}:`, err);
-    }
-  }
 
   /**
    * Forward an awareness update to every other peer. Tracks which client
@@ -480,13 +412,9 @@ export class Room {
 
   async destroy(): Promise<void> {
     this.closeConnsAndListeners();
-    // Final compaction so the next load picks up the freshest state.
-    try {
-      await this.persistence.compact(this.id, Y.encodeStateAsUpdate(this.doc));
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(`[collab-server] compact-on-destroy error for ${this.id}:`, err);
-    }
+    // Final compaction so the next load picks up the freshest state, after
+    // the write in flight (an older compaction landing last would roll back).
+    await this.writer.closeAndCompact();
     this.awareness.destroy();
     this.doc.destroy();
   }
@@ -507,8 +435,11 @@ export class RoomManager {
   /** Wall-clock ms when a room last had >0 peers, or 0 if never observed. */
   private readonly lastActiveAt = new Map<string, number>();
   private readonly options: RoomManagerOptions;
+  /** In-flight unloads by id; a reload waits for the final compaction. */
+  private readonly unloading = new Map<string, Promise<void>>();
   private idleTimer: ReturnType<typeof setInterval> | null = null;
   private counters: RoomCounters = {};
+  private closed = false; // set by shutdown(): a join mid-setup must not load a room it missed
 
   constructor(options: RoomManagerOptions) {
     this.options = options;
@@ -524,6 +455,7 @@ export class RoomManager {
   }
 
   async getOrCreate(roomId: string): Promise<Room> {
+    if (this.closed) throw new Error('@ifc-lite/collab-server: room manager is shut down');
     let pending = this.rooms.get(roomId);
     if (pending) {
       this.lastActiveAt.set(roomId, Date.now());
@@ -536,6 +468,9 @@ export class RoomManager {
     const counters = this.counters;
     const verifyMessage = this.options.verifyMessage;
     pending = (async () => {
+      // The old instance's final compaction REPLACES the persisted log (every
+      // backend), so loading and appending before it lands loses our appends.
+      await this.unloading.get(roomId);
       const room = new Room(roomId, { ...this.options, counters, verifyMessage });
       // `new Room(...)` already started disposables (notably y-protocols'
       // `Awareness`, which self-starts a `setInterval` renewal/eviction
@@ -595,6 +530,13 @@ export class RoomManager {
     }
   }
 
+  /** Server stop only: refuse loads for good (from this call on), then unloadAll(). */
+  async shutdown(): Promise<void> {
+    if (this.idleTimer) clearInterval(this.idleTimer); // the manager never serves again
+    this.closed = true;
+    await this.unloadAll();
+  }
+
   list(): string[] {
     return Array.from(this.rooms.keys());
   }
@@ -633,14 +575,30 @@ export class RoomManager {
     if (!pending) return;
     this.rooms.delete(roomId);
     this.lastActiveAt.delete(roomId);
-    const room = await pending;
-    await room.destroy();
+    await this.trackUnload(roomId, pending.then((room) => room.destroy()));
   }
 
+  private trackUnload(roomId: string, task: Promise<void>): Promise<void> {
+    const settled = task.catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error(`[collab-server] unload failed for ${roomId}:`, err);
+    });
+    this.unloading.set(roomId, settled);
+    void settled.then(() => {
+      if (this.unloading.get(roomId) === settled) this.unloading.delete(roomId);
+    });
+    return task;
+  }
+
+  /** Evict every room; manager and idle sweep keep serving. All settle, each failure is logged, the first rethrown. */
   async unloadAll(): Promise<void> {
-    if (this.idleTimer) clearInterval(this.idleTimer);
-    this.idleTimer = null;
-    await Promise.all(Array.from(this.rooms.keys()).map((id) => this.unload(id)));
+    const settled = await Promise.allSettled(Array.from(this.rooms.keys(), (id) => this.unload(id)));
+    // Unloads the idle sweep already started: their compaction must land too.
+    // Drain until empty so an unload tracked after this snapshot still counts.
+    while (this.unloading.size > 0) await Promise.all(this.unloading.values());
+    const failed = settled.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []));
+    for (const err of failed) console.error('[collab-server] room unload failed:', err);
+    if (failed.length > 0) throw failed[0];
   }
 
   /**
@@ -653,7 +611,7 @@ export class RoomManager {
     const idleMs = this.options.idleUnloadMs;
     if (!idleMs || idleMs <= 0) return [];
     const now = Date.now();
-    const candidates: string[] = [];
+    const candidates: Array<[string, Promise<Room>]> = [];
     for (const [roomId, pending] of this.rooms) {
       let room: Room;
       try {
@@ -669,23 +627,26 @@ export class RoomManager {
         continue;
       }
       const lastActive = this.lastActiveAt.get(roomId) ?? now;
-      if (now - lastActive >= idleMs) candidates.push(roomId);
+      if (now - lastActive >= idleMs) candidates.push([roomId, pending]);
     }
-    for (const roomId of candidates) await this.unload(roomId);
-    return candidates;
+    const unloaded: string[] = [];
+    for (const [roomId, pending] of candidates) {
+      // Re-check at unload time: a peer may have joined while an earlier
+      // candidate compacted, and unloading it would close a live socket.
+      const room = await pending;
+      if (this.rooms.get(roomId) !== pending || room.peerCount > 0) continue;
+      if (Date.now() - (this.lastActiveAt.get(roomId) ?? 0) < idleMs) continue;
+      this.rooms.delete(roomId);
+      this.lastActiveAt.delete(roomId);
+      // destroy() marks the room destroyed synchronously: no join slips in.
+      await this.trackUnload(roomId, room.destroy());
+      unloaded.push(roomId);
+    }
+    return unloaded;
   }
 
   /** Across every loaded room; see principal-expiry.ts. Timer: server.ts. */
   sweepExpiredPrincipals(now: number = Date.now()): Promise<number> {
     return sweepExpiredAcrossRooms(this.rooms.values(), now);
-  }
-}
-
-function safeSend(ws: WebSocket, data: Uint8Array): void {
-  try {
-    if (ws.readyState === ws.OPEN) ws.send(data);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[collab-server] ws send error:', err);
   }
 }

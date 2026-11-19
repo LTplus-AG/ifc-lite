@@ -401,3 +401,41 @@ test('#9383 unnamed resolved reference stays classified under its source', async
     assert.deepEqual(group.memberGlobalIds, [...members]);
   }
 });
+
+// #9906: the hierarchy builds this tree several times per open (visible rows,
+// the expanded structure for search and reveal, and both again when a second
+// hierarchy is docked). Each build used to resolve layer membership from the
+// source again; on a 326 MB BREP export that was about 23 s per build.
+test('#9906 every tree build of a federated session reads each model once', async () => {
+  const state = useViewerStore.getState();
+  const a = sharedModel('presentation-index-a', await parse());
+  const b = sharedModel('presentation-index-b', await parse());
+  a.idOffset = state.registerModelOffset(a.id, 100);
+  b.idOffset = state.registerModelOffset(b.id, 100);
+  const { models, activeModelId } = fixtureModels(a, b);
+  useViewerStore.setState({ models, activeModelId, mutationViews: new Map() });
+  let decoded = 0;
+  for (const model of [a, b]) {
+    const store = model.ifcDataStore!;
+    // #9928 counts selective reads as well as full-record decoding.
+    const decode = store.source.decodeUtf8.bind(store.source);
+    store.source.decodeUtf8 = (start, end) => { decoded++; return decode(start, end); };
+  }
+  const geometry = new Set([a.idOffset + 2, a.idOffset + 3, b.idOffset + 2, b.idOffset + 3]);
+  const ready = new Set([a.id, b.id]);
+  const collapsed = buildPresentationLayerTree(models, null, new Set<string>(), geometry, ready);
+  const built = decoded;
+  assert.ok(built > 0, 'the first build reads both models');
+  const expanded = buildPresentationLayerTree(models, null, ALL, geometry, ready);
+  const again = buildPresentationLayerTree(models, null, new Set<string>(), geometry, ready);
+  assert.equal(decoded, built, 'later builds decode nothing from either model');
+  // Same rows as before: headers per model, members only when expanded.
+  assert.deepEqual(collapsed.map(row => row.id), again.map(row => row.id));
+  assert.equal(collapsed.every(row => row.type === 'presentation-layer'), true);
+  for (const model of [a, b]) {
+    const header = expanded.find(row => row.entityExpressId === 50 && row.modelId === model.id);
+    assert.deepEqual(header?.memberGlobalIds, [model.idOffset + 1, model.idOffset + 2]);
+    assert.equal(collapsed.find(row => row.id === header?.id)?.elementCount, 2);
+  }
+  assert.equal(expanded.filter(row => row.type === 'element').length > 0, true);
+});

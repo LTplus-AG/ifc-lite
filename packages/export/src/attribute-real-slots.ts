@@ -37,7 +37,7 @@ export function isTypedMarker(value: IfcAttributeValue): boolean {
     typeof value === 'object' &&
     value !== null &&
     !Array.isArray(value) &&
-    ('real' in value || 'typed' in value)
+    ('real' in value || 'typed' in value || 'literal' in value)
   );
 }
 

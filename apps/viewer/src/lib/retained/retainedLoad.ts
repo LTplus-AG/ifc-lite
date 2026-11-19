@@ -27,6 +27,7 @@ import { retainedGeometryEn } from '@/i18n/catalogues/retained-geometry.en';
 import { chooseGeometryKernel, requestedGeometryKernel } from '@/store/geometryKernel';
 import { hasRetainedGeometryModel } from '@/store/retainedGeometry';
 import { memoryAccounting } from '@/lib/perf/memoryAccounting';
+import { settleUnownedLoadUi } from '@/hooks/modelLoadCanceller';
 import type { GeometryEventRequest, GeometryKernelLoad } from '@/hooks/ingest/geometryEventSource';
 import { RETAINED_MAX_SOURCE_BYTES, RetainedHostError } from './retained-protocol';
 import { retainedGeometryEvents, type RetainedPhase, type RetainedRunner } from './retainedGeometrySource';
@@ -47,9 +48,11 @@ function reportRefusal(message: string, retry: (() => void) | null): void {
   state.setLastLoadRetry(retry);
 }
 
+/** Stops before any work and before a canceller exists, so it ends the load UI `addModel` raised. */
 function refusedLoad(message: string, retry: (() => void) | null): GeometryKernelLoad {
   reportRefusal(message, retry);
-  return { ...RETAINED_POLICY, refused: Promise.resolve() };
+  settleUnownedLoadUi();
+  return { ...RETAINED_POLICY, refused: Promise.resolve(message) };
 }
 
 function phaseText(phase: RetainedPhase): { phase: string; percent: number } {
@@ -103,8 +106,6 @@ export function beginRetainedLoad(
       const text = activity.fail(message(key, byteLength));
       const state = useViewerStore.getState();
       state.updateModel(modelId, { loadState: 'error', loadError: text });
-      state.setProgress(null);
-      state.setLoading(false);
       reportRefusal(text, exactRetry);
       return true;
     },

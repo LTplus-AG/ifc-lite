@@ -80,7 +80,7 @@ pub(super) fn set_enabled_override(v: Option<bool>) {
 
 /// `IFC_LITE_VOID_UNION=0` disables the coaxial/overlap union pass (every
 /// overlapping cluster falls to the sequential exact path). Default ON; read once.
-pub(super) fn enabled() -> bool {
+pub(crate) fn enabled() -> bool {
     #[cfg(test)]
     {
         if let Some(v) = ENABLED_OVERRIDE.with(|c| c.get()) {

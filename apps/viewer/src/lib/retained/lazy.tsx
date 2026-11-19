@@ -66,12 +66,13 @@ function deferredLoad(retry: () => void, importer?: Importer): GeometryKernelLoa
     cachePlan: (plan) => ({ ...plan, tier: 'none', shouldCache: false }),
     refuseSource: () => true,
     refused: loadRetainedKernel(importer).then(
-      () => { retry(); },
+      () => { retry(); return null; },
       (error: unknown) => {
         console.warn('[retained] module fetch failed', error);
         const state = useViewerStore.getState();
         state.setError(LOAD_FAILED);
         state.setLastLoadRetry(() => { chooseGeometryKernel('exact'); retry(); });
+        return LOAD_FAILED;
       },
     ),
   };

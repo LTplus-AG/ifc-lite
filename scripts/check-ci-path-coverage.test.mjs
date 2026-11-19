@@ -33,6 +33,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 import {
   globToRegExp,
@@ -45,6 +46,7 @@ import {
   dropSubsumed,
   gitignoreToGlobs,
 } from './lib/ci-path-coverage.mjs';
+import { jobCondition } from './lib/workflow-job-condition.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CHECK = join(HERE, 'check-ci-path-coverage.mjs');
@@ -124,10 +126,9 @@ function makeTree(overrides = {}) {
   // The check reads its own source and its own lib out of the tree it is
   // pointed at, so the fixture must carry both for self-coverage to resolve.
   writeFileSync(join(root, 'scripts/check-ci-path-coverage.mjs'), readFileSync(CHECK, 'utf8'));
-  writeFileSync(
-    join(root, 'scripts/lib/ci-path-coverage.mjs'),
-    readFileSync(join(HERE, 'lib/ci-path-coverage.mjs'), 'utf8'),
-  );
+  for (const lib of ['ci-path-coverage.mjs', 'workflow-job-condition.mjs']) {
+    writeFileSync(join(root, 'scripts/lib', lib), readFileSync(join(HERE, 'lib', lib), 'utf8'));
+  }
   writeFileSync(
     join(root, 'scripts/ci-path-coverage-allowlist.txt'),
     overrides.allowlist ?? '# none\n',
@@ -166,7 +167,12 @@ const UNIQUE_TEST_STEP = String.raw`      - run: |
             | sort -u)`;
 
 test('once-only printf/sort invocation still audits literal test inputs without expanding globs', () => {
-  for (const step of [UNIQUE_TEST_STEP, UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u')]) {
+  for (const step of [
+    UNIQUE_TEST_STEP,
+    UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u'),
+    // The scripts-tests runner, which runs `node --test` on its shard's part.
+    UNIQUE_TEST_STEP.replace('node --test ', 'node scripts/ci-scripts-test-shards.mjs --shard="$SHARD" --of="$SHARD_TOTAL" --test-reporter=tap '),
+  ]) {
     withTree({ steps: DEFAULT_STEPS + '\n' + step }, root => {
       mkdirSync(join(root, 'unfiltered'));
       writeFileSync(join(root, 'unfiltered/literal.json'), '{}');
@@ -193,6 +199,8 @@ test('only the strict printf/sort form can establish literal test reachability',
     UNIQUE_TEST_STEP.replace('sort -u', 'sort -r'),
     UNIQUE_TEST_STEP.replace("'%s\\n'", "'%s '"),
     UNIQUE_TEST_STEP.replace('scripts/lib/*.test.mjs', '$(other-command)'),
+    // The shard runner's own flags are not node --test flags.
+    UNIQUE_TEST_STEP.replace('node --test ', 'node --test --of=2 '),
   ]) {
     withTree({ steps: DEFAULT_STEPS + '\n' + UNIQUE_TEST_STEP }, root => {
       mkdirSync(join(root, 'unfiltered'));
@@ -336,6 +344,11 @@ test("the check's own config being outside its own trigger is itself a failure",
 test('globToRegExp follows picomatch separator rules', () => {
   assert.ok(globToRegExp('rust/**').test('rust/core/src/lib.rs'));
   assert.ok(globToRegExp('rust/**').test('rust'), '`a/**` must cover the bare directory');
+  // `**/` is zero or more directories, as GitHub's `paths:` reads it.
+  assert.ok(globToRegExp('apps/viewer/**/*retained*').test('apps/viewer/retained-engine.lock.json'));
+  assert.ok(globToRegExp('apps/viewer/**/*retained*').test('apps/viewer/src/lib/retained.ts'));
+  assert.ok(globToRegExp('**/*.ts').test('a.ts'));
+  assert.ok(!globToRegExp('apps/viewer/**/*retained*').test('apps/viewerx/retained.ts'));
   assert.ok(globToRegExp('packages/*/README.md').test('packages/parser/README.md'));
   assert.ok(
     !globToRegExp('packages/*/README.md').test('packages/parser/src/README.md'),
@@ -400,6 +413,98 @@ test('gatingFilters: the no-op `edited` probe output is not a path filter', () =
     null,
     'the probe term never counts as a positive filter either',
   );
+});
+
+test('gatingFilters reads a multi-line `if:` in full, not just its first line', () => {
+  // Found building #10628: test.yml writes long conditions as block scalars and
+  // the filter terms sit on the second line or later. Reading only `if: >-`
+  // made revert-oracle look ungated.
+  const folded = [
+    '    if: >-',
+    "      github.event_name == 'pull_request' &&",
+    "      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&",
+    "      needs.changes.outputs.batch != 'true'",
+    '    runs-on: x',
+  ].join('\n');
+  assert.deepEqual(gatingFilters(folded), ['frontend', 'rust']);
+  assert.deepEqual(gatingFilters(folded.replace('>-', '|')), ['frontend', 'rust'], 'literal block');
+  assert.deepEqual(gatingFilters(folded.replace('>-', '>2-')), ['frontend', 'rust'], 'indentation indicator');
+  assert.deepEqual(gatingFilters(folded.replace('>-', '>- # why')), ['frontend', 'rust'], 'trailing comment');
+  assert.deepEqual(
+    gatingFilters("    if: github.event_name == 'pull_request' &&\n      needs.changes.outputs.docs == 'true'\n    runs-on: x"),
+    ['docs'],
+    'a plain scalar continued on a deeper line',
+  );
+  assert.deepEqual(gatingFilters(`    if: "needs.changes.outputs.docs == 'true'"`), ['docs'], 'double-quoted');
+  assert.deepEqual(
+    gatingFilters(`    if: 'needs.changes.outputs.docs == ''true'''`),
+    ['docs'],
+    "single-quoted, with '' unescaped",
+  );
+  assert.equal(
+    jobCondition('    if: always() # keep\n    runs-on: x'),
+    'always()',
+    'a trailing comment is not part of a plain scalar',
+  );
+  assert.deepEqual(
+    gatingFilters("    if: needs.changes.outputs.rust == 'true' &&\n      github.event_name == 'x' # was needs.changes.outputs.docs == 'true'"),
+    ['rust'],
+    'a filter named in a comment on a continuation line does not gate the job',
+  );
+  assert.deepEqual(
+    gatingFilters("    if:\n      'needs.changes.outputs.docs == ''true'''"),
+    ['docs'],
+    'a quoted scalar starting on the next line is unquoted, not read as a block',
+  );
+  assert.equal(jobCondition('    if:\n      >-\n      a\n    runs-on: x'), 'a', 'block indicator on the next line');
+  assert.equal(jobCondition('    if: >4\n          a\n        b'), 'a b', 'explicit indentation indicator');
+  assert.equal(jobCondition("    if: 'a' # c"), 'a', 'comment after a single-quoted scalar');
+  assert.equal(jobCondition('    if: "a" # c'), 'a', 'comment after a double-quoted scalar');
+});
+
+test('an `if:` that cannot be read throws instead of reading as "every path" (#10628)', () => {
+  assert.throws(() => gatingFilters('    if: >-\n    runs-on: x'), /empty block scalar/);
+  assert.throws(() => gatingFilters('    if:\n    runs-on: x'), /empty scalar/);
+  assert.throws(() => gatingFilters("    if: 'needs.changes.outputs.docs\n    runs-on: x"), /unterminated/);
+  assert.throws(() => gatingFilters('    if: "a \\n b"'), /unsupported quoted/);
+  assert.throws(() => gatingFilters('    if: a # c\n      && b'), /comment inside a plain scalar/);
+  for (const bad of ['[a]', '{a: b}', '~', 'null', 'a: b', '"a" #c\n      d', ">-\n        a\n      b"]) {
+    assert.throws(() => jobCondition(`    if: ${bad}`), /cannot read/, bad);
+  }
+  assert.throws(() => jobCondition("    if: # gate\n      'open"), /if: # gate/, 'the message quotes the raw line');
+  assert.throws(() => gatingFilters('    if: *anchor'), /not a plain string/);
+});
+
+test('every real workflow job `if:` reads exactly as a YAML parser reads it', () => {
+  // The `yaml` package is the oracle here; the checker itself stays
+  // dependency-free. Whitespace is normalised because a literal `|` block
+  // keeps its newlines and this module joins lines with a space.
+  const norm = (v) => String(v).replace(/\s+/g, ' ').trim();
+  const dir = join(REPO, '.github/workflows');
+  let compared = 0;
+  for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
+    const text = readFileSync(join(dir, file), 'utf8');
+    const parsed = parseYaml(text).jobs ?? {};
+    for (const job of splitJobs(text)) {
+      const want = parsed[job.id]?.if;
+      const got = jobCondition(job.text, job.id);
+      assert.equal(got === null ? undefined : norm(got), want === undefined ? undefined : norm(want), `${file}:${job.id}`);
+      if (want !== undefined) compared += 1;
+    }
+  }
+  assert.ok(compared > 50, `compared only ${compared} conditions`);
+});
+
+test('an unreadable job `if:` is a NAMED failure of the check (#10628)', () => {
+  const workflow = WORKFLOW(DEFAULT_FILTERS, DEFAULT_STEPS).replace(
+    "    if: needs.changes.outputs.frontend == 'true'",
+    '    if: >-\n',
+  );
+  withTree({ workflow }, (root) => {
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /cannot read the triggers of \.github\/workflows\/test\.yml -- job gated: cannot read `if: >-`/);
+  });
 });
 
 test('parseWorkflowPrPaths distinguishes no-paths from a paths list', () => {

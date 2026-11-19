@@ -28,7 +28,7 @@ import { useClash, type ClashFocusMode } from '@/hooks/useClash';
 import type { SaveResult } from '@/lib/clash/persistence';
 import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
-import { useBCF } from '@/hooks/useBCF';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { useViewerStore } from '@/store';
@@ -42,20 +42,20 @@ import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDial
 import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
 import { ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
 import { ClashGroupHeaderWithActions } from '@/components/viewer/ClashGroupHeaderWithActions';
+import { ClashQualityGates } from './ClashQualityGates';
 import { ClashResultSummary, type ClashResultView } from '@/components/viewer/ClashResultSummary';
 import { ClashResultState } from '@/components/viewer/clash/ClashResultState';
 import { ResultAction, SelectionSummary } from '@/components/viewer/result/ResultAction';
 import { SelectAllControl } from '@/components/viewer/result/SelectAllControl';
-import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
+import {createNativeClashTopic,describeNativeClash as describeClash} from '@/lib/clash/clash-native-topic';
 import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
 import { clashDisplayRows, type ClashDisplaySection } from '@/lib/clash/display-rows';
 import {
-  isTouching, penetrationDepth,
+  isTouching,
   sortClashes,
   classifyRuleCoverage,
   describeEmptyRuleSides,
   ruleHadNoMatch,
-  DUPLICATES_RULE,
   CLASH_REVIEW_STATUSES,
   type Clash,
   type ClashElementRef,
@@ -108,34 +108,6 @@ function shortName(key: string): string {
 
 function formatDistance(distance: number): string {
   return distance < 0 ? `−${Math.abs(distance).toFixed(3)}m` : `${distance.toFixed(3)}m`;
-}
-
-/** A plain-language description of what a clash is and why it was flagged (#1276). */
-function describeClash(c: Clash): string {
-  if (c.rule === DUPLICATES_RULE.id) {
-    return c.severity === 'major'
-      ? 'Exact duplicate — coincident geometry with the same shape'
-      : 'Overlapping — near-coincident objects in the same place';
-  }
-  if (c.status === 'clearance') {
-    return `Clearance violation — ${c.distance.toFixed(3)} m gap, closer than required`;
-  }
-  if (isTouching(c)) {
-    return 'Touching contact (≈0 m) — surfaces meet but barely overlap';
-  }
-  // An ABSENT `distanceKind` (results recorded before the field existed) is
-  // not the same statement as an explicit `'estimate'`: the estimate wording
-  // asserts the depth IS the AABB overlap, which an old record never said —
-  // for those, say only that the provenance is unknown (review: #2536).
-  if (c.distanceKind === undefined) {
-    return `Hard clash — ~${penetrationDepth(c).toFixed(3)} m interpenetration (depth provenance unavailable)`;
-  }
-  // 'estimate' means the depth is a box dimension read off the AABBs, not a
-  // mesh measurement (see Clash.distanceKind) — mark it so this does not
-  // read as a precise interpenetration measurement.
-  return c.distanceKind === 'estimate'
-    ? `Hard clash — ~${penetrationDepth(c).toFixed(3)} m interpenetration (AABB estimate)`
-    : `Hard clash — ${penetrationDepth(c).toFixed(3)} m interpenetration`;
 }
 
 /**
@@ -314,12 +286,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const shapeOnlyReason = shapeOnly ? t(RETAINED_SHAPE_ONLY_REASON) : undefined;
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
-  const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
-  const bcfProject = useViewerStore((s) => s.bcfProject);
-  const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
-  const setBcfProject = useViewerStore((s) => s.setBcfProject);
-  const addTopic = useViewerStore((s) => s.addTopic);
-  const addViewpoint = useViewerStore((s) => s.addViewpoint);
   const setBcfPanelVisible = useViewerStore((s) => s.setBcfPanelVisible);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -348,7 +314,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const savedReports = useClashSavedReportsAction();
-  const [creatingTopic, setCreatingTopic] = useState(false);
+  // One BCF topic capture at a time across the clash and group actions (C-2):
+  // a same-tick double press is refused, and a capture that settles after the
+  // panel closed creates nothing.
+  const topicFlight = useAsyncRun();
+  const creatingTopic = topicFlight.busy;
+  const runTopic = topicFlight.start;
   // The whole detection-controls block is collapsible so the result list gets
   // vertical room: auto-open before the first run (discoverability), auto-collapse
   // once a result is on screen, with a manual override once the user toggles it.
@@ -520,7 +491,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     submitDialog: submitGroupDialog, removeGroup: removeManualGroup, dialogProps,
     removeMember: removeManualGroupMember, createBcfTopic: createBcfTopicForGroup,
   } = useManualClashGroups({
-    clashes: result?.clashes, visibleClashes, sortBy, focusMode, focusClashes, creatingTopic, setCreatingTopic,
+    clashes: result?.clashes, visibleClashes, sortBy, focusMode, focusClashes, runTopic,
     showGroups: showManualGroups,
   });
   const activeSections = effectiveResultView === 'issues'
@@ -585,42 +556,15 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
    * clash is framed + selected first so the captured viewpoint shows it.
    */
   const createBcfTopic = useCallback(async (): Promise<void> => {
-    if (!result || creatingTopic) return;
-    const clash = selectedId ? result.clashes.find((c) => c.id === selectedId) ?? null : null;
-    setCreatingTopic(true);
-    try {
-      if (clash) {
-        focusClash(clash, focusMode);
-        // Wait for the camera move + a render before grabbing the snapshot.
-        // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer — timing out
-        // would attach a pre-camera-move frame to the BCF topic. A hidden tab
-        // cannot present the moved camera at all, so bounding this buys nothing.
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      }
-      if (!bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));
-      const title = clash
-        ? `Clash: ${clash.a.tag} × ${clash.b.tag}`
-        : `Clash report — ${total} ${total === 1 ? 'clash' : 'clashes'}`;
-      const description = clash
-        ? `${describeClash(clash)}\n${clash.a.name ?? clash.a.key} ↔ ${clash.b.name ?? clash.b.key}`
-        : `${total} ${total === 1 ? 'clash' : 'clashes'} detected across the loaded model(s).`;
-      const topic = createBCFTopic({ title, description, author: bcfAuthor, topicType: 'Clash', topicStatus: 'Open' });
-      // `focusClash` above paints the pair through the clash colour channel,
-      // not the selection (#1277/#1339); `createViewpointFromState` turns that
-      // into the viewpoint's found objects and colouring (#4806).
-      const vp = await createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: true });
-      // Record the source model(s) the clash spans, as the BCF panel does (#1591).
-      const header = headerFilesForViewpoints(vp ? [vp] : [], topic.creationDate);
-      if (header.length > 0) topic.header = header;
-      addTopic(topic);
-      if (vp) addViewpoint(topic.guid, vp);
-      toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
-    } catch (err) {
-      console.error('[clash] BCF topic creation failed', err);
-    } finally {
-      setCreatingTopic(false);
-    }
-  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, headerFilesForViewpoints, addViewpoint, setBcfPanelVisible, t]);
+    if (!result) return;
+    const clash = selectedId ? result.clashes.find(c => c.id === selectedId) : undefined;
+    await runTopic(async ({isCurrent}) => {
+      try {
+        const created = await createNativeClashTopic({clashes:clash?[clash]:[],total,mode:focusMode,focusClash,focusClashes,isCurrent});
+        if(created) toast.success(t('clashTools.bcfTopic.created'), {label:t('clashTools.bcfTopic.open'),onClick:()=>setBcfPanelVisible(true)});
+      } catch(error) { console.error('[clash] BCF topic creation failed',error); if(isCurrent()) toast.error(error instanceof Error?error.message:'Could not create a BCF topic for this clash.'); }
+    });
+  },[result,selectedId,runTopic,total,focusMode,focusClash,focusClashes,t,setBcfPanelVisible]);
 
   /** Switch the focus mode and immediately re-apply it to the selected clash so
    *  the change is visible without re-clicking the row (#1275). */
@@ -862,6 +806,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       })()}
 
       <ClashModelTagNotice />
+
+      <ClashQualityGates />
 
       {/* Summary */}
       {result && (

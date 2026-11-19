@@ -384,8 +384,7 @@ test('#8564 a variant that fails to compile makes its frames fall back, permanen
 class SceneLog implements GaussianBackendScene {
   gpuBytes = 0;
   constructor(private readonly log: Log) {}
-  async replaceSource() {}
-  updateRows() {}
+  async replaceRows(_layout: unknown, fill: (writer: { write(): void; copy(): void }) => Promise<unknown>) { await fill({ write() {}, copy() {} }); }
   setFilter() {}
   destroy() {}
   encode(target: GaussianEncodeTarget, _camera: unknown, interval?: GaussianDepthInterval) {

@@ -13,7 +13,7 @@
  * LAZ named `.copc.laz` is not.
  */
 
-import { extractWktCrsIdentifiers } from '../spatial-wkt.js';
+import { extractWktCrsIdentifiers } from '@ifc-lite/geo/wkt';
 import { parseLasHeader, readU64LE, type LasHeader } from '../formats/las.js';
 import type { PointCloudBBox } from '../types.js';
 import type { PointSourceSpatialMetadata, RangeByteSource } from '../streaming/types.js';

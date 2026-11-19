@@ -27,7 +27,7 @@ import { formatElevation } from '@/lib/storeys/storey-length';
 import { refusalText } from '@/lib/storeys/storey-text';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { addStoreyKeepingSession } from './add-storey';
-import { loadStoreyToastAction } from './storey-toast';
+import { loadStoreyToastAction, storeyUndoAction } from './storey-toast';
 import { StoreyRow } from './StoreyRow';
 import { StoreyDeletePanel } from './StoreyDeletePanel';
 import { StoreySectionStrip } from './StoreySectionStrip';
@@ -38,24 +38,19 @@ const loadInsertionPanel = () => import('./StoreyInsertionPanel');
 const StoreyInsertionPanel = lazy(() => loadInsertionPanel().then(module => ({ default: module.StoreyInsertionPanel })));
 const StoreyImpact = lazy(() => import('./StoreyImpact').then(module => ({ default: module.StoreyImpact })));
 
-/** The batch (or the lone record) on top of a model's undo stack. */
-function topUndoStep(modelId: string): string | null {
-  const s = useViewerStore.getState();
-  const top = s.undoStacks.get(modelId)?.at(-1);
-  return top ? s.mutationBatchTags.get(top.id) ?? top.id : null;
-}
-
 export function StoreyManager({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
   const modelName = useViewerStore((s) => (s.session ? s.models.get(s.session.modelId)?.name ?? '' : ''));
   const modelId = session?.modelId ?? null;
+  const mutationVersion = useViewerStore(s => s.mutationVersion);
   const rowsState = useStoreyRows(modelId);
   const denial = useStoreyEditDenial(modelId);
   const editing = useStoreyLevelEditing(modelId);
   const renaming = useStoreyRename(modelId);
   // `reviewed`: what the open delete panel shows, and all that confirming it may delete.
-  const [inserting, setInserting] = useState<{ modelId: string; review: StoreyInsertion } | null>(null);
+  const [insertingState, setInserting] = useState<{ modelId: string; review: StoreyInsertion } | null>(null);
+  const inserting = insertingState?.review.version === mutationVersion && insertingState.review.entry === session?.entry ? insertingState : null;
   const [loadingInsertion, setLoadingInsertion] = useState(false);
   const [deletingState, setDeleting] = useState<{
     modelId: string | null; storeyId: number; error: string | null; reviewed: StoreyDeletePlan | null;
@@ -86,10 +81,10 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
     const name = typeof entity?.attributes[2] === 'string' ? entity.attributes[2] : '';
     const store = state.models.get(modelId)?.ifcDataStore;
     const elevation = store ? formatElevation(effectiveStoreyElevation(store, state.mutationViews.get(modelId), storeyId)) : '';
-    toast.success(t('storeyManager.added', { storey: name, elevation }), {
+    toast.success(t('storeyManager.added', { storey: name, elevation }), [{
       label: t('storeyManager.drawOn'),
       onClick: () => loadStoreyToastAction(actions => actions.drawOnAddedStorey(modelId, storeyId)),
-    }, `storey-added:${modelId}`);
+    }, storeyUndoAction(modelId)], `storey-added:${modelId}`);
     focusName(storeyId);
   };
 
@@ -120,14 +115,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
     }
     setDeleting(null);
     // The toast stays until dismissed: its Undo reverts this deletion only, never a later edit.
-    const step = topUndoStep(modelId);
-    toast.success(t('storeyManager.deleted', { storey: row?.Name ?? '' }), {
-      label: t('storeyManager.undo'),
-      onClick: () => {
-        if (step !== null && topUndoStep(modelId) === step) useViewerStore.getState().undo(modelId);
-        else toast.error(t('storeyManager.undoStale'));
-      },
-    });
+    toast.success(t('storeyManager.deleted', { storey: row?.Name ?? '' }), storeyUndoAction(modelId));
   };
 
   const askDelete = (storeyId: number) => {
@@ -260,7 +248,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
             <Suspense fallback={<Spinner label={t('storeyManager.impact.title')} />}><StoreyImpact draft={editing.draft} rows={rows} onSelect={selectElements} /></Suspense>
           )}
           <div className="border-t border-border px-2 py-2">
-            <StoreySectionStrip rows={rows} activeId={activeId} plan={inserting?.modelId === modelId ? inserting.review.plan : editing.draft?.previewing ? editing.draft.plan : null} onActivate={activate} />
+            <StoreySectionStrip renames={inserting?.review.renames} inserted={inserting?.review.params} rows={rows} activeId={activeId} plan={inserting?.modelId === modelId ? inserting.review.plan : editing.draft?.previewing ? editing.draft.plan : null} onActivate={activate} />
           </div>
         </div>
       )}

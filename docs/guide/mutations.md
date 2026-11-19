@@ -394,6 +394,8 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. The
 
 Use `StoreEditor.runAtomic` to create or modify a related set of IFC entities together. The callback receives a detached editor; a thrown error leaves the live overlay, mutation history and express-ID allocator unchanged. `MutablePropertyView.runAtomic` provides the same operation with a draft view for property and quantity edits.
 
+An untouched draft reads the same model revision and overlay contents as its live view. Initializing an editor's express-ID watermark does not change that model revision; transaction validation checks the allocator separately so an intervening watermark change cannot be overwritten by publication.
+
 ```typescript
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 
@@ -498,7 +500,12 @@ image, network or application undo resources are implicitly published by this AP
 | `"#42"` (string) | entity reference |
 | `".AREA."` (string) | enum |
 | `"My Column"` (string) | quoted STEP string |
+| `stepString("$")` / `stepString("*")` from `@ifc-lite/data` | literal quoted text `'$'` / `'*'` |
 | `[1, 2, 3]` | STEP list `(1,2,3)` — recursive |
+
+Use `stepString(text)` for imported text that might look like a STEP marker,
+reference or enumeration. Existing plain `$` and `*` marker inputs retain their
+meaning; `null` remains the way to write an omitted attribute.
 
 ### High-Level Builders — `addColumnToStore` / `addWallToStore` / …
 
@@ -556,9 +563,13 @@ Builders read the schema from the resolved anchor (`anchor.schema`) and drop att
 
 #### Roofs by footprint
 
-`addRoofToStore` (and `bim.store.addRoof`) makes a roof by footprint, as Revit's Roof by Footprint and Archicad's multi-plane roof do, when its rectangle or polygon params carry `EdgeSlopes` or `Overhang`. `EdgeSlopes[i]` is the slope of the edge from point i to point i+1, in radians. For a rectangle the edges run from its `Position` corner along +X and then anticlockwise. A slope of 0 is a gable end, or the high side of a mono-pitch roof. Each sloped edge is a pivot line: the roof's underside passes through it at the placement's height (`Position[2]`, storey-relative) and rises inward at its slope. `Overhang` (metres) carries every edge out horizontally. Eaves drop with their plane and gable ends move out as a rake. `Thickness` is measured square to each plane.
+`addRoofToStore` (and `bim.store.addRoof`) makes a roof by footprint when its rectangle or polygon params carry `EdgeSlopes` or `Overhang`. `EdgeSlopes[i]` is the slope of the edge from point i to point i+1, in radians. For a rectangle the edges run from its `Position` corner along +X and then anticlockwise. A slope of 0 is a gable end, or the high side of a mono-pitch roof. Each sloped edge is a pivot line: the roof's underside passes through it at the placement's height (`Position[2]`, storey-relative) and rises inward at its slope. `Overhang` (metres) carries every edge out horizontally. Eaves drop with their plane and gable ends move out as a rake. `Thickness` is measured square to each plane.
 
-The planes come from a weighted straight skeleton of the footprint. Hip, gable, mono-pitch and L-, T- and U-shaped roofs work on convex and rectilinear footprints; anything else is refused with a reason, as are slopes over 85° and an overhang that would cross the eaves. The result is one `IfcRoof` whose Body holds one `IfcExtrudedAreaSolid` per plane: the plane's outline is swept straight up, which gives plumb eaves. Hips and ridges between planes of one slope meet exactly; where neighbouring slopes differ, their tops meet with a small step (`Thickness` × (1/cos a − 1/cos b)). Its `PredefinedType` (`ShapeType` on IFC2X3) follows from the slopes: `HIP_ROOF`, `GABLE_ROOF`, `SHED_ROOF`, `FREEFORM`, or `FLAT_ROOF` when no edge slopes. Angles are radians: values above π/2 receive a degree-conversion hint, but smaller numbers intended as degrees cannot be distinguished from radians. The definition is recorded on the roof as `IfcLite_RoofFootprint` (`Footprint`, `EdgeSlopes`, `Overhang`, `Thickness`, in metres and radians). Base quantities are derived from the planes as `Qto_RoofBaseQuantities` (`GrossArea` and `NetArea` sloped, `ProjectedArea` in plan).
+The planes come from a weighted straight skeleton of the footprint. Hip, gable, mono-pitch and L-, T- and U-shaped roofs work on convex and rectilinear footprints. Arbitrary reflex angles are also supported when every edge has the same pitch. Unequal pitches at a nonrectilinear inside corner, unequal slopes at an inside corner under an overhang, slopes over 85°, and overhangs that would cross the eaves are refused with a reason. The result is one `IfcRoof` aggregating one geometric `IfcSlab .ROOF.` part per plane. Equal pitches use one `IfcExtrudedAreaSolid` per slab; the roof itself has no Body. Different pitches use standard `IfcBooleanClippingResult` half-spaces through the shared hip or ridge: the face bisects perpendicular distances to the two underside planes and reaches their offset tops without a step. Valley regions can be joined by `IfcBooleanResult`. Eaves and gable ends remain plumb. The plane quantities measure the resulting clipped solids. Its `PredefinedType` (`ShapeType` on IFC2X3) follows from the slopes: `HIP_ROOF`, `GABLE_ROOF`, `SHED_ROOF`, `FREEFORM`, or `FLAT_ROOF` when no edge slopes. Angles are radians: values above π/2 receive a degree-conversion hint, but smaller numbers intended as degrees cannot be distinguished from radians. The definition is recorded on the roof as `IfcLite_RoofFootprint` (`Footprint`, `EdgeSlopes`, `Overhang`, `Thickness`, in metres and radians). Base quantities are derived from the planes as `Qto_RoofBaseQuantities` (`GrossArea` and `NetArea` sloped, `ProjectedArea` in plan).
+
+Footprint roofs also carry quantitative `IfcSlab` parts with `PredefinedType = ROOF`. Each part has `Qto_SlabBaseQuantities` (`GrossArea`, `NetArea`, `GrossVolume`, `NetVolume`) and a typed `Pset_SlabCommon.PitchAngle`. Pitch is expressed in the project's plane-angle unit; the authoring `EdgeSlopes` input remains radians. Roof edits update these measurements together with the body. Unchanged edges retain their part identities and user properties, and removed edges lose their owned measurement records. Net values are withheld when roof or plane openings make them unknown. A void on one plane withholds that plane's net values and the roof's net area while keeping uncut planes measurable. `resolveHostAnchor` resolves a geometric plane through its owning roof; `addOpeningToStore` with that anchor immediately withholds the affected net values, without requiring a roof rebuild. A manually constructed plane anchor must include the owning `roofId`.
+
+The roof aggregates its planes with `IfcRelAggregates`. Each slab owns one plane representation and a local placement relative to the roof. The roof has no duplicate representation and retains its own `Qto_RoofBaseQuantities` areas. Measure the whole roof by traversing its aggregate parts; `getFootprintRoofPlaneParts(dataStore, view, roofId)` returns their express IDs. Export/reopen, copies and roof edits preserve the decomposition. `resolveSpatialAnchor` supplies a lazy `getMeasureUnitScales` provider for project area, volume and angular units; manually constructed anchors default to SI.
 
 Per-plane styles follow their footprint edges when edited. A flat plane's style is inherited by all new pitched planes. Flattening pitched planes preserves a shared uniform style; distinct or partly styled planes refuse atomically rather than losing or mixing their styles. Explicit `null` footprint fields are invalid; omit a field to use its default.
 
@@ -803,7 +814,7 @@ The viewer surfaces store-level edits through the following controls — see [Vi
   - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`. The tab also opens for overlay-only entities (freshly added or duplicated) so newly-created walls / columns / spaces are immediately inspectable, even before export.
   - **Right-click → Delete entity** — calls `removeEntity`, surfaces a toast with undo support.
   - **Right-click on a storey → Add Column here…** — opens the Add Column dialog, calls `addColumn` on submit, and selects the new column in the 3D scene.
-  - **Model workspace** (Author ribbon → Model, or `E`). A tool rail with one command per kind: Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair, Railing, Curtain wall, Grid; plus Split, Move, Rotate, Copy / Array and the inspector's type, material and size fields. Storey-workplane placement tools use snapping, a live ghost and typed bar values. Hosted Door/Window tools are wall-relative. Split, Move, Rotate, Copy / Array and inspector edits use their own interaction flows. The **Room** command's **Auto** runs the wall-graph face finder on the storey (or every storey), and its Edit, Footprint and leak-check modes reshape the rooms.
+  - **Model workspace** (ribbon tab row → Model, or `M`). A tool rail with one command per kind: Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair, Railing, Curtain wall, Grid; plus Split, Move, Rotate, Copy / Array and the inspector's type, material and size fields. Storey-workplane placement tools use snapping, a live ghost and typed bar values. Hosted Door/Window tools are wall-relative. Split, Move, Rotate, Copy / Array and inspector edits use their own interaction flows. The **Room** command's **Auto** runs the wall-graph face finder on the storey (or every storey), and its Edit, Footprint and leak-check modes reshape the rooms.
 
 All paths route through the same `mutationSlice` actions that wrap `StoreEditor`, so undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`) covers store-level edits identically to property edits. Each commit also injects a renderer-frame mesh into the geometry pipeline so the new element appears in 3D the moment the action fires — no export+reparse round-trip required.
 
@@ -823,7 +834,7 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |
 | Build a brand-new IFC file from scratch | `IfcCreator` (see [API Reference](../api/typescript.md#ifc-litecreate)) |
 
-`copyProductInStore` returns `copiedFrom`, a map from each new product id to its source id, including openings, fillings and assembly parts. Its optional fourth argument, `{ Name }`, overrides the root product’s Name and preserves its parts’ names. The map lets consumers mirror source geometry and property reads without reconstructing the copied relationships. The viewer records the complete copied subgraph as one undo step and re-meshes the copies through wasm. A part or hosted filling cannot be copied alone, and a placement disconnected from its storey is refused.
+`copyProductInStore` returns `copiedFrom`, a map from each new product id to its source id, including openings, fillings and assembly parts. Its optional fourth argument, `{ Name, shape }`, overrides the root product’s Name and preserves its parts’ names. Set `shape: 'own'` to copy a file element’s representation records instead of sharing its shape. `copyBatchInStore` accepts the same `shape` option. Representation contexts and representation maps remain shared; the element, its openings and fillings receive their own copied shape records. This adds those records to the exported file, increasing its size. A shape exceeding 50,000 records is refused atomically rather than silently shared. The default `shape: 'shared'` preserves the existing behaviour for file shapes and keeps copying session-created shapes. The map lets consumers mirror source geometry and property reads without reconstructing the copied relationships. The viewer records the complete copied subgraph as one undo step and re-meshes the copies through wasm. A part or hosted filling cannot be copied alone, and a placement disconnected from its storey is refused.
 
 A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement`) binds to the grid crossing it lands on, within a millimetre, among the crossings of the grids on its storey or its spatial ancestors. It gets a new `IfcGridPlacement` in the model's schema, with a local placement under it holding its height, heading and any offset. Landing on no crossing, it comes free as a plain storey-placed element. `CopyProductResult.boundToGrid` and `cameFree` list which is which, including a part on the grid in its own right. A part placed under a copied placement follows that copy and isn't listed. The viewer tells the person how many came free.
 
@@ -846,6 +857,18 @@ A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement
 `reshapeWallAxis` from `@ifc-lite/create` calculates the wall on its new plan axis before a join recuts the changed end. It retains a supported cut at an unchanged endpoint when the axis direction stays the same, including cuts read from a four-point profile without a join relationship. A cut is measured from its own endpoint: extending Start does not shift EndCut. A changed endpoint or axis direction starts square.
 
 The canonical `reshapeWallsInStore` writer uses this calculation too. Trim/Extend uses it for the ghost, so an unchanged joined or custom-cut face matches the body that is committed. Existing joins are then recomputed by the writer; callers group those writes in their atomic undo transaction.
+
+Sliding one joined wall extends or trims a connected neighbour on the
+neighbour's existing axis, preserving its direction and opposite endpoint.
+The connected endpoint is solved at the intersection of the two axis lines;
+the body then stops at the moved wall's face for a T or butt join. The moved
+wall's connected ends can also extend or trim to retain their joins, while its
+placement follows the requested transform. An imported mitre can become a
+butt corner when the profiles are resolved. Both walls require remeshing.
+Parallel or near-parallel lines, non-finite intersections, and intersections
+that collapse or reverse a wall refuse the transaction with an explanatory
+error. A slide never silently rotates a neighbour as a fallback. A rotation
+carries its joined endpoint through the turn.
 
 ```typescript
 import { reshapeWallAxis, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
@@ -1119,16 +1142,17 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
   - a wall takes the new height through the same section edit the inspector uses, which refuses an opening that would end above the new top. An existing `Qto_WallBaseQuantities` is kept true (a wall with more than one such set has only the first updated, and the plan says so in `notices`, `wallQuantitiesPartial`): Height and the gross side area and volume scale with the height, and the net values change by the same amount as the gross ones (converted between their units when a quantity carries its own, and taken from the set's Length, Height and Width when the gross value is missing);
   - a column takes a new extrusion depth;
   - a level beam or member is lifted whole, so it stays at the same depth under the storey; a vertical one is lengthened; a sloped one (a brace from one level to the next) keeps its foot and is turned to reach the new top;
-  - a curtain wall is laid out again at the new height, not stretched: mullions take the new height, and every part keeps its identity (`relayoutCurtainWallHeight`). The file records no V-grid spec, so transoms at exact equal fractions of the height are re-spaced proportionally, whether they came from a bay count or from explicit heights that happen to divide the wall equally (`VGrid: [1, 2]` on a 3 m wall); any other transom keeps its height above the base (#9352).
+  - a curtain wall is laid out again at the new height: mullions take the new height and every part keeps its identity. `IfcLite_CurtainWallLayout.VGrid` stores the authored bay count or explicit metre offsets as JSON in an `IfcText`, including specifications longer than 255 characters. Bay counts resize proportionally; explicit offsets stay at their heights, including `[1, 2]` in a 3 m wall. Older files without this record infer equal bays from geometry. The layout and storey-attachment psets and their relationships have deterministic GlobalIds derived from the owning element GlobalId and set name, so repeated unseeded exports preserve their identities (#9352).
 
   A height of zero or less is refused before anything is written (code `dependent`). Attachment is recorded, never inferred from a height that happens to match the spacing:
+  - Slab-bound columns, beams and members refit their own tops during a direct placement move, including the viewer gizmo. Placement and refitted shape form one undoable edit; the attachment survives export and reopen.
   - `IfcLite_StoreyAttachment.TopConstraint` (IfcLabel) holds the target storey's GlobalId. It holds `NextStoreyAbove` for an element drawn attached before any storey existed above; the first storey added directly above binds it, and `addStoreyInStore` resizes the element to reach that storey. One whose body or placement it cannot read is still bound and returned in `unresizedWalls`, so later edits list it as not resized.
-  - `IfcLite_StoreyAttachment.TopBinding` says how a storey target is meant. `Relative` is Archicad's "home storey + 1": a storey inserted between the element's storey and its target re-binds it (`addStoreyInStore` lists it in `bindings`, and `planStoreyAdd` reports it before anything is written), and a copy to another storey attaches to the storey above its new one. `Explicit` is Revit's "Up to level: X": it stays on X. A record without `TopBinding` (every file written before #9296) is relative when its storey is the next storey above the element's own, which is what the Model workspace's "To storey above" wrote, and explicit otherwise, so such a file keeps its meaning.
-  - `TopConstraint` may hold a slab's GlobalId instead: the top ends on the slab's underside and follows it when the slab's storey moves. A roof is not followed yet (pitched roofs come in a later round); the plan lists it as a notice.
+  - `IfcLite_StoreyAttachment.TopBinding` says how a storey target is meant. `Relative` is Archicad's "home storey + 1": a storey inserted between the element's storey and its target re-binds it (`addStoreyInStore` lists it in `bindings`, and `planStoreyAdd` reports it before anything is written), and a copy to another storey attaches to the storey above its new one. Deleting that target re-binds to the next surviving storey above the home storey, preserving the offset from its world floor frame; with no storey above, the record becomes `NextStoreyAbove`. Explicit bindings keep their recorded target. `Explicit` is Revit's "Up to level: X": it stays on X. A record without `TopBinding` (every file written before #9296) is relative when its storey is the next storey above the element's own, which is what the Model workspace's "To storey above" wrote, and explicit otherwise, so such a file keeps its meaning.
+  - `TopConstraint` may hold a slab's or a roof's GlobalId instead: the top ends on its underside and follows it when the target or the target's storey moves. Only walls attach to a roof; a roof by footprint cuts the wall to its planes, as described below.
   - Revit's own `Constraints` › `Top Constraint` = `Up to level: <name>` is read as an explicit binding.
   - An element with neither record keeps its height. `Fixed` in the IfcLite record is an explicit fixed height and overrides a Revit record; `clearTopAttachment` writes it for an element Revit recorded as attached.
-  - A record that names nothing it can follow (a deleted storey's GlobalId, a Revit level renamed or shared by two storeys, a roof) is not guessed at: the element keeps its height and the plan lists it in `notices` (`wallAttachmentUnresolved`; `topAttachmentProblem` gives the reason).
-  - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record. `setTopConstraintInStore(dataStore, editor, elementId, constraint)` sets it and fits the top there now, atomically: `{ kind: 'storeyAbove' }` (relative), `{ kind: 'storey', storeyId }` (explicit), `{ kind: 'slab', slabId }` or `{ kind: 'fixed' }`.
+  - A record that names nothing it can follow (a deleted storey's GlobalId, a Revit level renamed or shared by two storeys, or an unreadable underside) is not guessed at: the element keeps its height and the plan lists it in `notices` (`wallAttachmentUnresolved`; `topAttachmentProblem` gives the reason).
+  - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record. `setTopConstraintInStore(dataStore, editor, elementId, constraint)` sets it and fits the top there now, atomically: `{ kind: 'storeyAbove' }` (relative), `{ kind: 'storey', storeyId }` (explicit), `{ kind: 'slab', slabId }`, `{ kind: 'roof', roofId }` (walls) or `{ kind: 'fixed' }`.
 - **Stairs and their railings.** A stair whose top tread lands on a storey is refit with the riser height it was built with, rounded to whole risers. It lands on a storey when its base plus `NumberOfRisers × RiserHeight` equals that storey's elevation within 1 mm. The refit runs through `editStairDimensionsInStore`, which now also takes `NumberOfRisers`, so the IfcStair and IfcStairFlight keep their identities. A rise no flight fits (under 0.30 m), or a waist that no longer fits, is refused. A railing that runs up the stair (the railing builder's layout on the stair's storey, from its foot to its top tread, beside or over the flight) is stretched with it: along the new run and up the new rise, keeping its height above the pitch.
 - **What is left alone.** Attached elements that are not simple extrusions, and stairs that are not a single stepped flight this editor can rebuild, still move with their storey but keep their shape. The plan lists them in `notices`, before anything is applied.
 
@@ -1136,6 +1160,237 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
 
 **Copies to other storeys.** `copyBatchInStore` (`bim.store.copyElements`) re-resolves the top attachment of a copy on another storey: a relative top attaches to the storey above the copy's storey and keeps its offset from the floor it reaches, so its height follows that storey's floor-to-floor; an explicit top stays on its storey and is refit to reach it (a copy whose base lands at or above it is refused); a slab target follows the slab's copy when the slab was copied in the same operation. A copy that needs a new height but still shares its source's shape from the file (file shapes are shared by reference) is not resized, since that would resize the source: it is recorded fixed at the source's height and listed with the reason in the copy result's `unattachedTops`, and so is a copy whose body or placement cannot be read where its height must change. `copyToStoreysInStore(dataStore, editor, ids, storeyIds)` (`bim.store.copyToStoreys`) copies one selection onto several storeys as one atomic, undoable operation and returns, per storey, the results, the copy of each selected element (`copies`) and that storey's `unattachedTops`. `copyProductInStore` writes the copy and its re-bind as one atomic edit, so a refusal leaves nothing behind. Copy results also retain copied child-to-parent links in `carriedBy`, so a selected inner assembly receives notices for the parts it carries. In the SDK each returned ref carries `unattachedTops: [{ expressId, reason }]` for the copies it made that keep their height; the MCP `copy_elements` and `array_elements` tools list them in their message and result, and the viewer shows one toast.
 
+When copying a top-constrained product, floor placement frames determine its
+physical height. A storey's `Elevation` may differ from its placement Z. An
+explicit top keeps its target and offset; a relative top follows the next
+higher storey in the same building. Extra vertical copy offsets are included,
+even when copying onto the same storey. A wall copied under a footprint roof refits its cut to the roof at the copy's position, following a copied roof when both are copied together. A copy sharing an imported source body
+that would require resizing remains fixed and reports `unattachedTops`.
+
+Wall top refits keep height, area and volume quantities consistent with the
+changed body. Existing quantities are read before changing the geometry, so
+a quantity base derived from live geometry is scaled exactly once. This
+applies to copying, inserting or moving storeys and setting top constraints.
+Prism scaling applies only when the final wall remains an extrusion. Roof
+cuts retain existing source/user quantities and omit derived prism dimensions.
+
 **Authoring default.** `bim.store.addWall`, `addColumn`, `addColumnOnGrid`, `addBeam`, `addMember` and `addCurtainWall` take an optional `TopConstraint` (a `setTopConstraintInStore` constraint, or `'auto'`, the default). `auto` is the Model workspace's "To storey above": an element whose top lands on the storey above its own (within 1 mm) is recorded attached to it, relatively; anything else is fixed. The Model workspace's Wall, Column and Curtain Wall tools draw up to the storey above under that default and record the attachment in the same Undo step; the Beam tool records it when the beam's top lands on the storey above. A level beam or member lands with its top face, the way a storey edit lifts it whole. The viewer's `bim.store` applies the constraint the same way as headless, curtain walls and grid columns included.
 
-`bim.store` exposes the same operations in every host: the SDK's headless backend, the viewer (through the storey manager's undo-batched path) and its script sandbox, the MCP `storey_*` tools and `ifc-lite storey`. The methods are `listStoreyLevels`, `suggestStorey`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products. The round-1A methods `planAddStorey`, `setTopConstraint` and `copyToStoreys` are on the SDK's headless backend (and so on `ifc-lite run` scripts); the viewer adapter, its sandbox, MCP and `ifc-lite storey` follow in #9352.
+The SDK's headless `bim.store` backend exposes storey authoring; the viewer's storey manager uses the same undo-batched core paths. The methods are `listStoreyLevels`, `suggestStorey`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products. The round-1A methods `planAddStorey`, `setTopConstraint` and `copyToStoreys` are available through the SDK's headless backend and `ifc-lite run` scripts, the MCP `storey_plan_add`, `set_top_constraint` and `copy_to_storeys` tools, and `ifc-lite storey add --dry-run`, `storey constrain` and `storey copy`.
+
+A wall attached to an authored footprint roof is trimmed to its actual underside,
+including ridges and valleys. The roof must cover the whole wall, and both
+placements must be upright. A roof or slab translation, a roof shape edit, and a
+storey edit refit the attached tops in the same atomic edit. An invalid fit leaves
+the original model unchanged. Fixed detaches the top and keeps its last shape;
+attaching to a storey or slab restores a planar top.
+
+The shared placement and transform operations refit attached tops inside their
+transaction and return every product that needs remeshing. Custom hosts that write
+placements directly can call
+`refreshTopAttachmentsInStore({ dataStore, view, editor }, movedElementIds)`
+inside their transaction and remesh the returned product ids.
+
+Walls fitted to pitched roofs retain their editable base extrusion beneath the roof cuts. Their derived quantities retain length, width and floor footprint; prism height, side area and volume are omitted until the quantity reader can measure the finished CSG body. Loaded files retain their original quantity sets under the normal opt-in refresh policy.
+
+Cyclic or unreadable session-created shape graphs are refused atomically in both copy modes. Valid shapes retain the default sharing policy.
+
+The `IfcAttributeValue` typed marker accepts `number[]` for IFC4 indexed segments:
+`{ typed: { type: 'IfcLineIndex', value: [1, 2] } }` writes `IFCLINEINDEX((1,2))`.
+`IfcArcIndex` requires exactly three indices; all indices must be positive integers.
+Other typed markers continue to accept scalar values.
+
+When migrating an attribute reader, narrow `value.typed.value` with
+`Array.isArray` before passing it to a scalar-only function. The typed payload
+can now contain segment indices as well as a string, number or boolean.
+
+For an entity-scoped diff, use `view.getEffectiveChanges(expressId)`. It returns
+that entity's current effective changes in the same order as filtering
+`view.getEffectiveChanges()`, while reading its indexed mutation rows.
+`view.getNewEntitiesReferencing(expressId)` enumerates created records whose
+**authored attributes** contain a `#expressId` reference. These are candidates:
+apply named and positional overrides and deletion checks before interpreting
+an effective relationship. Slot overrides that introduce a reference must also
+be considered through `view.getAttributeOverrideEntityIds()`. Pass a list of
+IFC classes to that method to narrow created candidates by their effective
+class; edited source records remain conservative candidates for the caller to
+check against its source store. The optional second argument narrows creations
+to overrides that could contain a reference to that ID. These remain
+candidates; verify their effective slots with the relevant schema and grammar.
+`view.getAttributeOverrideReferenceCandidates(id)` also indexes source edits
+that might introduce a reference. Combine these with the immutable source and
+authored reference indices; retained or removed references need those indices.
+
+The ordinary entity getters keep their mutable-array contract. Reference
+lookups conservatively recheck a record after its attribute array is exposed,
+including later edits through a retained alias. Pure readers can use
+`readNewEntity`, `readNewEntities`, and `readNewEntitiesOfType`. These return
+frozen copies, so a write through a borrowed array throws instead of editing a
+record behind the reference index. Reference-query results are borrows too.
+Borrowing marks nothing as exposed, and inside a transaction a borrow reads an
+unmodified row without copying it into the draft. Use the ordinary getters or
+mutation methods for writes. `StoreEditor.readNewEntity` provides the same
+read-only borrow. `readNewEntityKinds(type?)`, `hasNewEntity(id)` and
+`getNewEntityCount()` answer enumeration and membership without reading any
+payload. The read snapshot cache is bounded, and completed atomic transactions
+release temporary indexes even during a long synchronous session. Retained
+draft views remain private and rebuild their indexes when queried again.
+
+`planFootprintRoof(footprint, edgeSlopes, overhang)` exposes the same pure planner
+used by the roof builder for previews. Coordinates and overhang share a length
+unit; edge slopes are radians. `roofPlaneHeightAt(plane, point)` reads a planned
+plane's underside height above the roof placement. Invalid footprints throw with
+a reason before any entities are written.
+
+In a shared viewer session, roof creation publishes its body and footprint
+definition together before committing the local draft. If publication fails,
+creation leaves no roof, undo entry or partial definition on peers; the same
+creation can be retried. Mesh and spatial-tree registration follow a successful
+commit.
+
+### Persisting an overlay
+
+Use `snapshotOverlay` and `restoreOverlay` from `@ifc-lite/mutations` to save
+edits without copying the source IFC file. The versioned JSON contains current
+logical rows, created entities in creation order, forgotten creation rows, the
+allocator and the mutation journal. It includes edits made with `skipHistory`.
+Source tables, extractors, derived indices, GPU meshes and Revert registries are
+not persisted. Restore rebuilds class and reference indices.
+
+```ts
+import { MutablePropertyView, snapshotOverlay, restoreOverlay } from '@ifc-lite/mutations';
+
+async function persistAndRestore(view: MutablePropertyView, destination: MutablePropertyView, completeSource: ArrayBuffer) {
+  const digest = await crypto.subtle.digest('SHA-256', completeSource);
+  const sourceContentHash = 'sha256:' + Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  const saved = snapshotOverlay(view, { sourceContentHash, schema: 'IFC4' });
+  restoreOverlay(destination, saved, { sourceContentHash });
+  return destination;
+}
+```
+
+Supply the digest of the actual complete source buffer, using SHA-256 or another
+hex digest of at least 256 bits (an optional algorithm prefix is accepted).
+The viewer's full `placement-sha256-1m-v1:` identity is accepted. The package
+compares hashes; it cannot check which bytes the caller hashed. A mismatch
+throws `OverlaySourceMismatchError` before changing the view. Schema and
+creation time are informational. A newer snapshot version is refused.
+
+Prepare the destination against the same parsed source, attaching its normal
+base table/extractors before restore. Restore refuses an occupied view unless `{ replace: true }` is supplied.
+Successful replacement advances the live mutation revision, invalidating old
+prepared edits; it never lowers the allocator below the target's watermark.
+Malformed rows and input over the default 64 MiB UTF-8 limit are refused before
+publication. A caller can set `maxBytes`; data is bounded to 256 nested levels
+and two million values. Nonfinite values and negative zero survive
+in attributes as well as property/quantity rows.
+
+A host may pass optional `history: { undo, redo, groups, parked }` to
+`snapshotOverlay`: mutation IDs in the two stacks, mutation/group-ID pairs,
+and entity payloads needed to redo creations. `restoreOverlay` returns that
+history after validation. Invalid or host-only undo records drop the entire
+history and return `historyDroppedReason`, while retaining the valid edits.
+The journal's model IDs are preserved; bind host stacks to the same logical
+model. Rebuild meshes and host Revert state separately after restoring.
+
+For asynchronous work on a fork, use
+`const fork = view.prepareAtomic(draft => draft).result` and leave that
+transaction uncommitted. Later asynchronous code can edit, snapshot or export
+the detached fork without publishing it to the original view.
+
+Walls added through `bim.store.addWall` join coincident, non-parallel chain
+endpoints automatically. Crossings and T junctions still use `joinWalls`.
+Implicit joins are best-effort: if a join is refused (for example, a loaded
+wall has unreadable hosted-opening geometry), the new wall is still added
+without that join. The returned entity ref includes `notices?: string[]`
+with the skipped pair and reason. Explicit `joinWalls` requests still refuse
+atomically. Low-level `addOrdinaryElementInStore` callers can collect the
+same notices through `options.notices`; otherwise they are logged.
+Candidate discovery uses a session endpoint index, partitioned by parent
+placement and elevation. It reads the new wall once and checks full geometry
+only for matching endpoints. Other edits (including Undo/Redo) invalidate the
+index. Hosts wrapping creation in their own atomic transaction use
+`withWallAutojoinIndex` around that committed transaction and pass its staged
+index through `createOrdinaryStoreBackend` (or `options.wallIndex`); failed
+transactions do not publish candidate entries.
+Moving an `IfcGrid` with `transformElements` carries its grid-bound products.
+Products placed directly with `IfcGridPlacement` are included in the remesh
+result. Hosted openings and fillings placed independently on the storey move
+with a grid-bound host as separate roots. A move that would separate a carried
+wall from a stationary wall linked by `IfcRelConnectsPathElements` refuses
+atomically with a reason; include the other joined wall in the move or remove
+the join first. Joined walls carried together remain connected.
+The headless CLI supports `alignElements` using current native mesh bounds,
+including hosted cuts, rather than uncut parametric bounding boxes.
+
+The wall endpoint index also follows public raw `addEntity` creation. Incomplete
+forward-reference graphs and intervening geometry edits invalidate it; ordinary
+wall creation then reads the completed effective graph.
+Mirror upright local products with `bim.store.mirrorElements(modelId, ids,
+{ axis: [[0, 0], [0, 10]], copy: true })`. The axis uses storey-local IFC XY
+metres; omit `copy` to edit in place. Hosted openings and fillings travel with
+their host. The reflected representation retains its handedness and door
+operation names swap left and right. Shared door styles (IFC2X3) and types
+are cloned for the mirrored doors, preserving unselected users. Grids are
+refused atomically. In-place selections must include both
+sides of any wall join; shared placements, shape aspects and additional
+representation owners (such as presentation layers) are refused before writing.
+
+`bim.store.addClassification(modelId, { System: 'Uniclass 2015',
+Identification: 'EF_25_10', Name: 'Walls', objects: ids })` returns a classification
+reference, reusing a system of the same name and edition. An omitted edition
+only matches a system without an edition. Assign more objects
+with `bim.store.assignClassification(modelId, reference.expressId, ids)`.
+An object can retain several classifications.
+
+
+Property extractor callbacks receive `(sourceEntityId, currentView, occurrenceId)`.
+Existing callbacks taking only the source id remain supported. Forward the view
+to the parser's property extractor to read raw property-set records in the same
+atomic draft; use the occurrence id when resolving a copied entity's live
+relationships. This keeps raw STEP authoring and high-level property edits
+readable before export.
+
+Retargeting a roof-cut wall to a planar roof or storey restores a planar top and updates its existing prism quantities from their pre-cut baseline. Repeated refits preserve declared quantity units, including a net area in mm² beside a gross area in m².
+
+Direct placement translations return the final local coordinates after fitting an attached top; a level beam or member can therefore keep its original Z under a slab despite a requested vertical move. A storey with a present but unreadable placement cannot supply a floor from its Elevation metadata: fitting a top refuses atomically until that placement is repaired. An invalid storey-delete move destination returns an `invalidTarget` refusal before planning relative attachments. A deletion preview returns an `unreadablePlacement` refusal when a target floor has an explicit missing reference or an unreadable placement chain.
+
+Hosted door and window types are reused only when their resolved IFC operation
+or partitioning and user-defined text match. An enumeration and free text with
+the same display label remain distinct types. Low-level `duplicateInStore`
+callers supplying an `IfcRelDefinesByType` association's `relId` must also
+supply a nonempty `relatedIds` list containing its current `RelatedObjects`.
+Missing or empty lists are refused before any records are written. A parsed
+relationship without a live overlay list is checked against its source
+`RelatedObjects`; incomplete or extra members are refused atomically. Later
+copies preserve the current overlay list, including earlier copies. Material
+associations retain their `relId`-only input form.
+
+`StoreEditor.getSourceEntityData(id)` exposes one source record's bytes and its
+rebased entity index span for builders that need to verify source-backed relationships;
+it returns `null` when that entity has no source span.
+
+Attachment notices identify the element kind so a column, beam, member or
+curtain wall is described in its own terms. Raw authored doors or windows with
+nonpositive or nonfinite numeric `OverallWidth` or `OverallHeight` report a quantity diagnostic and keep
+an empty derived quantity result; existing third-party quantity sets are
+preserved.
+
+### Ordering a bounded set of authored records
+
+`view.getNewEntityCreationOrder(expressId)` reads a live creation's relative insertion order without enumerating the session. It returns `null` for an ID that is not a live creation. Compare these numbers only within the current view order; atomic publication, undo and snapshot restoration may renumber them. Nested atomic drafts include their own new records.
+
+`view.getNewEntityReferenceSlotIds(type, slot, target)` projects a raw authored positional scalar reference. A `null` target includes absent and malformed values. Small class buckets are checked directly; larger classes use a maintained projection, including nested drafts and exposed-array edits. Combine candidates with attribute overrides and verify effective values before using them. This is a raw creation index, not an effective-record reader.
+
+`view.trackEntityChanges()` supplies a disposable invalidation cursor for derived
+inventories. `take()` returns changed entity IDs since the previous call, or
+`null` after a full restoration or more than 65,536 distinct changes. It includes
+skip-history writes, atomic publication and undo. Escaped mutable creation arrays
+remain conservative candidates on every call. Read effective records after the
+write completes, rebuild on `null`, and call `dispose()` when the inventory is
+retired. An unchanged detached draft can borrow the inventory identified by the
+cursor's `origin` view and revision; changes inside that draft remain separate.
+
+`view.getNewEntityType(id)` reads one live creation's authored class without
+borrowing its attributes or copying it into a draft. It returns `null` for an
+absent creation; consult `getEntityTypeMutation(id)` for an effective retype.

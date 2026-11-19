@@ -1,0 +1,40 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import '@/test/setup-dom.js';
+import { afterEach, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { getProcessingServerUrl, setProcessingServerUrl } from './processed-model';
+import { isServerReachable } from '@/hooks/ingest/serverAvailability';
+
+const initial = getProcessingServerUrl();
+afterEach(() => setProcessingServerUrl(initial));
+
+describe('setProcessingServerUrl', () => {
+  it('keeps "/" as the page origin instead of clearing the server', () => {
+    setProcessingServerUrl('/');
+    assert.equal(getProcessingServerUrl(), '/');
+    assert.equal(isServerReachable(getProcessingServerUrl()), true);
+    setProcessingServerUrl('//');
+    assert.equal(getProcessingServerUrl(), '/');
+  });
+
+  it('drops trailing slashes from any other URL, and clears on an empty string', () => {
+    setProcessingServerUrl('/ifc/');
+    assert.equal(getProcessingServerUrl(), '/ifc');
+    setProcessingServerUrl('https://server.example.org//');
+    assert.equal(getProcessingServerUrl(), 'https://server.example.org');
+    setProcessingServerUrl('');
+    assert.equal(getProcessingServerUrl(), '');
+  });
+
+  it('trims spaces, and reads a blank or missing value as no server', () => {
+    setProcessingServerUrl(' /ifc/ ');
+    assert.equal(getProcessingServerUrl(), '/ifc');
+    setProcessingServerUrl('   ');
+    assert.equal(getProcessingServerUrl(), '');
+    setProcessingServerUrl(undefined as unknown as string); // an untyped host
+    assert.equal(getProcessingServerUrl(), '');
+  });
+});

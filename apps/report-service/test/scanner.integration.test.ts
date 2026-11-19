@@ -559,7 +559,7 @@ describe.skipIf(!enabled)(
               expect((await db.query(
                 "SELECT state,scan,approval,attempts FROM report_public_quarantine WHERE report_id=$1", [id],
               )).rows[0]).toMatchObject({ state: "blocked", scan: null, approval: null, attempts: 1 });
-              await expect(docker(["inspect", container])).rejects.toThrow(/No such object/);
+              await expect(docker(["inspect", container])).rejects.toThrow(/no such object/i);
               expect(await readdir(scratch)).toEqual([]);
             } finally {
               if (orchestrator.child.exitCode === null && orchestrator.child.signalCode === null) orchestrator.child.kill("SIGKILL");
@@ -599,7 +599,7 @@ describe.skipIf(!enabled)(
                 if (withdraw) await withdrawPublicModel(db, id, owner.id);
                 const restarted = await restart();
                 expect(restarted).toMatchObject({ code: 0, signal: null, output: "scanner_idle\n" });
-                await expect(docker(["inspect", container])).rejects.toThrow(/No such object/);
+                await expect(docker(["inspect", container])).rejects.toThrow(/no such object/i);
                 expect(await readdir(scratch)).toEqual([]);
                 const held = (await db.query(
                   "SELECT state,scan,attempts,lease_id FROM report_public_quarantine WHERE report_id=$1", [id],

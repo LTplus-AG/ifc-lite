@@ -131,6 +131,42 @@ describe('draping imagery through the load path (#5942)', () => {
     assert.match(errors[0], /viewport is not ready/);
   });
 
+  // #5942: the drape never owns the shared load UI. A raster added while an
+  // IFC streams must not end that load's spinner (it gates picking), yet the
+  // spinner `addModel` raised for the raster itself must still come down.
+  for (const owner of ['another streaming load', 'a point-cloud stream', 'no load'] as const) {
+    it(`a drape leaves the load UI ${owner === 'no load' ? 'idle when no load owns it' : `to ${owner}`} (#5942)`, async () => {
+      await loadTerrain();
+      const streaming = { phase: 'Processing geometry', percent: 40 };
+      act(() => {
+        const s = useViewerStore.getState();
+        // A point-cloud stream holds only the stream slot, yet still owns the card.
+        if (owner === 'another streaming load') s.setActiveLoadCanceller(() => {});
+        if (owner === 'a point-cloud stream') s.setActiveStreamCanceller(() => {});
+        s.setLoading(true);
+        s.setProgress(streaming);
+      });
+      const original = toast.error;
+      toast.error = () => {};
+      try {
+        await act(async () => hookApi!.loadFile(orthoBundle(), { kind: 'federated', modelId: 'raster-model' }));
+      } finally {
+        toast.error = original;
+        useViewerStore.getState().setActiveLoadCanceller(null);
+        useViewerStore.getState().setActiveStreamCanceller(null);
+      }
+      const state = useViewerStore.getState();
+      if (owner === 'no load') {
+        assert.equal(state.loading, false, 'the raster add ends its own spinner');
+        assert.equal(state.progress, null);
+      } else {
+        assert.equal(state.loading, true, 'the streaming load keeps its spinner');
+        assert.equal(state.progress?.phase, streaming.phase, 'and its progress');
+        assert.equal(state.progress?.percent, streaming.percent);
+      }
+    });
+  }
+
   it('routes IFC orthophotos through loadFile and refuses unfinished geometry with retry guidance (#8552)', async () => {
     const model = { ...fixtureModel('streaming-ifc'), loadState: 'streaming-geometry' as const, geometryResult: null };
     const spatialReference = spatialReferenceFromIfc({

@@ -5,6 +5,8 @@
 /** The one visibility-aware context-menu pick shared by mouse and touch. */
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
+import { isGeometryRestoreHeld } from '@/lib/pick-gating';
+import { useViewerStore } from '@/store';
 
 type ContextMenuTarget = Pick<MouseHandlerContext, 'canvas' | 'renderer' | 'getPickOptions' | 'openContextMenu'>;
 
@@ -13,8 +15,10 @@ export async function openContextMenuAt(
   clientX: number,
   clientY: number,
 ): Promise<void> {
+  if (isGeometryRestoreHeld(useViewerStore.getState())) return;
   if (refuseCaptureHeldPick(renderer)) return; // not for an entity a capture's frame shows (#9137)
   const rect = canvas.getBoundingClientRect();
   const picked = await renderer.pick(clientX - rect.left, clientY - rect.top, getPickOptions());
+  if (isGeometryRestoreHeld(useViewerStore.getState())) return;
   openContextMenu(picked?.expressId ?? null, clientX, clientY);
 }

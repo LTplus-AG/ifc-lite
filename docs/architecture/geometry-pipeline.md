@@ -372,9 +372,9 @@ host decides its geometry.
 |---|---|---|
 | A, whole host | ParamRect (analytic box-minus-boxes in the host's placement frame), Bool2d (2D profile subtract and re-extrude, staged on a provisional child execution), Prism (analytic stepped-prism subtract). First acceptance wins; a residual it leaves is cut by recursion on its result. | `strategy::HOST_STAGES` |
 | Origin/frame | World host bounds captured for diagnostics; host and cutters moved into one origin-0 frame. | `apply_void_context` |
-| B, frame-local | WallLocalFrame (plan-rotated walls cut in their own frame, one retry on plane-snapped operands when the cut comes back open; a rejected retry restores the first run's diagnostics), facet weld, RectFast (axis-aligned box host, all-rectangular openings). | `Execution::cut_in_frame` |
+| B, frame-local | WallLocalFrame (plan-rotated walls cut in their own frame, one retry on plane-snapped operands when the cut comes back open, or closed with slivers from an opening that only touches the host; a rejected retry restores the first run's diagnostics), facet weld, RectFast (axis-aligned box host, all-rectangular openings). | `Execution::cut_in_frame` |
 | C, exact tail | Dense-host subdivision, cutter preparation (rectangles synthesised as box meshes, malformed cutters left to the recut), coaxial union of overlapping coaxial clusters, disjoint batch cut at each group's first member, sequential exact subtract per opening, and the #635 AABB box cut when the kernel fails on an opening that reaches the host. | `strategy::exact::ExactTail` |
-| D, post passes | Kernel-failure drain, sliver refinement, malformed recut, flap clip to the pre-cut AABB, stray-shard sweep (only when a pass changed the host), cut-effect record. | `post::finish` |
+| D, post passes | Kernel-failure drain, vertex canonicalization triggered by high-aspect cut triangles, malformed recut, flap clip to the pre-cut AABB, stray-shard sweep (only when a pass changed the host), cut-effect record. | `post::finish` |
 
 The #635 fallback is a real, deliberate approximation: it removes the opening's
 AABB from a host whose exact cut failed, and its result has an open rim. It is

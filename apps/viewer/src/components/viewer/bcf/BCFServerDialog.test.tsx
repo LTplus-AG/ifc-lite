@@ -537,3 +537,49 @@ describe('BCFServerDialog', () => {
     );
   });
 });
+
+describe('BCFServerDialog single flight (C-2)', () => {
+  /** Count requests per path on top of the fake server. */
+  function countRequests(): Map<string, number> {
+    const counts = new Map<string, number>();
+    const fake = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      counts.set(path, (counts.get(path) ?? 0) + 1);
+      return fake(input, init);
+    }) as typeof fetch;
+    return counts;
+  }
+  /** A double-click: both presses land in one act(), before React re-renders the button disabled. */
+  const pressTwice = (el: HTMLElement) => act(() => {
+    el.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    el.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  });
+
+  it('C-2 a double-pressed Connect signs in once', async () => {
+    installFakeServer();
+    const counts = countRequests();
+    render(<BCFServerDialog open onOpenChange={() => {}} />);
+    type(input('bcf-server-url'), 'https://fake.example/bcf');
+    type(input('bcf-server-user'), 'tester@example.com');
+    type(input('bcf-server-password'), 'right');
+    pressTwice(button('Connect'));
+    await waitFor(() => document.body.textContent?.includes('Project One') ?? false, 'signed in with its project list');
+    assert.equal(counts.get('/bcf/oauth2/token'), 1, 'one token request per press burst');
+  });
+
+  it('C-2 a double-pressed Load topics pulls the project once', async () => {
+    installFakeServer();
+    const counts = countRequests();
+    render(<BCFServerDialog open onOpenChange={() => {}} />);
+    type(input('bcf-server-url'), 'https://fake.example/bcf');
+    type(input('bcf-server-user'), 'tester@example.com');
+    type(input('bcf-server-password'), 'right');
+    click(button('Connect'));
+    await waitFor(() => document.body.textContent?.includes('Project One') ?? false, 'project list');
+    pressTwice(button('Load topics'));
+    await waitFor(() => useViewerStore.getState().bcfProject !== null, 'project in store');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    assert.equal(counts.get('/bcf/2.1/projects/p1/topics'), 1, 'one topic pull per press burst');
+  });
+});

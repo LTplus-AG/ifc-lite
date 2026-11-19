@@ -44,6 +44,7 @@ mod jsval;
 pub(crate) use jsval::format_step_real;
 mod ledger;
 mod lines;
+pub(crate) use lines::replace_argument;
 mod merged;
 mod nominal;
 mod overlay;

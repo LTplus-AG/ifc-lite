@@ -18,8 +18,8 @@
  * (must open a row `store.entityIndex.byType` never had).
  */
 
-import { describe, expect, it } from 'vitest';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { describe, expect, it, vi } from 'vitest';
+import { IfcParser, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { foldedTypeCounts, foldedEntityCount, overlayFromView, pendingMutationsField, type PendingOverlay, type CreatedEntity } from './overlay.js';
 import { foldRelationshipRows } from './backend-query-relationships.js';
@@ -213,4 +213,17 @@ ENDSEC;END-ISO-10303-21;`;
     }));
     expect(folded.groups).toEqual([{ id: 10, name: 'Zone', type: 'IfcZone' }]);
   });
+});
+
+
+it('enumerates schema keys once per bulk session read, not per record #8452', () => {
+  const store = fakeStore({});
+  const view = new MutablePropertyView(null, 'bulk');
+  for (let i = 0; i < 2000; i++) view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  const entities = getSchemaRegistryForVersion('IFC4').entities;
+  const keys = vi.spyOn(Object, 'keys');
+  try {
+    expect(overlayFromView(view, store)?.createdAll).toHaveLength(2000);
+    expect(keys.mock.calls.filter(([object]) => object === entities).length).toBeLessThanOrEqual(4);
+  } finally { keys.mockRestore(); }
 });

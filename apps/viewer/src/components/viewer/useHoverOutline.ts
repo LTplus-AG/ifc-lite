@@ -13,6 +13,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { useHoverState } from '../../hooks/useViewerSelectors.js';
 import { useViewerStore } from '@/store';
+import { isGeometryHeld } from '@/lib/pick-gating';
 
 export function useHoverOutline(rendererRef: MutableRefObject<Renderer | null>) {
   const { hoverTooltipsEnabled, hoverHighlightEnabled, clearHover } = useHoverState();
@@ -41,6 +42,6 @@ export function useHoverOutline(rendererRef: MutableRefObject<Renderer | null>) 
  * so no ref needs threading through it.
  */
 export function hoverOutlineTarget(state = useViewerStore.getState()): { hoverOutline?: { id: number; modelIndex?: number } } {
-  if (!state.hoverHighlightEnabled || state.hoverState.entityId == null) return {};
+  if (!state.hoverHighlightEnabled || state.hoverState.entityId == null || isGeometryHeld(state)) return {};
   return { hoverOutline: { id: state.hoverState.entityId, modelIndex: state.hoverState.modelIndex } };
 }

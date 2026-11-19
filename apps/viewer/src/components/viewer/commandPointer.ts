@@ -47,6 +47,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast } from './measureHandlers.js';
+import { isGeometryHeld } from '@/lib/pick-gating';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
@@ -97,14 +98,29 @@ function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
 }
 
 /** The renderer's magnetic pick at the cursor, given the held edge lock. */
-function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: number, y: number): MeshPick {
+function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: number, y: number): MeshPick | null {
   const lock = ctx.edgeLockStateRef.current;
-  return ctx.renderer.raycastSceneMagnetic(x, y, {
-    edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
-  }, {
-    ...pickOptions(ctx, command),
-    snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 },
-  }) as MeshPick;
+  const options = pickOptions(ctx, command);
+  const construction = command.id.endsWith('.place') && command.aimsAtElement?.(getCommandRuntime().gesture) !== true;
+  const hiddenIds = new Set(options.hiddenIds);
+  // Spatial volumes may extend through the next floor. They are not physical
+  // construction references. Bound retries even if a renderer ignores exclusions.
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const pick = ctx.renderer.raycastSceneMagnetic(x, y, {
+      edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
+    }, { ...options, hiddenIds, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } }) as MeshPick;
+    if (!pick || !construction) return pick;
+    const id = pick.snapTarget?.expressId ?? pick.intersection?.expressId;
+    const s = useViewerStore.getState();
+    const ref = id === undefined ? null : s.resolveGlobalIdFromModels(id);
+    const view = ref && s.mutationViews.get(ref.modelId);
+    const type = ref && (view?.getEntityTypeMutation(ref.expressId)?.newType ?? view?.getNewEntity(ref.expressId)?.type
+      ?? s.models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId));
+    if (type?.toUpperCase() !== 'IFCSPACE') return pick;
+    if (id === undefined || hiddenIds.has(id)) break;
+    hiddenIds.add(id);
+  }
+  return { snapTarget: null, intersection: null, edgeLock: { shouldLock: false, shouldRelease: true, edge: null, meshExpressId: null, edgeT: 0, isCorner: false, cornerValence: 0 } };
 }
 
 function resolveCommandSnap(
@@ -141,9 +157,11 @@ function resolveCommandSnap(
       pick: () => pick,
       lock: { get: () => ctx.edgeLockStateRef.current, set: ctx.setEdgeLock, clear: ctx.clearEdgeLock },
       toLocal,
+      entityOf: (id) => useViewerStore.getState().resolveGlobalIdFromModels(id),
+      suppressSurfacePoints: command.id.endsWith('.place') && command.aimsAtElement?.(runtime.gesture) !== true,
     }),
-    ...(plane.spec.kind === 'section' ? [] : modelSnapSources(commandCtx.modelId)),
   ] : [];
+  if (aim === 'snap' && plane.spec.kind !== 'section') sources.push(...modelSnapSources(commandCtx.modelId));
   ctx.setSnapTarget(pick?.snapTarget ?? null);
   return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
 }
@@ -162,6 +180,7 @@ function pressSnap(ctx: MouseHandlerContext, runtime: CommandRuntimeState, x: nu
 export function routeCommandPressDrag(ctx: MouseHandlerContext, x: number, y: number, mods: PointerModifiers, drag: boolean): boolean {
   const runtime = getCommandRuntime();
   if (!runtime.command?.pressDrags || !runtime.ctx) return false;
+  if (isGeometryHeld(useViewerStore.getState())) return false;
   const snap = pressSnap(ctx, runtime, x, y, mods);
   return snap !== null && (drag ? commandPressDrag : commandPressGrabs)(snap);
 }
@@ -176,6 +195,9 @@ export function routeCommandPointer(
 ): boolean {
   const runtime = getCommandRuntime();
   if (!runtime.command || !runtime.ctx) return false;
+  // The click path queues the command's discrete placement after release. Do
+  // not let press/move plumbing raycast partial geometry or report a miss.
+  if (isGeometryHeld(useViewerStore.getState())) return true;
   rememberCommandPointer((keys) => { routeCommandPointer(ctx, 'move', x, y, keys); }, mods);
   if (kind !== 'move') {
     const snap = pressSnap(ctx, runtime, x, y, mods);
@@ -191,7 +213,7 @@ export function routeCommandPointer(
     ctx.measureRaycastFrameRef.current = null;
     const at = latest.get(ctx);
     latest.delete(ctx);
-    if (!at) return;
+    if (!at || isGeometryHeld(useViewerStore.getState())) return;
     const current = getCommandRuntime();
     if (current.command !== at.runtime.command || current.ctx !== at.runtime.ctx) return;
     const snap = resolveCommandSnap(ctx, current, at.x, at.y, at.mods);

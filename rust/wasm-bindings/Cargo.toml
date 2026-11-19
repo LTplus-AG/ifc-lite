@@ -24,7 +24,27 @@ crate-type = ["cdylib", "rlib"]
 [features]
 # Opt-in #6516 route-work diagnostic; absent from shipping builds.
 opening-perf-trace = ["ifc-lite-geometry/opening-perf-trace"]
-default = ["console_error_panic_hook"]
+default = ["console_error_panic_hook", "full"]
+# Optional JS API families. `full` (on by default) is the published engine,
+# `pkg/`. The geometry-core bundle (`pkg-core/`, `@ifc-lite/wasm/core`) is
+# built with `--no-default-features --features console_error_panic_hook`:
+# IFC parsing, mesh streaming, styles and the 2D/symbolic helpers the
+# geometry package exposes, without the subsystems below. Each gates only
+# whole `IfcAPI` impl modules (`src/api/mod.rs`), never a code path inside the
+# mesh pipeline, so both bundles mesh with the same code.
+full = ["export", "landxml", "clash", "scan", "pdf-vector"]
+# Domain-format exporters (`export*` methods): glTF/GLB, OBJ, STEP, IFC5,
+# JSON/JSON-LD/CSV, HBJSON/DFJSON, USD, merged.
+export = ["dep:ifc-lite-export"]
+# LandXML import/streaming (and, with `export`, LandXML terrain export).
+landxml = ["dep:ifc-lite-landxml"]
+# Clash detection (triangle and solid).
+clash = ["dep:ifc-lite-clash"]
+# Point-cloud scan operations: registration, segmentation, element proposals,
+# outlines.
+scan = []
+# PDF vector underlay import.
+pdf-vector = []
 debug_geometry = ["ifc-lite-geometry/debug_geometry"]
 # Threaded WASM bundle: in-instance rayon pool via wasm-bindgen-rayon. Built
 # separately with atomics/shared-memory flags (build-wasm.sh BUILD_THREADED=1).
@@ -60,12 +80,12 @@ ifc-lite-geometry.workspace = true
 # delegate (issue #843 follow-up — full parity, one implementation).
 ifc-lite-processing.workspace = true
 # Pure-geometry clash kernel (BVH broad phase + exact triangle narrow phase).
-ifc-lite-clash.workspace = true
+ifc-lite-clash = { workspace = true, optional = true }
 # Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP, IFC5, Merged).
 # The browser GLB API does not expose texture export. Keep the opt-in PNG
 # encoder out of the default engine; native exporters retain the feature.
-ifc-lite-export = { workspace = true, default-features = false }
-ifc-lite-landxml.workspace = true
+ifc-lite-export = { workspace = true, default-features = false, optional = true }
+ifc-lite-landxml = { workspace = true, optional = true }
 js-sys = "=0.3.103"
 # `ifc-lite-geometry` uses rayon `par_iter` (e.g. FacetedBrep
 # preprocessing). On wasm32 there is no thread pool, so it runs

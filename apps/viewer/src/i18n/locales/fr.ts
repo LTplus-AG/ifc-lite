@@ -4,6 +4,7 @@
 
 import type { Catalogue } from '../registry';
 import { registryFr } from './fr/registry';
+import { agentBridgeFr } from './fr/agent-bridge';
 import { storeyManagerFr } from './fr/storey-manager';
 import { activityTrayFr } from './fr/activity-tray';
 import { aiReportsFr } from './fr/ai-reports';
@@ -43,6 +44,7 @@ import { checkAuthoringFr } from './fr/check-authoring';
 import { clashGroupApplyFr } from './fr/clash-group-apply';
 import { clashGroupsFr } from './fr/clash-groups';
 import { clashPanelFr } from './fr/clash-panel';
+import { clashQualityFr } from './fr/clash-quality';
 import { clashToolsFr } from './fr/clash-tools';
 import { commandPaletteFr } from './fr/command-palette';
 import { commandsFr } from './fr/commands';
@@ -86,6 +88,7 @@ import { ionUploadFr } from './fr/ion-upload';
 import { keyboardShortcutsFr } from './fr/keyboard-shortcuts';
 import { landXmlGeorefAssumptionsFr } from './fr/landxml-georef-assumptions';
 import { landXmlTerrainExportFr } from './fr/landxml-terrain-export';
+import { rhinoExportFr } from './fr/rhino-export';
 import { landXmlFr } from './fr/landxml';
 import { layersPanelFr } from './fr/layers-panel';
 import { lensPanelFr } from './fr/lens-panel';
@@ -147,11 +150,15 @@ import { spaceEnvelopeFr } from './fr/space-envelope';
 import { splitToolFr } from './fr/split-tool';
 import { stairRailingFr } from './fr/stair-railing';
 import { storeyContextFr } from './fr/storey-context';
+import { structuralGlyphsFr } from './fr/structural-glyphs';
 import { structuralPropertiesFr } from './fr/structural-properties';
 import { structuralReviewFr } from './fr/structural-review';
+import { structuralDeriveFr } from './fr/structural-derive';
 import { sweptDiskInspectionFr } from './fr/swept-disk-inspection';
 import { tableCorrectionsFr } from './fr/table-corrections';
 import { terrainImageryFr } from './fr/terrain-imagery';
+import { siteContextFr } from './fr/site-context';
+import { floodCheckFr } from './fr/flood-check';
 import { toursFr } from './fr/tours';
 import { trimExtendFr } from './fr/trim-extend';
 import { validationEditorFr } from './fr/validation-editor';
@@ -203,6 +210,7 @@ export default {
   ...clashGroupApplyFr,
   ...clashGroupsFr,
   ...clashPanelFr,
+  ...clashQualityFr,
   ...clashToolsFr,
   ...commandPaletteFr,
   ...commandsFr,
@@ -246,6 +254,7 @@ export default {
   ...keyboardShortcutsFr,
   ...landXmlGeorefAssumptionsFr,
   ...landXmlTerrainExportFr,
+  ...rhinoExportFr,
   ...landXmlFr,
   ...layersPanelFr,
   ...lensPanelFr,
@@ -307,11 +316,15 @@ export default {
   ...splitToolFr,
   ...stairRailingFr,
   ...storeyContextFr,
+  ...structuralGlyphsFr,
   ...structuralPropertiesFr,
   ...structuralReviewFr,
+  ...structuralDeriveFr,
   ...sweptDiskInspectionFr,
   ...tableCorrectionsFr,
   ...terrainImageryFr,
+  ...siteContextFr,
+  ...floodCheckFr,
   ...toursFr,
   ...trimExtendFr,
   ...validationEditorFr,
@@ -324,5 +337,6 @@ export default {
   ...zoneEmissionFr,
   ...zonesPanelFr,
   ...registryFr,
+  ...agentBridgeFr,
   ...storeyManagerFr,
 } satisfies Catalogue;

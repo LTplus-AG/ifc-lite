@@ -53,7 +53,7 @@ ${sectionExclusionsWgsl}
           quantParams: vec4<f32>,
           originHigh: vec4<f32>,
           originLow: vec4<f32>,
-          entity: vec4<u32>,
+          entity: vec4<u32>, // x = lane anchor, y = 1: test the visibility table
         }
         @binding(1) @group(0) var<uniform> draw: Draw;
 
@@ -150,11 +150,15 @@ ${sectionExclusionsWgsl}
           return emit(rteWorldPosition(linear, RteDrawableUniform(draw.originHigh, draw.originLow)), sectionEntityFromLane(draw.entity.x, input.entityId));
         }
 
-        // Clipped variant: discard before the depth write, so a clipped-away
-        // occluder leaves the shadow map untouched. Kept byte-for-byte in step
-        // with the fs_main section/clip-box branches.
+        // Fragment variant: discard before the depth write, so a clipped-away
+        // or hidden occluder leaves the shadow map untouched. Kept in step
+        // with the fs_main visibility and section/clip-box branches.
         @fragment
         fn fs_shadow_clip(@location(0) worldPos: vec3<f32>, @location(1) @interpolate(flat) entityId: u32) {
+          // A partly hidden batch cast whole: its hidden entities cast nothing (#10264 S2).
+          if (draw.entity.y != 0u && !entityVisible(entityId)) {
+            discard;
+          }
           let excluded = sectionExcluded(entityId);
           if (!excluded && (clip.flags.x & 1u) == 1u) {
             let side = select(1.0, -1.0, (clip.flags.x & 2u) == 2u);

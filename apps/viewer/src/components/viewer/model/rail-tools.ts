@@ -18,6 +18,7 @@ import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 import { launchModelCommand, launchSlabTool } from '@/lib/commands/modeling/keys-workspace';
 import { useViewerStore, type ViewerState } from '@/store';
+import { leaveModelWorkspace } from './leave-model-workspace';
 
 type RailGroup = 'select' | 'build' | 'host' | 'edit' | 'circulation';
 
@@ -141,6 +142,20 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     run: () => { launchModelCommand('element.rotate'); },
   },
   {
+    id: 'element.mirror', group: 'edit', labelKey: 'moveRotate.mirror.label', Icon: AlignHorizontalJustifyStart,
+    shortcut: 'model.mirror', drawsOnWorkplane: true,
+    isActive: commandActive('element.mirror'),
+    blockedKey: (s) => (s.selectedEntityId === null ? 'moveRotate.noSelection' : null),
+    run: () => { launchModelCommand('element.mirror'); },
+  },
+  {
+    id: 'element.offset', group: 'edit', labelKey: 'moveRotate.offset.label', Icon: CopyPlus,
+    shortcut: 'model.offset', drawsOnWorkplane: true,
+    isActive: commandActive('element.offset'),
+    blockedKey: (s) => (s.selectedEntityId === null ? 'moveRotate.noSelection' : null),
+    run: () => { launchModelCommand('element.offset'); },
+  },
+  {
     id: 'split.multi', group: 'edit', labelKey: 'multiSplit.tool', Icon: ScissorsLineDashed,
     shortcut: 'model.splitMulti', drawsOnWorkplane: true,
     isActive: commandActive('split.multi'),
@@ -179,11 +194,11 @@ export const RAIL_TOOLS: readonly RailTool[] = [
   },
 ];
 
-/** The rail's footer: leave the workspace (E, like the ribbon's Model button). */
+/** The rail's footer: leave the workspace (M, like the tab row's Model button). */
 export const LEAVE_TOOL = {
   id: 'leave',
   labelKey: 'modelWorkspace.tool.leave',
   Icon: LogOut,
   shortcut: 'edit.toggleEditMode',
-  run: () => useViewerStore.getState().exitModelWorkspace(),
+  run: leaveModelWorkspace,
 } as const satisfies Pick<RailTool, 'id' | 'labelKey' | 'Icon' | 'shortcut' | 'run'>;

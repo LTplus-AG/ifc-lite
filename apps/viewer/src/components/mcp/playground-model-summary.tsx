@@ -6,7 +6,8 @@ import { useMemo, type ReactNode } from 'react';
 import { FileText } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { formatBytes } from './playground-files';
-import { effectiveTypeCounts } from './playground-effective';
+import { effectiveTypeCounts } from '@/lib/agent-tools/effective';
+import { playgroundModelHandle } from './playground-tool-host';
 import type { LoadedPlaygroundModel } from './playground-dispatcher';
 
 const PAPER = '#ede4d3';
@@ -18,7 +19,7 @@ const mono = { fontFamily: '"JetBrains Mono", ui-monospace, monospace' };
 export function ModelSummary({ model, revision }: { model: LoadedPlaygroundModel; revision: number }): ReactNode {
   const { t } = useTranslation();
   const summary = useMemo(() => {
-    const counts = [...effectiveTypeCounts(model)];
+    const counts = [...effectiveTypeCounts(playgroundModelHandle(model))];
     const entityCount = counts.reduce((total, [, count]) => total + count, 0);
     counts.sort((a, b) => b[1] - a[1]);
     return { entityCount, top: counts.slice(0, 8).map(([type, count]) => ({ type, count })) };

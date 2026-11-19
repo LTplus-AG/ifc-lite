@@ -386,7 +386,7 @@ console.log('Server status:', health.status);
 ```typescript
 import { parseIfcx, detectFormat } from '@ifc-lite/ifcx';
 
-const format = detectFormat(buffer); // 'ifc', 'ifcx', 'glb', or 'unknown'
+const format = detectFormat(buffer); // 'ifc', 'ifcx', 'glb', '3dm', or 'unknown'
 if (format === 'ifcx') {
   const result = await parseIfcx(buffer);
   console.log('IFC5 entities:', result.entityCount);

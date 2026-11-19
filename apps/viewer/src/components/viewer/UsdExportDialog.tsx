@@ -41,10 +41,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/retainedGeometry';
 import { toast } from '@/components/ui/toast';
-import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
+import { isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
-import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
+import { isStepSourceModel } from './step-export-source';
 import { useTranslation } from '@/i18n';
+import { produceNativeUsd } from '@/lib/export/native-scenes';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
 interface UsdExportDialogProps {
@@ -60,12 +61,12 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
   const [selectedModelId, setSelectedModelId] = useState<string>('');
 
   // Only STEP-backed IFC models can be exported — USD is rebuilt from the
-  // source, not the tessellated geometry. `isUsdExportableModel` also excludes
+  // source, not the tessellated geometry. `isStepSourceModel` also excludes
   // cache-restored models (no `sourceFile`) and `.ifcx` (a separate exporter).
   const modelList = useMemo(
     () =>
       Array.from(models.values())
-        .filter(isUsdExportableModel)
+        .filter(isStepSourceModel)
         .map((m) => ({
           id: m.id,
           name: m.name,
@@ -97,31 +98,7 @@ export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
     }
 
     try {
-      // Mutation-aware, format-safe source resolution shared with the command
-      // palette (regenerate edited STEP bytes, else the unwrapped store bytes,
-      // else the raw file).
-      const bytes = await resolveUsdExportBytes(selectedModel, getMutationView);
-
-      // A fresh processor is cheap: wasm-bindgen shares one module singleton, so
-      // init() no-ops when the viewer already initialised the engine. It owns a
-      // WASM `IfcLiteBridge` handle, so it must be freed on every path out of
-      // this block, success or throw (mirrors the HBJSON dialog).
-      const processor = new GeometryProcessor();
-      let usd: Uint8Array;
-      try {
-        await processor.init();
-        const result = processor.exportUsd(bytes);
-        if (result === null) {
-          throw new Error(t('geometryExport.shared.geometryEngineUnavailableError'));
-        }
-        usd = result;
-      } finally {
-        processor.dispose();
-      }
-
-      // USDA is UTF-8 ASCII text; download it as text (matches how STEP `.ifc`
-      // text is downloaded — there is no registered USD mime in the codebase).
-      const blob = new Blob([usd as BlobPart], { type: 'text/plain' });
+      const blob = await produceNativeUsd(selectedModel, getMutationView);
       downloadBlob(blob, buildExportFilename(stripExtension(selectedModel.name), 'usda'));
       trackExportCompleted({ format: 'usda', surface, size_kb: Math.round(blob.size / 1024) });
 

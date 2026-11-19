@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCompactEntityIndex, createSyntheticDataStore, type EntityRef } from '@ifc-lite/parser';
+import { IfcParser, buildCompactEntityIndex, createSyntheticDataStore, type EntityRef } from '@ifc-lite/parser';
 import { FederationRegistry } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { getMaxExpressId, parseIfcxViewerModel } from './viewerModelIngest.js';
@@ -112,4 +112,41 @@ describe('IFCX federation ownership includes every source row (#6564)', () => {
     assert.deepEqual(registry.fromGlobalId(registry.toGlobalId('scan', 40)), { modelId: 'scan', expressId: 40 });
     assert.throws(() => registry.toGlobalId('scan', 41), /not published/);
   });
+});
+
+it('includes deferred source IDs in the same watermark used by the authoring allocator', () => {
+  const store = storeFor([1, 2], true);
+  store.deferredEntityIndex = new Map([[100, { expressId: 100, type: 'IFCPROPERTYSINGLEVALUE', byteOffset: 0, byteLength: 1, lineNumber: 1 }]]);
+  assert.equal(getMaxExpressId(store, []), 100);
+});
+
+it('uses the compact maximum without enumerating source indexes (#10139)', () => {
+  const store = storeFor([10, 2, 5], true);
+  store.entityIndex.byId.keys = () => { throw new Error('compact index was scanned'); };
+  store.deferredEntityIndex = new Map([[40, { expressId: 40, type: 'IFCPROPERTYSINGLEVALUE', byteOffset: 0, byteLength: 1, lineNumber: 1 }]]);
+  assert.equal(getMaxExpressId(store, [mesh(20)]), 40);
+});
+
+it('does not scan redundant compact-store entity columns on the first watermark read (#10139)', async () => {
+  const source = new TextEncoder().encode(`ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('','','',(''),(''),'','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#2=IFCPROJECT('0000000000000000000002',$,'Project',$,$,$,$,$,$);
+#5=IFCWALL('0000000000000000000005',$,'Wall',$,$,$,$,$,$);
+#10=IFCMATERIAL('Material',$,$);
+ENDSEC;END-ISO-10303-21;`);
+  const store = await new IfcParser().parseColumnar(source.buffer);
+  const index = store.entityIndex.byId;
+  assert.ok('maxExpressId' in index);
+  assert.equal(index.maxExpressId, 10);
+  // Production table construction uses a subset of the primary index's refs.
+  assert.ok(store.entities.count > 0);
+  for (const id of store.entities.expressId) assert.ok(index.has(id));
+  store.entities.expressId = new Proxy(store.entities.expressId, {
+    get(target, key) {
+      if (typeof key === 'string' && /^\d+$/.test(key)) throw new Error('redundant entity-table scan');
+      return Reflect.get(target, key, target);
+    },
+  });
+  assert.equal(getMaxExpressId(store, []), 10);
 });

@@ -318,7 +318,9 @@ async function inProcessWorker(): Promise<() => Worker> {
   const onmessage = await loadWorker();
   const worker = {
     postMessage: (msg: unknown) => setTimeout(() => onmessage({ data: msg }), 0),
-    addEventListener: (_type: string, listener: (event: { data: unknown }) => void) => listeners.add(listener),
+    addEventListener: (type: string, listener: (event: { data: unknown }) => void) => {
+      if (type === 'message') listeners.add(listener);
+    },
   };
   return () => worker as unknown as Worker;
 }

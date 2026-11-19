@@ -12,7 +12,8 @@
  * consumer (viewport, Cesium, basket, export) stays in lockstep.
  */
 
-import type { TypeVisibility } from './types.js';
+import { isAnalyticalProduct } from '../lib/visibility/analytical-classes.mjs';
+import type { TypeVisibility, StructuralViewMode } from './types.js';
 
 /** Which `typeVisibility` boolean gates each IFC class. */
 type TypeVisibilityKey = keyof Pick<
@@ -67,11 +68,36 @@ const IFC_TYPE_TO_VISIBILITY_KEY: Readonly<Record<string, TypeVisibilityKey>> = 
 export function isTypeVisible(
   ifcType: string | undefined,
   typeVisibility: TypeVisibilityGate,
+  mode: StructuralViewMode = 'both',
 ): boolean {
+  // Instanced meshes may carry no class; their owners are gated by the shared ID mask.
   if (!ifcType) return true;
+  if (mode === 'analytical' && !isAnalyticalProduct(ifcType)) return false;
+  if (mode === 'physical' && isAnalyticalProduct(ifcType)) return false;
   const key = IFC_TYPE_TO_VISIBILITY_KEY[ifcType];
   if (key === undefined) return true;
   return typeVisibility[key];
+}
+
+const VISIBILITY_KEYS = [...new Set(Object.values(IFC_TYPE_TO_VISIBILITY_KEY))];
+
+/** Whether `isTypeVisible` can drop anything: a structural mode or any class toggle off. */
+export function classFilterActive(typeVisibility: TypeVisibilityGate, mode: StructuralViewMode = 'both'): boolean {
+  return mode !== 'both' || VISIBILITY_KEYS.some((key) => !typeVisibility[key]);
+}
+
+/** Global id to class after edits, for retyped entities (`retypedClasses`). */
+export type RetypedClasses = ReadonlyMap<number, string>;
+
+/** `isTypeVisible` for a mesh, by its entity's class after a retype, else the
+ *  class it was meshed with. `expressId` is the global id every mesh list carries (#10119). */
+export function isMeshTypeVisible(
+  mesh: { expressId: number; ifcType?: string },
+  typeVisibility: TypeVisibilityGate,
+  mode: StructuralViewMode | undefined,
+  retyped: RetypedClasses | undefined,
+): boolean {
+  return isTypeVisible(retyped?.get(mesh.expressId) ?? mesh.ifcType, typeVisibility, mode);
 }
 
 /**

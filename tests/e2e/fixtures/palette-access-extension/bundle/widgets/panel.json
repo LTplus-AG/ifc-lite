@@ -1,0 +1,26 @@
+{
+  "type": "Stack",
+  "direction": "vertical",
+  "children": [
+    {
+      "type": "Text",
+      "text": "Installed QuickJS visibility witness"
+    },
+    {
+      "type": "Button",
+      "label": "Hide selected IFC elements",
+      "command": "palette-witness.visibility",
+      "args": {
+        "visible": false
+      }
+    },
+    {
+      "type": "Button",
+      "label": "Show selected IFC elements",
+      "command": "palette-witness.visibility",
+      "args": {
+        "visible": true
+      }
+    }
+  ]
+}

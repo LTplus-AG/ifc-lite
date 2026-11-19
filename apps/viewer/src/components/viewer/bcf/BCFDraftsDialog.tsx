@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
@@ -18,7 +19,7 @@ import { useViewerStore } from '@/store';
 import { bcfExportFilename } from '@/lib/export/download';
 import { publishBcfArchive } from '@/lib/bcf-drafts/archive-activity';
 import { DraftArchiveError, exportDraftArchive, importDraftArchive } from '@/lib/bcf-drafts/draft-archive';
-import { mergeDraftTopics, type DraftEditResult } from '@/lib/bcf-drafts/draft-edit';
+import { mergeDraftTopics } from '@/lib/bcf-drafts/draft-edit';
 import { adoptImportedBatches, bcfDraftLibrary, saveDraftBatch, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import type { DraftBatch } from '@/lib/bcf-drafts/draft-types';
 import { sameTarget } from '@/lib/bcf-publication/outbox-dispatch';
@@ -28,9 +29,8 @@ import { BCFDraftReconcile } from './BCFDraftReconcile';
 import { BCFDraftTopicEditor } from './BCFDraftTopicEditor';
 import { BCFOutboxEntry } from './BCFOutboxEntry';
 import { BCFPublicationPanel, useBcfConnection } from './BCFPublicationPanel';
+import { useDraftEdits } from './useDraftEdits';
 
-const REFUSALS = { 'unknown-topic': 'bcfDrafts.edit.unknownTopic', 'empty-split': 'bcfDrafts.edit.emptySplit',
-  'merge-needs-two': 'bcfDrafts.edit.mergeNeedsTwo', invalid: 'bcfDrafts.edit.invalid' } as const;
 const ARCHIVE_REFUSALS = {
   import: { topic: 'bcfDrafts.archive.refused.topic', member: 'bcfDrafts.archive.refused.member',
     'source-finding': 'bcfDrafts.archive.refused.sourceFinding', unreadable: 'bcfDrafts.archive.refused.unreadable' },
@@ -44,7 +44,13 @@ function OutboxAttention({ excludeId }: { excludeId: string | null }) {
   const records = useBcfOutbox(state => state.entries);
   const { config, connect } = useBcfConnection();
   const [connection, setConnection] = useState<Awaited<ReturnType<typeof connect>>>(null);
-  useEffect(() => { void connect().then(setConnection).catch(error => console.warn('[BCF publication] Not connected', error)); }, [config, connect]);
+  useEffect(() => {
+    // A reconnect supersedes an earlier, slower connect: only the latest lands.
+    let live = true;
+    void connect().then(next => { if (live) setConnection(next); })
+      .catch(error => console.warn('[BCF publication] Not connected', error));
+    return () => { live = false; };
+  }, [config, connect]);
   const open = records.filter(record => record.id !== excludeId && record.entries.some(entry => entry.state === 'uncertain' || entry.state === 'blocked'));
   if (!open.length) return null;
   return (
@@ -76,14 +82,11 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const [recordId, setRecordId] = useState<string | null>(null);
   const record = useBcfOutbox(state => state.entries.find(item => item.id === recordId));
 
+  // C-2: one asynchronous edit at a time, owned by the batch on screen (`useDraftEdits`).
   const save = (next: DraftBatch) => { void saveDraftBatch(next); setMergeSet(new Set()); };
-  const onEdit = (result: DraftEditResult | Promise<DraftEditResult>) => {
-    void Promise.resolve(result).then(outcome => {
-      if (outcome.ok) save(outcome.batch);
-      else toast.error(t(REFUSALS[outcome.reason]));
-    }).catch(error => { console.error('[BCF drafts] Edit failed', error); toast.error(t('bcfDrafts.edit.invalid')); });
-  };
-  const exportArchive = async () => {
+  const { onEdit, busy: editing } = useDraftEdits(batch?.id ?? null, save);
+  const exportFlight = useAsyncRun();
+  const exportArchive = () => exportFlight.start(async () => {
     if (!batch) return;
     try {
       await publishBcfArchive(batch.name, bcfExportFilename(batch.name), () => exportDraftArchive(batch, author));
@@ -92,7 +95,7 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
       toast.error(error instanceof DraftArchiveError ? t(ARCHIVE_REFUSALS[error.direction][error.reason])
         : error instanceof Error ? error.message : t('bcfDrafts.archive.exportFailed'));
     }
-  };
+  });
   const importArchive = async (file: File) => {
     try {
       const imported = await importDraftArchive(await file.arrayBuffer());
@@ -128,8 +131,8 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
               </select>
             </label>
             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => fileInput.current?.click()}>{t('bcfDrafts.archive.import')}</Button>
-            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!batch} onClick={() => void exportArchive()}>{t('bcfDrafts.archive.export')}</Button>
-            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!batch || mergeSet.size < 2}
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!batch || exportFlight.busy} onClick={() => void exportArchive()}>{t('bcfDrafts.archive.export')}</Button>
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!batch || mergeSet.size < 2 || editing}
               onClick={() => batch && onEdit(mergeDraftTopics(batch, batch.topics.filter(topic => mergeSet.has(topic.guid)).map(topic => topic.guid)))}>
               {t('bcfDrafts.dialog.merge', { count: mergeSet.size })}
             </Button>
@@ -138,12 +141,15 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
           </div>
           <ContentStorageNotice status={library.status} retry={bcfDraftLibrary.retry} restore={bcfDraftLibrary.restore} />
           {!batch && <p className="text-xs text-muted-foreground">{t('bcfDrafts.dialog.empty')}</p>}
-          {batch && batch.source.kind === 'clash' && <BCFDraftReconcile batch={batch} onChange={save} />}
-          {batch?.topics.map(topic => (
-            <BCFDraftTopicEditor key={topic.guid} batch={batch} topic={topic} users={users} publication={publicationOf(topic.guid)}
-              mergeSelected={mergeSet.has(topic.guid)} onEdit={onEdit}
-              onToggleMerge={guid => setMergeSet(current => { const next = new Set(current); if (!next.delete(guid)) next.add(guid); return next; })} />
-          ))}
+          {batch && batch.source.kind === 'clash' && <BCFDraftReconcile key={batch.id} batch={batch} onChange={save} />}
+          {/* A disabled fieldset disables every control in every editor while an edit lands. */}
+          <fieldset disabled={editing} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+            {batch?.topics.map(topic => (
+              <BCFDraftTopicEditor key={topic.guid} batch={batch} topic={topic} users={users} publication={publicationOf(topic.guid)}
+                mergeSelected={mergeSet.has(topic.guid)} onEdit={onEdit}
+                onToggleMerge={guid => setMergeSet(current => { const next = new Set(current); if (!next.delete(guid)) next.add(guid); return next; })} />
+            ))}
+          </fieldset>
           {batch && <BCFPublicationPanel batch={batch} onUsers={setUsers} onRecordId={setRecordId} />}
           <OutboxAttention excludeId={batch ? recordId : null} />
         </div>

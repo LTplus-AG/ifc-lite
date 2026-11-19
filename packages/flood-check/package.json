@@ -1,0 +1,58 @@
+{
+  "name": "@ifc-lite/flood-check",
+  "version": "0.2.0",
+  "description": "Headless check of a georeferenced building model against a surface-runoff hazard map (Swiss BAFU provider included)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run",
+    "smoke:live": "node ./scripts/live-smoke.mjs"
+  },
+  "dependencies": {
+    "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/parser": "workspace:^",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@mergifyio/vitest": "^2026.11.8",
+    "@types/node": "^26.6.6",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/flood-check"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "gis",
+    "flood",
+    "surface-runoff",
+    "hazard",
+    "switzerland",
+    "aec"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

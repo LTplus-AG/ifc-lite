@@ -18,6 +18,7 @@ mod preservation;
 mod supported_cells;
 mod source_boundary;
 mod source_boundary_graph;
+mod sub_results;
 
 use super::ClippingProcessor;
 use conform::{count_open_boundary_edges_at, open_edge_endpoints_at};
@@ -39,7 +40,9 @@ use ring_ops::{ring_is_noise, weld_near_coincident_2d};
 /// that scale (e.g. a 0.2 m × 2 m face, min 0.2 m ≫ 2·10⁻⁴). Dropping such a
 /// needle cannot open a gap: the hole/seam is already framed by the neighbouring
 /// non-degenerate triangles, exactly as Manifold (which welds the near-duplicate)
-/// produces.
+/// produces. That holds for a short edge on a region's ring only: a needle whose
+/// short edge is shared inside a triangulated region spans a real neck, and
+/// `conform::emit`'s region path keeps it (#8156).
 ///
 /// The cost of scale-relativity, documented behaviour rather than a defect
 /// (#4698): a REAL face thinner than `floor_pow2(max_edge) / 8192` is dropped
@@ -169,7 +172,7 @@ impl ClippingProcessor {
     /// only to the existing bounded remote-plane recovery (#7633).
     pub(crate) fn consolidate_prism_cut(mesh: Mesh, host: &Mesh) -> ConsolidationOutcome {
         Self::consolidate_with_outcome(mesh, 1.0, true, true,
-            ConsolidationUse::ClosedOutput, true, Some(host))
+            ConsolidationUse::ClosedOutput, true, Some(host), &mut Default::default())
     }
 
     /// IFC boolean operands receive source hygiene after scaling to metres;
@@ -181,18 +184,18 @@ impl ClippingProcessor {
 
     fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool, preserve_folds: bool, prism_host: Option<&Mesh>) -> Mesh {
         Self::consolidate_with_outcome(mesh, length_unit_scale, preserve_supported, preserve_folds,
-            ConsolidationUse::ClosedOutput, true, prism_host).mesh
+            ConsolidationUse::ClosedOutput, true, prism_host, &mut Default::default()).mesh
     }
 
     fn consolidate_with_use(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool,
         preserve_folds: bool, usage: ConsolidationUse, preserve_connected: bool) -> Mesh {
         Self::consolidate_with_outcome(mesh, length_unit_scale, preserve_supported, preserve_folds,
-            usage, preserve_connected, None).mesh
+            usage, preserve_connected, None, &mut Default::default()).mesh
     }
 
     fn consolidate_with_outcome(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool,
         preserve_folds: bool, usage: ConsolidationUse, preserve_connected: bool,
-        prism_host: Option<&Mesh>) -> ConsolidationOutcome {
+        prism_host: Option<&Mesh>, subs: &mut sub_results::SubResults) -> ConsolidationOutcome {
         if mesh.indices.len() < 6 {
             return ConsolidationOutcome::established(mesh);
         }
@@ -225,8 +228,7 @@ impl ClippingProcessor {
         if !supported.folded_buckets.is_empty()
             && preservation::tears_beyond_folds(&output, &buckets, &supported)
         {
-            let ordinary = Self::consolidate_with_use(
-                mesh.clone(), length_unit_scale, preserve_supported, false, usage, preserve_connected);
+            let ordinary = subs.run(&mesh, length_unit_scale, preserve_supported, false, usage, preserve_connected);
             // Only a fully closed fold-free host replaces the fold output; one
             // that is merely less open gives up the fold's finite support for
             // nothing (rvt01 #26681 pins that trade).
@@ -251,8 +253,8 @@ impl ClippingProcessor {
             let exact = crate::exact_topology::strict_closed_mesh(&output);
             let public = preservation::public_weld_closed(&output);
             if !exact || !public {
-                let ordinary = fold_free.take().unwrap_or_else(|| Self::consolidate_with_use(
-                    mesh.clone(), length_unit_scale, preserve_supported, false, usage, preserve_connected));
+                let ordinary = fold_free.take().unwrap_or_else(|| subs.run(
+                    &mesh, length_unit_scale, preserve_supported, false, usage, preserve_connected));
                 if ((!exact && crate::exact_topology::strict_closed_mesh(&ordinary))
                     || (!public && preservation::public_weld_closed(&ordinary)))
                     && !supported_cells::has_uncertified_needle(&ordinary, &supported) {
@@ -266,7 +268,7 @@ impl ClippingProcessor {
         if !supported.cells.is_empty() {
             // Rejecting the connected extension must retain the established
             // isolated-cell policy, not silently remove its certified cells.
-            let baseline = Self::consolidate_with_use(mesh.clone(), length_unit_scale,
+            let baseline = subs.run(&mesh, length_unit_scale,
                 supported.has_connected_patch, preserve_folds, usage, false);
             // An already closed ordinary boundary needs no source-cell rescue.
             if crate::exact_topology::strict_closed_mesh(&baseline) { return ConsolidationOutcome::established(baseline); }
@@ -306,7 +308,7 @@ impl ClippingProcessor {
         // fields to zero/None. For a LOCAL-FRAME caller (origin != 0: the prism /
         // coaxial-union void fast paths, #1806/#1815) that reset drops the host's
         // per-element origin and mis-places the whole cut host at the world origin
-        // (the mesh.rs #1474 hazard; mirrors `refine_high_aspect_slivers`'s
+        // (the mesh.rs #1474 hazard; mirrors the cut vertex canonicalizer's
         // `rebuilt_like`). World-frame callers (origin 0) are unaffected. The early
         // `return mesh` branches above already carry the original frame.
         output.mesh.rtc_applied = mesh.rtc_applied;
@@ -317,21 +319,41 @@ impl ClippingProcessor {
     }
 }
 
-/// Apply the same mesh hygiene as the router before judging the all-or-nothing
-/// conform candidate. Triangulation can emit sub-grid collinear slivers beside
-/// an otherwise paired seam; they are not geometry and must not make a closed
+/// Apply the router's mesh hygiene before judging the all-or-nothing conform
+/// candidate. Triangulation can emit sub-grid collinear slivers beside an
+/// otherwise paired seam; they are not geometry and must not make a closed
 /// candidate look open at the acceptance bar.
+///
+/// The index-only cleanup is tried first and kept wherever it passes. It opens
+/// the candidate when a sliver's apex is a vertex the abutting bucket keeps:
+/// three rim vertices of a faceted arc collinear to under the sub-grid height,
+/// the side facets ending at the middle one (#8190 slab: six cap slivers, 18
+/// open edges). The candidate is then cleaned the way void output is, splitting
+/// the triangle across each dropped sliver at its apex, and judged again.
 fn complete_conformed_candidate(
     mut candidate: Mesh,
     complete: bool,
     require_exact: bool,
 ) -> Option<Mesh> {
+    if !complete {
+        return None;
+    }
+    let closed = |mesh: &Mesh| {
+        !mesh.is_empty()
+            && count_open_boundary_edges_at(mesh, 1.0e4) == 0
+            && (!require_exact || count_open_boundary_edges_exact(mesh) == 0)
+    };
+    let original = candidate.indices.clone(); // the index-only cleanup moves nothing else
     candidate.clean_degenerate();
-    (complete
-        && !candidate.is_empty()
-        && count_open_boundary_edges_at(&candidate, 1.0e4) == 0
-        && (!require_exact || count_open_boundary_edges_exact(&candidate) == 0))
-        .then_some(candidate)
+    if closed(&candidate) {
+        return Some(candidate);
+    }
+    if candidate.indices.len() == original.len() {
+        return None; // nothing was dropped, so there is nothing to repair
+    }
+    candidate.indices = original;
+    candidate.clean_degenerate_watertight();
+    closed(&candidate).then_some(candidate)
 }
 
 fn count_open_boundary_edges_exact(mesh: &Mesh) -> usize {

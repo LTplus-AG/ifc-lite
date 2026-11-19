@@ -34,8 +34,8 @@ const { judgeRoof } = await import(new URL('./roof-oracle.mjs', process.env.PARI
 for (const [k, s] of Object.entries(shapes)) {
   t.check(`${k} roof by footprint`, () => {
     if (!roofs[k]) return 'addRoof refused the footprint';
-    const b = x.bbox(roofs[k]);
-    const verdict = judgeRoof(x.parts(roofs[k]), { footprint, slopes: s.slopes.map((a) => a * D), thickness: 0.25, hip: k === 'hip' });
+    const b = x.bbox(roofs[k], true);
+    const verdict = judgeRoof(x.parts(roofs[k], true), { footprint, slopes: s.slopes.map((a) => a * D), thickness: 0.25, hip: k === 'hip' });
     if (verdict === true) return true;
     const flat = b && P.near(b.size[2], 0.25, 0.01);
     return flat ? `addRoof built a flat ${P.fmt(b.size[2])} m slab (expected a ${P.fmt(s.rise)} m rise from per-edge slopes): ${verdict}` : verdict;

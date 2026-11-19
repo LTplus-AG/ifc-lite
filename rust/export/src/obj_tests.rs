@@ -9,6 +9,11 @@
 use super::*;
 use ifc_lite_processing::process_geometry;
 
+/// No hidden, isolated or hidden-type filter.
+fn unfiltered() -> ElementFilter {
+    ElementFilter::new(&[], None, &[])
+}
+
 #[test]
 fn duplex_exports_well_formed_obj() {
     let (obj, stats) =
@@ -47,7 +52,7 @@ fn isolation_filter_limits_output() {
     let some_id = result
         .meshes
         .iter()
-        .find(|m| super::mesh_visible(m, &None, &[]))
+        .find(|m| super::mesh_visible(m, &unfiltered()))
         .map(|m| m.express_id)
         .expect("at least one visible mesh");
 
@@ -88,12 +93,12 @@ fn mesh_visible_empty_isolated_set_is_indistinguishable_from_no_filter_bug_repro
         [1.0, 0.0, 0.0, 1.0],
     );
 
-    let no_filter: Option<Vec<u32>> = None;
-    let empty_active_filter: Option<Vec<u32>> = Some(vec![]);
+    let no_filter = unfiltered();
+    let empty_active_filter = ElementFilter::new(&[], Some(&[]), &[]);
 
-    assert!(mesh_visible(&mesh, &no_filter, &[]), "no isolation filter: mesh stays visible");
+    assert!(mesh_visible(&mesh, &no_filter), "no isolation filter: mesh stays visible");
     assert!(
-        !mesh_visible(&mesh, &empty_active_filter, &[]),
+        !mesh_visible(&mesh, &empty_active_filter),
         "an isolation filter active with zero matches must hide every mesh, not export \
          everything (before the fix both read as `isolated.is_empty() == true`, which \
          can't tell 'no filter' from 'filter matched nothing')"
@@ -129,7 +134,7 @@ fn isolation_three_states_over_a_real_fixture() {
     let some_id = result
         .meshes
         .iter()
-        .find(|m| super::mesh_visible(m, &None, &[]))
+        .find(|m| super::mesh_visible(m, &unfiltered()))
         .map(|m| m.express_id)
         .expect("at least one visible mesh");
     let (one_match_obj, one_match) = export_obj_with_stats(
@@ -163,7 +168,7 @@ fn obj_faces_preserve_the_source_mesh_winding_4056() {
     // assuming both.
     let mut vert_base = 0usize;
     let mut first = None;
-    for m in result.meshes.iter().filter(|m| mesh_visible(m, &None, &[])) {
+    for m in result.meshes.iter().filter(|m| mesh_visible(m, &unfiltered())) {
         if m.indices.len() >= 3 {
             first = Some((m, vert_base));
             break;
@@ -290,23 +295,23 @@ fn good_mesh() -> MeshData {
 #[test]
 fn mesh_visible_rejects_non_finite_geometry() {
     let good = good_mesh();
-    assert!(mesh_visible(&good, &None, &[]), "the baseline fixture must itself be visible");
+    assert!(mesh_visible(&good, &unfiltered()), "the baseline fixture must itself be visible");
 
     let mut bad = good.clone();
     bad.positions[0] = f32::NAN;
-    assert!(!mesh_visible(&bad, &None, &[]), "NaN position must be rejected");
+    assert!(!mesh_visible(&bad, &unfiltered()), "NaN position must be rejected");
 
     let mut bad = good.clone();
     bad.positions[3] = f32::INFINITY;
-    assert!(!mesh_visible(&bad, &None, &[]), "Infinity position must be rejected");
+    assert!(!mesh_visible(&bad, &unfiltered()), "Infinity position must be rejected");
 
     let mut bad = good.clone();
     bad.normals[1] = f32::NEG_INFINITY;
-    assert!(!mesh_visible(&bad, &None, &[]), "non-finite normal must be rejected");
+    assert!(!mesh_visible(&bad, &unfiltered()), "non-finite normal must be rejected");
 
     let mut bad = good.clone();
     bad.origin = [f64::NAN, 0.0, 0.0];
-    assert!(!mesh_visible(&bad, &None, &[]), "non-finite origin must be rejected — it poisons every vertex");
+    assert!(!mesh_visible(&bad, &unfiltered()), "non-finite origin must be rejected — it poisons every vertex");
 }
 
 /// Export review finding H6: OBJ `vn` indices are global and independent of

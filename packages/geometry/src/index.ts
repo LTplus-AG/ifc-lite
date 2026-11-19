@@ -10,6 +10,7 @@
 // IFC-Lite components (recommended - faster)
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
 export type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
+export { exportRhinoScene, RHINO_SCENE_DEFAULTS, RHINO_UNITS, RHINO_COORDINATES, RHINO_LAYER_SCHEMES, RHINO_PROPERTIES, type RhinoSceneBuffers, type RhinoSceneExportOptions } from './rhino-export.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
@@ -35,6 +36,7 @@ export type { HbjsonStats } from './hbjson-stats.js'; // consumed by the CLI + v
 
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
 export { NO_RENDER_GEOMETRY, isNoRenderGeometryError, TERRAIN_REFUSED, terrainRefusalReason } from './export-errors.js';
+export { exportCityJson, CITYJSON_REFUSED, cityJsonRefusalReason, type CityJsonExport, type CityJsonExportOptions } from './cityjson-export.js';
 export type { LandXmlTerrainExport, LandXmlTerrainExportOptions, LandXmlTerrainSurface } from './landxml-terrain-export.js';
 
 // The index-parallel layouts the geometry-hash pass emits — six values per id
@@ -57,7 +59,8 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
-export { prewarmSharedWasmModule } from './wasm-shared-module.js';
+export { prewarmSharedWasmModule, compileSharedWasmModule } from './wasm-shared-module.js';
+export type { GeometryMeshingSettings } from './meshing-settings.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
 export { GEOMETRY_PERF_FLAG_BINDINGS } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
@@ -98,7 +101,9 @@ import { exportMerged, planMapConversionNormalization, planSectionExport } from 
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
+import { createLifetime } from '@ifc-lite/wasm-lifecycle';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
+import type { GeometryMeshingSettings } from './meshing-settings.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 import type { HbjsonStats } from './hbjson-stats.js';
 import type { LandXmlTerrainExport, LandXmlTerrainExportOptions } from './landxml-terrain-export.js';
@@ -214,6 +219,21 @@ export class GeometryProcessor {
 
   private bridge: IfcLiteBridge | null = null;
   private platformBridge: IPlatformBridge | null = null;
+  /** Native path: one platform bridge per processor, single-flight, released by `dispose()` (F5). */
+  private readonly nativeLifetime = createLifetime<IPlatformBridge>({
+    start: async () => {
+      const bridge = await createPlatformBridge();
+      try {
+        await bridge.init();
+      } catch (error) {
+        bridge.dispose?.();
+        throw error;
+      }
+      return bridge;
+    },
+    release: (bridge) => bridge.dispose?.(),
+    supersededError: () => new Error('GeometryProcessor.init() was superseded by dispose() before it finished'),
+  });
   private bufferBuilder: BufferBuilder;
   private coordinateHandler: CoordinateHandler;
   private isNative: boolean = false;
@@ -258,10 +278,8 @@ export class GeometryProcessor {
    */
   async init(): Promise<void> {
     if (this.isNative) {
-      // Create platform bridge for native processing
-      this.platformBridge = await createPlatformBridge();
-      await this.platformBridge.init();
-      console.log('[GeometryProcessor] Native bridge initialized');
+      // Concurrent and repeated calls share one platform bridge.
+      this.platformBridge = await this.nativeLifetime.init();
     } else {
       // WASM path
       if (this.bridge) {
@@ -394,6 +412,7 @@ export class GeometryProcessor {
       prePass.unitScale,
       frame.needsShift ? { x: frame.x, y: frame.y, z: frame.z } : null,
       frame,
+      prePass.siteOrigin,
     );
     return frame;
   }
@@ -747,23 +766,8 @@ export class GeometryProcessor {
       signal,
       hungJobTimeoutMs,
       stallPhaseHandle, trace,
-      // Issue #540: forward the merge-layers preference snapshotted
-      // at construction time. processParallel posts `set-merge-layers`
-      // to every spawned worker right after `init`.
-      mergeLayers: this.mergeLayers,
-      // Federated loads disable instancing (primary-only render path).
-      enableInstancing: this.enableInstancing,
-      // Issue #924: forward the geometry-hash tolerance the host enabled via
-      // `enableGeometryHashes()` so the worker pool fingerprints too.
-      geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,
-      // Issue #976: forward the tessellation level so every pool worker's
-      // IfcAPI tessellates at the same density as the main-thread paths.
-      tessellationQuality: this.tessellationQuality,
-      // Issue #1286: forward the small-cut skip so every pool worker drops the
-      // same tiny detail cuts as the main-thread paths. Forwarded every run, so
-      // an export processor (default false) never inherits a prior load's skip.
-      skipSmallCuts: this.skipSmallCuts,
-      skipVoids: this.skipVoids,
+      // Every pool worker meshes with this processor's settings (#540, #924, #976, #1286; meshing-settings.ts).
+      ...this.meshingSettings(),
       wasmUrls,
       workerCountOverride,
     });
@@ -900,6 +904,18 @@ export class GeometryProcessor {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
       }
     }
+  }
+
+  /** The settings this processor meshes with; see meshing-settings.ts. */
+  meshingSettings(): GeometryMeshingSettings {
+    return {
+      mergeLayers: this.mergeLayers,
+      enableInstancing: this.enableInstancing,
+      tessellationQuality: this.tessellationQuality,
+      skipSmallCuts: this.skipSmallCuts,
+      skipVoids: this.skipVoids,
+      geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,
+    };
   }
 
   /**
@@ -1490,16 +1506,19 @@ export class GeometryProcessor {
    * arrays plus `clearPrePassCache()` in every load path's `finally`), so
    * this only needs to release the long-lived `IfcAPI` handle itself.
    *
-   * The native (Tauri) path has no WASM handle to release; `platformBridge`
-   * is left untouched.
+   * The native (Tauri) path has no WASM handle; its platform bridge is
+   * disposed, and an `init()` still in flight rejects instead of installing it.
    *
    * Idempotent: `IfcLiteBridge.dispose()` nulls its handle after freeing,
    * so calling this more than once (e.g. an explicit call after a `using`
    * declaration already ran `[Symbol.dispose]()`) is a no-op, not a
-   * double-free.
+   * double-free. On the WASM path an `init()` still in flight rejects
+   * instead of rebuilding the handle; a later `init()` rebuilds it.
    */
   dispose(): void {
     this.bridge?.dispose();
+    this.nativeLifetime.dispose();
+    this.platformBridge = null;
   }
 
   /**

@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getSchemaRegistryForVersion, type SchemaRegistry } from './generated/schema-registry-by-version.js';
 import * as parserApi from './index.js';
 import { getAttributeNamesForSchema, getAttributeTypeForSchema } from './ifc-schema.js';
@@ -99,4 +99,42 @@ describe('canonical registry lookup #7362', () => {
     expect(parserApi.getCanonicalEntityName?.(getSchemaRegistryForVersion('IFC4X3'), 'IFCRAILWAY', snapshot)).toBe('IfcRailway');
     expect(getAttributeNamesForSchema('IFCRAILWAY', 'IFC4X3', snapshot)).toContain('PredefinedType');
   });
+});
+
+it('fresh snapshots reuse the name index while ordered keys are unchanged #8452', () => {
+  const registry = getSchemaRegistryForVersion('IFC4');
+  parserApi.createSchemaEntityNameSnapshot(registry);
+  const writes = vi.spyOn(Map.prototype, 'set');
+  try {
+    for (let i = 0; i < 20; i++) expect(parserApi.createSchemaEntityNameSnapshot(registry).resolve('IFCWALL')).toBe('IfcWall');
+    expect(writes.mock.calls.filter(([key, value]) => key === 'IFCWALL' && value === 'IfcWall')).toHaveLength(0);
+  } finally { writes.mockRestore(); }
+});
+
+// #9906: a reader without a snapshot checks the registry's ordered keys on
+// every lookup. That check serialised every entity name (about 18 microseconds
+// per lookup on IFC2X3) and was most of the time a metadata read took: 64% of
+// resolving presentation layers on a 326 MB model.
+it('checks the ordered keys on each lookup without serialising the registry #9906', () => {
+  const registry = getSchemaRegistryForVersion('IFC2X3');
+  const serialised = vi.spyOn(JSON, 'stringify');
+  let names: Array<string | undefined>, calls: number;
+  try {
+    names = Array.from({ length: 50 }, () => getCanonicalEntityName(registry, 'IFCSHAPEREPRESENTATION'));
+    for (let i = 0; i < 50; i++) names.push(getAttributeNamesForSchema('IFCSHAPEREPRESENTATION', 'IFC2X3').at(-1));
+    calls = serialised.mock.calls.length;
+  } finally { serialised.mockRestore(); }
+  expect(new Set(names)).toEqual(new Set(['IfcShapeRepresentation', 'Items']));
+  expect(calls).toBe(0);
+});
+
+it('snapshot reads retain the empty-registry diagnostic after their witness is hidden #8452', () => {
+  const registry = getSchemaRegistryForVersion('IFC4'), original = registry.entities;
+  try {
+    registry.entities = { IfcWall: original.IfcWall };
+    const snapshot = parserApi.createSchemaEntityNameSnapshot(registry);
+    expect(getAttributeNamesForSchema('IfcWall', 'IFC4', snapshot)).toContain('GlobalId');
+    Object.defineProperty(registry.entities, 'IfcWall', { enumerable: false });
+    expect(() => getAttributeNamesForSchema('IfcWall', 'IFC4', snapshot)).toThrow('zero entities');
+  } finally { registry.entities = original; }
 });

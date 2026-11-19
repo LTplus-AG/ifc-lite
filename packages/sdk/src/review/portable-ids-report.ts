@@ -14,6 +14,7 @@
  * reads as `'ids'` and the document format version stays the same.
  */
 
+import type { ValidationReport } from '@ifc-lite/ids';
 import { validateSavedValidationElements, type SavedValidationElements } from './portable-validation-evidence.js';
 import { validateBlockTitle, type BlockTitle } from './portable-report-metadata.js';
 import type { PortableReportValidationError as DocumentValidationError } from './portable-report-metadata.js';
@@ -98,6 +99,8 @@ export const IDS_REPORT_VARIANTS: readonly IdsReportVariant[] = ['compact', 'lon
  */
 export interface IdsReportBlock extends ReportProvenance, BlockTitle {
   kind: 'ids-report';
+  /** Immutable population qualifier; must remain visible when report stamps are hidden. */
+  targetScope?: ValidationReport['targetScope'];
   id: string;
   /** Layout (#6470). Absent in documents saved before it existed, which keep printing the original layout (one truncated line per field) until the author picks one. */
   variant?: IdsReportVariant;
@@ -158,6 +161,10 @@ function validateCheckExtras(check: Record<string, unknown>, checkAt: string, er
 /** Structural check of a report block (#5125, #6372): a finite, non-negative count and a 0-100 pass rate at both the block and every check. */
 export function validateIdsReportBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
   validateReportProvenance(block, at, errors);
+  if (block.targetScope !== undefined && (!isRecord(block.targetScope) || block.targetScope.kind !== 'subset'
+    || !isCount(block.targetScope.entityCount) || !Number.isSafeInteger(block.targetScope.entityCount))) {
+    errors.push({ path: `${at}.targetScope`, message: 'expected a subset scope with a non-negative integer entityCount' });
+  }
   if (block.elementEvidence !== undefined) validateSavedValidationElements(block.elementEvidence, `${at}.elementEvidence`, errors);
   validateBlockTitle(block, at, errors);
   if (block.sourceKind !== undefined && block.sourceKind !== 'ids' && block.sourceKind !== 'rules') errors.push({ path: `${at}.sourceKind`, message: 'expected ids | rules' });

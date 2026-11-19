@@ -99,31 +99,8 @@
 # triangulation (triangulate_constrained drops them from the cap while create_side_walls
 # still emits their walls → cracked mesh); erroring defers the cut to the exact kernel.
     1078 rust/geometry/src/extrusion.rs
-# +4: refine_high_aspect_slivers routes its rebuild through Mesh::rebuilt_like so a slivered host keeps its local-frame origin + #1474 placement capture (B7 metadata-loss fix).
-# +1: SNAP_GRID/NORMAL_QUANT single-homed to kernel::mesh_bridge / crate::grid (import replaces local const; doc rewrap costs a line).
-# +150: Holter void fast-path perf — raw no-sliver pre-scan (skips the O(V) canonicalization on
-# clean cuts), region-scoped refine_high_aspect_slivers_within (prism path refines only the
-# cut region, batching disjoint splits per round with a finite-aspect guard + hard split
-# budget so a degenerate needle can't double its fragments every round; unscoped callers
-# keep the byte-pinned one-edge-per-round behavior).
-# +24: the raw pre-scan needs its OWN wider region padding (2x EDGE_SLACK) than the
-# canonical scans, because canonicalization can move a vertex one dedup cell INTO the
-# region — with a single padding the pre-scan could wrongly early-out on a triangle the
-# canonical scan would refine. Plus the #[cfg(test)] include for facet_weld_scoped_tests.rs
-# (the test file itself is ratchet-exempt).
-# -45: local-frame anchor for the plane-offset math (n.v amplified a per-facet normal
-# error by the world-frame position magnitude at site coordinates; the anchor is the
-# bbox-min corner, a function of the vertex SET, so triangulation order cannot change the
-# weld; engagement gated to coordinates that need it). The derivation lives inline at the
-# anchor (Step 1.5); its regression tests moved to facet_weld_scoped_tests.rs
-# (ratchet-exempt), netting the module below the prior budget; budget refreshed downward.
-# +16: the cell-dedup contract for refine_high_aspect_slivers (#4698). Doc
-# prose only, no code: the pass's 100 um cell dedup also closes
-# near-duplicate cracks and drops collapsed triangles, which the census depends
-# on (552 of 2227 rebuilds over the local corpus), and that was recorded nowhere.
-# A caller reading "bisect high-aspect slivers" could not know it. The doc is +18 lines; the row moves 16 because #4745 freed
-# two in the same file; 907 -> 923.
-          923 rust/geometry/src/facet_weld.rs
+# #10511 moved cut vertex canonicalization into facet_weld/cut_vertices.rs.
+          449 rust/geometry/src/facet_weld.rs
 # +87: the #3341 far-endpoint soundness guarantee (`sound_far`) and the argument
 # it rests on, which has to be local because the comment it replaces asserted a
 # safety property that is FALSE for non-convex operands. All +75 is NEW code and
@@ -142,7 +119,9 @@
      563 rust/geometry/src/material_layer_index.rs
 # +14: SubMeshCollection gains `ids_are_materials` + `of_materials()` so a material-layer id can never be read as a representation item (#3199).
 # -531: the 535-line `#[cfg(test)] mod tests` moved to the sibling mesh_tests.rs, which the ratchet exempts. Production code is unchanged (#3199 follow-up).
-     917 rust/geometry/src/mesh.rs
+# +2: `merge` and `clear` clear `welded_in_object_frame`, so the flag means
+# what `build_mesh_data` now reads it as (placement-invariant void cuts).
+     919 rust/geometry/src/mesh.rs
 # csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That

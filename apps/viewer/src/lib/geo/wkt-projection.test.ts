@@ -4,10 +4,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { ProjectedCRS } from '@ifc-lite/parser';
+import { IfcParser, extractGeoreferencingOnDemand, type ProjectedCRS } from '@ifc-lite/parser';
 import { reprojectFromLatLon, reprojectPointToLatLon, resolveProjection, type LatLon } from './reproject.js';
-import { isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils.js';
-import { projectedUnitToMetres } from '../../hooks/ingest/projected-units.js';
+import { isGeographicProj4, projectedDefinitionInMetres, projectedUnitToMetres } from '@ifc-lite/geo/proj4';
 
 /** Metres per degree of latitude; longitude is scaled by cos(lat). */
 const M_PER_DEG = 111_320;
@@ -21,7 +20,7 @@ function offsetMetres(actual: LatLon, expected: LatLon): number {
  * The IfcWellKnownText shape of a real IFC4X3_ADD2 bridge export (labels,
  * origin and extent changed): a project-local Transverse Mercator on DB_REF
  * (Bessel) inside a COMPOUNDCRS, with WKT1-style PARAMETER names and no EPSG
- * code for the projected CRS itself. Unpatched, proj4's wkt-parser dropped
+ * code for the projected CRS itself. wkt-parser before 1.7.0 dropped
  * central_meridian/latitude_of_origin/scale_factor and put the bridge at 0°N 0°E.
  */
 const DB_REF_LOCAL_TM = 'COMPOUNDCRS["LOCAL_TM_EXAMPLE",PROJCRS["Local TM",BASEGEOGCRS["DB_REF",DATUM["Deutsche Bahn Reference System",ELLIPSOID["Bessel 1841",6377397.155,299.1528128,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],ID["EPSG",5681]],CONVERSION["Local Projection",METHOD["Transverse_Mercator"],PARAMETER["central_meridian",10.4521,ANGLEUNIT["degree",0.0174532925199433,ID["EPSG",9122]]],PARAMETER["latitude_of_origin",51.2763,ANGLEUNIT["degree",0.0174532925199433,ID["EPSG",9122]]],PARAMETER["scale_factor",1.0000124,SCALEUNIT["unity",1,ID["EPSG",9201]]],PARAMETER["false_easting",20000,LENGTHUNIT["metre",1,ID["EPSG",9001]]],PARAMETER["false_northing",30000,LENGTHUNIT["metre",1,ID["EPSG",9001]]]],CS[Cartesian,2],AXIS["e",east,ORDER[1],LENGTHUNIT["metre",1,ID["EPSG",9001]]],AXIS["n",north,ORDER[2],LENGTHUNIT["metre",1,ID["EPSG",9001]]]],VERTCRS["GNTRANS2016 height",VDATUM["GNTRANS2016"],CS[vertical,1],AXIS["gravity-related height",up,LENGTHUNIT["metre",1]],ID["EPSG",9927]],USAGE[SCOPE["Engineering survey"],AREA["Example area"],BBOX[51.18,10.30,51.37,10.60]]]';
@@ -29,7 +28,50 @@ const DB_REF_LOCAL_TM = 'COMPOUNDCRS["LOCAL_TM_EXAMPLE",PROJCRS["Local TM",BASEG
 /** Expected values are PROJ 9 (pyproj) output for the same WKT — the ground truth, not proj4's. */
 const crs = (wellKnownText: string, name = 'WKT'): ProjectedCRS => ({ id: 1, name, wellKnownText, mapUnitScale: 1 });
 
+/**
+ * The IfcWellKnownText shape of Allplan/ODA-style exports: WKT2 keywords with
+ * the WKT1 method and parameter names (`Transverse_Mercator`,
+ * `central_meridian`, ...) and no EPSG identifier, here also with parameter
+ * values that state no unit (the ISO 19162 implied-unit case). ETRS89 / UTM
+ * zone 32N written out that way.
+ */
+const ODA_STYLE_UTM32_WKT = 'PROJCRS["ETRS89 / UTM zone 32N",BASEGEOGCRS["ETRS89",DATUM["European Terrestrial Reference System 1989",ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["Degree",0.0174532925199433]]],CONVERSION["UTM zone 32N",METHOD["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",9],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0]],CS[Cartesian,2],AXIS["(E)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["(N)",north,ORDER[2],LENGTHUNIT["metre",1]]]';
+
+const ODA_STYLE_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');
+FILE_NAME('oda-style-utm32.ifc','2026-11-15T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#2,$);
+#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#5=IFCPROJECTEDCRS('WKT',$,$,$,$,$,#4);
+#6=IFCMAPCONVERSION(#3,#5,690000.,5335000.,520.,1.,0.,1.);
+#7=IFCWELLKNOWNTEXT('${ODA_STYLE_UTM32_WKT}',#5);
+#8=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,(#3),$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
 describe('IfcWellKnownText projections', () => {
+  it('places an ODA-style IfcWellKnownText (Transverse_Mercator, central_meridian, no units) where PROJ does', async () => {
+    const bytes = new TextEncoder().encode(ODA_STYLE_IFC);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const georef = extractGeoreferencingOnDemand(store);
+    assert.ok(georef?.projectedCRS && georef.mapConversion, 'the file is georeferenced');
+    assert.equal(georef.projectedCRS.wellKnownText, ODA_STYLE_UTM32_WKT);
+    const result = await reprojectPointToLatLon(georef.mapConversion.eastings, georef.mapConversion.northings, georef.projectedCRS);
+    assert.ok(result, 'did not resolve');
+    // PROJ for EPSG:25832 at E 690000 N 5335000 (the same expectation as the
+    // EPSG-named WKT2 case below). Unit-less parameters used to be taken as
+    // radians: a central meridian of 9 rad (155.66 degrees E) put the site at 158.22 degrees east.
+    const offset = offsetMetres(result, { lon: 11.55407270413273, lat: 48.13985773317233 });
+    assert.ok(offset < 0.05, `lands ${offset.toFixed(3)} m off (${result.lat}, ${result.lon})`);
+  });
+
   it('places the DB_REF local TM bridge where PROJ does', async () => {
     for (const [x, y, expected] of [
       [20000, 30000, { lon: 10.450830563665846, lat: 51.275017141839164 }],

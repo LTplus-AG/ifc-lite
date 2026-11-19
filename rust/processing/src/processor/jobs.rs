@@ -107,6 +107,13 @@ impl std::ops::DerefMut for WorkerCacheGuard<'_, '_> {
 /// site keeps the former `flat_map_iter` order; the caches are pure
 /// memoization, so meshes are byte-identical.
 pub(super) fn run_job(job: &EntityJob, ctx: &PassContext<'_>) -> Vec<MeshData> {
+    // A job runs here under whatever lexical resource state this thread
+    // already carries: a stolen job inside another caller's scope, or a worker
+    // still in a stopped terminal domain, is refused or degraded by it without
+    // a fresh `resource::stop`. Record it so the pass is never cached.
+    if ifc_lite_geometry::resource::ambient_scope_active() {
+        ctx.foreign_resource_scope.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let widx = rayon::current_thread_index().unwrap_or(0) % ctx.worker_point_caches.len();
     // `try_lock`, not `lock`: faceted-brep triangulation nests a rayon
     // `par_iter`, so a worker blocked at that nested join can work-steal

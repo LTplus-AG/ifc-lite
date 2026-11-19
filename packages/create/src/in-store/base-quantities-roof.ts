@@ -12,12 +12,13 @@
  * stores nothing, and it answers only for bodies it can read exactly.
  */
 
+import { QuantityType } from '@ifc-lite/data';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { polygonArea } from './base-quantities-measure.js';
 import { asExpressIdRef, readAttributes } from './edit/placement-core.js';
 
-export interface RoofPlaneAreas {
+interface RoofPlaneAreas {
   /** Sum of the planes' sloped areas, m². */
   readonly sloped: number;
   /** Sum of their areas in plan, m². */
@@ -58,7 +59,7 @@ function plane(read: Read, solidId: number | null, scale: number): { area: numbe
  * null when its body is not that (a loaded file's roof keeps its own sets).
  * Lengths are in the file's unit; `scale` is metres per unit.
  */
-export function roofPlaneAreas(dataStore: IfcDataStore, view: MutablePropertyView, editor: Pick<StoreEditor, 'getNewEntity'>, roofId: number, scale: number): RoofPlaneAreas | null {
+function roofPlaneAreas(dataStore: IfcDataStore, view: MutablePropertyView, editor: Pick<StoreEditor, 'getNewEntity'>, roofId: number, scale: number): RoofPlaneAreas | null {
   const read: Read = (id) => (id === null ? null : readAttributes(dataStore, view, editor, id));
   const shape = read(asExpressIdRef(read(roofId)?.[6]));
   const reps = shape?.[2];
@@ -74,4 +75,13 @@ export function roofPlaneAreas(dataStore: IfcDataStore, view: MutablePropertyVie
     projected += measured.area * measured.cos;
   }
   return { sloped, projected };
+}
+
+/** SI area rows only when the whole roof is measurable and has no openings to net. */
+export function roofQuantityRows(dataStore: IfcDataStore, view: MutablePropertyView, editor: Pick<StoreEditor, 'getNewEntity'>, roofId: number, scale: number, openings: readonly number[] | null): Array<readonly [string, QuantityType.Area, number]> | null {
+  if (openings === null || openings.length > 0) return null;
+  const areas = roofPlaneAreas(dataStore, view, editor, roofId, scale);
+  return areas ? [
+    ['GrossArea', QuantityType.Area, areas.sloped], ['NetArea', QuantityType.Area, areas.sloped], ['ProjectedArea', QuantityType.Area, areas.projected],
+  ] : null;
 }

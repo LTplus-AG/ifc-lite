@@ -21,6 +21,7 @@
  */
 
 import { QuantityType } from '@ifc-lite/data';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { measureUnit, quantitySiScale, type ProjectUnits } from '@ifc-lite/parser';
 import { alternativesForUnitType } from './alternatives.js';
 import { convertValue, resolveFromUnit } from './convert.js';
@@ -91,7 +92,11 @@ export function resolveMeasureDisplay(
     const optionId = overrides[m.unitType];
     const option = optionId ? alternativesForUnitType(m.unitType).find((o) => o.id === optionId) : undefined;
     if (option) {
-      const fileUnit = projectUnits.unitForMeasure(dataType!) ?? { symbol: m.defaultSymbol, siScale: 1.0 };
+      // A typed measure resolves to the SI default when the file declares nothing,
+      // so null here is a declared unit with an unreadable scale (#4690): leave the
+      // value unconverted and unlabelled rather than treat it as SI (#9958).
+      const fileUnit = projectUnits.unitForMeasure(dataType!);
+      if (!fileUnit) return { unit: null, converted: null };
       const from = resolveFromUnit(m.unitType, fileUnit);
       return { unit: option.symbol, converted: convertValue(value, from, option) };
     }
@@ -130,9 +135,21 @@ export function resolveQuantityDisplay(
   return { unit: explicit ? quantity!.explicitUnit! : formatQuantityUnit(quantityType, projectUnits), converted: null };
 }
 
+/**
+ * The one number format of the property, quantity and structural cards (#9950): in the app locale,
+ * six significant digits or three decimals, whichever keeps more, so a stated 0.0125 m stays 0.0125 m
+ * and 1,234,567.891 N keeps its fraction. `roundingPriority` is ES2023 Intl; the viewer's lib is ES2022,
+ * hence the cast.
+ */
+const MEASURE_NUMBER = { maximumFractionDigits: 3, maximumSignificantDigits: 6, roundingPriority: 'morePrecision' } as Intl.NumberFormatOptions;
+export function formatMeasureNumber(locale: string, n: number): string {
+  return formatLocaleNumber(locale, n, MEASURE_NUMBER);
+}
+
 /** Format a converted numeric value for display: locale-aware, capped at 4
  *  fraction digits (the values here are already unit-converted, so more
- *  precision would just be scale-factor noise). */
+ *  precision would just be scale-factor noise). The measure tools use this;
+ *  the property, quantity and structural cards use {@link formatMeasureNumber}. */
 export function formatConverted(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }

@@ -9,6 +9,7 @@ import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import { captureModelLoaded, snapshotFromGeometry } from '../../utils/loadTelemetry.js';
 import { createEmptyBounds, type Bounds3D } from '../../utils/localParsingUtils.js';
 import { toast } from '../../components/ui/toast.js';
+import { LOAD_COMPLETE } from '../modelLoadCanceller.js';
 import { parseLandXmlViewerModelFromBlobAsync, type LandXmlViewerModel } from './landXmlViewerModel.js';
 import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import type { LandXmlSchema, LandXmlTinDocument } from './landXmlSemantics.js';
@@ -22,7 +23,6 @@ import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.j
 import { LandXmlProvisionalUploadError } from './landXmlGpuTransactions.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
 import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
-import { GeoRasterBundle } from '@/lib/terrain-imagery/raster-bundle.js';
 
 interface LandXmlLoadOptions {
   file: File;
@@ -48,8 +48,8 @@ interface LandXmlLoadOptions {
   landXmlAssumptions?: LandXmlGeorefAssumptions;
   isCurrent(): boolean;
   setProgress(progress: { phase: string; percent: number }): void;
-  setGeometryStreamingActive(active: boolean): void;
-  setLoading(loading: boolean): void;
+  /** Ends this load's share of the shared load UI, with its terminal progress. */
+  settleLoadUi(progress?: { phase: string; percent: number } | null): void;
   openProvisional?(preflight: LandXmlGeometryPreflight): LandXmlProvisionalTransaction | null;
   openFederatedStreamingPlan?(
     preflight: LandXmlGeometryPreflight,
@@ -238,7 +238,6 @@ export function reframeLandXmlGeometry(
 /** Own the format-specific branch while `loadFile` retains lifecycle ownership. */
 export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<void> {
   options.setProgress({ phase: 'Parsing LandXML TIN surfaces', percent: 10 });
-  options.setGeometryStreamingActive(false);
   // The callbacks run after this stack frame has yielded to the worker. Keep
   // their mutable state in cells so both TypeScript and the error finalizer
   // observe the same live transaction.
@@ -365,7 +364,6 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     });
     if (!(await awaitLandXmlFinalization(finalization, options.isCurrent, provisional.value, federatedPlan.value))) return;
     for (const warning of result.warnings) toast.info(warning);
-    options.setProgress({ phase: 'Complete', percent: 100 });
     captureModelLoaded({
       format: 'landxml',
       file_size_mb: Math.round(options.fileSizeMB * 100) / 100,
@@ -374,7 +372,7 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
       total_elapsed_ms: Math.round(performance.now() - options.totalStartTime),
       was_hidden: options.wasHidden,
     }, snapshotFromGeometry(options.fileSizeMB, result.geometryResult), options.trace);
-    options.setLoading(false);
+    options.settleLoadUi(LOAD_COMPLETE);
   } catch (error) {
     provisional.value?.rollback();
     federatedPlan.value?.rollback();
@@ -382,19 +380,6 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     console.error('[useIfc] LandXML parsing failed:', error);
     const message = error instanceof Error ? error.message : String(error);
     options.onError(message, error);
-    options.setLoading(false);
+    options.settleLoadUi();
   }
-}
-
-/**
- * #5942: a georeferenced raster bundle is imagery for the loaded terrain, not
- * a model. It enters `useIfcLoader.loadFile` like every source, and this
- * returns the drape before `loadFile` bumps the load session or resets the
- * scene; `null` for anything else. The drape module loads only when used.
- */
-export function drapeIfGeoRaster(file: File, setLoading: (loading: boolean) => void): Promise<void> | null {
-  if (!(file instanceof GeoRasterBundle)) return null;
-  return import('./terrainImageryDrape.js')
-    .then(({ drapeGeoRasterBundle }) => drapeGeoRasterBundle(file))
-    .finally(() => setLoading(false));
 }

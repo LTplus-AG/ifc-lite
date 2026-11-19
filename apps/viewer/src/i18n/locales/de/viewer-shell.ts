@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const viewerShellDe = {
+  "viewerShell.localIfcMemory.title": "Dieses Modell könnte den verfügbaren Speicher überschreiten",
+  "viewerShell.localIfcMemory.continue": "Laden fortsetzen",
+  "viewerShell.localIfcMemory.description": "Dieses Modell benötigt möglicherweise etwa {estimated} GiB Arbeitsspeicher. Der Browser meldet höchstens 8 GiB; tatsächlich kann mehr Speicher verfügbar sein. Das Fortsetzen auf einem Gerät mit zu wenig Speicher kann diesen Tab zum Absturz bringen. Brechen Sie ab, um den Ladevorgang zu stoppen, oder verwenden Sie ein kleineres Modell oder die native CLI/den Server.",
+
   "viewerShell.star.title": "Gefällt Ihnen IFC Lite?",
   "viewerShell.star.detail": "Ein Stern auf GitHub hilft anderen, die Anwendung zu entdecken.",
   "viewerShell.star.action": "Stern auf GitHub vergeben",
@@ -17,6 +21,11 @@ export const viewerShellDe = {
   "viewerShell.staleDeployment.notice": "Eine neue Viewer-Version ist verfügbar — zum Fortfahren neu laden.",
   "viewerShell.staleDeployment.reopenPrompt": "Der Viewer wurde aktualisiert und neu geladen. Öffnen Sie {files} erneut, um fortzufahren.",
   "viewerShell.staleDeployment.reopenAction": "Datei öffnen…",
+  "viewerShell.hostConfig.errorTitle": "Der Viewer konnte nicht gestartet werden",
+  "viewerShell.hostConfig.errorBody": "Seine Einstellungen konnten nicht geladen werden, deshalb wird nichts angezeigt. Laden Sie die Seite neu. Tritt das Problem weiter auf, wenden Sie sich an die Betreiber dieser Website.",
+  "viewerShell.hostConfig.viewerLoadTitle": "Der Viewer konnte nicht geladen werden",
+  "viewerShell.hostConfig.viewerLoadBody": "Seine Programmdateien konnten nicht heruntergeladen werden, deshalb wird nichts angezeigt. Laden Sie die Seite neu. Tritt das Problem weiter auf, wenden Sie sich an die Betreiber dieser Website.",
+  "viewerShell.hostConfig.errorDetail": "Technisches Detail: {detail}",
   "viewerShell.chunkLabel.appearancePanel": "Darstellungsbereich",
   "viewerShell.chunkLabel.chartsPanel": "Diagrammbereich",
   "viewerShell.chunkLabel.flowPanel": "Flow-Bereich",

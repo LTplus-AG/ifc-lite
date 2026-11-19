@@ -29,6 +29,7 @@ import {
   type ValidationProgress,
   type SupportedLocale,
 } from '@ifc-lite/ids';
+import { scopedIdsAccessor } from '@/lib/ids/scoped-accessor';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
 import {
@@ -49,6 +50,8 @@ export interface IdsWorkerRequest {
   modelId: string;
   locale: SupportedLocale;
   includePassingEntities: boolean;
+  /** Model-local candidate IDs, matching the main-thread check. */
+  entityIds?: readonly number[];
   /**
    * The model's pending, not-yet-exported property edits, as plain clonable
    * data (#3946).
@@ -114,11 +117,11 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
     // parsed bytes, which is what makes routing an edited model here
     // equivalent to validating it on the main thread rather than merely
     // similar.
-    const accessor = createDataAccessor(
+    const accessor = scopedIdsAccessor(createDataAccessor(
       store,
       overlayResolverFromSnapshot(req.propertyOverlay),
       entityVisibilityFromSnapshot(req.entityVisibility)
-    );
+    ), req.entityIds);
     const translator = createTranslationService(req.locale);
 
     const report = await validateIDS(
@@ -127,7 +130,7 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
       {
         modelId: req.modelId,
         schemaVersion: store.schemaVersion,
-        entityCount: store.entityCount ?? accessor.getAllEntityIds().length,
+        entityCount: req.entityIds === undefined ? store.entityCount ?? accessor.getAllEntityIds().length : accessor.getAllEntityIds().length,
       },
       {
         translator,
@@ -141,6 +144,7 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
       }
     );
 
+    if (req.entityIds !== undefined) report.targetScope = { kind: 'subset', entityCount: accessor.getAllEntityIds().length };
     post({ type: 'complete', id: req.id, report });
   } catch (err) {
     post({

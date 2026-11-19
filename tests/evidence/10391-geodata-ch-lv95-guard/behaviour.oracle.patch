@@ -1,0 +1,13 @@
+diff --git a/packages/geodata-ch/src/lv95.ts b/packages/geodata-ch/src/lv95.ts
+index f4fb0e3..271c1bd 100644
+--- a/packages/geodata-ch/src/lv95.ts
++++ b/packages/geodata-ch/src/lv95.ts
+@@ -48,7 +48,7 @@ export function assertLv95Point(x: number, y: number): void {
+   if (!Number.isFinite(x) || !Number.isFinite(y)) {
+     throw new RangeError(`invalid LV95 point (${x}, ${y}): need finite easting and northing`);
+   }
+-  if (isLv95Easting(x) && isLv95Easting(y)) return;
++  if (isLv95Easting(x) && isLv95Northing(y)) return;
+   throw new RangeError(
+     `point (${x}, ${y}) is not in LV95 (EPSG:2056)` +
+       (looksSwapped(x, y) ? `; ${SWAPPED_HINT}` : ': eastings are ~2.4e6-2.9e6, northings ~1.03e6-1.35e6'),

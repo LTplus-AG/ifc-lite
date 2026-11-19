@@ -250,3 +250,49 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect(stderr).toMatch(/only storey/);
   });
 });
+
+it('#9352 add --dry-run returns the canonical add plan', async () => {
+  const run = await storey();
+  await run([SAMPLE, 'add', '--name', 'Upper', '--elevation', '3', '--dry-run', '--json']);
+  expect(JSON.parse(stdout)).toMatchObject({ refusal: null, bindings: [], unresized: [] });
+});
+
+it('#9352 constrain writes a top constraint that survives parser readback', async () => {
+  const run = await storey();
+  const levels = join(dir, 'levels.ifc'), out = join(dir, 'constrained.ifc');
+  await run([SAMPLE, 'add', '--name', 'Upper', '--elevation', '3', '--out', levels]);
+  const { createHeadlessContext } = await import('../loader.js');
+  const context = await createHeadlessContext(levels);
+  const home = context.bim.store.listStoreyLevels('default').find(s => s.Name === 'My Storey')!.expressId;
+  const wallId = context.bim.store.addWall('default', home, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 2 }).expressId;
+  await writeFile(levels, context.bim.export.ifc());
+  stdout = '';
+  await run([levels, 'constrain', '--element', String(wallId), '--top', 'storeyAbove', '--out', out, '--json']);
+  const bytes = await readFile(out);
+  const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'reopened');
+  const { extractPropertiesOnDemand } = await import('@ifc-lite/parser');
+  view.setOnDemandExtractor(id => extractPropertiesOnDemand(reopened, id));
+  const upper = create.readStoreyInventory(reopened, view).storeys.find(s => s.Name === 'Upper')!;
+  expect(view.getPropertyValue(wallId, 'IfcLite_StoreyAttachment', 'TopConstraint')).toBe(upper.GlobalId);
+  expect(create.readWallJoinTarget(reopened, view, wallId, reopened.lengthUnitScale ?? 1)?.height).toBeCloseTo(3, 8);
+  const raised = join(dir, 'raised-constraint.ifc');
+  await run([out, 'edit', '--storey', 'My Storey', '--floor-height', '4', '--out', raised]);
+  const raisedBytes = await readFile(raised);
+  const after = await new IfcParser().parseColumnar(raisedBytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(create.readWallJoinTarget(after, new MutablePropertyView(null, 'after'), wallId, after.lengthUnitScale ?? 1)?.height).toBeCloseTo(4, 8);
+});
+
+it('#9352 copy reports target floors whose copied roots survive reopen', async () => {
+  const run = await storey();
+  const levels = join(dir, 'levels.ifc'), out = join(dir, 'copies.ifc');
+  await run([SAMPLE, 'add', '--name', 'Upper', '--elevation', '3', '--out', levels]);
+  stdout = '';
+  await run([levels, 'copy', '--ids', '1222', '--to', 'Upper', '--out', out, '--json']);
+  const groups = JSON.parse(stdout).copies as Array<{ storeyId: number; refs: Array<{ expressId: number }> }>;
+  expect(groups).toHaveLength(1);
+  expect(groups[0].refs).toHaveLength(1);
+  const bytes = await readFile(out);
+  const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  expect(reopened.spatialHierarchy?.elementToStorey.get(groups[0].refs[0].expressId)).toBe(groups[0].storeyId);
+});

@@ -32,7 +32,12 @@ function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: st
   // @ts-expect-error A registered id whose definition does not declare the palette surface.
   const contextOnly: RegisteredPaletteOptionProps = { commandId: 'context:select-all-type', ...placement };
   // The Model workspace rail commands (#6232) are registered palette ids too.
-  const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam'];
+  const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam',
+    'tool:array', 'tool:move', 'tool:rotate', 'model:copy', 'model:paste', 'model:paste-in-place',
+    'model:exit', 'model:storey-up', 'model:storey-down', 'elements:entity-actions',
+    'elements:search', 'elements:spatial', 'elements:class', 'elements:type', 'elements:materials',
+    'elements:groups', 'elements:presentation-layers', 'vis:isolate', 'view:centreline',
+    'view:zoom-in', 'view:zoom-out', 'view:rotate-left', 'view:rotate-right', 'view:move-georef', 'view:follow-work'];
   // @ts-expect-error A runtime row cannot be rendered without its runtime owner.
   const unowned: DynamicPaletteOptionProps = { command: { ...runtime, runtimeSource: undefined }, ...placement };
   const registered = { id: 'view:frame', label: 'Frame', labelKey: 'commandPalette.tool.wall.label', keywords: '',
@@ -133,7 +138,11 @@ it('keeps runtime detail alongside a category without renaming registered comman
   const file = document.querySelector('[data-runtime-source="recent-file"]');
   assert.ok(file?.textContent?.includes(runtime.label));
   assert.ok(file?.textContent?.includes('Datei'));
-  assert.equal(file?.querySelector('[title="1.4 MB"]')?.textContent, '1.4 MB');
+  assert.ok(file);
+  assert.ok([...file.querySelectorAll('span')].some(span => span.textContent === '1.4 MB' && !span.hidden),
+    'file size remains visible secondary text alongside the category');
+  assert.equal(file.hasAttribute('aria-label'), false, 'runtime name includes native label, category and visible detail');
+  assert.equal(file.querySelector('[data-command-label]')?.textContent, runtime.label);
   const frame = document.querySelector('[data-command-id="view:frame"]');
   assert.equal(frame?.getAttribute('aria-label'), resolveEnglish(surfaceCommand('view:frame', 'palette').labelKey));
   assert.ok(frame?.textContent?.includes('Ansicht'));

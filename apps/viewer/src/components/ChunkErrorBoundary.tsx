@@ -46,6 +46,12 @@ type ChunkErrorTone = 'panel' | 'night';
 const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
 
 const CHUNK_LABEL_KEYS = {
+  'BCF panel': 'bcf.panel.title',
+  'Validation panel': 'validationPanel.title',
+  'Lens panel': 'lensPanel.title',
+  'Gantt panel': 'workspacePanels.bottom.gantt',
+  'Lists panel': 'lists.panel.title',
+  'Extensions panel': 'extensionsFlavors.extensionsPanel.heading',
   'Command palette': 'commandPalette.ariaLabel',
   'Bulk Property Editor': 'bulkPropertyEditor.title',
   'Data Connector': 'dataConnector.dialogTitle',
@@ -70,7 +76,10 @@ const CHUNK_LABEL_KEYS = {
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
   'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',
   'Saved runs': 'compareAnalysis.reconcile.savedTitle',
+  'Material layers': 'modelInspector.layers.title',
   'Storey manager': 'storeyManager.title',
+  'Structural Analysis card': 'properties.structural.heading',
+  'Structural derivation': 'commandPalette.tool.deriveStructural.label',
   "What's New tab": 'keyboardShortcuts.tabs.whatsNew',
 } as const satisfies Record<string, TranslationKey>;
 

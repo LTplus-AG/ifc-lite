@@ -43,6 +43,7 @@ export function createdEntityStringAttribute(
   if (index < 0) return '';
   const raw = entity.attributes[index];
   if (typeof raw === 'string') return raw;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'literal' in raw && typeof raw.literal === 'string') return raw.literal;
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'typed' in raw) {
     const value = raw.typed.value;
     return typeof value === 'string' ? value : '';

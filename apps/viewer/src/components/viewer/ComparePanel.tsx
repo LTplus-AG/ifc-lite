@@ -366,6 +366,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
               snapshot={bcf.viewpoint?.snapshot ?? null}
               onCaptureSnapshot={() => void bcf.captureViewpoint()}
               capturingSnapshot={bcf.capturingSnapshot}
+              submitting={bcf.submitting}
             />
           )}
         </>

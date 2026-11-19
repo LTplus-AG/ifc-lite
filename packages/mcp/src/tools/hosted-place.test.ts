@@ -7,7 +7,7 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
-import { readHostOpeningExtents } from '@ifc-lite/create';
+import { placedBodyExtent, readHostOpeningExtents } from '@ifc-lite/create';
 import { fullScope, readOnlyScope } from '../auth/scope.js';
 import { InMemoryModelRegistry } from '../context.js';
 import { loadIfcModel } from '../loader.js';
@@ -16,6 +16,8 @@ import { ResourceRegistry } from '../resources/index.js';
 import { PromptRegistry } from '../prompts/index.js';
 import { InProcessTransport } from '../transport/in-process.js';
 import { buildDefaultToolRegistry } from './index.js';
+import { hostedPlaceTools } from './hosted-place.js';
+import { validateInput } from '../validate.js';
 import type { CallToolResult } from '../protocol/index.js';
 
 const SAMPLE = fileURLToPath(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -126,3 +128,93 @@ describe('#6232 D5 MCP hosted placement', () => {
     expect((await call('place_door', { host_express_id: WALL, params: PARAMS })).isError).toBe(true);
   });
 });
+
+
+describe('#9936 slab opening schema and dispatch', () => {
+  const slabParams = { Position: [2, 3], Width: 1.2, Depth: 0.8, CutDepth: 0.5, Name: 'Shaft' };
+  const schema = hostedPlaceTools.find(tool => tool.name === 'place_opening')!.inputSchema;
+
+  it('accepts both complete opening shapes and keeps door/window slab params invalid', () => {
+    for (const params of [slabParams, { Offset: 8, Width: 1, Height: 2 }]) {
+      expect(validateInput(schema, { host_express_id: WALL, params }).valid).toBe(true);
+    }
+    for (const tool of hostedPlaceTools.filter(tool => tool.name !== 'place_opening')) {
+      expect(validateInput(tool.inputSchema, { host_express_id: WALL, params: slabParams }).valid).toBe(false);
+    }
+  });
+
+  it.each([
+    { Position: [1], Width: 1, Depth: 1 },
+    { Position: [1, 2, 3], Width: 1, Depth: 1 },
+    { Position: ['1', 2], Width: 1, Depth: 1 },
+    { Position: [1, 2], Width: 1 },
+    { Position: [1, 2], Depth: 1 },
+    { Offset: 1, Width: 1 },
+    { ...slabParams, Offset: 1, Height: 2 },
+    { ...slabParams, depth: 1 },
+  ])('rejects malformed, incomplete or mixed opening params %j', params => {
+    expect(validateInput(schema, { host_express_id: WALL, params }).valid).toBe(false);
+  });
+
+  it('dispatches a federated overlay slab through SDK opening creation and undoes only its graph', async () => {
+    const { registry, call } = await session(2);
+    const model = registry.get('beta')!;
+    const slab = model.bim.store.addSlab('beta', 42, { Position: [0, 0, 0], Width: 8, Depth: 6, Thickness: 0.3 });
+    const view = model.backend.getMutationView()!;
+    const before = structuredClone(view.getNewEntities());
+    const result = await call('place_opening', { model_id: 'beta', host_express_id: slab.expressId, params: slabParams });
+    expect(result.isError).not.toBe(true);
+    expect(result.content).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text', text: expect.stringContaining(`host #${slab.expressId}`) })]));
+    const placed = result.structuredContent as { expressId: number; openingId: number; modelId: string };
+    expect(placed.modelId).toBe('beta');
+    expect(placed.openingId).toBe(placed.expressId);
+    const rows = view.getNewEntities().slice(before.length);
+    expect(rows.find(e => e.type === 'IfcRelVoidsElement')?.attributes.slice(4)).toEqual([`#${slab.expressId}`, `#${placed.expressId}`]);
+    expect(rows.some(e => e.type === 'IfcRelFillsElement')).toBe(false);
+    const extent = placedBodyExtent(model.store, placed.expressId, view);
+    expect(extent).not.toBeNull();
+    expect(extent!.max[0] - extent!.min[0]).toBeCloseTo(1.2);
+    expect(extent!.max[1] - extent!.min[1]).toBeCloseTo(0.8);
+    expect(extent!.max[2] - extent!.min[2]).toBeCloseTo(0.5);
+    const saved = model.bim.export.ifc();
+    const bytes = typeof saved === 'string' ? new TextEncoder().encode(saved) : saved;
+    const parsed = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+    expect(parsed.entityIndex.byType.get('IFCOPENINGELEMENT')).toContain(placed.expressId);
+    expect(registry.get('alpha')!.backend.getMutationView()).toBeNull();
+    expect((await call('mutation_undo', { model_id: 'beta' })).isError).not.toBe(true);
+    expect(view.getNewEntities()).toEqual(before);
+  });
+});
+
+for (const kind of ['door', 'window'] as const) {
+  it(`#9352 MCP and SDK hosted ${kind} placement preserve distinct type variants through MCP attribute readback`, async () => {
+    const { registry, call } = await session();
+    const model = registry.get('alpha')!;
+    const home = model.bim.query().byType('IfcBuildingStorey').toArray()[0].ref.expressId;
+    const wall = model.bim.store.addWall('alpha', home, { Start: [0, 20, 0], End: [8, 20, 0], Thickness: .2, Height: 3 });
+    const enumeration = kind === 'door' ? 'REVOLVING' : 'DOUBLE_PANEL_VERTICAL';
+    const field = kind === 'door' ? 'OperationType' : 'PartitioningType';
+    const typeClass = kind === 'door' ? 'IfcDoorType' : 'IfcWindowType';
+    const result = await call(kind === 'door' ? 'place_door' : 'place_window', { host_express_id: wall.expressId,
+      params: kind === 'door'
+        ? { Offset: 2, Width: .9, Height: 2.1, OperationType: enumeration }
+        : { Offset: 2, Sill: .5, Width: .9, Height: 2.1, PartitioningType: enumeration } });
+    expect(result.isError).not.toBe(true);
+    const a = { modelId: 'alpha', expressId: result.structuredContent!.expressId as number };
+    const b = kind === 'door'
+      ? model.bim.store.addHostedDoor('alpha', wall.expressId,
+        { Offset: 5, Width: .9, Height: 2.1, OperationType: enumeration.toLowerCase() })
+      : model.bim.store.addHostedWindow('alpha', wall.expressId,
+        { Offset: 5, Sill: .5, Width: .9, Height: 2.1, PartitioningType: enumeration.toLowerCase() });
+    const types = [a, b].map(ref => model.bim.query().byType(typeClass).toArray().find(type =>
+      model.bim.related(type.ref, 'IfcRelDefinesByType', 'forward').some(row => row.ref.expressId === ref.expressId))!.ref);
+    expect(types[0].expressId).not.toBe(types[1].expressId);
+    for (const [i, value] of [enumeration, 'USERDEFINED'].entries()) {
+      const data = await call('get_entity', { express_id: types[i].expressId, include: ['attributes'] });
+      expect(data.isError).not.toBe(true);
+      const attrs = data.structuredContent!.attributes as Array<{ name: string; value: unknown }>;
+      expect(String(attrs.find(row => row.name === field)?.value).replace(/\./g, '')).toBe(value);
+      if (i === 1) expect(attrs.find(row => row.name === `UserDefined${field}`)?.value).toBe(enumeration.toLowerCase());
+    }
+  });
+}

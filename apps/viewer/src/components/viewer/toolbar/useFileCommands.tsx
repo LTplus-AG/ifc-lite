@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * File-command surface for the ribbon. Owns the Open / Add Model / Refresh
- * flows, hidden file inputs, and global `ifc-lite:*` load events. The ribbon
+ * Shared file-command surface for desktop and mobile. Owns the Open / Add Model / Refresh
+ * flows, hidden file inputs, and global `ifc-lite:*` load events. The active toolbar
  * mounts it once, so the window listeners never double-fire.
  */
 
+import { isFeatureEnabled } from '@/lib/features';
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useViewerStore, isIfcxDataStore, type FederatedModel } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
@@ -25,7 +26,7 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
-import { registerMountedFileHost } from './mounted-file-host';
+import { useFileHostRegistration } from './useFileHostRegistration';
 import { ShareDialog } from '../ShareDialog';
 import { FederationSetupControls } from '../FederationSetupControls';
 
@@ -80,7 +81,7 @@ export function useFileCommands(): FileCommands {
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
 
   // Share dialog host. Owned here (not by a toolbar or tab panel) because
-  // this hook is mounted by RibbonToolbar for the whole session, while its
+  // this hook is mounted by the active toolbar for the whole session, while its
   // tab panels unmount on tab switch/collapse — the
   // `ifc-lite:open-share-dialog` event (RoomPanel's "Create a room") must
   // always find a live listener.
@@ -325,37 +326,12 @@ export function useFileCommands(): FileCommands {
     toast.success(ok.length === 1 ? `Refreshed "${ok[0].fresh.name}"` : `Refreshed ${ok.length} models`);
   }, [loadFile, addModel, clearAllModels]);
 
-  const reportError = useCallback((error: unknown) => {
-    console.error('[useFileCommands] File command failed', error);
-    toast.error(error instanceof Error ? error.message : String(error));
-  }, []);
-  useEffect(() => registerMountedFileHost({
-    openFiles: () => {
-      if (!useViewerStore.getState().loading) void handleOpenClick().catch(reportError);
-    },
-    addModel: () => {
-      if (!useViewerStore.getState().loading) void handleAddModelClick().catch(reportError);
-    },
-    refreshModels: async () => {
-      const state = useViewerStore.getState();
-      if (state.loading || !selectCanRefreshModels(state)) return;
-      try { await handleRefresh(); } catch (error) { reportError(error); }
-    },
-    openShareDialog: collabEnabled ? openShareDialog : undefined,
-  }), [handleOpenClick, handleAddModelClick, handleRefresh, openShareDialog, collabEnabled, reportError]);
-
-  // The command palette dispatches this (synchronously, inside the click) so the
-  // toolbar's handle-capturing open path runs while user activation is still
-  // live — required for the file dialog to actually open on Chrome.
-  useEffect(() => {
-    const handler = () => { void handleOpenClick().catch(reportError); };
-    window.addEventListener('ifc-lite:open-files', handler);
-    return () => window.removeEventListener('ifc-lite:open-files', handler);
-  }, [handleOpenClick, reportError]);
+  useFileHostRegistration({ handleOpenClick, handleAddModelClick, handleRefresh,
+    openShareDialog: collabEnabled ? openShareDialog : undefined, loadFile });
 
   const fileInputs = (
     <>
-      <input
+      {isFeatureEnabled('files.local') && <><input
         id="file-input-open"
         ref={fileInputRef}
         type="file"
@@ -372,7 +348,7 @@ export function useFileCommands(): FileCommands {
         multiple
         onChange={handleAddModelSelect}
         className="hidden"
-      />
+      /></>}
       {collabEnabled && <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />}
       <FederationSetupControls />
     </>

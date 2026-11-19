@@ -140,7 +140,7 @@ function stripUnusedCoverage(result: ClashResult): ClashResult {
   if (!result.ruleCoverage) return result;
   return {
     ...result,
-    ruleCoverage: result.ruleCoverage.map(({ matchedKeysA: _a, matchedKeysB: _b, ...rest }) => rest),
+    ruleCoverage: result.ruleCoverage.map(({ matchedKeysA: _a, matchedKeysB: _b, matchedElements: _objects, ...rest }) => rest),
   };
 }
 

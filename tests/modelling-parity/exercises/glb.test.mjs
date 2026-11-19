@@ -32,3 +32,12 @@ test('#9296 wall ray distinguishes an actual doorway gap from adjacent solid fac
   assert.equal(wallHit(cut,2.4,1.1),true);
   assert.equal(wallHit({triangles:quad(0,5)},1.4,1.1),true);
 });
+
+test('#9328 opening and shaft rays follow the median GLB frame shift', async () => {
+  const { rayFrameShift } = await import('./ray-frame.mjs');
+  const axes=[1,2,3].map(id=>({id,start:[id*10,0],end:[id*10+4,0],z:3}));
+  const rows=axes.map(a=>({expressId:a.id,min:[a.start[0]-100,1,-51],max:[a.end[0]-100,4,-49]}));
+  rows[2]={...rows[2],min:[999,999,999],max:[1000,1000,1000]};
+  assert.deepEqual(rayFrameShift(axes,rows),[-100,-2,-50]);
+  assert.throws(()=>rayFrameShift(axes,[]),/frame/i);
+});

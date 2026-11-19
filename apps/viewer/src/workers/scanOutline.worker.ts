@@ -31,7 +31,7 @@ export interface ScanOutlineSourceRef {
   key: number;
   points?: ScanOutlinePoints;
   count: number;
-  model?: Float32Array;
+  model?: Float32Array | Float64Array;
   modelOutputsRenderFrame?: boolean;
 }
 

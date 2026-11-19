@@ -37,6 +37,11 @@ without point-cloud rendering and scan deviation, so those pipelines and
 shaders stay out of the bundle. Its point-cloud and deviation methods throw.
 See [Rendering](https://ifclite.dev/docs/guide/rendering/#mesh-only-pages-ifc-literenderercore).
 
+`isRenderablePointCloud(asset)` says whether an inline cloud renders: it has points
+and its optional origin is three finite coordinates within float32 range.
+`setPointClouds` skips any other cloud; use this predicate when counting the clouds
+that render.
+
 ## Inspect GPU pass timing
 
 Timestamp queries are opt-in. Enable them before rendering, then read resolved
@@ -74,7 +79,12 @@ renderer.onDeviceLost(async () => {
 `recoverDevice()` requests a replacement adapter/device and rebuilds the GPU
 scene in place, preserving the `Renderer`, camera, IFC geometry, model
 placements, visibility, selection and colour overrides. Concurrent calls share
-one attempt. It returns a typed failure instead of presenting an incomplete
+one attempt. A newer public `init()` supersedes a pending attempt with the
+existing `renderer-destroyed` reason plus optional `superseded: true` metadata.
+Public `destroy()` reports `renderer-destroyed` without that flag. The reason
+union remains unchanged, preserving existing exhaustive switches.
+Reinitializing a destroyed instance also reconnects its canvas-size observer.
+It returns a typed failure instead of presenting an incomplete
 scene when CPU geometry has been released, a finalizer or authoring transaction
 is active, cold geometry cannot be restored, or public `addMesh()` content has
 no CPU source. Retained streaming fragments are rebuilt from their CPU owners;

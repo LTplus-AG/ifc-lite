@@ -57,8 +57,16 @@ function unmountAll(): void {
 }
 after(unmountAll);
 
-function menuItem(container: HTMLElement, label: string): HTMLButtonElement {
-  const btn = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+/** The Radix menu portals to `document.body` (and its submenu to a sibling
+ *  portal), so menu rows live outside the render container. Scope lookups to
+ *  the open menus so a ribbon button with the same label never matches. */
+function menuButtons(): HTMLButtonElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[role="menu"]')]
+    .flatMap((menu) => [...menu.querySelectorAll<HTMLButtonElement>('button')]);
+}
+
+function menuItem(label: string): HTMLButtonElement {
+  const btn = menuButtons().find((b) => b.textContent?.trim() === label);
   assert.ok(btn, `no menu item labelled "${label}"`);
   return btn as HTMLButtonElement;
 }
@@ -76,9 +84,9 @@ beforeEach(async () => {
 describe('EntityContextMenu — Export anonymized…', () => {
   it('right-clicking an entity outside the current selection replaces it as the sole seed', () => {
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
+    render();
 
-    act(() => { menuItem(container, 'Export anonymized…').click(); });
+    act(() => { menuItem('Export anonymized…').click(); });
 
     const state = useViewerStore.getState();
     assert.deepEqual(state.selectedEntityIds, new Set([globalId(FIXTURE_WALL_A)]));
@@ -90,9 +98,9 @@ describe('EntityContextMenu — Export anonymized…', () => {
     const selection = new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B)]);
     useViewerStore.setState({ selectedEntityIds: selection });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
+    render();
 
-    act(() => { menuItem(container, 'Export anonymized…').click(); });
+    act(() => { menuItem('Export anonymized…').click(); });
 
     const state = useViewerStore.getState();
     assert.deepEqual(state.selectedEntityIds, selection, 'must not narrow an existing multi-selection');

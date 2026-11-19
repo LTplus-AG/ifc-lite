@@ -132,17 +132,26 @@ export async function handleConnection(ws: WebSocket, req: http.IncomingMessage,
     return;
   }
 
-  const room = await ctx.roomManager.getOrCreate(roomId);
-  // The peer may have left (or overrun the pre-ready buffer and been closed)
-  // while the room loaded. Registering it now would leave a ghost peer: its
-  // `close` event already fired, so nothing would ever remove it.
-  if (ws.readyState !== ws.OPEN) return;
   const conn: PeerConnection = {
     ws,
     principal,
     awarenessClients: new Set<number>(),
   };
-  room.addConnection(conn);
+  let room = await ctx.roomManager.getOrCreate(roomId);
+  for (let attempt = 1; ; attempt++) {
+    // The peer may have left (or overrun the pre-ready buffer and been closed)
+    // while the room loaded. Registering it now would leave a ghost peer: its
+    // `close` event already fired, so nothing would ever remove it.
+    if (ws.readyState !== ws.OPEN) return;
+    // An unload (idle sweep, admin) can destroy the room between getOrCreate
+    // and here; a destroyed room refuses the peer, so join the reloaded one.
+    if (room.addConnection(conn)) break;
+    if (attempt >= 3) {
+      ws.close(1013, 'room-unavailable');
+      return;
+    }
+    room = await ctx.roomManager.getOrCreate(roomId);
+  }
 
   // Application-level keepalive. Distinct from the protocol ping below: only
   // a real message refreshes y-websocket's reconnect watchdog.

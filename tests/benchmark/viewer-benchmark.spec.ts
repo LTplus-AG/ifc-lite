@@ -275,7 +275,7 @@ test.describe('Viewer Performance Benchmarks', () => {
       // #6993: after every timing is taken, so it cannot move one.
       const interactionCommits = await measureInteractionCommits(page);
       console.log(`\n--- React Commits per Interaction (#6993) ---`);
-      console.log(`  ${JSON.stringify(interactionCommits.commits)} hoverHit=${interactionCommits.hoverHit}`);
+      console.log(`  ${JSON.stringify(interactionCommits.commits)} hoverHit=${interactionCommits.hoverHit} panelOpenVia=${interactionCommits.panelOpenVia}`);
       for (const [name, reason] of Object.entries(interactionCommits.errors)) console.warn(`  ⚠ ${name} not measured: ${reason}`);
 
       // #6993: read last, so a loss at any point of the sample is seen.

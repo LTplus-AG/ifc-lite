@@ -3,15 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * A ceiling PR is merged only as the tip of a batch of one (#8459).
- *
- * Mergify tests a batch at its tip and then squashes each PR onto `main` as
- * its own commit. #8459 lowered `bundle/viewer-eager-js-bytes` to what main
- * measured at 6e42aaf3fde1; by the time it was queued, main had grown past
- * that ceiling plus its band. Batch #8497 caught it, but the retry batch #8501
- * also held #8411, which shrank eager JS by 1.8%, so the tip passed and
- * c306ff57d4 (#8459 alone on main) landed red. With batch_size 1 the commit
- * that lands is the commit that was tested.
+ * How `.mergify.yml` routes PRs into its queues: one PR per check everywhere,
+ * ceiling PRs (#8459) and the Version Packages PR in queues of their own, and
+ * nothing queued before it is ready. The `.mergify.yml` header says why.
  *
  * The config is evaluated rather than grepped: a minimal evaluator for the
  * condition forms `.mergify.yml` uses, which throws on any other form, so a
@@ -33,10 +27,12 @@ const CEILING_FILES = readdirSync(join(REPO_ROOT, 'tests/perf-ratchets'))
   .filter((f) => f.endsWith('.json'))
   .map((f) => `tests/perf-ratchets/${f}`);
 
-/** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string }} pr */
+/** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string, statuses: string[], unresolvedThreads: number }} pr */
 function matches(cond, pr) {
+  if (cond.or) return cond.or.some((c) => matches(c, pr));
+  if (cond.and) return cond.and.every((c) => matches(c, pr));
   // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
-  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=)(.*)$/.exec(cond) ?? [];
+  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=|status-success=|check-success=|#review-threads-unresolved=)(.*)$/.exec(cond) ?? [];
   if (!kind) throw new Error(`merge-queue.test.mjs cannot evaluate Mergify condition ${JSON.stringify(cond)}; teach matches() its meaning`);
   const hit = {
     draft: () => pr.draft,
@@ -45,6 +41,9 @@ function matches(cond, pr) {
     // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
     'files~=': () => pr.files.some((f) => new RegExp(arg).test(f)),
     'head=': () => pr.head === arg,
+    'status-success=': () => pr.statuses.includes(arg),
+    'check-success=': () => pr.statuses.includes(arg),
+    '#review-threads-unresolved=': () => pr.unresolvedThreads === Number(arg),
   }[kind]();
   return negated ? !hit : hit;
 }
@@ -62,31 +61,37 @@ function queueFor(pr) {
   assert.equal(rules[0].actions.queue.name, queues[0].name, 'the routing rule names the queue that admits the PR');
   return queues[0];
 }
-const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', ...extra });
+/** Auto-merge queues a PR (#8526); its conditions gate entry, not staying in. */
+const entersQueue = (pr) => queueFor(pr) !== null && all(cfg.merge_protections_settings.auto_merge_conditions, pr);
+const READY = ['CLA', 'PR review signal'];
+/** One ordinary PR and one ceiling PR, one per non-release queue. */
+const QUEUED_FILES = [['apps/viewer/src/main.tsx'], ['tests/perf-ratchets/bundle.json']];
+const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: READY, unresolvedThreads: 0, ...extra });
 const RELEASE = 'changeset-release/main';
 
-test('a lowering PR like #8459 is queued alone, for every committed ceiling family', () => {
+test('a lowering PR like #8459 goes to the ceilings queue, for every committed ceiling family', () => {
   assert.ok(CEILING_FILES.length > 0, 'tests/perf-ratchets holds ceiling files');
   for (const file of CEILING_FILES) {
-    assert.equal(queueFor(pr([file])).batch_size, 1, file);
+    assert.equal(queueFor(pr([file])).name, 'ceilings', file);
   }
-  assert.equal(queueFor(pr(CEILING_FILES)).batch_size, 1, 'all families at once, as the daily job can propose');
+  assert.equal(queueFor(pr(CEILING_FILES)).name, 'ceilings', 'all families at once, as the daily job can propose');
 });
 
-test('a code PR that also edits a ceiling is queued alone too', () => {
-  assert.equal(queueFor(pr(['apps/viewer/src/main.tsx', 'tests/perf-ratchets/bundle.json'])).batch_size, 1);
+test('a code PR that also edits a ceiling goes to the ceilings queue too', () => {
+  assert.equal(queueFor(pr(['apps/viewer/src/main.tsx', 'tests/perf-ratchets/bundle.json'])).name, 'ceilings');
 });
 
-test('ordinary PRs keep batching; drafts and unlabelled PRs are not queued', () => {
-  assert.ok(queueFor(pr(['apps/viewer/src/main.tsx'])).batch_size > 1);
-  assert.ok(queueFor(pr(['scripts/perf-ratchet/lower.mjs'])).batch_size > 1, 'the ratchet scripts are code, not ceilings');
+test('ordinary PRs are queued one at a time too; drafts and unlabelled PRs are not queued', () => {
+  // The Mergify plan refuses batch_size above 1 (#10506): any queue above it stops every queue.
+  for (const q of cfg.queue_rules) assert.equal(q.batch_size ?? 1, 1, q.name);
+  assert.equal(queueFor(pr(['apps/viewer/src/main.tsx'])).name, 'default');
+  assert.equal(queueFor(pr(['scripts/perf-ratchet/lower.mjs'])).name, 'default', 'the ratchet scripts are code, not ceilings');
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { draft: true })), null);
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { labels: [] })), null);
 });
 
-test('the Version Packages PR is queued alone, never batched with PRs carrying changesets (#8630)', () => {
+test('the Version Packages PR has its own queue, apart from PRs carrying changesets (#8630)', () => {
   const release = queueFor(pr(['.changeset/x.md', 'packages/parser/package.json', 'Cargo.toml'], { head: RELEASE }));
-  assert.equal(release.batch_size, 1);
   assert.equal(release.name, 'release');
   assert.equal(queueFor(pr(['tests/perf-ratchets/bundle.json'], { head: RELEASE })).name, 'release', 'even if it ever touches a ceiling');
   assert.notEqual(queueFor(pr(['.changeset/x.md'])).name, 'release', 'a PR adding a changeset is ordinary work');
@@ -106,4 +111,20 @@ test('the ceilings queue is not a weaker gate: every queue requires the same ful
   const [first, ...rest] = cfg.queue_rules;
   assert.ok(first.merge_conditions.length > 0);
   for (const q of rest) assert.deepEqual(q.merge_conditions, first.merge_conditions, q.name);
+});
+
+test('no queue admits a PR whose CLA status is not green, so queue PRs only carry signed work', () => {
+  for (const files of QUEUED_FILES) {
+    assert.equal(queueFor(pr(files, { statuses: [] })), null, JSON.stringify(files));
+  }
+  assert.equal(queueFor(pr(['Cargo.toml'], { head: RELEASE, statuses: [] })), null, 'the release PR too');
+});
+
+test('a labelled PR waits outside the queue until its review gate is green and its threads are resolved', () => {
+  for (const files of QUEUED_FILES) {
+    assert.ok(entersQueue(pr(files)), 'ready: queued');
+    assert.equal(entersQueue(pr(files, { statuses: ['CLA'] })), false, 'PR review signal not green yet');
+    assert.equal(entersQueue(pr(files, { unresolvedThreads: 2 })), false, 'review threads still open');
+  }
+  assert.ok(entersQueue(pr(['Cargo.toml'], { head: RELEASE, statuses: ['CLA'], unresolvedThreads: 1 })), 'the release PR has no review gate');
 });

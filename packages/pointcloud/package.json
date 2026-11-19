@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/pointcloud",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Point cloud decoders and types for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,13 +19,15 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/geo": "workspace:^",
+    "@ifc-lite/wasm-lifecycle": "workspace:^",
     "laz-perf": "^0.0.7"
   },
   "devDependencies": {
-    "@mergifyio/vitest": "^2026.10.11",
+    "@mergifyio/vitest": "^2026.11.8",
     "esbuild": "^0.28.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

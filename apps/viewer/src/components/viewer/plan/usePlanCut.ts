@@ -171,7 +171,9 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
           const drawing = await gen.generate(
             req.meshes as MeshData[],
             createSectionConfig('y', req.cutY, SECTION_DEPTHS),
-            { includeProjection: true, includeEdges: false, includeHiddenLines: false, mergeLines: true, useGPU: false },
+            // This caller supplies meshes, not extracted profiles. The existing
+            // silhouette path draws floors and their shafts below the cut (#9296).
+            { includeProjection: true, includeEdges: true, includeHiddenLines: false, mergeLines: true, useGPU: false },
           );
           if (cancelled) return;
           setResult({ ...mapPlanDrawing(drawing, req.map), loading: false, simplified: false, failed: false, ms: performance.now() - started, key: req.key, scope: req.scope });

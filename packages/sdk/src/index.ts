@@ -207,6 +207,13 @@ export { StoreNamespace } from './namespaces/store.js';
 export { LensNamespace } from './namespaces/lens.js';
 export { ExportNamespace } from './namespaces/export.js';
 export type { ExportCsvOptions, ExportStepOptions, ExportHbjsonOptions, ExportDfjsonOptions } from './namespaces/export.js';
+export { GeorefNamespace } from './namespaces/georef.js'; export { GeoreferencingError } from './georef/types.js';
+export { epsgName } from './georef/validate.js'; export { readGeoreferencing } from './georef/read.js';
+export type {
+  GeoreferencingBackendMethods, GeoreferencingErrorCode, GeoreferencingSetInput, GeoreferencingState, GeoreferencingUpdateInput,
+  GeoreferencingWriteRequest, GeoreferencingWriteResult, GeorefMapConversionAttributes, GeorefMapConversionState, GeorefMapUnitDecision,
+  GeorefProjectedCRSAttributes, GeorefProjectedCRSState, GeorefRigidOperationState, GeorefSiteLocationState, GeorefSource, GeorefStorage,
+  GeorefCheckOptions, GeorefCheckReport, GeorefFixPlan, GeorefFixPlanOptions, GeorefFixResult, GeorefPlannedFix, GeorefSiteInput, GeorefSiteWriteResult, } from './georef/types.js';
 
 // IDS — full validation, facets, constraints, translation
 export { IDSNamespace, IDSAuthoringNamespace, IDSAuthoringDocument } from './namespaces/ids.js';

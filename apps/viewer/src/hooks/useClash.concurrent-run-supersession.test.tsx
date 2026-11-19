@@ -7,7 +7,7 @@
  * federation (issue #2802 sweep).
  *
  * `publishClashResult` (`useClash.ts`) guards every write to `clashResult`
- * with `clashFederationIsCurrent(federationIdentity, state.models)` — but
+ * with `federationIsCurrent(federationIdentity, state.models)` — but
  * that identity is keyed on the MODEL SET, not on which call started it. Two
  * calls issued while the models are untouched carry the SAME identity, so
  * the guard cannot tell a call the user is still waiting on from one they

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The host of a hosted placement (charter #6232, A1): the wall under the
+ * The host of a hosted placement (charter #6232, A1): the wall or slab under the
  * cursor, and what the gesture needs to know about it.
  *
  * The candidates are the semantic snap source's walls: the session storey's
@@ -17,17 +17,27 @@
  * per loaded model, host and edit (`mutationVersion`), not per pointer move.
  */
 
+import { AnchorEntityReader } from '../../../../../../../packages/create/src/in-store/resolve-anchor.js';
+import { slabExtrusionFrame } from '@/lib/slab-edit-frame';
+import { readAttributes, resolvePlacementChain } from '@/lib/placement-core';
+import { resolveSlabEditChain } from '@/lib/slab-edit';
+import { readModelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { effectiveSpatialContext } from '@/lib/effective-storey';
+import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
 import { hostPlanFrame, resolveHostAnchor } from '@ifc-lite/create';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { effectiveStoreyId, type IfcDataStore } from '@ifc-lite/parser';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
 import type { WallAxis } from '@/lib/snap/sources/semantic';
 import type { ViewerState } from '@/store';
 import type { CommandContext, Vec3 } from '../types.js';
 
-/** A wall to host an opening, door or window; lengths in metres. */
+/** A wall for any hosted fill, or a horizontal slab for a bare opening; metres. */
 export interface HostHit {
   readonly expressId: number;
+  readonly hostKind: 'wall' | 'slab';
+  /** Slab outline in the host placement frame, metres. */
+  readonly footprint?: readonly Vec2[];
   /** The wall's placement origin, storey-local (z: above the storey). */
   readonly origin: Vec3;
   /** Its local +X on the storey plane (unit). */
@@ -46,7 +56,7 @@ const REACH = 0.05;
  * unloaded or replaced (even under the same id, at the same
  * `mutationVersion`) never reads another's walls; entries die with the store.
  */
-interface ModelCache { axes: { key: string; axes: readonly WallAxis[] } | null; hosts: Map<string, HostHit | null> }
+interface ModelCache { axes: { key: string; axes: readonly WallAxis[] } | null; hosts: Map<string, HostHit | null>; slabs?: { key: string; hosts: readonly HostHit[] } }
 const caches = new WeakMap<IfcDataStore, ModelCache>();
 
 function cacheFor(store: IfcDataStore): ModelCache {
@@ -67,7 +77,7 @@ function storeyAxes(s: ViewerState, modelId: string, storeyId: number): readonly
   return axes;
 }
 
-/** The wall `expressId` as a host, or null when it cannot take one (no placement or readable body). */
+/** The product `expressId` as a host, or null when it cannot take one (no placement or readable body). */
 export function readHost(s: ViewerState, modelId: string, expressId: number): HostHit | null {
   const store = s.models.get(modelId)?.ifcDataStore;
   if (!store) return null;
@@ -88,16 +98,36 @@ function readHostUncached(s: ViewerState, modelId: string, expressId: number): H
   try {
     anchor = resolveHostAnchor(store, expressId, view);
   } catch (error) {
-    // Not a host (a slab, no placement, no containing storey): the cursor keeps looking.
+    // No placement or containing storey: the cursor keeps looking.
     console.debug(`[modeling] #${expressId} cannot host an opening`, error);
     return null;
   }
   const frame = hostPlanFrame(store, expressId, anchor.storeyId, view);
   const bounds = anchor.hostBounds;
-  if (anchor.hostKind !== 'wall' || !frame || !bounds) return null;
+  if (!frame || !bounds) return null;
   const k = anchor.lengthUnitScale ?? 1;
   const span = (i: number) => [bounds.min[i] * k, bounds.max[i] * k] as const;
-  return { expressId, origin: frame.origin, axisX: frame.axisX, x: span(0), y: span(1), z: span(2) };
+  let footprint: Vec2[] | undefined;
+  if (anchor.hostKind === 'slab') {
+    const editor = readModelEditTarget(s, modelId)?.editor;
+    if (!view || !editor) return null;
+    const chain = resolveSlabEditChain(store, view, editor, expressId, k);
+    if (!chain) return null;
+    if (chain.baseElevation === null) {
+      // The split reader refuses plan turns because splitting writes in storey
+      // axes. A shaft stays in the host frame, so permit yaw through the same
+      // canonical vertical-extrusion check while still refusing tilted slabs.
+      const placement = resolvePlacementChain(store, view, editor, expressId);
+      const solid = readAttributes(store, view, editor, chain.extrudedSolidId);
+      if (!placement || !solid || !slabExtrusionFrame(store, view, editor, placement.axisPlacementId, solid, chain.thickness / k, true)) return null;
+    }
+    // The slab reader adds the placement translation to its solid/profile
+    // outline, but does not apply the product's yaw. Removing that translation
+    // leaves host-local XY, the same frame as toHostLocal's cursor.
+
+    footprint = chain.footprint.map(p => [p[0] - chain.placementOrigin[0], p[1] - chain.placementOrigin[1]]);
+  }
+  return { expressId, hostKind: anchor.hostKind, footprint, origin: frame.origin, axisX: frame.axisX, x: span(0), y: span(1), z: span(2) };
 }
 
 /** A storey-local point in the host's own frame: [along, across]. */
@@ -126,12 +156,34 @@ function over(host: HostHit, p: Vec2): boolean {
   return u >= host.x[0] - REACH && u <= host.x[1] + REACH && v >= host.y[0] - REACH && v <= host.y[1] + REACH;
 }
 
+function slabCandidates(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId'>, state: ViewerState, s: SnapResult): HostHit[] {
+  const store = state.models.get(ctx.modelId)?.ifcDataStore;
+  const view = state.mutationViews.get(ctx.modelId);
+  if (!store || !view) return [];
+  const cache = cacheFor(store), key = `${ctx.storeyId}:${state.mutationVersion}`;
+  if (cache.slabs?.key !== key) {
+    const reader = new AnchorEntityReader(store, view);
+    const hosts: HostHit[] = [];
+    const spatial = effectiveSpatialContext(store, view);
+    const ids = ['IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE'].flatMap(type => [...reader.ids(type)]);
+    for (const id of ids) {
+      if (effectiveStoreyId(store, id, spatial) !== ctx.storeyId) continue;
+      const host = readHost(state, ctx.modelId, id);
+      if (host?.footprint) hosts.push(host);
+    }
+    cache.slabs = { key, hosts };
+  }
+  const candidates = cache.slabs.hosts.filter(host => host.footprint && pointInPolygon(host.footprint.map<Point2D>(p => [p[0], p[1]]), [...toHostLocal(host, s.local)]));
+  const height = state.session?.workplane?.kind === 'storey' ? state.session.workplane.offset : 0;
+  candidates.sort((a,b) => Math.abs(a.origin[2]+a.z[1]-height)-Math.abs(b.origin[2]+b.z[1]-height));
+  return candidates;
+}
+
 /**
- * The wall under the solved cursor on the session storey, or null. A snap
- * target on a wall of the session model wins; otherwise the nearest wall
- * axis whose body the cursor is over.
+ * The host under the solved cursor on the session storey. An explicit
+ * wall/slab snap wins before nearby wall-axis and slab-footprint fallbacks.
  */
-export function hostUnderCursor(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId'>, s: SnapResult): HostHit | null {
+export function hostUnderCursor(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId'>, s: SnapResult, slabs = false): HostHit | null {
   if (ctx.storeyId === null) return null;
   const state = ctx.get();
   const axes = storeyAxes(state, ctx.modelId, ctx.storeyId);
@@ -140,6 +192,9 @@ export function hostUnderCursor(ctx: Pick<CommandContext, 'get' | 'modelId' | 's
     const host = readHost(state, ctx.modelId, snapped);
     if (host) return host;
   }
+  const candidates = slabs ? slabCandidates(ctx, state, s) : [];
+  const snappedSlab = candidates.find(host => host.expressId === snapped);
+  if (snappedSlab) return snappedSlab;
   const ranked = axes
     .map((w) => ({ id: w.expressId, d: distanceToAxis(s.local, w) }))
     .sort((a, b) => a.d - b.d);
@@ -147,5 +202,6 @@ export function hostUnderCursor(ctx: Pick<CommandContext, 'get' | 'modelId' | 's
     const host = readHost(state, ctx.modelId, id);
     if (host && over(host, s.local)) return host;
   }
-  return null;
+
+  return candidates[0] ?? null;
 }

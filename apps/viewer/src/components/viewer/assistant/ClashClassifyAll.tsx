@@ -40,9 +40,13 @@ export function ClashClassifyAll({ result, enabled, onResult, limits = CLASSIFY_
   const plan = useMemo(() => planClassification(result.clashes), [result]);
   // Closing the review mid-run (stale evidence, another conversation) aborts the run: no budget is spent without visible progress.
   const active = useRef<AbortController | null>(null);
-  useEffect(() => () => { active.current?.abort(); active.current = null; }, []);
+  useEffect(() => {
+    setController(null); setChunks([]); setRun(null); setError(null); setConsent(false);
+    return () => { active.current?.abort(); active.current = null; };
+  }, [result, model]);
   const estimate = estimateClassification(plan, limits, modelCapabilities(model).maxOutputTokens);
   const start = async () => {
+    if (active.current) return;
     if (model === UNCONFIGURED_MODEL_ID) { setError(t('clashClassify.missingModel')); return; }
     const route = resolveStreamRoute(model, getApiKeys());
     if (route.kind === 'missing-key') { setError(t('clashClassify.missingKey')); return; }

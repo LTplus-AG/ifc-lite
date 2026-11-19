@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { discardOverlappingRetainedEdits, discardUnchangedMutationViews } from '@/utils/model-mutation-view';
+import { refreshModelOverlayCapacity } from '../overlay-capacity.js';
+
 /**
- * Model state slice for multi-model federation
- *
- * Uses FederationRegistry for bulletproof ID handling:
- * - Each model gets a unique ID offset at load time
- * - All meshes use globalIds (originalExpressId + offset)
- * - No ID collisions possible between models
+ * Model state slice: FederationRegistry offsets keep model global IDs unique.
  */
 
 import type { StateCreator } from 'zustand';
@@ -17,7 +15,7 @@ import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 import type { ViewerState } from '../index.js';
 import { localIdInParseRange, localIdInOverlay } from '../globalId.js';
 import { viewerTeardown } from '../teardown-registry.js';
-import { modelAppearanceAssets } from '../../lib/appearance/model-assets.js';
+import { releaseAllModelSessions, releaseRemovedModelSession } from './modelSlice.sessionRelease.js';
 import { modelRemovedScope } from '../teardown-scope.js';
 import { endIdsRowFocusPresentation, type IDSRowFocusPresentation } from '../../lib/ids/visibility-ownership.js';
 import { endClashScenePresentation, type ClashSceneTeardown } from '@/lib/clash/visibility-ownership';
@@ -26,6 +24,7 @@ import { isolateModelsPatch, modelFieldPatch, modelsVisibilityPatch } from './mo
 import { upsertModelPatch } from './modelSlice.upsert.js';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { endChartVisibilityPresentation } from '@/lib/charts/visibility-ownership';
+import { resetStructuralModeWithoutData } from '@/lib/visibility/structural-view';
 import { toPublishedGlobalIdFromState } from '../federation-overlay-publication.js';
 
 export interface ModelSlice {
@@ -34,6 +33,9 @@ export interface ModelSlice {
   models: Map<string, FederatedModel>;
   /** ID of the currently active model (for property panel focus) */
   activeModelId: string | null;
+  /** Bumped by every teardown that ends the model session an analysis run read
+   *  (`modelSlice.teardown.ts`); runs end themselves on it (`hooks/analysisRunGuard.ts`). */
+  analysisRunGeneration: number;
 
   // Actions
   /** Add a new model to the federation */
@@ -152,6 +154,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
   // Initial state
   models: new Map(),
   activeModelId: null,
+  analysisRunGeneration: 0,
 
   // Actions
   addModel: (model) => set((state) => {
@@ -194,7 +197,9 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     const model = state.models.get(modelId);
     if (!model) return {};
 
-    const updatedModel = { ...model, ...patch };
+    const merged = { ...model, ...patch };
+    const updatedModel = patch.ifcDataStore !== undefined || patch.maxExpressId !== undefined
+      ? refreshModelOverlayCapacity(merged, state.mutationViews.get(modelId)) : merged;
     const newModels = new Map(state.models);
     newModels.set(modelId, updatedModel);
 
@@ -377,13 +382,12 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // through `withVisibilityOwnershipInvalidation`.
     const state = get();
     set(viewerTeardown(modelRemovedScope(state, modelId), state));
-    modelAppearanceAssets.remove(modelId);
+    releaseRemovedModelSession(modelId); resetStructuralModeWithoutData(get()); // #9957
   },
 
   clearAllModels: () => {
-    // Full federation teardown: any IDS report now references an unloaded
-    // model, so drop it too (removeModel's per-model cleanup never runs here).
-    // Same for the cloud-source provenance tags — every tagged model is gone.
+    discardUnchangedMutationViews(get());
+    // Drop IDS reports and source tags: every referenced model is unloaded.
     const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
       clearSourceTags?: () => void;
@@ -514,7 +518,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // stored global id is stale by definition AND the very next model loaded
     // can be handed those exact numbers back.
     set(viewerTeardown({ kind: 'all-models-cleared' }, get()));
-    modelAppearanceAssets.clear();
+    releaseAllModelSessions();
   },
 
   setActiveModel: (modelId) => set((state) => {
@@ -560,7 +564,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
 
   // Federation Registry helpers
   registerModelOffset: (modelId: string, maxExpressId: number) => {
-    return federationRegistry.registerModel(modelId, maxExpressId);
+    return federationRegistry.registerModel(modelId, maxExpressId, discardOverlappingRetainedEdits(get(), modelId, maxExpressId));
   },
 
   toGlobalId: (modelId: string, expressId: number) => toPublishedGlobalIdFromState(federationRegistry, get(), modelId, expressId),

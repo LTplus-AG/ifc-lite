@@ -11,13 +11,16 @@ GPU. Every probe starts from "Start blank" and does its task with real input:
   panel and File > Export.
 
 The oracle is the result, never "no error". In most probes that's the IFC the
-viewer exports, parsed by `lib/step.mjs`. The rest read the viewer's state:
+viewer exports, parsed by `lib/step.mjs`. The roof probe meshes its exported IFC with the shipped WASM kernel and uses
+the SDK roof oracle to check its sloped surface, low eaves, high centre and
+volume. IFC labels cannot certify the shape. The rest read the viewer's state:
 the plan shapes and the section drawing.
 
 | file | role |
 |---|---|
 | `run.mjs` | entry point: serves a built `dist/`, connects to Chrome on the GPU, runs probes, exercises and council frames |
-| `probes.mjs` | one probe per capability where the UI is the point (ids in the contract's capability list) |
+| `rows/*.mjs` | one probe module per catalogue capability; `rows/index.mjs` rejects duplicate ids and capabilities |
+| `probes.mjs` | common probe lifecycle and result reporting |
 | `exercises.mjs` | F1 (a room) and F2 (the KIT FZK-Haus) modelled end to end, with council checkpoints |
 | `lib/driver.mjs` | preview server, session, action counter, camera pinning, task timing |
 | `lib/model-ui.mjs` | Model workspace moves: tool shortcuts, typed fields, storey chip and manager, export |
@@ -123,3 +126,29 @@ exclusive benchmark admission on Pop. PC benchmarks are disabled.
 Use a fresh output directory per cohort when scoring: the scorer keeps the best
 result per level, so mixing old and new runs can conceal a regression. Pass the
 SDK result directory and UI directory explicitly to the output runner and scorer.
+
+Harness regression tests (no GPU):
+
+```sh
+node --test tests/modelling-parity/ui/lib/*.test.mjs tests/modelling-parity/ui/rows/*.test.mjs
+```
+
+Round 5 measures exported grid displacement, ordered material usage and body size,
+type-owned properties, displayed schedule group/footer totals, classification relationships
+and physical PDF path dimensions at 1:50. Tasks that the UI cannot complete remain
+failed checks with their concrete reason. No product writes use the store API.
+
+### Sheet DXF oracle (#9296, owner decision 2026-11-13)
+
+`ui.sheet` keeps capability id `sheets-pdf-dwg` for baseline compatibility,
+with the rescoped target **Sheets, PDF and DXF export**. Native DWG is a
+separate unscored catalogue row. The UI places a Distance measurement and
+exports the sheet PDF and drawing DXF. DXF remains model-space metres;
+the 5.2 m outer wall span corresponds to 104 mm on paper at 1:50.
+
+Both UI and Output use the independent Python reader `ezdxf==1.4.3`.
+Install it in `~/modelling-parity/venv` (or set `PARITY_PYTHON` to another
+Python with that package). Reader absence fails acceptance explicitly.
+The automated counterexamples run via `ui/lib/sheet-dxf.test.mjs`;
+without ezdxf they report SKIPPED, never a pass. The oracle rejects an
+empty drawing, absent wall layers, missing dimension text and wrong scale.

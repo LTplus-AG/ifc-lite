@@ -3,10 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Selection, basket and IFC class visibility commands. */
-import { Box, Building2, Equal, Eye, EyeOff, Layout, Minus, Palette, Pencil, Plus, RotateCcw, Save, SquareX } from 'lucide-react';
+import { ArrowDownToLine, Box, Building2, Equal, Eye, EyeOff, Layout, Minus, Palette, Pencil, Plus, RotateCcw, Save, SquareX } from 'lucide-react';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
+import { resetVisibilityReasons } from '@/lib/visibility/visibility-reasons';
+import { toggleStructuralGlyphs } from '@/lib/visibility/structural-view';
 import { showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import {
@@ -19,6 +21,8 @@ import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandSta
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const paletteOnly = ['palette'] as const;
+/** The structural view modes in their ribbon order. */
+const STRUCTURAL_VIEW_MODES = ['both', 'analytical', 'physical'] as const;
 
 export const VISIBILITY_SURFACE_COMMANDS = [
   {
@@ -34,6 +38,14 @@ export const VISIBILITY_SURFACE_COMMANDS = [
     keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
     surfaces: ['palette', 'mobile', 'context', 'ribbon'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
     run: (context: SurfaceCommandContext) => runContextOr(context, () => { showAllFromStore('show_all'); }),
+  },
+  {
+    id: 'vis:reset-filters', labelKey: 'commandPalette.vis.resetFilters.label',
+    detailKey: 'commandPalette.vis.resetFilters.detail',
+    keywords: 'reset visibility filters restore visibility without clearing selection',
+    keywordsKey: 'commandPalette.vis.resetFilters.aliases',
+    category: 'Visibility', icon: RotateCcw, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { resetVisibilityReasons(useViewerStore); },
   },
   {
     id: 'vis:set-iso', labelKey: 'commandPalette.vis.setBasket.label',
@@ -131,6 +143,31 @@ export const VISIBILITY_SURFACE_COMMANDS = [
     keywords: 'IfcGrid IfcGridAxis grid axis bubble tag show hide section clip',
     category: 'Visibility', icon: Pencil, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => { useViewerStore.getState().toggleTypeVisibility('ifcGrid'); },
+  },
+  {
+    id: 'vis:structural-view', labelKey: 'commandPalette.vis.structuralView.label',
+    keywords: 'analytical physical structural model show hide',
+    category: 'Visibility', icon: Eye, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => {
+      const s = useViewerStore.getState();
+      const mode = s.structuralViewMode;
+      s.setStructuralViewMode(mode === 'both' ? 'analytical' : mode === 'analytical' ? 'physical' : 'both');
+    },
+  },
+  // One command per mode, so the ribbon shows which one is on (#10604).
+  ...STRUCTURAL_VIEW_MODES.map((mode) => ({
+    id: `vis:structural-${mode}` as const, labelKey: `commandPalette.vis.structural.${mode}.label` as const,
+    ribbonLabelKey: `ribbon.view.structural.${mode}` as const, ribbonTooltipKey: `ribbon.view.structural.${mode}Tooltip` as const,
+    keywords: `structural model view mode ${mode} analytical physical show hide`,
+    category: 'Visibility' as const, icon: Eye, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().setStructuralViewMode(mode); },
+  })),
+  {
+    id: 'vis:structuralGlyphs', labelKey: 'commandPalette.vis.structuralGlyphs.label',
+    ribbonTooltipKey: 'ribbon.view.structuralGlyphsTooltip',
+    keywords: 'structural analysis support load force moment IfcStructuralPointConnection IfcStructuralAction show hide',
+    category: 'Visibility', icon: ArrowDownToLine, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: () => { toggleStructuralGlyphs(useViewerStore.getState()); },
   },
   {
     id: 'vis:reset-colors', labelKey: 'commandPalette.vis.resetColors.label',

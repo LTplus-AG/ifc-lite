@@ -21,6 +21,7 @@
 
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import type { SnapProfile } from '@/lib/snap/types';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitElementAlignment, planSelectionTransform } from '@/lib/element-transform/commit';
 import { AlignBar } from '@/components/viewer/tools/command/AlignBar';
 import { AlignPlan, AlignScene } from '@/components/viewer/tools/command/AlignLayers';
@@ -50,6 +51,8 @@ function init(ctx: CommandContext): AlignGesture {
 
 function withSelection(g: AlignGesture, ctx: CommandContext): AlignGesture {
   const plan = planSelectionTransform(ctx.get(), ctx.modelId, g.targets);
+  // #8947: palette planning is read-only; a real valid command owns its edit target.
+  if (plan && plan.roots.length > 0 && plan.refused.length === 0) modelEditTarget(ctx.get(), ctx.modelId);
   return { ...g, carried: plan?.carried ?? [] };
 }
 

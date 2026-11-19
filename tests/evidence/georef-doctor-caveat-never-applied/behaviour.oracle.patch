@@ -1,0 +1,13 @@
+diff --git a/packages/sdk/src/georef/doctor/plan.ts b/packages/sdk/src/georef/doctor/plan.ts
+index 36fe4b87cf..32fee7c6a1 100644
+--- a/packages/sdk/src/georef/doctor/plan.ts
++++ b/packages/sdk/src/georef/doctor/plan.ts
+@@ -167,7 +167,7 @@ function classify(id: string, finding: GeorefFinding, fix: SuggestedFix, report:
+   if (fix.apply.via === 'manual') return { ...base, status: 'manual', reason: fix.apply.reason };
+   const built = buildWrite(fix.apply, report, options);
+   const withWrite: GeorefPlannedFix = { ...base, write: built.write, ...(built.derived ? { derived: built.derived } : {}) };
+-  // caveat ignored
++  if (fix.caveat) return { ...withWrite, status: 'review', reason: `The checker marks this fix uncertain, so it is never applied automatically: ${fix.caveat}` };
+   if (built.needs.length > 0) {
+     return {
+       ...withWrite,

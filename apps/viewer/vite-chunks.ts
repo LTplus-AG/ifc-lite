@@ -78,7 +78,7 @@ export const preloadHelperChunkGroup = {
 /** A non-recursive group that claims exactly these `apps/viewer/src` modules (`.ts`, no query). */
 function allowlistGroup(name: string, modules: readonly string[]) {
   const escaped = modules.map((module) => module.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'));
-  return { name, priority: 40, includeDependenciesRecursively: false, modules, test: new RegExp(`/apps/viewer/src/(?:${escaped.join('|')})\\.ts$`) };
+  return { name, priority: 40, includeDependenciesRecursively: false, test: new RegExp(`/apps/viewer/src/(?:${escaped.join('|')})\\.ts$`) };
 }
 
 /**
@@ -92,30 +92,33 @@ function allowlistGroup(name: string, modules: readonly string[]) {
  * no `import()` (src/test/vite-chunks.test.ts checks this): otherwise the group
  * would merge a deferred boundary into every chunk that shares it.
  */
-export const drawingSharedChunkGroup = allowlistGroup('drawing-shared', [
+export const drawingSharedModules = [
   // Eager: the Drawing panel's host and DXF/point-cloud ingest.
   'hooks/useDxfUnderlay', 'hooks/dxfUnderlayWorldLines', 'hooks/dxfUnderlayMath', 'hooks/dxfExportGeoref', 'hooks/pdfSectionLayout',
   'hooks/ingest/dxfIngest', 'hooks/ingest/pointCloudScanCache', 'lib/drawing/element-tags', 'lib/drawing/drawing-runtime',
   'lib/drawing2d-markup/dimension-graphics', 'components/viewer/tools/computePolygonArea', 'components/viewer/tools/formatDistance',
   'services/coordination-loader', 'lib/renderer/line-overlay-rte', 'lib/geo/use-projection-kind', 'lib/geo/useAnchorGeoreference',
-]);
+] as const;
+export const drawingSharedChunkGroup = allowlistGroup('drawing-shared', drawingSharedModules);
 
 /** Lazy: small drawing and appearance modules the Drawing panel and operations share. */
-export const drawingLeavesChunkGroup = allowlistGroup('drawing-leaves', [
+export const drawingLeavesModules = [
   'lib/drawing/center-dxf', 'lib/drawing/dxf-text-layout', 'hooks/dxfDrawingBounds',
   'lib/appearance/references/drawing', 'lib/appearance/face-masks', 'lib/appearance/settings',
-]);
+] as const;
+export const drawingLeavesChunkGroup = allowlistGroup('drawing-leaves', drawingLeavesModules);
 
 /**
  * Lazy: capture, scan, transfer and preview workflows the Appearance panel and
  * operations share. The textured-product family stays out because the Drawing
  * panel's reference library imports it, and this group would then ride along.
  */
-export const appearanceWorkflowsChunkGroup = allowlistGroup('appearance-workflows', [
+export const appearanceWorkflowsModules = [
   'lib/appearance/appearance-native-preview', 'lib/appearance/appearance-native-scan', 'lib/appearance/appearance-native-scan-sources',
   'lib/appearance/appearance-native-capture', 'lib/appearance/appearance-native-transfer', 'lib/appearance/raster-payload',
   'lib/appearance/baked-images', 'lib/appearance/create-captured-mesh', 'lib/appearance/snapshot', 'lib/appearance/prepare-native-preview',
   'lib/appearance/pdf/page-preview', 'lib/appearance/capture/region', 'lib/appearance/capture/source', 'lib/appearance/scan/landmarks',
   'lib/appearance/scan/point-source', 'lib/appearance/scan/geometry-proof', 'lib/appearance/scan/session-source', 'lib/appearance/scan/session',
   'lib/appearance/scan/transfer-frame', 'lib/appearance/scan/prepare-transfer', 'components/viewer/appearance/scan-validation-message',
-]);
+] as const;
+export const appearanceWorkflowsChunkGroup = allowlistGroup('appearance-workflows', appearanceWorkflowsModules);

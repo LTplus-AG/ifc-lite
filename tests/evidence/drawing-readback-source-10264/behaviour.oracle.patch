@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/lib/drawing/drawing-geometry-source.ts b/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
+index f2a2928828..d88234d1e5 100644
+--- a/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
++++ b/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
+@@ -182,7 +182,7 @@ export class DrawingGeometry {
+       const kept: MeshData[] = [];
+       for (const mesh of chunk) {
+         if (!keep(mesh)) continue;
+-        kept.push(withIndex(mesh, modelIndex));
++        kept.push(placedMesh(withIndex(mesh, modelIndex), translation));
+       }
+       if (kept.length > 0) yield kept;
+     }

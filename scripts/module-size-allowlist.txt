@@ -103,7 +103,7 @@
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    461 apps/viewer/src/hooks/useAnnotation2D.ts
   1234 apps/viewer/src/hooks/useDrawingExport.ts
-  1032 apps/viewer/src/hooks/useDrawingGeneration.ts
+  1003 apps/viewer/src/hooks/useDrawingGeneration.ts
    551 apps/viewer/src/hooks/useIfcFederation.ts
   2170 apps/viewer/src/hooks/useIfcLoader.ts
    456 apps/viewer/src/hooks/useSymbolicAnnotations.ts

@@ -21,7 +21,7 @@ import {
   Drawing2DGenerator,
   createSectionConfig,
   currentFloorBands,
-  storeyFloorsFromMeshes,
+  StoreyFloorLevels,
   type Drawing2D,
   type DrawingLine,
   type SectionConfig,
@@ -38,7 +38,7 @@ import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
 import { saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
-import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
+import { buildModelViewIdFilter, modelMeshGate } from '@/lib/type-view-visibility';
 import { isMeshTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import { useRetypedClasses } from './useViewerSelectors.js';
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
@@ -50,6 +50,8 @@ import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canva
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
 import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fills';
 import { isGeometryHeld } from '@/lib/pick-gating';
+import { drawingMeshFilter } from '@/lib/drawing/drawing-mesh-filter';
+import { liveDrawingGeometry } from '@/lib/drawing/drawing-geometry-context';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -205,14 +207,10 @@ export function useDrawingGeneration({
       return;
     }
 
-    // Drop type-library geometry (issue #2058). `geometryResult.meshes` holds
-    // the whole scene, including the `IfcTypeProduct` RepresentationMap copies
-    // the wasm mesh pass emits (geometryClass 1 = orphan type, 2 = instanced
-    // type). The 3D viewport routes them through the same view-mode predicate,
-    // so the Model view never shows them; the drawing filtered only on
-    // hiding/isolation, so every type template was cut and projected on top of
-    // the plan — AC20-FZK-Haus alone carries 32 of them.
-    const modelMeshes = selectModelMeshes(geometryResult.meshes);
+    // Type-library geometry is dropped (issue #2058) by `drawingMeshFilter` and,
+    // for floor scoping, by the same `modelMeshGate`: AC20-FZK-Haus alone
+    // carries 32 type templates that would otherwise cut on top of the plan.
+    const modelMesh = modelMeshGate(geometryResult.meshes);
 
     // Mirror of the same gate, keyed by express id, for construction-projection
     // profiles (issue #2070 review): they reach the drawing WITHOUT going
@@ -372,6 +370,10 @@ export function useDrawingGeneration({
       generator = new Drawing2DGenerator();
       await generator.initialize();
       if (!isCurrent()) return;
+      // Resident meshes as they are; released ones read back from their
+      // backing, chunk by chunk, in at most two passes (#10264).
+      const geometry = await liveDrawingGeometry(geometryResult.meshes, isCurrent);
+      if (!isCurrent()) return;
 
       // Convert semantic axis to geometric
       const axis = AXIS_MAP[sectionPlane.axis];
@@ -432,8 +434,12 @@ export function useDrawingGeneration({
       if (canScopeFloor && sh) {
         const cached = storeyFloorsCacheRef.current.get(geometryResult);
         const floorsCurrent = cached?.elementToStorey === sh.elementToStorey;
-        const floors = floorsCurrent ? cached.floors : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
+        let floors = cached?.floors ?? [];
         if (!floorsCurrent) {
+          // Flat placed geometry only, as before; read back batch by batch when released.
+          const levels = new StoreyFloorLevels(sh.elementToStorey);
+          for await (const batch of geometry.source(modelMesh, { instanced: false }).pass('geometry')) levels.add(batch);
+          floors = levels.floors();
           storeyFloorsCacheRef.current.set(geometryResult, { floors, elementToStorey: sh.elementToStorey });
         }
         // Need ≥2 storeys to scope: with 0/1 storey there is no "other floor"
@@ -506,46 +512,13 @@ export function useDrawingGeneration({
         };
       }
 
-      // Filter meshes by visibility (respect 3D hiding/isolation)
-      let meshesToProcess = modelMeshes;
+      // Which meshes the drawing cuts: the Model-view class gate, class
+      // Visibility, hiding and both isolation channels (see `drawingMeshFilter`).
+      const keep = drawingMeshFilter({ meshes: geometryResult.meshes, typeVisibility, structuralViewMode, retypedClasses,
+        hiddenIds: combinedHiddenIds, isolatedIds: combinedIsolatedIds, computedIsolatedIds });
 
-      // Class-level Visibility toggles (issue #2060) are a GLOBAL filter, not a
-      // 3D-only one. The drawing derives its own list from `geometryResult.meshes`,
-      // so without this a hidden IfcSpace / IfcOpeningElement was still cut, in the
-      // 2D Section view and in the 3D section overlay (`useRenderUpdates.ts`). Same
-      // shared mapping as the viewport, basket and GLB export, retypes included (#10119).
-      meshesToProcess = meshesToProcess.filter((mesh) => isMeshTypeVisible(mesh, typeVisibility, structuralViewMode, retypedClasses));
-
-      // Filter out hidden entities (using combined multi-model set)
-      if (combinedHiddenIds.size > 0) {
-        meshesToProcess = meshesToProcess.filter(
-          mesh => !combinedHiddenIds.has(mesh.expressId)
-        );
-      }
-
-      // Filter by isolation (if active, using combined multi-model set)
-      if (combinedIsolatedIds !== null) {
-        meshesToProcess = meshesToProcess.filter(
-          mesh => combinedIsolatedIds.has(mesh.expressId)
-        );
-      }
-
-      // Also filter by computedIsolatedIds (storey selection). Meaningfully
-      // nullable, same convention as `combinedIsolatedIds` above and
-      // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible`:
-      // null/undefined means no isolation channel is active, while a
-      // non-null Set — EMPTY included — means one is and matches nothing. A
-      // `.size > 0` check here would read an active-but-empty isolate as "no
-      // isolation" and redraw the whole model instead of nothing.
-      if (computedIsolatedIds != null) {
-        const isolatedSet = computedIsolatedIds;
-        meshesToProcess = meshesToProcess.filter(
-          mesh => isolatedSet.has(mesh.expressId)
-        );
-      }
-
-      // If all meshes were filtered out by visibility, clear the drawing
-      if (meshesToProcess.length === 0) {
+      // If visibility filtered everything out, clear the drawing
+      if (geometry.isEmpty(keep, { instanced: true })) {
         setDrawing(null);
         setDrawingStatus('idle');
         setDrawingError(null);
@@ -597,8 +570,10 @@ export function useDrawingGeneration({
           ? createMeshOutlineProvider(meshOutline2dFn)
           : undefined;
 
-      const result = drawingWithMaterialLayerFills(await generator.generate(
-        meshesToProcess,
+      // GPU-instanced occurrences are cut like flat geometry, one entity (or
+      // one bounded read-back group) at a time; they were missing before.
+      const result = drawingWithMaterialLayerFills(await generator.generateFromSource(
+        geometry.source(keep, { instanced: true }),
         config,
         {
           // Always classify projection occlusion. Hidden Lines controls whether

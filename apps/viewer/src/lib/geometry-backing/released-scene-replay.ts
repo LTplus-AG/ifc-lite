@@ -69,7 +69,9 @@ async function replay(renderer: Renderer, released: readonly MeshData[], isCurre
   for (const mesh of released) {
     const found = canonicalStoreMesh(mesh, owner);
     if (!found) throw new GeometryUnavailableError(`Released mesh of entity ${mesh.expressId} belongs to no model`);
-    byModel.set(found.at, [...(byModel.get(found.at) ?? []), mesh]);
+    let group = byModel.get(found.at);
+    if (!group) byModel.set(found.at, (group = []));
+    group.push(mesh);
   }
   // A reload follows a content bump, so the model's CURRENT generation is still being
   // rebuilt; the acknowledged one stays durable until that rebuild is acknowledged.

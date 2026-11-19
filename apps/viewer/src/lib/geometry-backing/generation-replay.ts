@@ -21,22 +21,8 @@ import { isReleasedMesh, releasedAncestry } from '@/lib/released-mesh-provenance
 import type { MeshLease } from './backing-reader';
 import type { ModelGeometryBacking } from './geometry-backing-registry';
 import { GeometryUnavailableError } from './geometry-readback';
-
-/** Fields that live in the backed record, not on a released store mesh. */
-const RECORD_FIELDS = new Set<keyof MeshData>(['positions', 'normals', 'indices', 'appearanceSource', 'texture']);
-
-/** The released store mesh's current scalars over its backed record's arrays. */
-export function mergeReleased(store: MeshData, record: MeshData): MeshData {
-  // The current store is authoritative even when an optional scalar was
-  // cleared or deleted. Only released array-bearing fields come from disk.
-  const merged: MeshData = { ...store };
-  const fields = merged as unknown as Partial<Record<keyof MeshData, unknown>>;
-  for (const key of RECORD_FIELDS) {
-    if (Object.hasOwn(record, key)) fields[key] = record[key];
-    else delete fields[key];
-  }
-  return merged;
-}
+// One field list and one semantics for every readback.
+import { mergeReleased } from './store-mesh-readback';
 
 export interface PreviousGeneration { meshes: readonly MeshData[] | undefined; backing: ModelGeometryBacking | undefined }
 

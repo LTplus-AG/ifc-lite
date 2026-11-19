@@ -35,7 +35,7 @@
 
 import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
-import { instancedShardGeneration, subscribeInstancedShards } from '@/store/instancedShardQueue';
+import { hasPendingInstancedShards, instancedShardGeneration, subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
@@ -47,7 +47,7 @@ import type { BackingDatabaseOptions } from './backing-database';
 
 /** The store fields the tap reads. */
 export interface TapState {
-  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null; idOffset?: number }>;
+  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null; idOffset?: number; loadState?: string }>;
   geometryContentVersion: number;
 }
 
@@ -69,7 +69,11 @@ interface Tracked {
   instancedLost: boolean;
   /** Shard-queue generation when instancing was lost; only a newer one can re-supply current transforms. */
   lostAtQueueGeneration?: number;
+  /** A fresh supply after the loss: accepted, but not complete until the load proves it whole. */
+  resupply?: { sawLoading: boolean };
   shards: number;
+  /** Instanced occurrences backed; empty shard records are not instancing. */
+  occurrences: number;
   /** The store list changed after a CPU release: this generation is kept durable but no longer answers. */
   stale?: Error;
   /** Per-entity mesh area of this generation, summed as `collectMeshAreas` sums the whole list. */
@@ -116,6 +120,8 @@ export class StoreGeometryBackingTap {
     const tap = new StoreGeometryBackingTap(registry, store, options);
     tap.stops.push(store.subscribe((state) => tap.sync(state)));
     tap.stops.push(subscribeInstancedShards((event) => {
+      // A drain can be the last step of a load that already reported complete.
+      if (event.kind === 'drained') { tap.observeResupplies(event.modelIds); return; }
       if (event.kind !== 'enqueued' || !event.shards) return;
       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
       for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
@@ -154,13 +160,14 @@ export class StoreGeometryBackingTap {
       const meshes = model.geometryResult?.meshes;
       const tracked = this.tracked.get(modelId);
       if (!tracked) { this.regenerate(modelId, meshes, 'none'); continue; }
+      this.observeResupply(modelId, tracked, model.loadState);
       // First geometry of a model whose shards arrived earlier: an append.
       if (!versionChanged && tracked.meshes === undefined && tracked.consumed === 0 && meshes) tracked.meshes = meshes;
       if (tracked.stale) continue;
       if (versionChanged || meshes !== tracked.meshes || (meshes && meshes.length < tracked.consumed)) {
         // Released members are replayed from the acknowledged generation, which stays
         // durable until the replacement commits (`regenerate`).
-        const hadShards = tracked.shards > 0 || tracked.instancedLost;
+        const hadShards = tracked.occurrences > 0 || tracked.instancedLost;
         this.regenerate(modelId, meshes, !hadShards ? 'none' : versionChanged ? 'lost' : 'carry');
         continue;
       }
@@ -186,16 +193,18 @@ export class StoreGeometryBackingTap {
     const next: Tracked = { key, number: (previous?.number ?? 0) + 1, meshes, members: [], consumed: 0,
       // Lost instancing is sticky: no later edit may fall back to pre-loss (stale) occurrences.
       chain: Promise.resolve(), instancedLost: shards === 'lost' || (shards === 'carry' && !!previous?.instancedLost),
-      lostAtQueueGeneration: shards === 'lost' ? instancedShardGeneration() : previous?.lostAtQueueGeneration, shards: 0, areas: new Map(),
+      lostAtQueueGeneration: shards === 'lost' ? instancedShardGeneration() : previous?.lostAtQueueGeneration,
+      resupply: shards === 'carry' ? previous?.resupply : undefined, shards: 0, occurrences: 0, areas: new Map(),
       retained: previous ? [...previous.retained, previous.key] : [] };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       next.backing = await this.registry.begin(key, this.options);
-      if (shards === 'carry' && !next.instancedLost) {
+      // A re-supplying predecessor holds only fresh shards: carry those, never the pre-loss ones.
+      if (shards === 'carry' && (!next.instancedLost || next.resupply)) {
         // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
-        const source = previous?.backing && !previous.failure ? previous : this.acknowledged.get(modelId);
-        if (!source?.backing || source.failure || source.instancedLost) next.instancedLost = true;
+        const source = next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
+        if (!source?.backing || source.failure || (source.instancedLost && !next.resupply)) next.instancedLost = true;
         else for await (const shard of source.backing.reader.instancedShards()) {
-          next.shards++;
+          next.shards++; next.occurrences += shard.instances.length;
           await next.backing.writer.appendInstancedShard(shard);
         }
       }
@@ -260,10 +269,10 @@ export class StoreGeometryBackingTap {
     }
     const target = tracked;
     if (target.instancedLost) {
-      // Only a full re-supply after the loss (the shard queue was reset since) carries current transforms.
+      // Only a supply after the loss (the shard queue was reset since) can carry current transforms,
+      // and only a completed load proves it whole (`observeResupply`); until then it stays lost.
       if (target.lostAtQueueGeneration === undefined || instancedShardGeneration() === target.lostAtQueueGeneration) return;
-      target.instancedLost = false;
-      target.lostAtQueueGeneration = undefined;
+      target.resupply ??= { sawLoading: false };
     }
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.
@@ -277,7 +286,31 @@ export class StoreGeometryBackingTap {
       return;
     }
     applyFederationOffsetToShard(shard, idOffset);
+    target.occurrences += shard.instances.length;
     this.enqueue(target, () => this.writer(target).appendInstancedShard(shard));
+  }
+
+  private observeResupplies(modelIds: Iterable<string>): void {
+    if (this.stopped) return;
+    const models = this.store.getState().models;
+    for (const modelId of modelIds) {
+      const tracked = this.tracked.get(modelId);
+      if (tracked) this.observeResupply(modelId, tracked, models.get(modelId)?.loadState);
+    }
+  }
+
+  /** A re-supply is whole once the model's load is seen running and then complete, nothing pending. */
+  private observeResupply(modelId: string, tracked: Tracked, loadState: string | undefined): void {
+    if (!tracked.instancedLost) return;
+    // The load may start before its first fresh shard: note it either way.
+    if (loadState !== undefined && loadState !== 'complete') { (tracked.resupply ??= { sawLoading: true }).sawLoading = true; return; }
+    const resupply = tracked.resupply;
+    if (resupply?.sawLoading && loadState === 'complete' && !hasPendingInstancedShards(modelId)
+      && tracked.lostAtQueueGeneration !== undefined && instancedShardGeneration() !== tracked.lostAtQueueGeneration) {
+      tracked.instancedLost = false;
+      tracked.lostAtQueueGeneration = undefined;
+      tracked.resupply = undefined;
+    }
   }
 
   private enqueue(tracked: Tracked, step: () => Promise<void>): void {

@@ -112,7 +112,7 @@ describe('generation replacement after a CPU release', () => {
     const recoloured = list.map((m) => carryReleasedMesh(m, { ...m, color: [1, 0, 0, 1] }));
     store.setState({ models: new Map([['r', { geometryResult: { meshes: recoloured }, idOffset: 0 }]]) });
     const [status] = await tap.seal();
-    assert.equal(status.complete, true, status.error);
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
     assert.equal(status.generation, 2);
     assert.equal(first.isCurrent, false, 'the previous generation retires only after the replacement commits');
     const read = await readAll(tap, 'r');
@@ -186,7 +186,7 @@ describe('generation replacement after a CPU release', () => {
     await tap.whenIdle();
     assert.equal(acknowledged.isCurrent, true, 'no replacement retires the acknowledged copy before its own acknowledgement');
     const [status] = await tap.seal();
-    assert.equal(status.complete, true, status.error);
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
     assert.equal(status.generation, 3, 'per-model generation number');
     assert.equal(acknowledged.isCurrent, false, 'retired once the final replacement is acknowledged');
     const read = await readAll(tap, 'o2');
@@ -204,7 +204,7 @@ describe('generation replacement after a CPU release', () => {
     list.splice(1, 1); // the store's own array, mutated in place
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     const [status] = await tap.seal();
-    assert.equal(status.complete, true, status.error);
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
     const read = await readAll(tap, 'sp');
     assert.deepEqual(read.map((m) => [m.expressId, m.positions[2]]), [[1, 0], [3, 2]]);
     await tap.stop();

@@ -475,6 +475,15 @@ A successful result says **dispatched**, not completed. Opening a clash, Flow, I
 
 For the proposed path from palette entry points to complete panel and tool workflows, see the [viewer automation plan](../architecture/viewer-automation-plan.md).
 
+### Native viewer operations: revisions and paging
+
+`viewer_operations` discovers parameterized native operations; `viewer_operation_inspect` runs a read-only one and `viewer_operation_execute` runs one that changes the viewer or a model. A result is at most 1 MB, so on large models the reads below page and their expected-state tokens stay short.
+
+- **Expected-state revisions.** A read returns a short revision of the state a later write depends on, and the write takes it back: clash `expected_reports` (`clash.reports.read` to `clash.reports.write`), `expected_library` (`clash.groups.read` to `clash.groups.library`, `clash.groups.write`, and as `expected_groups` to `clash.drafts.create`), validation `expected_reports` (`validation.reports.read` to `validation.reports.manage`), and zone `expected_configuration`. A write whose state changed since the read is refused; read again. A token is the revision string, never the state as JSON, and the old full-JSON form is refused.
+- **Zones.** `zones.read` returns `configuration_revision`, which every zone edit takes as `expected_configuration`. Each edit returns the next `configuration_revision`, so a chain of edits needs no read in between.
+- **Paging.** `clash.reports.read`, `clash.groups.read`, `validation.reports.read` and the `zones.read` assignments return one page plus `total` and `next_offset`. Pass `next_offset` as the optional `offset` input (default 0) until it is `null`. If the revision changes between pages (`expected_reports`, `expected_library`, or `assignments_page.revision` for zones), start again from 0. Pages after the first of `zones.read` carry only the assignments and `configuration_revision`. A single item too large for any page is refused, and the error names the offset to continue from.
+- **Previews.** `zones.writeback.prepare` returns `row_count`, a bounded `rows` sample and `truncated`; its token still applies every row, so review a truncated table in full with `zones.table.export`. `exports.anonymized.prepare` reports `truncated` when relationship expansion hit its work budget, and refuses a membership above 100,000 entities or a preview above the result limit; narrow the selection or exclude types.
+
 ## Wiring it into a client
 
 === "Claude Code"

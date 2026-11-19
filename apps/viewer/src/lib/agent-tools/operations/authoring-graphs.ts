@@ -28,6 +28,8 @@ function owned(c: Pick<OperationContext, 'host'>) {
   }
   return entries;
 }
+/** Drop one candidate and release its native handles. */
+function release(entries: Map<string, Candidate>, token: string) { entries.get(token)?.review?.dispose?.(); entries.delete(token); }
 const output = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
 function proposalModel(value: { modelId: string }, c: OperationContext) { if (value.modelId !== c.model.id) throw new Error('The proposal must name the selected model.'); }
 async function prepare(kind: 'group' | 'structural' | 'zone' | 'room', json: string, c: OperationContext): Promise<Review> {
@@ -81,9 +83,7 @@ export const graphAuthoringOperations = [
     // A result the executor refuses never reaches the caller, so its candidate must not keep a place under the cap.
     discard: (result, c) => {
       const token = (result as { token?: unknown } | null)?.token, entries = owned(c);
-      const entry = typeof token === 'string' ? entries.get(token) : undefined;
-      if (!entry || entry.receipt) return;
-      entries.delete(token as string); entry.review?.dispose?.();
+      if (typeof token === 'string' && entries.get(token)?.receipt === undefined) release(entries, token);
     } }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
@@ -107,7 +107,7 @@ export const graphAuthoringOperations = [
   operation<{ token: string }>(meta('authoring.graph.discard', 'model', 'Dispose a native graph or Room preview and release its native handles.'), tokenInput, (i, c) => {
     const entry = owned(c).get(i.token);
     if (!entry || entry.modelId !== c.model.id || entry.store !== c.model.store) throw new Error('Unknown graph review.');
-    entry.review?.dispose?.(); owned(c).delete(i.token); return output({ discarded: true });
+    release(owned(c), i.token); return output({ discarded: true });
   }),
 ];
 

@@ -4,9 +4,11 @@
 
 /**
  * #10535: a loaded-column edit re-rendered every visible hierarchy row and
- * re-resolved each storey row's membership on every panel render. An edit the
- * tree does not show keeps its rows, a real change still shows, and a storey's
- * members are resolved once per view revision. Real STEP store, real actions.
+ * re-resolved each storey row's membership on every panel render. Through the
+ * hook the panel uses: an edit the tree does not show keeps its row objects
+ * (what lets the memoized rows skip rendering), a real change still shows, and
+ * a storey's members are resolved once per input generation and view
+ * revision. Real STEP store, real actions.
  */
 
 import '@/test/setup-dom.js';
@@ -120,13 +122,14 @@ describe('hierarchy rows across edits (#10535)', () => {
     assert.equal(tree().getNodeElements(after).length, 3, 'the new row resolves the current membership');
   });
 
-  it('resolves a storey row once per view revision, and again after a write that advances it', async () => {
+  it('resolves a storey row once per input generation and view revision, and again after a write that advances it', async () => {
     const { tree, view } = await mountTree();
     const storey = storeyRow(tree().treeData);
     const members = tree().getNodeElements(storey);
     assert.equal(members.length, 2, 'the storey holds both columns');
     act(() => tree().toggleExpand(storey.id));
     assert.equal(tree().getNodeElements(storey), members, 'another panel render shares the same resolution');
+    assert.equal(tree().getNodeElements({ ...storey }), members, 'an equal row from a rebuild shares it too');
 
     // Skip-history and remote writes advance the view revision without a viewer mutationVersion.
     act(() => { view.setProperty(50, 'Pset_Test', 'Note', 'x', undefined, undefined, true); });

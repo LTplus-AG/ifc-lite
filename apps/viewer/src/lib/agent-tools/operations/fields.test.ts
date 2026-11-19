@@ -4,12 +4,10 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { IfcParser } from '@ifc-lite/parser';
-import { createBimContext } from '@ifc-lite/sdk';
-import { useViewerStore, type FederatedModel } from '@/store';
-import { LocalBackend } from '@/sdk/local-backend';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { useViewerStore } from '@/store';
 import { resetFeaturesForTest } from '@/lib/features';
-import { createMainViewerToolHost } from '../main-viewer-host';
+import { model, parseStep, seed, viewerHost } from '@/test/agent-tools-fixture';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
 import { boundedFieldValues, boundedPropertyValues } from './fields';
 import { MAX_RESULT_BYTES } from './result-limit';
@@ -48,10 +46,10 @@ test('fields.values shares one byte budget across all five fields and names the 
 });
 
 /** 5,000 walls, each classified under its own ~250-byte system name: over 1 MB of classification values. */
-async function oversizedModel(): Promise<FederatedModel> {
-  const count = 5000, lines: string[] = [];
+function oversizedStore(): Promise<IfcDataStore> {
+  const lines: string[] = [];
   const guid = (n: number) => String(n).padStart(22, '0');
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < 5000; i++) {
     const wall = 10 + i * 4;
     lines.push(`#${wall}=IFCWALL('${guid(wall)}',$,'Wall ${i}',$,$,$,$,$,.STANDARD.);`,
       `#${wall + 1}=IFCCLASSIFICATION($,$,$,'System ${String(i).padStart(5, '0')} ${'x'.repeat(240)}',$,$,$);`,
@@ -59,18 +57,13 @@ async function oversizedModel(): Promise<FederatedModel> {
       `#${wall + 3}=IFCRELASSOCIATESCLASSIFICATION('${guid(wall + 3)}',$,$,$,(#${wall}),#${wall + 2});`);
   }
   const text = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('fields.ifc','2026-11-19',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('${guid(1)}',$,'Fields',$,$,$,$,$,$);\n${lines.join('\n')}\nENDSEC;\nEND-ISO-10303-21;`;
-  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
-  const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
-  return { id: 'A', name: 'A.ifc', ifcDataStore: store, visible: true, collapsed: false, schemaVersion: 'IFC4', loadedAt: 0, fileSize: text.length,
-    idOffset: 0, maxExpressId: 10 + count * 4,
-    geometryResult: { meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } } };
+  return parseStep(new TextEncoder().encode(text));
 }
 
 test('fields.values returns a result under the executor limit for a model whose classifications alone exceed it (#10598)', async () => {
   resetFeaturesForTest();
-  useViewerStore.setState({ models: new Map([['A', await oversizedModel()]]), activeModelId: 'A', mutationVersion: 0, mutationViews: new Map() });
-  const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
-  const result = await dispatchMainViewerTool(host, 'viewer_operation_execute', { model_id: 'A', operation_id: 'fields.values', input: {} }, { canEdit: () => true });
+  seed([model('A', await oversizedStore())]);
+  const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_execute', { model_id: 'A', operation_id: 'fields.values', input: {} }, { canEdit: () => true });
   assert.equal(result.isError, false, result.text);
   const values = (result.structured as { result: { classificationSystems: string[]; classifications: string[]; predefinedTypes: string[]; truncated?: string[] } }).result;
   assert.ok(bytes(values) <= MAX_RESULT_BYTES);

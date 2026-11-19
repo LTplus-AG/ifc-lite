@@ -37,34 +37,33 @@ function boundedList(values: string[], budget: number): string[] {
 }
 const valueLists = { materials: strings, classificationSystems: strings, classifications: strings, predefinedTypes: strings,
   propertyValues: { type: 'object', additionalProperties: strings } };
-const VALUE_FIELDS = ['materials', 'classificationSystems', 'classifications', 'predefinedTypes', 'propertyValues'] as const;
-type ValueField = typeof VALUE_FIELDS[number];
+type ValueField = keyof typeof valueLists;
+const VALUE_FIELDS = Object.keys(valueLists) as ValueField[];
 type FieldValues = Omit<FilterValueSchema, 'propertyValues'> & { propertyValues: Record<string, string[]>; truncated?: ValueField[] };
 /**
  * One byte budget across all five fields (#10598): the returned object, keys and `truncated` included, fits `budget`.
  * A field smaller than an equal share of what is left keeps all of it; the larger fields split the remainder equally,
- * so no single field can starve the others or overflow the result.
+ * so no single field can starve the others or overflow the result. A field is cut exactly when its share is below its size.
  */
 export function boundedFieldValues(values: FilterValueSchema, budget: number): FieldValues {
   const full = { ...values, propertyValues: Object.fromEntries(values.propertyValues) };
-  const share = {} as Record<ValueField, number>;
-  // The skeleton's empty containers are counted again in each share: a few bytes of slack, never an overflow.
-  let left = budget - bytes({ materials: [], classificationSystems: [], classifications: [], predefinedTypes: [], propertyValues: {}, truncated: VALUE_FIELDS });
-  const bySize = VALUE_FIELDS.map(field => [field, bytes(full[field])] as const).sort((a, b) => a[1] - b[1]);
-  bySize.forEach(([field, size], index) => {
+  // Reserve keys and a full `truncated` list; the null placeholders and each share's own brackets are slack, never overflow.
+  let left = budget - bytes({ ...Object.fromEntries(VALUE_FIELDS.map(field => [field, null])), truncated: VALUE_FIELDS });
+  const bySize = VALUE_FIELDS.map(field => ({ field, size: bytes(full[field]) })).sort((a, b) => a.size - b.size);
+  const share = new Map<ValueField, number>(), truncated: ValueField[] = [];
+  bySize.forEach(({ field, size }, index) => {
     const granted = Math.min(size, Math.floor(left / (bySize.length - index)));
-    share[field] = granted; left -= granted;
+    share.set(field, granted); left -= granted;
+    if (granted < size) truncated.push(field);
   });
+  // Only a cut field pays for the per-item pass.
+  const list = (field: Exclude<ValueField, 'propertyValues'>) => truncated.includes(field) ? boundedList(full[field], share.get(field) ?? 0) : full[field];
   const out: FieldValues = {
-    materials: boundedList(full.materials, share.materials),
-    classificationSystems: boundedList(full.classificationSystems, share.classificationSystems),
-    classifications: boundedList(full.classifications, share.classifications),
-    predefinedTypes: boundedList(full.predefinedTypes, share.predefinedTypes),
-    propertyValues: boundedPropertyValues(values.propertyValues, share.propertyValues),
+    materials: list('materials'), classificationSystems: list('classificationSystems'), classifications: list('classifications'),
+    predefinedTypes: list('predefinedTypes'),
+    propertyValues: truncated.includes('propertyValues') ? boundedPropertyValues(values.propertyValues, share.get('propertyValues') ?? 0) : full.propertyValues,
   };
-  const truncated = VALUE_FIELDS.filter(field => field === 'propertyValues'
-    ? Object.keys(out.propertyValues).length < values.propertyValues.size : out[field].length < full[field].length);
-  return truncated.length ? { ...out, truncated } : out;
+  return truncated.length ? { ...out, truncated: VALUE_FIELDS.filter(field => truncated.includes(field)) } : out;
 }
 export const fieldOperations = [
   operation(meta('fields.schema', 'Discover the native effective IFC-type/storey selectors used by filter, list and chart editors. Uses the current model mutation view.', object({

@@ -160,3 +160,24 @@ it('treats a rejected scope or a throwing createBuffer as a failed growth, and f
   await throwing.settleAll(null);
   assert.equal(throwing.buffers.at(-1)!.destroyed, 1, 'a candidate confirmed after release is destroyed, not bound');
 });
+
+it('binds the highlight table at binding 2 and grows it like the visibility table (#10264 S3)', async () => {
+  const h = scopedDevice();
+  const table = sectionExclusions(h.device); table.retain();
+  const initial = table.highlight;
+  assert.equal(groupBuffers(table.bindGroup)[2], initial);
+  assert.equal(table.writeHighlight(new Uint32Array([2, 3, 4])), true);
+  assert.equal(h.writes.at(-1)!.buffer, initial);
+  const big = new Uint32Array(20_001); big[0] = 20_000;
+  assert.equal(table.writeHighlight(big), false, 'unconfirmed: batch highlights stay out');
+  assert.equal(table.highlight, initial);
+  const visibility = table.visibility;
+  const pending = table.highlightPending!;
+  await h.settleAll(null);
+  assert.equal(await pending, true);
+  assert.notEqual(table.highlight, initial);
+  assert.equal(table.visibility, visibility, 'the visibility table is untouched');
+  assert.deepEqual(groupBuffers(table.bindGroup), [table.buffer, table.visibility, table.highlight]);
+  assert.equal(table.writeHighlight(big), true);
+  table.release();
+});

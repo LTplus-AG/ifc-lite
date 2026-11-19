@@ -202,11 +202,12 @@ import { RaycastEngine } from './raycast-engine.js';
 import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
 import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
 import { PostPassChain } from './post-pass-chain.js';
-import { buildSelectionOutlineFrame, matchesHoveredMesh } from './selection-outline-frame.js';
+import { buildSelectionOutlineFrame, hoverSources } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
+import { HoverBatches } from './batch-highlight.js';
+import { drawSelectionHighlights } from './selection-highlight-draw.js';
 import { addMergedSelectionMeshes } from './selection-hydration.js';
 import { recordSelectionSource } from './selection-hydration-order.js';
-import { isBorrowedSelection, stageBorrowedSelection } from './textured-selection.js';
 import { SelectionHighlight, SelectionSnapshot } from './selection-highlight.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { resolveOpaqueDrawMode } from './opaque-draw-variants.js'; import { sortOpaqueFrontToBack } from './opaque-draw-order.js'; import { renderTargetBytes, type RenderTargetBytes } from './render-target-bytes.js';
@@ -292,6 +293,7 @@ export class Renderer {
     private postPasses: PostPassChain | null = null;
     /** GPU copies of the hovered entity for the hover outline (#5390); see hover-mesh-cache.ts. */
     private readonly hoverMeshes = new HoverMeshCache();
+    private readonly hoverBatches = new HoverBatches();
     private readonly warnedHighlightUploads = new Set<string>();
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
@@ -1709,7 +1711,8 @@ export class Renderer {
             selected: selectedExpressIds, selectionVersion: this._selection.getVersion(),
             hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds, visibilityVersion: newVisibilityVersion,
             modelIndex: selectedModelIndex, itemFilterExpressId, itemFilterItemId, pool: this.scene.getBatchedMeshes().length > 0 || this.scene.getTexturedMeshes().length > 0,
-        }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged), { device, pipeline: this.pipeline });
+        }, (piece) => this.createMeshFromData(piece).ok, (pieces, merged) => this.createMergedMeshes(pieces, merged),
+            { device, pipeline: this.pipeline, get table() { return sectionExclusions(device); }, onTableReady: () => this.requestRender(), onPipelineReady: () => this.requestRender() });
 
         let meshes = this.scene.getMeshes();
 
@@ -2739,44 +2742,12 @@ export class Renderer {
                     }
                 }
 
-                // Ensure selected meshes have uniform buffers and bind groups
-                for (const mesh of selectedMeshes) ensureMeshUniform(device, this.pipeline, mesh);
-
                 // Render selected meshes with highlight LAST (on top of transparent geometry too)
                 glass?.markGlassEnd();
-                for (const mesh of selectedMeshes) {
-                    if (!mesh.bindGroup || !mesh.uniformBuffer) {
-                        continue;
-                    }
-
-                    tpl.set(viewProj, 0);
-                    tpl.set(mesh.transform.m, 16);
-                    tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
-                    tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
-                    packMeshMaterial(tpl, mesh.color[3], mesh.finish ?? mesh.material);
-                    packSectionPlaneLanes(sectionPlaneData, tpl);
-                    tplFlags[0] = 1; // isSelected
-                    tplFlags[1] =
-                        (sectionPlaneData?.enabled ? 1 : 0) |
-                        (options.sectionPlane?.flipped ? 2 : 0) |
-                        tplClipBit;
-                    tplFlags[2] = 0;
-                    tplFlags[3] = 0;
-                    packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl, extraClipPlanes);
-                    const selectedOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
-                    if (!relativeToEyeFrame.tryPackDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
-                    tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
-
-                    this.uniformOverrideU32[0] = mesh.expressId;
-                    if (!stageBorrowedSelection(mesh, tpl)) device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
-
-                    usePipeline(isBorrowedSelection(mesh) ? this.pipeline.getTexturedSelectionPipeline() : this.pipeline.getSelectionPipeline());
-                    pass.setBindGroup(0, mesh.bindGroup);
-                    pass.setVertexBuffer(0, mesh.vertexBuffer);
-                    pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
-                    pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
-                    frameDrawCalls++;
-                }
+                frameDrawCalls += drawSelectionHighlights(selectedMeshes, { pass, device, pipeline: this.pipeline, usePipeline, tpl, tplFlags, overrideU32: this.uniformOverrideU32,
+                    viewProj, section: sectionPlaneData, sectionFlipped: options.sectionPlane?.flipped === true, clipBit: tplClipBit, clipBox: options.clipBox, extraPlanes: extraClipPlanes,
+                    relativeToEyeFrame, onBatchDrawn: (batch) => this.scene.recordBatchDrawn(batch) });
+                this.uniformOverrideU32.fill(0);
             } else {
                 // Fallback: render individual meshes (only when no batches exist)
                 // Render opaque meshes with per-mesh bind groups
@@ -2867,13 +2838,17 @@ export class Renderer {
             const hoverId = hovered && !options.hiddenIds?.has(hovered.id)
                 && (!hasIsolatedFilter || options.isolatedIds!.has(hovered.id)) ? hovered.id : null;
             const hoverModel = hovered?.modelIndex;
-            const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel))
+            const { ownHover, needsBatches } = hoverSources(selectedMeshesForMask, hoverId, hoverModel);
+            // From the colour batches when they hold all of it (#10264 S3), else copies of its pieces.
+            const hoverBatches = needsBatches && hoverId != null ? this.hoverBatches.resolve(this.scene, hoverId, hoverModel, { device, pipeline: this.pipeline, onPipelineReady: () => this.requestRender() }) : null;
+            for (const batch of hoverBatches ?? []) this.scene.recordBatchDrawn(batch);
+            const hoverPieces = ownHover && hoverId != null && !hoverBatches
                 ? this.guardedHighlightUpload('hover highlight', () => this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m), this.scene.getPickGeometryRevision())) ?? []
                 : (this.hoverMeshes.release(), []);
             const selectionOutline = buildSelectionOutlineFrame({
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,
                 section: sectionPlaneData, sectionFlipped: options.sectionPlane?.flipped, clipBox: options.clipBox, extraPlanes: extraClipPlanes,
-                selectedMeshes: selectedMeshesForMask, hoverPieces, hoveredId: hoverId, selectedModelIndex: hoverModel,
+                selectedMeshes: selectedMeshesForMask, hoverPieces, hoverBatches, hoveredId: hoverId, selectedModelIndex: hoverModel,
                 instancedTemplates: this.scene.getInstancedTemplates(),
                 instancedHovered: hoverId != null ? this.scene.getInstancedTemplatesOf(hoverId, hoverModel) : [],
             });
@@ -3494,7 +3469,7 @@ export class Renderer {
 
         this.postPasses?.destroy();
         this.postPasses = null;
-        this.hoverMeshes.release();
+        this.hoverMeshes.release(); this.hoverBatches.clear();
         this.skyPass?.destroy();
         this.skyPass = null;
         this.shadowPass?.destroy();

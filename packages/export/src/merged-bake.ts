@@ -6,7 +6,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { MergeModelInput } from './merged-exporter.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
-import { hasGeorefEdits, isGeorefRefusal } from './step-coordinate-options.js';
+import { hasGeorefEdits, IFC2X3_GEOREF_REFUSAL, isGeorefRefusal } from './step-coordinate-options.js';
 import { StepExporter } from './step-exporter.js';
 
 /**
@@ -41,7 +41,9 @@ export function needsBake(model: MergeModelInput): boolean {
  *
  * A model that {@link needsBake} is run through {@link StepExporter} in its own
  * source schema (mutations and georeference edits applied, geometry + quantities
- * kept), and the resulting bytes are re-parsed into a fresh data store. The merge
+ * kept), except an IFC2X3 source with georeference edits, which cannot hold them
+ * and so converts to `targetSchema` here. The resulting bytes are re-parsed into
+ * a fresh data store. The merge
  * pipeline then sees the edited entities as ordinary source, so unit-aware
  * federation, GlobalId reconciliation and id offsetting are unaffected. Models
  * without edits pass through untouched (no export/parse cost).
@@ -57,25 +59,26 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
   for (const model of models) {
     let georef = hasGeorefEdits(model.georefMutations) ? model.georefMutations : undefined;
     if (georef && targetSchema === 'IFC2X3') {
-      warnings.push(`${model.name}: ${GEOREF_NOT_WRITTEN} IFC2X3 has no IfcProjectedCRS or IfcMapConversion.`);
+      warnings.push(`${model.name}: ${GEOREF_NOT_WRITTEN} ${IFC2X3_GEOREF_REFUSAL}`);
       georef = undefined;
     }
     const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
-    // Export in the SOURCE schema so no schema conversion happens here — the
-    // merge loop still converts to the requested target schema per entity.
-    // An IFC2X3 source cannot hold georeference edits, so with edits it bakes
-    // in the target schema, as single-model export and section cropping do.
-    const bakeSchema = georef && sourceSchema === 'IFC2X3' ? targetSchema : sourceSchema;
+    // Export in the SOURCE schema so the merge loop does the conversion to the
+    // target schema per entity. An IFC2X3 source cannot hold georeference edits,
+    // so with edits it converts here instead, as single-model export and section
+    // cropping do.
+    const converts = (georefMutations: typeof georef) => !!georefMutations && sourceSchema === 'IFC2X3';
     const bake = (georefMutations: typeof georef) => new StepExporter(model.dataStore, model.mutationView).export({
-      schema: georefMutations ? bakeSchema : sourceSchema,
+      schema: converts(georefMutations) ? targetSchema : sourceSchema,
       applyMutations: true,
       includeGeometry: true,
       includeQuantities: true,
       georefMutations,
     });
     let exported: ReturnType<typeof bake> | null = null;
+    let converted = false;
     if (georef) {
-      try { exported = bake(georef); } catch (error) {
+      try { exported = bake(georef); converted = converts(georef); } catch (error) {
         if (!isGeorefRefusal(error)) throw error;
         warnings.push(`${model.name}: ${GEOREF_NOT_WRITTEN} ${error.message}`);
       }
@@ -85,7 +88,9 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
       continue;
     }
     exported ??= bake(undefined);
-    for (const warning of exported.stats.georeferencingWarnings ?? []) warnings.push(`${model.name}: ${warning}`);
+    // A converting bake reports its conversion warnings too: the merge loop sees an already-converted store.
+    const reported = converted ? exported.stats.warnings : exported.stats.georeferencingWarnings ?? [];
+    for (const warning of reported) warnings.push(`${model.name}: ${warning}`);
     parser = parser ?? new IfcParser();
     // slice() yields an exact-length ArrayBuffer-backed copy for the parser.
     const reparsed = await parser.parseColumnar(exported.content.slice().buffer, {

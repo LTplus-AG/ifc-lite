@@ -9,7 +9,7 @@
  * Supports applying property and root attribute mutations before export.
  */
 
-import { hasGeorefEdits } from './step-coordinate-options.js';
+import { hasGeorefEdits, IFC2X3_GEOREF_REFUSAL } from './step-coordinate-options.js';
 import type { IfcDataStore, IfcSourceHeader } from '@ifc-lite/parser';
 import { EntityExtractor, parseSourceHeader } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -139,7 +139,7 @@ export class StepExporter {
     const excludeGeometry = options.includeGeometry === false;
 
     if (schema === 'IFC2X3' && applyMutations && hasGeorefEdits(options.georefMutations)) {
-      throw new Error('Georeferencing creation and editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.');
+      throw new Error(IFC2X3_GEOREF_REFUSAL);
     }
 
     // Round-trip header fidelity: prefer the verbatim source HEADER fields so

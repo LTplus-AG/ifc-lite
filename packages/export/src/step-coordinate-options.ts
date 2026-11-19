@@ -45,6 +45,9 @@ export interface StepGeoreferencingOptions {
   };
 }
 
+/** StepExporter's refusal of georeference edits in an IFC2X3 export, which has no IfcProjectedCRS or IfcMapConversion. */
+export const IFC2X3_GEOREF_REFUSAL = 'Georeferencing creation and editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.';
+
 /**
  * True when `error` is {@link StepExporter}'s refusal of `georefMutations` it cannot write (an IFC2X3 export, a
  * partial position), which a caller may answer by exporting without the edits. Any other error is a real failure.

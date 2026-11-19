@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -76,6 +77,16 @@ describe('MergedExporter georeference edits it cannot write (#10669)', () => {
     const result = await new MergedExporter([a]).exportAsync({ schema: 'IFC4' });
     expect(decode(result.content)).toMatch(/IFCMAPCONVERSION\(#\d+,#\d+,2600000\.,1200000\.,500\.,1\.,0\.,1\.\);/);
     expect(result.stats.warnings).toEqual([]);
+  });
+
+  it('applies an IFC2X3 model\'s pending edits and georeference edits together in an IFC4 merge', async () => {
+    const store = await parse(model('A', '0ProjectA000000000000a').replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC2X3'))"));
+    const view = new MutablePropertyView(store.properties, 'a');
+    view.setAttribute(1, 'Name', 'Renamed project');
+    const a: MergeModelInput = { id: 'a', name: 'A', dataStore: store, mutationView: view, georefMutations: GEOREF };
+    const content = decode((await new MergedExporter([a]).exportAsync({ schema: 'IFC4' })).content);
+    expect(content).toContain("'Renamed project'");
+    expect(content).toMatch(/IFCMAPCONVERSION\(#\d+,#\d+,2600000\./);
   });
 
   it('names an edit the exporter wrote only in part', async () => {

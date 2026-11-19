@@ -118,16 +118,20 @@ export function resetProcessedModelRequestsForTests(): void {
 
 function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest {
   const sha256 = assertProcessedModelHash(model.sha256);
-  return { sha256, bytes: processedModelSize(model.bytes), name: model.name?.trim() || 'model.ifc' };
+  return { sha256, bytes: processedModelSize(model.bytes), name: (typeof model.name === 'string' && model.name.trim()) || 'model.ifc' };
+}
+
+/** Whether a page query names a processed model by a valid hash; a malformed value files nothing. */
+export function linksProcessedModel(search: string): boolean {
+  return normalizeProcessedModelHash(new URLSearchParams(search).get('processed')) !== null;
 }
 
 /**
- * The page was opened with a valid `?processed=` link. Read once at load, as the autoload reads
- * it at mount: the viewer files that request only after mount, later than the fast path's idle
- * check, and the URL may change in between. A malformed value files nothing, so it counts for nothing.
+ * The page was opened with such a link. Read once, at load: the viewer files that request only
+ * after mount, later than the fast path's idle check, and the app may rewrite the URL in between.
+ * Not cleared by `resetProcessedModelRequestsForTests`.
  */
-const linkedProcessedModel = typeof location !== 'undefined'
-  && normalizeProcessedModelHash(new URLSearchParams(location.search).get('processed')) !== null;
+const linkedProcessedModel = typeof location !== 'undefined' && linksProcessedModel(location.search);
 
 /** A processed model was asked for on this page: it is meshed on the server, so nothing needs warming in the browser. */
 export function processedModelRequested(): boolean {

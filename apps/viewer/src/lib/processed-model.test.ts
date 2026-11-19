@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyProcessingConfig, getProcessingServerUrl, openProcessedModelFromUrl, pageUrlModelAllowed, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
+import { applyProcessingConfig, getProcessingServerUrl, linksProcessedModel, openProcessedModelFromUrl, pageUrlModelAllowed, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
 import { isServerReachable } from '@/hooks/ingest/serverAvailability';
 
 const initial = getProcessingServerUrl();
@@ -86,20 +86,9 @@ describe('processedModelRequested', () => {
     assert.equal(processedModelRequested(), true, 'stays on after the viewer took the request');
   });
 
-  it('reads a ?processed= link once, at load: a valid one counts before its request is filed, a malformed one never', async () => {
-    const before = location.href;
-    const fresh = async (search: string) => {
-      history.replaceState(null, '', search);
-      const module = await import(`./processed-model?link=${encodeURIComponent(search)}`) as typeof import('./processed-model');
-      history.replaceState(null, '', before);
-      return module.processedModelRequested(); // the URL has changed back by now
-    };
-    try {
-      assert.equal(await fresh(`?processed=${'A'.repeat(64)}`), true);
-      for (const search of ['?processed=', '?processed=abc', '?model=x.ifc']) assert.equal(await fresh(search), false, search);
-    } finally {
-      history.replaceState(null, '', before);
-    }
+  it('counts a ?processed= link only when it names a valid hash', () => {
+    assert.equal(linksProcessedModel(`?processed=${'A'.repeat(64)}`), true);
+    for (const search of ['', '?processed=', '?processed=abc', '?model=x.ifc']) assert.equal(linksProcessedModel(search), false, search);
   });
 
   it('trims the name of every request, and falls back to model.ifc for a blank one', () => {

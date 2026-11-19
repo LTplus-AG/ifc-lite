@@ -98,7 +98,7 @@ function parseOpen(value: unknown): NonNullable<ViewerRuntimeConfig['open']> {
   const { sha256, bytes, name } = value.processedModel;
   const hash = typeof sha256 === 'string' ? sha256.toLowerCase() : '';
   if (!SHA256_HEX.test(hash)) invalid('open.processedModel.sha256 must be the 64 hex characters of a SHA-256');
-  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid('open.processedModel.bytes must be a positive whole number of bytes, or 0 when unknown');
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid('open.processedModel.bytes must be a whole number of bytes, 0 when unknown');
   if (typeof name !== 'string' || name.trim() === '') invalid('open.processedModel.name must be a non-empty string');
   return { processedModel: { sha256: hash, bytes, name } };
 }

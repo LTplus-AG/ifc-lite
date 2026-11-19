@@ -120,7 +120,7 @@ describe('exports over released geometry', () => {
           database: { name: `export-overlap-${process.pid}-${failFirst}`, locks: null },
         } as never });
         const statuses = await geometryBackingCommand(store, undefined, { action: 'seal' });
-        assert.ok(statuses.every((s) => s.complete));
+        assert.ok(statuses.every((s) => 'complete' in s && s.complete));
         releaseCpuMeshBuffers(first.meshes);
         releaseCpuMeshBuffers(second.meshes);
         const a = withReleasedExportGeometry(async () => {

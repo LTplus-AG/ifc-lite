@@ -55,7 +55,7 @@ END-ISO-10303-21;`);
       database: { name: `legacy-centre-${process.pid}`, locks: null },
     } as never });
     const rows = await geometryBackingCommand(store, undefined, { action: 'seal' });
-    assert.ok(rows.every((row) => row.complete));
+    assert.ok(rows.every((row) => 'complete' in row && row.complete));
     const before = position(render(<PropertiesPanel />));
     cleanup();
     releaseCpuMeshBuffers(geometry.meshes);

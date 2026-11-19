@@ -24,17 +24,18 @@ const LABEL_CARRIES: readonly (readonly [string, string, string, string])[] = [
   ['IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD', 'DistributionPointFunction', 'UserDefinedFunction'],
 ];
 
-const holdsValue = (v: string | undefined) => v !== undefined && !['', '$', '*'].includes(v.trim());
 const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
 
-/** True when `slot` is `.USERDEFINED.` (any case) with only whitespace and comments around it. */
-function isUserDefined(slot: string | undefined): boolean {
-  if (slot === undefined) return false;
-  const token = '.USERDEFINED.';
-  const start = skipStepTrivia(slot, 0);
-  return start !== -1 && slot.slice(start, start + token.length).toUpperCase() === token
-    && skipStepTrivia(slot, start + token.length) === slot.length;
+/** True when `slot` is `token` (any case) with only whitespace and comments around it. */
+function isToken(slot: string | undefined, token: string): boolean {
+  const start = slot === undefined ? -1 : skipStepTrivia(slot, 0);
+  return start !== -1 && slot!.slice(start, start + token.length).toUpperCase() === token
+    && skipStepTrivia(slot!, start + token.length) === slot!.length;
 }
+
+/** No value: `$`, `*` or nothing, comments aside. A missing slot is not unset. */
+const isUnset = (slot: string | undefined) => slot !== undefined
+  && (isToken(slot, '$') || isToken(slot, '*') || skipStepTrivia(slot, 0) === slot.length);
 
 /** `converted`, written from `source` between the schemas, with the label carried. */
 export function carryUserDefinedLabel(source: string, converted: string | null, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion): string | null {
@@ -51,15 +52,15 @@ export function carryUserDefinedLabel(source: string, converted: string | null, 
   const out = [...record.slots];
   if (up) {
     const ot = at(toSchema, ifc4, 'ObjectType');
-    // `convertRecord` accepts a record without its ';'.
-    const src = readStepSlots(source.trimEnd().endsWith(';') ? source : `${source};`)?.slots;
+    // `convertRecord` also accepts a record without its ';'.
+    const src = (readStepSlots(source) ?? readStepSlots(`${source};`))?.slots;
     const value = src?.[at(fromSchema, ifc2x3, label)];
-    if (!src || ot < 0 || ot >= out.length || !isUserDefined(src[at(fromSchema, ifc2x3, kind)]) || !holdsValue(value) || holdsValue(out[ot])) return converted;
-    out[ot] = value!;
+    if (!src || !isToken(src[at(fromSchema, ifc2x3, kind)], '.USERDEFINED.') || value === undefined || isUnset(value) || !isUnset(out[ot])) return converted;
+    out[ot] = value;
   } else {
     const ot = at(toSchema, ifc2x3, 'ObjectType');
     const l = at(toSchema, ifc2x3, label);
-    if (ot < 0 || l < 0 || !isUserDefined(out[at(toSchema, ifc2x3, kind)]) || holdsValue(out[l]) || !holdsValue(out[ot])) return converted;
+    if (!isToken(out[at(toSchema, ifc2x3, kind)], '.USERDEFINED.') || !isUnset(out[l]) || out[ot] === undefined || isUnset(out[ot])) return converted;
     out[l] = out[ot];
   }
   return `${record.prefix}${out.join(',')}${record.suffix}`;

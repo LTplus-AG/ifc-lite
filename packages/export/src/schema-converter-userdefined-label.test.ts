@@ -25,6 +25,10 @@ describe('the .USERDEFINED. label (#10824)', () => {
     expect(up("#7=IFCPROCEDURE('g',#2,'P',$,$,'P-1',.USERDEFINED.,'Flush')")).toBe("#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.USERDEFINED.);");
   });
 
+  it('reads a commented $ as unset and a trailing comment after the terminator', () => {
+    expect(up("#7=IFCPROCEDURE('g',#2,'P',$,/* unset */$,'P-1',.USERDEFINED.,'Flush'); /* tail */")).toBe("#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.USERDEFINED.);");
+  });
+
   it('keeps a set ObjectType, and carries nothing for another member', () => {
     expect(up("#7=IFCWORKPLAN('g',#2,'P',$,'Mine','WP',$,$,$,$,$,$,$,.USERDEFINED.,'Custom');"))
       .toBe("#7=IFCWORKPLAN('g',#2,'P',$,'Mine','WP',$,$,$,$,$,$,$,.USERDEFINED.);");

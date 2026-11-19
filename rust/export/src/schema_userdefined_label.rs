@@ -12,7 +12,7 @@
 //!
 //! Twin of `packages/export/src/schema-converter-userdefined-label.ts`.
 
-use crate::schema_convert::{holds_value, schema_attribute_names};
+use crate::schema_convert::schema_attribute_names;
 use crate::step_slot::split_top_level_args;
 
 /// One type: `(IFC2X3 type, IFC4 type, IFC2X3 enum, IFC2X3 label)`; the IFC4
@@ -42,31 +42,38 @@ pub(crate) fn carry(source: &str, converted: String, cfrom: &str, cto: &str, dro
     let index = |schema: &str, ty: &str, name: &str| schema_attribute_names(schema, ty)?.iter().position(|n| *n == name);
     if up {
         let (Some(ot), Some(e), Some(l)) = (index(cto, ifc4, "ObjectType"), index(cfrom, ifc2x3, enum_2x3), index(cfrom, ifc2x3, label_2x3)) else { return converted };
-        // `convert_record` accepts a record without its ';'.
-        let source: std::borrow::Cow<'_, str> = if source.trim_end().ends_with(';') { source.into() } else { format!("{source};").into() };
-        let Some(src) = crate::step_record_frame::record_frame(&source).and_then(|f| split_top_level_args(f.args(&source))) else { return converted };
+        // `convert_record` also accepts a record without its ';'.
+        let read = |line: &str| crate::step_record_frame::record_frame(line).and_then(|f| split_top_level_args(f.args(line)));
+        let Some(src) = read(source).or_else(|| read(&format!("{source};"))) else { return converted };
         let (Some(kind), Some(label)) = (src.get(e), src.get(l)) else { return converted };
-        if !is_userdefined(kind) || !holds_value(label) || out.get(ot).is_none_or(|v| holds_value(v)) { return converted; }
+        if !is_userdefined(kind) || is_unset(label) || out.get(ot).is_none_or(|v| !is_unset(v)) { return converted; }
         out[ot] = label.clone();
         // The trim or map before this counted the label as dropped.
         if let Some(dropped) = dropped { *dropped = dropped.saturating_sub(1); }
     } else {
         let (Some(ot), Some(e), Some(l)) = (index(cto, ifc2x3, "ObjectType"), index(cto, ifc2x3, enum_2x3), index(cto, ifc2x3, label_2x3)) else { return converted };
         let (Some(kind), Some(label), Some(object_type)) = (out.get(e), out.get(l), out.get(ot)) else { return converted };
-        if !is_userdefined(kind) || holds_value(label) || !holds_value(object_type) { return converted; }
+        if !is_userdefined(kind) || !is_unset(label) || is_unset(object_type) { return converted; }
         out[l] = object_type.clone();
     }
     frame.with_args(&converted, &out.join(","))
 }
 
-/// True when `slot` is `.USERDEFINED.` (any case) with only whitespace and
-/// comments around it.
-fn is_userdefined(slot: &str) -> bool {
+/// True when `slot` is `token` (any case) with only whitespace and comments around it.
+fn is_token(slot: &str, token: &str) -> bool {
     let bytes = slot.as_bytes();
-    let token = ".USERDEFINED.";
     let Some(start) = ifc_lite_core::parser::skip_step_trivia(bytes, 0) else { return false };
     slot.get(start..start + token.len()).is_some_and(|t| t.eq_ignore_ascii_case(token))
         && ifc_lite_core::parser::skip_step_trivia(bytes, start + token.len()) == Some(bytes.len())
+}
+
+fn is_userdefined(slot: &str) -> bool {
+    is_token(slot, ".USERDEFINED.")
+}
+
+/// No value: `$`, `*` or nothing, comments aside.
+fn is_unset(slot: &str) -> bool {
+    is_token(slot, "$") || is_token(slot, "*") || ifc_lite_core::parser::skip_step_trivia(slot.as_bytes(), 0) == Some(slot.len())
 }
 
 #[cfg(test)]

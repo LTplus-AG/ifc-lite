@@ -80,6 +80,12 @@ fn is_userdefined_reads_past_comments_10824() {
     assert!(is_userdefined(" /* x */ .userdefined. "));
     assert!(!is_userdefined(".USERDEFINED.X"));
     assert!(!is_userdefined("$"));
+    assert!(is_unset(" /* none */ $ ") && is_unset("*") && is_unset(" ") && !is_unset("'a'") && !is_unset("'$'"));
+    assert_eq!(
+        convert("#7=IFCPROCEDURE('g',#2,'P',$,/* unset */$,'P-1',.USERDEFINED.,'Flush'); /* tail */", "IFC2X3", "IFC4").0,
+        "#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.USERDEFINED.);",
+        "a commented $ is unset, and a trailing comment is read"
+    );
 }
 
 /// `carry` takes a carried label off `attribute_values_dropped` because the

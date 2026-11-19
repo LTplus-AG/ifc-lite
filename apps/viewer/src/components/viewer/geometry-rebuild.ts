@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
+import { supersedeReleasedReplays } from '@/lib/geometry-backing/released-scene-replay';
 
 // Non-federated default: only the primary model (modelIndex 0, what
 // `addInstancedShard` has always defaulted new templates to) survives a
@@ -27,6 +28,7 @@ export function reshapeSceneKeepingPresentInstanced(
   appearanceSourceGeometry?: readonly MeshData[],
 ): void {
   const present = presentInstancedModelIndices ?? DEFAULT_PRESENT_INSTANCED_MODEL_INDICES;
+  supersedeReleasedReplays(); // a replay in flight must not upload into the reshaped scene (#10264)
   if (scene.clearFlatGeometryForRebuild) scene.clearFlatGeometryForRebuild(geometry, present, appearanceSourceGeometry);
   else scene.clearFlatGeometry();
   for (const modelIndex of scene.getInstancedModelIndices()) {

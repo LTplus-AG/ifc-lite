@@ -19,17 +19,43 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 
 const SLICE = 256;
-let latest = 0;
+const RETRIES = 3;
+/** Scene epoch: every flat reshape (clear, new file, replacement, rebuild) starts a new one. */
+let epoch = 0;
+/** Replays of one epoch run one after another: each owns the scene's streaming pass while it runs. */
+let chain: Promise<unknown> = Promise.resolve();
 
-/** Resident meshes for the normal upload; released ones are replayed from the backing. */
-export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], unclaim: (meshes: readonly MeshData[]) => void): MeshData[] {
+/** A flat reshape supersedes every replay in flight: it must not upload into the reshaped scene. */
+export function supersedeReleasedReplays(): void { epoch++; }
+
+/**
+ * Resident meshes for the normal upload; released ones are replayed from the backing.
+ * A replay that fails in its own epoch is retried, then handed back (`unclaim`) for
+ * the next rebuild; one a reshape superseded is dropped (the newer pass owns them).
+ */
+export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], unclaim: (meshes: readonly MeshData[]) => void,
+  replayOnce: typeof replay = replay): MeshData[] {
   if (!meshes.some(isReleasedMesh)) return meshes;
   const released = meshes.filter(isReleasedMesh);
-  const token = ++latest;
-  void replay(renderer, released, () => token === latest).then((ok) => { if (!ok) unclaim(released); },
-    (error: unknown) => { console.error('[GeometryBacking] released geometry replay failed', error); unclaim(released); });
+  const mine = epoch;
+  const isCurrent = () => mine === epoch;
+  const run = async (): Promise<void> => {
+    for (let attempt = 1; attempt <= RETRIES && isCurrent(); attempt++) {
+      try {
+        if (await replayOnce(renderer, released, isCurrent)) return;
+      } catch (error) {
+        console.error(`[GeometryBacking] released geometry replay attempt ${attempt} failed`, error);
+      }
+      if (attempt < RETRIES && isCurrent()) await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    }
+    if (isCurrent()) unclaim(released);
+  };
+  chain = chain.then(run, run);
   return meshes.filter((mesh) => !isReleasedMesh(mesh));
 }
+
+/** Settles once every replay queued so far has finished (tests). */
+export function releasedReplaysIdle(): Promise<void> { return chain.then(() => undefined); }
 
 async function replay(renderer: Renderer, released: readonly MeshData[], isCurrent: () => boolean): Promise<boolean> {
   const [{ replayReleasedGeometry }, { activeGeometryBackingTap }, { replayStoreList }, { canonicalStoreMesh }, { GeometryUnavailableError }, { getViewerState }] =

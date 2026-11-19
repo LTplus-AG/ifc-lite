@@ -24,6 +24,7 @@ type Probe = typeof globalThis & {
   __ifc_lite_scene_settled__?: () => boolean;
   __ifc_lite_geometry_backing__?: (command: { action: string; points?: Array<[number, number]>; pose?: unknown }) => Promise<Array<Record<string, unknown>>>;
   __ifc_lite_cpu_geometry_held__?: () => Promise<{ totalBytes: number }>;
+  __ifc_lite_pick_parity__?: (request: { columns: number; rows: number }) => Promise<{ rows: Array<{ annotation: boolean; gpu: { expressId: number } | null }> }>;
 };
 
 // Touch measurement after release has no hover in front of it: on-demand readback (#10264).
@@ -252,6 +253,10 @@ for (const fixture of FIXTURES) {
       const store = g.__ifc_lite_viewer_store__! as unknown as { setState(fn: (s: { geometryContentVersion: number }) => object): void };
       // A rebuilt scene may refit the camera; probe from the same pose as before the reload.
       const [pose] = await g.__ifc_lite_geometry_backing__!({ action: 'camera-for-test' });
+      // Independent of CPU and backing readback: what the GPU draws, by id buffer, on a texel grid.
+      const gpuGrid = async () => (await g.__ifc_lite_pick_parity__!({ columns: 48, rows: 32 })).rows
+        .map((row) => (row.annotation ? null : row.gpu?.expressId ?? null));
+      const gpuBefore = await gpuGrid();
       store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
       // The replay is asynchronous: wait until the scene settles again and a reseal acknowledges the replacement.
       for (let i = 0; i < 200 && !(g.__ifc_lite_scene_settled__?.()); i++) await new Promise((r) => setTimeout(r, 50));
@@ -261,7 +266,8 @@ for (const fixture of FIXTURES) {
       await g.__ifc_lite_geometry_backing__!({ action: 'camera-for-test', pose });
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const snaps = await g.__ifc_lite_geometry_backing__!({ action: 'snap-probe-for-test', points });
-      return { sealed, held, snaps };
+      const gpuAfter = await gpuGrid();
+      return { sealed, held, snaps, gpuBefore, gpuAfter };
     }, [phase1.points] as const);
     await page.screenshot({ path: info.outputPath('after-reload.png') });
     await writeFile(info.outputPath('reload.json'), JSON.stringify({ sealed: reload.sealed, held: reload.held }, null, 2));
@@ -272,16 +278,24 @@ for (const fixture of FIXTURES) {
     // model's instancing, its new generation is never complete, and released readback must then
     // fail closed (unavailable), never answer from a different or stale surface.
     const lost = reload.sealed[0].instancedLost === true;
+    // The rebuilt scene itself, independent of readback: every GPU-picked texel names the same entity.
+    const drawn = reload.gpuBefore.filter((id) => id !== null).length;
+    const differing = reload.gpuBefore.filter((id, i) => id !== reload.gpuAfter[i]).length;
+    expect(drawn, 'the released scene draws entities before the reload').toBeGreaterThan(100);
+    expect(differing, `GPU picks after the reload (${differing} of ${reload.gpuBefore.length} texels differ)`).toBe(0);
     let unavailable = 0;
     for (let i = 0; i < before.length; i++) {
       const a = before[i], b = reloaded[i];
-      if (lost && b.outcome === 'unavailable') { unavailable++; continue; }
+      // Only a probe that hit a released FLAT mesh may fail closed; everything else must match.
+      if (lost && b.outcome === 'unavailable' && a.expressId !== null && !a.instanced) { unavailable++; continue; }
       expect(b.expressId, `reload probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
       if (a.expressId === null) continue;
       for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `reload probe ${i} hit`).toBeLessThan(1e-6);
       expect(b.snap?.type, `reload probe ${i} snap kind`).toBe(a.snap?.type);
     }
-    await writeFile(info.outputPath('reload-probes.json'), JSON.stringify({ lost, unavailable, probes: before.length }));
+    await writeFile(info.outputPath('reload-probes.json'), JSON.stringify({ lost, unavailable, probes: before.length,
+      gpuTexels: reload.gpuBefore.length, gpuDrawn: drawn, gpuDiffering: differing }));
+    if (!lost) expect(unavailable, 'a complete reseal answers every probe').toBe(0);
     await page.evaluate(() => (globalThis as Probe).__ifc_lite_geometry_backing__!({ action: 'stop' }));
   });
 }

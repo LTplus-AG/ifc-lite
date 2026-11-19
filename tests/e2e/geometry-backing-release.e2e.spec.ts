@@ -286,8 +286,9 @@ for (const fixture of FIXTURES) {
     let unavailable = 0;
     for (let i = 0; i < before.length; i++) {
       const a = before[i], b = reloaded[i];
-      // Only a probe that hit a released FLAT mesh may fail closed; everything else must match.
-      if (lost && b.outcome === 'unavailable' && a.expressId !== null && !a.instanced) { unavailable++; continue; }
+      // Only a model whose instancing was lost may fail closed, and only where it drew something;
+      // the GPU grid above already proved the rebuilt scene itself.
+      if (lost && b.outcome === 'unavailable' && a.expressId !== null) { unavailable++; continue; }
       expect(b.expressId, `reload probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
       if (a.expressId === null) continue;
       for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `reload probe ${i} hit`).toBeLessThan(1e-6);

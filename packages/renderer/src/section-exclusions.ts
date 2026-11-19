@@ -4,6 +4,8 @@
 
 import type { PickClipState } from './pick-types.js';
 import { entityVisibilityWgsl } from './entity-visibility-table.js';
+import { entityHighlightWgsl } from './entity-highlight-table.js';
+import { ConfirmedStorageBuffer } from './confirmed-storage-buffer.js';
 
 /** All section planes are exempted together; the crop box remains independent (#8015). */
 export function entityClip(clip: PickClipState | null | undefined, id: number): PickClipState | null | undefined {
@@ -20,7 +22,8 @@ export function sectionExclusionImage(ids?: ReadonlySet<number> | null): Uint32A
 
 // One group per device submission, shared by colour, masks, shadow and picking:
 // binding 0 the section exclusions, binding 1 the hide/isolate table
-// (entity-visibility-table.ts, #10264 S2). Owners retain/release it; mask
+// (entity-visibility-table.ts, #10264 S2), binding 2 the highlighted entities
+// (entity-highlight-table.ts, #10264 S3). Owners retain/release it; mask
 // passes borrow it while the renderer is alive.
 const tables = new WeakMap<GPUDevice, SectionExclusions>();
 export function sectionExclusions(device: GPUDevice): SectionExclusions {
@@ -29,7 +32,7 @@ export function sectionExclusions(device: GPUDevice): SectionExclusions {
   return table;
 }
 export const SECTION_EXCLUSIONS_GROUP = 3;
-const INITIAL_VISIBILITY_BYTES = 64 * 1024;
+const INITIAL_TABLE_BYTES = 64 * 1024;
 
 // WebGPU before gpuweb#4946 (Nov 2024) still requires a bind group at every
 // slot of a pipeline layout, even an empty one; current Dawn treats empty
@@ -64,45 +67,45 @@ export function bindSectionExclusions(pass: GPUBindingCommandsMixin, device: GPU
 class SectionExclusions {
   readonly layout: GPUBindGroupLayout;
   buffer: GPUBuffer;
-  visibility: GPUBuffer;
   bindGroup: GPUBindGroup;
+  private readonly visibilityTable: ConfirmedStorageBuffer;
+  private readonly highlightTable: ConfirmedStorageBuffer;
   private snapshot = new Set<number>();
   private owners = 0;
   private bytes = 4;
-  private visibilityBytes: number;
-  private visibilityImage: Uint32Array | null = null;
-  /** A larger visibility buffer awaiting its error scopes; never bound before it settles. */
-  private visibilityGrowth: Promise<boolean> | null = null;
-  /** The image whose growth WebGPU rejected: not retried, so sustained OOM cannot loop. */
-  private visibilityFailed: Uint32Array | null = null;
   private released = false;
   private readonly limit: number;
   constructor(private device: GPUDevice) {
     const storage = (binding: number): GPUBindGroupLayoutEntry => ({ binding, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } });
-    this.layout = device.createBindGroupLayout({ entries: [storage(0), storage(1)] });
+    this.layout = device.createBindGroupLayout({ entries: [storage(0), storage(1), storage(2)] });
     this.limit = Math.min(device.limits?.maxStorageBufferBindingSize ?? 134217728, device.limits?.maxBufferSize ?? 268435456);
     this.buffer = this.allocate('section-excluded-ids', 4);
-    // Room for ~16k hidden/isolated ids up front: a larger table only becomes
-    // usable a frame later (growVisibility), so ordinary hide sets never wait.
-    this.visibilityBytes = this.storageBytes(INITIAL_VISIBILITY_BYTES);
-    this.visibility = this.allocate('entity-visibility', this.visibilityBytes); // zeroed = nothing hidden
+    const cap = this.limit - this.limit % 4;
+    const rebind = () => { this.bindGroup = this.bind(); };
+    const released = () => this.released;
+    // Room for ~16k ids up front in each table: a larger one only becomes
+    // usable a frame later (ConfirmedStorageBuffer), so ordinary sets never wait.
+    this.visibilityTable = new ConfirmedStorageBuffer(device, 'entity-visibility', INITIAL_TABLE_BYTES, cap, rebind, released); // zeroed = nothing hidden
+    this.highlightTable = new ConfirmedStorageBuffer(device, 'entity-highlight', INITIAL_TABLE_BYTES, cap, rebind, released); // zeroed = nothing highlighted
     this.bindGroup = this.bind();
   }
+  /** The bound hide/isolate table. */
+  get visibility(): GPUBuffer { return this.visibilityTable.buffer; }
+  /** The bound highlighted-entity table (entity-highlight-table.ts, #10264 S3). */
+  get highlight(): GPUBuffer { return this.highlightTable.buffer; }
   retain(): void { this.owners++; }
   release(): void {
-    if (--this.owners === 0) { this.released = true; this.buffer.destroy(); this.visibility.destroy(); tables.delete(this.device); }
+    if (--this.owners === 0) {
+      this.released = true; this.buffer.destroy(); this.visibilityTable.destroy(); this.highlightTable.destroy(); tables.delete(this.device);
+    }
   }
   private allocate(label: string, size: number): GPUBuffer {
     return this.device.createBuffer({ label, size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   }
-  /** `bytes`, capped at the device limit and kept a multiple of 4 bytes. */
-  private storageBytes(bytes: number): number {
-    const cap = this.limit - this.limit % 4;
-    return Math.min(bytes, cap);
-  }
   private bind(): GPUBindGroup {
     return this.device.createBindGroup({ layout: this.layout, entries: [
       { binding: 0, resource: { buffer: this.buffer } }, { binding: 1, resource: { buffer: this.visibility } },
+      { binding: 2, resource: { buffer: this.highlight } },
     ] });
   }
   update(ids?: ReadonlySet<number> | null): void {
@@ -118,73 +121,29 @@ class SectionExclusions {
   }
   /**
    * Make `image` (`entityVisibilityImage`) the hide/isolate table the next
-   * submission reads. An image already written is not uploaded again. Returns
-   * false, leaving the bound table unchanged, when the image cannot be held:
-   * over the device's storage binding limit, or larger than the current
-   * buffer while its replacement is unconfirmed or was rejected. The caller
-   * must then not draw anything that relies on the table, rather than draw
-   * hidden geometry.
+   * submission reads. False, leaving the bound table unchanged, when it
+   * cannot be held (see `ConfirmedStorageBuffer.write`); the caller must then
+   * not draw anything that relies on the table, rather than draw hidden geometry.
    */
-  writeVisibility(image: Uint32Array): boolean {
-    if (image.byteLength > this.limit) return false;
-    if (image.byteLength > this.visibilityBytes) { this.growVisibility(image); return false; }
-    if (image !== this.visibilityImage) {
-      this.device.queue.writeBuffer(this.visibility, 0, image);
-      this.visibilityImage = image;
-    }
-    return true;
-  }
-  /** Settles true once a larger table is bound, false when WebGPU rejected it; null when none is pending. */
-  get visibilityPending(): Promise<boolean> | null { return this.visibilityGrowth; }
+  writeVisibility(image: Uint32Array): boolean { return this.visibilityTable.write(image); }
+  /** Settles true once a larger visibility table is bound, false when WebGPU rejected it; null when none is pending. */
+  get visibilityPending(): Promise<boolean> | null { return this.visibilityTable.pending; }
   /**
-   * `createBuffer` does not throw on out-of-memory: it returns an invalid
-   * buffer and reports through an error scope, later. Binding that buffer
-   * would invalidate group 3 for every draw and pick, so the validated buffer
-   * stays bound until the replacement's scopes settle clean. One attempt per
-   * pending growth, none for an image already rejected; a different image (a
-   * new hide/isolate state) may try again, and a smaller one that fits the
-   * bound buffer is written at once.
+   * Make `image` (`entityHighlightImage`) the highlighted-entity table. False
+   * when it cannot be held; the caller then highlights without the table.
    */
-  private growVisibility(image: Uint32Array): void {
-    if (this.visibilityGrowth || image === this.visibilityFailed
-      || (image.length === this.visibilityFailed?.length && image.every((word, i) => word === this.visibilityFailed![i]))) return;
-    const device = this.device;
-    let size = Math.max(16, this.visibilityBytes);
-    while (size < image.byteLength) size *= 2; // geometric, so a growing set reallocates rarely
-    size = this.storageBytes(size);
-    device.pushErrorScope('out-of-memory');
-    device.pushErrorScope('validation');
-    let candidate: GPUBuffer | null = null;
-    try { candidate = this.allocate('entity-visibility', size); }
-    catch (error) { console.warn('[SectionExclusions] entity visibility allocation threw:', error); }
-    // Pop both before awaiting so no other caller's scope is consumed.
-    const scopes = Promise.all([device.popErrorScope(), device.popErrorScope()]);
-    this.visibilityGrowth = scopes.then(([validation, memory]) => {
-      const error = validation ?? memory;
-      if (error) console.warn('[SectionExclusions] entity visibility table growth rejected; partly hidden batches stay out:', error.message);
-      return candidate !== null && !error;
-    }, error => { console.warn('[SectionExclusions] could not confirm entity visibility allocation:', error); return false; }).then(valid => {
-      this.visibilityGrowth = null;
-      if (!valid || this.released) {
-        candidate?.destroy();
-        if (!valid) this.visibilityFailed = image;
-        return false;
-      }
-      this.visibility.destroy();
-      this.visibility = candidate!; this.visibilityBytes = size;
-      this.visibilityImage = null; // the new buffer is zeroed: write the current image on next use
-      this.visibilityFailed = null;
-      this.bindGroup = this.bind();
-      return true;
-    });
-  }
+  writeHighlight(image: Uint32Array): boolean { return this.highlightTable.write(image); }
+  /** As {@link visibilityPending}, for the highlight table. */
+  get highlightPending(): Promise<boolean> | null { return this.highlightTable.pending; }
 }
 
 /** Binary search is bounded by log2(count); the empty default reads just the count. */
 export const sectionExclusionsWgsl = `
 @group(3) @binding(0) var<storage, read> sectionExcludedIds: array<u32>;
 @group(3) @binding(1) var<storage, read> entityVisibility: array<u32>;
+@group(3) @binding(2) var<storage, read> entityHighlight: array<u32>;
 ${entityVisibilityWgsl}
+${entityHighlightWgsl}
 // Scene colour buckets are partitioned by 2^24 ID page. Reject an invalid anchor.
 fn sectionEntityFromLane(anchor: u32, lane: u32) -> u32 {
   return select(anchor + ((lane - anchor) & 0x00FFFFFFu), 0xFFFFFFFFu, anchor == 0xFFFFFFFFu);

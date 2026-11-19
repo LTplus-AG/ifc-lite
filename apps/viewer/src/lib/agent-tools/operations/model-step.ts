@@ -14,7 +14,9 @@ import { modelExportFilename } from '@/lib/export/download';
 import { buildMergeInputs } from '@/components/viewer/export-merge-inputs';
 import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { operation, viewerOperation } from './contract';
-import { exportCheckpoint, exportMetadata } from './exports-common';
+import { exportMetadata } from './exports-common';
+import { exportGuard, refuseComposedLayer } from './export-native-runtime';
+import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 interface Options {
   schema: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   include_geometry: boolean; apply_mutations: boolean; visible_only: boolean; section_mode: 'trim' | 'whole';
@@ -31,24 +33,26 @@ function retainedGuard(ids: Iterable<string>, visible: boolean, geometry: boolea
 }
 export const stepExportOperations = [
   operation(exportMetadata('exports.modelStep', 'Produce one native full/visible STEP IFC or portable IFCZIP with the Export dialog schema, geometry, mutation and trim/whole-section options. Uses its exact shared exportModelStep producer, room/source ID mapping, appearance packaging and schedule splicing; refuses unsupported native source/section modes. No download.'), schema, async (i, c) => {
-    const current = exportCheckpoint(c, [c.model.id]); current();
-    retainedGuard([c.model.id], i.visible_only, i.include_geometry);
-    const store = await ensureModelExportReady(c.model.id);
+    // A legacy single model is 'default' to the agent host and '__legacy__' to the export services (#10695).
+    const id = normalizeMutationModelId(useViewerStore.getState(), c.model.id);
+    const current = exportGuard(c, [id], i.visible_only); current();
+    retainedGuard([id], i.visible_only, i.include_geometry);
+    const store = await ensureModelExportReady(id);
     if (!store) throw new Error('Native model data is unavailable for STEP export.');
     current();
-    const state = useViewerStore.getState(), visibility = resolveExportVisibility(state, c.model.id);
-    const result = await exportModelStep({ modelId: c.model.id, dataStore: store,
+    const state = useViewerStore.getState(), visibility = resolveExportVisibility(state, id);
+    const result = await exportModelStep({ modelId: id, dataStore: store,
       mutationView: i.apply_mutations ? c.model.mutationView() ?? undefined : undefined,
-      section: i.visible_only && i.include_geometry ? sectionExportOptions(state, i.section_mode, c.model.id) : undefined,
+      section: i.visible_only && i.include_geometry ? sectionExportOptions(state, i.section_mode, id) : undefined,
       options: { schema: i.schema, includeGeometry: i.include_geometry, applyMutations: i.apply_mutations, visibleOnly: i.visible_only,
         hiddenEntityIds: i.visible_only ? visibility.hiddenLocalIds : undefined,
         isolatedEntityIds: i.visible_only ? visibility.isolatedLocalIds : undefined,
-        georefMutations: i.apply_mutations ? state.georefMutations.get(c.model.id) : undefined,
+        georefMutations: i.apply_mutations ? state.georefMutations.get(id) : undefined,
         application: 'ifc-lite', description: 'Exported through native viewer operations', onProgress: () => current() },
       scheduleState: { scheduleData: state.scheduleData, scheduleIsEdited: state.scheduleIsEdited, scheduleSourceModelId: state.scheduleSourceModelId },
     });
     current();
-    const file = await packagePortableIfcAsync(c.model.id, result.content, result.resources);
+    const file = await packagePortableIfcAsync(id, result.content, result.resources);
     current();
     return { artifact: await c.artifacts.create({ data: file.content, filename: modelExportFilename(c.model.name, file.ext), mimeType: file.mime }), diagnostics_json: JSON.stringify(result.stats) };
   }),
@@ -56,7 +60,8 @@ export const stepExportOperations = [
     type: 'object', properties: { ...properties, model_ids: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 200 } }, unit_reconciliation: { type: 'string', enum: ['auto', 'normalize', 'assume-shared'] } }, required: [...Object.keys(properties), 'model_ids', 'unit_reconciliation'], additionalProperties: false,
   } as unknown as JSONSchemaType<Options & { model_ids: string[]; unit_reconciliation: 'auto' | 'normalize' | 'assume-shared' }>, async (i, c) => {
     if (!i.include_geometry) throw new Error('The native merged STEP workflow always includes its source geometry; use the single-model geometry option instead.');
-    const current = exportCheckpoint(c, i.model_ids); current();
+    const current = exportGuard(c, i.model_ids, i.visible_only); current();
+    for (const id of i.model_ids) refuseComposedLayer(id, i.model_ids);
     const state = useViewerStore.getState();
     const models = i.model_ids.map(id => { const model = state.models.get(id); if (!model || model.gaussianSplat) throw new Error(`No exportable native model: ${id}`); return model; });
     retainedGuard(i.model_ids, i.visible_only, i.include_geometry);

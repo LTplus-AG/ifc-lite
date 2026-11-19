@@ -301,9 +301,9 @@ export const mainShaderSource = `
               if (!occOpaque) { discard; }
             }
           }
-          // A partly hidden batch drawn whole: drop the hidden entities'
-          // fragments (entity-visibility-table.ts, #10264 S2).
+          // Batches drawn whole: drop hidden entities (S2), and unhighlighted ones from a highlight draw (S3, entity-*-table.ts, #10264).
           if ((uniforms.flags.x & ${MESH_FLAG_ENTITY_VISIBILITY}u) != 0u && !entityVisible(input.sectionEntityId)) { discard; }
+          if (!highlightKeeps(uniforms.flags, input.sectionEntityId)) { discard; }
           // Section plane / clip box (mesh-uniforms.wgsl.ts, shared with the
           // selection mask so an outline is cut where its surface is).
           if (sectionClipped(fragmentPos, input.sectionEntityId)) { discard; }

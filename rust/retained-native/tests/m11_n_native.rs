@@ -32,6 +32,77 @@ fn universe(root: &Path) -> BTreeMap<String,BTreeMap<u32,String>> {
     models
 }
 
+/// One published m11-n reference row; shared with the determinism test so both
+/// serialize exactly the bytes the browser lanes read.
+fn published_row(product: &ifc_lite_retained_native::ShapeOnlyProduct, source: &[normals::Surface]) -> serde_json::Value {
+    json!({"id":product.product_id,"status":"published","sourceSurfaces":source,"parts":product.parts.iter().map(|p|
+        json!({"normals":p.normals,"positions":p.positions,"indices":p.indices,"frame":p.world_from_object,
+            "revisionLocalFaces":p.revision_local_faces,
+            "surfaceIndices":normals::check_mesh(&p.positions,&p.indices,&p.world_from_object,
+                p.normals.as_ref().unwrap(),source).unwrap().surface_indices}))
+        .collect::<Vec<_>>() })
+}
+
+/// The m11-n reference rows of one model, as the corpus test writes them.
+fn reference_rows(root: &Path, model: &str, worker: &std::ffi::OsStr) -> Vec<serde_json::Value> {
+    let ids = (model == fi::MODEL).then_some(fi::IDS.to_vec());
+    let options = ModelOptions {ids:ids.as_ref().map(|v| v.iter().copied().collect()),..Default::default()};
+    let bytes = std::fs::read(root.join(model)).unwrap();
+    let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes,None);
+    let mut rows = Vec::new();
+    ifc_lite_retained_native::run_model_native(ifc_lite_core::SourceBundle::new(bytes.clone()),worker,&options,|outcome| match outcome {
+        ProductOutcome::Published(product) => {
+            let source = normals::surfaces(&bytes,&sources,product.product_id).unwrap();
+            rows.push(published_row(&product,&source));
+        }
+        ProductOutcome::Refused {product_id,refusal,..} =>
+            rows.push(json!({"id":product_id,"status":"refused","code":refusal.code()})),
+    }).unwrap();
+    rows
+}
+
+/// The SDK enumerates Boolean results in heap-address order. The adapter's
+/// canonical mesh form must make the reference byte-identical whatever the
+/// worker's address layout: run every model with a published product under two
+/// ordinary (ASLR) workers and one with ASLR off, and compare bytes.
+#[test]
+fn m11_n_reference_is_independent_of_worker_address_layout() {
+    let Some(worker) = support::worker_path() else {return;};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let setarch = std::process::Command::new("setarch").arg("--version").output().is_ok_and(|o| o.status.success());
+    if !setarch {
+        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SMLib is required but setarch is unavailable");
+        eprintln!("SKIP worker address-layout determinism: no setarch");
+        return;
+    }
+    let directory = std::env::temp_dir().join(format!("m11-n-layout-{}",std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let fixed = directory.join("worker-no-aslr");
+    let worker_path = std::fs::canonicalize(&worker).unwrap();
+    std::fs::write(&fixed,format!("#!/bin/sh\nexec setarch \"$(uname -m)\" -R '{}' \"$@\"\n",worker_path.display())).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&fixed,std::fs::Permissions::from_mode(0o755)).unwrap();
+    let workers = [worker.clone(),worker.clone(),fixed.into_os_string()];
+    let mut models = 0;
+    let mut differing = Vec::new();
+    for (model, expected) in universe(&root) {
+        if !expected.values().any(|status| status == "published") {continue;}
+        models += 1;
+        let runs: Vec<Vec<u8>> = workers.iter().map(|w| serde_json::to_vec(&reference_rows(&root,&model,w)).unwrap()).collect();
+        if runs.iter().any(|run| run != &runs[0]) {
+            let ids: Vec<_> = runs.iter().map(|run| serde_json::from_slice::<Vec<serde_json::Value>>(run).unwrap()).collect();
+            let rows = ids[0].iter().enumerate().filter(|(i,row)| ids.iter().any(|other| other.get(*i) != Some(row)))
+                .map(|(_,row)| row["id"].clone()).collect::<Vec<_>>();
+            differing.push(format!("{model}: rows {rows:?}"));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&directory);
+    assert!(models >= 30,"must cover the committed published corpus, got {models} models");
+    assert!(differing.is_empty(),"m11-n reference bytes depend on the worker address layout:\n{}",differing.join("\n"));
+    println!("M11-N layout determinism: {models} models byte-identical across 2 ASLR workers and 1 ASLR-off worker");
+    println!("sdk witness executed: m11_n_worker_layout_determinism");
+}
+
 #[test]
 fn m11_n_7955_committed_corpus_source_normals() {
     let Some(worker) = support::worker_path() else {return;};
@@ -79,12 +150,7 @@ fn m11_n_7955_committed_corpus_source_normals() {
                                 violations.push(format!("{model}:{} {error}",product.product_id));
                             }
                         }
-                        rows.push(json!({"id":product.product_id,"status":"published","sourceSurfaces":source,"parts":product.parts.iter().map(|p|
-                            json!({"normals":p.normals,"positions":p.positions,"indices":p.indices,"frame":p.world_from_object,
-                                "revisionLocalFaces":p.revision_local_faces,
-                                "surfaceIndices":normals::check_mesh(&p.positions,&p.indices,&p.world_from_object,
-                                    p.normals.as_ref().unwrap(),&source).unwrap().surface_indices}))
-                            .collect::<Vec<_>>() }));
+                        rows.push(published_row(&product,&source));
                         println!("normal source witness {model}:{} {check:?}; exact/source angle histogram (report-only): {histogram:?}",product.product_id);
                     }
                     ProductOutcome::Refused {product_id,refusal,..} => {

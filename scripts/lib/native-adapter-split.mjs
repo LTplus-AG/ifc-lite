@@ -134,7 +134,9 @@ export function splitProblems(text) {
   for (const id of SPLIT_JOBS) {
     const block = jobBlock(text, id);
     const needs = id === SPLIT_JUDGE ? SPLIT_LANE_JOBS : id === SPLIT_COMPARE ? ['native-adapter', ...SPLIT_LANE_JOBS, SPLIT_JUDGE] : SPLIT_NEEDS[id];
-    const expected = `${needs.length > 0 ? '!cancelled() && ' : ''}${OPT_IN_GATE} && ${SHADOW_GATE}`;
+    // Downstream lane jobs and the report skip a superseded run's leftovers; the judge must still run and fail.
+    const prefix = needs.length === 0 ? '' : id === SPLIT_JUDGE ? '!cancelled() && ' : "!cancelled() && !contains(needs.*.result, 'cancelled') && ";
+    const expected = `${prefix}${OPT_IN_GATE} && ${SHADOW_GATE}`;
     let condition;
     try {
       condition = jobCondition(block, id)?.replace(/\s+/g, ' ') ?? null;

@@ -632,7 +632,11 @@ jobs:
   # merge-queue batch or a bisect probe. Every job is job-level continue-on-error until
   # the flip, so it cannot colour a run; the judge reads each job's own `verdict` output,
   # because a continue-on-error job's result says nothing. Artifacts are na-* (test.yml
-  # shares the run's artifact namespace when it calls this workflow).
+  # shares the run's artifact namespace when it calls this workflow). Downstream jobs
+  # also skip when a job they need was cancelled: a re-pushed PR cancels the old run's
+  # lane jobs by concurrency group, and its downstream jobs would otherwise start,
+  # fail, and could cancel the new run's jobs in the same groups. The judge does not
+  # skip: it runs and fails, so a cancelled lane can never read as green.
   na-native:
     if: >-
       (!inputs.bisect_sha || inputs.bisect_adapter) && (
@@ -1077,7 +1081,7 @@ jobs:
   na-viewer:
     needs: [na-emscripten, na-wasm]
     if: >-
-      !cancelled() && (!inputs.bisect_sha || inputs.bisect_adapter) && (
+      !cancelled() && !contains(needs.*.result, 'cancelled') && (!inputs.bisect_sha || inputs.bisect_adapter) && (
       inputs.batch == true ||
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:native-adapter') &&
@@ -1249,7 +1253,7 @@ jobs:
   na-browser:
     needs: [na-native, na-emscripten]
     if: >-
-      !cancelled() && (!inputs.bisect_sha || inputs.bisect_adapter) && (
+      !cancelled() && !contains(needs.*.result, 'cancelled') && (!inputs.bisect_sha || inputs.bisect_adapter) && (
       inputs.batch == true ||
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:native-adapter') &&
@@ -1389,7 +1393,7 @@ jobs:
   na-cli-parity:
     needs: [na-native, na-emscripten, na-wasm, na-viewer]
     if: >-
-      !cancelled() && (!inputs.bisect_sha || inputs.bisect_adapter) && (
+      !cancelled() && !contains(needs.*.result, 'cancelled') && (!inputs.bisect_sha || inputs.bisect_adapter) && (
       inputs.batch == true ||
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:native-adapter') &&
@@ -1600,7 +1604,7 @@ jobs:
   na-split-compare:
     needs: [native-adapter, na-native, na-emscripten, na-wasm, na-viewer, na-browser, na-cli-parity, na-split-judge]
     if: >-
-      !cancelled() && (!inputs.bisect_sha || inputs.bisect_adapter) && (
+      !cancelled() && !contains(needs.*.result, 'cancelled') && (!inputs.bisect_sha || inputs.bisect_adapter) && (
       inputs.batch == true ||
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'ci:native-adapter') &&

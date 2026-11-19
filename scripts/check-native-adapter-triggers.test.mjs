@@ -498,12 +498,20 @@ test('a split lane job that loses the opt-in gate or the shadow switch is report
   inJob(noShadow, 'na-wasm', " && vars.NATIVE_ADAPTER_SPLIT == 'shadow'\n", '\n');
   assert.ok(audit(noShadow).some((f) => f.includes('split job na-wasm must be gated on exactly')));
   const noBisect = copyTree(context);
-  inJob(noBisect, 'na-viewer', '      !cancelled() && (!inputs.bisect_sha || inputs.bisect_adapter) && (\n', '      !cancelled() && (\n');
+  inJob(noBisect, 'na-viewer', "      !cancelled() && !contains(needs.*.result, 'cancelled') && (!inputs.bisect_sha || inputs.bisect_adapter) && (\n", "      !cancelled() && !contains(needs.*.result, 'cancelled') && (\n");
   assert.ok(audit(noBisect).some((f) => f.includes('split job na-viewer must be gated on exactly')));
   // A downstream job without !cancelled() is skipped whenever any upstream job fails.
   const noCancelled = copyTree(context);
-  inJob(noCancelled, 'na-browser', '      !cancelled() && (!inputs.bisect_sha', '      (!inputs.bisect_sha');
+  inJob(noCancelled, 'na-browser', "      !cancelled() && !contains(needs.*.result, 'cancelled') && (!inputs.bisect_sha", "      !contains(needs.*.result, 'cancelled') && (!inputs.bisect_sha");
   assert.ok(audit(noCancelled).some((f) => f.includes('split job na-browser must be gated on exactly')));
+  // A re-pushed PR cancels the old run's lane jobs: its downstream jobs must not start into the new run's groups.
+  const leftovers = copyTree(context);
+  inJob(leftovers, 'na-cli-parity', " && !contains(needs.*.result, 'cancelled')", '');
+  assert.ok(audit(leftovers).some((f) => f.includes('split job na-cli-parity must be gated on exactly')));
+  // The judge must not skip on a cancelled lane: it runs and fails instead.
+  const judgeSkips = copyTree(context);
+  inJob(judgeSkips, 'na-split-judge', '      !cancelled() && (', "      !cancelled() && !contains(needs.*.result, 'cancelled') && (");
+  assert.ok(audit(judgeSkips).some((f) => f.includes('split job na-split-judge must be gated on exactly')));
 });
 
 test('a split lane job sharing the single job\'s concurrency group, or cancelling a nightly, is reported', (context) => {

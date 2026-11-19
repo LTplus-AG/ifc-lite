@@ -21,9 +21,11 @@ column in under 1 ms; its reply waits behind this main-thread work.
 
 Rows are now memoized with one stable handler object, unchanged tree rows
 keep their objects across rebuilds and projections, and row membership is
-resolved once per input generation. Paired local diagnostics (Apple M5 Pro,
-Metal, shared and heavily loaded host, interleaved, five edits each) moved
-the median by roughly 40%; this is not admission-qualified evidence.
+resolved once per input generation and view revision. Paired local
+diagnostics (Apple M5 Pro, Metal, quiet shared host, three interleaved runs
+of five edits per side) cut the edit median by about a fifth and the undo
+median by about a quarter; with the hierarchy unmounted the same probe sat
+about 30% below base, which bounds this lever. Not admission-qualified.
 
 Lesson: narrowing panel subscriptions (#9978) cost more synchronous
 publication than it saved. Cutting what each render does inside the panel

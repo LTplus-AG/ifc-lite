@@ -23,7 +23,6 @@ import { StructuralDiagnostics } from './schema-converter-structural-diagnostics
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
 import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
-import { stepRecordHead } from './step-record-frame.js';
 import { breaksUserDefinedRule, userDefinedRule } from './schema-converter-userdefined.js';
 import { resolveMissingEnumMember, type EnumPolicyAttribute } from './schema-enum-policy.js';
 
@@ -72,21 +71,14 @@ export class EnumReconciliation {
   private readonly losses = new Map<Loss, Map<string, number>>();
   /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */
   private readonly unlabelled = new Map<string, number>();
-  /** `userDefinedRule` per target schema and type, resolved once. */
-  private readonly rules = new Map<SchemaVersionWithRegistry, Map<string, readonly [number, number] | undefined>>();
 
   /** Reconcile `line`, already converted to `toSchema`, then report a broken USERDEFINED rule (#10780). */
   apply(line: string, toSchema: SchemaVersionWithRegistry): string {
     const out = this.reconcile(line, toSchema);
-    // The head names the type; only a type with the rule is split.
-    const head = stepRecordHead(out);
-    const type = head ? out.slice(head.typeStart, head.typeEnd).toUpperCase() : '';
-    const rules = this.rules.get(toSchema) ?? new Map<string, readonly [number, number] | undefined>();
-    this.rules.set(toSchema, rules);
-    if (!rules.has(type)) rules.set(type, userDefinedRule(toSchema, type));
-    const rule = rules.get(type);
-    const slots = rule ? readStepSlots(out)?.slots : undefined;
-    if (rule && slots && breaksUserDefinedRule(slots, rule)) this.unlabelled.set(type, (this.unlabelled.get(type) ?? 0) + 1);
+    // Only a record that says USERDEFINED can break the rule; the rest stop here.
+    const record = /\.USERDEFINED\./i.test(out) ? readStepSlots(out) : null;
+    const rule = record ? userDefinedRule(toSchema, record.type) : undefined;
+    if (record && rule && breaksUserDefinedRule(record.slots, rule)) this.unlabelled.set(record.type, (this.unlabelled.get(record.type) ?? 0) + 1);
     return out;
   }
 

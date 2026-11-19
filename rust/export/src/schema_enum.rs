@@ -42,17 +42,12 @@ impl Loss {
     }
 }
 
-/// `schema_userdefined::rule` by entity type, for one target schema.
-type RuleCache = rustc_hash::FxHashMap<Box<str>, Option<(usize, usize)>>;
-
 /// Enum reconciliation for one export: rewrites, and counts what it lost.
 #[derive(Default)]
 pub(crate) struct EnumReconciliation {
     losses: BTreeMap<Loss, BTreeMap<String, usize>>,
     /// Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780).
     unlabelled: BTreeMap<String, usize>,
-    /// `schema_userdefined::rule` per target schema and type, resolved once.
-    rules: [RuleCache; 3],
 }
 
 impl EnumReconciliation {
@@ -77,15 +72,11 @@ impl EnumReconciliation {
     /// Count `line` when it says `.USERDEFINED.` without the label its type's
     /// rule requires in `to` (#10780). Nothing is written: no label is invented.
     fn check_user_defined(&mut self, line: &str, to: &str) {
-        let slot = match to { "IFC2X3" => 0, "IFC4" => 1, "IFC4X3" => 2, _ => return };
-        let Some(head) = crate::step_record_frame::record_head(line) else { return };
-        let ty = head.type_name(line);
-        let rule = match self.rules[slot].get(ty) {
-            Some(rule) => *rule,
-            None => *self.rules[slot].entry(ty.into()).or_insert_with(|| crate::schema_userdefined::rule(to, &ty.to_ascii_uppercase())),
-        };
-        if rule.is_some_and(|rule| crate::schema_userdefined::line_breaks(line, rule)) {
-            *self.unlabelled.entry(ty.to_ascii_uppercase()).or_insert(0) += 1;
+        // Only a record that says USERDEFINED can break the rule; the rest stop here.
+        if !line.as_bytes().windows(13).any(|w| w.eq_ignore_ascii_case(b".USERDEFINED.")) { return; }
+        let Some((ty, args)) = crate::step_log::read_slots(line) else { return };
+        if crate::schema_userdefined::rule(to, &ty).is_some_and(|rule| crate::schema_userdefined::breaks(&args, rule)) {
+            *self.unlabelled.entry(ty).or_insert(0) += 1;
         }
     }
 

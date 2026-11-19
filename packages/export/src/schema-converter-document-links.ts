@@ -56,14 +56,15 @@ export class DocumentLinks {
     if (up) {
       for (const { id: doc, link: listed } of holders) {
         const members = listItems(listed) ?? [];
+        const tag = `#${doc}`;
         let whole = members.length > 0;
         for (const member of members) {
           const ref = slotRef(member);
           const first = ref === null ? undefined : this.fill.get(ref);
           if (ref === null || !targets.has(ref)) whole = false;
-          else if (first === undefined) this.fill.set(ref, `#${doc}`);
+          else if (first === undefined) this.fill.set(ref, tag);
           // A repeat inside one list is not a second document.
-          else if (first !== `#${doc}`) { this.listedAgain++; whole = false; }
+          else if (first !== tag) { this.listedAgain++; whole = false; }
         }
         if (whole) this.restored.set(doc, link);
       }

@@ -62,4 +62,3 @@ fn a_subset_export_arms_nothing_10846() {
     assert_eq!(record(&out, "#6="), "#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,$);");
     assert_eq!(dropped, 1);
 }
-

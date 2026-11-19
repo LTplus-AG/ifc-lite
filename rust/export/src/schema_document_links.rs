@@ -67,12 +67,12 @@ impl DocumentLinks {
         if up {
             for (doc, listed) in holders {
                 let Some(listed) = list_items(&listed) else { continue };
-                let mut whole = !listed.is_empty();
+                let (tag, mut whole) = (format!("#{doc}"), !listed.is_empty());
                 for reference in listed.iter().map(|m| slot_ref(m)) {
                     match reference.filter(|r| targets.contains(r)).map(|r| links.fill.entry(r)) {
-                        Some(Entry::Vacant(e)) => drop(e.insert(format!("#{doc}"))),
+                        Some(Entry::Vacant(e)) => drop(e.insert(tag.clone())),
                         // A repeat inside one list is not a second document.
-                        Some(Entry::Occupied(e)) if *e.get() != format!("#{doc}") => { links.listed_again += 1; whole = false; }
+                        Some(Entry::Occupied(e)) if *e.get() != tag => { links.listed_again += 1; whole = false; }
                         Some(Entry::Occupied(_)) => {}
                         None => whole = false,
                     }

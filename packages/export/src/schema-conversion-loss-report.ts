@@ -299,7 +299,7 @@ export function analyzeConversionLoss(
     // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost.
     // Only IfcStructural* records carry anything, and reading them needs the source bytes.
     // #10846: nor is a document link the export moves to the other record.
-    const carrying = (type: string, info: EntityConversionInfo) => /^IFC(STRUCTURAL|DOCUMENT)/.test(type) && info.droppedAttributes.length > 0;
+    const carrying = (type: string, info: EntityConversionInfo) => /^IFC(STRUCTURAL|DOCUMENT(INFORMATION|REFERENCE)$)/.test(type) && info.droppedAttributes.length > 0;
     const { source } = store;
     const round = source
       ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema,
@@ -307,7 +307,12 @@ export function analyzeConversionLoss(
       : NO_ROUND_TRIP;
     const records = source ? new SourceRecords({ entityIndex: store.entityIndex, source }) : undefined;
     const links = new DocumentLinks();
-    if (records) links.fromSource(records, fromSchema, toSchema);
+    try {
+      if (records) links.fromSource(records, fromSchema, toSchema);
+    } catch (error) {
+      // As for the carriers: the schema-only preview stands if the prepass fails.
+      console.warn('[analyzeConversionLoss] Could not evaluate document links', error);
+    }
     const { stranded } = round;
     const restored = new Map([...round.restored, ...links.restored]);
     for (const [sourceType, expressIds, info] of typed) {

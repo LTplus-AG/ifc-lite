@@ -6,7 +6,7 @@
  * Sibling-extracted from source-text-assertion-detect.mjs to keep that file
  * under its module-size budget; imported there and nowhere else.
  *
- * TRUE when `callee` is a method of an imported `assert` or `path`: `assert.ok`,
+ * TRUE when `callee` calls an imported `assert` or `path` binding: `assert`, `assert.ok`,
  * `assert.strict.equal`, `path.posix.join`. That function is defined in Node,
  * so the call lands in none of this file's parameters. Resolving it by method
  * name reached any local `ok`, `equal` or `match` instead, and the flat taint
@@ -101,7 +101,7 @@ function importedNames(decl) {
 
 export function callsImportedModule(callee) {
   // Down the chain to its root, as `isTrustedUse` walks up it: `assert.strict.equal` and `path.posix.join` too.
-  const root = ts.isPropertyAccessExpression(callee) && chainRoot(callee.expression);
+  const root = chainRoot(callee);
   if (!root) return false;
   const sourceFile = callee.getSourceFile();
   if (!receiversByFile.has(sourceFile)) receiversByFile.set(sourceFile, importReceivers(sourceFile));

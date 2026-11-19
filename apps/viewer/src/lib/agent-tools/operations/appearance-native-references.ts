@@ -51,8 +51,9 @@ function release(value: Candidate) {
 }
 /** Placed candidates hold no preview resources; only live previews count toward the cap. */
 function assertPreviewCapacity(c: ViewerOperationContext) {
-  for (const [token, row] of candidates(c)) if (row.placed) candidates(c).delete(token);
-  if (candidates(c).size >= 32) throw new Error('Reference preview capacity reached.');
+  let live = 0;
+  for (const row of candidates(c).values()) if (!row.placed) live++;
+  if (live >= 32) throw new Error('Reference preview capacity reached.');
 }
 function candidates(c: ViewerOperationContext) {
   let map = hosts.get(c.host);
@@ -144,6 +145,7 @@ export const appearanceReferenceOperations = [
         renderer = getGlobalRenderer();
       if (!source || JSON.stringify(source) !== i.expected_source || !renderer || (i.edit_reference_id && !editing))
         throw new Error('Reference source/edit identity or renderer changed.');
+      for (const [token, row] of candidates(c)) if (row.placed) candidates(c).delete(token);
       assertPreviewCapacity(c);
       const owner = { kind: 'draft' as const, id: crypto.randomUUID() },
         draftId = `agent-reference:${crypto.randomUUID()}`;

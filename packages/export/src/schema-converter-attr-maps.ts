@@ -21,6 +21,8 @@
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { list } from './schema-ifc2x3-records.js';
 import { stepRecordHead } from './step-record-frame.js';
+import { skipStepComment } from './step-comment-skip.js';
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 
 /** One reviewed IFC2X3 <-> IFC4 map. A same-named attribute in both lists is
  *  carried unless listed in `retyped` or, on a downgrade, `upOnly`. */
@@ -136,22 +138,22 @@ function firstMember(value: string): string {
   return members.find(holdsValue)?.trim() ?? '$';
 }
 
-/** `value` without its `/* ... *\/` comments (none is read inside a string),
- *  trimmed. An unclosed comment runs to the end. Twin of Rust `without_comments`. */
+/** `value` without its `/* ... *\/` comments, trimmed. Literals and comments
+ *  end by the shared rules; an unclosed one runs to the end. Twin of Rust
+ *  `without_comments`. */
 function withoutComments(value: string): string {
   let out = '';
-  let inString = false;
-  for (let i = 0; i < value.length; i++) {
-    if (!inString && value.startsWith('/*', i)) {
-      const end = value.indexOf('*/', i + 2);
-      if (end === -1) break;
-      i = end + 1;
-      continue;
-    }
-    if (value[i] === "'") inString = !inString;
-    out += value[i];
+  let kept = 0;
+  for (let i = 0; i < value.length;) {
+    if (value[i] === "'") {
+      const end = stepStringLiteralEnd(value, i);
+      i = end === -1 ? value.length : end;
+    } else if (value.startsWith('/*', i)) {
+      out += value.slice(kept, i);
+      i = kept = skipStepComment(value, i);
+    } else i++;
   }
-  return out.trim();
+  return (out + value.slice(kept)).trim();
 }
 
 /** `values` (in the source layout `src`) written in the target layout `tgt`.
@@ -167,10 +169,11 @@ export function remapByAttrMap(
     const from = sourceOf(map, up, name, src);
     const i = from ? src.indexOf(from.name) : -1;
     const value = i >= 0 && i < values.length ? values[i] : '$';
-    if (!from || from.how === 'value') return from && holdsValue(value) ? value : '$';
+    if (!from) return '$';
     // A SET is rebuilt, so comments around it or its members go.
-    const bare = withoutComments(value);
+    const bare = from.how === 'value' ? value : withoutComments(value);
     if (!holdsValue(bare)) return '$';
+    if (from.how === 'value') return bare;
     if (from.how === 'unwrap') return firstMember(bare);
     return bare.startsWith('(') ? bare : `(${bare})`;
   }).join(',');

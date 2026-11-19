@@ -157,20 +157,21 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
             };
             used[i] = true;
             let value = values[i].as_str();
-            if let How::Value = how {
-                return if holds_value(value) { value.to_owned() } else { "$".to_owned() };
-            }
             // A SET is rebuilt, so comments around it or its members go.
-            let bare = without_comments(value);
+            let bare = if let How::Value = how { value.to_owned() } else { without_comments(value) };
             if !holds_value(&bare) {
                 return "$".to_owned();
             }
-            if let How::Unwrap = how {
-                let (first, extra) = first_member(&bare);
-                *lost += extra;
-                return first;
+            match how {
+                How::Value => bare,
+                How::Unwrap => {
+                    let (first, extra) = first_member(&bare);
+                    *lost += extra;
+                    first
+                }
+                How::Wrap if bare.starts_with('(') => bare,
+                How::Wrap => format!("({bare})"),
             }
-            if bare.starts_with('(') { bare } else { format!("({bare})") }
         })
         .collect();
     *lost += values.iter().zip(&used).filter(|(v, used)| !**used && holds_value(v)).count();
@@ -188,21 +189,24 @@ fn first_member(value: &str) -> (String, usize) {
     }
 }
 
-/// `value` without its `/* ... */` comments (none is read inside a string),
-/// trimmed. An unclosed comment runs to the end.
+/// `value` without its `/* ... */` comments, trimmed. Literals and comments
+/// end by the shared rules (`ref_spans`' scanner: a `''` or `\S\'` stays in
+/// the literal); an unclosed one runs to the end.
 fn without_comments(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    let mut rest = value;
-    let mut in_string = false;
-    while let Some(c) = rest.chars().next() {
-        if !in_string && rest.starts_with("/*") {
-            rest = rest[2..].find("*/").map_or("", |end| &rest[end + 4..]);
-            continue;
+    let bytes = value.as_bytes();
+    let (mut out, mut kept, mut i) = (String::with_capacity(value.len()), 0, 0);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' => i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len()),
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                out.push_str(&value[kept..i]);
+                i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
+                kept = i;
+            }
+            _ => i += 1,
         }
-        in_string ^= c == '\'';
-        out.push(c);
-        rest = &rest[c.len_utf8()..];
     }
+    out.push_str(&value[kept..]);
     out.trim().to_owned()
 }
 

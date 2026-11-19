@@ -25,6 +25,9 @@ describe('retyped slots (#10778)', () => {
     expect(convertStepLine('#5=IFCMONETARYUNIT(.EUR.);', 'IFC2X3', 'IFC4X3')).toBe("#5=IFCMONETARYUNIT('EUR');");
     expect(convertStepLine("#5=IFCMONETARYUNIT('EUR');", 'IFC4', 'IFC2X3')).toBe('#5=IFCMONETARYUNIT(.EUR.);');
     expect(convertStepLine("#5=IFCMONETARYUNIT('chf');", 'IFC4X3', 'IFC2X3')).toBe('#5=IFCMONETARYUNIT(.CHF.);');
+    expect(convertStepLine("#5=IFCMONETARYUNIT(' gbp ');", 'IFC4', 'IFC2X3')).toBe('#5=IFCMONETARYUNIT(.GBP.);');
+    expect(convertStepLine('#5=IFCMONETARYUNIT(.USD.);', 'IFC2X3', 'IFC5')).toBe("#5=IFCMONETARYUNIT('USD');");
+    expect(convertStepLine("#5=IFCMONETARYUNIT('USD');", 'IFC5', 'IFC2X3')).toBe('#5=IFCMONETARYUNIT(.USD.);');
   });
 
   it('writes $ for a label IFC2X3 has no member for, which the slot fill reports', () => {

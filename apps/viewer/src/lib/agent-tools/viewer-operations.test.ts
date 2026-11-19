@@ -126,7 +126,7 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal(useViewerStore.getState().measurements.length, 1);
     assert.equal((await execute('measurements.distance', { ...input, end: [1, 1, 1] }, { idempotency_key: 'distance-1' })).isError, true);
   });
-  it('exports a real changed IFC artifact without downloading or discarding pending edits', async () => {
+  it('exports a real changed IFC artifact without downloading or discarding pending edits (#10796)', async () => {
     const view = new MutablePropertyView(null, 'A');
     view.setAttribute(1, 'Name', 'AGENT-EXPORTED-WALL');
     useViewerStore.setState({ mutationViews: new Map([['A', view]]), mutationVersion: 1 });
@@ -136,8 +136,11 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const chunk = data<{ data: string; next_offset: number | null }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: result.result.artifact.artifact_id, offset: 0, length: 65536 }));
     assert.equal(chunk.next_offset, null);
     assert.match(Buffer.from(chunk.data, 'base64').toString('utf8'), /AGENT-EXPORTED-WALL/);
-    assert.equal(view.getMutations().length, 1, 'creating an export must not discard its pending edits');
-    assert.equal((await execute('model.unload')).isError, true, 'unexported edits still require native discard confirmation');
+    const pending = useViewerStore.getState().getMutationView('A')?.getAttributeMutationsForEntity(1);
+    assert.equal(pending?.find(edit => edit.name === 'Name')?.value, 'AGENT-EXPORTED-WALL');
+    const unload = await execute('model.unload');
+    assert.equal(unload.isError, true);
+    assert.match(unload.text, /unexported changes/);
     assert.ok(useViewerStore.getState().models.has('A'));
   });
   it('validates every basket reference before changing native basket isolation', async () => {

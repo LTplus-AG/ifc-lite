@@ -565,6 +565,12 @@ test('split artifacts stay namespaced, and split Rust caches restore the single 
   assert.ok(audit(monoMoved).some((f) => f.includes("split job na-wasm must restore the single job's Rust cache")));
 });
 
+test('a WASM handover that names its bundles instead of taking every one is reported', (context) => {
+  const root = copyTree(context);
+  inJob(root, 'na-wasm', '          path: packages/wasm/pkg*\n', '          path: |\n            packages/wasm/pkg\n            packages/wasm/pkg-retained\n');
+  assert.ok(audit(root).some((f) => f.includes('na-wasm must hand over every bundle build-wasm.sh writes')));
+});
+
 test('the split lane map must cover exactly the single job\'s judged lanes', (context) => {
   const root = copyTree(context);
   inJob(root, 'native-adapter', 'for lane in HALFSPACE_GENERATED ', 'for lane in NEW_LANE HALFSPACE_GENERATED ');

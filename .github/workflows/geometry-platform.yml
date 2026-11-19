@@ -1039,14 +1039,14 @@ jobs:
         id: package-boundary
         continue-on-error: true
         run: node --test packages/wasm/test/retained-browser.test.mjs
-      # pkg-retained/.gitignore and .npmignore are listed in the staged engine's manifest.
-      - name: Hand both WASM packages over
+      # Every bundle build-wasm.sh wrote (pkg, pkg-retained, pkg-diff, pkg-rhino, ...):
+      # the viewer build imports pkg-diff too. pkg-retained/.gitignore and .npmignore
+      # are listed in the staged engine's manifest.
+      - name: Hand every WASM package over
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: na-split-wasm-pkg
-          path: |
-            packages/wasm/pkg
-            packages/wasm/pkg-retained
+          path: packages/wasm/pkg*
           include-hidden-files: true
           if-no-files-found: error
           overwrite: true
@@ -1132,7 +1132,8 @@ jobs:
             echo "::error::wasm-pack is on this runner: build-wasm.sh would rebuild instead of using na-wasm's packages"
             exit 1
           fi
-          for f in packages/wasm/pkg/ifc-lite_bg.wasm packages/wasm/pkg/ifc-lite.js packages/wasm/pkg-retained/ifc-lite_bg.wasm packages/wasm/pkg-retained/ifc-lite.js; do
+          for f in packages/wasm/pkg/ifc-lite_bg.wasm packages/wasm/pkg/ifc-lite.js packages/wasm/pkg-retained/ifc-lite_bg.wasm packages/wasm/pkg-retained/ifc-lite.js \
+            packages/wasm/pkg-diff/ifc-lite-diff.js packages/wasm/pkg-rhino/ifc-lite-rhino.js; do
             test -s "$f"
           done
       - name: Resolve Playwright version

@@ -173,6 +173,9 @@ export function splitProblems(text) {
       }
     }
   }
+  // A named list dropped pkg-diff, which the viewer build imports (the first dispatched shadow run).
+  const wasmUpload = steps(jobBlock(text, 'na-wasm')).find((t) => has(t, 'name: na-split-wasm-pkg'));
+  if (!wasmUpload || !has(wasmUpload, 'path: packages/wasm/pkg*') || !has(wasmUpload, 'include-hidden-files: true')) out.push(`${WORKFLOW}: na-wasm must hand over every bundle build-wasm.sh writes (path: packages/wasm/pkg*, include-hidden-files: true) as na-split-wasm-pkg`);
   if (!jobBlock(text, SPLIT_JUDGE).includes('node scripts/native-adapter-split.mjs judge')) out.push(`${WORKFLOW}: ${SPLIT_JUDGE} must run scripts/native-adapter-split.mjs judge (success only if every lane job succeeded, skipped included)`);
   if (!jobBlock(text, SPLIT_COMPARE).includes('node scripts/native-adapter-split.mjs compare')) out.push(`${WORKFLOW}: ${SPLIT_COMPARE} must run scripts/native-adapter-split.mjs compare`);
   // The mapping must name exactly the monolith's judged lanes, or the comparison silently drops one.

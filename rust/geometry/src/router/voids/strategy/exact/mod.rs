@@ -17,6 +17,8 @@ mod batch_plan;
 mod fallback_635;
 pub(in crate::router::voids) mod prepare;
 mod sequential;
+#[cfg(feature = "csg_manifold_gate")]
+mod shell_retry;
 
 /// One host's exact-tail bookkeeping, indexed like the prepared openings.
 pub(in crate::router::voids) struct ExactState {
@@ -63,6 +65,8 @@ impl ExactState {
 pub(in crate::router::voids) struct CutContext<'a> {
     pub(in crate::router::voids) execution: &'a Execution,
     pub(in crate::router::voids) clipper: &'a ClippingProcessor,
+    #[cfg(feature = "csg_manifold_gate")]
+    pub(in crate::router::voids) unextended_rectangles: &'a [[Point3<f64>; 2]],
     /// The host's bounds before the exact passes (the extension reference).
     pub(in crate::router::voids) wall_min: Point3<f64>,
     pub(in crate::router::voids) wall_max: Point3<f64>,
@@ -99,7 +103,7 @@ impl<'a> ExactTail<'a> {
     /// sequential cut and, on a kernel miss, its #635 fallback. Changing it
     /// is a geometry and diagnostics change (`mesh-determinism.md`).
     pub(in crate::router::voids) fn run(mut self, context: CutContext<'_>) -> (Mesh, bool) {
-        let CutContext { execution, clipper, wall_min, wall_max } = context;
+        let CutContext { execution, clipper, wall_min, wall_max, .. } = context;
         let (host, all_openings, state) = (&mut self.host, &self.all_openings, &mut self.state);
         // COAXIAL FOOTPRINT-UNION for OVERLAPPING clusters (issue #129, flag
         // `IFC_LITE_VOID_UNION`). Overlapping cutters can't join the disjoint batch
@@ -120,7 +124,23 @@ impl<'a> ExactTail<'a> {
             match state.cut_one(host, opening, context) {
                 Flow::Next => {}
                 Flow::Stop => break,
-                Flow::Fallback(attempt) => state.fallback_635(host, context, attempt),
+                Flow::Fallback(attempt) => {
+                    #[cfg(feature = "csg_manifold_gate")]
+                    if attempt.gate_rejected {
+                        // Synthesized cutters extend through the host. A
+                        // recovery must preserve the recess's original depth.
+                        let unextended = context.unextended_rectangles.get(opening_idx)
+                            .map(|&[min, max]| crate::GeometryRouter::make_box_mesh(min, max));
+                        let cutter = unextended.as_ref().unwrap_or(attempt.opening_mesh);
+                        if let Some(retry) = shell_retry::try_cut(host, cutter) {
+                            clipper.truncate_failures(attempt.failures_before);
+                            *host = retry;
+                            state.host_mutated = true;
+                            continue;
+                        }
+                    }
+                    state.fallback_635(host, context, attempt);
+                }
             }
         }
         (self.host, self.state.host_mutated)

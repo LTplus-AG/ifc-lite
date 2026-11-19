@@ -13,15 +13,17 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { cleanup, render } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { useHierarchyTree } from './useHierarchyTree';
 import type { TreeNode } from './types';
 
-const INITIAL_HIERARCHY_MODE = useViewerStore.getState().hierarchyMode;
+const INITIAL_STATE = useViewerStore.getState();
 const MODEL = 'row-reuse';
 const STOREY = 40;
 const FIXTURE = `ISO-10303-21;
@@ -50,16 +52,34 @@ END-ISO-10303-21;
 
 afterEach(() => {
   cleanup();
-  useViewerStore.setState({ hierarchyMode: INITIAL_HIERARCHY_MODE });
+  useViewerStore.setState(INITIAL_STATE, true);
 });
 
-async function mountTree(): Promise<{ tree: () => ReturnType<typeof useHierarchyTree>; view: MutablePropertyView }> {
+const meshFor = (globalId: number, x: number) => ({
+  expressId: globalId, color: [1, 1, 1, 1], indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9),
+  positions: new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),
+}) as unknown as MeshData;
+
+const geometryOf = (meshes: MeshData[]) => ({
+  meshes, totalTriangles: meshes.length, totalVertices: meshes.length * 3,
+  coordinateInfo: {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
+    hasLargeCoordinates: false,
+  },
+}) as unknown as GeometryResult;
+
+async function mountTree(): Promise<{ tree: () => ReturnType<typeof useHierarchyTree>; view: MutablePropertyView; globalOf: (id: number) => number }> {
   const bytes = new TextEncoder().encode(FIXTURE);
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
-  const model = { ...fixtureModel(MODEL), ifcDataStore: dataStore } as FederatedModel;
+  const base = { ...fixtureModel(MODEL), ifcDataStore: dataStore } as FederatedModel;
+  const globalOf = (id: number) => toGlobalIdFromModels(new Map([[MODEL, base]]), MODEL, id);
+  const geometry = geometryOf([meshFor(globalOf(50), 0), meshFor(globalOf(51), 2)]);
+  const model = { ...base, geometryResult: geometry } as FederatedModel;
   const view = new MutablePropertyView(dataStore.properties || null, MODEL);
   useViewerStore.setState({
-    ...fixtureModels(model), hierarchyMode: 'spatial', loading: false, editEnabled: true,
+    ...fixtureModels(model), geometryResult: geometry, hierarchyMode: 'spatial', loading: false, editEnabled: true,
     mutationViews: new Map([[MODEL, view]]), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(),
     geometryContentVersion: 0, mutationVersion: 0,
   });
@@ -69,7 +89,7 @@ async function mountTree(): Promise<{ tree: () => ReturnType<typeof useHierarchy
     return null;
   }
   render(<Probe />);
-  return { tree: () => tree, view };
+  return { tree: () => tree, view, globalOf };
 }
 
 const storeyRow = (rows: readonly TreeNode[]): TreeNode => {
@@ -80,13 +100,16 @@ const storeyRow = (rows: readonly TreeNode[]): TreeNode => {
 
 describe('hierarchy rows across edits (#10535)', () => {
   it('an edit the tree does not show keeps every row, and an edit it shows replaces the storey row', async () => {
-    const { tree } = await mountTree();
+    const { tree, globalOf } = await mountTree();
     const before = tree().treeData;
     const storey = storeyRow(before);
 
-    // A placement-only edit publishes a new mutationVersion and rebuilds the tree from the same data.
+    // A placement edit publishes a new mutationVersion, then its re-mesh swaps the column's mesh:
+    // the tree rebuilds from the same data both times.
     act(() => useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 })));
     assert.equal(tree().treeData, before, 'an unchanged rebuild returns the same rows');
+    act(() => useViewerStore.getState().replaceEntityMeshes(MODEL, new Map([[globalOf(50), [meshFor(globalOf(50), 0.5)]]])));
+    assert.equal(tree().treeData, before, 'a mesh swap of an existing element keeps the rows');
 
     act(() => {
       const added = useViewerStore.getState().addColumn(MODEL, STOREY, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
@@ -102,7 +125,8 @@ describe('hierarchy rows across edits (#10535)', () => {
     const storey = storeyRow(tree().treeData);
     const members = tree().getNodeElements(storey);
     assert.equal(members.length, 2, 'the storey holds both columns');
-    assert.equal(tree().getNodeElements(storey), members, 'the panel\'s repeated asks share one resolution');
+    act(() => tree().toggleExpand(storey.id));
+    assert.equal(tree().getNodeElements(storey), members, 'another panel render shares the same resolution');
 
     // Skip-history and remote writes advance the view revision without a viewer mutationVersion.
     act(() => { view.setProperty(50, 'Pset_Test', 'Note', 'x', undefined, undefined, true); });

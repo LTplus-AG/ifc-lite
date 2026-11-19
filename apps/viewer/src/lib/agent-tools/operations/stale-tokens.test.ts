@@ -558,6 +558,7 @@ describe('Room review admission probe (#10792)', () => {
       assert.equal(review.sourcesCurrent(), false);
     } finally { review.dispose(); }
     // Released meshes share one empty positions array but keep distinct indices; that alone must not read as a change.
+    // (This builds only that keying; the in-place release path is not driven here.)
     const meshes = useViewerStore.getState().models.get(ROOM_MODEL)!.geometryResult!.meshes;
     assert.ok(new Set(meshes.map(mesh => mesh.indices)).size >= 2, 'several meshes with distinct indices share the released positions');
     const empty = new Float32Array(0);

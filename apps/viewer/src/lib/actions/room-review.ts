@@ -98,6 +98,7 @@ function sourceIdentitiesCurrent(captured: ReturnType<typeof sources>, state: Vi
     return !!model && model.ifcDataStore === row.store && model.ifcDataStore?.source === row.source && model.sourceContentHash === row.hash;
   });
 }
+const isWeakKey = (value: unknown): value is object => typeof value === 'object' && value !== null;
 function sourcesCurrent(captured: ReturnType<typeof sources>, state: ViewerState): boolean {
   return sourceIdentitiesCurrent(captured, state) && captured.every(row => state.mutationViews.get(row.id) === row.view
     && state.mutationViews.get(row.id)?.getMutationRevision() === row.revision);
@@ -146,21 +147,31 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     const captured = sources(current);
     // What the geometry lease read, cheaply and without re-capturing it: the target model's frame and mesh buffers by
     // identity (geometryContentVersion covers in-place vertex edits). A recolour copies meshes with the same buffers;
-    // a remesh or re-frame replaces one. This is stricter than the lease, which compares bytes and only the storey's
-    // room meshes, so any remesh drops the review early; it can then be prepared again. Positions are held weakly;
-    // released meshes share one empty positions array, so each key holds every indices array captured with it.
+    // a remesh or re-frame replaces one. On buffer identity this is stricter than the lease, which compares bytes over
+    // the storey's room meshes only, so any remesh drops the review early (it can be prepared again). It does not check
+    // mesh order, duplication, origin, id or type, which the lease does, so those can keep a review admitted until
+    // validate() refuses it. Positions are held weakly; released meshes share one empty positions array, so each key
+    // holds every indices array captured with it. A packed flat batch can leave positions undefined, so those meshes
+    // are only counted.
     const geometry = current.models.get(proposal.modelId)?.geometryResult;
     const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1;
     const buffers = new WeakMap<object, Set<unknown>>();
+    let unbuffered = 0;
     for (const mesh of geometry?.meshes ?? []) {
+      if (!isWeakKey(mesh.positions)) { unbuffered++; continue; }
       const indices = buffers.get(mesh.positions) ?? new Set();
       indices.add(mesh.indices); buffers.set(mesh.positions, indices);
     }
     const content = current.geometryContentVersion;
     const geometryCurrent = (state: ViewerState) => {
       const now = state.models.get(proposal.modelId)?.geometryResult;
-      return !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length === meshCount
-        && now.meshes.every(mesh => buffers.get(mesh.positions)?.has(mesh.indices) === true);
+      if (!now || now.coordinateInfo !== frame || state.geometryContentVersion !== content || now.meshes.length !== meshCount) return false;
+      let missing = 0;
+      for (const mesh of now.meshes) {
+        if (!isWeakKey(mesh.positions)) missing++;
+        else if (buffers.get(mesh.positions)?.has(mesh.indices) !== true) return false;
+      }
+      return missing === unbuffered;
     };
     const validate = () => {
       signal.throwIfAborted();

@@ -69,7 +69,8 @@ const LENGTH_MEASURE_TYPES = new Set([
 /**
  * Entity types whose numeric content must NEVER be rescaled: unit definitions
  * (the numbers *are* the unit) and georeferencing (offsets live in the CRS unit).
- * `IFCMAPCONVERSION` is matched by prefix to also catch schema variants.
+ * `IFCMAPCONVERSION` is matched by prefix to also catch schema variants; `IFCRIGIDOPERATION`'s coordinates are
+ * in the CRS unit too.
  */
 const RESCALE_EXCLUDED_TYPES = new Set([
   'IFCUNITASSIGNMENT', 'IFCSIUNIT', 'IFCCONVERSIONBASEDUNIT', 'IFCCONTEXTDEPENDENTUNIT',
@@ -78,7 +79,7 @@ const RESCALE_EXCLUDED_TYPES = new Set([
 ]);
 
 function isRescaleExcluded(typeUpper: string): boolean {
-  return RESCALE_EXCLUDED_TYPES.has(typeUpper) || typeUpper.startsWith('IFCMAPCONVERSION');
+  return RESCALE_EXCLUDED_TYPES.has(typeUpper) || typeUpper.startsWith('IFCMAPCONVERSION') || typeUpper === 'IFCRIGIDOPERATION';
 }
 
 /**

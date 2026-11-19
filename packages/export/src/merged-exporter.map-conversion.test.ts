@@ -56,7 +56,7 @@ async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IF
   const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation })).content);
   const contexts = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
   const sources = [...content.matchAll(/=IFC(?:MAPCONVERSION|RIGIDOPERATION)\((#\d+),/g)].map(match => match[1]);
-  return { contexts, sources };
+  return { content, contexts, sources };
 }
 
 /** Every georeference sits on its own context, each a context of the file. */
@@ -101,6 +101,9 @@ describe('merged STEP export and map conversions (#10798)', () => {
 #21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(${eastings}.),IFCLENGTHMEASURE(1200000.),500.);` });
     expectApart(await merge([rigid(2600000), rigid(2700000)], 'IFC4X3'), 2);
     expect((await merge([rigid(2600000), rigid(2600000)], 'IFC4X3')).contexts).toHaveLength(1);
+    // Its coordinates are in the CRS unit, so normalizing a millimetre project leaves them alone.
+    const { content } = await merge([rigid(2600000), { ...rigid(2600000), projectUnit: '#3' }], 'IFC4X3', 'normalize');
+    expect(content.match(/IFCRIGIDOPERATION\(#\d+,#\d+,IFCLENGTHMEASURE\(2600000\.\)/g)).toHaveLength(2);
   });
 
   it('keeps apart a georeference it cannot compare', async () => {

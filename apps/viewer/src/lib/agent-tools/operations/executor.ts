@@ -137,8 +137,10 @@ export async function executeOperation(
   const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, artifacts };
   check();
   if (!args.background) {
+    let forget = () => {};
     const run = async () => {
-      check();
+      // Nothing native has run yet, so a keyed retry of this failure may run again (#10669).
+      try { await entry.load?.(); check(); } catch (error) { forget(); throw error; }
       try {
         const result = await entry.execute(input, operationContext);
         if (!committed) check();
@@ -153,13 +155,15 @@ export async function executeOperation(
       }
     };
     if (typeof args.idempotency_key !== 'string') return run();
-    let prior = applied.get(host);
-    if (!prior) { prior = new Map(); applied.set(host, prior); }
-    // Keep failed outcomes too: retrying a partially dispatched UI action must not duplicate it.
+    const prior = applied.get(host) ?? new Map<string, AppliedRequest>();
+    applied.set(host, prior);
+    // Keep failed outcomes once the native handler ran: retrying a partially dispatched UI action must not duplicate it.
     if (prior.size >= 100) invalid('Host idempotency capacity reached (100 requests). Reconnect before creating further keyed requests.');
-    const result = run();
-    prior.set(args.idempotency_key, { signature, store: model?.store, result });
-    return result;
+    const key = args.idempotency_key, request: AppliedRequest = { signature, store: model?.store, result: run() };
+    // run() reaches its first catch only after awaiting the load, so this is set by then.
+    forget = () => { if (prior.get(key) === request) prior.delete(key); };
+    prior.set(key, request);
+    return request.result;
   }
   const owned = jobs(host);
   for (const [id, job] of owned) if (owned.size >= MAX_JOBS && job.snapshot.state !== 'running') owned.delete(id);

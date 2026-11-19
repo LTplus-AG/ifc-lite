@@ -38,6 +38,8 @@ export interface Operation {
   validate(input: unknown): void;
   validateResult(result: unknown): void;
   execute(input: unknown, context: OperationExecutionContext): Promise<unknown>;
+  /** Loads the native implementation without running it. A failure here precedes every native effect. */
+  load?(): Promise<unknown>;
 }
 type Metadata = Omit<Operation, 'version' | 'inputSchema' | 'validate' | 'execute' | 'result' | 'validateResult' | 'needs'>;
 

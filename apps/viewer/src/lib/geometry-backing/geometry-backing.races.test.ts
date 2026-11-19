@@ -165,3 +165,18 @@ it('#10868 rejects non-integer instanced template references before acknowledgin
     }
   } finally { await registry.close(); }
 });
+
+it('#10868 an empty lease is fenced and cancellable like any other read', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  try {
+    const backing = await registry.begin('m');
+    await backing.writer.append([fullMesh(1, Uint32Array.from([0, 1, 2]))]);
+    await backing.writer.close();
+    const aborted = AbortSignal.abort(new Error('cancelled before any chunk'));
+    await assert.rejects(backing.reader.leaseChunks([], { signal: aborted }), /cancelled before any chunk/);
+    await registry.invalidate('m', 'mesh edit');
+    // An id the directory never listed must not read as "no geometry" on a dead generation.
+    await assert.rejects(backing.reader.leaseEntity(424242), StaleGeometryGenerationError);
+    await assert.rejects(backing.reader.leaseChunks([]), StaleGeometryGenerationError);
+  } finally { await registry.close(); }
+});

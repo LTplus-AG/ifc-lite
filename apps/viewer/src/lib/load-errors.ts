@@ -30,7 +30,7 @@ import { isFileNotFoundMessage } from './file-not-found-errors.js';
 import { isInvalidInputError } from './invalid-input-errors.js';
 import { isInvalidArchiveError } from './invalid-archive-errors.js';
 import { isWebglUnavailable } from './webgl-unavailable.js';
-import { isWasmSimdUnsupportedMessage } from './wasm-simd-support.js';
+import { isWasmSimdUnsupported } from './wasm-simd-support.js';
 import { isWorkerScriptSkewMessage } from '@ifc-lite/geometry';
 
 /** Stable, analytics-friendly classification of a load failure. */
@@ -318,7 +318,7 @@ export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKin
   // words those matchers key on ("allocation failed"). Safe to claim first —
   // every arm of it is anchored or structural (see ./webgl-unavailable.ts).
   if (isWebglUnavailable(err, message)) return 'webgl_unavailable';
-  if (isWasmSimdUnsupportedMessage(message)) return 'wasm_simd_unsupported'; // before the worker/OOM buckets
+  if (isWasmSimdUnsupported(err, message)) return 'wasm_simd_unsupported'; // before the worker/OOM buckets
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   // BEFORE the worker-crash bucket (#4886): "Geometry worker failed: worker
   // script failed to load" matched it, so a stale tab was told the model was

@@ -1114,6 +1114,7 @@ describe('WebAssembly SIMD unsupported (#10784)', () => {
     // File names are user-controlled; one with "simd" in it must not claim the benign kind.
     assert.equal(classifyLoadError(new Error('Failed to load "simd-bench.ifc": format not supported')), 'unknown');
     assert.equal(classifyLoadError(new Error('Geometry worker error: simd-test.ifc unsupported entity')), 'geometry_worker_crash');
+    assert.equal(classifyLoadError(new Error('Geometry worker error: "Wasm SIMD unsupported.ifc" crashed')), 'geometry_worker_crash');
   });
 
   it('tells the user what is missing instead of the raw compile text', () => {

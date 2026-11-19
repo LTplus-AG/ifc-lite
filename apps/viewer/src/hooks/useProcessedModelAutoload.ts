@@ -69,7 +69,7 @@ export function useProcessedModelAutoload(): void {
       const attempt = () => {
         markLoadIntent();
         // Replay-safe (a request, no user gesture): Retry on the unsupported card may re-run it.
-        if (!guardWebGpu(attempt, { replay: 'free', localEngine: false })) return;
+        if (!guardWebGpu(attempt, { replay: 'free' })) return;
         void loadFile(new File([], name), { kind: 'primary' }, { processedModel });
       };
       attempt();

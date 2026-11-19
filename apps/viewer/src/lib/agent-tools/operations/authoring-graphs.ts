@@ -18,7 +18,7 @@ const meta = (id: string, owner: string, description: string, write = false) => 
   effects: write ? ['model'] as const : ['read'] as const, capability: write ? 'commands-and-edits' as const : 'read' as const,
   implementation: 'native-store' as const, policy: write ? { model: 'native-reviewed' as const } : undefined, outputSchema: jsonOutput });
 interface Review { room?: import('@/lib/actions/room-review').RoomReview; preview: object; validate(): void; commit(): ModelChangeReceipt; dispose?(): void }
-interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt; persisting?: Promise<boolean>; persisted?: boolean }
+interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt; persisting?: Promise<boolean>; settled?: boolean }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) {
   let entries = hosts.get(c.host);
@@ -84,7 +84,7 @@ export const graphAuthoringOperations = [
     // A review of a closed or replaced model can never apply; dropping it releases its native handles.
     const admit = () => {
       const live = new Map(c.host.models().map(model => [model.id, model.store]));
-      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.persisted,
+      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !entry.settled,
         gone: entry => live.get(entry.modelId) !== entry.store, release: entry => entry.review?.dispose?.() });
     };
     admit();

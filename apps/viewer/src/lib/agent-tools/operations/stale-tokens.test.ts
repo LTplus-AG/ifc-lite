@@ -110,15 +110,28 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(writes, 1);
   });
 
-  it('#20: an applied candidate whose receipt write failed keeps its place until a replay saves it', async () => {
+  it('#20: a receipt write that threw keeps its candidate until a replay saves it', async () => {
     const token = await prepareRename();
     const put = modelChangeLibrary.put;
-    modelChangeLibrary.put = async () => false;
-    try { assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false); }
+    modelChangeLibrary.put = async () => { throw new Error('storage failed'); };
+    try { assert.equal((await invoke('authoring.apply', { token }, true)).isError, true); }
     finally { modelChangeLibrary.put = put; }
     for (let i = 0; i < 63; i++) await prepareRename(`Name ${i}`);
     assert.equal((await invoke('properties.prepare', { proposal_json: rename('One too many') })).isError, true, 'the unsaved receipt still holds a place');
     assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true);
+  });
+
+  it('#20: a receipt write that resolved false is the library\'s to retry: a replay does not write again, and the candidate frees its place', async () => {
+    const token = await prepareRename();
+    let writes = 0;
+    const put = modelChangeLibrary.put;
+    modelChangeLibrary.put = async () => { writes++; return false; };
+    try {
+      assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false);
+      assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false);
+    } finally { modelChangeLibrary.put = put; }
+    assert.equal(writes, 1);
+    for (let i = 0; i < 64; i++) await prepareRename(`Name ${i}`);
   });
 
   it('#20: replaying an applied graph token keeps its undone receipt too', async () => {

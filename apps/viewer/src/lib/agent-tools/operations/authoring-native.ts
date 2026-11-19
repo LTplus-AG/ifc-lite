@@ -21,7 +21,7 @@ const meta = (id: string, owner: string, description: string, write = false) => 
   outputSchema: write ? receiptOutput : previewOutput });
 interface Candidate {
   modelId: string; store: OperationContext['model']['store']; revision: number;
-  authoring?: ModelAuthoringPreview; properties?: ModelChangePreview; receipt?: ModelChangeReceipt; persisting?: Promise<boolean>; persisted?: boolean;
+  authoring?: ModelAuthoringPreview; properties?: ModelChangePreview; receipt?: ModelChangeReceipt; persisting?: Promise<boolean>; settled?: boolean;
 }
 const owned = new WeakMap<ToolHost, Map<string, Candidate>>();
 function candidates(c: OperationContext) {
@@ -33,7 +33,7 @@ function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store
   // model list also covers the single-model session, whose store is not in `models`.
   const live = new Map(c.host.models().map(model => [model.id, model.store]));
   const revision = useViewerStore.getState().mutationVersion;
-  admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.persisted,
+  admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.settled,
     gone: entry => live.get(entry.modelId) !== entry.store || (!entry.receipt && entry.revision !== revision) });
   const token = crypto.randomUUID();
   entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });

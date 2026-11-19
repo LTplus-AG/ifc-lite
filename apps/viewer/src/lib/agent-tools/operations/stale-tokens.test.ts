@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { refuseContentWrites } from '@/test/content-fixture';
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -21,6 +21,19 @@ import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 import { setSpecTextOp } from '@/lib/ids-studio/ops';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { model, parseStep, seed } from '@/test/agent-tools-fixture';
+import type { Renderer } from '@ifc-lite/renderer';
+import { Scene } from '../../../../../../packages/renderer/src/scene';
+import { setGlobalRendererRef } from '@/hooks/useBCF';
+import { recomputeZoneAssignmentsNow } from '@/hooks/useZoneAssignmentSync';
+import { ensureWasm } from '@/test/scan-slab-fixture';
+import { seedZoneExport } from '@/test/zone-export-fixture';
+import { nativeZoneEmissionEvidence } from '@/lib/actions/zone-emission-evidence';
+import { ensureRoomWasm } from '@/test/room-walls-fixture';
+import { seedReviewedRoom, roomProposal } from '@/test/reviewed-room-fixture';
+import { MODEL as ROOM_MODEL } from '@/test/native-sdk-model';
+import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
+import { clearModelLayouts } from '@/lib/rooms/room-layout';
+import { prepareRoomReview } from '@/lib/actions/room-review';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
 import type { ToolHost } from '../types';
@@ -445,4 +458,62 @@ END-ISO-10303-21;
         assert.match(exported.text, /changed during export/);
       } finally { stop(); }
     });
+});
+
+describe('zone emission reviews (#10792)', () => {
+  const initial = useViewerStore.getState();
+  afterEach(() => { setGlobalRendererRef({ current: null }); useViewerStore.setState(initial, true); });
+  async function seedZones(t: TestContext) {
+    if (!ensureWasm(t)) return null;
+    const f = await seedZoneExport();
+    useViewerStore.setState({ editEnabled: true, collabRole: null, collabRoomId: null, storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(), removedNewEntities: new Map(), removedMeshes: new Map(), dirtyModels: new Set(), mutationVersion: 0 });
+    const model = useViewerStore.getState().models.get('bonsai')!;
+    useViewerStore.setState({ models: new Map([['bonsai', { ...model, idOffset: 0, maxExpressId: Math.max(...f.store.entityIndex.byId.keys()) }]]) });
+    const scene = new Scene(); f.meshes.forEach(mesh => scene.addMeshData(mesh)); setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });
+    recomputeZoneAssignmentsNow(); modelId = 'bonsai'; newHost(); return f;
+  }
+  const zoneProposal = () => {
+    const choice = nativeZoneEmissionEvidence(useViewerStore.getState(), 'bonsai').choices.find(row => row.status === 'available');
+    assert.ok(choice?.expected, 'an evaluated native zone snapshot');
+    return JSON.stringify({ version: 1, kind: 'zones.emit', title: 'Review native zones', modelId: 'bonsai', zoneSetId: choice.zoneSetId,
+      storey: { GlobalId: choice.expected.storey.GlobalId, Name: choice.expected.storey.Name }, expected: choice.expected });
+  };
+
+  it('#19: 32 zone reviews of a zone set that then changed free the cap for a fresh prepare', async (t) => {
+    const f = await seedZones(t); if (!f) return;
+    const proposal_json = zoneProposal();
+    for (let i = 0; i < 32; i++) answer(await invoke('authoring.zone.prepare', { proposal_json }));
+    // An identical assignment rebuild (the sync's after any geometry tick) keeps all 32.
+    recomputeZoneAssignmentsNow();
+    const full = await invoke('authoring.zone.prepare', { proposal_json });
+    assert.equal(full.isError, true);
+    assert.match(full.text, /At most 32 graph review candidates/);
+    // The models are unchanged; only the zone set is edited. None of the 32 can apply now.
+    useViewerStore.setState(s => ({ zoneSets: s.zoneSets.map(set => set.id === f.zoneSet.id ? { ...set, name: `${set.name} (edited)` } : set) }));
+    recomputeZoneAssignmentsNow();
+    answer(await invoke('authoring.zone.prepare', { proposal_json: zoneProposal() }));
+  });
+});
+
+describe('Room review admission probe (#10792)', () => {
+  const initial = useViewerStore.getState();
+  afterEach(() => { clearModelLayouts(ROOM_MODEL); setRemeshClientFactory(null); useViewerStore.setState(initial, true); });
+  const withGeometry = (meshes: (mesh: MeshData) => MeshData) => useViewerStore.setState(s => {
+    const model = s.models.get(ROOM_MODEL)!, geometry = model.geometryResult!;
+    return { models: new Map(s.models).set(ROOM_MODEL, { ...model, geometryResult: { ...geometry, meshes: geometry.meshes.map(meshes) } }) };
+  });
+
+  it('#19: a Room review stays admitted through a recolour and is dropped after a remesh, without re-capturing geometry', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await seedReviewedRoom();
+    const review = await prepareRoomReview(roomProposal(), new AbortController().signal);
+    try {
+      assert.equal(review.sourcesCurrent(), true);
+      withGeometry(mesh => ({ ...mesh, color: [1, 0, 0, 1] })); // a recolour copies meshes with the same buffers
+      assert.equal(review.sourcesCurrent(), true);
+      review.validate();
+      withGeometry(mesh => ({ ...mesh, positions: mesh.positions.slice() })); // a remesh replaces the buffers
+      assert.equal(review.sourcesCurrent(), false);
+    } finally { review.dispose(); }
+  });
 });

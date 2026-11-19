@@ -48,7 +48,7 @@ export interface RoomReview {
   snapshot: RoomSnapshot;
   prepared: PreparedRoomCommand;
   validate(): void;
-  /** Cheap and permanent: the loaded sources and edit revisions this review bound are unchanged. */
+  /** Cheap and permanent: the loaded sources, edit revisions and geometry identity this review bound are unchanged. */
   sourcesCurrent(): boolean;
   commit(): RoomCommandResult;
   dispose(): void;
@@ -144,13 +144,23 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     if (JSON.stringify(snapshot).length > 60000) throw new Error('The complete Room snapshot exceeds the attachment limit');
     if (proposal.expected !== undefined && !sameReportEvidence(proposal.expected, snapshot)) throw new Error('The supplied native Room snapshot differs from the current source; prepare it again');
     const captured = sources(current);
+    // What the geometry lease read, cheaply and without re-capturing it: the target model's frame and mesh buffers by
+    // identity. A recolour copies meshes with the same buffers; a remesh, re-frame or in-place vertex edit changes one.
+    const geometry = current.models.get(proposal.modelId)?.geometryResult;
+    const frame = geometry?.coordinateInfo, buffers = geometry?.meshes.flatMap(mesh => [mesh.positions, mesh.indices]) ?? [];
+    const content = current.geometryContentVersion;
+    const geometryCurrent = (state: ViewerState) => {
+      const now = state.models.get(proposal.modelId)?.geometryResult;
+      return !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length * 2 === buffers.length
+        && now.meshes.every((mesh, i) => mesh.positions === buffers[2 * i] && mesh.indices === buffers[2 * i + 1]);
+    };
     const validate = () => {
       signal.throwIfAborted();
       if (!sourcesCurrent(captured, useViewerStore.getState())) throw new Error('The loaded sources changed after Room preparation; prepare again');
       prepared.validate();
       if (target(useViewerStore.getState(), proposal.modelId, proposal.storey, 'IfcBuildingStorey') !== storeyId) throw new Error('The current storey identity changed');
     };
-    return { proposal, snapshot, prepared, validate, sourcesCurrent: () => sourcesCurrent(captured, useViewerStore.getState()),
+    return { proposal, snapshot, prepared, validate, sourcesCurrent: () => sourcesCurrent(captured, useViewerStore.getState()) && geometryCurrent(useViewerStore.getState()),
       commit: () => { validate(); return prepared.commit(); }, dispose: prepared.dispose };
   } catch (error) { prepared.dispose(); throw error; }
 }

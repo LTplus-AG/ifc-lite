@@ -8,6 +8,7 @@ import type { ViewerState } from '@/store';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { emitSpatialZones } from '@/lib/zones/emit-spatial-zones';
+import { zoneAssignmentSignature } from '@/lib/zones/assignment';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { resolveGlobalId } from './resolve-global-id';
 import { readZoneEmissionSnapshot } from './zone-emission-evidence';
@@ -33,22 +34,37 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
   }).result;
   const original = JSON.stringify({ proposal, snapshot, dry }), digest = batchDigest({ proposal, snapshot, dry });
   const sources = [...state.models].map(([id, model]) => ({ id, model, source: model.ifcDataStore?.source, hash: model.sourceContentHash, fingerprint: model.sourceFingerprint }));
-  /** The loaded source owners this review bound are unchanged (its evaluation snapshot is checked by validate()). */
-  const sourcesCurrent = () => {
+  /** The loaded source owners this review bound are unchanged (validate() also re-reads its evaluation snapshot). */
+  const sourceOwnersCurrent = () => {
     const current = store.getState();
     return sources.length === current.models.size && sources.every(row => current.models.get(row.id) === row.model && row.model.ifcDataStore?.source === row.source
       && row.model.sourceContentHash === row.hash && row.model.sourceFingerprint === row.fingerprint);
+  };
+  // The zone configuration the snapshot read, cheaply: the set object, which the zones slice replaces on every write
+  // to it, and the set's assignments by content, re-read only when the assignments Map itself is rebuilt (the sync
+  // rebuilds an identical Map after every geometry tick).
+  const zoneSet = state.zoneSets.find(row => row.id === proposal.zoneSetId);
+  const assignmentsAtPrepare = zoneAssignmentSignature(state.zoneAssignments, proposal.zoneSetId);
+  let assignmentsSeen = state.zoneAssignments, assignmentsUnchanged = true;
+  const zoneConfigurationCurrent = () => {
+    const current = store.getState();
+    if (current.zoneSets.find(row => row.id === proposal.zoneSetId) !== zoneSet) return false;
+    if (current.zoneAssignments !== assignmentsSeen) {
+      assignmentsSeen = current.zoneAssignments;
+      assignmentsUnchanged = zoneAssignmentSignature(assignmentsSeen, proposal.zoneSetId) === assignmentsAtPrepare;
+    }
+    return assignmentsUnchanged;
   };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');
     const current = store.getState();
     if (mutationDenial(current, proposal.modelId)) throw new Error('Native model editing is no longer allowed');
-    if (!sourcesCurrent()) throw new Error('A loaded source owner changed after review');
+    if (!sourceOwnersCurrent()) throw new Error('A loaded source owner changed after review');
     if (!initializing) lease.validate();
     if (JSON.stringify(readZoneEmissionSnapshot(current, proposal.modelId, proposal.zoneSetId, ref.expressId, initializing ? proposal.modelId : undefined)) !== JSON.stringify(snapshot)) throw new Error('Native evaluation, zone set, members, frame or prior output changed after review');
   };
   let used = false;
-  return { proposal, snapshot, dry, validate: () => validate(), sourcesCurrent, commit(origin: string): ModelChangeReceipt {
+  return { proposal, snapshot, dry, validate: () => validate(), sourcesCurrent: () => sourceOwnersCurrent() && zoneConfigurationCurrent(), commit(origin: string): ModelChangeReceipt {
     if (used) throw new Error('This reviewed native emission was already applied');
     validate();
     const batchId = crypto.randomUUID();

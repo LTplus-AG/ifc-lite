@@ -11,7 +11,6 @@ import type { FederatedModel, PreAlignmentSnapshot } from '@/store';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import type { LandXmlTinDocument } from './landXmlSemantics';
-import { reframeLandXmlGeometry } from './landXmlLoad';
 import { alignGeometryToReference, alignmentReferenceRecord, extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from './federationAlign';
 import { capturePreAlignment } from './federationRealign';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines';
@@ -216,6 +215,8 @@ export async function finalizeFederatedSpatialPlacement(options: {
     const renderFrame = reference?.coordinateInfo
       ?? sharedRenderFrame(useViewerStore.getState().models.values());
     if (renderFrame) {
+      const { reframeLandXmlGeometry } = await import('./landXmlLoad');
+      if (!options.isCurrent()) return null;
       const meshesBeforeReframe = options.geometry.meshes.slice();
       const warnings = reframeLandXmlGeometry(options.geometry, options.landXmlDocument, renderFrame, {
         anchor: reference?.spatialReference ?? null,

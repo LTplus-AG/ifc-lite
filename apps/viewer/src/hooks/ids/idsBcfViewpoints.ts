@@ -102,11 +102,11 @@ export async function completeIdsBcfViewpoints(
     }
 
     if (settings.snapshots !== 'off' && renderer) {
-      signal?.throwIfAborted();
       progress({ phase: 'snapshots', current: ++current, total: project.topics.size,
         message: `Capturing snapshot ${current}/${project.topics.size}...` });
       // Camera-disabled exports may still frame their screenshot without persisting a camera.
       const snapshotViewpoint = viewpoint ?? { guid: '' };
+      // The capture gate refuses after a cancel; this turns its null into the abort.
       const snapshot = await captureTopic(renderer, snapshotViewpoint, ids,
         knownBounds.length > 0 && !viewpoint?.components?.visibility?.defaultVisibility, signal);
       signal?.throwIfAborted();
@@ -133,7 +133,7 @@ function readCamera(renderer: Renderer) {
     fov: camera.getFOV(), aspectRatio: camera.getAspect(), isOrthographic: camera.getProjectionMode() === 'orthographic', orthoScale: camera.getOrthoSize() * 2 };
 }
 
-function captureTopic(renderer: Renderer, viewpoint: BCFViewpoint, ids: Set<number>, isolate: boolean, signal: AbortSignal | undefined): Promise<string | null> {
+function captureTopic(renderer: Renderer, viewpoint: BCFViewpoint, ids: Set<number>, isolate: boolean, signal?: AbortSignal): Promise<string | null> {
   const camera = renderer.getCamera();
   return captureViewportFrame(renderer, {
     options: { hiddenIds: undefined, isolatedIds: isolate ? ids : null, ghostExceptIds: null,

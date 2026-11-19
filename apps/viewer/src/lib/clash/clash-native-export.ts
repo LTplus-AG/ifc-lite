@@ -52,13 +52,13 @@ export function createClashExport(
         let done = 0;
         // Group members name renderer ids of the models loaded at start; another set of models makes one-sided PNGs.
         const stamp = analysisStampFrom(state, true);
+        // Checked after each capture: the gate refuses once cancelled, and a model can change while a frame renders.
         const assertScene = () => {
           options.signal?.throwIfAborted();
           if (isAnalysisStale(stamp, useViewerStore.getState()))
             throw new Error('The loaded models changed during the clash BCF export. Export again.');
         };
         snapshotProvider = async (group: ClashGroup): Promise<Uint8Array | undefined> => {
-          assertScene();
           const b = group.bounds;
           const isolation = new Set<number>();
           for (const m of group.members) {

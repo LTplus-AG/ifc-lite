@@ -17,9 +17,9 @@ const MEMBERSHIP_ROWS = new Set(['unified-storey', 'IfcBuildingStorey', 'IfcSpac
  * membership row for one input generation (#10535). The panel asks for every
  * visible row on each render, up to three times per row, and a storey's
  * membership reads the session's relationship overlay; a placement edit and
- * its mesh swap render the panel several times with the same inputs. Every
- * overlay write the viewer makes starts a new generation (mutationVersion).
- * Callers must not mutate the returned array.
+ * its mesh swap render the panel several times with the same inputs. An
+ * entry is reused only while its models' views are at the revision it was
+ * resolved at. Callers must not mutate the returned array.
  */
 export function createNodeElementsResolver(
   models: Map<string, FederatedModel>,
@@ -90,11 +90,17 @@ export function createNodeElementsResolver(
     // Spatial containers (Project, Site, Building) and top-level models don't have direct element visibility toggle
     return [];
   };
-  const resolved = new Map<string, number[]>();
+  /** Row id to [views' revisions, elements]. */
+  const resolved = new Map<string, [string, number[]]>();
   return (node) => {
-    if (!MEMBERSHIP_ROWS.has(node.type) && !(node.type === 'model-header' && node.id.startsWith('contrib-'))) return resolve(node);
-    let elements = resolved.get(node.id);
-    if (!elements) resolved.set(node.id, elements = resolve(node));
+    // Only a model's contribution header inside a unified storey has a `contrib-` id.
+    if (!MEMBERSHIP_ROWS.has(node.type) && !node.id.startsWith('contrib-')) return resolve(node);
+    // SDK raw writes advance the views' revisions without a mutationVersion.
+    const revision = node.modelIds.map((id) => mutationViews.get(id)?.getMutationRevision()).join();
+    const cached = resolved.get(node.id);
+    if (cached?.[0] === revision) return cached[1];
+    const elements = resolve(node);
+    resolved.set(node.id, [revision, elements]);
     return elements;
   };
 }

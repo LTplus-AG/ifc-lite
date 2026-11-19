@@ -124,8 +124,8 @@ describe('hierarchy rows across edits (#10535)', () => {
     assert.equal(tree().getNodeElements(after).length, 3, 'the new row resolves the current membership');
   });
 
-  it('resolves a storey row once per input generation, and again after an edit', async () => {
-    const { tree } = await mountTree();
+  it('resolves a storey row once per input generation and view revision, and again after either changes', async () => {
+    const { tree, view } = await mountTree();
     const storey = storeyRow(tree().treeData);
     const members = tree().getNodeElements(storey);
     assert.equal(members.length, 2, 'the storey holds both columns');
@@ -133,10 +133,16 @@ describe('hierarchy rows across edits (#10535)', () => {
     assert.equal(tree().getNodeElements(storey), members, 'another panel render shares the same resolution');
     assert.equal(tree().getNodeElements({ ...storey }), members, 'the cache is keyed by row id, so an equal row object shares it');
 
-    // An edit starts a new input generation, which resolves again.
+    // An SDK raw write advances the view's revision without a mutationVersion.
+    act(() => { view.setProperty(50, 'Pset_Test', 'Note', 'x', undefined, undefined, true); });
+    const again = tree().getNodeElements(storey);
+    assert.notEqual(again, members, 'a new view revision resolves again');
+    assert.deepEqual(again, members);
+
+    // An edit starts a new input generation, which resolves again too.
     act(() => useViewerStore.setState((st) => ({ mutationVersion: st.mutationVersion + 1 })));
     const nextGeneration = tree().getNodeElements(storey);
-    assert.notEqual(nextGeneration, members, 'a new generation resolves again');
+    assert.notEqual(nextGeneration, again, 'a new generation resolves again');
     assert.deepEqual(nextGeneration, members);
   });
 });

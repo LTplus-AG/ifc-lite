@@ -25,9 +25,10 @@ export function useStableRowHandlers(callbacks: HierarchyRowCallbacks): Hierarch
   const latest = useRef(callbacks);
   // Published at commit, so a discarded render never leaves rows calling its callbacks.
   useLayoutEffect(() => { latest.current = callbacks; });
-  // Every handler read returns a forwarder to the latest callback of that name.
-  return useState(() => new Proxy(callbacks, {
-    get: (_, key) => (...args: unknown[]) => Reflect.apply(Reflect.get(latest.current, key), undefined, args),
+  // Each handler read returns a forwarder to the latest callback of that name. The
+  // target holds only the names, so the first render's closures are not kept.
+  return useState(() => new Proxy(Object.fromEntries(Object.keys(callbacks).map((key) => [key, key])) as HierarchyRowCallbacks, {
+    get: (names, key) => key in names ? (...args: unknown[]) => Reflect.apply(Reflect.get(latest.current, key), undefined, args) : undefined,
   }))[0];
 }
 

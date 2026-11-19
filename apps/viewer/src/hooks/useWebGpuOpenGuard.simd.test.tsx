@@ -54,10 +54,9 @@ describe('useWebGpuOpenGuard without WebAssembly SIMD (#10784)', () => {
   it('refuses the open and shows the SIMD card, with no Retry', () => {
     render(<OpenProbe />);
     mock.method(WebAssembly, 'validate', () => false);
-    let opened = 0;
-    const attempt = () => { if (guard(attempt, { replay: 'free' })) opened += 1; };
-    act(attempt);
-    assert.equal(opened, 0, 'no load may start: it would only compile the binary and fail');
+    let allowed = true;
+    act(() => { allowed = guard(() => {}, { replay: 'free' }); });
+    assert.equal(allowed, false, 'no load may start: it would only compile the binary and fail');
     const { error, lastLoadRetry } = useViewerStore.getState();
     assert.equal(error, SIMD_UNSUPPORTED);
     assert.equal(lastLoadRetry, null, 'a retry cannot add SIMD to the browser');
@@ -65,9 +64,9 @@ describe('useWebGpuOpenGuard without WebAssembly SIMD (#10784)', () => {
 
   it('lets the same open through when the probe validates', () => {
     render(<OpenProbe />);
-    let opened = 0;
-    act(() => { if (guard()) opened += 1; });
-    assert.equal(opened, 1);
+    let allowed = false;
+    act(() => { allowed = guard(); });
+    assert.equal(allowed, true);
     assert.equal(useViewerStore.getState().error, null);
   });
 });

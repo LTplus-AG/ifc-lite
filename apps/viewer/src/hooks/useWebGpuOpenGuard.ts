@@ -10,10 +10,8 @@
  * autoload in `ViewerLayout.tsx` returned silently instead. `guard` shows
  * the load-error card with an explanation and, when the caller supplies one,
  * a Retry closing over the same attempt.
- *
- * It also refuses a browser without WebAssembly SIMD (#10784), which cannot
- * compile the engine binary. That check is synchronous and permanent, so it
- * shows its card with no Retry and never enters the WebGPU notice below.
+ * It also refuses a browser without WebAssembly SIMD (#10784): a permanent
+ * condition, so that card has no Retry.
  */
 
 import { useCallback, useEffect } from 'react';

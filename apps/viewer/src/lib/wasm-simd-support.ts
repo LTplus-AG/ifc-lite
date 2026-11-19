@@ -4,14 +4,11 @@
 
 /**
  * WebAssembly SIMD support (#10784). The engine binary is built with
- * `+simd128` (`.cargo/config.toml`) and there is no scalar build, so a browser
- * without SIMD cannot compile it at all. Such browsers exist even where WebGPU
- * does: V8 refuses SIMD on x64 CPUs without SSE4.1, and browser security modes
- * can turn it off. They used to get the raw `CompileError` text in the load
- * card and an unclassified PostHog issue.
- *
- * The probe lets the viewer refuse before downloading the binary; the message
- * matcher is the backstop for any path that compiles anyway.
+ * `+simd128` and there is no scalar build, so a browser without SIMD (V8 on
+ * x64 CPUs lacking SSE4.1, some security modes) cannot compile it. The probe
+ * lets the viewer refuse before downloading the binary; the message matcher
+ * backs it up for any path that compiles anyway. `analytics-scrub.ts` lists
+ * the kind as benign: a device limit, like WebGL being unavailable.
  */
 
 /**
@@ -30,10 +27,9 @@ export function supportsWasmSimd(): boolean {
 }
 
 /**
- * A compile failure caused by missing SIMD. V8: `Compiling function #74
- * failed: Wasm SIMD unsupported @+117554` (the reported occurrence).
- * SpiderMonkey: `SIMD support is not enabled`. Requires both a SIMD token and
- * a refusal phrase, so a message that merely mentions SIMD keeps its own kind.
+ * A compile failure caused by missing SIMD (V8 `Wasm SIMD unsupported`,
+ * SpiderMonkey `SIMD support is not enabled`). Needs a refusal phrase too, so
+ * a message that merely mentions SIMD keeps its own kind.
  */
 export function isWasmSimdUnsupportedMessage(message: string): boolean {
   return /\bsimd\b/i.test(message) && /unsupported|not (?:enabled|supported)/i.test(message);

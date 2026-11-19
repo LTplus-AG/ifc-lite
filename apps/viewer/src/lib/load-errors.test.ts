@@ -1120,8 +1120,7 @@ describe('WebAssembly SIMD unsupported (#10784)', () => {
   });
 
   it('groups the analytics event and downgrades it to a warning', () => {
-    type SimdEvent = { event: string; properties: Record<string, unknown> };
-    const event = scrubEvent<SimdEvent>({ event: '$exception', properties: {
+    const event = scrubEvent<{ event: string; properties: Record<string, unknown> }>({ event: '$exception', properties: {
       $exception_list: [{ type: 'CompileError', value: V8 }],
       $exception_level: 'error',
     } });

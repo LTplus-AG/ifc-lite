@@ -43,8 +43,7 @@ export type LoadErrorKind =
    * A reload fixes it; a lower tessellation tier cannot.
    */
   | 'wasm_engine_load'
-  /** The browser cannot compile WebAssembly SIMD, so no engine can start here (#10784). */
-  | 'wasm_simd_unsupported'
+  | 'wasm_simd_unsupported' // no WebAssembly SIMD, the binary cannot compile (#10784)
   /** Out-of-memory / WASM heap exhaustion during processing. */
   | 'out_of_memory'
   /**
@@ -309,9 +308,10 @@ export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKin
   ) {
     return 'file_unreadable';
   }
-  // Same stable-`.name` argument as NotReadableError above: an aborted fetch's DOMException
-  // `.message` is engine-specific prose that need not contain the word "abort" at all
-  // (WebKit: "Fetch is aborted", Chromium: "The user aborted a request."). Only `.name` is guaranteed.
+  // Same stable-`.name` argument as NotReadableError above: an aborted fetch
+  // rejects with a DOMException whose `.message` is engine-specific prose that
+  // need not contain the word "abort" at all (WebKit: "Fetch is aborted",
+  // Chromium: "The user aborted a request."). Only `.name` is guaranteed.
   if (name === 'AbortError') return 'cancelled';
   // BEFORE the memory/network buckets: MapLibre's failure carries the driver's
   // own `statusMessage`, vendor prose we do not control and free to contain the

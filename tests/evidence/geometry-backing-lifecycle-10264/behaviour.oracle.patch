@@ -1,16 +1,12 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index be2242a66f..4feaae8251 100644
+index c29d29ab06..4f30a2fb6d 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -179,7 +179,10 @@ export class StoreGeometryBackingTap {
-       else this.appendSuffix(next, meshes);
-     }
-     // Retire older generations only once everything so far has committed here.
--    for (const old of next.retained.splice(0)) void this.registry.invalidate(old, 'Replaced by a committed generation');
-+    this.enqueue(next, async () => {
-+      await this.writer(next).flush();
-+      for (const old of next.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by a committed generation');
-+    });
-   }
- 
-   /** Released members come from the previous generation's records, chunk by chunk (no CPU restore). */
+@@ -185,7 +185,6 @@ export class StoreGeometryBackingTap {
+       retained: previous ? [...previous.retained, previous.key] : [] };
+     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
+       next.backing = await this.registry.begin(key, this.options);
+-      for (const old of next.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by a committed generation');
+       if (shards === 'carry') {
+         // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
+         const source = previous?.backing && !previous.failure && !previous.instancedLost ? previous : this.acknowledged.get(modelId);

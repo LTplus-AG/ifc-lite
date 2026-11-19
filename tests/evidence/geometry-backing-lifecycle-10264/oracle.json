@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "why": "Keep the new generation replay loadable while reintroducing sole-copy loss: the previous backing generation is deleted before its replacement commits, so a failed replay leaves released geometry with no durable copy.",
+  "why": "Keep the new generation replay loadable while reintroducing sole-copy loss: older backing generations are deleted as soon as a replacement begins, before it is acknowledged complete, so a failed or unacknowledgeable replay leaves released geometry with no durable copy.",
   "key": "apps/viewer/src/lib/geometry-backing/generation-replay.ts",
   "mutation": "tests/evidence/geometry-backing-lifecycle-10264/behaviour.oracle.patch",
   "test": "apps/viewer/src/lib/geometry-backing/generation-replay.test.ts"

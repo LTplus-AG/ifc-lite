@@ -100,7 +100,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
-  it('a content-version bump fails closed for instanced models and fences readers', async () => {
+  it('a content-version bump fails closed for instanced models and keeps the old copy', async () => {
     const store = storeWith({ m2a: [mesh(1)], m2b: [mesh(2)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('m2a', [shardBytes(5)], instancedShardGeneration());
@@ -108,8 +108,10 @@ describe('store geometry backing tap (test/debug only)', () => {
     const before = tap.backing('m2a')!;
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     const status = Object.fromEntries((await tap.seal()).map((s) => [s.modelId, s]));
-    assert.equal(before.isCurrent, false);
-    await assert.rejects(before.reader.leaseEntity(1), { name: 'StaleGeometryGenerationError' });
+    // The replacement cannot vouch for moved occurrences, so it never retires the old generation.
+    assert.equal(before.isCurrent, true, 'the older durable copy survives an unacknowledgeable replacement');
+    assert.notEqual(tap.backing('m2a'), before);
+    assert.equal(tap.backing('m2a')!.isComplete, false, 'readers through the tap are refused, never served stale');
     assert.equal(status.m2a.instancedLost, true);
     assert.equal(status.m2a.complete, false, 'moved occurrences cannot be vouched for');
     assert.equal(status.m2b.complete, true, 'a model without instancing regenerates completely');

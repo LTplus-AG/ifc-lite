@@ -55,9 +55,14 @@ interface Tracked {
   /** Registry key of this generation: generations stage side by side. */
   key: string;
   backing?: ModelGeometryBacking;
-  /** Generations kept because their replacement has not committed (or failed). */
+  /** Per-model generation number (1 for a model's first generation). */
+  number: number;
+  /** Generations kept until this one is acknowledged complete and current. */
   retained: string[];
   meshes: MeshData[] | undefined;
+  /** Immutable snapshot of the store meshes this generation holds, in record order. The store
+   * array itself may be spliced in place later; replay must not read membership from it. */
+  members: MeshData[];
   consumed: number;
   chain: Promise<void>;
   failure?: Error;
@@ -91,6 +96,8 @@ export class StoreGeometryBackingTap {
   /** Shard enqueue events seen per model since start, compared with the queue's revision. */
   private readonly shardEvents = new Map<string, number>();
   private sequence = 0;
+  /** Per model, the last generation acknowledged complete: the only replay source. */
+  private readonly acknowledged = new Map<string, Tracked>();
   private stopped = false;
 
   private constructor(
@@ -173,14 +180,17 @@ export class StoreGeometryBackingTap {
   private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost'): void {
     const previous = this.tracked.get(modelId);
     const key = `${modelId}\u0001${++this.sequence}`;
-    // The previous generation stays durable (and is the replay source) until this one commits.
-    const next: Tracked = { key, meshes, consumed: 0, chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0,
-      areas: new Map(), retained: previous ? [...previous.retained, previous.key] : [] };
+    // Every older generation stays durable until this one is acknowledged complete (`seal`).
+    const next: Tracked = { key, number: (previous?.number ?? 0) + 1, meshes, members: [], consumed: 0,
+      chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0, areas: new Map(),
+      retained: previous ? [...previous.retained, previous.key] : [] };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       next.backing = await this.registry.begin(key, this.options);
       if (shards === 'carry') {
-        if (!previous?.backing || previous.failure || previous.instancedLost) next.instancedLost = true;
-        else for await (const shard of previous.backing.reader.instancedShards()) {
+        // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
+        const source = previous?.backing && !previous.failure && !previous.instancedLost ? previous : this.acknowledged.get(modelId);
+        if (!source?.backing || source.failure || source.instancedLost) next.instancedLost = true;
+        else for await (const shard of source.backing.reader.instancedShards()) {
           next.shards++;
           await next.backing.writer.appendInstancedShard(shard);
         }
@@ -189,23 +199,21 @@ export class StoreGeometryBackingTap {
     next.chain = this.settle(next, begun);
     this.tracked.set(modelId, next);
     if (meshes && meshes.length > 0) {
-      if (meshes.some(isReleasedMesh)) this.replay(next, meshes, previous);
+      if (meshes.some(isReleasedMesh)) this.replay(modelId, next, meshes);
       else this.appendSuffix(next, meshes);
     }
-    // Retire older generations only once everything so far has committed here.
-    this.enqueue(next, async () => {
-      await this.writer(next).flush();
-      for (const old of next.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by a committed generation');
-    });
   }
 
-  /** Released members come from the previous generation's records, chunk by chunk (no CPU restore). */
-  private replay(next: Tracked, meshes: MeshData[], previous: Tracked | undefined): void {
+  /** Released members come from the acknowledged generation's records, chunk by chunk (no CPU restore). */
+  private replay(modelId: string, next: Tracked, meshes: MeshData[]): void {
     next.consumed = meshes.length;
     const list = meshes.slice();
-    const source = { meshes: previous?.meshes, backing: previous?.backing };
+    next.members = list;
     this.enqueue(next, async () => {
-      for await (const batch of replayStoreList(list, source, APPEND_BATCH)) {
+      // Captured when the step runs: overlapping edits all replay from the one acknowledged source,
+      // and a released copy of a copy reaches its record through its ancestry.
+      const source = this.acknowledged.get(modelId);
+      for await (const batch of replayStoreList(list, { meshes: source?.members, backing: source?.backing }, APPEND_BATCH)) {
         for (const [id, entry] of collectMeshAreas([batch])) {
           const prior = next.areas.get(id);
           next.areas.set(id, prior ? { area: prior.area + entry.area, incomplete: prior.incomplete || entry.incomplete } : entry);
@@ -225,6 +233,7 @@ export class StoreGeometryBackingTap {
     tracked.consumed = to;
     // Snapshot the suffix now: the array keeps growing in place.
     const slice = meshes.slice(from, to);
+    tracked.members.push(...slice);
     // Areas while the arrays are resident; pieces of one entity across slices add up
     // exactly as one pass over the list would (`collectMeshAreas` groups by entity).
     for (const [id, entry] of collectMeshAreas([slice])) {
@@ -281,6 +290,7 @@ export class StoreGeometryBackingTap {
     const tracked = this.tracked.get(modelId);
     if (!tracked) return;
     this.tracked.delete(modelId);
+    this.acknowledged.delete(modelId);
     this.settle(tracked, tracked.chain.then(async () => {
       for (const key of [...tracked.retained, tracked.key]) await this.registry.invalidate(key, reason);
     }));
@@ -301,8 +311,14 @@ export class StoreGeometryBackingTap {
   async seal(): Promise<ModelBackingStatus[]> {
     await this.whenIdle();
     for (const [modelId, tracked] of this.tracked) {
-      if (tracked.failure || tracked.instancedLost || this.missedShards(modelId) || !tracked.backing) continue;
-      await this.settle(tracked, tracked.backing.acknowledge().then(() => undefined));
+      if (tracked.failure || tracked.instancedLost || tracked.stale || this.missedShards(modelId) || !tracked.backing) continue;
+      const backing = tracked.backing;
+      await this.settle(tracked, backing.acknowledge().then(async (ack) => {
+        // Only a verified, complete, still-current replacement may retire what it replaces.
+        if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure) return;
+        this.acknowledged.set(modelId, tracked);
+        for (const old of tracked.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by an acknowledged generation');
+      }));
     }
     notifyReleasedGeometryMetadataChanged(); // an acknowledged generation may answer now
     return this.status();
@@ -319,7 +335,7 @@ export class StoreGeometryBackingTap {
       const instancedLost = tracked.instancedLost || this.missedShards(modelId);
       const error = tracked.stale ?? tracked.failure ?? backing?.writer.error;
       return {
-        modelId, generation: Number(tracked.key.split('\u0001')[1]), meshes: tracked.consumed,
+        modelId, generation: tracked.number, meshes: tracked.consumed,
         chunks: backing?.directory.chunks.length ?? 0, shards: backing?.directory.shards.length ?? 0,
         storedBytes: backing?.directory.storedBytes ?? 0, pendingBytes: backing?.writer.pendingBytes ?? 0,
         complete: !!backing?.isComplete && !instancedLost && !tracked.failure && !tracked.stale,

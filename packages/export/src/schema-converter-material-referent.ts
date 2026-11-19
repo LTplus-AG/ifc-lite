@@ -31,6 +31,9 @@ const PROPERTIES = 'IFCMATERIALPROPERTIES';
 /** A lookup that knows no record. */
 const NOTHING: MaterialSource = { typeOf: () => undefined, slots: () => undefined };
 
+/** Whether a `from` -> `to` export downgrades IfcMaterialProperties: the one rule the writers and the report share. */
+export const downgradesMaterial = (from: string, to: string): boolean => to === 'IFC2X3' && (from === 'IFC4' || from === 'IFC4X3');
+
 /**
  * The records the export writes, by id in the line's id space: the effective
  * model in an export (edits, overlay-created records, retypes and deletions
@@ -95,7 +98,7 @@ export class MaterialReferents {
    * converter withholds (an IFC4-only set) is replaced first.
    */
   apply(line: string, from: string, to: string): string | null {
-    const head = to === 'IFC2X3' && (from === 'IFC4' || from === 'IFC4X3') ? stepRecordHead(line) : null;
+    const head = downgradesMaterial(from, to) ? stepRecordHead(line) : null;
     // A length check first, so most records never build an upper-case copy.
     if (!head || head.typeEnd - head.typeStart !== PROPERTIES.length || line.slice(head.typeStart, head.typeEnd).toUpperCase() !== PROPERTIES) return line;
     const at = attrNameTable(from as IfcSchemaVersion)?.get(PROPERTIES)?.indexOf('Material') ?? -1;
@@ -133,17 +136,18 @@ export class MaterialReferents {
  * The IfcMaterialProperties records of `store` an IFC4/IFC4X3 -> IFC2X3
  * export leaves out, with their attribute names, for the loss report.
  */
-export function materialPropertiesNotWritten(store: SourceStore, from: string, to: string): { ids: number[]; attributes: readonly string[] } {
-  const source = new SourceRecords(store);
+export function materialPropertiesNotWritten(store: Pick<SourceStore, 'entityIndex'> & Partial<Pick<SourceStore, 'source'>>, from: string, to: string): { ids: number[]; attributes: readonly string[] } {
+  const attributes = attrNameTable(from as IfcSchemaVersion)?.get(PROPERTIES) ?? [];
+  if (!downgradesMaterial(from, to)) return { ids: [], attributes };
+  const { entityIndex, source: bytes } = store;
+  // @raw-entity-enumeration-ok this report reads a parsed source's own index, not a live view
+  const all = entityIndex.byType.get(PROPERTIES) ?? [];
+  // Without the bytes there is no lookup, and the writers then leave every one out: so does the report.
+  if (!bytes) return { ids: [...all], attributes };
+  // The writer's own decision: each record through the `apply` the export runs.
+  const source = new SourceRecords({ entityIndex, source: bytes });
   const referents = new MaterialReferents({ typeOf: (id) => source.type(id), slots: (id) => source.slots(id) });
-  const attributes = attrNameTable(from as IfcSchemaVersion)?.get('IFCMATERIALPROPERTIES') ?? [];
-  const at = attributes.indexOf('Material');
-  if (to !== 'IFC2X3' || at < 0) return { ids: [], attributes };
-  const ids = source.ids('IFCMATERIALPROPERTIES').filter((id) => {
-    const named = slotRef(source.slots(id)?.[at]);
-    return named === null || referents.resolve(named, from) === null;
-  });
-  return { ids, attributes };
+  return { ids: all.filter((id) => { const text = source.text(id); return text !== undefined && referents.apply(text, from, to) === null; }), attributes };
 }
 
 /**

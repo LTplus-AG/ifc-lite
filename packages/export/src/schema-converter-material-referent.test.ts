@@ -47,10 +47,13 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     const { line, warnings } = await down('IFC4', data);
     expect(line).toBeUndefined();
     expect(warnings.join('\n')).toContain('1 IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: #5 (IFCMATERIALLAYERSET) (#10763).');
-    const report = analyzeConversionLoss(await parse(model('IFC4', `${BASE}\n${data}`)), 'IFC4', 'IFC2X3');
-    expect(report.entries.find((e) => e.sourceType === 'IFCMATERIALPROPERTIES')).toMatchObject({
+    const store = await parse(model('IFC4', `${BASE}\n${data}`));
+    const entry = (report: ReturnType<typeof analyzeConversionLoss>) => report.entries.find((e) => e.sourceType === 'IFCMATERIALPROPERTIES');
+    expect(entry(analyzeConversionLoss(store, 'IFC4', 'IFC2X3'))).toMatchObject({
       targetType: 'IFCEXTENDEDMATERIALPROPERTIES', kind: 'lossy', droppedAttributes: ['Name', 'Description', 'Properties', 'Material'], expressIds: [5],
     });
+    // Without the source bytes the export leaves it out too (nothing can check it), and the report says so.
+    expect(entry(analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC4', 'IFC2X3'))?.expressIds).toEqual([5]);
   });
 
   it('resolves a constituent set in the loss report (an export holding one is refused)', async () => {

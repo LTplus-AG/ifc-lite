@@ -34,6 +34,7 @@ import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { documentLinksApply } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
+import { downgradesMaterial } from './schema-converter-material-referent.js';
 import { effectiveCreatedRecord } from './effective-source-record.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
@@ -347,7 +348,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
   // writes: the effective types (retypes, deletions, overlay-created records), each record's slots as
   // written (a source one with its edits, a created one as authored), read at conversion, after the
   // collection phase fills `modifiedAttributes`. A record the export does not write has no type.
-  if (schema === 'IFC2X3' && (sourceSchema === 'IFC4' || sourceSchema === 'IFC4X3')) {
+  if (downgradesMaterial(sourceSchema, schema)) {
     const source = new SourceRecords(dataStore);
     const read = new Map<number, readonly string[] | undefined>();
     const written = (id: number): string | undefined => {

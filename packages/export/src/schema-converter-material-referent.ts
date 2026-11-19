@@ -102,13 +102,14 @@ export class MaterialReferents {
     // A length check first, so most records never build an upper-case copy.
     if (!head || head.typeEnd - head.typeStart !== PROPERTIES.length || line.slice(head.typeStart, head.typeEnd).toUpperCase() !== PROPERTIES) return line;
     const at = attrNameTable(from as IfcSchemaVersion)?.get(PROPERTIES)?.indexOf('Material') ?? -1;
+    if (at < 0) return line;
     // `convertRecord` also accepts a record without its ';', so it is read the same way here.
     const bare = !line.trimEnd().endsWith(';');
-    const record = at < 0 ? null : readStepSlots(bare ? `${line};` : line);
-    if (!record) return line;
-    const named = slotRef(record.slots[at]);
+    // A record that cannot be read is not checked, so it is left out too.
+    const record = readStepSlots(bare ? `${line};` : line);
+    const named = slotRef(record?.slots[at]);
     const material = named === null ? null : this.resolve(named, from);
-    if (material !== null) {
+    if (record && material !== null) { // `record &&` only narrows: no record, no material
       if (material === named) return line;
       const slots = [...record.slots];
       slots[at] = `#${material}`;
@@ -142,12 +143,12 @@ export function materialPropertiesNotWritten(store: Pick<SourceStore, 'entityInd
   const { entityIndex, source: bytes } = store;
   // @raw-entity-enumeration-ok this report reads a parsed source's own index, not a live view
   const all = entityIndex.byType.get(PROPERTIES) ?? [];
-  // Without the bytes there is no lookup, and the writers then leave every one out: so does the report.
-  if (!bytes) return { ids: [...all], attributes };
+  // Without the bytes (none, or a sourceless store's empty buffer) no record can be checked, so each is reported, as a bare `convertStepLine` leaves each out.
+  if (!bytes?.byteLength) return { ids: [...all], attributes };
   // The writer's own decision: each record through the `apply` the export runs.
   const source = new SourceRecords({ entityIndex, source: bytes });
   const referents = new MaterialReferents({ typeOf: (id) => source.type(id), slots: (id) => source.slots(id) });
-  return { ids: all.filter((id) => { const text = source.text(id); return text !== undefined && referents.apply(text, from, to) === null; }), attributes };
+  return { ids: all.filter((id) => { const text = source.text(id); return text === undefined || referents.apply(text, from, to) === null; }), attributes };
 }
 
 /**

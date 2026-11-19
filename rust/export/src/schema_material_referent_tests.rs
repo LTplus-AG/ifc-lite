@@ -183,3 +183,14 @@ fn a_bare_record_is_checked_and_a_kept_duplicate_counts_10763() {
     let mut scanned = super::MaterialReferents::scan(dup.as_bytes(), "IFC4", "IFC2X3", true, &|id, start| id != 10 || start < second);
     assert_eq!(scanned.apply(5, "#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", "IFC4", &mut 0), None, "two materials: left out");
 }
+
+/// From /code-review on #10911: a record whose slots cannot be read is left
+/// out and named, not written unchecked.
+#[test]
+fn an_unreadable_record_is_left_out_10763() {
+    let src = model("IFC4", "#8=IFCMATERIAL('Concrete',$,$);");
+    let mut scanned = super::MaterialReferents::scan(src.as_bytes(), "IFC4", "IFC2X3", true, &|_, _| true);
+    assert_eq!(scanned.apply(5, "#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);", "IFC4", &mut 0).as_deref(), Some("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);"));
+    assert_eq!(scanned.apply(7, "#7=IFCMATERIALPROPERTIES('P',$,(#6,#8);", "IFC4", &mut 0), None);
+    assert!(scanned.warnings().concat().contains("#7 (an unread record)"));
+}

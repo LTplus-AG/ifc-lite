@@ -65,8 +65,13 @@ export function publishMove(state: ViewerState, modelId: string, mutation: Mutat
   entityId: number, delta: readonly [number, number, number]): void {
   state.mirrorPlacementEdit(modelId, entityId, [delta[0], delta[1], delta[2]]);
   const session = mirroredSession(state, modelId);
-  // History holds the committed copy of an atomic edit's mutation, so the record goes on that one, found by id.
-  const committed = mutation && (state.undoStacks.get(modelId)?.find(entry => entry.id === mutation.id) ?? mutation);
+  // History holds the committed copy of an atomic edit's mutation, so the record goes on that one, found by id from
+  // the stack's end, where a move just landed.
+  const stack = state.undoStacks.get(modelId) ?? [];
+  let committed = mutation;
+  for (let index = stack.length - 1; mutation && index >= 0; index--) {
+    if (stack[index].id === mutation.id) { committed = stack[index]; break; }
+  }
   // A copy of the delta: the caller's array may be reused, as a drag's per-frame one is.
   if (session && committed) rememberPublishedEdit(committed, session, { placement: { entityId, delta: [delta[0], delta[1], delta[2]] } });
 }

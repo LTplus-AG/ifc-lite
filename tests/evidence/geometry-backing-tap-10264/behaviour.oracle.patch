@@ -1,0 +1,22 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
+index e47414e1d9..ca4e32be05 100644
+--- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
++++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
+@@ -138,7 +138,7 @@ export class StoreGeometryBackingTap {
+       const carried: DecodedInstancedShard[] = [];
+       if (shards === 'carry') {
+         if (!previous?.backing || previous.failure || previous.instancedLost) next.instancedLost = true;
+-        else void previous.backing;
++        else for await (const shard of previous.backing.reader.instancedShards()) carried.push(shard);
+       }
+       next.backing = await this.registry.begin(modelId, this.options);
+       for (const shard of carried) {
+@@ -228,7 +228,7 @@ export class StoreGeometryBackingTap {
+ 
+   /** Shards were enqueued for this model that the tap never saw. */
+   private missedShards(modelId: string): boolean {
+-    return instancedShardRevision(modelId) < 0;
++    return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0);
+   }
+ 
+   status(): ModelBackingStatus[] {

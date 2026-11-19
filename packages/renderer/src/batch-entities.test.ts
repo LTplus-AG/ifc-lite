@@ -9,6 +9,7 @@ import { batchEntityIdAnchor, batchHasColorOverride, ENTITY_LANE_ID_SPAN } from 
 import { collectShadowOccluders } from './shadow-occluders.js';
 import { XRayAlpha } from './xray-alpha.js';
 import { batchesHolding } from './batch-highlight.js';
+import { pushSplit } from './residency.js';
 import type { BatchedMesh } from './types.js';
 
 // #10653: a colour-merged piece with primary id 1 tags some vertices with entity 2. Every
@@ -74,5 +75,13 @@ describe('colour-merged batches decide by every vertex-lane entity (#10653)', ()
     assert.ok(held.found.has(2) && !held.blocked.has(2) && held.batches.size === 1);
     const mixed = batchesHolding(scene(merged([2], { expressIds: [1, 3], modelIndices: [0, 1] })), new Set([2]), 0, resources);
     assert.ok(mixed.blocked.has(2), 'the lane cannot tell which model the secondary belongs to');
+  });
+
+  it('a cold colour-merged batch draws whole and never fetches pieces for a split it cannot make', () => {
+    let fetched = 0;
+    const requests = { pushSplit: () => { throw new Error('asked to split'); }, wantsSplit: () => true } as unknown as Parameters<typeof pushSplit>[0];
+    const scene = { requestBatchPieces: () => { fetched++; return true; } } as unknown as Parameters<typeof pushSplit>[1];
+    assert.equal(pushSplit(requests, scene, merged([2], { gpuResident: false }), false, new Set([1, 2])), 'whole');
+    assert.equal(fetched, 0);
   });
 });

@@ -61,7 +61,7 @@ export function classifyBatch(
  * full ids (its entries lie in one 2^24 page, true of every scene batch).
  * Otherwise the batch must be left out, never drawn with its hidden entities.
  */
-export function canFilterOnGpu(batch: Pick<BatchedMesh, 'expressIds'>, tableReady: boolean): boolean {
+export function canFilterOnGpu(batch: Pick<BatchedMesh, 'expressIds' | 'laneIds'>, tableReady: boolean): boolean {
   return tableReady && batchEntityIdAnchor(batch) !== null;
 }
 

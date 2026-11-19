@@ -2,7 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { getModelForRef } from '@/sdk/adapters/model-compat';
+import {
+  getLegacyMutationView, isLegacyMutationRef, LEGACY_MUTATION_MODEL_ID, LEGACY_MUTATION_MODEL_IDS,
+} from '@/sdk/adapters/model-compat';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { RelationshipType } from '@ifc-lite/data';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractTypeQuantitiesOnDemand, readCurrentTypeQuantities, type CurrentProjectUnitResult, type IfcDataStore } from '@ifc-lite/parser';
@@ -19,6 +22,22 @@ import { allBasisBreakdowns, declaredVolumeBases, ZONE_QUANTITY_SET_NAME_PREFIX,
 /** Shared public unit convention; unresolved declared units and unavailable context are distinct. */
 export const ZONE_VOLUME_UNIT_LIMITATIONS = 'When the project context is available but its VOLUMEUNIT is unresolved, implicit declared bases retain the existing Properties card scale-1 SI default; an m3 label does not prove a declared file unit or a measured conversion. When the current project unit context is unavailable, implicit declared bases are withheld. A basis with an independently resolved explicit native Unit retains its measured SI conversion; an unresolved explicit Unit is reported as unavailable rather than given a scale-1 default.';
 
+/** Legacy refs can still read the old source while federation is populated. */
+function canReadLegacySource(s: ViewerState, modelId: string): boolean {
+  return isLegacyMutationRef(s, modelId) || modelId === LEGACY_MUTATION_MODEL_ID || modelId === 'legacy';
+}
+
+function legacyZoneView(s: ViewerState): MutablePropertyView | null {
+  if (s.models.size === 0) return getLegacyMutationView(s.mutationViews) ?? null;
+  for (const alias of LEGACY_MUTATION_MODEL_IDS) {
+    const store = s.models.get(alias)?.ifcDataStore;
+    if (store && store !== s.ifcDataStore) continue;
+    const view = s.mutationViews.get(alias);
+    if (view) return view;
+  }
+  return null;
+}
+
 /** Declared shares belong to these exact native sources and overlay revisions,
  * including edits that do not publish a viewer mutationVersion. This walks
  * loaded sources only, never their elements, quantities or geometry. */
@@ -30,8 +49,8 @@ export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySe
     identity.push(modelId, model.ifcDataStore, model.ifcDataStore?.source,
       model.sourceContentHash, view, view?.getMutationRevision());
   }
-  if (!modelIds || modelIds.has('legacy') || modelIds.has('__legacy__')) {
-    const legacyView = s.getMutationView('__legacy__');
+  if (!modelIds || LEGACY_MUTATION_MODEL_IDS.some(id => modelIds.has(id) && canReadLegacySource(s, id))) {
+    const legacyView = legacyZoneView(s);
     identity.push(s.ifcDataStore, s.ifcDataStore?.source, legacyView, legacyView?.getMutationRevision());
   }
   return identity;
@@ -40,16 +59,24 @@ export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySe
 /** Same occurrence-first inherited quantities and file VOLUMEUNIT as the
  * Properties card. Reading evidence must never create a mutation view. */
 export function zoneQuantitySources(s: ViewerState) {
-  const models = new Map<string, { store: IfcDataStore | null; query: IfcQuery | null; units: CurrentProjectUnitResult }>();
+  const models = new Map<string, {
+    store: IfcDataStore | null;
+    query: IfcQuery | null;
+    units: CurrentProjectUnitResult;
+    view: MutablePropertyView | null;
+  }>();
   return (ref: EntityRef) => {
-    const view = s.getMutationView(ref.modelId);
     let source = models.get(ref.modelId);
     if (!source) {
-      const store = getModelForRef(s, ref.modelId)?.ifcDataStore ?? null;
+      const modelStore = s.models.get(ref.modelId)?.ifcDataStore;
+      const legacy = !modelStore && canReadLegacySource(s, ref.modelId);
+      const store = modelStore ?? (legacy ? s.ifcDataStore : null);
+      const view = legacy ? legacyZoneView(s) : s.mutationViews.get(ref.modelId) ?? null;
       const units = currentProjectUnitContext(store, view);
-      source = { store, query: store ? new IfcQuery(store) : null, units };
+      source = { store, query: store ? new IfcQuery(store) : null, units, view };
       models.set(ref.modelId, source);
     }
+    const { view } = source;
     const data = effectiveElementData(ref.expressId, source.query, view);
     if (data.quantityStatus === 'unavailable') return { quantities: [], scale: null,
       unitStatus: 'unavailable' as const, unitReason: data.quantityReason,

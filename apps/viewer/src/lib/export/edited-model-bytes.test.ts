@@ -19,8 +19,9 @@ import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 import { resolveTerrainSelection } from './landXmlTerrainExport';
 import { storesWithMutationViews } from '@/components/viewer/lists/list-builder-discovery';
-import { zoneQuantitySources } from '@/lib/assistant/adapters/zone-volume-bases';
+import { zoneQuantitySourceIdentity, zoneQuantitySources } from '@/lib/assistant/adapters/zone-volume-bases';
 import { configureMutationView } from '@/utils/configureMutationView';
+import { fixtureModel } from '@/test/store-fixture';
 
 // Loaded at runtime: the changed-test oracle removes new production files, and
 // a missing module must fail an assertion rather than the whole file's import.
@@ -245,6 +246,46 @@ it('legacy zone evidence sees quantities stored under the default alias (#10676)
     const evidence = zoneQuantitySources(useViewerStore.getState())({ modelId: 'legacy', expressId: 10 });
     const quantities = evidence.quantities.find(qset => qset.name === 'Qto_WallBaseQuantities')?.quantities;
     assert.equal(quantities?.find(quantity => quantity.name === 'GrossVolume')?.value, 8);
+  } finally {
+    useViewerStore.setState(snapshot);
+  }
+});
+
+it('legacy zone evidence uses the loaded source during a mixed-model transition (#10676)', async () => {
+  const store = await parse(new TextEncoder().encode(FIXTURE));
+  const other = fixtureModel('federated', { idOffset: 1_000_000 });
+  const snapshot = useViewerStore.getState();
+  const view = new MutablePropertyView(store.properties, 'default');
+  configureMutationView(view, store);
+  view.createQuantitySet(10, 'Qto_WallBaseQuantities', [
+    { name: 'GrossVolume', value: 8, quantityType: QuantityType.Volume },
+  ]);
+  useViewerStore.setState({
+    models: new Map([[other.id, other]]), ifcDataStore: store, mutationViews: new Map([['default', view]]),
+  });
+  try {
+    const state = useViewerStore.getState();
+    const evidence = zoneQuantitySources(state)({ modelId: 'legacy', expressId: 10 });
+    assert.equal(evidence.status, 'available');
+    const quantities = evidence.quantities.find(qset => qset.name === 'Qto_WallBaseQuantities')?.quantities;
+    assert.equal(quantities?.find(quantity => quantity.name === 'GrossVolume')?.value, 8);
+    assert.ok(zoneQuantitySourceIdentity(state, new Set(['legacy'])).includes(view));
+    assert.ok(!zoneQuantitySourceIdentity(state, new Set(['federated'])).includes(view));
+
+    const federatedStore = await parse(new TextEncoder().encode(FIXTURE.replace('Wall A', 'Federated wall')));
+    const defaultModel = { ...fixtureModel('default', { idOffset: 1_000_000 }), ifcDataStore: federatedStore };
+    const federatedView = new MutablePropertyView(federatedStore.properties, 'default');
+    configureMutationView(federatedView, federatedStore);
+    federatedView.createQuantitySet(10, 'Qto_WallBaseQuantities', [
+      { name: 'GrossVolume', value: 99, quantityType: QuantityType.Volume },
+    ]);
+    useViewerStore.setState({
+      models: new Map([['default', defaultModel]]),
+      mutationViews: new Map([['default', federatedView], ['__legacy__', view]]),
+    });
+    const mixed = zoneQuantitySources(useViewerStore.getState());
+    assert.equal(mixed({ modelId: 'legacy', expressId: 10 }).quantities[0]?.quantities[0]?.value, 8);
+    assert.equal(mixed({ modelId: 'default', expressId: 10 }).quantities[0]?.quantities[0]?.value, 99);
   } finally {
     useViewerStore.setState(snapshot);
   }

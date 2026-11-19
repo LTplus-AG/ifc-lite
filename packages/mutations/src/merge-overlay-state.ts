@@ -121,6 +121,7 @@ function mergeSnapshots(preferred: OverlaySnapshot, other: OverlaySnapshot): Ove
     positionalAttrMutations: unionBuckets(other.positionalAttrMutations, preferred.positionalAttrMutations),
     typeMutations: mapUnion(other.typeMutations, preferred.typeMutations),
     newEntities: NewEntityMap.from(mapUnion(other.newEntities, preferred.newEntities)),
+    // Rebuild reference candidates from the combined attribute and type rows.
     overriddenEntities: new NewEntityMap(),
     overriddenSourceIds: new Set(),
     tombstones: setUnion(other.tombstones, preferred.tombstones),

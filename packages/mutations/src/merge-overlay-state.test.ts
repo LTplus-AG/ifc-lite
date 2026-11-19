@@ -74,3 +74,20 @@ it.each(['preferred', 'historical'] as const)('refuses a changed %s input and pu
   fresh.commit();
   expect(preferred.getMutationRevision()).toBe(revision);
 });
+
+it.each(['preferred', 'historical'] as const)('rebuilds source override references from the %s overlay (#10676)', owner => {
+  const preferred = new MutablePropertyView(null, '__legacy__');
+  const historical = new MutablePropertyView(null, 'default');
+  const [referenceView, nameView] = owner === 'preferred' ? [preferred, historical] : [historical, preferred];
+  referenceView.setAttribute(10, 'Unit', '#90', undefined, true);
+  referenceView.setPositionalAttribute(11, 5, ['#91'], true);
+  nameView.setAttribute(12, 'Name', 'Separate rename');
+
+  expect(referenceView.getAttributeOverrideReferenceCandidates(90)).toEqual([10]);
+  expect(referenceView.getAttributeOverrideReferenceCandidates(91)).toEqual([11]);
+  prepareMutationViewMerge(preferred, [historical]).commit();
+  expect(preferred.getAttributeOverrideReferenceCandidates(90)).toEqual([10]);
+  expect(preferred.getAttributeOverrideReferenceCandidates(91)).toEqual([11]);
+  expect(preferred.getAttributeOverrideEntityIds(['IfcRelVoidsElement'])).toEqual(expect.arrayContaining([10, 11, 12]));
+  expect(preferred.getAttributeMutationsForEntity(12)[0]?.value).toBe('Separate rename');
+});

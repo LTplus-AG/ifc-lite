@@ -40,7 +40,13 @@ export async function prepareReleasedExport(
   modelIds: Iterable<string> = state.models.keys(), budgetBytes = DEFAULT_EXPORT_READBACK_BYTES,
 ): Promise<ReleasedExportGeometry> {
   const tap = activeGeometryBackingTap();
-  const owners = [...modelIds];
+  // A federation can publish its next model before that model has geometry.
+  // Such an entry contributes nothing to the view and needs no backing yet.
+  // Preserve shard-only geometry and reject explicitly missing model owners.
+  const owners = [...modelIds].filter((modelId) => {
+    const model = state.models.get(modelId);
+    return !model || model.geometryResult != null || (tap?.backing(modelId)?.directory.shards.length ?? 0) > 0;
+  });
   let bytes = 0;
   for (const modelId of owners) {
     const backing = tap?.backing(modelId);

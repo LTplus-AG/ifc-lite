@@ -16,6 +16,7 @@ import type { StoreApi } from 'zustand';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { fixtureModel } from '@/test/store-fixture';
 import { setGlobalRendererRef } from '../hooks/useBCF.js';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
@@ -93,6 +94,39 @@ describe('exports over released geometry', () => {
     useViewerStore.setState({ models: new Map([['res', { id: 'res', idOffset: 0, maxExpressId: 10, geometryResult }]]) } as never);
     const out = await withReleasedExportGeometry(() => withInstancedMeshes(geometryResult, null));
     assert.equal(out.meshes[0], geometryResult.meshes[0]);
+  });
+
+  it('#10887 exporting the current geometry ignores a pending model with no geometry', async () => {
+    const geometry: GeometryResult = { meshes: [mesh(1, 7)], totalTriangles: 1, totalVertices: 3,
+      coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    useViewerStore.setState({ models: new Map([['ready', {
+      id: 'ready', idOffset: 0, maxExpressId: 10, geometryResult: geometry,
+    }]]) } as never);
+    const store = useViewerStore as unknown as StoreApi<TapState>;
+    const scene = { isGeometryDataReleased: () => true, placeAppearanceSource: (m: MeshData) => m,
+      getAllInstancedMeshData: () => [] as MeshData[] };
+    setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+    try {
+      await geometryBackingCommand(store, undefined, { action: 'start', options: {
+        database: { name: `export-pending-${process.pid}`, locks: null },
+      } as never });
+      const rows = await geometryBackingCommand(store, undefined, { action: 'seal' });
+      assert.ok(rows.every((row) => 'complete' in row && row.complete));
+      releaseCpuMeshBuffers(geometry.meshes);
+      useViewerStore.setState({ models: new Map([...useViewerStore.getState().models,
+        ['pending', { ...fixtureModel('pending'), geometryResult: null }],
+      ]) });
+      let result: GeometryResult | undefined;
+      await assert.doesNotReject(async () => {
+        result = await withReleasedExportGeometry(() => withInstancedMeshes(geometry, null));
+      }, 'a model with no geometry must not block the current view export');
+      assert.ok(result);
+      assert.equal(result.meshes.length, 1);
+      assert.equal(result.meshes[0].positions[2], 7, 'unscoped view exporters keep the ready model');
+    } finally {
+      await geometryBackingCommand(store, undefined, { action: 'stop' });
+      setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+    }
   });
 
   for (const failFirst of [false, true]) {

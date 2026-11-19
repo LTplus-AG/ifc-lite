@@ -274,10 +274,15 @@ function withReleasedMeshAreas(
 ): Map<number, MeshAreaEntry> {
   const metadata = releasedGeometryMetadata();
   for (const [modelId, model] of models) {
+    const answered = new Set<number>();
     for (const mesh of model.geometryResult?.meshes ?? []) {
-      if (!isReleasedMesh(mesh) || areas.has(mesh.expressId)) continue;
+      if (!isReleasedMesh(mesh) || answered.has(mesh.expressId)) continue;
+      answered.add(mesh.expressId);
       const backed = metadata?.area(modelId, mesh.expressId);
+      // One released piece makes the resident sum partial. The backing holds
+      // the whole entity, so replace rather than add or keep that partial sum.
       if (backed) areas.set(mesh.expressId, backed);
+      else areas.delete(mesh.expressId);
     }
   }
   return areas;

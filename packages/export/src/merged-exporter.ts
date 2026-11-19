@@ -607,7 +607,7 @@ export class MergedExporter {
     // Bake each model's pending edits into its source bytes before merging, so
     // federated export round-trips mutations like single-model export. Models
     // without edits pass through unchanged (no export/parse cost).
-    const baked = await bakeMutatedModels(this.models);
+    const baked = await bakeMutatedModels(this.models, schema);
     const models = withUsableSource(baked.models);
     const setup = this.buildMergeSetup(options, models);
     const containerDrops = this.planContainerDrops(options, models, setup);

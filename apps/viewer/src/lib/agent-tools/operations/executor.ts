@@ -159,8 +159,9 @@ export async function executeOperation(
     // Keep failed outcomes once the native handler ran: retrying a partially dispatched UI action must not duplicate it.
     if (prior.size >= 100) invalid('Host idempotency capacity reached (100 requests). Reconnect before creating further keyed requests.');
     const key = args.idempotency_key, request: AppliedRequest = { signature, store: model?.store, result: Promise.resolve() };
-    request.result = run(() => { if (prior.get(key) === request) prior.delete(key); });
+    // Registered before run() starts, so even an immediate pre-dispatch failure can remove it.
     prior.set(key, request);
+    request.result = run(() => { if (prior.get(key) === request) prior.delete(key); });
     return request.result;
   }
   const owned = jobs(host);

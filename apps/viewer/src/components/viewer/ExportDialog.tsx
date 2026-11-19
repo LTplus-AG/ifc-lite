@@ -36,6 +36,7 @@ import { mergedExportSummary, stepExportSummary } from '@/lib/export/step-export
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
+import { hasGeorefEdits } from './step-export-source';
 import { useTranslation } from '@/i18n';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
@@ -233,12 +234,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       let count = getMutationView(selectedModelId)?.getModifiedEntityCount() ?? 0;
       // The single-model STEP export also applies the selected model's
       // georeferencing edits, so count them (+1) when present.
-      const gm = georefMutations.get(selectedModelId);
-      const hasGeoref = !!gm && (
-        (gm.projectedCRS && Object.keys(gm.projectedCRS).length > 0) ||
-        (gm.mapConversion && Object.keys(gm.mapConversion).length > 0)
-      );
-      if (hasGeoref) count += 1;
+      if (hasGeorefEdits(georefMutations.get(selectedModelId))) count += 1;
       // ...and it splices the schedule when the selected model owns it (or it's
       // unattributed with pending tasks) — the same gate spliceScheduleIntoExport
       // uses — so count those tasks too, matching what actually gets written.
@@ -251,7 +247,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
       return count;
     }
-    return getModifiedEntityCount();
+    // The merged export applies every model's georeferencing edits too (#10669).
+    return getModifiedEntityCount() + [...georefMutations.values()].filter(hasGeorefEdits).length;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
 
@@ -336,7 +333,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
-        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView, georefMutations });
+        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView, georefMutations: useViewerStore.getState().georefMutations });
         const refusal = emptyMergeRefusal(mergeInputs, t);
         if (refusal) { toast.error(refusal); return { success: false, message: refusal }; }
 

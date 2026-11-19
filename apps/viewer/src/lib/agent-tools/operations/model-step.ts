@@ -77,6 +77,6 @@ export const stepExportOperations = [
       visibleOnly: i.visible_only, hiddenEntityIdsByModel: prepared.visibility.hidden, isolatedEntityIdsByModel: prepared.visibility.isolated,
       application: 'ifc-lite', description: 'Merged export through native viewer operations', onProgress: () => current() });
     current();
-    return { artifact: await c.artifacts.create({ data: result.content, filename: modelExportFilename(inputs[0].name, 'ifc', '_merged'), mimeType: 'text/plain' }), diagnostics_json: JSON.stringify({ stats: result.stats, skipped }) };
+    return { artifact: await c.artifacts.create({ data: result.content, filename: modelExportFilename(inputs[0].name, 'ifc', '_merged'), mimeType: 'text/plain' }), diagnostics_json: JSON.stringify({ stats: result.stats, skipped, section_warnings: prepared.warnings }) };
   }),
 ];

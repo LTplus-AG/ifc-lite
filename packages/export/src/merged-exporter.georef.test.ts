@@ -59,3 +59,28 @@ describe('MergedExporter georeference edits (#10669)', () => {
     expect(content).not.toContain('IFCMAPCONVERSION');
   });
 });
+
+describe('MergedExporter georeference edits it cannot write (#10669)', () => {
+  it('merges without an edit the exporter refuses, and names it in the warnings', async () => {
+    // The exporter refuses georeference edits on an IFC2X3 source, which has no IfcMapConversion to write.
+    const ifc2x3 = model('A', '0ProjectA000000000000a').replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC2X3'))");
+    const a: MergeModelInput = { id: 'a', name: 'A', dataStore: await parse(ifc2x3), georefMutations: GEOREF };
+    const result = await new MergedExporter([a]).exportAsync({ schema: 'IFC4' });
+    expect(decode(result.content)).not.toContain('IFCMAPCONVERSION');
+    expect(result.stats.warnings.some(warning => /^A: Georeferencing edits were not written.*requires IFC4/.test(warning))).toBe(true);
+  });
+
+  it('names an edit the exporter wrote only in part', async () => {
+    // A position with no CRS to target: the exporter writes nothing and says so.
+    const a: MergeModelInput = { id: 'a', name: 'A', dataStore: await parse(model('A', '0ProjectA000000000000a')), georefMutations: { mapConversion: { eastings: 2600000 } } };
+    const result = await new MergedExporter([a]).exportAsync({ schema: 'IFC4' });
+    expect(result.stats.warnings.some(warning => /^A: Cannot create IfcMapConversion/.test(warning))).toBe(true);
+  });
+
+  it('leaves georeference edits out of an IFC2X3 merge, which has no IfcMapConversion', async () => {
+    const a: MergeModelInput = { id: 'a', name: 'A', dataStore: await parse(model('A', '0ProjectA000000000000a')), georefMutations: GEOREF };
+    const result = await new MergedExporter([a]).exportAsync({ schema: 'IFC2X3' });
+    expect(decode(result.content)).not.toContain('IFCMAPCONVERSION');
+    expect(result.stats.warnings.some(warning => /A: Georeferencing edits were not written.*IFC2X3/.test(warning))).toBe(true);
+  });
+});

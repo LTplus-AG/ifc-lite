@@ -72,9 +72,15 @@ export async function sectionMergeInputs(
   for (const input of inputs) {
     const options = optionsFor(input.id);
     if (!options) { result.push(input); continue; }
-    const source = await new StepExporter(input.dataStore, input.mutationView).exportAsync({
+    const crop = (georefMutations: MergeModelInput['georefMutations']) => new StepExporter(input.dataStore, input.mutationView).exportAsync({
       schema, visibleOnly: true, hiddenEntityIds: visibility.hidden.get(input.id), isolatedEntityIds: visibility.isolated.get(input.id),
-      georefMutations: input.georefMutations,
+      georefMutations,
+    });
+    // As the merge bake does: an edit the exporter refuses (IFC2X3, a partial position) is left out and named.
+    const source = await crop(input.georefMutations).catch((error: unknown) => {
+      if (!input.georefMutations || !(error instanceof Error && error.message.startsWith('Georeferencing '))) throw error;
+      warnings.push(`${input.name}: Georeferencing edits were not written. ${error.message}`);
+      return crop(undefined);
     });
     for (const warning of source.stats.warnings) warnings.push(`${input.name}: ${warning}`);
     const cropped = await exportSectionedStep(source.content, options);

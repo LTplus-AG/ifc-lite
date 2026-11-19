@@ -1167,6 +1167,15 @@ contracts; do not infer latency from allocation counts or relax the gate.
 The user explicitly accepted the small absolute cost to retain the broader
 gains, with further investigation bounded by #10555.
 
+## Rectangular-cut diagnostics measure area and volume (#10510)
+
+Equal triangle counts can hide a real cut. Accepted rectangular cuts now
+compare the input and final surface area and volume before the load report
+identifies the host as unchanged. The real-model cohort included a cut with
+nearly identical area and a substantial volume reduction, so both measurements
+matter. Native load probes compare mesh fingerprints because this changes the
+diagnostics the loader emits while retaining the mesh output.
+
 ## Small void classes walk canonically (#10555)
 
 #10420's first hosted window in a 1K session exceeded the regression boundary. Phase timing through the real session API put

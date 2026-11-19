@@ -61,6 +61,16 @@ describe('mergeGeometryDiagnostics', () => {
     expect(m.rectFast).toEqual({ fired: 4, openingsCut: 7, deferHostNotBox: 1, deferNotThrough: 4, deferOffFace: 1, deferNearEdge: 2, deferNoOpenings: 3, deferTooManyOpenings: 7 });
   });
 
+  it('keeps triangle-based no-op counts out of the measured schema (#10510)', () => {
+    const legacy = make({ schemaVersion: 5, silentNoOps: 9, hostsWithOpenings: 10 });
+    const measured = make({ schemaVersion: 6, silentNoOps: 2, hostsWithOpenings: 3 });
+    for (const a of [mergeGeometryDiagnostics(legacy, measured), mergeGeometryDiagnostics(measured, legacy)]) {
+      expect(a).toMatchObject({ schemaVersion: 6, silentNoOps: 2, hostsWithOpenings: 13 });
+      expect(mergeGeometryDiagnostics(a, measured)?.silentNoOps).toBe(4);
+    }
+    expect(mergeGeometryDiagnostics(legacy, legacy)).toMatchObject({ schemaVersion: 5, silentNoOps: 18 });
+  });
+
   it('sums oversizedRefDrops, treating an absent counter as 0 (pre-#3752 payloads)', () => {
     // The Rust producer always serializes `oversizedRefDrops`, but a payload
     // from a build predating #3752 has no such key. Absent must fold as 0

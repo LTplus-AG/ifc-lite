@@ -22,7 +22,7 @@ type Probe = typeof globalThis & {
   __ifc_lite_viewer_store__?: { getState(): { loading: boolean; geometryStreamingActive: boolean;
     models: Map<string, { geometryResult: { meshes: MeshData[] } | null }> } };
   __ifc_lite_scene_settled__?: () => boolean;
-  __ifc_lite_geometry_backing__?: (command: { action: string }) => Promise<Array<Record<string, unknown>>>;
+  __ifc_lite_geometry_backing__?: (command: { action: string; points?: Array<[number, number]> }) => Promise<Array<Record<string, unknown>>>;
   __ifc_lite_cpu_geometry_held__?: () => Promise<{ totalBytes: number }>;
 };
 
@@ -71,7 +71,8 @@ async function open(page: Page): Promise<void> {
   await page.evaluate(async (hookPath) => {
     const { geometryBackingCommand } = await import(hookPath) as Hook;
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__: Parameters<Hook['geometryBackingCommand']>[0] }).__ifc_lite_viewer_store__;
-    await geometryBackingCommand(store, undefined, { action: 'start' });
+    // Small chunks: many per model, so readback leases a neighbourhood, not the whole model.
+    await geometryBackingCommand(store, undefined, { action: 'start', options: { chunkBytes: 64 * 1024, queueBytes: 4 << 20 } });
   }, HOOK);
 }
 
@@ -93,9 +94,15 @@ for (const fixture of FIXTURES) {
       const [modelId, model] = [...g.__ifc_lite_viewer_store__!.getState().models][0];
       const before = hash(model.geometryResult!.meshes);
       const sealed = await g.__ifc_lite_geometry_backing__!({ action: 'seal' });
+      // Measurement/snap probes over a grid of the canvas: resident now, readback after release.
+      const canvas = document.querySelector('canvas')!.getBoundingClientRect();
+      const points: Array<[number, number]> = [];
+      for (let i = 1; i <= 5; i++) for (let j = 1; j <= 4; j++) points.push([canvas.width * i / 6, canvas.height * j / 5]);
+      const snapsBefore = await g.__ifc_lite_geometry_backing__!({ action: 'snap-probe-for-test', points });
       const heldBefore = (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes;
       const released = await g.__ifc_lite_geometry_backing__!({ action: 'release-for-test' });
       const heldAfter = (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes;
+      const snapsAfter = await g.__ifc_lite_geometry_backing__!({ action: 'snap-probe-for-test', points });
       const storeEmpty = model.geometryResult!.meshes.every((mesh) => mesh.positions.length === 0);
       const backing = activeGeometryBackingTap()!.backing(modelId)!;
       const read: MeshData[] = [];
@@ -103,7 +110,7 @@ for (const fixture of FIXTURES) {
       for await (const batch of backing.reader.meshes()) { read.push(...batch); peak = Math.max(peak, backing.reader.retainedBytes); }
       let occurrences = 0, templates = 0;
       for await (const shard of backing.reader.instancedShards()) { occurrences += shard.instances.length; templates += shard.templates.length; }
-      return { modelId, before, after: hash(read), sealed, released, heldBefore, heldAfter, storeEmpty,
+      return { modelId, before, after: hash(read), sealed, released, heldBefore, heldAfter, storeEmpty, snapsBefore, snapsAfter,
         occurrences, templates, peakDecodedBytes: peak };
     }, [HOOK, digestSource()] as const);
     await page.screenshot({ path: info.outputPath('after-release.png') });
@@ -112,6 +119,21 @@ for (const fixture of FIXTURES) {
     expect(report.storeEmpty).toBe(true);
     expect(report.after).toBe(report.before);
     expect(report.heldAfter).toBeLessThan(report.heldBefore);
+    // Measurement and snapping keep working after release, from readback alone.
+    type Probe = { outcome: string; expressId: number | null; point: number[] | null; snap: { type: string; position: number[] } | null };
+    const before = report.snapsBefore as Probe[], after = report.snapsAfter as Probe[];
+    const hits = before.filter((probe) => probe.expressId !== null).length;
+    expect(hits, 'the probe grid must land on geometry').toBeGreaterThan(0);
+    expect(before.every((probe) => probe.outcome === 'resident')).toBe(true);
+    for (let i = 0; i < before.length; i++) {
+      const a = before[i], b = after[i];
+      expect(b.expressId, `probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
+      if (a.expressId === null) continue;
+      expect(b.outcome, `probe ${i} came from readback`).toBe('fed');
+      for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `probe ${i} hit`).toBeLessThan(1e-6);
+      expect(b.snap?.type, `probe ${i} snap kind`).toBe(a.snap?.type);
+      if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `probe ${i} snap`).toBeLessThan(1e-6);
+    }
     await page.evaluate(() => (globalThis as Probe).__ifc_lite_geometry_backing__!({ action: 'stop' }));
   });
 }

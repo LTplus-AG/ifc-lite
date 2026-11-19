@@ -937,3 +937,29 @@ describe('RaycastEngine flat index (#9504)', () => {
     assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
   });
 });
+
+describe('RaycastEngine readback meshes (#10264)', () => {
+  it('raycasts and snaps released geometry read back from storage, under hide/isolate, and clears', () => {
+    const scene = new Scene();
+    const resident = makeQuad({ expressId: 1, translate: [0, 0, -10] });
+    addRegularQuad(scene, resident);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    const residentHit = engine.raycastScene(400, 300, { snapOptions: { snapToVertices: true, snapToEdges: true } });
+    assert.equal(residentHit?.intersection.expressId, 1);
+    scene.releaseGeometryData();
+    assert.equal(scene.isGeometryDataReleased(), true);
+    assert.equal(engine.raycastScene(400, 300), null, 'a released scene has no CPU pieces to test');
+
+    // The same piece, as storage returns it: a fresh object with fresh arrays.
+    const readback: MeshData = { ...resident, positions: resident.positions.slice(), normals: resident.normals.slice(), indices: resident.indices.slice() };
+    engine.setReadbackMeshes([readback]);
+    const hit = engine.raycastScene(400, 300, { snapOptions: { snapToVertices: true, snapToEdges: true } });
+    assert.equal(hit?.intersection.expressId, 1);
+    assert.deepEqual(hit?.intersection.point, residentHit?.intersection.point, 'the same surface point as over resident pieces');
+    assert.equal(hit?.snap?.type, residentHit?.snap?.type);
+    assert.equal(engine.raycastScene(400, 300, { hiddenIds: new Set([1]) }), null, 'hidden readback pieces are not hit');
+    assert.equal(engine.raycastScene(400, 300, { isolatedIds: new Set([2]) }), null, 'non-isolated readback pieces are not hit');
+    engine.setReadbackMeshes(null);
+    assert.equal(engine.raycastScene(400, 300), null, 'cleared readback leaves nothing behind');
+  });
+});

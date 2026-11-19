@@ -20,6 +20,7 @@ import { pressPastClickSlop } from './pointerGesture.js';
 import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
 import { useViewerStore } from '@/store';
+import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -269,46 +270,53 @@ export function handleMeasureHover(
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
       if (isGeometryHeld(useViewerStore.getState())) return;
-      if (pick) { pick(ctx, x, y); return; }
-
-      // Use magnetic snap for hover preview
-      const currentLock = ctx.edgeLockStateRef.current;
-      const result = renderer.raycastSceneMagnetic(x, y, {
-        edge: currentLock.edge,
-        meshExpressId: currentLock.meshExpressId,
-        lockStrength: currentLock.lockStrength,
-      }, {
-        hiddenIds: ctx.hiddenEntitiesRef.current,
-        isolatedIds: ctx.isolatedEntitiesRef.current,
-        snapOptions: measureSnapOptions(ctx, { radius: 40 }), // Good radius for hover snap detection
-      });
-
-      // Update snap target for visual feedback
-      if (result.snapTarget) {
-        ctx.setSnapTarget(result.snapTarget);
-
-        // Update edge lock state for hover
-        if (result.edgeLock.shouldRelease) {
-          ctx.clearEdgeLock();
-          updateSnapViz(ctx, result.snapTarget);
-        } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
-          ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
-          updateSnapViz(ctx, result.snapTarget, {
-            edgeT: result.edgeLock.edgeT,
-            isCorner: result.edgeLock.isCorner,
-            cornerValence: result.edgeLock.cornerValence,
-          });
-        } else {
-          updateSnapViz(ctx, result.snapTarget);
-        }
-      } else {
-        ctx.setSnapTarget(null);
-        ctx.clearEdgeLock();
-        updateSnapViz(ctx, null);
-      }
+      const run = () => { if (pick) pick(ctx, x, y); else hoverSnap(); };
+      // Released CPU geometry (#10264): read the pieces under the pointer back first.
+      if (!sceneGeometryReleased(renderer)) { run(); return; }
+      const visibility = { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current };
+      void import('@/lib/geometry-backing/readback-measure').then((m) => m.feedReadbackAt(renderer, x, y, visibility))
+        .then(run, (error: unknown) => console.error('[Measure] Geometry readback failed', error));
     });
   }
   return true; // Don't fall through to other tool handlers
+
+  function hoverSnap(): void {
+    // Use magnetic snap for hover preview
+    const currentLock = ctx.edgeLockStateRef.current;
+    const result = renderer.raycastSceneMagnetic(x, y, {
+      edge: currentLock.edge,
+      meshExpressId: currentLock.meshExpressId,
+      lockStrength: currentLock.lockStrength,
+    }, {
+      hiddenIds: ctx.hiddenEntitiesRef.current,
+      isolatedIds: ctx.isolatedEntitiesRef.current,
+      snapOptions: measureSnapOptions(ctx, { radius: 40 }), // Good radius for hover snap detection
+    });
+
+    // Update snap target for visual feedback
+    if (result.snapTarget) {
+      ctx.setSnapTarget(result.snapTarget);
+
+      // Update edge lock state for hover
+      if (result.edgeLock.shouldRelease) {
+        ctx.clearEdgeLock();
+        updateSnapViz(ctx, result.snapTarget);
+      } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
+        ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
+        updateSnapViz(ctx, result.snapTarget, {
+          edgeT: result.edgeLock.edgeT,
+          isCorner: result.edgeLock.isCorner,
+          cornerValence: result.edgeLock.cornerValence,
+        });
+      } else {
+        updateSnapViz(ctx, result.snapTarget);
+      }
+    } else {
+      ctx.setSnapTarget(null);
+      ctx.clearEdgeLock();
+      updateSnapViz(ctx, null);
+    }
+  }
 }
 
 /**

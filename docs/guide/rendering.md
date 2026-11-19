@@ -492,6 +492,24 @@ canvas.addEventListener('mousemove', (e) => {
 });
 ```
 
+
+### Snapping on released geometry
+
+`raycastScene` and `raycastSceneMagnetic` test CPU mesh pieces. A host that
+releases them after GPU upload (to fit a very large model) can still measure and
+snap. It reads the pieces under the pointer back from its own storage, places
+them in the current model frame, and hands them over before the raycast:
+
+```typescript
+const placed = pieces.map((mesh) => renderer.getScene().placeAppearanceSource!(mesh));
+renderer.setReadbackRaycastMeshes(placed);   // tested beside resident pieces
+const result = renderer.raycastSceneMagnetic(x, y, edgeLock, options);
+renderer.setReadbackRaycastMeshes(null);     // clear when the tool moves on
+```
+
+The pieces follow the same hide/isolate and section-clip rules as resident ones.
+The renderer does not copy them, so the host keeps them alive while they are set.
+
 ### Magnetic Snap Configuration
 
 ```typescript

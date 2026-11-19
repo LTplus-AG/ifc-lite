@@ -3046,6 +3046,17 @@ export class Renderer {
     }
 
     /**
+     * Released CPU geometry read back from local storage for the next raycast
+     * and snap (#10264). `raycastScene` / `raycastSceneMagnetic` test these
+     * pieces beside the resident ones, under the same visibility and section
+     * clip. Pass `null` to clear. Place them in the current model frame first
+     * (`getScene().placeAppearanceSource`); the caller keeps them alive.
+     */
+    setReadbackRaycastMeshes(meshes: readonly MeshData[] | null): void {
+        this.raycastEngine.setReadbackMeshes(meshes);
+    }
+
+    /**
      * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.

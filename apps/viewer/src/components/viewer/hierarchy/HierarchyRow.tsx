@@ -18,21 +18,19 @@ export interface HierarchyRowCallbacks extends NodeHandlers {
 }
 
 /**
- * Forwards each handler read to the latest callback of that name. Built here,
- * not in the hook, so the trap closes over only `latest` and the names, never
- * a render's callbacks; the proxy presents exactly the callbacks interface.
+ * One forwarder per callback name, each calling the latest callback of that
+ * name. Built here, not in the hook, so the forwarders close over only
+ * `latest` and their name, never a render's callbacks.
  */
 function forwardToLatest(latest: { readonly current: HierarchyRowCallbacks }, names: string[]): HierarchyRowCallbacks {
-  return new Proxy(Object.fromEntries(names.map((key) => [key, key])), {
-    get: (target, key) => Object.hasOwn(target, key)
-      ? (...args: unknown[]) => Reflect.apply(Reflect.get(latest.current, key), undefined, args) : undefined,
-  }) as unknown as HierarchyRowCallbacks;
+  return Object.fromEntries(names.map((key) => [key,
+    (...args: unknown[]) => Reflect.apply(Reflect.get(latest.current, key), undefined, args)])) as unknown as HierarchyRowCallbacks;
 }
 
 /**
  * A handlers object for the panel's lifetime whose members call the callbacks
  * of the last committed render, so a row re-renders only when what it shows
- * changes (#10535). The object is stable; each member read is a new forwarder.
+ * changes (#10535). The object and each of its members are stable.
  */
 export function useStableRowHandlers(callbacks: HierarchyRowCallbacks): HierarchyRowCallbacks {
   const latest = useRef(callbacks);

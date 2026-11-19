@@ -178,7 +178,6 @@ export class StoreGeometryBackingTap {
       if (meshes && meshes.length > tracked.consumed) {
         if (meshes.slice(tracked.consumed).some(isReleasedMesh)) {
           tracked.stale = new Error('Released meshes were appended; they have no arrays to back');
-          notifyReleasedGeometryMetadataChanged();
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
           notifyReleasedGeometryMetadataChanged();
           continue;

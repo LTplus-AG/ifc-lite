@@ -92,6 +92,7 @@ ${beam(44, 'IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.4,0.01,0.02,0.015,0
 ${beam(45, 'IFCTSHAPEPROFILEDEF(.AREA.,$,#46,0.1,0.1,0.006,0.015,0.008,0.004,$,$,$)')}
 ${beam(46, 'IFCUSHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.075,0.0085,0.0115,0.012,0.006,$,0.)')}
 ${beam(47, 'IFCLSHAPEPROFILEDEF(.AREA.,$,#46,0.075,0.075,0.006,$,$,$,0.,0.)')}
+${beam(48, 'IFCUSHAPEPROFILEDEF(.AREA.,$,#46,0.2,0.075,0.0085,0.0115,0.012,0.006,$,-0.0159503)')}
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -117,7 +118,8 @@ const ORACLE: Record<number, [number, number]> = {
   284: [0, -39.5833], // TopFlangeThickness omitted is the bottom flange's (schema rule WR3): 20 mm on both
   // Stated IFC2X3 CentreOfGravityInX/Y on T, U, C and asymmetric I (#10377): each states the centroid IfcOpenShell 0.8.4
   // measures on the filleted section, from the bounds centre as the IFC2x3 TC1 text defines it. #474 states 0.,0. as
-  // StruCad v16.4 writes it on an L (XbimEssentials Tests/TestFiles/NewlinesInStrings.ifc #315817); #464 is the same on a U.
+  // StruCad v16.4 writes it on an L (XbimEssentials Tests/TestFiles/NewlinesInStrings.ifc #315817); #464 states 0. in a U's
+  // one slot and #484 a negative value of the right magnitude.
   374: [0, 29.8391], // T, flange 100 x 15, 8 mm fillet: stated and used (sharp corners give 29.813)
   384: [0, 24.851], // T, flange 80 x 10: the centroid sits near the quarter point, so a distance from the flange face reads alike; computed kept
   394: [-15.9503, 0], // U 200 x 75, 12 mm fillet: stated and used (sharp corners give -15.490)
@@ -129,6 +131,7 @@ const ORACLE: Record<number, [number, number]> = {
   454: [0, 29.813], // the T of #374 without a stated value
   464: [-15.490, 0], // the U of #394 stating 0.: ignored
   474: [-16.531, -16.531], // the angle of #224 stating 0.,0.: ignored on both axes
+  484: [-15.490, 0], // the U of #394 stating -0.0159503: not a positive length, ignored
   204: [-3.553, 0], // the same square with a 20 mm radius circular void 25 mm right of the centre (IfcOpenShell tessellates the circle; the exact disc gives -3.593)
 };
 // Bounds centre of each profile in the profile frame (mm): the polygon's lower-left corner is the origin.

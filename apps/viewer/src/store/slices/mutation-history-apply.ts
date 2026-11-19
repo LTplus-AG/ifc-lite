@@ -36,7 +36,7 @@ function positionalIndex(attributeName: string | undefined): number | null {
  * on undo (removeTypeMutation → null) and re-applies it on redo.
  */
 export function syncTypeOverride(get: Get, modelId: string, entityId: number): void {
-  const view = get().mutationViews.get(modelId);
+  const view = get().getMutationView(modelId);
   const newType = view?.getEntityTypeMutation?.(entityId)?.newType ?? null;
   const dataStore = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
   dataStore?.entities?.setTypeOverride?.(entityId, newType);

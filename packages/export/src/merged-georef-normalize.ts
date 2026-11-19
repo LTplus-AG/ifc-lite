@@ -61,8 +61,10 @@ export interface GeorefNormalizePlan {
   minted: MintedRecords;
   /** Map conversions (or `ePSet_MapConversion` sets) whose viewer scale no Scale keeps; written with the spec Scale. */
   unkept: readonly number[];
-  /** `ePSet_MapConversion` sets of a model with no `ePSet_ProjectedCRS`, whose map unit stays implicit. */
+  /** `ePSet_MapConversion` sets whose map unit stays implicit: no ePSet_ProjectedCRS, or no MapUnit normalize could write. */
   implicitUnit: readonly number[];
+  /** `ePSet_MapConversion` sets whose Scale normalize could not rewrite, so the viewer shows them at another scale. */
+  scaleLeft: readonly number[];
 }
 
 /** 0-based index of the CRS's length unit: `IfcProjectedCRS.MapUnit` (IFC4, IFC4X3), `IfcGeographicCRS.HeightUnit`. */
@@ -83,16 +85,19 @@ const typeOf = (dataStore: IfcDataStore, id: number) => (dataStore.entityIndex.b
 
 /** The normalize advisory for a model's georeference, or null when it carries none. */
 export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, plan: GeorefNormalizePlan | undefined): string | null {
-  if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0 && !plan?.records.size && !plan?.implicitUnit.length) return null;
+  const lists = [plan?.records.size, plan?.implicitUnit.length, plan?.scaleLeft.length];
+  if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0 && !lists.some(Boolean)) return null;
   const idsIn = (ids: readonly number[]) => `${ids.map(id => `#${id}`).join(', ')} (${ids.length === 1 ? 'an id' : 'ids'} in "${name}")`;
-  const unkeptIds = plan?.unkept ?? [], implicitIds = plan?.implicitUnit ?? [];
+  const unkeptIds = plan?.unkept ?? [], implicitIds = plan?.implicitUnit ?? [], leftIds = plan?.scaleLeft ?? [];
   const unkept = unkeptIds.length === 0 ? '' : unkeptIds.length === 1
     ? ` The viewer cannot show its map conversion ${idsIn(unkeptIds)} at its own scale in the merged unit, so its Scale is written as the IFC specification reads it.`
     : ` The viewer cannot show its map conversions ${idsIn(unkeptIds)} at their own scale in the merged unit, so their Scale is written as the IFC specification reads it.`;
-  const implicit = implicitIds.length === 0 ? '' : ` It has no ePSet_ProjectedCRS, so the map unit of ePSet_MapConversion ` +
-    `${idsIn(implicitIds)} stays implicit; the viewer reads it as metres.`;
+  const implicit = implicitIds.length === 0 ? '' : ` The map unit of ePSet_MapConversion ${idsIn(implicitIds)} stays ` +
+    'implicit, with no ePSet_ProjectedCRS or no MapUnit normalize could write; the viewer reads it as metres.';
+  const left = leftIds.length === 0 ? '' : ` Normalize could not rewrite the Scale property of ePSet_MapConversion ` +
+    `${idsIn(leftIds)}, so the viewer shows it at another scale in the merged unit.`;
   return `Model "${name}" carries georeferencing, whose offsets normalize leaves in the CRS unit (a CRS without one ` +
-    `is written in metres). If the model was georeferenced in its own unit, review the merged georeference.${unkept}${implicit}`;
+    `is written in metres). If the model was georeferenced in its own unit, review the merged georeference.${unkept}${implicit}${left}`;
 }
 
 /**
@@ -100,19 +105,20 @@ export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, pla
  * Scale (the spec reading) as it will be written, else undefined to keep it as written; `unkept` when neither keeps it.
  */
 function chooseScale(conversion: Pick<MapConversion, 'scale' | 'factorX' | 'factorY' | 'factorZ'>, mapUnitScale: number | undefined,
-  modelScale: number, primaryScale: number): { scale: number | undefined; unkept: boolean } {
+  modelScale: number, primaryScale: number): { scale: number | undefined; unkept: boolean; keepsWritten: boolean } {
   const alone = viewerAxisScales(conversion, mapUnitScale, modelScale);
   const keeps = (scale: number | undefined) => viewerAxisScales({ ...conversion, scale }, mapUnitScale, primaryScale)
     .every((value, axis) => Math.abs(value - alone[axis]) <= 1e-9 * Math.abs(alone[axis])); // relative: scales can be tiny
   // As written: a value that rounds to within 1e-9 of 1 reads as unset in the viewer.
   const divided = Number(toStepRealScaled((conversion.scale ?? 1) / computeNormalizeFactor(modelScale, primaryScale)));
-  if (keeps(divided)) return { scale: divided, unkept: false };
-  return keeps(conversion.scale) ? { scale: undefined, unkept: false } : { scale: divided, unkept: true };
+  const keepsWritten = keeps(conversion.scale);
+  if (keeps(divided)) return { scale: divided, unkept: false, keepsWritten };
+  return keepsWritten ? { scale: undefined, unkept: false, keepsWritten } : { scale: divided, unkept: true, keepsWritten };
 }
 
 /** The {@link GeorefNormalizePlan} of a model in length unit `modelScale` normalized into `primaryScale`. */
 export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecords, modelScale: number, primaryScale: number): GeorefNormalizePlan {
-  const records = new Map<number, GeorefRecord>(), unkept: number[] = [], implicitUnit: number[] = [];
+  const records = new Map<number, GeorefRecord>(), unkept: number[] = [], implicitUnit: number[] = [], scaleLeft: number[] = [];
   for (const id of idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES)) records.set(id, { kind: 'keep' });
   for (const [type, attr] of Object.entries(CRS_UNIT_ATTR)) {
     for (const id of idsOf(dataStore, [type])) {
@@ -136,7 +142,7 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
   // The ePSet the viewer reads (when no IFC4 entity places the model) is planned from the parser's reading of it. A
   // placement the parser refused has no conversion and is left as written.
   const epset = candidates?.entities.hasGeoreference ? undefined : candidates?.ePSetMapConversion;
-  const plan = { records, minted, unkept, implicitUnit };
+  const plan = { records, minted, unkept, implicitUnit, scaleLeft };
   if (epset?.mapConversion) planViewerEPSet(dataStore, epset.mapConversion, epset.projectedCRS, plan, modelScale, primaryScale);
   return plan;
 }
@@ -153,14 +159,16 @@ function planEPSets(dataStore: IfcDataStore): number[][] {
 }
 
 /**
- * A set's properties by name, `editable` when a single value without its own Unit; null when one cannot be read, and
- * then the set is left as written.
+ * A set's properties by name, `editable` when a single value without its own Unit; null when the set's property list
+ * cannot be read. A property that cannot be read is passed over, as the parser passes it over.
  */
 function propertiesOf(dataStore: IfcDataStore, setId: number): Array<{ id: number; name: string; editable: boolean }> | null {
+  const list = getStepAttr(dataStore, setId, PSET_PROPERTIES_ATTR);
+  if (list === null) return null;
   const properties = [];
-  for (const ref of refsIn(getStepAttr(dataStore, setId, PSET_PROPERTIES_ATTR) ?? '')) {
+  for (const ref of refsIn(list)) {
     const id = Number(ref.slice(1)), name = getStepAttr(dataStore, id, PROPERTY_NAME_ATTR);
-    if (name === null) return null;
+    if (name === null) continue;
     const editable = typeOf(dataStore, id) === 'IFCPROPERTYSINGLEVALUE' && slotUnset(getStepAttr(dataStore, id, PROPERTY_UNIT_ATTR) ?? '$');
     properties.push({ id, name: label(name), editable });
   }
@@ -169,14 +177,14 @@ function propertiesOf(dataStore: IfcDataStore, setId: number): Array<{ id: numbe
 
 /** Plans the ePSet the viewer reads, from the parser's `conversion` and `crs` (whose id is the conversion's own when the model has no ePSet_ProjectedCRS). */
 function planViewerEPSet(dataStore: IfcDataStore, conversion: MapConversion, crs: ProjectedCRS | undefined,
-  plan: { records: Map<number, GeorefRecord>; minted: MintedRecords; unkept: number[]; implicitUnit: number[] },
+  plan: { records: Map<number, GeorefRecord>; minted: MintedRecords; unkept: number[]; implicitUnit: number[]; scaleLeft: number[] },
   modelScale: number, primaryScale: number): void {
-  const { records, minted, unkept, implicitUnit } = plan;
-  const properties = propertiesOf(dataStore, conversion.id);
-  if (!properties) return;
+  const { records, minted, unkept, implicitUnit, scaleLeft } = plan;
   // Writes `value` into the last property named `name` (the one the parser reads), or appends one when the set has
-  // none; false when that property is no editable single value, which is left as it is.
-  const write = (setId: number, of: NonNullable<typeof properties>, name: string, value: string): boolean => {
+  // none; false when that property is no editable single value, or the set cannot be read, and is left as it is.
+  const write = (setId: number, name: string, value: string): boolean => {
+    const of = propertiesOf(dataStore, setId);
+    if (!of) return false;
     const last = of.filter(property => property.name === name).at(-1);
     if (last === undefined) {
       const text = `IFCPROPERTYSINGLEVALUE('${name}',$,${value},$)`;
@@ -185,14 +193,14 @@ function planViewerEPSet(dataStore: IfcDataStore, conversion: MapConversion, crs
     } else if (last.editable) records.set(last.id, { kind: 'edit', attr: PROPERTY_VALUE_ATTR, value });
     return last === undefined || last.editable;
   };
-  if (!crs || crs.id === conversion.id) implicitUnit.push(conversion.id);
-  else if (crs.mapUnit === undefined) {
-    const crsProperties = propertiesOf(dataStore, crs.id);
-    if (crsProperties) write(crs.id, crsProperties, 'MapUnit', "IFCLABEL('METRE')");
+  if (!crs || crs.id === conversion.id || (crs.mapUnit === undefined && !write(crs.id, 'MapUnit', "IFCLABEL('METRE')"))) {
+    implicitUnit.push(conversion.id);
   }
   const choice = chooseScale(conversion, crs?.mapUnitScale, modelScale, primaryScale);
-  const written = choice.scale === undefined || write(conversion.id, properties, 'Scale', `IFCREAL(${toStepRealScaled(choice.scale)})`);
-  if (choice.unkept || !written) unkept.push(conversion.id);
+  if (choice.scale === undefined) return;
+  if (write(conversion.id, 'Scale', `IFCREAL(${toStepRealScaled(choice.scale)})`)) {
+    if (choice.unkept) unkept.push(conversion.id);
+  } else if (!choice.keepsWritten) scaleLeft.push(conversion.id);
 }
 
 /**

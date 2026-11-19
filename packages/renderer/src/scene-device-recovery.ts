@@ -16,6 +16,7 @@ import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { createSceneBatchShell } from './scene-batch-upload.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
+import type { InstancedTombstones } from './instanced-tombstones.js';
 import { retainedStreamingFragments } from './scene-streaming-recovery.js';
 import type { ModelTranslations } from './model-translation.js';
 
@@ -62,6 +63,7 @@ export interface SceneRecoveryHost {
   instancedTemplateCpu: (InstancedTemplateCpu | undefined)[];
   instancedEntityMap: Map<number, InstancedOccurrence[]>;
   instanceSuppression: { has(expressId: number): boolean };
+  instancedTombstones: Pick<InstancedTombstones, 'write'>;
   instancedSelected: Set<number>;
   instancedOverrideColors: ReadonlyMap<number, readonly [number, number, number, number]> | null;
   instancedOverridden: Set<number>;
@@ -351,6 +353,7 @@ function hasRenderableTexture(mesh: MeshData): boolean {
 }
 
 function restoreInstancedAppearance(host: SceneRecoveryHost, device: GPUDevice): void {
+  host.instancedTombstones.write(device, host.instancedTemplates); // deleted slots: the shard bytes are not hidden (#10639)
   for (const eid of host.instancedEntityMap.keys()) {
     host.writeInstanceFlags(device, eid);
     const override = host.instancedOverrideColors?.get(eid);

@@ -83,6 +83,7 @@ import {
   INSTANCE_FINISH_FLAGS_MASK,
 } from './instanced-render.js';
 import { translateInstanceRecord } from './scene-instance-translation.js';
+import { InstancedTombstones } from './instanced-tombstones.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
@@ -251,6 +252,7 @@ export class Scene {
     this.evictHighlightMeshes(id);
   });
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
+  private readonly instancedTombstones = new InstancedTombstones(); // slots of deleted instanced entities (#10639)
   private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
   private instancedGhosted: Set<number> = new Set();               // currently X-Ray ghosted instanced express_ids
   // The colours the instanced channel was last overridden with. Ghosting reads
@@ -1341,7 +1343,9 @@ export class Scene {
    * touches other entities' slots. Returns true if the id was instanced. (#1238)
    */
   private removeInstancedEntity(expressId: number): boolean {
-    if (!this.instancedEntityMap.has(expressId)) return false;
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (!occurrences) return false;
+    this.instancedTombstones.add(occurrences);
     const device = this.instancedDevice;
     if (device && !this.instanceSuppression.has(expressId)) {
       // Must set the flag while the occurrence locations are still in the map.
@@ -2818,7 +2822,7 @@ export class Scene {
       freed.add(i);
     }
     if (freed.size === 0) return 0;
-    this.bumpPickGeometryRevision();
+    this.instancedTombstones.forgetTemplates(freed); this.bumpPickGeometryRevision();
 
     for (const [eid, occurrences] of this.instancedEntityMap) {
       const kept = occurrences.filter((o) => !freed.has(o.templateIndex));
@@ -3310,13 +3314,13 @@ export class Scene {
 
   /**
    * True when the opaque instanced pass's fragment discards can fire: an
-   * occurrence carries the hidden bit (hide/isolate or an appearance
-   * suppression) or is translucent (the opacity routing). While false the
+   * occurrence carries the hidden bit (hide/isolate, an appearance
+   * suppression, or a deleted entity's tombstone) or is translucent (the opacity routing). While false the
    * renderer may draw that pass with the discard-free shader
    * (opaque-draw-variants.ts). Conservative: any retained suppression counts.
    */
   instancedMayDiscard(): boolean {
-    return this.instancedHidden.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
+    return this.instancedHidden.size > 0 || this.instancedTombstones.any || this.instanceSuppression.retained || this.hasTransparentInstances();
   }
 
   /**
@@ -3582,7 +3586,7 @@ export class Scene {
     this.instancedEntityMap.clear(); this.bumpPickGeometryRevision();
     this.instancedSelected.clear();
     this.instancedSelectedItemExpressId = this.instancedSelectedItemId = undefined;
-    this.instancedHidden.clear();
+    this.instancedHidden.clear(); this.instancedTombstones.clear();
     this.instancedOverridden.clear();
     this.instancedGhosted.clear();
     this.instancedGhostDirty = false;

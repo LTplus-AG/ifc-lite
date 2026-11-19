@@ -42,16 +42,25 @@ impl Loss {
     }
 }
 
+/// `schema_userdefined::rule` by entity type, for one target schema.
+type RuleCache = rustc_hash::FxHashMap<Box<str>, Option<(usize, usize)>>;
+
 /// Enum reconciliation for one export: rewrites, and counts what it lost.
 #[derive(Default)]
 pub(crate) struct EnumReconciliation {
     losses: BTreeMap<Loss, BTreeMap<String, usize>>,
+    /// Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780).
+    unlabelled: BTreeMap<String, usize>,
+    /// `schema_userdefined::rule` per target schema and type, resolved once.
+    rules: [RuleCache; 3],
 }
 
 impl EnumReconciliation {
     /// Reconcile `line`, already converted to the canonical schema `to`.
     pub(crate) fn apply(&mut self, line: String, to: &str) -> String {
-        self.reconcile(&line, to).unwrap_or(line)
+        let line = self.reconcile(&line, to).unwrap_or(line);
+        self.check_user_defined(&line, to);
+        line
     }
 
     /// Values that lost information (label occupied, `.NOTDEFINED.`, `$`).
@@ -59,14 +68,39 @@ impl EnumReconciliation {
         [Loss::LabelOccupied, Loss::NotDefined, Loss::Omit].iter().map(|l| self.count(*l)).sum()
     }
 
-    /// Values kept as written because the target offers nothing valid.
+    /// Values kept as written because the target offers nothing valid,
+    /// including a `.USERDEFINED.` with no label (#10780).
     pub(crate) fn refused(&self) -> usize {
-        self.count(Loss::Refuse)
+        self.count(Loss::Refuse) + self.unlabelled.values().sum::<usize>()
+    }
+
+    /// Count `line` when it says `.USERDEFINED.` without the label its type's
+    /// rule requires in `to` (#10780). Nothing is written: no label is invented.
+    fn check_user_defined(&mut self, line: &str, to: &str) {
+        let slot = match to { "IFC2X3" => 0, "IFC4" => 1, "IFC4X3" => 2, _ => return };
+        let Some(head) = crate::step_record_frame::record_head(line) else { return };
+        let ty = head.type_name(line);
+        let rule = match self.rules[slot].get(ty) {
+            Some(rule) => *rule,
+            None => *self.rules[slot].entry(ty.into()).or_insert_with(|| crate::schema_userdefined::rule(to, &ty.to_ascii_uppercase())),
+        };
+        if rule.is_some_and(|rule| crate::schema_userdefined::line_breaks(line, rule)) {
+            *self.unlabelled.entry(ty.to_ascii_uppercase()).or_insert(0) += 1;
+        }
     }
 
     /// One warning per loss kind, naming what it happened to. Same text as
     /// the TypeScript twin's.
     pub(crate) fn warnings(&self) -> Vec<String> {
+        let unlabelled = (!self.unlabelled.is_empty()).then(|| {
+            let total: usize = self.unlabelled.values().sum();
+            let names: Vec<&str> = self.unlabelled.keys().map(String::as_str).collect();
+            format!(
+                "{total} record(s) are written with PredefinedType .USERDEFINED. and their label attribute unset, which \
+                 the target schema's USERDEFINED rule rejects; the converter does not invent a label: {} (#10780).",
+                names.join(", ")
+            )
+        });
         self.losses
             .iter()
             .map(|(loss, where_)| {
@@ -79,6 +113,7 @@ impl EnumReconciliation {
                     names.join(", ")
                 )
             })
+            .chain(unlabelled)
             .collect()
     }
 

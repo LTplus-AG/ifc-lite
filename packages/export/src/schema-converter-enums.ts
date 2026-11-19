@@ -22,7 +22,9 @@
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
-import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
+import { stepRecordHead } from './step-record-frame.js';
+import { breaksUserDefinedRule, userDefinedRule } from './schema-converter-userdefined.js';
 import { resolveMissingEnumMember, type EnumPolicyAttribute } from './schema-enum-policy.js';
 
 interface TargetEntity {
@@ -68,9 +70,27 @@ export class EnumReconciliation {
   /** Reuses this per-export collector so both STEP writers forward structural losses. */
   readonly structural = new StructuralDiagnostics();
   private readonly losses = new Map<Loss, Map<string, number>>();
+  /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */
+  private readonly unlabelled = new Map<string, number>();
+  /** `userDefinedRule` per target schema and type, resolved once. */
+  private readonly rules = new Map<SchemaVersionWithRegistry, Map<string, readonly [number, number] | undefined>>();
 
-  /** Reconcile `line`, already converted to `toSchema`. */
+  /** Reconcile `line`, already converted to `toSchema`, then report a broken USERDEFINED rule (#10780). */
   apply(line: string, toSchema: SchemaVersionWithRegistry): string {
+    const out = this.reconcile(line, toSchema);
+    // The head names the type; only a type with the rule is split.
+    const head = stepRecordHead(out);
+    const type = head ? out.slice(head.typeStart, head.typeEnd).toUpperCase() : '';
+    const rules = this.rules.get(toSchema) ?? new Map<string, readonly [number, number] | undefined>();
+    this.rules.set(toSchema, rules);
+    if (!rules.has(type)) rules.set(type, userDefinedRule(toSchema, type));
+    const rule = rules.get(type);
+    const slots = rule ? readStepSlots(out)?.slots : undefined;
+    if (rule && slots && breaksUserDefinedRule(slots, rule)) this.unlabelled.set(type, (this.unlabelled.get(type) ?? 0) + 1);
+    return out;
+  }
+
+  private reconcile(line: string, toSchema: SchemaVersionWithRegistry): string {
     const open = line.indexOf('(');
     const close = line.lastIndexOf(')');
     const eq = line.indexOf('=');
@@ -118,6 +138,11 @@ export class EnumReconciliation {
       // Every site is named: distinct sites are bounded by the ledger, so none is elided.
       const total = [...where.values()].reduce((a, b) => a + b, 0);
       out.push(`${total} enum value(s) the target schema does not define were ${LOSS_TEXT[loss]}: ${[...where.keys()].join(', ')} (#5365).`);
+    }
+    if (this.unlabelled.size > 0) {
+      const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
+      out.push(`${total} record(s) are written with PredefinedType .USERDEFINED. and their label attribute unset, which `
+        + `the target schema's USERDEFINED rule rejects; the converter does not invent a label: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
     return [...out, ...this.structural.warnings()];
   }

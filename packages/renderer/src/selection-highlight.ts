@@ -295,7 +295,8 @@ export class SelectionHighlight {
     const pending = resources.table.highlightPending;
     if (pending && pending !== this.awaitedTable) {
       this.awaitedTable = pending;
-      void pending.then((ready) => { if (ready) { this.pending = true; resources.onTableReady(); } });
+      // Re-decide on failure too: a later selection waiting on this attempt then tries its own size.
+      void pending.then(() => { this.pending = true; resources.onTableReady(); });
     }
     return false;
   }

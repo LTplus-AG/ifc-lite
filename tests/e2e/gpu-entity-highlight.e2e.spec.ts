@@ -196,7 +196,9 @@ async function spreadIds(page: Page, count = 3, minId = 0, instanced = false, ma
     const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
     const scene = getGlobalRenderer()!.getScene();
     // Instanced: any picked entity with instanced occurrences, flat pieces or not.
-    return wantInstanced ? picked.filter((id) => scene.isInstancedEntity(id)) : scene.getAllMeshDataExpressIds();
+    // Flat: entities with flat pieces (the id list also holds instanced-only entities).
+    return wantInstanced ? picked.filter((id) => scene.isInstancedEntity(id))
+      : scene.getAllMeshDataExpressIds().filter((id) => (scene.getMeshDataPieces(id)?.length ?? 0) > 0);
   }, [instanced, hits] as const);
   const flat = new Set(candidates);
   const tally = new Map<number, number>();
@@ -237,9 +239,11 @@ async function coverage(page: Page, a: string, b: string, c: string): Promise<Co
 async function compare(page: Page, info: TestInfo, scenario: Scenario): Promise<Record<string, unknown>> {
   expect(scenario.ids.length, `${scenario.name}: the scenario has entities to highlight`).toBeGreaterThan(0);
   await act(page, CLEAR);
-  await act(page, scenario.steps.filter(([m]) => !/^(setSelected|setHover)/.test(m)), scenario.ids);
+  const highlight = ([m]: Step) => /^(setSelected|setHover)/.test(m);
+  await act(page, scenario.steps.filter((step) => !highlight(step)), scenario.ids);
   const c = await capture(page, info, `${scenario.name}-C-no-highlight`);
-  await act(page, scenario.steps, scenario.ids);
+  // Only the highlight steps: replaying isolateEntities with the same set would toggle isolation off.
+  await act(page, scenario.steps.filter(highlight), scenario.ids);
   const a = await capture(page, info, `${scenario.name}-A-batches`);
   const copiesA = await copiesInScene(page);
   await route(page, true);
@@ -293,7 +297,7 @@ for (const quantized of [true, false]) {
     rows.push(await compare(page, info, { name: 'select-one', ids, steps: [['setSelectedEntityId', 'id0']] }));
     rows.push(await compare(page, info, { name: 'multi-select', ids, steps: [['setSelectedEntityId', 'id0'], ['setSelectedEntityIds', 'ids']] }));
     rows.push(await compare(page, info, { name: 'hover', ids, steps: [['setHoverHighlightEnabled', true], ['setHoverState', 'hover0']] }));
-    rows.push(await compare(page, info, { name: 'select-hide-isolate', ids, steps: [['setSelectedEntityIds', 'ids'], ['hideEntities', [ids[1]!]], ['isolateEntities', 'ids']] }));
+    rows.push(await compare(page, info, { name: 'select-hide-isolate', ids, steps: [['isolateEntities', 'ids'], ['hideEntities', [ids[1]!]], ['setSelectedEntityIds', 'ids']] })); // isolate un-hides its ids, so hide after
     rows.push(await compare(page, info, { name: 'select-section', ids, steps: [['setSectionPlaneAxis', 'down'], ['setSectionPlanePosition', 43], ['setSectionPlaneEnabled', true], ['setSelectedEntityIds', 'ids']] }));
     rows.push(await compare(page, info, { name: 'select-xray', ids, steps: [['setGhostExceptEntities', 'set01'], ['setSelectedEntityIds', 'ids']] }));
     await info.attach('summary.json', { body: JSON.stringify(rows, null, 2), contentType: 'application/json' });
@@ -338,7 +342,8 @@ test('a selection of 10,000 flat entities highlights from the batches and keeps 
   const flat = await page.evaluate(async () => {
     const module = '/src/hooks/useBCF.ts';
     const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
-    return getGlobalRenderer()!.getScene().getAllMeshDataExpressIds();
+    const scene = getGlobalRenderer()!.getScene();
+    return scene.getAllMeshDataExpressIds().filter((id) => (scene.getMeshDataPieces(id)?.length ?? 0) > 0);
   });
   const all = flat.slice(0, 10_000);
   await info.attach('selection-size.json', { body: JSON.stringify({ flatEntities: flat.length, selected: all.length }), contentType: 'application/json' });

@@ -86,15 +86,16 @@ export function matchesHoveredMesh(mesh: Mesh, hoveredId: number, selectedModelI
 }
 
 /**
- * Which hover sources a frame needs (#10264 S3). `ownHover`: no selected mesh
- * outlines the hovered entity, so it brings its own. `needsBatches`: no copy
- * outlines it either. A batch-drawn selected entity matches only its authored
- * meshes, so its batched pieces still need the hover batches.
+ * Which hover sources a frame needs (#10264 S3). Only a selected hydrated copy
+ * outlines every piece of the hovered entity. Authored meshes and textured
+ * borrows of a batch-drawn selected entity cover only themselves, so its other
+ * pieces still need the hover batches, or hover copies when the batches
+ * cannot draw it (a textured entity). Both flags are that one condition.
  */
 export function hoverSources(selected: readonly Mesh[], id: number | null, model: number | undefined): { ownHover: boolean; needsBatches: boolean } {
   if (id == null) return { ownHover: false, needsBatches: false };
-  const matched = selected.filter((m) => matchesHoveredMesh(m, id, model));
-  return { ownHover: matched.length === 0, needsBatches: !matched.some((m) => m.hydrated === true || isBorrowedSelection(m)) };
+  const own = !selected.some((m) => m.hydrated === true && matchesHoveredMesh(m, id, model));
+  return { ownHover: own, needsBatches: own };
 }
 
 function toSelectable(mesh: Mesh): SelectableMesh | null {
@@ -203,7 +204,7 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
         const uniforms = packBatchHoverUniforms(source, batch, hoveredId);
         if (uniforms) hovered.push({ vertexBuffer: batch.vertexBuffer, indexBuffer: batch.indexBuffer, indexCount: batch.indexCount, uniforms, ...(batch.quantized ? { quantized: true as const } : {}) });
       }
-    } else if (already.length === 0) {
+    } else if (!already.some((m) => m.hydrated === true)) {
       for (const piece of source.hoverPieces) {
         hovered.push({ vertexBuffer: piece.vertexBuffer, indexBuffer: piece.indexBuffer, indexCount: piece.indexCount, uniforms: packHoverUniforms(source, piece) });
       }

@@ -421,11 +421,12 @@ describe('native analytics operations (#10525 deeper automation)', () => {
       const read = await readArtifact(context.host, result.artifact.artifact_id, 0, 65536);
       return Buffer.from(read.data, 'base64').toString('utf8');
     };
-    const withoutFrame = await exportSvg();
+    const withoutFrame = (await exportSvg()).match(/viewBox="[^"]+"/)?.[0];
+    assert.ok(withoutFrame, 'The raw export has a viewBox to compare against');
     const cachedSheetTransformRef = { current: null };
     publishDrawingExportFrame({ drawing, isPinned: false, cachedSheetTransformRef });
     try {
-      assert.equal((await exportSvg()).match(/viewBox="[^"]+"/)?.[0], withoutFrame.match(/viewBox="[^"]+"/)?.[0]);
+      assert.equal((await exportSvg()).match(/viewBox="[^"]+"/)?.[0], withoutFrame);
     } finally {
       publishDrawingExportFrame({ drawing: null, isPinned: false, cachedSheetTransformRef });
     }

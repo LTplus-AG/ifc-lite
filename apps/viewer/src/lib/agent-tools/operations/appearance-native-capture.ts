@@ -39,6 +39,7 @@ interface Candidate {
   revision: string;
   Name: string;
   result?: unknown;
+  creating?: boolean;
 }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: { host: ToolHost }) {
@@ -159,18 +160,25 @@ export const appearanceCaptureOperations = [
       const saved = owned(c).get(i.token);
       if (!saved || saved.modelId !== c.model.id) throw new Error('Unknown capture candidate for this host/model.');
       if (saved.result) return out(saved.result);
+      if (saved.creating) throw new Error('The capture candidate is being created.');
       assertToolActive(c);
       saved.capture.validate();
       const renderer = getGlobalRenderer();
       if (!renderer || appearanceRevision(c.model.id) !== saved.revision)
         throw new Error('Capture destination or native renderer changed.');
-      const result = await c.commitAsync(() =>
-        createIfcFromCapturedMesh(c.model.id, saved.containerId, saved.capture, renderer, {
-          Name: saved.Name,
-          signal: c.signal,
-          onProgress: () => c.checkpoint?.(),
-        }),
-      );
+      saved.creating = true;
+      let result: Awaited<ReturnType<typeof createIfcFromCapturedMesh>>;
+      try {
+        result = await c.commitAsync(() =>
+          createIfcFromCapturedMesh(c.model.id, saved.containerId, saved.capture, renderer, {
+            Name: saved.Name,
+            signal: c.signal,
+            onProgress: () => c.checkpoint?.(),
+          }),
+        );
+      } finally {
+        saved.creating = false;
+      }
       saved.result = result;
       selectCreatedAppearanceObject(c.model.id, result);
       return out(result);
@@ -194,6 +202,7 @@ export const appearanceCaptureOperations = [
     (i, c) => {
       const saved = owned(c).get(i.token);
       if (!saved || saved.modelId !== c.model.id) throw new Error('Unknown capture candidate.');
+      if (saved.creating || saved.result) throw new Error('The capture candidate is being created or already created IFC.');
       return out(c.commit(() => ({ discarded: owned(c).delete(i.token) })));
     },
   ),

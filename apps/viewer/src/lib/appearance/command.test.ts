@@ -422,9 +422,9 @@ describe('appearance command atomicity #4243', () => {
     try { await f.commit(); }
     finally { unsubscribe(); }
     assert.equal(useViewerStore.getState().undoStacks.get(MODEL)?.length, 1);
-    assert.deepEqual(f.parts()[0].indices, f.after.indices);
+    assert.deepEqual(f.parts()[0].texture?.rgba, f.after.texture?.rgba);
     useViewerStore.getState().undo(MODEL);
-    assert.deepEqual(f.parts()[0].indices, f.before.indices);
+    assert.deepEqual(f.parts()[0].texture?.rgba, f.before.texture?.rgba);
   });
   it('publishes and replays a primary object with omitted modelIndex (#4243 browser Undo regression)', async () => {
     const f = await fixture();

@@ -108,7 +108,8 @@ export const appearanceReferenceOperations = [
       assertToolActive(c);
       const record = useViewerStore.getState().appearanceReferences.get(i.reference_id);
       if (!record) throw new Error('Unknown native reference.');
-      return out(c.commit(() => ({ source: restoreReferenceSource(record), settings: referenceEditSettings(record) })));
+      const settings = referenceEditSettings(record);
+      return out(c.commit(() => ({ source: restoreReferenceSource(record), settings })));
     },
   ),
   viewerOperation<{ source_id: string; expected_source: string; settings_json: string; edit_reference_id: string }>(
@@ -165,7 +166,13 @@ export const appearanceReferenceOperations = [
           .set({ ...prepared.record, id: draftId, corners: prepared.corners, bitmap: prepared.bitmap }, c.signal);
         assertToolActive(c);
         const token = crypto.randomUUID();
-        c.commit(() => candidates(c).set(token, { prepared, editing, renderer, owner, draftId }));
+        c.commit(() => {
+          if (getGlobalRenderer() !== renderer || (editing && useViewerStore.getState().appearanceReferences.get(editing.id) !== editing))
+            throw new Error('Native reference inputs changed during preparation.');
+          assertReferencePlacementCurrent(prepared);
+          if (candidates(c).size >= 32) throw new Error('Reference preview capacity reached.');
+          candidates(c).set(token, { prepared, editing, renderer, owner, draftId });
+        });
         adopted = true;
         return out({ token, reference: prepared.record });
       } finally {

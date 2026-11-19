@@ -364,12 +364,19 @@ END-ISO-10303-21;
     assert.match(applied.text, /assignments changed/);
   });
 
-  it('#28: the zone table export discards an artifact whose models changed while it encoded', async () => {
-    const stop = useActivityJournal.subscribe(() => useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })));
-    try {
-      const exported = await invoke('zones.table.export', { set_id: 'set-1', basis: 'mesh', format: 'parquet' }, true);
-      assert.equal(exported.isError, true, exported.text);
-      assert.match(exported.text, /changed during export/);
-    } finally { stop(); }
-  });
+  for (const change of [
+    { name: 'an edit', apply: () => useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })) },
+    { name: 'an unloaded model', apply: () => useViewerStore.setState({ models: new Map() }) },
+    { name: 'new assignments', apply: () => useViewerStore.setState({ zoneAssignments: new Map() }) },
+  ])
+    it(`#28: the zone table export discards an artifact after ${change.name} while it encoded`, async () => {
+      let changed = false;
+      const stop = useActivityJournal.subscribe(() => { if (!changed) { changed = true; change.apply(); } });
+      try {
+        const exported = await invoke('zones.table.export', { set_id: 'set-1', basis: 'mesh', format: 'parquet' }, true);
+        assert.equal(changed, true);
+        assert.equal(exported.isError, true, exported.text);
+        assert.match(exported.text, /changed during export/);
+      } finally { stop(); }
+    });
 });

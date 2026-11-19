@@ -22,17 +22,18 @@ describe('authoring.room.prepare needs the edit grant, since it remeshes walls (
   beforeEach(() => { resetFeaturesForTest(); });
   afterEach(() => { clearModelLayouts(MODEL); setRemeshClientFactory(null); useViewerStore.setState(initial, true); });
 
-  for (const tool of ['viewer_operation_inspect', 'viewer_operation_execute'] as const) {
-    it(`is refused through ${tool} without the edit grant, and leaves the geometry alone`, async (t) => {
+  // Execute already refuses every call without the grant; inspect is where a read declaration let the remesh through.
+  for (const granted of [false, true]) {
+    it(`is refused through viewer_operation_inspect ${granted ? 'even with' : 'without'} the edit grant, and leaves the geometry alone`, async (t) => {
       if (!ensureRoomWasm(t)) return;
       await seedReviewedRoom();
       const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
       const geometry = useViewerStore.getState().models.get(MODEL)?.geometryResult;
-      const result = await dispatchMainViewerTool(host, tool, {
+      const result = await dispatchMainViewerTool(host, 'viewer_operation_inspect', {
         model_id: MODEL, operation_id: 'authoring.room.prepare', input: { proposal_json: JSON.stringify(roomEnvelope()) },
-      }, { canEdit: () => false });
+      }, { canEdit: () => granted });
       assert.equal(result.isError, true);
-      assert.match(result.text, tool === 'viewer_operation_inspect' ? /Inspect only accepts read operations/ : /Commands and edits grant is required/);
+      assert.match(result.text, /Inspect only accepts read operations/);
       assert.equal(useViewerStore.getState().models.get(MODEL)?.geometryResult, geometry, 'the walls were not remeshed');
     });
   }

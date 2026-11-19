@@ -81,7 +81,7 @@ export const graphAuthoringOperations = [
       selectedEntityIds: new Set(refs.map(ref => toGlobalIdForRef(state.models, ref))) });
     return output(capture);
   }),
-  ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput,
+  ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.${kind === 'room' ? ' Room preparation remeshes the storey walls first, so it runs through viewer_operation_execute with the edit grant, in the foreground.' : ''}`), outputSchema: previewOutput,
     // A Room preparation remeshes the storey walls first, which replaces the model's geometry in the scene: a view write
     // that needs the edit grant and cannot run through viewer_operation_inspect.
     ...(kind === 'room' ? { effects: ['view'] as const, capability: 'commands-and-edits' as const } : {}),

@@ -195,23 +195,30 @@ export function unitScalesEqual(a: number, b: number): boolean {
  */
 export interface GeorefSignature { placement: string; unitScale: number | null }
 
+/** The coordinate operations a context can carry: the map conversions and IFC4X3's rigid operation. */
+const COORDINATE_OPERATION_STEP_TYPES = ['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED', 'IFCRIGIDOPERATION'];
+
 /**
- * The {@link GeorefSignature} of `dataStore`'s first representation context, or null when the model's georeference
- * sits on no such context. It reads the parser's georeference, which resolves the map unit, and fills IFC defaults
- * (scale 1, no rotation), so two spellings of one georeference agree; a CRS without a map unit uses the project's
- * length unit (`lengthUnitScale`). Two contexts in one frame with different georeferences place the same
- * coordinates at two places on the map, so they must not be unified (#10798).
+ * The {@link GeorefSignature} of `dataStore`'s first representation context, or null when no coordinate operation
+ * sits on it. It reads the parser's georeference, which resolves the map unit, and fills IFC defaults (scale 1, no
+ * rotation), so two spellings of one georeference agree; a CRS without a map unit uses the project's length unit
+ * (`lengthUnitScale`). An operation the parser does not read as the model's georeference, and a geographic CRS
+ * (whose height unit it does not read), match no other. Two contexts in one frame with different georeferences
+ * place the same coordinates at two places on the map, so they must not be unified (#10798).
  */
 export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, lengthUnitScale: number): GeorefSignature | null {
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
-  const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current context and operations
+  const { byType } = dataStore.entityIndex;
+  const contextId = (byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+  if (contextId === undefined || !COORDINATE_OPERATION_STEP_TYPES.some(type => (byType.get(type) ?? [])
+    .some(id => refId(getStepAttr(dataStore, id, 0)) === contextId))) return null;
   const { mapConversion: op, projectedCRS: crs } = extractGeoreferencingOnDemand(dataStore) ?? {};
-  if (contextId === undefined || !op || op.sourceCRS !== contextId) return null;
+  if (!op || op.sourceCRS !== contextId) return { placement: 'unread', unitScale: null };
   return {
     placement: JSON.stringify([op.operation ?? 'mapConversion', crs?.kind, crs?.name, crs?.geodeticDatum, crs?.verticalDatum,
       crs?.mapProjection, crs?.mapZone, crs?.wellKnownText, op.eastings, op.northings, op.orthogonalHeight,
       op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, op.scale ?? 1, op.factorX ?? 1, op.factorY ?? 1, op.factorZ ?? 1]),
-    unitScale: crs?.mapUnitResolved === false ? null : crs?.mapUnitScale ?? lengthUnitScale,
+    unitScale: crs?.mapUnitResolved === false || crs?.kind === 'geographic' ? null : crs?.mapUnitScale ?? lengthUnitScale,
   };
 }
 

@@ -13,15 +13,14 @@ import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 
 /**
  * `values` for an IFCMAPCONVERSION into a CRS in map unit `unit` (#2 metre, #3 millimetre, #4 a conversion-based
- * unit of `factor` metres, $ the project's), or a whole record line when `raw`; `projectUnit` is the model's length unit.
+ * unit of `factor` metres, $ the project's), or whole CRS and operation records when `raw`; `projectUnit` is the model's length unit.
  */
 interface Georef { values?: string; unit?: '#2' | '#3' | '#4' | '$'; factor?: string; raw?: string; projectUnit?: '#2' | '#3' }
 const georefLines = ({ values, unit = '#2', factor = '0.3048', raw }: Georef) => `#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
 #4=IFCCONVERSIONBASEDUNIT(#5,.LENGTHUNIT.,'FOOT',#6);
 #5=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
 #6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(${factor}),#2);
-#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,${unit});
-${raw ?? `#21=IFCMAPCONVERSION(#14,#20,${values});`}`;
+${raw ?? `#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,${unit});\n#21=IFCMAPCONVERSION(#14,#20,${values});`}`;
 
 const model = (name: string, project: string, georef: Georef | null, schema: string) => `ISO-10303-21;
 HEADER;
@@ -98,8 +97,18 @@ describe('merged STEP export and map conversions (#10798)', () => {
   });
 
   it('tells apart two different rigid operations', async () => {
-    const rigid = (eastings: number): Georef => ({ raw: `#21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(${eastings}.),IFCLENGTHMEASURE(1200000.),500.);` });
+    const rigid = (eastings: number): Georef => ({ raw: `#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);
+#21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(${eastings}.),IFCLENGTHMEASURE(1200000.),500.);` });
     expectApart(await merge([rigid(2600000), rigid(2700000)], 'IFC4X3'), 2);
     expect((await merge([rigid(2600000), rigid(2600000)], 'IFC4X3')).contexts).toHaveLength(1);
+  });
+
+  it('keeps apart a georeference it cannot compare', async () => {
+    // A conversion the parser refuses (an eastings no number holds) is no evidence the two agree.
+    expectApart(await merge([at(X), at('1.E400,1200000.,500.,1.,0.,1.')]), 2);
+    // A geographic CRS's height unit is not read, so two of them are never taken as one.
+    const geographic: Georef = { raw: `#20=IFCGEOGRAPHICCRS('WGS84',$,'WGS84',$,$,$,$);
+#21=IFCRIGIDOPERATION(#14,#20,IFCPLANEANGLEMEASURE(8.5),IFCPLANEANGLEMEASURE(47.3),500.);` };
+    expectApart(await merge([geographic, geographic], 'IFC4X3'), 2);
   });
 });

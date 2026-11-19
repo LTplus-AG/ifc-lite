@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { denseRecordBytes, sampleDenseGeometryShare } from './geometryDensity.js';
 import { inspectLocalIfcAdmission } from './localIfcAdmission.js';
@@ -93,6 +93,38 @@ describe('admission estimate by geometry density (#10264)', () => {
       assert.deepEqual(failures, []);
     } finally {
       console.warn = warn;
+      if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
+    }
+  });
+
+  it('does not sample a file a browser without WebAssembly SIMD is refused for (#10784)', async (t) => {
+    t.after(() => mock.restoreAll());
+    mock.method(WebAssembly, 'validate', () => false);
+    const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 1 });
+    try {
+      const file = new File([fileOf(tfsElement, 30 * MB)], 'no-simd.ifc');
+      let reads = 0;
+      const realSlice = file.slice.bind(file);
+      Object.defineProperty(file, 'slice', { configurable: true, value: (start?: number, end?: number) => {
+        if (!(start === 0 && end === 4096)) reads++;
+        return realSlice(start, end);
+      } });
+      const failures: unknown[] = [];
+      const admission = createLocalIfcLoadAdmission(file, { isCurrent: () => true, signal: new AbortController().signal,
+        onCancel: () => assert.fail('no dialog'), onFailure: (error) => failures.push(error), finish: () => {} });
+      assert.equal(await admission.preflight(), null);
+      assert.equal(reads, 0, 'nothing past the header is read');
+      assert.match(String(failures[0]), /SIMD/);
+      // With a server available, the refusal falls back to it instead (#10809), still without sampling.
+      const served: number[] = [];
+      const withServer = createLocalIfcLoadAdmission(file, { isCurrent: () => true, signal: new AbortController().signal,
+        onCancel: () => assert.fail('no dialog'), onFailure: (error) => assert.fail(`no failure: ${String(error)}`), finish: () => {} });
+      withServer.setServer(async (bytes) => { served.push(bytes); return true; });
+      assert.equal(await withServer.preflight(), null, 'the server took the load');
+      assert.deepEqual(served, [file.size]);
+      assert.equal(reads, 0, 'still nothing past the header');
+    } finally {
       if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
     }
   });

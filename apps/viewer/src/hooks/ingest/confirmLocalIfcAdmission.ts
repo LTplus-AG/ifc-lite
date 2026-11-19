@@ -8,6 +8,7 @@ import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission, localIfcBudget, localIfcWorkingSet } from './localIfcAdmission';
 import { sampleDenseGeometryShare } from './geometryDensity';
+import { supportsWasmSimd } from '@/lib/wasm-simd-support';
 
 /** Consent belongs to one load, never to a later file/pairing/session. An
  * unwrapped source larger than the approved input needs a fresh decision. */
@@ -92,7 +93,9 @@ export function createLocalIfcLoadAdmission(file: File, options: {
         sourceAllowsServer = archive.allowsServer;
         archiveModelBytes = archive.modelBytes;
         bytes = Math.max(bytes, archiveModelBytes);
-      } else if (densityCanDecide(bytes)) {
+      } else if (supportsWasmSimd() && densityCanDecide(bytes)) {
+        // Without SIMD admit refuses (or falls back to the server, #10784): sampling would be wasted.
+        // A ZIP is still inspected above: that decides whether it may go to the server at all.
         // Bounded windows, each under 1 MiB. An unreadable sample keeps the size-only rate.
         denseShare = await sampleDenseGeometryShare(file).catch((error: unknown) => {
           console.warn('[loader] geometry density sample failed; admitting at the size-only rate:', error);

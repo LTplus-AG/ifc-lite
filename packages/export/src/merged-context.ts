@@ -135,10 +135,15 @@ export function resolveContextWcsMetres(
   return { x: x * scale, y: y * scale, z: z * scale, axis, refDirection };
 }
 
+/** A model's first `IfcGeometricRepresentationContext`, the one the merge unifies. */
+function firstContextId(dataStore: IfcDataStore): number | undefined {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
+  return (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+}
+
 /** `resolveContextWcsMetres` for a model's first `IfcGeometricRepresentationContext`, or null if it has none. */
 export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale: number): WcsSignature | null {
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
-  const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+  const contextId = firstContextId(dataStore);
   return contextId === undefined ? null : resolveContextWcsMetres(dataStore, contextId, lengthUnitScale);
 }
 
@@ -166,11 +171,8 @@ export interface GeorefSignature { placement: string; unitScale: number | null }
  * place the same coordinates at two places on the map, so they must not be unified (#10798).
  */
 export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, lengthUnitScale: number): GeorefSignature | null {
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current context and operations
-  const { byType } = dataStore.entityIndex;
-  const contextId = (byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
-  if (contextId === undefined || !COORDINATE_OPERATION_STEP_TYPES.some(type => (byType.get(type) ?? [])
-    .some(id => refId(getStepAttr(dataStore, id, 0)) === contextId))) return null;
+  const contextId = firstContextId(dataStore);
+  if (contextId === undefined || contextOperation(dataStore, contextId) === null) return null;
   const { mapConversion: op, projectedCRS: crs } = extractGeoreferencingOnDemand(dataStore) ?? {};
   if (!op || op.sourceCRS !== contextId) return { placement: 'unread', unitScale: null };
   return {
@@ -221,8 +223,7 @@ export function resolvePrimaryContextState(
   primaryScale: number,
   offset: number,
 ): PrimaryContextState {
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
-  const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+  const contextId = firstContextId(dataStore);
   return {
     subContextsByKey: groupSubContextsByKey(dataStore, subContextIds),
     contextWcs: resolveModelContextWcs(dataStore, primaryScale),

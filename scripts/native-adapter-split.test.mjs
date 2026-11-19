@@ -124,6 +124,19 @@ test('the timing-free hash ignores timing fields and nothing else', () => {
   assert.notEqual(timingFreeHash('m.json', json(1, 2)), timingFreeHash('m.json', json(1, 2.5)));
 });
 
+test('timings inside text (Rust Instant, *_ms fields, Durations) do not count, the rest does', () => {
+  const tsv = (sec, nsec) => Buffer.from(`model\tmessage\nA\tRefused { start: Instant { tv_sec: ${sec}, tv_nsec: ${nsec} }, duration: 3.2ms, code: 7 }\n`);
+  assert.equal(timingFreeHash('products.tsv', tsv(1726, 490621224)), timingFreeHash('products.tsv', tsv(2012, 449990582)));
+  assert.notEqual(timingFreeHash('products.tsv', tsv(1, 1)), timingFreeHash('products.tsv', Buffer.from('model\tmessage\nA\tRefused { code: 8 }\n')));
+  const json = (rss, ms) => Buffer.from(JSON.stringify({ retained: { processMaxRssKiB: rss, productMilliseconds: ms, published: 2 } }));
+  assert.equal(timingFreeHash('s.json', json(74820, 950.9)), timingFreeHash('s.json', json(74596, 683.9)));
+  const layers = (p95, hits) => Buffer.from(JSON.stringify({ layers: { bandMsP95: p95, count: 3 }, phases: { point_cache_hits: hits } }));
+  assert.equal(timingFreeHash('s.json', layers(463.5, 1090)), timingFreeHash('s.json', layers(304.9, 1084)));
+  const line = (ms) => `sdk witness executed: m8 issue_3641 mask=0 codes_volumes=[(1, Some(2.5))] timings=NativeTimings { startup_and_qualification_ms: ${ms}, construction_count: 4 }\n`;
+  assert.deepEqual([...markers(line(2540.358216), []).keys()], [...markers(line(1835.304595), []).keys()]);
+  assert.notDeepEqual([...markers(line(1), []).keys()], [...markers(line(1).replace('Some(2.5)', 'Some(2.6)'), []).keys()]);
+});
+
 test('markers reads native witness lines and registered cli/viewer records, through reporter decoration', () => {
   const text = '\u001b[32m# sdk witness executed: m8 real browser Worker parity\u001b[0m\nℹ cli-witness-x {"a":1}\nnoise\n';
   const found = markers(text, ['cli-witness-x', 'absent-one']);

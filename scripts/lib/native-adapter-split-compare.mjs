@@ -35,14 +35,25 @@ export const SPLIT_ONLY_MARKERS = { 'retained-browser.log': ['m1_browser_parity'
 export const SPLIT_ONLY_REFS = ['temp/native-references/m1-native-unit-rectangle.json'];
 /**
  * Fields that differ between two runs of the same commit: timings (`ms`, `*_ms`,
- * `*Ms`, `msPer*`, `timings`), memory (`*Bytes`, `browserMemory`) and timestamps (`*At`).
+ * `*Ms`, `*MsP95`, `*Milliseconds`, `msPer*`, `timings`), memory (`*Bytes`, `*RssKiB`,
+ * `browserMemory`), cache counters (`*_cache_hits`/`_misses`) and timestamps (`*At`).
+ * Measured in the first dispatched run (44547513676).
  */
-export const VOLATILE_KEY = /(?:^ms$|_ms$|Ms$|^msPer|^timings?$|Bytes$|^browserMemory$|At$)/;
+export const VOLATILE_KEY = /(?:^ms$|_ms$|Ms(?:P\d+)?$|Milliseconds$|^milliseconds$|^msPer|^timings?$|Bytes$|RssKiB$|^browserMemory$|_cache_(?:hits|misses)$|At$)/;
+
+/**
+ * The same, inside text: Rust Debug output carries `Instant { tv_sec: …, tv_nsec: … }`
+ * in refusal messages and `…_ms: 12.3` in witness lines. The value becomes `_`.
+ */
+export const stripVolatileText = (text) => text
+  .replace(/\b(tv_sec|tv_nsec|secs|nanos): \d+/g, '$1: _')
+  .replace(/\b([A-Za-z_]*(?:_ms|Ms|Milliseconds|milliseconds)): -?[\d.]+(?:e[+-]?\d+)?/g, '$1: _')
+  .replace(/\b(duration|elapsed): [\d.]+(?:ns|µs|us|ms|s)\b/g, '$1: _');
 const readJson = (path, fallback) => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : fallback);
 const digest = (text) => createHash('sha256').update(text).digest('hex');
 
 /** `value` with every volatile field removed, at any depth. */
-export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : v && typeof v === 'object'
+export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : typeof v === 'string' ? stripVolatileText(v) : v && typeof v === 'object'
   ? Object.fromEntries(Object.entries(v).filter(([k]) => !VOLATILE_KEY.test(k)).map(([k, x]) => [k, stripVolatile(x)])) : v);
 
 /** sha256 of a reference or output with its volatile fields (columns, keys) removed. */
@@ -50,7 +61,7 @@ export function timingFreeHash(name, bytes) {
   if (name.endsWith('.tsv')) {
     const rows = bytes.toString('utf8').split('\n').map((l) => l.split('\t'));
     const keep = rows[0].map((h, i) => (VOLATILE_KEY.test(h) ? -1 : i)).filter((i) => i >= 0);
-    return digest(rows.map((r) => keep.map((i) => r[i] ?? '').join('\t')).join('\n'));
+    return digest(rows.map((r) => keep.map((i) => stripVolatileText(r[i] ?? '')).join('\t')).join('\n'));
   }
   if (name.endsWith('.json')) return digest(JSON.stringify(stripVolatile(JSON.parse(bytes.toString('utf8')))));
   return digest(bytes);
@@ -66,7 +77,8 @@ export function markers(text, registered) {
   for (const raw of stripVTControlCharacters(text).split(/\r?\n/)) {
     const line = raw.replace(/^(?:# |ℹ )/, '');
     const native = line.match(/sdk witness executed: (.+?)\s*$/);
-    if (native && !found.has(native[1])) found.set(native[1], null);
+    // Some native witness lines print their own timings: compare the line without them.
+    if (native && !found.has(stripVolatileText(native[1]))) found.set(stripVolatileText(native[1]), null);
     for (const m of registered) {
       if (!line.startsWith(`${m} `)) continue;
       let payload;

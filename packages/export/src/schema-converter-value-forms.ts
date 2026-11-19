@@ -79,14 +79,12 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   const form = valueForm(body);
   const to = form === null ? undefined : rule.forms.get(prefix + form);
   if (to === undefined) return { value, lost: 0 };
-  if (to === null) return { value: null, lost: 1 };
-  if (to.startsWith('T:')) return { value: `${to.slice(2)}(${body})`, lost: 0 };
-  if (to === 'U') {
-    const close = body.lastIndexOf(')');
-    return close < 0 ? { value: null, lost: 1 } : { value: body.slice(body.indexOf('(') + 1, close).trim(), lost: 0 };
-  }
-  const n = Number(body);
-  return Number.isSafeInteger(n) ? { value: String(n), lost: 0 } : { value: null, lost: 1 };
+  const close = body.lastIndexOf(')'), n = Number(body);
+  const fixed = to === null ? null
+    : to.startsWith('T:') ? `${to.slice(2)}(${body})`
+    : to === 'U' ? (close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim())
+    : Number.isSafeInteger(n) ? String(n) : null; // an integer form, `I` or `AI`
+  return { value: fixed, lost: fixed === null ? 1 : 0 };
 }
 
 /** Value-form reconciliation for one export: rewrites, and names what it dropped. */

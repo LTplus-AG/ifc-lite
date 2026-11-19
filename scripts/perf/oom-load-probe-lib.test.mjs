@@ -257,6 +257,21 @@ test('#10353 server proof: a refusal seen only by the poll makes events inside i
   assert.equal(precise.sourcePostBeforeDecision, false);
 });
 
+test('#10445 delayed polls retain the whole possible refusal interval', () => {
+  const { polledErrorEvent } = lib();
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const text = 'This IFC file exceeds this tab\'s local processing memory budget';
+  const event = polledErrorEvent({ readAt: 6000, previousReadAt: null, text }, 1000);
+  assert.equal(event.ms, 5000);
+  assert.equal(event.windowMs, 5000);
+  const summary = serverAttemptSummary([event], { watching: true, tracker: withRequests({ after: [200] }) });
+  assert.equal(summary.attemptBeforeDecision, null, 'a refusal at +100 may precede the +200 request');
+  assert.equal(expectFlags(summary, SERVER_FIRST).pass, false);
+  const later = polledErrorEvent({ readAt: 16000, previousReadAt: 6000, text }, 1000);
+  assert.equal(later.windowMs, 10000, 'the interval includes slow sampling between reads');
+  assert.equal(serverAttemptSummary([later], { watching: true, tracker: withRequests({ after: [5000] }) }).attemptBeforeDecision, true);
+});
+
 test('#10445 server proof: the open polling-window boundary is provably before the decision', () => {
   const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
   const polled = { ms: 2031, event: 'store-error', windowMs: 2000, text: "This IFC file exceeds this tab's local processing memory budget" };

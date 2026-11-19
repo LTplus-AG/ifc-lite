@@ -195,6 +195,11 @@ test('#10353 a message beyond the scan budget is an incomplete scan, not "no sou
   new target.Worker('/big.js').postMessage({ list: Array.from({ length: 50 }, (_, i) => ({ i })) });
   const s = trackerSummary(tracker.report(), 0);
   assert.equal(s.incompleteScans, 1);
+  let reads = 0;
+  const wide = new Array(1000000);
+  for (let i = 0; i < 40; i++) Object.defineProperty(wide, i, { get() { reads++; return {}; } });
+  new target.Worker('/wide.js').postMessage(wide);
+  assert.ok(reads <= 11, `child expansion must stop at the budget, read ${reads} children`);
   assert.deepEqual(s.facts.firstIncompleteScan, { ms: 0, worker: '/big.js' });
   assert.equal(s.events.filter((e) => e.event === 'worker-post').length, 0, 'nothing found in the part scanned');
   const { serverAttemptSummary } = serverApi();

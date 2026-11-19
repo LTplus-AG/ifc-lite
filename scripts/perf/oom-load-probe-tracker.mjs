@@ -135,25 +135,34 @@ export function installSourceTracker(env) {
    *  incomplete scan (never silently treated as "no Blob"). */
   const scanBudget = env.scanBudget ?? 50000;
   const blobsIn = (roots) => {
-    const found = new Map(), seen = new Set(), stack = roots.map(([v, path]) => [v, path]);
+    const found = new Map(), seen = new Set(), stack = [];
     let work = 0;
+    const push = (value, path) => {
+      if (work + stack.length >= scanBudget) return false;
+      stack.push([value, path]); return true;
+    };
+    for (const [v, path] of roots) if (!push(v, path)) return { found, complete: false };
     while (stack.length) {
       const [v, path] = stack.pop();
+      work++;
       if (!v || typeof v !== 'object' || seen.has(v)) continue;
-      if (++work > scanBudget) return { found, complete: false };
       seen.add(v);
       if (v instanceof env.Blob) { if (!found.has(v)) found.set(v, path); continue; }
       if (ArrayBuffer.isView(v) || v instanceof ArrayBuffer) continue;
-      if (v instanceof Map) { let i = 0; for (const [k, x] of v) { stack.push([k, `${path}.<key ${i}>`], [x, `${path}.get(${i})`]); i++; } continue; }
-      if (v instanceof Set) { let i = 0; for (const x of v) stack.push([x, `${path}.<set ${i++}>`]); continue; }
-      if (Array.isArray(v)) { v.forEach((x, i) => stack.push([x, `${path}[${i}]`])); continue; }
-      for (const [k, x] of Object.entries(v)) stack.push([x, `${path}.${k}`]);
+      if (v instanceof Map) { let i = 0; for (const [k, x] of v) { if (!push(k, `${path}.<key ${i}>`) || !push(x, `${path}.get(${i})`)) return { found, complete: false }; i++; } continue; }
+      if (v instanceof Set) { let i = 0; for (const x of v) if (!push(x, `${path}.<set ${i++}>`)) return { found, complete: false }; continue; }
+      if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) if (!push(v[i], `${path}[${i}]`)) return { found, complete: false }; continue; }
+      for (const k in v) if (Object.prototype.hasOwnProperty.call(v, k) && !push(v[k], `${path}.${k}`)) return { found, complete: false };
     }
     return { found, complete: true };
   };
   const recordPost = (target, label, msg, rest) => {
     const transfer = Array.isArray(rest[0]) ? rest[0] : rest[0]?.transfer;
-    const { found, complete } = blobsIn([[msg, 'message'], ...(Array.isArray(transfer) ? transfer.map((x, i) => [x, `transfer[${i}]`]) : [])]);
+    function* roots() {
+      yield [msg, 'message'];
+      if (Array.isArray(transfer)) for (let i = 0; i < transfer.length; i++) yield [transfer[i], `transfer[${i}]`];
+    }
+    const { found, complete } = blobsIn(roots());
     const now = env.now();
     if (!complete) { state.counts.incompleteScans++; state.facts.firstIncompleteScan ??= { t: now, worker: label }; }
     for (const [b, path] of found) {

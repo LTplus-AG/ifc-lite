@@ -42,7 +42,7 @@
  */
 
 import { REFUSAL_MESSAGE } from './oom-load-probe-server.mjs';
-export { REFUSAL_MESSAGE, MEMORY_WARNING, SERVER_FIRST, expectFlags, serverAttemptSummary } from './oom-load-probe-server.mjs';
+export { REFUSAL_MESSAGE, MEMORY_WARNING, SERVER_FIRST, expectFlags, serverAttemptSummary, polledErrorEvent } from './oom-load-probe-server.mjs';
 
 export const OUTCOMES = Object.freeze(['loaded', 'refused', 'awaiting-decision', 'cancelled', 'killed', 'killed-after-continue', 'error', 'timeout']);
 

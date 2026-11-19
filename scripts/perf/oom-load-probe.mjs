@@ -49,7 +49,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, sampleCpuGeometry, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, polledErrorEvent, runCleanup, sampleCpuGeometry, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
 import { CPU_GEOMETRY_PROBE, DIALOG_MARKS, NOTICES, PAGE_PROBE } from './oom-load-probe-page.mjs';
 import { installSourceTracker, trackerSummary } from './oom-load-probe-tracker.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
@@ -211,7 +211,7 @@ export async function runProbe(opts) {
     }, 500);
     cleanup.push({ name: 'sampler', fn: () => clearInterval(sampler) });
 
-    let done = false;
+    let done = false, previousPollReadAt = null;
     pickAt = Date.now();
     const interactive = openAndWaitInteractive(page, [fixture], { timeoutMs: opts.limitMin * 60_000 })
       .then(() => { obs.interactive = true; }, (e) => { if (/timeout/i.test(String(e?.message))) obs.timedOut = true; result.waitError = String(e?.message ?? e).slice(0, 300); });
@@ -222,6 +222,8 @@ export async function runProbe(opts) {
         // or not, does not end the load: keep watching until interactive, a tab death or the limit.
         if (done || obs.pageCrashed || obs.pageClosed || obs.browserGone) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
+        const previousReadAt = previousPollReadAt;
+        if (st) previousPollReadAt = st.readAt;
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
         if (st && ++polls % CPU_GEOMETRY_EVERY === 0) {
           const measurement = await sampleCpuGeometry(() => page.evaluate(CPU_GEOMETRY_PROBE), st.tris, 15000);
@@ -229,7 +231,7 @@ export async function runProbe(opts) {
             ...(measurement.held ? { cpuGeometryHeld: measurement.held } : { diagnosticError: measurement.error }),
             pssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) });
         }
-        if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; storeErrors.push({ t: Date.now(), text: obs.storeError }); return; }
+        if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; storeErrors.push({ readAt: st.readAt, previousReadAt, text: obs.storeError }); return; }
         if (obs.decision === 'none') {
           // CSS role selectors, not getByRole: when another layer (e.g. a privacy banner) is open the
           // dialog's container can be aria-hidden, which hides it from getByRole although it is on screen.
@@ -309,8 +311,8 @@ export async function runProbe(opts) {
     result.timeline = [
       ...netEvents.map(({ t, ...e }) => ({ ms: ms(t), ...e })),
       ...dialogs.map((d) => ({ ms: ms(d.t), event: d.kind ?? 'dialog', text: d.text })),
-      // The probe's own 2 s poll: the error appeared at some point in the 2 s before it was seen.
-      ...storeErrors.map((e) => ({ ms: ms(e.t), event: 'store-error', text: e.text, windowMs: 2000 })),
+      // Page-clock read bounds include delayed evaluation and sampling between polls.
+      ...storeErrors.map((e) => polledErrorEvent(e, origin)),
       ...trackedEvents,
     ].sort((a, b) => a.ms - b.ms);
     result.serverAttempts = serverAttemptSummary(result.timeline, { watching: Boolean(watchOrigin), tracker: tracked });

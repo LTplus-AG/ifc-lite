@@ -36,12 +36,13 @@ export const DIALOG_MARKS = () => {
 
 /** In page: what the load has reached. */
 export const PAGE_PROBE = () => {
+  const readAt = Date.now();
   const s = globalThis.__ifc_lite_viewer_store__?.getState();
   const models = [...(s?.models?.values?.() ?? [])];
   let tris = 0;
   for (const g of (models.length ? models.map((m) => m.geometryResult) : [s?.geometryResult])) tris += g?.totalTriangles ?? 0;
   const l = (globalThis.__IFC_LITE_LOAD_TRACE__?.loads?.() ?? []).at(-1);
-  return { loading: s?.loading ?? null, error: s?.error ?? null, progress: s?.progress ?? null, tris,
+  return { readAt, loading: s?.loading ?? null, error: s?.error ?? null, progress: s?.progress ?? null, tris,
     modelStates: models.map((m) => m.loadState ?? null),
     jsHeapMiB: performance.memory ? performance.memory.usedJSHeapSize / 2 ** 20 : null,
     openSpans: l ? l.spans.filter((sp) => sp.end === null).slice(0, 8).map((sp) => sp.name) : [] };

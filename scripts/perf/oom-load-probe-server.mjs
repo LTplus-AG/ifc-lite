@@ -8,6 +8,12 @@ export const REFUSAL_MESSAGE = /local processing memory budget/i;
 /** Title of a pre-load memory warning that lets the user continue or cancel (#10353). */
 export const MEMORY_WARNING = /may exceed available memory/i;
 
+/** A poll observes the error after the previous page read (or pick), not after a fixed sleep. */
+export function polledErrorEvent({ readAt, previousReadAt, text }, origin) {
+  return { ms: readAt - origin, event: 'store-error', text,
+    windowMs: Math.max(0, readAt - (previousReadAt ?? origin)) };
+}
+
 /**
  * Order of events in one load, relative to the file pick (#10353 server proof).
  * `timeline` entries are `{ ms, event, ... }`: 'request' | 'requestfailed' | 'response'

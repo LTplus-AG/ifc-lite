@@ -54,6 +54,7 @@ import { canExportRoomAsStep } from '@/lib/collab/room-step-export';
 import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { canWriteIfcFromStores, listExportModels, resolveExportModel, stepSkipReason } from './export-model-selection';
+import { collectChangedModels } from '@/lib/export/model-changes';
 import { buildMergeInputs, emptyMergeRefusal, mergedModels, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
@@ -78,9 +79,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   const dirtyModels = useViewerStore((s) => s.dirtyModels);
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  const getModifiedEntityCount = useViewerStore((s) => s.getModifiedEntityCount);
   // Subscribed so the pending-changes count refreshes while the dialog is open
-  // (getModifiedEntityCount / getMutationView are stable action refs). Schedule
+  // (getMutationView is a stable action ref). Schedule
   // edits don't bump mutationVersion, so the schedule fields are subscribed too.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const scheduleData = useViewerStore((s) => s.scheduleData);
@@ -247,20 +247,12 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
       return count;
     }
-    // A merged export writes only the models `buildMergeInputs` keeps, each with its georeferencing edits (#10669).
-    // The store's total counts every model's overlay edits, plus a georeference edit only for a model without an
-    // overlay; recount both per model.
+    // A merged export writes only the models `buildMergeInputs` keeps, each with its georeferencing edits (#10669):
+    // the per-model counts the changed-models export uses, summed over those models.
     const kept = new Set(mergedModels(models).map(model => model.id));
-    let count = getModifiedEntityCount();
-    for (const id of models.keys()) {
-      const view = getMutationView(id), georef = hasGeorefEdits(georefMutations.get(id));
-      if (!view && georef) count -= 1;
-      if (!kept.has(id)) count -= view?.getModifiedEntityCount() ?? 0;
-      else if (georef) count += 1;
-    }
-    return count;
+    return collectChangedModels(useViewerStore.getState()).models.reduce((count, model) => kept.has(model.id) ? count + model.changeCount : count, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations, models]);
+  }, [exportScope, selectedModelId, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations, models]);
 
   /**
    * Resolve local (per-model) hidden/isolated expressIds for `modelId` from

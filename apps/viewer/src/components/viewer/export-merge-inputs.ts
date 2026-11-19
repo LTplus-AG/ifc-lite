@@ -67,7 +67,7 @@ export function statedMergeSkips(models: ReadonlyMap<string, FederatedModel>): M
  * before hydration, so a store still loading counts as left out until it arrives.
  */
 export function mergedModels(models: ReadonlyMap<string, FederatedModel>): FederatedModel[] {
-  return exportableModels(models).filter(model => model.ifcDataStore && !stepSkipReason(model.ifcDataStore));
+  return exportableModels(models).filter(model => stepSkipReason(model.ifcDataStore) === null);
 }
 
 /** Assemble one `MergeModelInput` per writable model, and name the rest. */

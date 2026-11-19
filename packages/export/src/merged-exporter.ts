@@ -840,7 +840,7 @@ export class MergedExporter {
       modelOffsets,
       firstModelOffset,
       firstModelInfraMap,
-      firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
+      firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale, firstModelOffset),
       keptContexts: [],
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
@@ -1063,7 +1063,7 @@ export class MergedExporter {
       }
 
       // Remap and skip duplicate infrastructure (units, contexts) — WCS-gated; scale choice documented on planInfrastructureUnify (merged-context.ts).
-      const kept = planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
+      const kept = planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds, setup.modelOffsets.get(model.id)!);
       if (folded) setup.keptContexts.push(...kept.map(id => id + setup.modelOffsets.get(model.id)!)); // its project folded above
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.

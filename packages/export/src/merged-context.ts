@@ -181,6 +181,20 @@ export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, leng
   };
 }
 
+/** A context's coordinate operation and its target CRS. */
+export interface ContextOperation { operation: number; crs: number | null }
+
+/** The first coordinate operation whose SourceCRS is `contextId`, with its TargetCRS, or null when none is. */
+function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOperation | null {
+  for (const type of COORDINATE_OPERATION_STEP_TYPES) {
+    // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current operations
+    for (const id of dataStore.entityIndex.byType.get(type) ?? []) {
+      if (refId(getStepAttr(dataStore, id, 0)) === contextId) return { operation: id, crs: refId(getStepAttr(dataStore, id, 1)) };
+    }
+  }
+  return null;
+}
+
 /**
  * The primary model's context state {@link planInfrastructureUnify} matches
  * every later model against: its subcontexts grouped by kind key
@@ -196,6 +210,8 @@ export interface PrimaryContextState {
    * none, that of the first later model that unified onto it. {@link planInfrastructureUnify} updates it.
    */
   contextGeoref: GeorefSignature | null;
+  /** The shared context's coordinate operation and CRS, as output ids, which a later model's identical one maps onto. */
+  contextOperation: ContextOperation | null;
 }
 
 /** Build the {@link PrimaryContextState} for the primary model. */
@@ -203,13 +219,20 @@ export function resolvePrimaryContextState(
   dataStore: IfcDataStore,
   subContextIds: number[],
   primaryScale: number,
+  offset: number,
 ): PrimaryContextState {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
+  const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
   return {
     subContextsByKey: groupSubContextsByKey(dataStore, subContextIds),
     contextWcs: resolveModelContextWcs(dataStore, primaryScale),
     contextGeoref: resolveModelContextGeorefSignature(dataStore, primaryScale),
+    contextOperation: contextId === undefined ? null : offsetOperation(contextOperation(dataStore, contextId), offset),
   };
 }
+
+const offsetOperation = (operation: ContextOperation | null, offset: number): ContextOperation | null =>
+  operation && { operation: operation.operation + offset, crs: operation.crs === null ? null : operation.crs + offset };
 
 /**
  * True when two resolved WCS frames are the same within tolerance, OR
@@ -259,8 +282,10 @@ const refsIn = (slot: string): string[] => slot.replace(/\/\*[\s\S]*?\*\//g, '')
  * the parent means every child must be retained too, not just remapped in
  * isolation. Mutates `sharedRemap`/`skipEntityIds`, and records a unified
  * model's georeference on `firstModelContext.contextGeoref` when it had none.
- * Returns the top-level contexts it kept that one of the model's IfcProjects
- * listed (directly or through a subcontext), for {@link listKeptContexts}.
+ * A unified model's coordinate operation, identical by then, maps onto the
+ * shared context's. `modelOffset` is this model's output id offset. Returns
+ * the top-level contexts it kept that one of the model's IfcProjects listed
+ * (directly or through a subcontext), for {@link listKeptContexts}.
  *
  * `lengthUnitScale` is the scale THIS model's raw WCS coordinates resolve
  * under. Under assume-shared the caller asserts raw coordinates are already
@@ -280,6 +305,7 @@ export function planInfrastructureUnify(
   lengthUnitScale: number,
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
+  modelOffset: number,
 ): number[] {
   // Computed once, up front — not per type in the loop below — so its result
   // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
@@ -303,6 +329,15 @@ export function planInfrastructureUnify(
     : null;
   // This model's georeference now lands on the shared context, so a later model must agree with it too.
   if (unifiedContextId !== null) firstModelContext.contextGeoref ??= georef;
+  // A context holds one coordinate operation (HasCoordinateOperation SET [0:1]): a later model's identical one maps
+  // onto the shared context's, with its CRS, instead of becoming a second (#10873). The first one to arrive is shared.
+  const own = unifiedContextId === null ? null : contextOperation(dataStore, unifiedContextId);
+  const shared = firstModelContext.contextOperation;
+  if (own && shared) {
+    sharedRemap.set(own.operation, shared.operation);
+    skipEntityIds.add(own.operation);
+    if (own.crs !== null && shared.crs !== null) { sharedRemap.set(own.crs, shared.crs); skipEntityIds.add(own.crs); }
+  } else if (own) firstModelContext.contextOperation = offsetOperation(own, modelOffset);
   for (const [type, firstIds] of firstModelInfraMap) {
     const thisIds = modelInfra.get(type);
     if (!thisIds || firstIds.length === 0 || thisIds.length === 0) continue;

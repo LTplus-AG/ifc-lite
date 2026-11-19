@@ -62,7 +62,7 @@ async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IF
   const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation })).content);
   const contexts: string[] = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
   const sources = [...content.matchAll(/=\s*(?:\/\*.*?\*\/\s*)?IFC(?:MAPCONVERSION(?:SCALED)?|RIGIDOPERATION)\((?:\/\*.*?\*\/\s*)?(#\d+),/g)].map(match => match[1]);
-  return { contexts, sources, listed: projectContexts(content) };
+  return { contexts, sources, listed: projectContexts(content), crs: content.match(/=\s*IFCPROJECTEDCRS\(/g)?.length ?? 0 };
 }
 
 /** Every georeference sits on its own context, each a context of the file. */
@@ -151,6 +151,17 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expect(projects.flat().sort()).toEqual([...contexts].sort());
   });
 
+  it('keeps one conversion and one CRS on a context two models share the georeference of (#10873)', async () => {
+    for (const georefs of [[at(X), at(X)], [null, at(X), at(X)], [at(X), null, at(X)], [at(X), at(X), at(X)]]) {
+      const { contexts, sources, crs } = await merge(georefs);
+      expect(contexts, JSON.stringify(georefs)).toHaveLength(1);
+      expect(sources, 'HasCoordinateOperation is SET [0:1]').toEqual(contexts);
+      expect(crs).toBe(1);
+    }
+    // The shared georeference stays one when a different one arrives after it.
+    expectApart(await merge([at(X), at(X), at(Y)]), 2);
+  });
+
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {
     expect((await merge([at(X), at(X)])).contexts).toHaveLength(1);
     expect((await merge([at(X), null])).contexts).toHaveLength(1);
@@ -181,7 +192,8 @@ describe('merged STEP export and map conversions (#10798)', () => {
     const rigid = (eastings: number): Georef => ({ raw: `${METRE_CRS}
 #21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(${eastings}.),IFCLENGTHMEASURE(1200000.),500.);` });
     expectApart(await merge([rigid(2600000), rigid(2700000)], 'IFC4X3'), 2);
-    expect((await merge([rigid(2600000), rigid(2600000)], 'IFC4X3')).contexts).toHaveLength(1);
+    const same = await merge([rigid(2600000), rigid(2600000)], 'IFC4X3');
+    expect([same.contexts.length, same.sources.length, same.crs]).toEqual([1, 1, 1]);
   });
 
   it('tells apart two scaled conversions with different factors', async () => {

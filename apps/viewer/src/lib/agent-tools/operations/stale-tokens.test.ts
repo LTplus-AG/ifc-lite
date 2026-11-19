@@ -504,6 +504,25 @@ describe('multi-batch IDS corrections (#10792)', () => {
     assert.match((await invoke('authoring.apply', { token: second }, true)).text, /Model changed since preview/);
   });
 
+  it('#10894: an element listed twice is withheld, never split across batches', async () => {
+    const express_ids = [...Array.from({ length: WALLS }, (_, i) => i + 1), 1];
+    const { converted, candidates } = answer<{ converted: { issues: Array<{ kind: string }> }; candidates: Array<{ token: string }> }>(await invoke('validation.fix.prepare',
+      { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value: 'yes', title: 'Mark reviewed' }));
+    assert.ok(converted.issues.some(issue => issue.kind === 'ambiguous-key'), 'the duplicate is reported, not split across batches');
+    let applied = 0;
+    for (const { token } of candidates) applied += (await applyBatch(token)).applied.length;
+    assert.equal(applied, WALLS - 1);
+  });
+
+  it('#10894: two sibling batches applied at once: one applies, the other is refused, then applies on retry', async () => {
+    const [first, second] = await prepareCorrection();
+    const results = await Promise.all([invoke('authoring.apply', { token: first }, true), invoke('authoring.apply', { token: second }, true)]);
+    assert.deepEqual(results.map(result => result.isError).sort(), [false, true]);
+    assert.match(results.find(result => result.isError)!.text, /Model replaced, closed, or edited during the operation/);
+    const refused = results[0].isError ? first : second;
+    await applyBatch(refused);
+  });
+
   it('#10894: an edit outside the correction between its batches still refuses the rest', async () => {
     const [first, second] = await prepareCorrection();
     await applyBatch(first);

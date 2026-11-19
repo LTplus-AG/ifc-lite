@@ -24,15 +24,16 @@ interface RunInputs { models: ViewerState['models']; mutationVersion: number; ta
 /** The fields `customGroupingsFromLenses` hands the rule engine. */
 const groupingsSignature = (lenses: ViewerState['savedLenses']) => JSON.stringify(lenses.filter(isGroupingLens).map(lens => [lens.id, lens.name,
   lens.capturedScope ?? null, lens.rules.map(rule => [rule.name, rule.enabled, rule.unreadableLegacy ? null : rule.groups ?? null])]));
-const runInputs = (s: ViewerState, kind: 'rules' | 'ids' = 'rules'): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion,
+type RunKind = 'rules' | 'ids';
+const runInputs = (s: ViewerState, kind: RunKind): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion,
   ...(kind === 'rules' ? { tagIds: JSON.stringify([...s.modelTags.keys()].sort()), modelTagAssignments: s.modelTagAssignments, groupings: groupingsSignature(s.savedLenses) } : {}) });
 /** `run` holds only the inputs its kind read; each is compared with the current state. */
 const sameInputs = (run: RunInputs, now: RunInputs) => (Object.keys(run) as (keyof RunInputs)[]).every(key => run[key] === now[key]);
-interface Run { report: ValidationReport; snapshot: IdsReportBlock; inputs: RunInputs }
+interface Run { report: ValidationReport; snapshot: IdsReportBlock; kind: RunKind; inputs: RunInputs }
 const hosts = new WeakMap<ToolHost, Map<string, Run>>();
 function runs(c: { host: ToolHost }) { let values = hosts.get(c.host); if (!values) { values = new Map(); hosts.set(c.host, values); const captured = values; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return values; }
 function run(c: { host: ToolHost }, id: string) { const value = runs(c).get(id); if (!value) throw new Error('Unknown validation run owned by this host.');
-  if (!sameInputs(value.inputs, runInputs(useViewerStore.getState(), value.inputs.groupings === undefined ? 'ids' : 'rules'))) throw new Error('Validation inputs changed. Run the check again.'); return value;
+  if (!sameInputs(value.inputs, runInputs(useViewerStore.getState(), value.kind))) throw new Error('Validation inputs changed. Run the check again.'); return value;
 }
 function libraryRevision(expected: number) { if (useViewerStore.getState().validationDefinitionRevision !== expected) throw new Error('Validation definitions changed. Inspect them again.'); }
 const runInput = { type: 'object' as const, properties: { run_id: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['run_id' as const], additionalProperties: false as const };
@@ -76,7 +77,7 @@ export const nativeValidationOperations = [
     const result = await runIdsCheck({ document, modelId: c.model.id, dataStore: c.model.store, mutationView: c.model.mutationView(), locale: 'en', models: state.models, signal: c.signal,
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'ids'))) throw new Error('Models changed during IDS validation.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, inputs });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'ids', inputs });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ express_ids: number[]; pset: string; name: string; facet_data_type: string; raw_value: string; title: string }>(meta('validation.fix.prepare', 'Draft a native IDS property correction from explicit target IDs and a supplied raw value. Uses native type inference, IDS-to-model unit conversion and expected-value capture, then the existing properties review/apply service.'), {
@@ -101,10 +102,10 @@ export const nativeValidationOperations = [
     const parsed = parseRuleSetFile(JSON.parse(i.rules_json)); if (!parsed.ok) throw new Error(parsed.error); assertToolActive(c);
     const s = useViewerStore.getState(), models = evaluatorModelsFromState(s).filter(model => i.model_ids.includes(model.id));
     if (models.length !== i.model_ids.length || !i.model_ids.includes(c.model.id)) throw new Error('Every explicit model must be currently loaded, and include the selected model.');
-    const inputs = runInputs(s);
+    const inputs = runInputs(s, 'rules');
     const result = await runInformationCheck({ ruleSet: parsed.file, models, definedModelTagIds: definedModelTagIdsOf(s), reportModels: s.models, signal: c.signal });
-    assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState()))) throw new Error('Models changed during validation. Discarded result.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, inputs });
+    assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'rules'))) throw new Error('Models changed during validation. Discarded result.');
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'rules', inputs });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ run_id: string; offset: number; limit: number }>(meta('validation.results', 'Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification.'), {

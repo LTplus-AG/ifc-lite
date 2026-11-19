@@ -331,17 +331,30 @@ export function listKeptContexts(lines: string[], projectId: number | undefined,
   if (projectId === undefined || contextIds.length === 0) return;
   const wanted = new Set(contextIds), written: number[] = [];
   let projectIndex = -1;
-  lines.forEach((line, index) => {
-    const id = Number(/^#(\d+)/.exec(line)?.[1]);
+  // Stops once the project and every kept context are found.
+  for (let index = 0; index < lines.length && (projectIndex < 0 || written.length < wanted.size); index++) {
+    const id = leadingId(lines[index]);
     if (id === projectId) projectIndex = index;
     else if (wanted.has(id)) written.push(id);
-  });
-  const text = projectIndex < 0 ? undefined : lines[projectIndex];
-  const frame = text === undefined || written.length === 0 ? null : stepRecordFrame(text, { allowMissingSemicolon: true });
-  const args = frame ? splitTopLevelStepArguments(frameArgs(text!, frame)) : null;
+  }
+  if (projectIndex < 0 || written.length === 0) return;
+  const text = lines[projectIndex], frame = stepRecordFrame(text, { allowMissingSemicolon: true });
+  const args = frame && splitTopLevelStepArguments(frameArgs(text, frame));
   if (!frame || !args || args.length <= PROJECT_REPRESENTATION_CONTEXTS_ATTR) return;
   const listed = args[PROJECT_REPRESENTATION_CONTEXTS_ATTR].trim();
   const items = listed === '$' ? [] : [listed.replace(/^\(|\)$/g, '')].filter(Boolean);
   args[PROJECT_REPRESENTATION_CONTEXTS_ATTR] = `(${[...items, ...written.map(id => `#${id}`)].join(',')})`;
-  lines[projectIndex] = withFrameArgs(text!, frame, args.join(','));
+  lines[projectIndex] = withFrameArgs(text, frame, args.join(','));
+}
+
+/** The `#N` a STEP line starts with, or -1; read by char code, as it runs over every line of a merge. */
+function leadingId(line: string): number {
+  if (line.charCodeAt(0) !== 35) return -1;
+  let id = 0, index = 1;
+  for (; index < line.length; index++) {
+    const digit = line.charCodeAt(index) - 48;
+    if (digit < 0 || digit > 9) break;
+    id = id * 10 + digit;
+  }
+  return index > 1 ? id : -1;
 }

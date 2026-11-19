@@ -21,7 +21,8 @@
  *   geometry alone, so committed shards are carried into the new generation.
  *   A content-version bump may move occurrences, so a model that had shards
  *   is then reported `instancedLost` and never complete (fail closed) until a
- *   live instanced source re-supplies them. So is a model whose shards were
+ *   fresh shard set arrives AND its load is seen running, then complete with
+ *   nothing pending: a new queue generation alone is not coverage. So is a model whose shards were
  *   enqueued before the tap started (the queue's revision is ahead of what
  *   the tap saw): those shards never reached the backing.
  * Appends for one model are chained in order; a writer failure is reported in
@@ -174,6 +175,7 @@ export class StoreGeometryBackingTap {
       if (meshes && meshes.length > tracked.consumed) {
         if (meshes.slice(tracked.consumed).some(isReleasedMesh)) {
           tracked.stale = new Error('Released meshes were appended; they have no arrays to back');
+          notifyReleasedGeometryMetadataChanged();
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
           notifyReleasedGeometryMetadataChanged();
           continue;
@@ -211,6 +213,8 @@ export class StoreGeometryBackingTap {
     });
     next.chain = this.settle(next, begun);
     this.tracked.set(modelId, next);
+    // A content bump keeps the list identity; the provider now answers from an incomplete generation.
+    if (previous) notifyReleasedGeometryMetadataChanged();
     if (meshes && meshes.length > 0) {
       if (meshes.some(isReleasedMesh)) this.replay(modelId, next, meshes);
       else this.appendSuffix(next, meshes);
@@ -293,10 +297,7 @@ export class StoreGeometryBackingTap {
   private observeResupplies(modelIds: Iterable<string>): void {
     if (this.stopped) return;
     const models = this.store.getState().models;
-    for (const modelId of modelIds) {
-      const tracked = this.tracked.get(modelId);
-      if (tracked) this.observeResupply(modelId, tracked, models.get(modelId)?.loadState);
-    }
+    for (const id of modelIds) { const t = this.tracked.get(id); if (t) this.observeResupply(id, t, models.get(id)?.loadState); }
   }
 
   /** A re-supply is whole once the model's load is seen running and then complete, nothing pending. */
@@ -308,16 +309,12 @@ export class StoreGeometryBackingTap {
     if (resupply?.sawLoading && loadState === 'complete' && !hasPendingInstancedShards(modelId)
       && tracked.lostAtQueueGeneration !== undefined && instancedShardGeneration() !== tracked.lostAtQueueGeneration) {
       tracked.instancedLost = false;
-      tracked.lostAtQueueGeneration = undefined;
-      tracked.resupply = undefined;
+      tracked.lostAtQueueGeneration = tracked.resupply = undefined;
     }
   }
 
   private enqueue(tracked: Tracked, step: () => Promise<void>): void {
-    tracked.chain = this.settle(tracked, tracked.chain.then(() => {
-      if (tracked.failure) return undefined;
-      return step();
-    }));
+    tracked.chain = this.settle(tracked, tracked.chain.then(() => (tracked.failure ? undefined : step())));
   }
 
   /** Record the first failure per generation; later steps are skipped, not retried. */
@@ -326,6 +323,7 @@ export class StoreGeometryBackingTap {
       if (tracked.failure) return;
       tracked.failure = error instanceof Error ? error : new Error(String(error));
       console.error('[GeometryBacking] model backing failed; CPU geometry must stay resident', tracked.failure);
+      notifyReleasedGeometryMetadataChanged(); // its bounds and areas stop answering in place
     });
   }
 
@@ -334,6 +332,7 @@ export class StoreGeometryBackingTap {
     if (!tracked) return;
     this.tracked.delete(modelId);
     this.acknowledged.delete(modelId);
+    notifyReleasedGeometryMetadataChanged();
     this.settle(tracked, tracked.chain.then(async () => {
       for (const key of [...tracked.retained, tracked.key]) await this.registry.invalidate(key, reason);
     }));
@@ -353,17 +352,19 @@ export class StoreGeometryBackingTap {
   /** Close every model's writer and acknowledge complete generations. */
   async seal(): Promise<ModelBackingStatus[]> {
     await this.whenIdle();
+    let acknowledged = false;
     for (const [modelId, tracked] of this.tracked) {
       if (tracked.failure || tracked.instancedLost || tracked.stale || this.missedShards(modelId) || !tracked.backing) continue;
       const backing = tracked.backing;
       await this.settle(tracked, backing.acknowledge().then(async (ack) => {
         // Only a verified, complete, still-current replacement may retire what it replaces.
         if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure) return;
+        acknowledged ||= this.acknowledged.get(modelId) !== tracked;
         this.acknowledged.set(modelId, tracked);
         for (const old of tracked.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by an acknowledged generation');
       }));
     }
-    notifyReleasedGeometryMetadataChanged(); // an acknowledged generation may answer now
+    if (acknowledged) notifyReleasedGeometryMetadataChanged(); // complete generations answer in place
     return this.status();
   }
 

@@ -11,7 +11,7 @@ import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, i
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
-import { releasedGeometryMetadata } from './released-geometry-metadata';
+import { releasedGeometryMetadata, releasedGeometryMetadataVersion } from './released-geometry-metadata';
 import { collectMeshAreas } from '@/components/viewer/tools/measure-modes/mesh-area';
 
 let names = 0;
@@ -230,6 +230,34 @@ describe('store geometry backing tap (test/debug only)', () => {
     assert.equal(acknowledged.isCurrent, false, 'retired only now');
     assert.deepEqual(await idsOf(tap.backing('st')!), [80, 81], 'only the fresh occurrences, never the stale ones');
     await tap.stop();
+  });
+
+  it('notifies metadata consumers whenever availability changes in place', async () => {
+    const list = [mesh(1)];
+    const store = storeWith({ nm: list });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    const metadata = releasedGeometryMetadata()!;
+    let seen = releasedGeometryMetadataVersion();
+    const changed = () => { const now = releasedGeometryMetadataVersion(), moved = now > seen; seen = now; return moved; };
+    await tap.seal();
+    assert.equal(changed(), true, 'a seal makes the generation answer');
+    assert.ok(metadata.bounds('nm', 1));
+    await tap.seal();
+    assert.equal(changed(), false, 'nothing new acknowledged, nothing to re-read');
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    assert.equal(changed(), true, 'same list identity, but the answer just went away');
+    assert.equal(metadata.bounds('nm', 1), undefined);
+    await tap.seal();
+    assert.equal(changed(), true);
+    assert.ok(metadata.bounds('nm', 1));
+    const released = [mesh(2)];
+    releaseCpuMeshBuffers(released);
+    list.push(released[0]); // grows in place with a member that has no arrays
+    store.setState((state) => ({ models: new Map(state.models) }));
+    assert.equal(changed(), true, 'a stale generation stops answering in place');
+    assert.equal(metadata.bounds('nm', 1), undefined);
+    await tap.stop();
+    assert.equal(changed(), true, 'the provider goes away');
   });
 
   it('empty shard records (no occurrences) never make a content bump lose instancing', async () => {

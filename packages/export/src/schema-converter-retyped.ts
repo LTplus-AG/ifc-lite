@@ -15,8 +15,8 @@
  */
 
 import type { IfcSchemaVersion } from './schema-converter.js';
-import { frameArgs, stepRecordFrame } from './step-record-frame.js';
-import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { stepRecordHead } from './step-record-frame.js';
+import { readStepSlots } from './step-argument-parser.js';
 
 /** IFC2X3 `IfcCurrencyEnum`. */
 const CURRENCY: readonly string[] = [
@@ -32,28 +32,29 @@ const CURRENCY: readonly string[] = [
 /** One retyped slot: `[type, index, IFC2X3 enumeration members]`. */
 export const RETYPED_SLOTS: readonly (readonly [string, number, readonly string[]])[] = [['IFCMONETARYUNIT', 0, CURRENCY]];
 
+const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
+
 /** `line`, already converted from `fromSchema` to `toSchema`, with every
  *  retyped slot in the target's type. `null` passes through. */
 export function retypeInPlace(line: string | null, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion): string | null {
-  const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
   const up = fromSchema === 'IFC2X3' && ifc4Like(toSchema);
   if (line === null || (!up && !(toSchema === 'IFC2X3' && ifc4Like(fromSchema)))) return line;
-  const frame = stepRecordFrame(line, { allowMissingSemicolon: true });
-  if (frame === null) return line;
-  const type = line.slice(frame.head.typeStart, frame.head.typeEnd).toUpperCase();
-  const slot = RETYPED_SLOTS.find(([t]) => t === type);
-  const args = slot ? splitTopLevelStepArguments(frameArgs(line, frame)) : null;
-  if (!slot || !args || slot[1] >= args.length) return line;
-  const value = args[slot[1]].trim();
-  const inner = value.slice(1, -1);
+  // The head alone names the type; most records stop here.
+  const head = stepRecordHead(line);
+  const slot = head && RETYPED_SLOTS.find(([t]) => t === line.slice(head.typeStart, head.typeEnd).toUpperCase());
+  const record = slot ? readStepSlots(line) : null;
+  if (!slot || !record || slot[1] >= record.slots.length) return line;
+  const slots = [...record.slots];
+  const value = slots[slot[1]].trim();
   if (value.length < 2) return line;
+  const inner = value.slice(1, -1);
   if (up) {
     if (!value.startsWith('.') || !value.endsWith('.')) return line;
-    args[slot[1]] = `'${inner}'`;
+    slots[slot[1]] = `'${inner}'`;
   } else {
     if (!value.startsWith("'") || !value.endsWith("'")) return line;
     const member = slot[2].find((m) => m.toUpperCase() === inner.toUpperCase());
-    args[slot[1]] = member ? `.${member}.` : '$';
+    slots[slot[1]] = member ? `.${member}.` : '$';
   }
-  return `${line.slice(0, frame.head.open + 1)}${args.join(',')}${line.slice(frame.close)}`;
+  return `${record.prefix}${slots.join(',')}${record.suffix}`;
 }

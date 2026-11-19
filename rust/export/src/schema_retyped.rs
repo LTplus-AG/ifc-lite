@@ -37,7 +37,7 @@ pub(crate) fn apply(line: String, cfrom: &str, cto: &str, dropped: Option<&mut u
         _ => return line,
     };
     let Some(head) = crate::step_record_frame::record_head(&line) else { return line };
-    let Some(&(_, index, members)) = RETYPED_SLOTS.iter().find(|(ty, ..)| *ty == head.type_name(&line)) else { return line };
+    let Some(&(_, index, members)) = RETYPED_SLOTS.iter().find(|(ty, ..)| ty.eq_ignore_ascii_case(head.type_name(&line))) else { return line };
     let Some(frame) = crate::step_record_frame::record_frame(&line) else { return line };
     let Some(mut args) = split_top_level_args(frame.args(&line)) else { return line };
     let Some(slot) = args.get_mut(index) else { return line };

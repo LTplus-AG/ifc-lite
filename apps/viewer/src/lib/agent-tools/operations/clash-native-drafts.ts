@@ -5,6 +5,7 @@ import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
 import { currentClashes } from './clash-native';
+import { revisionInput, stateRevision } from './state-revision';
 export const clashDraftOperations = [
   viewerOperation<{
     source: 'groups' | 'selection';
@@ -40,7 +41,7 @@ export const clashDraftOperations = [
           items: { type: 'string', minLength: 1, maxLength: 200 },
         },
         run_seq: { type: 'integer', minimum: 0 },
-        expected_groups: { type: 'string', maxLength: 1000000 },
+        expected_groups: revisionInput,
         name: { type: 'string', minLength: 1, maxLength: 200 },
         title: { type: 'string', minLength: 1, maxLength: 200 },
       },
@@ -68,7 +69,7 @@ export const clashDraftOperations = [
       if (!run) throw new Error('No native clash run.');
       const result = state.clashResult,
         library = useClashGroupLibrary.getState();
-      if (i.source === 'groups' && JSON.stringify(library.entries) !== i.expected_groups)
+      if (i.source === 'groups' && stateRevision(library.entries) !== i.expected_groups)
         throw new Error('Manual groups changed.');
       const workspace = library.entries.find((row) => row.id === library.activeId);
       const batch =
@@ -90,7 +91,7 @@ export const clashDraftOperations = [
         useViewerStore.getState().clashResult !== result ||
         useViewerStore.getState().clashRunSeq !== i.run_seq ||
         (i.source === 'groups' &&
-          (JSON.stringify(useClashGroupLibrary.getState().entries) !== i.expected_groups ||
+          (stateRevision(useClashGroupLibrary.getState().entries) !== i.expected_groups ||
             useClashGroupLibrary.getState().activeId !== library.activeId))
       )
         throw new Error('Native draft inputs changed during capture.');

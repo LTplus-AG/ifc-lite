@@ -10,9 +10,12 @@ import { produceAnonymizedExport } from '@/components/viewer/anonymized-export/a
 import { toAnonymizeOptions, type AnonymizeToggles } from '@/components/viewer/anonymized-export/AnonymizationOptionsPanel';
 import { viewerOperation } from './contract';
 import { exportMetadata } from './exports-common';
+import { MAX_RESULT_BYTES, resultBytes } from './result-limit';
 import { nativeExportTarget, nativeExportGuard, nativeArtifact, targetSchema } from './export-native-runtime';
 interface Input { target_model_id: string; seed_ids: number[]; excluded_ids: number[]; excluded_types: string[]; relations: Required<RelatedEntityOptions>; anonymize: AnonymizeToggles; file_stem: string }
-const ids = { type: 'array' as const, maxItems: 100000, uniqueItems: true as const, items: { type: 'integer' as const, minimum: 1 } };
+const MAX_IDS = 100000;
+const NARROW = 'Narrow the selection or exclude types.';
+const ids = { type: 'array' as const, maxItems: MAX_IDS, uniqueItems: true as const, items: { type: 'integer' as const, minimum: 1 } };
 const direction = { type: 'string' as const, enum: ['up', 'down', 'both', 'none'] as const };
 const bool = { type: 'boolean' as const };
 const schema = { type: 'object', properties: {
@@ -30,17 +33,24 @@ async function prepare(i: Input, check: () => void) {
   const typeOf = new Map<number, string>(); for (const id of related.all) { const name = store.entities.getTypeName(id); if (!name.startsWith('IfcRel')) typeOf.set(id, name); }
   if (i.excluded_ids.some(id => !related.all.has(id) || locked.has(id))) throw new Error('Unknown or locked spatial/seed exclusion.');
   const included = includedAnonymizedIds(related, locked, new Set(i.excluded_ids), new Set(i.excluded_types), typeOf);
+  // The preview and the export both carry the membership as an id list, so above the cap neither could ever run (#10794).
+  const size = Math.max(included.size, locked.size);
+  if (size > MAX_IDS) throw new Error(`The selection expands to ${size} entities, above the ${MAX_IDS} an anonymized export can carry. ${NARROW}`);
   check(); return { store, related, locked, included };
 }
-const previewSchema = { type: 'object', properties: { included_ids: ids, locked_ids: ids, groups: { type: 'array' } }, required: ['included_ids', 'locked_ids', 'groups'], additionalProperties: false };
+const previewSchema = { type: 'object', properties: { included_ids: ids, locked_ids: ids, groups: { type: 'array' }, truncated: { type: 'boolean' } }, required: ['included_ids', 'locked_ids', 'groups', 'truncated'], additionalProperties: false };
 export const exportNativeAnonymizedOperations = [
-  viewerOperation<Input>({ ...exportMetadata('exports.anonymized.prepare', 'Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities.'), effects: ['read'], capability: 'read', outputSchema: previewSchema }, schema, async (i, c) => { const check = nativeExportGuard(c, [i.target_model_id]); check(); const p = await prepare(i, check); return { included_ids: [...p.included], locked_ids: [...p.locked], groups: p.related.groups }; }),
+  viewerOperation<Input>({ ...exportMetadata('exports.anonymized.prepare', 'Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities. truncated means relationship expansion hit its work budget, as the export dialog truncated badge shows.'), effects: ['read'], capability: 'read', outputSchema: previewSchema }, schema, async (i, c) => { const check = nativeExportGuard(c, [i.target_model_id]); check(); const p = await prepare(i, check);
+    const preview = { included_ids: [...p.included], locked_ids: [...p.locked], groups: p.related.groups, truncated: p.related.truncated };
+    // Groups repeat member ids, so a preview can pass the result limit below the id cap (#10794).
+    if (resultBytes(preview) > MAX_RESULT_BYTES) throw new Error(`The anonymized preview for this selection is larger than the operation result limit. ${NARROW}`);
+    return preview; }),
   viewerOperation<Input & { expected_included_ids: number[] }>(exportMetadata('exports.anonymized', 'Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns native scrub/pruning warnings; GUID correlation maps stay private and are not exported.'), {
     type: 'object', properties: { ...schema.properties, expected_included_ids: ids }, required: [...schema.required, 'expected_included_ids'], additionalProperties: false,
   } satisfies JSONSchemaType<Input & { expected_included_ids: number[] }>, async (i, c) => {
     const check = nativeExportGuard(c, [i.target_model_id]); check(); const p = await prepare(i, check);
     if (JSON.stringify([...p.included].sort((a, b) => a - b)) !== JSON.stringify([...i.expected_included_ids].sort((a, b) => a - b))) throw new Error('Native anonymized membership changed since preview.');
     const out = produceAnonymizedExport({ store: p.store, fileStem: i.file_stem, includedIds: p.included, options: toAnonymizeOptions(i.anonymize) });
-    return nativeArtifact(c, new Blob([new Uint8Array(out.result.content)], { type: 'text/plain' }), out.filename, out.result.stats, check);
+    return nativeArtifact(c, new Blob([new Uint8Array(out.result.content)], { type: 'text/plain' }), out.filename, { ...out.result.stats, truncated: p.related.truncated }, check);
   }),
 ];

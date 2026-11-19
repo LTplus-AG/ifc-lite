@@ -7,6 +7,8 @@ import { viewerOperation as operation, emptySchema, pointSchema, type ViewerOper
 import { assertToolActive } from '../cancellation';
 import type { ZoneSet } from '@/lib/zones/types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
+import { boundedPage, pageInput, type PageInput } from './result-limit';
+import { assertRevision, revisionInput, stateRevision } from './state-revision';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const artifactOutput = { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer' } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };
@@ -15,26 +17,38 @@ const meta = (id: string, description: string, effect: 'read' | 'configuration' 
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const,
   policy: effect === 'artifact' ? { artifact: 'native-export' as const } : undefined, outputSchema: effect === 'artifact' ? artifactOutput : jsonOutput });
 function set(id: string): ZoneSet { const found = useViewerStore.getState().zoneSets.find(row => row.id === id); if (!found) throw new Error('Unknown native zone set.'); return found; }
-function revision(expected: string) { if (JSON.stringify(useViewerStore.getState().zoneSets) !== expected) throw new Error('Zone configuration changed. Inspect again.'); }
+function revision(expected: string) { assertRevision(useViewerStore.getState().zoneSets, expected, 'Zone configuration changed. Inspect again.'); }
+/** Assignments are one row per element, so they are paged (#10794). */
+function assignmentPage(offset: number | null | undefined, rest: Record<string, unknown>) {
+  const rows = [...useViewerStore.getState().zoneAssignments];
+  // Measured as out() writes it: Maps become entry arrays.
+  const measured = JSON.parse(out(rest).native_json) as unknown;
+  const { items, ...page } = boundedPage(rows, offset, measured);
+  return out({ ...rest, assignments: items, assignments_page: { ...page, revision: stateRevision(rows) } });
+}
 const idInput = { type: 'object' as const, properties: { set_id: { type: 'string' as const, minLength: 1, maxLength: 200 } }, required: ['set_id' as const], additionalProperties: false as const };
 const basis = { type: 'string' as const, enum: ['mesh', 'net', 'gross', 'unqualified'] as VolumeBasis[] };
-const expectedInput = { type: 'string' as const, maxLength: 1000000 };
-function changes(c: ViewerOperationContext, expected: string, write: () => unknown) { revision(expected); return out(c.commit(write)); }
+/** A zone edit returns the configuration_revision its next edit needs. */
+function changes(c: ViewerOperationContext, expected: string, write: () => Record<string, unknown>) {
+  revision(expected); const result = c.commit(write); return out({ ...result, configuration_revision: stateRevision(useViewerStore.getState().zoneSets) });
+}
 export const zoneOperations = [
-  operation(meta('zones.read', 'Inspect complete native zone configuration and current assignment/apportionment results. Coordinates are renderer Y-up metres; rotations are radians.'), emptySchema, () => {
-    const s = useViewerStore.getState(); return out({ configuration_json: JSON.stringify(s.zoneSets), sets: s.zoneSets, assignments: s.zoneAssignments, timing: s.zoneAssignmentTiming, apportionment: s.zoneApportionment });
+  operation<PageInput>(meta('zones.read', 'Inspect complete native zone configuration, its configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), and current assignment/apportionment results. Assignments are paged: pass assignments_page.next_offset as offset until it is null, and restart from 0 if assignments_page.revision changes. Pages after the first carry only assignments and configuration_revision. Coordinates are renderer Y-up metres; rotations are radians.'), pageInput, (i) => {
+    // Later pages carry only the assignments, so configuration and apportionment are not repeated on every page.
+    const s = useViewerStore.getState(), first = !i.offset, configuration_revision = stateRevision(s.zoneSets);
+    return assignmentPage(i.offset, first ? { configuration_revision, sets: s.zoneSets, timing: s.zoneAssignmentTiming, apportionment: s.zoneApportionment } : { configuration_revision });
   }),
   operation<{ name: string; expected_configuration: string }>(meta('zones.set.create', 'Create a native zone set after checking the exact configuration snapshot.', 'configuration'), {
-    type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, expected_configuration: expectedInput }, required: ['name', 'expected_configuration'], additionalProperties: false,
+    type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, expected_configuration: revisionInput }, required: ['name', 'expected_configuration'], additionalProperties: false,
   }, (i, c) => changes(c, i.expected_configuration, () => ({ set_id: useViewerStore.getState().createZoneSet(i.name) }))),
   operation<{ set_id: string; action: 'remove' | 'rename' | 'visibility'; name: string; visible: boolean; expected_configuration: string }>(meta('zones.set.edit', 'Remove/rename/show a native zone set through the exact panel store handlers.', 'configuration'), {
-    type: 'object', properties: { ...idInput.properties, action: { type: 'string', enum: ['remove', 'rename', 'visibility'] }, name: { type: 'string', maxLength: 200 }, visible: { type: 'boolean' }, expected_configuration: expectedInput },
+    type: 'object', properties: { ...idInput.properties, action: { type: 'string', enum: ['remove', 'rename', 'visibility'] }, name: { type: 'string', maxLength: 200 }, visible: { type: 'boolean' }, expected_configuration: revisionInput },
     required: ['set_id', 'action', 'name', 'visible', 'expected_configuration'], additionalProperties: false,
   }, (i, c) => changes(c, i.expected_configuration, () => { set(i.set_id); const s = useViewerStore.getState();
     if (i.action === 'remove') s.removeZoneSet(i.set_id); else if (i.action === 'rename') { if (!i.name.trim()) throw new Error('A zone set name is required.'); s.renameZoneSet(i.set_id, i.name); } else s.setZoneSetVisible(i.set_id, i.visible); return { sets: useViewerStore.getState().zoneSets };
   })),
   operation<{ set_id: string; zone_id: string; name: string; center: [number, number, number]; size: [number, number, number]; rotationY: number; expected_configuration: string }>(meta('zones.box.write', 'Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians.', 'configuration'), {
-    type: 'object', properties: { ...idInput.properties, zone_id: { type: 'string', maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 }, center: pointSchema, size: pointSchema, rotationY: { type: 'number' }, expected_configuration: expectedInput },
+    type: 'object', properties: { ...idInput.properties, zone_id: { type: 'string', maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 }, center: pointSchema, size: pointSchema, rotationY: { type: 'number' }, expected_configuration: revisionInput },
     required: ['set_id', 'zone_id', 'name', 'center', 'size', 'rotationY', 'expected_configuration'], additionalProperties: false,
   }, (i, c) => changes(c, i.expected_configuration, () => {
     const target = set(i.set_id); if (i.size.some(value => value <= 0)) throw new Error('Zone box extents must be positive.');
@@ -43,19 +57,19 @@ export const zoneOperations = [
     else useViewerStore.getState().addZone(i.set_id, patch); return { set: set(i.set_id) };
   })),
   operation<{ set_id: string; zone_id: string; expected_configuration: string }>(meta('zones.box.remove', 'Remove an exact existing native zone.', 'configuration'), {
-    type: 'object', properties: { ...idInput.properties, zone_id: { type: 'string', minLength: 1, maxLength: 200 }, expected_configuration: expectedInput }, required: ['set_id', 'zone_id', 'expected_configuration'], additionalProperties: false,
+    type: 'object', properties: { ...idInput.properties, zone_id: { type: 'string', minLength: 1, maxLength: 200 }, expected_configuration: revisionInput }, required: ['set_id', 'zone_id', 'expected_configuration'], additionalProperties: false,
   }, (i, c) => changes(c, i.expected_configuration, () => { if (!set(i.set_id).zones.some(zone => zone.id === i.zone_id)) throw new Error('Unknown zone.'); useViewerStore.getState().removeZone(i.set_id, i.zone_id); return { set: set(i.set_id) }; })),
   operation<{ json: string; expected_configuration: string }>(meta('zones.import', 'Import complete zone sets through the authoritative native parser. Supports native box/prism footprints and colors without a second geometry implementation.', 'configuration'), {
-    type: 'object', properties: { json: { type: 'string', maxLength: 1000000 }, expected_configuration: expectedInput }, required: ['json', 'expected_configuration'], additionalProperties: false,
+    type: 'object', properties: { json: { type: 'string', maxLength: 1000000 }, expected_configuration: revisionInput }, required: ['json', 'expected_configuration'], additionalProperties: false,
   }, (i, c) => changes(c, i.expected_configuration, () => { const result = useViewerStore.getState().importZoneSetsJSON(i.json); if (!result.ok) throw new Error(result.error); return { sets: useViewerStore.getState().zoneSets }; })),
   operation<{ set_id: string; expected_configuration: string }>(meta('zones.generateStoreys', 'Generate and replace a zone set using the same native current-storey geometry/frame service as the panel.', 'configuration'), {
-    type: 'object', properties: { ...idInput.properties, expected_configuration: expectedInput }, required: ['set_id', 'expected_configuration'], additionalProperties: false,
+    type: 'object', properties: { ...idInput.properties, expected_configuration: revisionInput }, required: ['set_id', 'expected_configuration'], additionalProperties: false,
   }, async (i, c) => { const { generateZonesFromStoreys } = await import('@/hooks/useZoneStoreyGeneration'); assertToolActive(c); const result = generateZonesFromStoreys(); if (!result.ok) throw new Error(result.error);
     return changes(c, i.expected_configuration, () => { set(i.set_id); useViewerStore.getState().replaceZonesInSet(i.set_id, result.zones); return { set: set(i.set_id) }; }); }),
-  operation(meta('zones.assign', 'Recompute native assignments using the live renderer’s canonical entity bounds. Requires a mounted renderer; never fabricates an empty successful evaluation.'), emptySchema, async (_, c) => {
+  operation(meta('zones.assign', 'Recompute native assignments using the live renderer’s canonical entity bounds; returns their first page (read the rest with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.'), emptySchema, async (_, c) => {
     const [{ getGlobalRenderer }, { recomputeZoneAssignmentsNow }] = await Promise.all([import('@/hooks/useBCF'), import('@/hooks/useZoneAssignmentSync')]);
     assertToolActive(c); if (!getGlobalRenderer()?.getScene()) throw new Error('A mounted native renderer is required for zone evaluation.');
-    recomputeZoneAssignmentsNow(); const s = useViewerStore.getState(); return out({ assignments: s.zoneAssignments, timing: s.zoneAssignmentTiming });
+    recomputeZoneAssignmentsNow(); return assignmentPage(0, { timing: useViewerStore.getState().zoneAssignmentTiming });
   }),
   operation<{ set_id: string; zone_id: string }>(meta('zones.select', 'Select native assigned elements in a zone. Empty zone_id selects the unassigned bucket using the same federation-aware handler as the panel.', 'selection'), {
     type: 'object', properties: { ...idInput.properties, zone_id: { type: 'string', maxLength: 200 } }, required: ['set_id', 'zone_id'], additionalProperties: false,

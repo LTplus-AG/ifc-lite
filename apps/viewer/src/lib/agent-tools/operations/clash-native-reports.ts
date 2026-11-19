@@ -2,11 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
-import { viewerOperation, emptySchema } from './contract';
+import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { evictOldest } from './host-handles';
+import { boundedPage, pageInput, type PageInput } from './result-limit';
+import { assertRevision, revisionInput, stateRevision } from './state-revision';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -46,21 +48,19 @@ async function dependencies(id: string) {
   return reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
 }
 export const clashReportOperations = [
-  viewerOperation(
+  viewerOperation<PageInput>(
     meta(
       'clash.reports.read',
-      'Inspect durable native clash reports, immutable evidence and persistence diagnostics. Saved results never install historical runtime IDs into the current scene.',
+      'Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_reports changes between pages. expected_reports is the whole library revision. Saved results never install historical runtime IDs into the current scene.',
     ),
-    emptySchema,
-    async (_, c) => {
+    pageInput,
+    async (i, c) => {
       await useViewerStore.getState().initializeSavedClashReports();
       assertToolActive(c);
       const s = useViewerStore.getState();
-      return out({
-        reports: s.savedClashReports,
-        storage: s.savedClashReportsStorage,
-        expected_reports: JSON.stringify(s.savedClashReports),
-      });
+      const rest = { storage: s.savedClashReportsStorage, expected_reports: stateRevision(s.savedClashReports) };
+      const { items: reports, ...page } = boundedPage(s.savedClashReports, i.offset, rest);
+      return out({ reports, ...page, ...rest });
     },
   ),
   viewerOperation<{ name: string; run_seq: number }>(
@@ -109,7 +109,7 @@ export const clashReportOperations = [
         id: { type: 'string', maxLength: 200 },
         name: { type: 'string', maxLength: 200 },
         report_json: { type: 'string', maxLength: 10000000 },
-        expected_reports: { type: 'string', maxLength: 10000000 },
+        expected_reports: revisionInput,
       },
       required: ['action', 'id', 'name', 'report_json', 'expected_reports'],
       additionalProperties: false,
@@ -125,7 +125,7 @@ export const clashReportOperations = [
       assertToolActive(c);
       const ok = await c.commitAsync(() => {
         const s = useViewerStore.getState();
-        if (JSON.stringify(s.savedClashReports) !== i.expected_reports) throw new Error('Saved reports changed.');
+        assertRevision(s.savedClashReports, i.expected_reports, 'Saved reports changed.');
         if (i.action === 'restore') return s.restoreSavedClashReports();
         if (i.action === 'retry') return s.retrySaveClashReports();
         if (i.action === 'import') return s.saveClashReport(report!);

@@ -154,6 +154,13 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(topic.isError, true);
     assert.equal(useViewerStore.getState().bcfProject, null);
   });
+  it('clash.drafts.create accepts the expected_library revision that clash.groups.read returns as expected_groups (#10794)', async () => {
+    const run = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const { expected_library } = value<{ expected_library: string }>(await call('clash.groups.read'));
+    const draft = { source: 'groups', clash_ids: [], run_seq: run.run_seq, name: 'Groups', title: 'Groups' };
+    assert.doesNotMatch((await call('clash.drafts.create', { ...draft, expected_groups: expected_library }, true)).text, /Manual groups changed/);
+    assert.match((await call('clash.drafts.create', { ...draft, expected_groups: '1:0' }, true)).text, /Manual groups changed/);
+  });
   it('rejects overlapping occurrence claims through the real native manual-group codec', async () => {
     const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
     const id = useViewerStore.getState().clashResult!.clashes[0].id;

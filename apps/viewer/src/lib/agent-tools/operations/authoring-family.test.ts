@@ -32,6 +32,7 @@ function answer<T>(result: AgentToolResult): T {
   const value = (result.structured as { result: { native_json?: string } }).result;
   return (value?.native_json === undefined || Object.keys(value).length > 1 ? value : JSON.parse(value.native_json)) as T;
 }
+const zoneRevision = async () => answer<{ configuration_revision: string }>(await invoke('zones.read')).configuration_revision;
 const proposal = () => JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Numerical annex', units: 'm', frame: 'storey-local', operations: [
   { op: 'element.create', ref: 'wall-a', ifcClass: 'IfcWall', storey: { globalId: GROUND_STOREY, modelId: SAMPLE_MODEL }, name: 'Numerical wall', params: { start: [10, 10, 0], end: [14, 10, 0], thickness: 0.2, height: 3 } },
 ] });
@@ -112,14 +113,14 @@ describe('native reviewed authoring operations (full automation follow-up #10525
   });
   it('configures zones and stages change sets with no IFC model loaded', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });
-    const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Planning boxes', expected_configuration: '[]' }, true));
+    const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Planning boxes', expected_configuration: await zoneRevision() }, true));
     assert.ok(made.set_id);
     const changeSet = answer<{ id: string }>(await invoke('changeSets.create', { name: 'Future changes' }, true));
     assert.equal(useViewerStore.getState().activeChangeSetId, changeSet.id);
   });
   it('uses native zone configuration validation and refuses stale configuration writes', async () => {
-    const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Sections', expected_configuration: '[]' }, true));
-    const snapshot = JSON.stringify(useViewerStore.getState().zoneSets);
+    const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Sections', expected_configuration: await zoneRevision() }, true));
+    const snapshot = await zoneRevision();
     answer(await invoke('zones.box.write', { set_id: made.set_id, zone_id: '', name: 'A', center: [0, 1, 0], size: [3, 2, 3], rotationY: 0, expected_configuration: snapshot }, true));
     assert.equal(useViewerStore.getState().zoneSets[0].zones.length, 1);
     assert.equal((await invoke('zones.set.edit', { set_id: made.set_id, action: 'rename', name: 'Changed', visible: true, expected_configuration: snapshot }, true)).isError, true);

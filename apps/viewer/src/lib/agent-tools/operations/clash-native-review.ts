@@ -5,6 +5,8 @@ import { useViewerStore } from '@/store';
 import { viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { currentClashes } from './clash-native';
+import { boundedPage, pageInput, type PageInput } from './result-limit';
+import { assertRevision, revisionInput, stateRevision } from './state-revision';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -33,7 +35,7 @@ export const clashReviewOperations = [
       properties: {
         action: { type: 'string', enum: ['select', 'retry', 'restore'] },
         workspace_id: { type: 'string', maxLength: 200 },
-        expected_library: { type: 'string', maxLength: 1000000 },
+        expected_library: revisionInput,
       },
       required: ['action', 'workspace_id', 'expected_library'],
       additionalProperties: false,
@@ -44,8 +46,7 @@ export const clashReviewOperations = [
       );
       assertToolActive(c);
       const guard = () => {
-        if (JSON.stringify(useClashGroupLibrary.getState().entries) !== i.expected_library)
-          throw new Error('Group library changed.');
+        assertRevision(useClashGroupLibrary.getState().entries, i.expected_library, 'Group library changed.');
       };
       if (i.action === 'select')
         return out(
@@ -69,18 +70,19 @@ export const clashReviewOperations = [
       return out({ completed: i.action });
     },
   ),
-  viewerOperation(
+  viewerOperation<PageInput>(
     meta(
       'clash.groups.read',
-      'Read native durable manual-group workspaces, active population and save state; supplies exact workspace snapshot guards.',
+      'Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the whole library revision, also the expected_groups of clash.drafts.create.',
     ),
-    emptySchema,
-    async (_, c) => {
+    pageInput,
+    async (i, c) => {
       const { useClashGroupLibrary, clashGroupLibrary } = await import('@/lib/clash/group-workspace');
       await clashGroupLibrary.initialize();
       assertToolActive(c);
-      const s = useClashGroupLibrary.getState();
-      return out({ ...s, expected_library: JSON.stringify(s.entries) });
+      const { entries, status, activeId } = useClashGroupLibrary.getState(), rest = { status, activeId, expected_library: stateRevision(entries) };
+      const { items, ...page } = boundedPage(entries, i.offset, rest);
+      return out({ entries: items, ...page, ...rest });
     },
   ),
   viewerOperation<{ clash_ids: string[]; run_seq: number }>(
@@ -119,7 +121,7 @@ export const clashReviewOperations = [
       type: 'object',
       properties: {
         workspace_json: { type: 'string', maxLength: 1000000 },
-        expected_library: { type: 'string', maxLength: 1000000 },
+        expected_library: revisionInput,
       },
       required: ['workspace_json', 'expected_library'],
       additionalProperties: false,
@@ -132,8 +134,7 @@ export const clashReviewOperations = [
       if (!workspace) throw new Error('Invalid native group partition.');
       assertToolActive(c);
       const ok = await c.commitAsync(() => {
-        if (JSON.stringify(useClashGroupLibrary.getState().entries) !== i.expected_library)
-          throw new Error('Group workspace changed.');
+        assertRevision(useClashGroupLibrary.getState().entries, i.expected_library, 'Group workspace changed.');
         return clashGroupLibrary.put(workspace.id, workspace);
       });
       if (!ok) throw new Error('Native group persistence failed.');

@@ -8779,7 +8779,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.read",
     "version": 1,
     "owner": "zones",
-    "description": "Inspect complete native zone configuration and current assignment/apportionment results. Coordinates are renderer Y-up metres; rotations are radians.",
+    "description": "Inspect complete native zone configuration, its configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), and current assignment/apportionment results. Assignments are paged: pass assignments_page.next_offset as offset until it is null, and restart from 0 if assignments_page.revision changes. Pages after the first carry only assignments and configuration_revision. Coordinates are renderer Y-up metres; rotations are radians.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -8787,7 +8787,13 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -8828,7 +8834,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -8889,7 +8895,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -8994,7 +9000,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -9050,7 +9056,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -9096,7 +9102,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -9142,7 +9148,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -9172,7 +9178,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.assign",
     "version": 1,
     "owner": "zones",
-    "description": "Recompute native assignments using the live renderer’s canonical entity bounds. Requires a mounted renderer; never fabricates an empty successful evaluation.",
+    "description": "Recompute native assignments using the live renderer’s canonical entity bounds; returns their first page (read the rest with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -9980,7 +9986,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.writeback.prepare",
     "version": 1,
     "owner": "zones",
-    "description": "Prepare native zone property/quantity writeback or removal with explicit complete target model population. The preview is the same native facts table as export. Native writeback reports per-model partial outcomes and uses explicit Remove as its inverse; it does not enter native Undo history.",
+    "description": "Prepare native zone property/quantity writeback or removal with explicit complete target model population. The preview is the same native facts table as export: row_count rows, with as many as fit the result limit (truncated says when some were left out; apply writes every row, so review a truncated table in full with zones.table.export). Native writeback reports per-model partial outcomes and uses explicit Remove as its inverse; it does not enter native Undo history.",
     "needs": "model",
     "effects": [
       "read"
@@ -12615,7 +12621,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "validation.reports.read",
     "version": 1,
     "owner": "validation",
-    "description": "Read the native durable report library and its persistence diagnostics with no model required. Historical evidence never installs old entity IDs into the scene.",
+    "description": "Read the native durable report library, one page at a time (pass next_offset as offset until it is null; restart from 0 if expected_reports changes), and its persistence diagnostics with no model required. expected_reports is the whole library revision. Historical evidence never installs old entity IDs into the scene.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -12623,7 +12629,13 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -12677,7 +12689,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_reports": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -19046,7 +19058,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_library": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -19077,7 +19089,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.groups.read",
     "version": 1,
     "owner": "clash",
-    "description": "Read native durable manual-group workspaces, active population and save state; supplies exact workspace snapshot guards.",
+    "description": "Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the whole library revision, also the expected_groups of clash.drafts.create.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -19085,7 +19097,13 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -19177,7 +19195,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_library": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -19335,7 +19353,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.reports.read",
     "version": 1,
     "owner": "clash",
-    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics. Saved results never install historical runtime IDs into the current scene.",
+    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_reports changes between pages. expected_reports is the whole library revision. Saved results never install historical runtime IDs into the current scene.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -19343,7 +19361,13 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -19446,7 +19470,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_reports": {
           "type": "string",
-          "maxLength": 10000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -20060,7 +20084,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_groups": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         },
         "name": {
           "type": "string",
@@ -23871,7 +23895,7 @@ export const operationContracts: readonly OperationContract[] = [
     "features": [
       "export.files"
     ],
-    "description": "Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities.",
+    "description": "Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities. truncated means relationship expansion hit its work budget, as the export dialog truncated badge shows.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -24047,12 +24071,16 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "groups": {
           "type": "array"
+        },
+        "truncated": {
+          "type": "boolean"
         }
       },
       "required": [
         "included_ids",
         "locked_ids",
-        "groups"
+        "groups",
+        "truncated"
       ],
       "additionalProperties": false
     },

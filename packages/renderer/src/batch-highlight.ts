@@ -27,6 +27,7 @@
  */
 
 import { batchEntityIdAnchor } from './entity-color-table.js';
+import { batchEntities } from './batch-entities.js';
 import { MathUtils } from './math.js';
 import { meshUniformArena, stageMeshUniforms, type MeshUniformSlot } from './mesh-uniform-arena.js';
 import type { RenderPipeline } from './pipeline.js';
@@ -104,11 +105,19 @@ export function batchesHolding(
       found.add(id);
       holds = true;
     }
+    // Secondary lane ids carry no model: under a one-model selection, a batch with another model's entry cannot tell (#10653).
+    const mixed = modelIndex !== undefined && models?.some((model) => model !== undefined && model !== modelIndex);
+    for (const id of batch.laneIds ?? []) {
+      if (!ids.has(id)) continue;
+      if (mixed) { blocked.add(id); continue; }
+      found.add(id);
+      holds = true;
+    }
     if (!holds) continue;
     if (drawable(batch, resources)) { batches.set(batch, index); continue; }
     if (batch.gpuResident === false) { scene.requestBatchResidency(batch); evicted.set(batch, index); }
     if (!hasPipeline(batch, resources)) awaitsPipeline = true;
-    for (const id of batch.expressIds) if (ids.has(id)) blocked.add(id);
+    for (const id of batchEntities(batch)) if (ids.has(id)) blocked.add(id);
   }
   return { batches, evicted, blocked, found, awaitsPipeline };
 }
@@ -176,7 +185,7 @@ export class BatchHighlight {
     const draws: Mesh[] = [];
     const drawn = new Map<BatchedMesh, number>();
     for (const [batch, index] of batches) {
-      if (!batch.expressIds.some((id) => covered.has(id))) continue;
+      if (!batchEntities(batch).some((id) => covered.has(id))) continue;
       draws.push(this.record(batch, resources));
       drawn.set(batch, index);
     }

@@ -42,6 +42,8 @@ export interface SceneSnapshotBatch {
   /** Accumulated CPU vertex bytes of the bucket, which routes later pieces. */
   vertexBytes: number;
   expressIds: Uint32Array;
+  /** `BatchedMesh.laneIds`; absent when the batch has none (#10653). */
+  laneIds?: Uint32Array;
   /** Position of each piece in the load's queue order, parallel to `expressIds`. */
   ordinals: Uint32Array;
   vertexData: Uint8Array;
@@ -100,8 +102,9 @@ function crc32(bytes: Uint8Array): number {
 
 type PayloadRef = [offset: number, length: number];
 
-interface BatchTableRow extends Omit<SceneSnapshotBatch, 'expressIds' | 'ordinals' | 'vertexData' | 'indices' | 'lod1Indices'> {
+interface BatchTableRow extends Omit<SceneSnapshotBatch, 'expressIds' | 'laneIds' | 'ordinals' | 'vertexData' | 'indices' | 'lod1Indices'> {
   expressIds: PayloadRef;
+  laneIds?: PayloadRef;
   ordinals: PayloadRef;
   vertexData: PayloadRef;
   indices: PayloadRef;
@@ -127,9 +130,10 @@ function snapshotParts(snapshot: SceneSnapshot): { head: BlobPart[]; payloads: U
     payloadBytes += padding;
     return [offset, bytes.byteLength];
   };
-  const table: SnapshotTable = { ...snapshot, payloadBytes: 0, batches: snapshot.batches.map(({ expressIds, ordinals, vertexData, indices, lod1Indices, ...row }) => ({
+  const table: SnapshotTable = { ...snapshot, payloadBytes: 0, batches: snapshot.batches.map(({ expressIds, laneIds, ordinals, vertexData, indices, lod1Indices, ...row }) => ({
     ...row,
     expressIds: place(expressIds),
+    ...(laneIds ? { laneIds: place(laneIds) } : {}),
     ordinals: place(ordinals),
     vertexData: place(vertexData),
     indices: place(indices),
@@ -198,11 +202,11 @@ export function decodeSceneSnapshot(buffer: ArrayBuffer): SceneSnapshot | null {
     && offset % PAYLOAD_ALIGN === 0 && length % width === 0 && offset + length <= table.payloadBytes;
   const u32 = ([offset, length]: PayloadRef) => new Uint32Array(buffer, start + offset, length / 4);
   const batches: SceneSnapshotBatch[] = [];
-  for (const { expressIds, ordinals, vertexData, indices, lod1Indices, ...row } of table.batches) {
+  for (const { expressIds, laneIds, ordinals, vertexData, indices, lod1Indices, ...row } of table.batches) {
     if (!inRange(expressIds, 4) || !inRange(ordinals, 4) || !inRange(vertexData, 1) || !inRange(indices, 4)
-      || (lod1Indices && !inRange(lod1Indices, 4)) || expressIds[1] !== ordinals[1]
+      || (lod1Indices && !inRange(lod1Indices, 4)) || (laneIds && !inRange(laneIds, 4)) || expressIds[1] !== ordinals[1]
       || (row.origin !== undefined && !isVec3(row.origin))) return null;
-    batches.push({ ...row, expressIds: u32(expressIds), ordinals: u32(ordinals),
+    batches.push({ ...row, expressIds: u32(expressIds), ...(laneIds ? { laneIds: u32(laneIds) } : {}), ordinals: u32(ordinals),
       vertexData: new Uint8Array(buffer, start + vertexData[0], vertexData[1]),
       indices: u32(indices), ...(lod1Indices ? { lod1Indices: u32(lod1Indices) } : {}) });
   }

@@ -226,7 +226,7 @@ import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { batchForWholeDraw, pushSplit } from './residency.js';
-import { BatchVisibilityCache, canFilterOnGpu } from './batch-visibility.js';
+import { BatchVisibilityCache, batchEntities, canFilterOnGpu } from './batch-visibility.js';
 import { FrameEntityVisibility, MESH_FLAG_ENTITY_VISIBILITY } from './entity-visibility-table.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
@@ -2286,7 +2286,7 @@ export class Renderer {
                 const route = (b: BatchedMesh, part: AlphaBatchLike | null): void => {
                     if (part) filtered.set(b, part);
                     const drawn = part ?? b;
-                    (shouldRouteBatchTransparent(alphaForBatch(drawn, b.color[3]), drawn.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(b);
+                    (shouldRouteBatchTransparent(alphaForBatch(drawn, b.color[3]), batchEntities(drawn), colorOverrides) ? transparentBatches : opaqueBatches).push(b);
                 };
 
                 for (let batch of allBatchedMeshes) {

@@ -328,3 +328,31 @@ test('after the test-only CPU release, classes hidden from the start toggle on a
   expect(restored.differing, 'hiding them again restores the first frame').toBe(0);
   await picksNeverHidden(page, info, 'released-hidden-again', hidden);
 });
+
+test('C20-Institute: the Model/Types switch hides by id over the same upload (#10264)', async ({ page }, info) => {
+  // The grid covers the small type library on screen, so the pick grid would only meet grid lines.
+  await page.addInitScript(() => {
+    for (const key of ['ifc-lite-ifc-annotations-visible', 'ifc-lite-ifc-grid-visible']) localStorage.setItem(key, 'false');
+  });
+  await open(page);
+  await load(page, FIXTURES.institute, 1);
+  const hasTypes = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().hasTypeGeometry);
+  test.skip(!hasTypes, 'the fixture carries no type-library geometry');
+  const model = await stillFrame(page, info, 'types-1-model');
+  await batchIdentity(page, 'record');
+  await store(page, [['setTypeViewMode', 'types']]);
+  const types = await stillFrame(page, info, 'types-2-types');
+  const hiddenInTypes = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_render_visibility__!().hiddenIds.length);
+  await picksNeverHidden(page, info, 'types-view', await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_render_visibility__!().hiddenIds));
+  await store(page, [['setTypeViewMode', 'model']]);
+  const back = await stillFrame(page, info, 'types-3-model-again');
+  const kept = await batchIdentity(page, 'same');
+  const changed = await diff(page, types, model);
+  const restored = await diff(page, back, model);
+  await info.attach('types.json', { body: JSON.stringify({ batches: kept.batches, batchesKept: kept.same, hiddenInTypes,
+    strongTypesVsModel: changed.strong, differingModelAgain: restored.differing }, null, 2), contentType: 'application/json' });
+  expect(kept.same, 'the switch keeps every batch and vertex buffer').toBe(true);
+  expect(hiddenInTypes, 'the Types view hides the model geometry by id').toBeGreaterThan(0);
+  expect(changed.strong, 'the Types view changes the frame (not vacuous)').toBeGreaterThan(200);
+  expect(restored.differing, 'back in Model view the first frame returns').toBe(0);
+});

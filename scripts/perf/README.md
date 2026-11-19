@@ -2972,6 +2972,24 @@ canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
 
+## Repeated-key affinity cap (#8451, #9466)
+
+The cap preserves sticky assignment for small keys and reconsiders a hot key's
+owner in bounded runs. A fresh-browser comparison with the same WASM on both
+revisions showed faster worker-pool completion on the repeated-cube model in
+flat and instanced modes. The shared host was under CPU and swap pressure, so
+the timings are exploratory. The mixed-model overhead still needs a quiet-host
+verdict. Thanks to @ionuting for reporting the bottleneck.
+[#9466](https://github.com/LTplus-AG/ifc-lite/pull/9466)
+
+Flat mesh fingerprints matched. The hot key's instanced shard and template
+partition changed while reconstructed occurrences, picking IDs and packed
+appearance matched. A hardware Metal witness on cubes past the cap matched
+entity picks and framebuffer bytes. For a scheduling change, compare the
+canonical occurrences and rendered results as well as the raw shard bytes.
+Shard-layout changes can follow the new worker partition, so a matching
+occurrence count alone cannot establish equivalence.
+
 ## Known-explicit orientation: rejected, do not ship (#6537 / #6788)
 
 The private known-explicit helper preserved adaptive arithmetic and passed the

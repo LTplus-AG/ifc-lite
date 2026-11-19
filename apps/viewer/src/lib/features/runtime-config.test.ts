@@ -124,7 +124,6 @@ describe('the version 1 configuration shape', () => {
   });
 
   it('accepts exactly the hashes the server client accepts', () => {
-    // The check is copied, not imported (it runs before the configuration request); this pins the two together.
     for (const sha256 of [SHA, SHA.toUpperCase(), '', 'a'.repeat(63), 'a'.repeat(65), 'g'.repeat(64), `${'a'.repeat(62)}/x`]) {
       const viaConfig = (() => {
         try { return parseViewerRuntimeConfig({ version: 1, open: { processedModel: { sha256, bytes: 0, name: 'x.ifc' } } }).open?.processedModel.sha256; }

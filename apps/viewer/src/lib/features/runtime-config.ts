@@ -12,6 +12,7 @@
  * `ViewerConfigError` and the entry shows an error instead of mounting.
  */
 
+import { normalizeProcessedModelHash } from '@ifc-lite/server-client';
 import type { FeatureSelection } from './index';
 
 export interface ViewerRuntimeConfig {
@@ -56,6 +57,9 @@ function stringList(value: unknown, where: string): string[] | undefined {
 }
 
 const SAME_ORIGIN = 'https://viewer.invalid';
+// One message per member keeps the eager bundle small; the rules are in docs/guide/viewer-deployment-config.md.
+const BAD_SERVER = 'server.url must be a same-origin path or an https URL (http from an http page), without query, fragment or credentials';
+const BAD_OPEN = 'open.processedModel needs a SHA-256 sha256, whole-number bytes (0 when unknown) and a name';
 
 /**
  * A same-origin path (`/…`, not `//…`) or an absolute `https:` URL; `http:` only
@@ -63,43 +67,36 @@ const SAME_ORIGIN = 'https://viewer.invalid';
  * query, fragment or credentials: the client appends `/api/v1/…` to it.
  */
 function parseServer(value: unknown, pageUrl: string | undefined): { url: string } {
-  if (!isRecord(value) || typeof value.url !== 'string' || value.url.trim() === '') invalid('server.url must be a non-empty string');
+  if (!isRecord(value) || typeof value.url !== 'string' || value.url.trim() === '') invalid(BAD_SERVER);
   const raw = value.url.trim();
   const isPath = raw.startsWith('/') && !raw.startsWith('//');
   let url: URL;
   try {
     url = new URL(raw, isPath ? SAME_ORIGIN : undefined);
   } catch {
-    invalid('server.url must be a path starting with / or an absolute https URL');
+    invalid(BAD_SERVER);
   }
   // A literal ? or # always opens a query or fragment, even an empty one that `search`/`hash` report as ''.
-  if (/[?#]/.test(raw) || url.username || url.password) invalid('server.url must not carry a query, a fragment or credentials');
+  if (/[?#]/.test(raw) || url.username || url.password) invalid(BAD_SERVER);
   if (isPath) {
     // `/\host` parses as another host, and dot segments can normalize to `//host`.
-    if (url.origin !== SAME_ORIGIN || url.pathname.startsWith('//')) invalid('server.url must be a path on this origin');
+    if (url.origin !== SAME_ORIGIN || url.pathname.startsWith('//')) invalid(BAD_SERVER);
     return { url: url.pathname };
   }
   const httpPage = pageUrl !== undefined && new URL(pageUrl).protocol === 'http:';
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && httpPage)) {
-    invalid('server.url must be a path starting with / or an absolute https URL (http only from an http page)');
+    invalid(BAD_SERVER);
   }
   return { url: url.href };
 }
 
-const SHA256_HEX = /^[0-9a-f]{64}$/;
-
-/**
- * The start model, its hash lowercased by the rule of `normalizeProcessedModelHash`
- * (`@ifc-lite/server-client`). Copied, not imported: this module runs before the
- * configuration request and a static import would delay it. A test pins the two.
- */
+/** The start model, its hash lowercased by the server client's rule. */
 function parseOpen(value: unknown): NonNullable<ViewerRuntimeConfig['open']> {
-  if (!isRecord(value) || !isRecord(value.processedModel)) invalid('open.processedModel must be an object');
+  if (!isRecord(value) || !isRecord(value.processedModel)) invalid(BAD_OPEN);
   const { sha256, bytes, name } = value.processedModel;
-  const hash = typeof sha256 === 'string' ? sha256.toLowerCase() : '';
-  if (!SHA256_HEX.test(hash)) invalid('open.processedModel.sha256 must be the 64 hex characters of a SHA-256');
-  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid('open.processedModel.bytes must be a whole number of bytes, 0 when unknown');
-  if (typeof name !== 'string' || name.trim() === '') invalid('open.processedModel.name must be a non-empty string');
+  const hash = normalizeProcessedModelHash(sha256) ?? invalid(BAD_OPEN);
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid(BAD_OPEN);
+  if (typeof name !== 'string' || name.trim() === '') invalid(BAD_OPEN);
   return { processedModel: { sha256: hash, bytes, name } };
 }
 

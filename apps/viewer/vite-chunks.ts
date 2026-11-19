@@ -89,8 +89,9 @@ function allowlistGroup(name: string, modules: readonly string[]) {
  * (#10587). These allowlists keep each family in one chunk.
  *
  * A group claims a module however it is imported, so every member must contain
- * no `import()` (src/test/vite-chunks.test.ts checks this): otherwise the group
+ * no `import()`, `?worker`/`?url` import or `new URL(...)`: otherwise the group
  * would merge a deferred boundary into every chunk that shares it.
+ * src/test/vite-chunks.test.ts checks that each member still exists.
  */
 export const drawingSharedModules = [
   // Eager: the Drawing panel's host and DXF/point-cloud ingest.

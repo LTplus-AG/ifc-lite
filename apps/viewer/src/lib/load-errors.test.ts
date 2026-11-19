@@ -1116,6 +1116,7 @@ describe('WebAssembly SIMD unsupported (#10784)', () => {
     assert.equal(classifyLoadError(new Error('Geometry worker error: simd-test.ifc unsupported entity')), 'geometry_worker_crash');
     assert.equal(classifyLoadError(new Error('Geometry worker error: "Wasm SIMD unsupported.ifc" crashed')), 'geometry_worker_crash');
     assert.equal(classifyLoadError(new Error('Geometry worker error: "SIMD support is not enabled.ifc" crashed')), 'geometry_worker_crash');
+    assert.equal(classifyLoadError(new Error('Geometry worker error: "x failed: Wasm SIMD unsupported.ifc" crashed')), 'geometry_worker_crash');
   });
 
   it('tells the user what is missing instead of the raw compile text', () => {

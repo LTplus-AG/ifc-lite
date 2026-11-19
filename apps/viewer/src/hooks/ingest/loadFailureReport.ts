@@ -13,10 +13,14 @@
 
 import { useViewerStore } from '@/store';
 import { showLoadError as reportLoadError } from '@/lib/analytics';
+import { isWasmSimdUnsupportedMessage } from '@/lib/wasm-simd-support';
+import { resolve as translate } from '@/i18n/registry';
 
 /**
  * Show `message` as this load's failure; `retry` defaults to re-running this
- * load. A browser without WebAssembly SIMD gets no Retry: it fails the same way.
+ * load. A browser without WebAssembly SIMD (#10784) gets the translated
+ * explanation and no Retry, since it fails the same way. That holds also when a
+ * format branch passed the raw engine text under its own code.
  */
 export type LoadFailureReporter = (message: string, code: string, retry?: (() => void) | null) => void;
 
@@ -28,10 +32,11 @@ export function loadFailureReporter(
   onLoadError: ((message: string) => void) | undefined,
 ): LoadFailureReporter {
   return (message, code, retry = retryThisLoad) => {
-    const shown = activity.fail(message);
+    const noSimd = code === 'wasm_simd_unsupported' || isWasmSimdUnsupportedMessage(message);
+    const shown = activity.fail(noSimd ? translate('viewportLighting.container.loadErrorCard.wasmSimdUnsupported') : message);
     onLoadError?.(shown);
     const { setError, setLastLoadRetry } = useViewerStore.getState();
-    reportLoadError(setError, setLastLoadRetry, shown, code, code === 'wasm_simd_unsupported' ? null : retry, file);
+    reportLoadError(setError, setLastLoadRetry, shown, noSimd ? 'wasm_simd_unsupported' : code, noSimd ? null : retry, file);
   };
 }
 

@@ -45,5 +45,5 @@ export function assertWasmSimdSupported(): void {
  * ahead of the worker and memory buckets.
  */
 export function isWasmSimdUnsupportedMessage(message: string): boolean {
-  return /^Wasm SIMD unsupported: |failed: Wasm SIMD unsupported\b|at offset \d+: SIMD support is not enabled\b/i.test(message);
+  return /^Wasm SIMD unsupported: |Compiling function #\d+ failed: Wasm SIMD unsupported\b|at offset \d+: SIMD support is not enabled\b/i.test(message);
 }

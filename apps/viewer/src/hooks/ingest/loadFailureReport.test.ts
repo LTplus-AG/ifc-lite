@@ -21,7 +21,14 @@ describe('loadFailureReporter Retry', () => {
 
   it('offers no Retry when the browser lacks WebAssembly SIMD (#10784): the load would fail the same way', () => {
     loadFailureReporter(undefined, activity, () => {}, undefined)('no SIMD', 'wasm_simd_unsupported');
-    assert.equal(useViewerStore.getState().error, 'no SIMD');
+    assert.match(useViewerStore.getState().error ?? '', /can't run the WebAssembly SIMD instructions/);
+    assert.equal(useViewerStore.getState().lastLoadRetry, null);
+  });
+
+  it('explains a raw SIMD compile failure a format branch passed under its own code', () => {
+    const raw = 'LAZ parsing failed: WebAssembly.compileStreaming(): Compiling function #74 failed: Wasm SIMD unsupported @+117554';
+    loadFailureReporter(undefined, activity, () => {}, undefined)(raw, 'laz_parse_failed');
+    assert.match(useViewerStore.getState().error ?? '', /can't run the WebAssembly SIMD instructions/);
     assert.equal(useViewerStore.getState().lastLoadRetry, null);
   });
 });

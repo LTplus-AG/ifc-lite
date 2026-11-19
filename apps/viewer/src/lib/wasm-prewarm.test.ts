@@ -38,6 +38,8 @@ describe('shouldSkipPrewarm', () => {
 });
 
 describe('prewarm without WebAssembly SIMD (#10784)', () => {
+  // The schedulers latch at module level; node:test runs each file in its own
+  // process, so this file's only scheduling test starts from fresh latches.
   it('downloads nothing the browser cannot compile, and stays eligible', () => {
     const idle = mock.fn((_run: () => void, _opts?: unknown) => 0);
     Object.defineProperty(globalThis, 'window', { value: { requestIdleCallback: idle }, configurable: true });

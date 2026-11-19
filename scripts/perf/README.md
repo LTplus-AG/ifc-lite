@@ -112,7 +112,7 @@ Two tools:
 once the load is loaded or refused**, telling you to switch to `--expect not-killed` (the #10264
 acceptance: the tab is never killed). `error` and `timeout` never pass. Admission now scales its
 estimate by the sampled share of dense triangulated geometry (`geometryDensity.ts`), so the dense
-minimal case below is expected to be `refused` before the source is read; it runs with
+minimal case below is expected to be `refused` after a bounded sample (four 256 KiB windows), before the whole source is read; it runs with
 `--expect not-killed`.
 
 A viewer may instead warn before an oversized load (a dialog "This model may exceed available

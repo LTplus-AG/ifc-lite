@@ -34,7 +34,17 @@ describe('dense geometry share (#10264)', () => {
     assert.equal(denseRecordBytes(fileOf(brepElement, 200_000)).dense, 0);
     const mixed = denseRecordBytes(tfsElement(1) + brepElement(10));
     assert.ok(mixed.dense > 0 && mixed.dense < mixed.total);
-    assert.deepEqual(denseRecordBytes('(1.5,2.5),(3.5,4.5));\n'), { dense: 0, total: 0 }, 'a window inside one record names no type');
+    // A large mesh can be one record longer than a window: the cut fragment is still mesh payload.
+    const inside = '(1.5,2.5,3.5),'.repeat(1000);
+    assert.deepEqual(denseRecordBytes(inside), { dense: inside.length, total: inside.length }, 'a window inside one point list is dense');
+    const cutText = "x',$,$,'Body');\n#7=IFCPROPERTYSET('a',$,'b',$,(#8));\n";
+    assert.equal(denseRecordBytes(cutText).dense, 0, 'a cut text record is not');
+  });
+
+  it('measures a file of a few giant mesh records as dense', async () => {
+    const giant = `${HEADER}#10=IFCCARTESIANPOINTLIST3D((${points(150_000)}));\n#11=IFCTRIANGULATEDFACESET(#10,$,.T.,((1,2,3)),$);\n`;
+    assert.ok(giant.length > 4 * 256 * 1024, 'every window lands inside the point list');
+    assert.ok((await sampleDenseGeometryShare(new Blob([giant])))! > 0.95);
   });
 
   it('reads four windows of 256 KiB from a large file, never the whole file', async () => {
@@ -64,6 +74,27 @@ describe('admission estimate by geometry density (#10264)', () => {
 
   it('keeps consent, not refusal, at the browser-capped 8 GB report for 1 GB+ files of either kind', () => {
     for (const share of [0, 1]) assert.ok(inspectLocalIfcAdmission(1.05e9, 8, share));
+  });
+
+  it('admits at the size-only rate when the sample cannot be read', async () => {
+    const memory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 1 });
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const file = new File([fileOf(tfsElement, 30 * MB)], 'unreadable.ifc');
+      const realSlice = file.slice.bind(file);
+      Object.defineProperty(file, 'slice', { configurable: true, value: (start?: number, end?: number) =>
+        start === 0 && end === 4096 ? realSlice(start, end) : { arrayBuffer: () => Promise.reject(new Error('NotReadableError')) } as Blob });
+      const failures: unknown[] = [];
+      const admission = createLocalIfcLoadAdmission(file, { isCurrent: () => true, signal: new AbortController().signal,
+        onCancel: () => assert.fail('no dialog'), onFailure: (error) => failures.push(error), finish: () => {} });
+      assert.ok(await admission.preflight(), 'a failed sample does not fail the load');
+      assert.deepEqual(failures, []);
+    } finally {
+      console.warn = warn;
+      if (memory) Object.defineProperty(navigator, 'deviceMemory', memory); else Reflect.deleteProperty(navigator, 'deviceMemory');
+    }
   });
 
   it('preflight samples the file and refuses a dense file that a B-rep file of the same size passes', async () => {

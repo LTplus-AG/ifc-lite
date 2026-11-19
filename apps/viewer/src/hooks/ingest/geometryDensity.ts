@@ -14,7 +14,10 @@
  * inspection: no whole-source read happens before the admission decision.
  */
 
-/** Record types whose bytes are mostly mesh coordinates or vertex indices. */
+/** Record types whose bytes are mostly mesh coordinates or vertex indices. A point
+ * list can also hold an IfcIndexedPolyCurve's points, which make no triangles:
+ * curve-heavy models (alignments) read denser than they are, which errs toward
+ * refusal. */
 const DENSE_TYPES = new Set([
   'IFCCARTESIANPOINTLIST3D', 'IFCTRIANGULATEDFACESET', 'IFCTRIANGULATEDIRREGULARNETWORK',
   'IFCPOLYGONALFACESET', 'IFCINDEXEDPOLYGONALFACE', 'IFCINDEXEDPOLYGONALFACEWITHVOIDS',
@@ -24,13 +27,22 @@ const SAMPLE_WINDOWS = 4;
 const SAMPLE_WINDOW_BYTES = 256 * 1024;
 const RECORD_START = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
 
+/** Mesh payload: coordinate and index tuples, nothing else. */
+const NUMERIC_TUPLES = /[^0-9.,()eE+\-\s]/g;
+
 /**
- * Dense and total record bytes in `text`. Bytes before the first record start
- * (a record cut by the window edge) belong to no known type and are skipped;
- * the last record runs to the end of the window.
+ * Dense and total record bytes in `text`. The bytes before the first record
+ * start belong to a record cut by the window edge; a large mesh can be one
+ * record longer than the window, so that fragment counts as dense when it is
+ * numeric tuples alone (98 %+), and is skipped otherwise. The last record runs
+ * to the end of the window.
  */
 export function denseRecordBytes(text: string): { dense: number; total: number } {
-  let dense = 0, total = 0, start = -1, denseRecord = false;
+  RECORD_START.lastIndex = 0;
+  const first = RECORD_START.exec(text);
+  const lead = first ? first.index : text.length;
+  const other = lead > 0 ? (text.slice(0, lead).match(NUMERIC_TUPLES)?.length ?? 0) : lead;
+  let dense = lead > 0 && other <= lead * 0.02 ? lead : 0, total = dense, start = -1, denseRecord = false;
   const close = (end: number) => { if (start >= 0) { total += end - start; if (denseRecord) dense += end - start; } };
   RECORD_START.lastIndex = 0;
   for (let match = RECORD_START.exec(text); match; match = RECORD_START.exec(text)) {
@@ -51,8 +63,9 @@ export async function sampleDenseGeometryShare(file: Blob): Promise<number | und
   const decoder = new TextDecoder('latin1');
   const windows = file.size < SAMPLE_WINDOWS * SAMPLE_WINDOW_BYTES
     ? [[0, file.size]]
+    // First to last window, evenly spaced: no overlap once the file holds all four.
     : Array.from({ length: SAMPLE_WINDOWS }, (_, i) => {
-      const start = Math.floor(((file.size - SAMPLE_WINDOW_BYTES) * (i + 1)) / (SAMPLE_WINDOWS + 1));
+      const start = Math.floor(((file.size - SAMPLE_WINDOW_BYTES) * i) / (SAMPLE_WINDOWS - 1));
       return [start, start + SAMPLE_WINDOW_BYTES];
     });
   let dense = 0, total = 0;

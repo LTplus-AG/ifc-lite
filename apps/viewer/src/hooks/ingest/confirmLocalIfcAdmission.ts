@@ -42,9 +42,11 @@ export function createLocalIfcAdmission(options: {
 }
 
 /** Whether the geometry density could change the decision: a load that fits even at the dense
- * rate is admitted without sampling, so ordinary loads read nothing past the header (#6431). */
+ * rate, or fails even at the size-only rate, is decided without sampling, so ordinary loads read
+ * nothing past the header (#6431). */
 function densityCanDecide(bytes: number): boolean {
-  return localIfcWorkingSet(bytes, 1) > localIfcBudget().budget;
+  const { budget } = localIfcBudget();
+  return localIfcWorkingSet(bytes, 0) <= budget && localIfcWorkingSet(bytes, 1) > budget;
 }
 
 /** Inspect only the header before a primary scene reset or a cold-tier change. */
@@ -91,7 +93,11 @@ export function createLocalIfcLoadAdmission(file: File, options: {
         archiveModelBytes = archive.modelBytes;
         bytes = Math.max(bytes, archiveModelBytes);
       } else if (densityCanDecide(bytes)) {
-        denseShare = await sampleDenseGeometryShare(file); // bounded windows, each under 1 MiB
+        // Bounded windows, each under 1 MiB. An unreadable sample keeps the size-only rate.
+        denseShare = await sampleDenseGeometryShare(file).catch((error: unknown) => {
+          console.warn('[loader] geometry density sample failed; admitting at the size-only rate:', error);
+          return undefined;
+        });
       }
       return admit(bytes);
     } }),

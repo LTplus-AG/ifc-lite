@@ -63,7 +63,7 @@ export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
-import { mirroredSession, propertyBefore, rememberPublishedEdit, rememberPublishedMove } from './mutation-room-history.js';
+import { mirroredSession, propertyBefore, rememberPublishedEdit, publishMove } from './mutation-room-history.js';
 import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
 import { hasPendingScheduleEdits } from './pending-outside-view.js';
@@ -1402,8 +1402,7 @@ export const createMutationSlice: StateCreator<
     }
     // Mirror the move to peers as the entity's canonical placement
     // (`usd::xformop`). No-op outside a collab session.
-    get().mirrorPlacementEdit(modelId, expressId, delta);
-    rememberPublishedMove(get(), modelId, mutation, expressId, delta);
+    publishMove(get(), modelId, mutation, expressId, delta);
 
     return { ok: true, newCoordinates: pointToMetres(dataStore, nativeNext) };
   },
@@ -1469,8 +1468,7 @@ export const createMutationSlice: StateCreator<
         }
       }
       // Mirror the move to peers as the entity's placement (`usd::xformop`).
-      get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
-      rememberPublishedMove(get(), modelId, mutation, expressId, [dx, dy, dz]);
+      publishMove(get(), modelId, mutation, expressId, [dx, dy, dz]);
     }
     return { ok: true, newCoordinates: position };
   },

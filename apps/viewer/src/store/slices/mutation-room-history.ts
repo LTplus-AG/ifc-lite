@@ -60,10 +60,12 @@ export function rememberPublishedEdit(mutation: Mutation, session: Session, type
   published.set(mutation, { session: tokenOf(session), ...types });
 }
 
-/** Record a move mirrored into the room, so its undo and redo move the room's copy too. */
-export function rememberPublishedMove(state: ViewerState, modelId: string, mutation: Mutation | null | undefined,
+/** Mirror a move into the room and record it against its mutation, so its undo and redo move the room's copy too. */
+export function publishMove(state: ViewerState, modelId: string, mutation: Mutation | null | undefined,
   entityId: number, delta: readonly [number, number, number]): void {
+  state.mirrorPlacementEdit(modelId, entityId, [delta[0], delta[1], delta[2]]);
   const session = mirroredSession(state, modelId);
+  // A copy: the caller's delta array may be reused, as a drag's per-frame one is.
   if (session && mutation) rememberPublishedEdit(mutation, session, { placement: { entityId, delta: [delta[0], delta[1], delta[2]] } });
 }
 

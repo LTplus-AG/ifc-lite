@@ -85,8 +85,8 @@ one pass's meshes; an error thrown by the source, or an aborted
 const source: DrawingMeshSource = {
   async *pass() {
     for (const chunk of chunks) {
-      const lease = await lease(chunk);
-      try { yield lease.meshes; } finally { lease.release(); }
+      const held = await leaseChunk(chunk);
+      try { yield held.meshes; } finally { held.release(); }
     }
   },
 };
@@ -97,7 +97,10 @@ To push chunks instead (each lease released before the next), use a session:
 
 ```typescript
 const session = generator.beginDrawing(config, options);
-for (const chunk of chunks) { const l = await lease(chunk); await session.addGeometry(l.meshes); l.release(); }
+for (const chunk of chunks) {
+  const held = await leaseChunk(chunk);
+  try { await session.addGeometry(held.meshes); } finally { held.release(); }
+}
 const needs = session.endGeometry();
 // needs.depthRaster: feed every chunk again; otherwise only needs.openSurfaceEntities' meshes.
 for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) { /* session.addOcclusion(...) */ }

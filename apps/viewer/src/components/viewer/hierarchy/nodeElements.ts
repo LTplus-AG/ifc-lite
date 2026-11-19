@@ -89,9 +89,8 @@ function resolveNodeElements(node: TreeNode, inputs: NodeElementsInputs): number
 }
 
 /** The rows' views' mutation revisions: remote and skip-history writes advance them without a viewer mutationVersion. */
-function revisionOf(node: TreeNode, views: ReadonlyMap<string, MutablePropertyView>): number | string {
-  const revision = (modelId: string) => views.get(modelId)?.getMutationRevision() ?? -1;
-  return node.modelIds.length === 1 ? revision(node.modelIds[0]) : node.modelIds.map(revision).join(',');
+function revisionOf(node: TreeNode, views: ReadonlyMap<string, MutablePropertyView>): string {
+  return node.modelIds.map((modelId) => views.get(modelId)?.getMutationRevision()).join();
 }
 
 /**
@@ -103,7 +102,7 @@ function revisionOf(node: TreeNode, views: ReadonlyMap<string, MutablePropertyVi
  * at the revision it was resolved at. Callers must not mutate the returned array.
  */
 export function createNodeElementsResolver(inputs: NodeElementsInputs): (node: TreeNode) => number[] {
-  const resolved = new Map<string, { revision: number | string; elements: number[] }>();
+  const resolved = new Map<string, { revision: string; elements: number[] }>();
   return (node) => {
     if (!resolvesMembership(node)) return resolveNodeElements(node, inputs);
     const revision = revisionOf(node, inputs.mutationViews);

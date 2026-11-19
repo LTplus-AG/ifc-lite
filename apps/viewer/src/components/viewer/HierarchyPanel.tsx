@@ -383,8 +383,8 @@ export function HierarchyPanel() {
   });
 
   // Rows call these through one stable object, so a panel render re-renders only rows whose state changed (#10535).
-  const rowHandlers = useStableRowHandlers({ click: handleNodeClick, toggleExpand, visibilityToggle: handleVisibilityToggle, action: handleRowAction,
-    modelVisibilityToggle: handleModelVisibilityToggle, removeModel: handleRemoveModel, syncSourceModel: handleSyncSourceModel, modelHeaderClick: handleModelHeaderClick });
+  const rowHandlers = useStableRowHandlers({ click: handleNodeClick, onToggleExpand: toggleExpand, onVisibilityToggle: handleVisibilityToggle, onAction: handleRowAction,
+    onModelVisibilityToggle: handleModelVisibilityToggle, onRemoveModel: handleRemoveModel, onSyncSourceModel: handleSyncSourceModel, onModelHeaderClick: handleModelHeaderClick });
 
   const spatialSubtreeOf = useMemo(() => createSpatialSubtreeResolver(models, ifcDataStore, (modelId) => useViewerStore.getState().mutationViews.get(modelId)), [models, ifcDataStore, mutationVersion]);
   // Compute selection and visibility state for a node

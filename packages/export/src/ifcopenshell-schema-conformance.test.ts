@@ -643,7 +643,8 @@ const SOURCES_10763 = {
     "#31=IFCDOCUMENTINFORMATION('D-2','Part',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
     "#32=IFCDOCUMENTINFORMATIONRELATIONSHIP($,$,#30,(#31),'part');",
     "#46=IFCPROCEDURE('1YvctVUKr0kugbFTf53O9L',#5,'Proc',$,$,'P-1','Long text',.SHUTDOWN.);",
-    "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$,$);",
+    "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$,$);", "#42=IFCMATERIAL('Steel',$,$);",
+    "#43=IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#27),#42);",
     "#41=IFCPERFORMANCEHISTORY('0XvctVUKr0kugbFTf53O9L',#5,'History',$,$,'P-1','Operation',.NOTDEFINED.);",
   ],
 };

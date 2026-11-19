@@ -54,7 +54,8 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
         "IFCSTRUCTURALLOADCASE" => "IFCSTRUCTURALLOADGROUP",
         "IFCSTRUCTURALCURVEACTION" => "IFCSTRUCTURALLINEARACTION",
         "IFCSTRUCTURALSURFACEACTION" => "IFCSTRUCTURALPLANARACTION",
-        // #10763: IFC4 deleted this subtype for the now-concrete supertype (`schema_attr_maps`).
+        // #10763: IFC4 deleted these subtypes for the now-concrete supertype (`schema_attr_maps`).
+        "IFCMATERIALPROPERTIES" => "IFCEXTENDEDMATERIALPROPERTIES",
         "IFCPROFILEPROPERTIES" => "IFCGENERALPROFILEPROPERTIES",
         _ => return None,
     })
@@ -249,10 +250,11 @@ pub fn convert_step_line(
             }
         }
         converted = checks.enums.apply(converted, cto);
-        if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
+        if cto == "IFC2X3" { converted = checks.materials.apply(express_id, checks.structural.after(express_id, converted), &mut checks.attribute_values_dropped); }
         (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
     }
-    Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
+    // An empty line is a record not written (#10763); the writers skip it.
+    Ok(if cto == "IFC2X3" && !converted.is_empty() { slots.apply(converted) } else { converted })
 }
 
 /// [`convert_step_line`] before the IFC2X3 required-slot fills, between two

@@ -146,6 +146,8 @@ fn write_line<W: Write>(
         let Some(flat) = flatten.line(from, text.to_string()) else { return Ok(false) };
         let text = flat.as_str();
         let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
+        // A record the conversion does not write (#10763).
+        if converted.is_empty() { return Ok(false); }
         out.write_all(converted.as_bytes())?;
     } else {
         out.write_all(text.as_bytes())?;
@@ -266,6 +268,13 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
+    // #10763: the material records as this export writes them: created and edited ones as written.
+    if checks.materials.armed() {
+        let material = |id: u32, line: &String| crate::schema_material_referent::is_material(line).then(|| (id, line.clone()));
+        let edited: Vec<_> = pass.mutated_lines.iter().filter_map(|(id, (line, _))| material(*id, line.as_ref()?)).collect();
+        let created: Vec<_> = pass.created_lines.iter().filter_map(|(id, line)| material(*id, line)).collect();
+        checks.materials.with_effective(|id| pass.will_be_emitted(id), edited, created);
+    }
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));

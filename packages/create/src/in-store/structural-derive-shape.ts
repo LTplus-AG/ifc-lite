@@ -178,11 +178,9 @@ const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown,
 };
 
 /**
- * Where each profile type states its IFC2X3 `CentreOfGravityInX/Y` (#10377): the attribute count of its IFC2X3 layout
- * and the slot per axis. Read at that arity only: IFC4 deleted the attribute, and reused the asymmetric I's slot for
- * BottomFlangeEdgeRadius. The IFC2x3 TC1 definition of every one of these types measures it "from the center of the
- * bounding box" (the profile origin since IFC2x Edition 3). Only AxisVM's L is known to state a positive one; T, U, C
- * and the asymmetric I rest on the TC1 text.
+ * Each type's IFC2X3 `CentreOfGravityInX/Y` slots (#10377), read at its IFC2X3 arity only: IFC4 deleted the attribute and
+ * reused the asymmetric I's slot for BottomFlangeEdgeRadius. IFC2x3 TC1 measures it "from the center of the bounding
+ * box" on every type; only AxisVM's L is known to state a positive one, so T, U, C and the asymmetric I rest on TC1.
  */
 const STATED_CENTRE: Record<string, { arity: number; x?: number; y?: number }> = {
   IFCLSHAPEPROFILEDEF: { arity: 11, x: 9, y: 10 },
@@ -193,14 +191,12 @@ const STATED_CENTRE: Record<string, { arity: number; x?: number; y?: number }> =
 };
 
 /**
- * The offset along one axis from a stated centre of gravity, which carries the fillets the sharp-cornered shape lacks,
- * or the computed one. AxisVM's L states the distance from the bounds centre, as TC1 defines it (IfcOpenShell puts the
- * centroid of its 75 x 75 x 6 angle with fillets 17.085 mm off; the file states 17.07184). The value is used only when
- * it is within 10% of the computed offset's magnitude, and with the computed sign: the direction TC1 gives (-y for the
- * asymmetric I) assumes the wider flange at the bottom, which a wider top flange reverses. A zero or negative value
- * never comes within 10% of a positive offset, so it is ignored. That follows EXPRESS, which types the attribute as a
- * positive length, over TC1's L note, which says the stated values "are already negative values"
- * (ifclshapeprofiledef.htm).
+ * One axis's offset from a stated centre of gravity (which carries the fillets the sharp-cornered shape lacks), or the
+ * computed one. AxisVM's L states the distance from the bounds centre, as TC1 defines it (IfcOpenShell: 17.085 mm on its
+ * filleted 75 x 75 x 6 angle; the file states 17.07184). Used only within 10% of the computed magnitude, with the
+ * computed sign: TC1's -y for the asymmetric I assumes the wider flange at the bottom. A zero or negative value is never
+ * within 10% of a positive offset, so it is ignored: EXPRESS types it as a positive length, whatever TC1's L note says
+ * ("are already negative values", ifclshapeprofiledef.htm).
  */
 function statedOffset(a: readonly unknown[], slot: number | undefined, computed: number, halfExtent: number): number {
   const value = slot === undefined ? null : num(a[slot]);

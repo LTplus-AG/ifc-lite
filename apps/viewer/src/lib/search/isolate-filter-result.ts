@@ -96,8 +96,8 @@ export interface FilterAggregationExpansion {
  *
  * `handleIsolateResult`'s primary expansion is the renderer-backed
  * `resolveHighlightIds`, but that resolver checks bounds against the
- * type-visibility-FILTERED mesh list (`ViewportContainer`'s
- * `filteredGeometry`), so an assembly whose only parts are currently hidden
+ * mesh list minus the ids type visibility hides (`Viewport`'s
+ * `typeHidden`), so an assembly whose only parts are currently hidden
  * types (IfcSpace, IfcOpeningElement, ...) resolves to nothing even though
  * it renders fine once those toggles flip. This is the fallback for exactly
  * that case: the descendants' global ids join the isolation set and their

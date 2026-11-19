@@ -330,8 +330,8 @@ export function SearchModalFilter() {
     if (resolved.length === 0) {
       // Nothing resolved: either the renderer has not registered its
       // callbacks yet, or every matched row looks geometry-less to it. The
-      // resolver checks bounds against the type-visibility-FILTERED mesh
-      // list (Viewport gets ViewportContainer's `filteredGeometry`), so an
+      // resolver checks bounds against the mesh list minus the ids type
+      // visibility hides (Viewport's `typeHidden`), so an
       // assembly whose only parts are currently hidden types (IfcSpace,
       // IfcOpeningElement, ...) lands here even though it IS renderable once
       // those toggles flip (#2660 review). Expand through the aggregation

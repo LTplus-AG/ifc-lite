@@ -8,13 +8,15 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
-import { computeBounds, userMovedCamera, type Bounds } from './streamingBounds.js';
+import { computeBounds, userMovedCamera, withoutIds, type Bounds } from './streamingBounds.js';
 import type { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
 
 interface Params {
   geometryKernel?: 'exact' | 'retained';
   renderer: Renderer;
   capturedGeometry: MeshData[] | null;
+  /** Ids hidden by type: in the scene, but not framed (#10264). */
+  fitExcludedIds?: ReadonlySet<number> | null;
   cameraFittedRef: MutableRefObject<boolean>;
   finalBoundsRefittedRef: MutableRefObject<boolean>;
   robustFitAccRef: MutableRefObject<ReturnType<typeof createRobustFitBoundsAccumulator>>;
@@ -27,7 +29,7 @@ interface Params {
 
 /** Existing post-stream camera refit, kept separate from drain ownership. */
 export function refitCompletedStreamBounds(params: Params): void {
-  const { renderer, geometryKernel, capturedGeometry, cameraFittedRef, finalBoundsRefittedRef,
+  const { renderer, geometryKernel, capturedGeometry, fitExcludedIds, cameraFittedRef, finalBoundsRefittedRef,
     robustFitAccRef, cameraSnapshotRef, lastFitPolicyKindRef, geometryBoundsRef,
     trace, notifyLinearFit } = params;
   // Compute exact bounds and refit camera (fast ~15ms scan). Use
@@ -43,9 +45,9 @@ export function refitCompletedStreamBounds(params: Params): void {
     // fit target (and the orbit pivot) in empty space (issue #1394).
     // `robust` is the trimmed framing box (null when there is no tail);
     // `fullBounds` is the complete AABB for clipping / section ranges.
-    const rb = robustFitAccRef.current.update(capturedGeometry);
+    const rb = robustFitAccRef.current.update(capturedGeometry, { excludedIds: fitExcludedIds });
     const robust = rb?.robust ?? null;
-    let fullBounds = rb?.full ?? computeBounds(capturedGeometry);
+    let fullBounds = rb?.full ?? computeBounds(withoutIds(capturedGeometry, fitExcludedIds));
     let exactBounds = robust ?? fullBounds;
     // #7955: retained flat walls and grouped columns share one final framing
     // extent. Keep exact's existing robust fit and telemetry unchanged.

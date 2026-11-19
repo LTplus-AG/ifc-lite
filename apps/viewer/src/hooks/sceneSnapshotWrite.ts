@@ -32,7 +32,7 @@ export interface CapturedScene {
   /** The mesh each piece was queued from, by ordinal (the capture's own record). */
   sources: readonly MeshData[];
   fit: SnapshotCameraFit;
-  /** `sceneSnapshotKey` at the swap: the type visibility the batches were built under. */
+  /** `sceneSnapshotKey` at the swap: the batch policy the batches were built under. */
   key: string;
   /**
    * The scene's batch policy when the write runs. A capture taken before quantized

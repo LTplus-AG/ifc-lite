@@ -49,13 +49,17 @@ export interface RobustFitMeshInput {
   origin?: readonly [number, number, number] | null;
   /** IFC class; an `IfcBuildingElementProxy` may be a coordination marker (#5633). */
   ifcType?: string;
+  /** Entity id, matched against `RobustFitOptions.excludedIds`. */
+  expressId?: number;
 }
 
 const isProxy = (m: RobustFitMeshInput) => m.ifcType === 'IfcBuildingElementProxy';
 
 /** `streaming`: the mesh set is still growing (#5633), see detachedClusters.ts.
- *  `quiet`: no log line for a trim (Fit All runs this on every press). */
-export interface RobustFitOptions { streaming?: boolean; quiet?: boolean }
+ *  `quiet`: no log line for a trim (Fit All runs this on every press).
+ *  `excludedIds`: these entities' meshes are skipped (the accumulator skips
+ *  them as they are folded in), so type-hidden geometry does not frame (#10264). */
+export interface RobustFitOptions { streaming?: boolean; quiet?: boolean; excludedIds?: ReadonlySet<number> | null }
 
 const ROBUST_KEEP_MASS = 0.995;
 const ROBUST_SHRINK_GUARD = 0.66;
@@ -78,6 +82,8 @@ export function robustFitBoundsFull(meshes: readonly RobustFitMeshInput[], opts:
   const proxy: boolean[] = [];
   let cwX = 0, cwY = 0, cwZ = 0, totalW = 0;
   for (let gi = 0; gi < meshes.length; gi++) {
+    const id = meshes[gi].expressId;
+    if (id !== undefined && opts.excludedIds?.has(id)) continue;
     const positions = meshes[gi].positions;
     const o = meshes[gi].origin;
     const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
@@ -212,6 +218,8 @@ export function createRobustFitBoundsAccumulator(): RobustFitBoundsAccumulator {
     }
 
     for (let gi = scannedLen; gi < meshes.length; gi++) {
+      const id = meshes[gi].expressId;
+      if (id !== undefined && opts.excludedIds?.has(id)) continue;
       const positions = meshes[gi].positions;
       const o = meshes[gi].origin;
       const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;

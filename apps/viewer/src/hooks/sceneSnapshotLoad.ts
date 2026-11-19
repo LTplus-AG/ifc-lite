@@ -45,8 +45,7 @@ function snapshotsEnabled(): boolean {
 }
 
 function snapshotKey(scene: SceneContents): string {
-  const { typeVisibility, typeViewMode, structuralViewMode } = useViewerStore.getState();
-  return sceneSnapshotKey(scene.sceneSnapshotPolicy(), typeViewMode, typeVisibility, structuralViewMode);
+  return sceneSnapshotKey(scene.sceneSnapshotPolicy());
 }
 
 /** Level display moves pieces at arrival, so the batches would not be the cached geometry. */

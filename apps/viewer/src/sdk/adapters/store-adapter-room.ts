@@ -69,7 +69,8 @@ function createNativeRoomService(store: StoreApi) {
     if (JSON.stringify([[0,0,0],[1,0,0],[0,1,0],[0,0,1]].map(point=>plane.localToRender(point as [number,number,number])))!==frameBefore) throw new Error('The native storey/model frame changed during Room preparation');
     const missing = missingRoomWallGeometry(state,model.modelId,storeyId,plane);
     if (missing) return {walls:[],factory:SpacePlateHandle,unavailable:missing};
-    return { factory: SpacePlateHandle, validate:roomGeometryLease(store.getState,model.modelId,storeyId), walls: storeyWalls(state, model.modelId, storeyId, plane),
+    const lease = roomGeometryLease(store.getState,model.modelId,storeyId);
+    return { factory: SpacePlateHandle, validate:lease.validate, current:lease.current, walls: storeyWalls(state, model.modelId, storeyId, plane),
       spaces: storeySpaces(state, model.modelId, storeyId), occupied: storeyOccupancy(state, model.modelId, storeyId, plane) };
   }, {
     layouts: roomLayoutCache,

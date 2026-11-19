@@ -48,7 +48,8 @@ export interface RoomReview {
   snapshot: RoomSnapshot;
   prepared: PreparedRoomCommand;
   validate(): void;
-  /** Cheap and permanent: the loaded sources, edit revisions and geometry identity this review bound are unchanged. */
+  /** Cheap and non-throwing: whether validate() would still pass, by the same check, with geometry compared through
+   * the lease's own probe instead of byte by byte. */
   sourcesCurrent(): boolean;
   commit(): RoomCommandResult;
   dispose(): void;
@@ -98,7 +99,6 @@ function sourceIdentitiesCurrent(captured: ReturnType<typeof sources>, state: Vi
     return !!model && model.ifcDataStore === row.store && model.ifcDataStore?.source === row.source && model.sourceContentHash === row.hash;
   });
 }
-const isWeakKey = (value: unknown): value is object => typeof value === 'object' && value !== null;
 function sourcesCurrent(captured: ReturnType<typeof sources>, state: ViewerState): boolean {
   return sourceIdentitiesCurrent(captured, state) && captured.every(row => state.mutationViews.get(row.id) === row.view
     && state.mutationViews.get(row.id)?.getMutationRevision() === row.revision);
@@ -145,36 +145,16 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     if (JSON.stringify(snapshot).length > 60000) throw new Error('The complete Room snapshot exceeds the attachment limit');
     if (proposal.expected !== undefined && !sameReportEvidence(proposal.expected, snapshot)) throw new Error('The supplied native Room snapshot differs from the current source; prepare it again');
     const captured = sources(current);
-    // What the geometry lease read, cheaply and without re-capturing it: the target model's frame and mesh buffers by
-    // identity (geometryContentVersion covers in-place vertex edits). A recolour copies meshes with the same buffers;
-    // a remesh or re-frame replaces one. On buffer identity this is stricter than the lease, which compares bytes over
-    // the storey's room meshes only, so any remesh drops the review early (it can be prepared again). It does not check
-    // mesh order, duplication, origin, id or type, which the lease does, so those can keep a review admitted until
-    // validate() refuses it. Positions are held weakly; released meshes share one empty positions array, so each key
-    // holds every indices array captured with it. A mesh without a positions buffer cannot be bound, so such geometry
-    // reads as changed: the review is dropped, never kept unbound.
-    const geometry = current.models.get(proposal.modelId)?.geometryResult;
-    const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1;
-    const buffers = new WeakMap<object, Set<unknown>>();
-    let bindable = true;
-    for (const mesh of geometry?.meshes ?? []) {
-      if (!isWeakKey(mesh.positions)) { bindable = false; continue; }
-      const indices = buffers.get(mesh.positions) ?? new Set();
-      indices.add(mesh.indices); buffers.set(mesh.positions, indices);
-    }
-    const content = current.geometryContentVersion;
-    const geometryCurrent = (state: ViewerState) => {
-      const now = state.models.get(proposal.modelId)?.geometryResult;
-      return bindable && !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length === meshCount
-        && now.meshes.every(mesh => isWeakKey(mesh.positions) && buffers.get(mesh.positions)?.has(mesh.indices) === true);
-    };
-    const validate = () => {
+    // validate() and its cheap probe run one check; the probe only compares geometry through the lease's own probe.
+    const check = (probe: boolean) => {
       signal.throwIfAborted();
       if (!sourcesCurrent(captured, useViewerStore.getState())) throw new Error('The loaded sources changed after Room preparation; prepare again');
-      prepared.validate();
+      if (!probe) prepared.validate();
+      else if (!prepared.current()) throw new Error('The native Room preparation changed; prepare again');
       if (target(useViewerStore.getState(), proposal.modelId, proposal.storey, 'IfcBuildingStorey') !== storeyId) throw new Error('The current storey identity changed');
     };
-    return { proposal, snapshot, prepared, validate, sourcesCurrent: () => sourcesCurrent(captured, useViewerStore.getState()) && geometryCurrent(useViewerStore.getState()),
+    const validate = () => check(false);
+    return { proposal, snapshot, prepared, validate, sourcesCurrent: () => { try { check(true); return true; } catch { return false; } },
       commit: () => { validate(); return prepared.commit(); }, dispose: prepared.dispose };
   } catch (error) { prepared.dispose(); throw error; }
 }

@@ -54,14 +54,18 @@ export async function prepareAllStoreyRooms(
   }
   const layout = host.layouts.version();
   let disposed = false, committed = false;
-  const validate = () => {
+  const check = (probe: boolean) => {
     if (disposed || committed) throw new RoomCommandConflictError('This AutoAll preparation is no longer available');
     currentModel();
     if (JSON.stringify(effectiveStoreyIds(model.store,model.mutationView).sort((a,b)=>a-b))!==JSON.stringify(ids)) throw new RoomCommandConflictError('The complete storey population changed');
     if (JSON.stringify([...effectiveRoomIdsByStorey(model.store,model.mutationView,ids)]) !== JSON.stringify([...populations])) throw new RoomCommandConflictError('The complete native room population changed');
     if (host.layouts.version()!==layout) throw new RoomCommandConflictError('The native Room layout changed');
-    for (const geometry of geometries) geometry.validate?.();
+    for (const geometry of geometries) {
+      if (!probe || !geometry.current) geometry.validate?.();
+      else if (!geometry.current()) throw new RoomCommandConflictError('The native Room geometry changed');
+    }
   };
+  const validate = () => check(false);
   validate();
   const write = (draft: CostStoreModelResolution): RoomCommandResult => {
     const coverage = rows.map(row=>({...row,created:(plans.get(row.storeyId)?.length?createRoomsInStore(draft.store,draft.editor,row.storeyId,plans.get(row.storeyId)!):[]).map(expressId=>({modelId:model.modelId,expressId}))}));
@@ -76,6 +80,7 @@ export async function prepareAllStoreyRooms(
   });
   return {result:structuredClone(draft.result.result),preview:draft.result.preview,
     validate:()=>{validate();draft.validate();},
+    current:()=>{ try { check(true); draft.validate(); return true; } catch { return false; } },
     commit:()=> {
       validate();draft.validate();
       if (unavailable) throw new Error('Some storeys are unavailable: complete AutoAll approval is refused');

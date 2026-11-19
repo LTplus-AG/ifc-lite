@@ -59,6 +59,8 @@ export interface NativeRoomGeometry {
   readonly unavailable?: string;
   /** Recheck native geometry/frame ownership after asynchronous work and before approval. */
   readonly validate?: () => void;
+  /** Cheap and non-throwing: whether `validate` would still accept the geometry, by the same check. */
+  readonly current?: () => boolean;
   readonly factory: RoomPlateFactory;
   readonly spaces?: readonly SpaceFootprint[];
   /** Includes native IfcSpace mesh triangle occupancy for faceted source spaces. */
@@ -90,6 +92,9 @@ export interface PreparedRoomCommand {
   readonly layoutAfter?: readonly LayoutFace[];
   readonly preview: CostStoreModelResolution;
   validate(): void;
+  /** Cheap and non-throwing: whether `validate` would still pass. The same checks, except that geometry is compared
+   * through the host's probe (`NativeRoomGeometry.current`) when it has one. */
+  current(): boolean;
   commit(): RoomCommandResult;
   dispose(): void;
 }
@@ -167,14 +172,17 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
           const preview = { ...model, editor: new StoreEditor(model.store, view), mutationView: view };
           return { preview, result: write(preview) };
         });
-        const validate = () => {
+        const check = (probe: boolean) => {
           if (disposed || committed) throw new RoomCommandConflictError('This Room preparation is no longer available; prepare it again');
           currentModel();
-          geometry.validate?.();
+          if (!probe || !geometry.current) geometry.validate?.();
+          else if (!geometry.current()) throw new RoomCommandConflictError('The native Room geometry changed; prepare it again');
           if (host.layouts.version() !== layoutVersion) throw new RoomCommandConflictError('The native Room layout changed; prepare it again');
           draft.validate();
         };
+        const validate = () => check(false);
         return { result: structuredClone(draft.result.result), preview: draft.result.preview, ...(layoutAfter ? { layoutAfter: structuredClone(layoutAfter) } : {}), validate,
+          current: () => { try { check(true); return true; } catch { return false; } },
           commit: () => {
             validate();
             applied = op.action === 'query' ? draft.result.result : host.record(modelId, write);

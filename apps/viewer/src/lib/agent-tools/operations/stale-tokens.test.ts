@@ -29,6 +29,8 @@ import { ensureWasm } from '@/test/scan-slab-fixture';
 import { seedZoneExport } from '@/test/zone-export-fixture';
 import { nativeZoneEmissionEvidence } from '@/lib/actions/zone-emission-evidence';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
+import { graphAuthoringOperations } from './authoring-graphs';
+import type { OperationContext } from './contract';
 import { seedReviewedRoom, roomProposal } from '@/test/reviewed-room-fixture';
 import { MODEL as ROOM_MODEL } from '@/test/native-sdk-model';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
@@ -639,7 +641,53 @@ describe('Room review admission probe (#10792)', () => {
     return { models: new Map(s.models).set(ROOM_MODEL, { ...model, geometryResult: { ...geometry, meshes: geometry.meshes.map(meshes) } }) };
   });
 
-  it('#19: a Room review stays admitted through a recolour and is dropped after a remesh, without re-capturing geometry', async (t) => {
+  const reorderMeshes = () => useViewerStore.setState(s => {
+    const model = s.models.get(ROOM_MODEL)!, geometry = model.geometryResult!;
+    return { models: new Map(s.models).set(ROOM_MODEL, { ...model, geometryResult: { ...geometry, meshes: [...geometry.meshes].reverse() } }) };
+  });
+  const roomContext = () => {
+    modelId = ROOM_MODEL; newHost();
+    const live = host.models().find(row => row.id === ROOM_MODEL)!;
+    return { host, canEdit: () => true, signal: new AbortController().signal, checkpoint: () => {}, model: live } as unknown as OperationContext;
+  };
+  // The handler directly: through the executor every Room prepare is discarded, because its own wall remesh replaces
+  // the model's geometry during the operation (a separate, pre-existing refusal).
+  const roomPrepare = () => graphAuthoringOperations.find(row => row.id === 'authoring.room.prepare')!;
+
+  it('#19: a Room review whose meshes were reordered reads as changed, as its lease does', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await seedReviewedRoom();
+    const review = await prepareRoomReview(roomProposal(), new AbortController().signal);
+    try {
+      assert.equal(review.sourcesCurrent(), true);
+      reorderMeshes(); // the same mesh objects and buffers in another order
+      assert.throws(() => review.validate(), /geometry or model\/storey frame changed/);
+      assert.equal(review.sourcesCurrent(), false);
+    } finally { review.dispose(); }
+  });
+
+  it('#19: a Room review a newer preparation superseded reads as changed, as its validate() does', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await seedReviewedRoom();
+    const earlier = await prepareRoomReview(roomProposal(), new AbortController().signal);
+    const later = await prepareRoomReview(roomProposal(), new AbortController().signal);
+    try {
+      assert.equal(later.sourcesCurrent(), true, 'the later prepare remeshed to identical bytes: not a change');
+      assert.throws(() => earlier.validate(), /model changed while native Room geometry was preparing/);
+      assert.equal(earlier.sourcesCurrent(), false);
+    } finally { earlier.dispose(); later.dispose(); }
+  });
+
+  it('#19: 32 Room reviews, then reordered meshes: a fresh prepare succeeds', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await seedReviewedRoom();
+    const context = roomContext(), prepare = roomPrepare(), proposal_json = JSON.stringify(roomProposal());
+    for (let i = 0; i < 32; i++) await prepare.execute({ proposal_json }, context);
+    reorderMeshes();
+    await prepare.execute({ proposal_json }, context);
+  });
+
+  it('#19: a Room review stays admitted through a recolour and a same-bytes remesh, and is dropped after a byte change', async (t) => {
     if (!ensureRoomWasm(t)) return;
     await seedReviewedRoom();
     const review = await prepareRoomReview(roomProposal(), new AbortController().signal);
@@ -647,20 +695,20 @@ describe('Room review admission probe (#10792)', () => {
       assert.equal(review.sourcesCurrent(), true);
       withGeometry(mesh => ({ ...mesh, color: [1, 0, 0, 1] })); // a recolour copies meshes with the same buffers
       assert.equal(review.sourcesCurrent(), true);
+      withGeometry(mesh => ({ ...mesh, positions: mesh.positions.slice() })); // a remesh replaces the buffers, same bytes
+      assert.equal(review.sourcesCurrent(), true);
       review.validate();
-      withGeometry(mesh => ({ ...mesh, positions: mesh.positions.slice() })); // a remesh replaces the buffers
+      withGeometry(mesh => { const positions = mesh.positions.slice(); if (positions.length) positions[0] += 1; return { ...mesh, positions }; });
       assert.equal(review.sourcesCurrent(), false);
+      assert.throws(() => review.validate(), /geometry or model\/storey frame changed/);
     } finally { review.dispose(); }
     // Released meshes share one empty positions array but keep distinct indices; that alone must not read as a change.
-    // (This builds only that keying; the in-place release path is not driven here.)
-    const meshes = useViewerStore.getState().models.get(ROOM_MODEL)!.geometryResult!.meshes;
-    assert.ok(new Set(meshes.map(mesh => mesh.indices)).size >= 2, 'several meshes with distinct indices share the released positions');
     const empty = new Float32Array(0);
     withGeometry(mesh => ({ ...mesh, positions: empty }));
     const released = await prepareRoomReview(roomProposal(), new AbortController().signal);
     try {
       assert.equal(released.sourcesCurrent(), true);
-      // A mesh left without a positions buffer cannot be bound: it reads as changed, and does not throw.
+      // A mesh left without a positions buffer cannot be read: it reads as changed, and does not throw.
       withGeometry(mesh => ({ ...mesh, positions: undefined as unknown as Float32Array }));
       assert.equal(released.sourcesCurrent(), false);
     } finally { released.dispose(); }

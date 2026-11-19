@@ -77,22 +77,34 @@ export function roomGeometryLease(get:()=>ViewerState,modelId:string,storeyId:nu
   const before=captureRoomGeometry(get(),modelId,storeyId),sameLayout=roomGeometryLayout(before);
   const saved=before.meshes.map(mesh=>({positions:mesh.positions.slice(),indices:mesh.indices.slice()}));
   let content=get().geometryContentVersion;
+  // Everything the capture reads: the model entries (geometry, federation), the mutation views (overlay ids, edits)
+  // and the geometry content version. While none moved since the last check that held, the probe holds without
+  // capturing again; the capture walks every storey wall, which is too slow to repeat on each admission.
+  const inputs=(state:ViewerState)=>({models:state.models,views:state.mutationViews,revision:state.mutationViews.get(modelId)?.getMutationRevision(),content:state.geometryContentVersion});
+  let anchor=inputs(get());
+  const unmoved=(state:ViewerState)=>{const now=inputs(state);
+    return now.models===anchor.models && now.views===anchor.views && now.revision===anchor.revision && now.content===anchor.content;};
   const weakBuffers=(mesh:RoomGeometryCapture['meshes'][number])=>[new WeakRef(mesh.positions),new WeakRef(mesh.indices)] as const;
   const compared=before.meshes.map(weakBuffers);
   const holds=(state:ViewerState,exact:boolean)=> {
     const now=captureRoomGeometry(state,modelId,storeyId);
     if (!sameLayout(now)) return false;
-    const unmoved=!exact && state.geometryContentVersion===content;
+    const sameContent=!exact && state.geometryContentVersion===content;
     const ok=saved.every((mesh,i)=> {const current=now.meshes[i];
-      if (unmoved && compared[i][0].deref()===current.positions && compared[i][1].deref()===current.indices) return true;
+      if (sameContent && compared[i][0].deref()===current.positions && compared[i][1].deref()===current.indices) return true;
       const same=!mesh.positions.some((value,j)=>!Object.is(value,current.positions[j])) && !mesh.indices.some((value,j)=>value!==current.indices[j]);
       if (same) compared[i]=weakBuffers(current); // identical bytes: these buffers are what later probes compare to
       return same;});
-    if (ok) content=state.geometryContentVersion;
+    if (ok) { content=state.geometryContentVersion; anchor=inputs(state); }
     return ok;
   };
   return {
     validate:()=>{ if (!holds(get(),true)) throw new Error('The native Room geometry or model/storey frame changed; prepare again'); },
-    current:()=>{ try { return holds(get(),false); } catch { return false; } }, // geometry the lease cannot read is changed geometry
+    current:()=>{
+      const state=get();
+      if (unmoved(state)) return true;
+      try { return holds(state,false); }
+      catch (error) { console.debug('[Room] geometry lease no longer holds', error); return false; } // unreadable geometry is changed geometry
+    },
   };
 }

@@ -182,7 +182,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
         };
         const validate = () => check(false);
         return { result: structuredClone(draft.result.result), preview: draft.result.preview, ...(layoutAfter ? { layoutAfter: structuredClone(layoutAfter) } : {}), validate,
-          current: () => { try { check(true); return true; } catch { return false; } },
+          current: () => { try { check(true); return true; } catch (error) { console.debug('[Room] preparation no longer current', error); return false; } },
           commit: () => {
             validate();
             applied = op.action === 'query' ? draft.result.result : host.record(modelId, write);

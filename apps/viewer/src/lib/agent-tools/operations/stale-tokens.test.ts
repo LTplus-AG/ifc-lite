@@ -29,8 +29,7 @@ import { ensureWasm } from '@/test/scan-slab-fixture';
 import { seedZoneExport } from '@/test/zone-export-fixture';
 import { nativeZoneEmissionEvidence } from '@/lib/actions/zone-emission-evidence';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
-import { graphAuthoringOperations } from './authoring-graphs';
-import type { OperationContext } from './contract';
+import { admitCandidate } from './host-handles';
 import { seedReviewedRoom, roomProposal } from '@/test/reviewed-room-fixture';
 import { MODEL as ROOM_MODEL } from '@/test/native-sdk-model';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
@@ -645,15 +644,6 @@ describe('Room review admission probe (#10792)', () => {
     const model = s.models.get(ROOM_MODEL)!, geometry = model.geometryResult!;
     return { models: new Map(s.models).set(ROOM_MODEL, { ...model, geometryResult: { ...geometry, meshes: [...geometry.meshes].reverse() } }) };
   });
-  const roomContext = () => {
-    modelId = ROOM_MODEL; newHost();
-    const live = host.models().find(row => row.id === ROOM_MODEL)!;
-    return { host, canEdit: () => true, signal: new AbortController().signal, checkpoint: () => {}, model: live } as unknown as OperationContext;
-  };
-  // The handler directly: through the executor every Room prepare is discarded, because its own wall remesh replaces
-  // the model's geometry during the operation (a separate, pre-existing refusal).
-  const roomPrepare = () => graphAuthoringOperations.find(row => row.id === 'authoring.room.prepare')!;
-
   it('#19: a Room review whose meshes were reordered reads as changed, as its lease does', async (t) => {
     if (!ensureRoomWasm(t)) return;
     await seedReviewedRoom();
@@ -678,13 +668,22 @@ describe('Room review admission probe (#10792)', () => {
     } finally { earlier.dispose(); later.dispose(); }
   });
 
-  it('#19: 32 Room reviews, then reordered meshes: a fresh prepare succeeds', async (t) => {
+  it('#19: a Room review whose meshes were reordered frees its place under the cap', async (t) => {
     if (!ensureRoomWasm(t)) return;
     await seedReviewedRoom();
-    const context = roomContext(), prepare = roomPrepare(), proposal_json = JSON.stringify(roomProposal());
-    for (let i = 0; i < 32; i++) await prepare.execute({ proposal_json }, context);
-    reorderMeshes();
-    await prepare.execute({ proposal_json }, context);
+    // Only one Room review per model is ever current (a newer preparation supersedes the rest), so the cap is filled
+    // by 31 other pending reviews beside it, as graph admission counts them.
+    const review = await prepareRoomReview(roomProposal(), new AbortController().signal);
+    try {
+      const entries = new Map<string, { review?: { sourcesCurrent(): boolean } }>(Array.from({ length: 31 }, (_, i) => [`other-${i}`, {}]));
+      entries.set('room', { review });
+      const admit = () => admitCandidate(entries, { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: () => true,
+        canApply: entry => entry.review?.sourcesCurrent() ?? true });
+      assert.throws(admit, /At most 32/, 'a current Room review keeps its place');
+      reorderMeshes();
+      admit();
+      assert.equal(entries.has('room'), false, 'the reordered review was dropped, so a fresh prepare fits');
+    } finally { review.dispose(); }
   });
 
   it('#19: a Room review stays admitted through a recolour and a same-bytes remesh, and is dropped after a byte change', async (t) => {

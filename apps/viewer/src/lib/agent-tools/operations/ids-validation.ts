@@ -20,11 +20,12 @@ type ViewerState = ReturnType<typeof useViewerStore.getState>;
  * so re-tagging a model or editing a grouping changes their findings as an edit does; IDS runs read none of them.
  * Tags and lenses are compared by what the rule engine reads, so renaming a tag or recolouring a lens changes nothing. */
 interface RunInputs { models: ViewerState['models']; mutationVersion: number; tagIds?: string; modelTagAssignments?: ViewerState['modelTagAssignments']; groupings?: string }
-/** The fields `customGroupingsFromLenses` hands the rule engine. */
 /** Loaded by `validation.rules.run`, the only operation that records a rules run, so it is set before any rules run is
  * compared. A static import of the lens module would split it out of the eager chunk. */
 let isGroupingLens: typeof import('@/lib/model-tags/evaluator-models').isGroupingLens | undefined;
-const groupingsSignature = (lenses: ViewerState['savedLenses']) => JSON.stringify(lenses.filter(isGroupingLens!).map(lens => [lens.id, lens.name,
+const groupingLens = () => { if (!isGroupingLens) throw new Error('Validation rules are not loaded. Run the check again.'); return isGroupingLens; };
+/** The fields `customGroupingsFromLenses` hands the rule engine. */
+const groupingsSignature = (lenses: ViewerState['savedLenses']) => JSON.stringify(lenses.filter(groupingLens()).map(lens => [lens.id, lens.name,
   lens.capturedScope ?? null, lens.rules.map(rule => [rule.name, rule.enabled, rule.unreadableLegacy ? null : rule.groups ?? null])]));
 type RunKind = 'rules' | 'ids';
 const runInputs = (s: ViewerState, kind: RunKind): RunInputs => ({ models: s.models, mutationVersion: s.mutationVersion,

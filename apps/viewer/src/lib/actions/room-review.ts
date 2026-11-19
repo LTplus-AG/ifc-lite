@@ -154,7 +154,7 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
       if (target(useViewerStore.getState(), proposal.modelId, proposal.storey, 'IfcBuildingStorey') !== storeyId) throw new Error('The current storey identity changed');
     };
     const validate = () => check(false);
-    return { proposal, snapshot, prepared, validate, sourcesCurrent: () => { try { check(true); return true; } catch { return false; } },
+    return { proposal, snapshot, prepared, validate, sourcesCurrent: () => { try { check(true); return true; } catch (error) { console.debug('[Room review] no longer current', error); return false; } },
       commit: () => { validate(); return prepared.commit(); }, dispose: prepared.dispose };
   } catch (error) { prepared.dispose(); throw error; }
 }

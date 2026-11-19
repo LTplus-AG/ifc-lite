@@ -52,3 +52,10 @@ test('a cropped merge input whose georeference edits the target cannot hold is c
   assert.ok(prepared.warnings.some(warning => /^Model M: Georeferencing edits were not written\. Georeferencing .*IFC4/.test(warning)), prepared.warnings.join('\n'));
   assert.equal(mapConversions(prepared.inputs[0]), 0);
 });
+
+test('two cropped models with one name are told apart in their warnings, as the merge does (#10669)', async () => {
+  const inputs: MergeModelInput[] = await Promise.all(['a', 'b'].map(async id => ({ id, name: 'Same', dataStore: await store(), georefMutations: GEOREF })));
+  const prepared = await sectionMergeInputs(inputs, none, 'IFC2X3', () => ({ planes: [] }));
+  const refusals = prepared.warnings.filter(warning => /Georeferencing edits were not written/.test(warning));
+  assert.deepEqual(refusals.map(warning => warning.split(':')[0]), ['Same (a)', 'Same (b)']);
+});

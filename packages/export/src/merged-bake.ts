@@ -31,6 +31,14 @@ function viewHasMutations(view: MutablePropertyView | undefined): boolean {
 
 const GEOREF_NOT_WRITTEN = 'Georeferencing edits were not written.';
 
+/**
+ * The name a merge warning gives `model`: its name, with its id when another of `models` shares that name, since
+ * the warnings reach a de-duplicated list.
+ */
+export function mergeWarningLabel(model: Pick<MergeModelInput, 'id' | 'name'>, models: readonly Pick<MergeModelInput, 'id' | 'name'>[]): string {
+  return models.some(other => other.id !== model.id && other.name === model.name) ? `${model.name} (${model.id})` : model.name;
+}
+
 /** True when `model` carries edits that only a bake through {@link StepExporter} can apply. */
 export function needsBake(model: MergeModelInput): boolean {
   return viewHasMutations(model.mutationView) || hasGeorefEdits(model.georefMutations);
@@ -57,8 +65,7 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
   const warnings: string[] = [];
   let parser: IfcParser | null = null;
   for (const model of models) {
-    // Warnings reach a de-duplicated list, so two models with one name are told apart by id.
-    const label = models.some(other => other !== model && other.name === model.name) ? `${model.name} (${model.id})` : model.name;
+    const label = mergeWarningLabel(model, models);
     let georef = hasGeorefEdits(model.georefMutations) ? model.georefMutations : undefined;
     if (georef && targetSchema === 'IFC2X3') {
       warnings.push(`${label}: ${GEOREF_NOT_WRITTEN} ${IFC2X3_GEOREF_REFUSAL}`);

@@ -275,14 +275,16 @@ interface EPSetSpec {
   sharedScale?: true;
   /** List the Eastings property in a second property set, `Pset_Shared`, too. */
   sharedEastings?: true;
+  /** The Eastings property's Description slot, `$` when not given. */
+  eastingsDescription?: string;
 }
 
-const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord, mapUnitRecord = 'IFCPROPERTYSINGLEVALUE', danglingProperty, extraLength, sharedScale, sharedEastings }: EPSetSpec) => {
+const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord, mapUnitRecord = 'IFCPROPERTYSINGLEVALUE', danglingProperty, extraLength, sharedScale, sharedEastings, eastingsDescription = '$' }: EPSetSpec) => {
   const guid = (n: number) => `'0${name.toUpperCase()}EPSet${String(n).padStart(15, '0')}'`;
   // `\X\65` is `e`, `\X\45` is `E`, `\X\4E` is `N`, `\X\4F` is `O`.
   const [eps, east, north, height] = escapedNames ? ['\\X\\65PSet', '\\X\\45astings', '\\X\\4Eorthings', '\\X\\4FrthogonalHeight']
     : ['ePSet', 'Eastings', 'Northings', 'OrthogonalHeight'];
-  const georef = easting === null ? '' : `#30=IFCPROPERTYSINGLEVALUE('${east}',$,IFCLENGTHMEASURE(${easting}.),$);
+  const georef = easting === null ? '' : `#30=IFCPROPERTYSINGLEVALUE('${east}',${eastingsDescription},IFCLENGTHMEASURE(${easting}.),$);
 #31=IFCPROPERTYSINGLEVALUE('${north}',$,IFCLENGTHMEASURE(1200000.),$);
 #32=IFCPROPERTYSINGLEVALUE('${height}',$,IFCLENGTHMEASURE(500.),$);
 ${scaleRecord !== undefined ? `#33=${scaleRecord};`
@@ -433,14 +435,16 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     expect(merged).toMatch(new RegExp(`^${shared}=IFCPROPERTYSINGLEVALUE\\('Scale',\\$,IFCREAL\\(0\\.5\\),\\$\\);$`, 'm'));
   });
 
-  it('keeps the ePSet offsets as written and rescales an offset another set shares for that set', async () => {
-    const later: EPSetSpec = { unit: 'mm', easting: 2600100, mapUnit: 'METRE', sharedEastings: true };
+  it.each([['no Description', undefined], ['a Description with a #', "'survey #1'"]] as const)(
+    'keeps the ePSet offsets as written and rescales an offset another set shares for that set (%s)', async (_, eastingsDescription) => {
+    const later: EPSetSpec = { unit: 'mm', easting: 2600100, mapUnit: 'METRE', sharedEastings: true, eastingsDescription };
     const alone = viewerEPSet(await parse(epsetModel('b', later)));
     const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, later]);
     expect(viewerEPSet(await parse(merged))).toEqual(alone);
     const shared = merged.match(/^#\d+=IFCPROPERTYSET\([^;]*'Pset_Shared',\$,\((#\d+)\)\);$/m)?.[1];
     // 2600100 mm in Pset_Shared is 2600.1 m once normalized into metres.
-    expect(merged).toMatch(new RegExp(`^${shared}=IFCPROPERTYSINGLEVALUE\\('Eastings',\\$,IFCLENGTHMEASURE\\(2600\\.1\\),\\$\\);$`, 'm'));
+    const description = (eastingsDescription ?? '$').replace(/[$#]/g, match => `\\${match}`);
+    expect(merged).toMatch(new RegExp(`^${shared}=IFCPROPERTYSINGLEVALUE\\('Eastings',${description},IFCLENGTHMEASURE\\(2600\\.1\\),\\$\\);$`, 'm'));
   });
 
   it('converts a placement property that is no single value to the target schema', async () => {

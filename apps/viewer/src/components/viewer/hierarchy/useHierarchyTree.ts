@@ -297,7 +297,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
 
   // One resolver per input generation; views mutate in place, so mutationVersion starts a new one (#10535).
   const getNodeElements = useMemo(
-    () => createNodeElementsResolver({ models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel, mutationViews }),
+    () => createNodeElementsResolver(models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel, mutationViews),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel, mutationViews, mutationVersion],
   );

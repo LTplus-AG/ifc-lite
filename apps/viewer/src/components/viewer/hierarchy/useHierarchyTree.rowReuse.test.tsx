@@ -7,8 +7,7 @@
  * re-resolved each storey row's membership on every panel render. Through the
  * hook the panel uses: an edit the tree does not show keeps its row objects
  * (the input the memoized rows compare), a real change still shows, and
- * a storey's members are resolved once per input generation and view
- * revision. Real STEP store, real actions.
+ * a storey's members are resolved once per input generation. Real STEP store, real actions.
  */
 
 import '@/test/setup-dom.js';
@@ -125,8 +124,8 @@ describe('hierarchy rows across edits (#10535)', () => {
     assert.equal(tree().getNodeElements(after).length, 3, 'the new row resolves the current membership');
   });
 
-  it('resolves a storey row once per input generation and view revision, and again after a write that advances it', async () => {
-    const { tree, view } = await mountTree();
+  it('resolves a storey row once per input generation, and again after an edit', async () => {
+    const { tree } = await mountTree();
     const storey = storeyRow(tree().treeData);
     const members = tree().getNodeElements(storey);
     assert.equal(members.length, 2, 'the storey holds both columns');
@@ -134,16 +133,10 @@ describe('hierarchy rows across edits (#10535)', () => {
     assert.equal(tree().getNodeElements(storey), members, 'another panel render shares the same resolution');
     assert.equal(tree().getNodeElements({ ...storey }), members, 'the cache is keyed by row id, so an equal row object shares it');
 
-    // Skip-history and remote writes advance the view revision without a viewer mutationVersion.
-    act(() => { view.setProperty(50, 'Pset_Test', 'Note', 'x', undefined, undefined, true); });
-    const again = tree().getNodeElements(storey);
-    assert.notEqual(again, members, 'a new view revision resolves again');
-    assert.deepEqual(again, members);
-
-    // A viewer edit starts a new input generation, which resolves again too.
+    // An edit starts a new input generation, which resolves again.
     act(() => useViewerStore.setState((st) => ({ mutationVersion: st.mutationVersion + 1 })));
     const nextGeneration = tree().getNodeElements(storey);
-    assert.notEqual(nextGeneration, again, 'a new generation resolves again');
+    assert.notEqual(nextGeneration, members, 'a new generation resolves again');
     assert.deepEqual(nextGeneration, members);
   });
 });

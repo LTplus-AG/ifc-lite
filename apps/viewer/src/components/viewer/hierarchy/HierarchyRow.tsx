@@ -18,22 +18,16 @@ export interface HierarchyRowCallbacks extends NodeHandlers {
 }
 
 /**
- * Row handlers for the panel's lifetime, calling the callbacks of the last
+ * Row handlers for the panel's lifetime that call the callbacks of the last
  * committed render, so a row re-renders only when what it shows changes (#10535).
  */
 export function useStableRowHandlers(callbacks: HierarchyRowCallbacks): HierarchyRowCallbacks {
   const latest = useRef(callbacks);
   // Published at commit, so a discarded render never leaves rows calling its callbacks.
   useLayoutEffect(() => { latest.current = callbacks; });
-  return useState((): HierarchyRowCallbacks => ({
-    click: (node, event, section, index) => latest.current.click(node, event, section, index),
-    onToggleExpand: (nodeId) => latest.current.onToggleExpand(nodeId),
-    onVisibilityToggle: (node) => latest.current.onVisibilityToggle(node),
-    onAction: (node, action) => latest.current.onAction(node, action),
-    onModelVisibilityToggle: (modelId, e) => latest.current.onModelVisibilityToggle(modelId, e),
-    onRemoveModel: (modelId, e) => latest.current.onRemoveModel(modelId, e),
-    onSyncSourceModel: (modelId, e) => latest.current.onSyncSourceModel(modelId, e),
-    onModelHeaderClick: (modelId, nodeId, hasChildren) => latest.current.onModelHeaderClick(modelId, nodeId, hasChildren),
+  // Every handler read returns a forwarder to the latest callback of that name.
+  return useState(() => new Proxy(callbacks, {
+    get: (_, key) => (...args: unknown[]) => Reflect.apply(Reflect.get(latest.current, key), undefined, args),
   }))[0];
 }
 

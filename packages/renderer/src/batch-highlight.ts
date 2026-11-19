@@ -105,10 +105,12 @@ export function batchesHolding(
       found.add(id);
       holds = true;
     }
-    // Secondary lane ids carry no model: under a one-model selection, a batch with another model's entry cannot tell (#10653).
-    const mixed = modelIndex !== undefined && models?.some((model) => model !== undefined && model !== modelIndex);
-    for (const id of batch.laneIds ?? []) {
+    // A deliberate second pass: secondary lane ids carry no model, so under a one-model selection a
+    // batch that also holds another model's entries cannot tell them apart (#10653).
+    let mixed: boolean | undefined;
+    if (batch.laneIds) for (const id of batch.laneIds) {
       if (!ids.has(id)) continue;
+      mixed ??= modelIndex !== undefined && models?.some((model) => model !== undefined && model !== modelIndex) === true;
       if (mixed) { blocked.add(id); continue; }
       found.add(id);
       holds = true;

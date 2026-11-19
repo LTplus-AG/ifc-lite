@@ -2637,7 +2637,7 @@ export class Renderer {
                             // lens/Pset colour override, so the colour table paints it (#6076).
                             const isTransparent = shouldRouteBatchTransparent(
                                 alphaForBatch(subBatch, color[3]),
-                                subBatch.expressIds,
+                                batchEntities(subBatch),
                                 colorOverrides,
                             );
                             if (isTransparent) {

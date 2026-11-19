@@ -26,6 +26,13 @@ fn entities(exp: &str) -> std::collections::HashMap<String, &str> {
     }).collect()
 }
 
+/// True when `rule` names attribute `label` as a whole word, not inside an
+/// enum name such as `IfcTransportElementTypeEnum`.
+fn names_attribute(rule: &str, label: &str) -> bool {
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+    rule.match_indices(label).any(|(i, _)| !word(rule[..i].chars().next_back()) && !word(rule[i + label.len()..].chars().next()))
+}
+
 /// Every non-abstract entity with PredefinedType and a label attribute either
 /// has a WHERE rule tying USERDEFINED to that label, along its supertypes, or
 /// is exempt: the list is re-derived from the EXPRESS files, not trusted.
@@ -50,7 +57,7 @@ fn the_exemptions_are_exactly_the_entities_without_a_rule_10780() {
             while let Some(entity) = current.take() {
                 let Some(body) = bodies.get(&entity) else { break };
                 let wheres = body.lines().skip_while(|l| l.trim() != "WHERE").collect::<Vec<_>>().join("\n");
-                rule |= wheres.split(';').any(|r| r.contains("USERDEFINED") && r.contains(label));
+                rule |= wheres.split(';').any(|r| r.contains("USERDEFINED") && names_attribute(r, label));
                 current = body.split("SUBTYPE OF").nth(1).and_then(|s| s.split(['(', ')']).nth(1)).map(|s| s.trim().to_ascii_uppercase());
             }
             if rule { ruled += 1 } else { derived.push(name.clone()) }

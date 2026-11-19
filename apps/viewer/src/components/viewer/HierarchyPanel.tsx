@@ -28,7 +28,8 @@ import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { useHierarchySplit } from './hierarchy/useHierarchySplit';
 import { revealMembershipSpatialTypes } from './hierarchy/nodeVisibility';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
-import { HierarchyNode } from './hierarchy/HierarchyNode';
+import { HierarchyRow, stableRowHandlers } from './hierarchy/HierarchyRow';
+import { useLatestRef } from '@/hooks/useLatestRef';
 import { CaptureModelPanel } from './hierarchy/CaptureModelPanel';
 import { reloadGaussianCapture } from '@/hooks/ingest/gaussianReload';
 import type { AriaTreeAttrs } from './hierarchy/ariaTreeAttrs';
@@ -382,6 +383,12 @@ export function HierarchyPanel() {
     toggleExpand, groupingMode, handleNodeClick, handleModelHeaderClick,
   });
 
+  // Rows call these through one stable object, so a panel render re-renders only rows whose state changed (#10535).
+  const rowCallbacks = useLatestRef({ click: handleNodeClick, keyboards: { storeys: storeysTreeKeyboard, models: modelsTreeKeyboard, filtered: legacyTreeKeyboard },
+    toggleExpand, visibilityToggle: handleVisibilityToggle, action: handleRowAction, modelVisibilityToggle: handleModelVisibilityToggle,
+    removeModel: handleRemoveModel, syncSourceModel: handleSyncSourceModel, modelHeaderClick: handleModelHeaderClick });
+  const [rowHandlers] = useState(() => stableRowHandlers(rowCallbacks));
+
   const spatialSubtreeOf = useMemo(() => createSpatialSubtreeResolver(models, ifcDataStore, (modelId) => useViewerStore.getState().mutationViews.get(modelId)), [models, ifcDataStore, mutationVersion]);
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode, rows: ReadonlyArray<{ globalId: number }>) => {
@@ -452,10 +459,10 @@ export function HierarchyPanel() {
     const attrs = ariaAttrs[virtualRow.index] ?? { level: node.depth + 1, posInSet: 1, setSize: 1 };
 
     return (
-      <HierarchyNode
+      <HierarchyRow
         key={node.id}
         node={node}
-        virtualRow={virtualRow}
+        section={section} index={virtualRow.index} start={virtualRow.start} size={virtualRow.size} handlers={rowHandlers}
         isSelected={isSelected}
         nodeHidden={nodeHidden}
         outsideIsolation={outsideIsolation}
@@ -464,21 +471,11 @@ export function HierarchyPanel() {
         modelsCount={models.size}
         searchActive={Boolean(searchQuery.trim())}
         modelVisible={modelVisible}
-        onNodeClick={(_, event) => handleNodeClick(node, event, section, virtualRow.index)}
         actions={rowActions(node)}
-        onAction={handleRowAction}
-        onToggleExpand={toggleExpand}
-        onVisibilityToggle={handleVisibilityToggle}
-        onModelVisibilityToggle={handleModelVisibilityToggle}
-        onRemoveModel={handleRemoveModel}
-        onSyncSourceModel={handleSyncSourceModel}
-        onModelHeaderClick={handleModelHeaderClick}
         sourceBacked={modelId ? sourceTags.has(modelId) : false}
         sourceSyncing={modelId ? syncingSourceModelIds.has(modelId) : false}
         ariaLevel={attrs.level} ariaSetSize={attrs.setSize} ariaPosInSet={attrs.posInSet}
         tabIndex={keyboard.getTabIndex(node.id)}
-        rowRef={(el) => keyboard.registerRow(node.id, el)}
-        onRowFocus={() => keyboard.onRowFocus(node.id)}
       />
     );
   };

@@ -36,12 +36,12 @@ import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
 /**
  * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
- * `/* ... *​/` comment, #3789) tolerated between the type name and `(` —
+ * `/* ... *​/` comment, #3789) tolerated after `=` and between the type name and `(` —
  * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
  * a wrapped record's attribute is silently unreadable here (`getStepAttr`
  * returns `null`), which reads identically to a genuinely-absent attribute.
  */
-const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
+const RECORD_RE = new RegExp(`^#\\d+\\s*=${STEP_TRIVIA}\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
 
 /** 0-based attribute index of `IfcGeometricRepresentationSubContext.ContextIdentifier`. */
 const CONTEXT_IDENTIFIER_ATTR = 0;
@@ -61,7 +61,8 @@ function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null
 
 /**
  * Extract one 0-based STEP attribute of `expressId`'s entity, or null if
- * unreadable.
+ * unreadable. `merged-context.ts` reads its WCS frames and georeferences
+ * through this one too, where null is likewise read as unresolvable.
  *
  * `splitTopLevelStepArguments` returning null (a malformed record, OR —
  * since #4162's per-slot check — a well-formed record whose split it cannot
@@ -78,7 +79,7 @@ function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null
  * call sites, unlike `rescaleEntityLengths` (`unit-normalize.ts`), which
  * throws: a length has no safe permissive fallback.
  */
-function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number): string | null {
+export function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number): string | null {
   const text = decodeEntity(dataStore, expressId);
   const match = text?.match(RECORD_RE);
   if (!match) return null;

@@ -408,9 +408,17 @@ test('deleted instanced occurrences stay off the frame and the picks with nothin
   expect(ac.strong, 'deleting them changed the frame (not a vacuous comparison)').toBeGreaterThan(50);
   expect(ab.strong, 'a deleted occurrence draws nothing a hidden one does not').toBeLessThanOrEqual(Math.floor(bc.strong * 0.05));
   await picksNeverHidden(page, info, 'deleted', ids);
-  // A later visibility change must not bring them back.
-  const flat = await spreadIds(page);
-  await act(page, [['hideEntities', 'ids'], ['showAll']], flat);
-  const again = await diff(page, await capture(page, info, 'delete-A2-after-visibility-change'), b);
+  // A later visibility change must not bring them back: hide surviving instanced entities (a frame
+  // renders with the instanced hidden set non-empty), then show all again, which empties it.
+  const survivors = await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    return [...getGlobalRenderer()!.getScene().getInstancedEntityIds()].slice(0, 3);
+  });
+  expect(survivors.length, 'instanced entities survive the delete').toBeGreaterThan(0);
+  await act(page, [['hideEntities', 'ids']], survivors);
+  await capture(page, info, 'delete-A2-survivors-hidden');
+  await act(page, [['showAll']]);
+  const again = await diff(page, await capture(page, info, 'delete-A3-after-visibility-change'), b);
   expect(again.strong, 'still absent after a visibility change').toBeLessThanOrEqual(Math.floor(bc.strong * 0.05));
 });

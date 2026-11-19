@@ -1,5 +1,12 @@
 ---
-"@ifc-lite/viewer": patch
+"@ifc-lite/viewer": major
 ---
 
-Agent operations stay usable on large libraries and models. The clash report, clash group, validation report and zone expected-state tokens (`expected_reports`, clash `expected_library` and `expected_groups`, `expected_configuration`) are now short revisions instead of the whole state as JSON; `zones.read` returns `configuration_revision` in place of `configuration_json`. `clash.reports.read`, `clash.groups.read`, `validation.reports.read` and zone assignments are paged with an optional `offset` and a `next_offset`. `zones.writeback.prepare` returns `row_count`, a bounded `rows` sample and `truncated`. `exports.anonymized.prepare` reports `truncated` relationship expansion and refuses a membership above 100,000 entities or a preview above the result limit, with a message to narrow the selection.
+**Breaking for agent clients (#10794).** Reads and expected-state tokens used to grow with the model until they passed the 1 MB result limit; they are now paged and short.
+
+- `zones.read` drops `configuration_json` and returns `configuration_revision`. Pass that revision as `expected_configuration` to every zone edit; each edit also returns the next one.
+- Every `expected_*` input on these operations takes a short revision instead of the full state as JSON: clash `expected_reports`, `expected_library` and `clash.drafts.create`'s `expected_groups`, validation `expected_reports`, zone `expected_configuration`. Read it from the matching read operation; an old full-JSON token is refused.
+- `clash.reports.read`, `clash.groups.read`, `validation.reports.read` and `zones.read` assignments return one page. Pass `next_offset` (zones: `assignments_page.next_offset`) as the optional `offset` until it is null, and start again from 0 if the revision changes.
+- `exports.anonymized.prepare` refuses a membership above 100,000 entities or a preview above the result limit (narrow the selection or exclude types), and reports `truncated` relationship expansion in its preview and export diagnostics.
+
+Also: `zones.writeback.prepare` returns `row_count`, a bounded `rows` sample and `truncated`.

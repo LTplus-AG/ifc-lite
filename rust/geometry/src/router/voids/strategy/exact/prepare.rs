@@ -76,6 +76,7 @@ pub(in crate::router::voids) fn cutters<'a>(
     ctx: &'a VoidContext,
     wall_min: Point3<f64>,
     wall_max: Point3<f64>,
+    original_host: &Mesh,
 ) -> PreparedCutters<'a> {
     // UNIFIED EXACT PATH (PART B): every opening — axis-aligned RECTANGULAR
     // included — is now subtracted by the exact mesh kernel, NOT the legacy
@@ -117,6 +118,17 @@ pub(in crate::router::voids) fn cutters<'a>(
                 } else {
                     (*open_min, *open_max)
                 };
+                // The manifold gate can reject the extended cut and retry
+                // with the authored cutter against the union of the host
+                // shells (#10512). Keep that recovery path intact.
+                let (final_min, final_max) = if !cfg!(feature = "csg_manifold_gate")
+                    && (final_min, final_max) != (*open_min, *open_max)
+                    && weld_shift_extends_recess(execution, original_host, *open_min, *open_max, dir)
+                {
+                    (*open_min, *open_max)
+                } else {
+                    (final_min, final_max)
+                };
                 let box_mesh = GeometryRouter::make_box_mesh(final_min, final_max);
                 synth_rect.push(CutterKind::NonRectangular(
                     box_mesh,
@@ -139,4 +151,32 @@ pub(in crate::router::voids) fn cutters<'a>(
         #[cfg(feature = "csg_manifold_gate")]
         unextended_rectangles,
     }
+}
+
+/// A weld can move the host bounds across the extension threshold even though
+/// the authored rectangle stops inside the source host (#10528). Check the
+/// centre and axial offsets because a finish can end inside the footprint.
+fn weld_shift_extends_recess(
+    execution: &Execution,
+    host: &Mesh,
+    min: Point3<f64>,
+    max: Point3<f64>,
+    dir: crate::Vector3<f64>,
+) -> bool {
+    let (host_min, host_max) = host.bounds();
+    if execution.extend_opening_along_direction(min, max, host_min.cast(), host_max.cast(), dir)
+        != (min, max)
+    {
+        return false;
+    }
+
+    let centre = Point3::from((min.coords + max.coords) * 0.5);
+    let quarter = (max - min) * 0.25;
+    let inside = |point| crate::router::voids::parity::point_inside_mesh_agreed(host, point) == Some(true);
+    inside(centre)
+        || (0..3).any(|axis| {
+            let mut step = crate::Vector3::zeros();
+            step[axis] = quarter[axis];
+            inside(centre - step) || inside(centre + step)
+        })
 }

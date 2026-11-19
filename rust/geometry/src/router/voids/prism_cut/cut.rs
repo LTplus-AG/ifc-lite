@@ -12,12 +12,15 @@ use super::face::{cached_crossing, face_plane, CrossCache, Seam};
 use super::frame::{cap_xor, stack_faces, Face, PrismFrame};
 use super::kit::{add, dot, lerp, scale, V2, V3};
 use super::plane2::seg_cross_param;
+use super::paired_cap::ExistingFloors;
 use super::ptri::PTri;
 
 /// Subtract the stepped solid `pf` from the host triangle list. `Err(defer
 /// index)` ⇒ a gate or self-check failed ⇒ the caller must leave the host
 /// untouched and route this opening to the exact kernel.
-pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame) -> Result<Vec<PTri>, usize> {
+pub(super) fn cut_prism(
+    tris: &[PTri], pf: &PrismFrame, existing_floors: ExistingFloors,
+) -> Result<Vec<PTri>, usize> {
     let faces = stack_faces(pf);
     if faces.len() > u16::MAX as usize {
         return Err(7);
@@ -35,7 +38,11 @@ pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame) -> Result<Vec<PTri>, usi
     let mut seams: Vec<Vec<Seam>> = (0..faces.len()).map(|_| Vec::new()).collect();
     let mut any_cut = false;
 
-    for t in tris {
+    for (index, t) in tris.iter().enumerate() {
+        if existing_floors.iter().flatten().any(|floor| floor.contains(&index)) {
+            out.push(t.clone());
+            continue;
+        }
         // Quick reject: depth interval and 2D bbox versus the overall bbox.
         let w0 = dot(t.p[0], pf.d);
         let w1 = dot(t.p[1], pf.d);
@@ -231,6 +238,9 @@ pub(super) fn cut_prism(tris: &[PTri], pf: &PrismFrame) -> Result<Vec<PTri>, usi
     // ray parity against the PRE-CUT host.
     let mut caps: Vec<PTri> = Vec::new();
     for (fi, &face) in faces.iter().enumerate() {
+        if matches!(face, Face::Cap { j } if existing_floors.get(j).is_some_and(Option::is_some)) {
+            continue;
+        }
         if !build_face_cap(pf, face, &seams[fi], &plane_pts, tris, &aabbs, &mut caps) {
             return Err(7);
         }

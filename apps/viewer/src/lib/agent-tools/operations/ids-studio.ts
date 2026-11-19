@@ -44,6 +44,7 @@ function candidates(c: ViewerOperationContext) {
   let entries = hosts.get(c.host); if (!entries) { entries = new Map(); hosts.set(c.host, entries); const captured = entries; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return entries;
 }
 function remember(c: ViewerOperationContext, candidate: Candidate) {
+  assertToolActive(c); // a prepare cancelled during its imports must not evict another candidate
   // IDS candidates are bound to the document revision, as apply's revision() checks, not to a model.
   const revision = useViewerStore.getState().idsStudioRevision, stillApplies = candidateStillApplies();
   admitCandidate(candidates(c), { cap: 64, refusal: 'IDS candidate capacity reached; apply or discard a pending candidate.',

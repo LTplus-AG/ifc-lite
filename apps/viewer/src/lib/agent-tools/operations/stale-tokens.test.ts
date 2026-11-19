@@ -20,7 +20,7 @@ import { wallFixture } from '@/test/ids-studio-fixture';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 import { setSpecTextOp } from '@/lib/ids-studio/ops';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
-import { model, parseStep, seed } from '@/test/agent-tools-fixture';
+import { configuredView, model, parseStep, seed } from '@/test/agent-tools-fixture';
 import type { Renderer } from '@ifc-lite/renderer';
 import { Scene } from '../../../../../../packages/renderer/src/scene';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
@@ -91,7 +91,12 @@ describe('reviewed model candidates (#10792)', () => {
     // An edit makes all 64 unapplyable ('Model changed since preview'), so they no longer hold their places.
     useViewerStore.getState().setAttribute(SAMPLE_MODEL, store.entities.getExpressIdByGlobalId(BACK_WALL), 'Description', 'Second edit');
     for (let i = 0; i < 64; i++) await prepareRename(`After edit ${i}`);
-    await seedAuthoringSample(); // the same model id, a new store: these 64 can never apply either
+    // A reload under the same model id with the revision held: only the store check can free these 64.
+    const revision = useViewerStore.getState().mutationVersion, before = useViewerStore.getState().models.get(SAMPLE_MODEL)!.ifcDataStore;
+    await seedAuthoringSample();
+    useViewerStore.setState({ mutationVersion: revision });
+    const after = useViewerStore.getState().models.get(SAMPLE_MODEL)?.ifcDataStore;
+    assert.ok(after && after !== before, 'same model id, a new store');
     await prepareRename('After reload');
   });
 
@@ -123,28 +128,23 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(writes, 1);
   });
 
-  it('#20: a receipt write that threw keeps its candidate until a replay saves it', async () => {
+  it('#20: an unsaved receipt keeps its place, and a replay saves the library\'s latest draft, an undone mark included', async () => {
     const token = await prepareRename();
-    const put = modelChangeLibrary.put;
-    modelChangeLibrary.put = async () => { throw new Error('storage failed'); };
-    try { assert.equal((await invoke('authoring.apply', { token }, true)).isError, true); }
-    finally { modelChangeLibrary.put = put; }
-    for (let i = 0; i < 63; i++) await prepareRename(`Name ${i}`);
-    assert.equal((await invoke('properties.prepare', { proposal_json: rename('One too many') })).isError, true, 'the unsaved receipt still holds a place');
-    assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true);
-  });
-
-  it('#20: a receipt write that resolved false is the library\'s to retry: a replay does not write again, and the candidate frees its place', async () => {
-    const token = await prepareRename();
-    let writes = 0;
-    const put = modelChangeLibrary.put;
-    modelChangeLibrary.put = async () => { writes++; return false; };
+    let receipt: ModelChangeReceipt;
+    const refused = refuseContentWrites(); // storage refuses: put resolves false and keeps the receipt as a draft
     try {
-      assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false);
-      assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, false);
-    } finally { modelChangeLibrary.put = put; }
-    assert.equal(writes, 1);
-    for (let i = 0; i < 64; i++) await prepareRename(`Name ${i}`);
+      const applied = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token }, true));
+      assert.equal(applied.persisted, false);
+      receipt = JSON.parse(applied.receipt_json) as ModelChangeReceipt;
+      for (let i = 0; i < 63; i++) await prepareRename(`Name ${i}`);
+      assert.equal((await invoke('properties.prepare', { proposal_json: rename('One too many') })).isError, true, 'the unsaved receipt still holds a place');
+      // The Changes panel marks it undone while storage is still refusing.
+      assert.equal(await modelChangeLibrary.put(receipt.id, { ...receipt, status: 'undone', undoneAt: new Date(0).toISOString() }), false);
+    } finally { refused.mock.restore(); }
+    assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true);
+    assert.equal(useModelChangeReceipts.getState().status.items[receipt!.id], 'saved');
+    assert.equal(storedReceipt(receipt!.id)?.status, 'undone', 'the replay saved the undone draft, not the original receipt');
+    await prepareRename('Room again once saved');
   });
 
   it('#20: replaying an applied graph token keeps its undone receipt too', async () => {
@@ -297,6 +297,19 @@ describe('IDS candidates and validation runs (#10792)', () => {
     assert.equal(useViewerStore.getState().idsStudioState!.doc.ids.specifications[0].name, 'Once');
   });
 
+  it('#63: a prepare cancelled during its imports evicts no other candidate', async () => {
+    const applied = await prepareOps('Applied');
+    answer(await invoke('ids.candidate.apply', { token: applied }, true));
+    for (let i = 0; i < 63; i++) await prepareOps(`Pending ${i}`); // 64 held: admission would evict the applied one
+    const prepareOperation = idsOperations.find(row => row.id === 'ids.operations.prepare')!;
+    const controller = new AbortController();
+    // Cancel from the call's own checkpoint right after its contexts load, so it lands before the later imports.
+    const context = { host, canEdit: () => true, signal: controller.signal, checkpoint: () => controller.abort() } as Parameters<typeof prepareOperation.execute>[1];
+    await assert.rejects(prepareOperation.execute({ document_revision: useViewerStore.getState().idsStudioRevision,
+      ops_json: JSON.stringify([setSpecTextOp(specId(), 'name', 'Cancelled')]) }, context));
+    answer(await invoke('ids.candidate.apply', { token: applied }, true)); // still held: its replay answers
+  });
+
   it('#63: applied and outdated candidates do not use up pending capacity', async () => {
     for (let i = 0; i < 64; i++) answer(await invoke('ids.candidate.apply', { token: await prepareOps(`Name ${i}`) }, true));
     for (let i = 0; i < 64; i++) await prepareOps(`Pending ${i}`);
@@ -447,6 +460,7 @@ END-ISO-10303-21;
     { name: 'an edit', apply: () => useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })) },
     { name: 'an unloaded model', apply: () => useViewerStore.setState({ models: new Map() }) },
     { name: 'new assignments', apply: () => useViewerStore.setState({ zoneAssignments: new Map() }) },
+    { name: 'a geometry update alone', apply: () => useViewerStore.setState(s => ({ geometryUpdateTick: s.geometryUpdateTick + 1 })) },
   ])
     it(`#28: the zone table export discards an artifact after ${change.name} while it encoded`, async () => {
       let changed = false;
@@ -490,6 +504,18 @@ describe('zone emission reviews (#10792)', () => {
     assert.match(full.text, /At most 32 graph review candidates/);
     // The models are unchanged; only the zone set is edited. None of the 32 can apply now.
     useViewerStore.setState(s => ({ zoneSets: s.zoneSets.map(set => set.id === f.zoneSet.id ? { ...set, name: `${set.name} (edited)` } : set) }));
+    recomputeZoneAssignmentsNow();
+    answer(await invoke('authoring.zone.prepare', { proposal_json: zoneProposal() }));
+  });
+
+  it('#19: 32 zone reviews whose native lease moved (an edit to the target model) free the cap', async (t) => {
+    const f = await seedZones(t); if (!f) return;
+    const proposal_json = zoneProposal();
+    for (let i = 0; i < 32; i++) answer(await invoke('authoring.zone.prepare', { proposal_json }));
+    // Zone set and assignments unchanged; only the model the reviews' lease bound is edited.
+    useViewerStore.setState(s => ({ mutationViews: new Map(s.mutationViews).set('bonsai', configuredView(f.store, 'bonsai')) }));
+    useViewerStore.getState().setAttribute('bonsai', f.wall.expressId, 'Description', 'Edited after review');
+    assert.ok((useViewerStore.getState().mutationViews.get('bonsai')?.getMutationRevision() ?? 0) > 0, 'the edit reached the model');
     recomputeZoneAssignmentsNow();
     answer(await invoke('authoring.zone.prepare', { proposal_json: zoneProposal() }));
   });

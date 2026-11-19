@@ -46,15 +46,21 @@ export function candidateStillApplies(host?: ToolHost) {
     (!live || !bound || live.get(bound.modelId) === bound.store) && (applied || unchanged());
 }
 
-/** An applied candidate's receipt write. `settled` once it resolved: admission may then evict the candidate. */
-export interface ReceiptHolder { persisting?: Promise<boolean>; settled?: boolean }
+/** An applied candidate's receipt write. `settled` once the receipt is saved: admission may then evict the candidate. */
+export interface ReceiptHolder { persisting?: Promise<boolean>; settled?: boolean; handedOff?: boolean }
 
-/** Write an applied candidate's receipt once. A replay returns the first write's result unwritten, so it never
- * overwrites the library row the Changes panel has since marked undone. A write that resolved `false` is not
- * lost: `createContentLibrary`'s put keeps the receipt as a dirty draft and its `retry` writes it again
- * (lib/storage/content-library.ts). Only a write that threw is retried, by the next replay. */
+/**
+ * Save an applied candidate's receipt. The first write puts it; a successful one is cached, so a replay never
+ * overwrites the library row the Changes panel has since marked undone. An unsaved one stays pending: the library
+ * keeps it as a dirty draft but only its `retry` writes that again (the panel's Retry button), so a replay retries
+ * through `retry`, which saves the library's latest draft (an undone mark included), never this receipt again.
+ */
 export function persistReceipt(holder: ReceiptHolder, receipt: ModelChangeReceipt): Promise<boolean> {
-  holder.persisting ??= import('@/lib/actions/receipts').then(({ modelChangeLibrary }) => modelChangeLibrary.put(receipt.id, receipt))
-    .then(ok => { holder.settled = true; return ok; }, (error: unknown) => { holder.persisting = undefined; throw error; });
+  holder.persisting ??= import('@/lib/actions/receipts').then(async ({ modelChangeLibrary, useModelChangeReceipts }) => {
+    if (!holder.handedOff) { holder.handedOff = true; return modelChangeLibrary.put(receipt.id, receipt); }
+    await modelChangeLibrary.retry();
+    return useModelChangeReceipts.getState().status.items[receipt.id] === 'saved';
+  }).then(saved => { if (saved) holder.settled = true; else holder.persisting = undefined; return saved; },
+    (error: unknown) => { holder.persisting = undefined; throw error; });
   return holder.persisting;
 }

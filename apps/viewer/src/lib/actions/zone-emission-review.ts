@@ -46,8 +46,11 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
   const zoneSet = state.zoneSets.find(row => row.id === proposal.zoneSetId);
   const assignmentsAtPrepare = zoneAssignmentSignature(state.zoneAssignments, proposal.zoneSetId);
   let assignmentsSeen = state.zoneAssignments, assignmentsUnchanged = true;
+  // The native lease binds the target model's mutation view and its revision, as the Group and Structural probes do.
+  const view = state.mutationViews.get(proposal.modelId), viewRevision = view?.getMutationRevision();
   const zoneConfigurationCurrent = () => {
-    const current = store.getState();
+    const current = store.getState(), liveView = current.mutationViews.get(proposal.modelId);
+    if (liveView !== view || liveView?.getMutationRevision() !== viewRevision) return false;
     if (current.zoneSets.find(row => row.id === proposal.zoneSetId) !== zoneSet) return false;
     if (current.zoneAssignments !== assignmentsSeen) {
       assignmentsSeen = current.zoneAssignments;

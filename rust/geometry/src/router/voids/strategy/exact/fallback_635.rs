@@ -18,6 +18,8 @@ pub(super) struct Fallback<'a> {
     pub(super) tri_before: usize,
     pub(super) failures_before: usize,
     pub(super) csg_unchanged: bool,
+    #[cfg(feature = "csg_manifold_gate")]
+    pub(super) gate_rejected: bool,
 }
 
 impl ExactState {
@@ -28,7 +30,7 @@ impl ExactState {
     /// the engulf or redundant-void guard suppresses it.
     pub(super) fn fallback_635(&mut self, result: &mut Mesh, context: CutContext<'_>, fallback: Fallback<'_>) {
         let CutContext { execution, clipper, wall_min, wall_max, .. } = context;
-        let Fallback { opening_mesh, open_min_pt, open_max_pt, extrusion_dir, tri_before, failures_before, csg_unchanged } =
+        let Fallback { opening_mesh, open_min_pt, open_max_pt, extrusion_dir, tri_before, failures_before, csg_unchanged, .. } =
             fallback;
         let open_min_pt = &open_min_pt;
         let open_max_pt = &open_max_pt;

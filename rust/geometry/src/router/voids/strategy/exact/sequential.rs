@@ -90,6 +90,8 @@ impl ExactState {
                 );
                 let cutter = &extended_opening;
                 let outcome = clipper.subtract_mesh(result, cutter);
+                #[cfg(feature = "csg_manifold_gate")]
+                let gate_rejected = matches!(outcome, crate::csg::GroupCut::Rejected(crate::csg::GroupReject::GateRejected));
                 // Nothing to cut, so the #635 fallback below must not cut a
                 // box either (#5362).
                 let kernel_found_no_overlap = outcome.found_no_overlap();
@@ -125,6 +127,8 @@ impl ExactState {
                         tri_before,
                         failures_before,
                         csg_unchanged,
+                        #[cfg(feature = "csg_manifold_gate")]
+                        gate_rejected,
                     });
                 }
             }

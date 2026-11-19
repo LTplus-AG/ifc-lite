@@ -7,8 +7,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
-import { completeInstancedShardSupply, discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration, instancedShardSupplyToken } from '@/store/instancedShardQueue';
+import { announceAdoptedInstancedShards, completeInstancedShardSupply, discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration, instancedShardSupplyToken } from '@/store/instancedShardQueue';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
+import { noteInstancedShardModel } from '@/store/instancedShardModels';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 import { releasedGeometryMetadata, releasedGeometryMetadataVersion } from './released-geometry-metadata';
@@ -565,6 +566,21 @@ describe('store geometry backing tap (test/debug only)', () => {
       await tap.stop();
     });
   }
+
+  it('backs the shards a committed scene snapshot uploaded directly, and only once it commits', async () => {
+    const store = storeWith({ sn: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    const generation = instancedShardGeneration();
+    noteInstancedShardModel('sn'); // the snapshot upload counts the model's shards, outside the queue
+    let [status] = await tap.seal();
+    assert.equal(status.complete, false, 'drawn but not yet backed: fail closed');
+    announceAdoptedInstancedShards('sn', [shardBytes(77)], generation); // hydrateSceneSnapshot committed
+    completeInstancedShardSupply('sn', 1, generation);
+    [status] = await tap.seal();
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
+    assert.equal(status.shards, 1);
+    await tap.stop();
+  });
 
   it('notifies metadata consumers whenever availability changes in place', async () => {
     const list = [mesh(1)];

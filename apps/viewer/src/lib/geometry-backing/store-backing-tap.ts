@@ -117,7 +117,7 @@ export class StoreGeometryBackingTap {
         }
         return;
       }
-      if (event.kind !== 'enqueued' || !event.shards) return;
+      if ((event.kind !== 'enqueued' && event.kind !== 'adopted') || !event.shards) return;
       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
       for (const shard of event.shards) tap.ingestShard(shard);
     }));

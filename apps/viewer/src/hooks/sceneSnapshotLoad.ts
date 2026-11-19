@@ -15,7 +15,7 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
+import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
@@ -144,7 +144,10 @@ export async function publishAdoptedSceneMeshes(
     enqueueInstancedShards(modelId, adopted.shards, shardGeneration);
     completeInstancedShardSupply(modelId, adopted.shards.length, shardGeneration);
     forgetRefusedSnapshot(cacheResult, cacheKey);
-  }, adopted.fit, trace);
+  }, adopted.fit, trace, () => {
+    announceAdoptedInstancedShards(modelId, adopted.shards, shardGeneration);
+    completeInstancedShardSupply(modelId, adopted.shards.length, shardGeneration);
+  });
   append(modelId, meshes, open.coordinateInfo);
   return meshes;
 }

@@ -33,10 +33,11 @@ export interface InstancedShardQueueEvent {
   /**
    * `drained`: uploaded by the renderer. `dropped`: settled by the drain without an upload.
    * `discarded`: removed undrained (a reset, or a model's removal).
+   * `adopted`: uploaded directly by a committed scene snapshot, outside the queue.
    */
-  readonly kind: 'enqueued' | 'drained' | 'dropped' | 'discarded';
+  readonly kind: 'enqueued' | 'drained' | 'dropped' | 'discarded' | 'adopted';
   readonly modelIds: ReadonlySet<string>;
-  /** `enqueued` (and `adopted`): the shards this call queued (their bytes are read, never detached). */
+  /** `enqueued`: the shards this call queued; `adopted`: shards a committed scene snapshot uploaded directly (bytes read, never detached). */
   readonly shards?: readonly PendingInstancedShard[];
   /** `dropped`/`discarded`: the shards that never reached the scene. */
   readonly withheld?: readonly PendingInstancedShard[];
@@ -216,6 +217,17 @@ export function completeInstancedShardSupply(modelId: string, count: number, fro
 export function subscribeInstancedShardSupply(listener: (supply: InstancedShardSupply) => void): () => void {
   supplyListeners.add(listener);
   return () => { supplyListeners.delete(listener); };
+}
+
+/**
+ * A scene snapshot uploaded these shards directly (not through this queue) and
+ * its adoption has now COMMITTED: tell listeners that need every shard the scene
+ * draws (the geometry backing, #10264). Counted already at upload
+ * (`noteInstancedShardModel`); a refused adoption requeues them here instead.
+ */
+export function announceAdoptedInstancedShards(modelId: string, shards: readonly ArrayBuffer[], fromGeneration: number | InstancedShardSupplyToken): void {
+  if (shards.length === 0 || !supplyCurrent(modelId, fromGeneration)) return;
+  emit({ kind: 'adopted', modelIds: new Set([modelId]), shards: shards.map((bytes) => ({ modelId, bytes })) });
 }
 
 export function hasPendingInstancedShards(modelId?: string): boolean {

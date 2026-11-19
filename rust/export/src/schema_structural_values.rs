@@ -81,14 +81,12 @@ impl Source<'_> {
             if !self.kind(set, "IFCPROPERTYSET") { return None; }
             let slots = self.slots(set)?;
             if step_string(slots.get(2)?) != Some(name) { return None; }
-            let related = args.get(4).map_or("", String::as_str);
-            let has_properties = slots.get(4).map_or("", String::as_str);
             // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that
             // does not, that lists a property it cannot read, or whose relationship lists a non-reference, still
             // counts as present for the objects it does name but gives no property.
-            let listed = list_items(related).unwrap_or_default();
+            let listed = args.get(4).and_then(|related| list_items(related)).unwrap_or_default();
             let members: Vec<u32> = listed.iter().filter_map(|item| reference(item)).collect();
-            let ids = references(has_properties).unwrap_or_default();
+            let ids = slots.get(4).and_then(|has| references(has)).unwrap_or_default();
             let properties = if members.len() == listed.len() { self.properties(&ids).unwrap_or_default() } else { BTreeMap::new() };
             Some(PropertySet { rel, set, members, ids, properties })
         }).collect()

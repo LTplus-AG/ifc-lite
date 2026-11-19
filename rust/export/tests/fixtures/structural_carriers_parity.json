@@ -264,6 +264,26 @@
         "#44=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'Pset_StructuralSurfaceMemberVaryingThickness',$,(#40,#41,#42,#43));",
         "#45=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#24),#44);"
       ]
+    },
+    {
+      "why": "a sole load-case carrier whose relationship has a trailing extra slot is read and consumed, as TypeScript does",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#21=IFCSTRUCTURALLOADGROUP('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S');\n#30=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.)),$);\n#31=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'IFC4 IfcStructuralLoadCase',$,(#30));\n#32=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#21),#31,$);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLOADCASE('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S',(0.,0.,-1.));"
+      ]
+    },
+    {
+      "why": "a sole load-case carrier whose property set has a trailing extra slot is read and consumed, as TypeScript does",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#21=IFCSTRUCTURALLOADGROUP('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S');\n#30=IFCPROPERTYLISTVALUE('SelfWeightCoefficients',$,(IFCRATIOMEASURE(0.),IFCRATIOMEASURE(0.),IFCRATIOMEASURE(-1.)),$);\n#31=IFCPROPERTYSET('3gUSy$VNbHyPCNtxi3Mz27',#5,'IFC4 IfcStructuralLoadCase',$,(#30),$);\n#32=IFCRELDEFINESBYPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,$,$,(#21),#31);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALLOADCASE('1gUSy$VNbHyPCNtxi3Mz27',#5,'Case',$,$,.LOAD_CASE.,.VARIABLE_Q.,.LIVE_LOAD_Q.,1.5,'S',(0.,0.,-1.));"
+      ]
     }
   ]
 }

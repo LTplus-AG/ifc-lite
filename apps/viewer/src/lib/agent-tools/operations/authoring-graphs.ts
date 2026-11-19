@@ -89,9 +89,10 @@ export const graphAuthoringOperations = [
   }, async (i, c) => {
     if (owned(c).size >= 32) throw new Error('At most 32 graph review candidates may be retained.');
     const review = await prepare(kind, i.proposal_json, c);
-    try { assertToolActive(c); review.validate(); } catch (error) { review.dispose?.(); throw error; }
+    let preview_json: string;
+    try { assertToolActive(c); review.validate(); preview_json = JSON.stringify(review.preview); } catch (error) { review.dispose?.(); throw error; }
     const token = crypto.randomUUID(); owned(c).set(token, { modelId: c.model.id, store: c.model.store, review });
-    return { token, preview_json: JSON.stringify(review.preview) };
+    return { token, preview_json };
   })),
   operation<{ token: string }>(meta('authoring.graph.apply', 'model', 'Apply one exact prepared native graph/Room candidate through its native synchronous review commit. Preserves all native roles, source/evidence checks and native undo. A token applies once.', true), tokenInput, async (i, c) => {
     const entry = owned(c).get(i.token);

@@ -15,6 +15,7 @@ import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dis
 import { operationJob } from './executor';
 import { viewerOperation } from './registry';
 import type { ToolHost } from '../types';
+import type { Operation } from './contract';
 
 let host: ToolHost;
 const invoke = (id: string, input: unknown = {}, write = false, extra: Record<string, unknown> = {}) =>
@@ -25,6 +26,11 @@ function answer<T>(result: AgentToolResult): T {
   assert.equal(result.isError, false, result.text);
   const value = (result.structured as { result: { native_json?: string } }).result;
   return (value?.native_json === undefined || Object.keys(value).length > 1 ? value : JSON.parse(value.native_json)) as T;
+}
+async function settled(id: string) {
+  let state = operationJob(host, id);
+  for (let tick = 0; state.state === 'running' && tick < 1000; tick++) { await new Promise(resolve => setTimeout(resolve, 0)); state = operationJob(host, id); }
+  return state;
 }
 async function groupProposal() {
   const store = useViewerStore.getState().models.get(SAMPLE_MODEL)!.ifcDataStore!, expressId = store.entities.getExpressIdByGlobalId(BACK_WALL);
@@ -53,12 +59,13 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
 
   it('32 refused prepares leave the cap free for a fresh one', async () => {
     const proposal_json = await groupProposal();
-    const spy = editAfterEveryGraphToken();
+    const spy = editAfterEveryGraphToken(), discard = mock.method(viewerOperation('authoring.group.prepare') as Required<Operation>, 'discard');
     for (let i = 0; i < 32; i++) {
       const refused = await invoke('authoring.group.prepare', { proposal_json });
       assert.match(refused.text, /Model replaced, closed, or edited during the operation/);
     }
     assert.equal(spy.mock.callCount() >= 32, true, 'every prepare reached its token');
+    assert.equal(discard.mock.callCount(), 32, 'the executor refused each result after its handler stored a candidate');
     spy.mock.restore();
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
   });
@@ -68,12 +75,23 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     editAfterEveryGraphToken();
     for (let i = 0; i < 32; i++) {
       const { job } = (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured as { job: { id: string } };
-      let state = operationJob(host, job.id);
-      for (let tick = 0; state.state === 'running' && tick < 1000; tick++) { await new Promise(resolve => setTimeout(resolve, 0)); state = operationJob(host, job.id); }
+      const state = await settled(job.id);
       assert.equal(state.state, 'failed');
       assert.match(state.error ?? '', /Model replaced, closed, or edited during the operation/);
     }
     mock.restoreAll();
+    answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+  });
+
+  it('a background prepare refused when collected leaves no candidate either', async () => {
+    const proposal_json = await groupProposal();
+    for (let i = 0; i < 32; i++) {
+      const { job } = (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured as { job: { id: string } };
+      assert.equal((await settled(job.id)).state, 'succeeded');
+      useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })); // an edit before the caller collects it
+      assert.throws(() => operationJob(host, job.id), /Model replaced, closed, or edited during the operation/);
+      assert.equal(operationJob(host, job.id).state, 'failed', 'refused once, then reported failed');
+    }
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
   });
 });

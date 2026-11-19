@@ -22,7 +22,7 @@ export interface OperationJob {
   result?: unknown;
   error?: string;
 }
-interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void }
+interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void }
 const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
 const MAX_JOBS = 32;
 interface AppliedRequest { signature: string; store: ReadyModel['store'] | undefined; result: Promise<unknown> }
@@ -135,13 +135,14 @@ export async function executeOperation(
     return commit(write);
   });
   const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, artifacts };
+  const discardResult = (result: unknown) => {
+    try { entry.discard?.(result, operationContext); } catch (error) { console.warn('[viewer operation] discarding a refused result failed', error); }
+  };
   /** The result after the final check, bounded and validated. A result refused here is never delivered, so what the
    * handler stored for it is discarded; a committed write is not, since it already happened. */
   const accepted = (result: unknown, finalCheck: () => void): unknown => {
     try { finalCheck(); const bounded = boundedResult(result); entry.validateResult(bounded); return bounded; } catch (error) {
-      if (!committed) {
-        try { entry.discard?.(result, operationContext); } catch (discardError) { console.warn('[viewer operation] discarding a refused result failed', discardError); }
-      }
+      if (!committed) discardResult(result);
       throw error;
     }
   };
@@ -180,7 +181,7 @@ export async function executeOperation(
   const snapshot: OperationJob = { id: crypto.randomUUID(), operation_id: entry.id, model_id: model?.id ?? null, revision, state: 'running' };
   const active = () => { controller.signal.throwIfAborted(); check(); };
   checkpoint = active;
-  owned.set(snapshot.id, { snapshot, abort: controller, current: check });
+  owned.set(snapshot.id, { snapshot, abort: controller, current: check, discard: () => discardResult(snapshot.result) });
   // Retain and settle the actual service promise. Cancellation never claims rollback.
   void Promise.resolve().then(() => { active(); return entry.execute(input, { ...operationContext, signal: controller.signal, checkpoint: active, progress: detail => {
       active(); snapshot.progress = detail;
@@ -200,7 +201,14 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
   const job = jobs(host).get(id);
   if (!job) invalid('Unknown job for this viewer host.');
   if (cancel && job.snapshot.state === 'running') job.abort.abort();
-  if (job.snapshot.state === 'succeeded') job.current();
+  if (job.snapshot.state === 'succeeded') {
+    // A result refused when it is collected is never delivered: discard what its handler stored, once.
+    try { job.current(); } catch (error) {
+      job.discard();
+      Object.assign(job.snapshot, { state: 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+      throw error;
+    }
+  }
   // A cancellation request is observable, but terminal cancellation awaits runner settlement.
   return { ...job.snapshot, ...(cancel && job.snapshot.state === 'running' ? { cancellationRequested: true } : {}) };
 }

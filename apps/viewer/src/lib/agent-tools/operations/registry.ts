@@ -32,7 +32,10 @@ function lazyOperation(contract: OperationContract): Operation {
   return { ...metadata, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema),
     async execute(input, context) { return (await load()).execute(input, context); },
     // A result exists only once execute ran, so the implementation is loaded by then.
-    discard(result, context) { loadedNative?.discard?.(result, context); },
+    discard(result, context) {
+      if (!loadedNative) console.warn(`[viewer operation] ${metadata.id}: discard before its implementation loaded`);
+      loadedNative?.discard?.(result, context);
+    },
   };
 }
 const entries = operationContracts.map(lazyOperation);

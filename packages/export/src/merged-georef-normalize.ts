@@ -14,9 +14,10 @@
  *   unless keeping it as written is what keeps the scale the viewer gives the model ({@link viewerAxisScales}).
  */
 
-import { STEP_TRIVIA, extractGeoreferenceCandidatesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { extractGeoreferenceCandidatesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { COORDINATE_OPERATION_STEP_TYPES, MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
 import { getStepAttr } from './merged-subcontext.js';
+import { slotUnset } from './schema-converter-structural-source.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
 import { computeNormalizeFactor, toStepRealScaled } from './unit-normalize.js';
@@ -32,27 +33,33 @@ type GeorefRecord = { kind: 'operation'; scale?: number } | { kind: 'unitless'; 
 export interface GeorefNormalizePlan {
   records: ReadonlyMap<number, GeorefRecord>;
   metre: MetreUnit;
+  /** Map conversions whose viewer scale no Scale keeps in the merged unit; written with the divided, spec Scale. */
+  unkept: readonly number[];
 }
 
 /** 0-based index of the CRS's length unit: `IfcProjectedCRS.MapUnit` (IFC4, IFC4X3), `IfcGeographicCRS.HeightUnit`. */
 const CRS_UNIT_ATTR = { IFCPROJECTEDCRS: 6, IFCGEOGRAPHICCRS: 5 };
-/** An unset slot, STEP trivia (whitespace, comments) allowed around the `$`. */
-const UNSET_RE = new RegExp(`^${STEP_TRIVIA}\\$${STEP_TRIVIA}$`);
 /** 0-based index of `IfcMapConversion.Scale`. */
 const SCALE_ATTR = 7;
 
 // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
 const idsOf = (dataStore: IfcDataStore, types: Iterable<string>) => [...types].flatMap(type => dataStore.entityIndex.byType.get(type) ?? []);
 
-/** True when `dataStore` carries a coordinate operation. */
-export const hasCoordinateOperation = (dataStore: IfcDataStore): boolean => idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length > 0;
+/** The normalize advisory for a model's georeference, or null when it carries none. */
+export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, plan: GeorefNormalizePlan | undefined): string | null {
+  if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0) return null;
+  const unkept = plan?.unkept.length ? ` The viewer cannot show map conversion ${plan.unkept.map(id => `#${id}`).join(', ')} ` +
+    'at its own scale in the merged unit, so its Scale is written as the IFC specification reads it.' : '';
+  return `Model "${name}" carries georeferencing, whose offsets normalize leaves in the CRS unit (a CRS without one ` +
+    `is written in metres). If the model was georeferenced in its own unit, review the merged coordinate operation.${unkept}`;
+}
 
 /** The {@link GeorefNormalizePlan} of a model in length unit `modelScale` normalized into `primaryScale`. */
 export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit, modelScale: number, primaryScale: number): GeorefNormalizePlan {
-  const records = new Map<number, GeorefRecord>();
+  const records = new Map<number, GeorefRecord>(), unkept: number[] = [];
   for (const id of idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES)) records.set(id, { kind: 'operation' });
   for (const [type, unitAttr] of Object.entries(CRS_UNIT_ATTR)) {
-    for (const id of idsOf(dataStore, [type])) if (UNSET_RE.test(getStepAttr(dataStore, id, unitAttr) ?? '$')) records.set(id, { kind: 'unitless', unitAttr });
+    for (const id of idsOf(dataStore, [type])) if (slotUnset(getStepAttr(dataStore, id, unitAttr) ?? '$')) records.set(id, { kind: 'unitless', unitAttr });
   }
   // The Scale that keeps the viewer's scale: divided by the length factor (the spec reading), else as written.
   const lengthFactor = computeNormalizeFactor(modelScale, primaryScale);
@@ -62,9 +69,13 @@ export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit, m
     const keeps = (scale: number | undefined) => viewerAxisScales({ ...conversion, scale }, targetCRS?.mapUnitScale, primaryScale)
       .every((value, axis) => Math.abs(value - alone[axis]) <= 1e-9 * Math.max(1, Math.abs(alone[axis])));
     const divided = (conversion.scale ?? 1) / lengthFactor;
-    if (keeps(divided) || !keeps(conversion.scale)) records.set(conversion.id, { kind: 'operation', scale: divided });
+    if (keeps(divided)) records.set(conversion.id, { kind: 'operation', scale: divided });
+    else if (!keeps(conversion.scale)) {
+      records.set(conversion.id, { kind: 'operation', scale: divided });
+      unkept.push(conversion.id);
+    }
   }
-  return { records, metre };
+  return { records, metre, unkept };
 }
 
 /**

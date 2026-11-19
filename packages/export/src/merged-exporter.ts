@@ -30,7 +30,7 @@ import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.j
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
-import { appendMetreUnit, hasCoordinateOperation, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan, type MetreUnit } from './merged-georef-normalize.js';
+import { appendMetreUnit, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan, type MetreUnit } from './merged-georef-normalize.js';
 import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
@@ -512,7 +512,7 @@ export class MergedExporter {
 
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
-      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
+      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
@@ -658,7 +658,7 @@ export class MergedExporter {
 
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
-      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
+      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
@@ -806,7 +806,7 @@ export class MergedExporter {
    * length attributes introduced by newer schemas (IFC4X3 alignment / linear
    * referencing), and it keeps georeferencing offsets in the CRS unit (#10886).
    */
-  private collectNormalizeCaveats(model: MergeModelInput, warnings: Set<string>): void {
+  private collectNormalizeCaveats(model: MergeModelInput, warnings: Set<string>, georef: GeorefNormalizePlan | undefined): void {
     const schema = (model.dataStore.schemaVersion ?? '').toUpperCase(), label = mergeWarningLabel(model, this.models);
     if (NORMALIZE_UNCOVERED_SCHEMAS.has(schema)) {
       warnings.add(
@@ -815,13 +815,8 @@ export class MergedExporter {
         `lengths and radii) may not have been rescaled. Verify infrastructure geometry.`,
       );
     }
-    if (hasCoordinateOperation(model.dataStore)) {
-      warnings.add(
-        `Model "${label}" carries georeferencing, whose offsets normalize leaves in the CRS unit ` +
-        `(a CRS without one is written in metres). If the model was georeferenced in its own unit, ` +
-        `review the merged coordinate operation.`,
-      );
-    }
+    const georefCaveat = georefNormalizeCaveat(label, model.dataStore, georef);
+    if (georefCaveat) warnings.add(georefCaveat);
   }
 
   /**

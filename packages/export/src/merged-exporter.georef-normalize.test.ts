@@ -22,11 +22,15 @@ const { getEffectiveAxisScales } = await import(/* @vite-ignore */ new URL(VIEWE
 };
 
 type Unit = 'm' | 'mm' | 'ft';
-interface Spec { unit: Unit; mapUnit: Unit | '$'; easting: number; scale?: string; schema?: 'IFC4' | 'IFC4X3'; operation?: string }
+interface Spec {
+  unit: Unit; mapUnit: Unit | '$'; easting: number; scale?: string; schema?: 'IFC4' | 'IFC4X3'; operation?: string;
+  /** Write the unset map unit with a STEP comment after it. */
+  mapUnitComment?: boolean;
+}
 
 const UNIT_REF: Record<Unit, string> = { m: '#2', mm: '#3', ft: '#4' };
 
-const model = (name: string, { unit, mapUnit, easting, scale = '1.', schema = 'IFC4', operation }: Spec) => `ISO-10303-21;
+const model = (name: string, { unit, mapUnit, easting, scale = '1.', schema = 'IFC4', operation, mapUnitComment }: Spec) => `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
 FILE_NAME('${name}.ifc','',(''),(''),'','','');
@@ -45,7 +49,7 @@ DATA;
 #12=IFCDIRECTION((1.,0.,0.));
 #13=IFCAXIS2PLACEMENT3D(#10,#11,#12);
 #14=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#13,$);
-#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,${mapUnit === '$' ? '$' : UNIT_REF[mapUnit]});
+#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,${mapUnit === '$' ? `$${mapUnitComment ? ' /* unspecified */' : ''}` : UNIT_REF[mapUnit]});
 ${operation ?? `#21=IFCMAPCONVERSION(#14,#20,${easting}.,1200000.,500.,1.,0.,${scale});`}
 ENDSEC;
 END-ISO-10303-21;
@@ -54,12 +58,16 @@ END-ISO-10303-21;
 const parse = async (text: string) => new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer);
 
 async function merge(specs: Spec[]) {
+  return new TextDecoder().decode((await mergeResult(specs)).content);
+}
+
+async function mergeResult(specs: Spec[]) {
   const inputs: MergeModelInput[] = await Promise.all(specs.map(async (spec, index) => {
     const id = String.fromCharCode(97 + index);
     return { id, name: id, dataStore: await parse(model(id, spec)) };
   }));
   const schema = specs[0].schema ?? 'IFC4';
-  return new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation: 'normalize' })).content);
+  return new MergedExporter(inputs).exportAsync({ schema, unitReconciliation: 'normalize' });
 }
 
 /**
@@ -131,6 +139,16 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
     expect(viewerScales(await parse(await merge([primary, later])))).toEqual(alone);
   });
 
+  it.each([
+    ['a mm model with a mm map unit and Scale 0.001', { unit: 'mm', mapUnit: 'mm', scale: '0.001' }, 'm'],
+    ['an m model with an m map unit and Scale 1000', { unit: 'm', mapUnit: 'm', scale: '1000.' }, 'mm'],
+  ] as const)('names a map conversion whose viewer scale no Scale keeps: %s', async (_, later, primaryUnit) => {
+    const { stats } = await mergeResult([{ unit: primaryUnit, mapUnit: primaryUnit, easting: 2600000 }, { ...later, easting: 2600100 }]);
+    expect(stats.warnings.some(warning => /cannot show map conversion #\d+ at its own scale/.test(warning))).toBe(true);
+    const fine = await mergeResult([{ unit: 'm', mapUnit: 'm', easting: 2600000 }, { unit: 'mm', mapUnit: 'm', easting: 2600100, scale: '0.001' }]);
+    expect(fine.stats.warnings.some(warning => warning.includes('cannot show'))).toBe(false);
+  });
+
   it('copies the viewer\'s scale rule exactly', () => {
     for (const scale of [undefined, 1, 0.001, 0.9996, 1000]) {
       for (const factor of [undefined, 1, 0.3048, 0.9996]) {
@@ -174,11 +192,8 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
   });
 
   it('reads a commented `$` as a missing map unit', async () => {
-    const inputs: MergeModelInput[] = await Promise.all([
-      model('a', { unit: 'm', mapUnit: 'm', easting: 2600000 }),
-      model('b', { unit: 'mm', mapUnit: '$', easting: 2600100 }).replace(',$,$,$,$,$,$);', ',$,$,$,$,$,$ /* unspecified */);'),
-    ].map(async (text, index) => ({ id: 'ab'[index], name: 'ab'[index], dataStore: await parse(text) })));
-    const merged = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema: 'IFC4', unitReconciliation: 'normalize' })).content);
+    const merged = await merge([{ unit: 'm', mapUnit: 'm', easting: 2600000 },
+      { unit: 'mm', mapUnit: '$', easting: 2600100, mapUnitComment: true }]);
     const metre = [...merged.matchAll(METRE_UNIT)].at(-1)![1];
     expect(crsUnits(merged)).toEqual(['#2', `#${metre}`]);
   });

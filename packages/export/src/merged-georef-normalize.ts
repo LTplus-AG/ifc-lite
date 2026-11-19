@@ -49,12 +49,20 @@ export class MintedRecords {
 
 /**
  * How normalize writes one georeference record: as written (no rescale); with argument `attr` set to `value`, which
- * may name the {@link MintedRecords} record `mint`; or with the list at `attr` given a reference to `mint`, in place
- * of its entry `at` or appended.
+ * may name the {@link MintedRecords} record `mint`; or with the list at `attr` given a reference to each entry's
+ * `mint`, in place of its entry `at` or appended.
  */
 type GeorefRecord = { kind: 'keep' }
   | { kind: 'edit'; attr: number; value: string; mint?: string }
-  | { kind: 'list'; attr: number; mint: string; at?: number };
+  | { kind: 'list'; attr: number; entries: Array<{ at?: number; mint: string }> };
+
+/** Gives the set `setId`'s property list a reference to `mint`, in place of its entry `at` or appended. */
+function listEntry(records: Map<number, GeorefRecord>, minted: MintedRecords, setId: number, mint: string, at?: number): void {
+  minted.refOf(mint);
+  const record = records.get(setId);
+  const entries = record?.kind === 'list' ? record.entries.filter(entry => at === undefined || entry.at !== at) : [];
+  records.set(setId, { kind: 'list', attr: PSET_PROPERTIES_ATTR, entries: [...entries, { at, mint }] });
+}
 
 /** How normalize treats one model's georeference records, by source id. */
 export interface GeorefNormalizePlan {
@@ -141,11 +149,16 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
     if (choice.unkept) unkept.push(conversion.id);
   }
   // An ePSet_MapConversion's placement properties are left as written: its offsets are in the map unit, and its axis
-  // and Scale are ratios. So is a property it cannot read. Any other property of the set is rescaled like any other.
-  for (const ids of psets) {
-    for (const id of ids) {
+  // and Scale are ratios. The set gets an as-written copy of each, and the original is rescaled like any other length
+  // for any other set that lists it too. A property that cannot be read, or that names another record (which a copy
+  // past every model's ids could not), is kept itself. Any other property of the set is rescaled like any other.
+  for (const { setId, ids } of psets) {
+    for (const [at, id] of ids.entries()) {
       const name = getStepAttr(dataStore, id, PROPERTY_NAME_ATTR);
-      if (name === null || EPSET_PLACEMENT.has(label(name))) records.set(id, { kind: 'keep' });
+      if (name !== null && !EPSET_PLACEMENT.has(label(name))) continue;
+      const copy = decodeEntity(dataStore, id)?.match(/^\s*#\d+\s*=\s*([^#]*?)\s*;?\s*$/)?.[1];
+      if (name === null || copy === undefined) records.set(id, { kind: 'keep' });
+      else listEntry(records, minted, setId, copy, at);
     }
   }
   // The ePSet the viewer reads (when no IFC4 entity places the model) is planned from the parser's reading of it. A
@@ -156,14 +169,14 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
   return plan;
 }
 
-/** The property ids of each of a model's `ePSet_MapConversion` sets (any casing, as the parser finds them). */
-function planEPSets(dataStore: IfcDataStore): number[][] {
+/** Each of a model's `ePSet_MapConversion` sets (any casing, as the parser finds them) with its property ids. */
+function planEPSets(dataStore: IfcDataStore): Array<{ setId: number; ids: number[] }> {
   // As in the parser's prefilter, a set whose record has neither `epset_` nor a backslash (which may escape part of
   // the name) is passed over before any attribute is parsed.
   return idsOf(dataStore, ['IFCPROPERTYSET']).flatMap(id => {
     if (!/epset_|\\/i.test(decodeEntity(dataStore, id) ?? '')) return [];
     if (label(getStepAttr(dataStore, id, PSET_NAME_ATTR)).toLowerCase() !== 'epset_mapconversion') return [];
-    return [refsIn(getStepAttr(dataStore, id, PSET_PROPERTIES_ATTR) ?? '').map(ref => Number(ref.slice(1)))];
+    return [{ setId: id, ids: refsIn(getStepAttr(dataStore, id, PSET_PROPERTIES_ATTR) ?? '').map(ref => Number(ref.slice(1))) }];
   });
 }
 
@@ -191,15 +204,14 @@ function planViewerEPSet(dataStore: IfcDataStore, conversion: MapConversion, crs
   modelScale: number, primaryScale: number): void {
   const { records, minted, unkept, implicitUnit, scaleLeft } = plan;
   // Gives the set a new `name` property of `value` (with the replaced one's Description) in place of the last one so
-  // named (the one the parser reads), or appended when it has none. The old record is left as it is, for any other set that lists it too. False when the
-  // property is no editable single value, or the set cannot be read, and the set is left as it is.
+  // named (the one the parser reads), or appended when it has none. The old record is left as it is, for any other
+  // set that lists it too. False when the property is no editable single value, or the set cannot be read, and the set
+  // is left as it is.
   const write = (setId: number, name: string, value: string): boolean => {
     const of = propertiesOf(dataStore, setId);
     const last = of?.filter(property => property.name === name).at(-1);
     if (!of || (last !== undefined && !last.editable)) return false;
-    const text = `IFCPROPERTYSINGLEVALUE('${name}',${last?.description ?? '$'},${value},$)`;
-    minted.refOf(text);
-    records.set(setId, { kind: 'list', attr: PSET_PROPERTIES_ATTR, mint: text, at: last?.at });
+    listEntry(records, minted, setId, `IFCPROPERTYSINGLEVALUE('${name}',${last?.description ?? '$'},${value},$)`, last?.at);
     return true;
   };
   const hasCrsSet = crs !== undefined && crs.id !== conversion.id;
@@ -220,16 +232,20 @@ export function normalizeGeorefRecord(text: string, sourceId: number, plan: Geor
   const record = plan?.records.get(sourceId);
   if (!plan || record === undefined) return undefined;
   if (record.kind === 'keep') return text;
-  const { attr, mint } = record;
+  const { attr } = record;
   return withArgs(text, attr, args => {
-    if (record.kind === 'edit') args[attr] = record.value;
-    else {
-      const refs = refsIn(args[attr]), ref = plan.minted.refOf(record.mint);
-      if (record.at === undefined) refs.push(ref);
-      else refs[record.at] = ref;
-      args[attr] = `(${refs.join(',')})`;
+    if (record.kind === 'edit') {
+      args[attr] = record.value;
+      if (record.mint !== undefined) plan.minted.use(record.mint);
+      return;
     }
-    if (mint !== undefined) plan.minted.use(mint);
+    const refs = refsIn(args[attr]);
+    for (const { at, mint } of record.entries) {
+      if (at === undefined) refs.push(plan.minted.refOf(mint));
+      else refs[at] = plan.minted.refOf(mint);
+      plan.minted.use(mint);
+    }
+    args[attr] = `(${refs.join(',')})`;
   });
 }
 

@@ -273,9 +273,11 @@ interface EPSetSpec {
   extraLength?: true;
   /** List the Scale property in a second property set, `Pset_Shared`, too. */
   sharedScale?: true;
+  /** List the Eastings property in a second property set, `Pset_Shared`, too. */
+  sharedEastings?: true;
 }
 
-const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord, mapUnitRecord = 'IFCPROPERTYSINGLEVALUE', danglingProperty, extraLength, sharedScale }: EPSetSpec) => {
+const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord, mapUnitRecord = 'IFCPROPERTYSINGLEVALUE', danglingProperty, extraLength, sharedScale, sharedEastings }: EPSetSpec) => {
   const guid = (n: number) => `'0${name.toUpperCase()}EPSet${String(n).padStart(15, '0')}'`;
   // `\X\65` is `e`, `\X\45` is `E`, `\X\4E` is `N`, `\X\4F` is `O`.
   const [eps, east, north, height] = escapedNames ? ['\\X\\65PSet', '\\X\\45astings', '\\X\\4Eorthings', '\\X\\4FrthogonalHeight']
@@ -287,7 +289,7 @@ ${scaleRecord !== undefined ? `#33=${scaleRecord};`
     : scale === undefined ? '' : `#33=IFCPROPERTYSINGLEVALUE('Scale',$,${scale.startsWith('IFC') ? scale : `IFCREAL(${scale})`},$);`}
 #34=IFCPROPERTYSET(${guid(2)},#8,'${eps}_MapConversion',$,(#30,#31,#32${scale === undefined && scaleRecord === undefined ? '' : ',#33'}${danglingProperty ? ',#99' : ''}${extraLength ? ',#40' : ''}));
 ${extraLength ? "#40=IFCPROPERTYSINGLEVALUE('SourceLength',$,IFCLENGTHMEASURE(1000.),$);" : ''}
-${sharedScale ? `#41=IFCPROPERTYSET(${guid(6)},#8,'Pset_Shared',$,(#33));\n#42=IFCRELDEFINESBYPROPERTIES(${guid(7)},#8,$,$,(#1),#41);` : ''}
+${sharedScale || sharedEastings ? `#41=IFCPROPERTYSET(${guid(6)},#8,'Pset_Shared',$,(${sharedScale ? '#33' : '#30'}));\n#42=IFCRELDEFINESBYPROPERTIES(${guid(7)},#8,$,$,(#1),#41);` : ''}
 #35=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);
 ${mapUnitSlots !== undefined ? `#36=${mapUnitRecord}('MapUnit',$,${mapUnitSlots});`
     : mapUnit === undefined ? '' : `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnit === '$' ? '$' : `IFCLABEL('${mapUnit}')`},$);`}
@@ -429,6 +431,16 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     expect(viewerEPSet(await parse(merged))).toEqual(alone);
     const shared = merged.match(/^#\d+=IFCPROPERTYSET\([^;]*'Pset_Shared',\$,\((#\d+)\)\);$/m)?.[1];
     expect(merged).toMatch(new RegExp(`^${shared}=IFCPROPERTYSINGLEVALUE\\('Scale',\\$,IFCREAL\\(0\\.5\\),\\$\\);$`, 'm'));
+  });
+
+  it('keeps the ePSet offsets as written and rescales an offset another set shares for that set', async () => {
+    const later: EPSetSpec = { unit: 'mm', easting: 2600100, mapUnit: 'METRE', sharedEastings: true };
+    const alone = viewerEPSet(await parse(epsetModel('b', later)));
+    const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, later]);
+    expect(viewerEPSet(await parse(merged))).toEqual(alone);
+    const shared = merged.match(/^#\d+=IFCPROPERTYSET\([^;]*'Pset_Shared',\$,\((#\d+)\)\);$/m)?.[1];
+    // 2600100 mm in Pset_Shared is 2600.1 m once normalized into metres.
+    expect(merged).toMatch(new RegExp(`^${shared}=IFCPROPERTYSINGLEVALUE\\('Eastings',\\$,IFCLENGTHMEASURE\\(2600\\.1\\),\\$\\);$`, 'm'));
   });
 
   it('keeps the Description of the Scale property it replaces', async () => {

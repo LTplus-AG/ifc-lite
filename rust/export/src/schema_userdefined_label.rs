@@ -42,7 +42,9 @@ pub(crate) fn carry(source: &str, converted: String, cfrom: &str, cto: &str, dro
     let index = |schema: &str, ty: &str, name: &str| schema_attribute_names(schema, ty)?.iter().position(|n| *n == name);
     if up {
         let (Some(ot), Some(e), Some(l)) = (index(cto, ifc4, "ObjectType"), index(cfrom, ifc2x3, enum_2x3), index(cfrom, ifc2x3, label_2x3)) else { return converted };
-        let Some(src) = crate::step_record_frame::record_frame(source).and_then(|f| split_top_level_args(f.args(source))) else { return converted };
+        // `convert_record` accepts a record without its ';'.
+        let source: std::borrow::Cow<'_, str> = if source.trim_end().ends_with(';') { source.into() } else { format!("{source};").into() };
+        let Some(src) = crate::step_record_frame::record_frame(&source).and_then(|f| split_top_level_args(f.args(&source))) else { return converted };
         let (Some(kind), Some(label)) = (src.get(e), src.get(l)) else { return converted };
         if !is_userdefined(kind) || !holds_value(label) || out.get(ot).is_none_or(|v| holds_value(v)) { return converted; }
         out[ot] = label.clone();

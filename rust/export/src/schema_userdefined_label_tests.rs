@@ -81,3 +81,20 @@ fn is_userdefined_reads_past_comments_10824() {
     assert!(!is_userdefined(".USERDEFINED.X"));
     assert!(!is_userdefined("$"));
 }
+
+/// `carry` takes a carried label off `attribute_values_dropped` because the
+/// plan before it always drops and counts that label: each listed type is
+/// trimmed or mapped on an upgrade, and the IFC4 type has no such attribute.
+#[test]
+fn the_plan_before_the_carry_drops_and_counts_the_label_10824() {
+    use crate::schema_plan::{plan_for, Adjust, Plan};
+    for (ifc2x3, ifc4, _, label) in LABEL_CARRIES {
+        for to in ["IFC4", "IFC4X3"] {
+            let Plan::Write { adjust, .. } = plan_for(ifc2x3, "IFC2X3", to) else { panic!("{ifc2x3} {to}: not written") };
+            assert!(matches!(adjust, Adjust::Trim(_) | Adjust::Mapped(..)), "{ifc2x3} {to}: {adjust:?}");
+            assert!(!ifc_lite_core::attribute_names_for_schema(to, ifc4).unwrap().contains(label), "{ifc4}");
+        }
+    }
+    let unterminated = "#7=IFCPROCEDURE('g',#2,'P',$,$,'P-1',.USERDEFINED.,'Flush')";
+    assert_eq!(convert(unterminated, "IFC2X3", "IFC4").0, "#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.USERDEFINED.);", "no ';'");
+}

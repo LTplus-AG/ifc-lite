@@ -51,9 +51,10 @@ export function carryUserDefinedLabel(source: string, converted: string | null, 
   const out = [...record.slots];
   if (up) {
     const ot = at(toSchema, ifc4, 'ObjectType');
-    const src = readStepSlots(source)?.slots;
+    // `convertRecord` accepts a record without its ';'.
+    const src = readStepSlots(source.trimEnd().endsWith(';') ? source : `${source};`)?.slots;
     const value = src?.[at(fromSchema, ifc2x3, label)];
-    if (!src || ot < 0 || !isUserDefined(src[at(fromSchema, ifc2x3, kind)]) || !holdsValue(value) || holdsValue(out[ot])) return converted;
+    if (!src || ot < 0 || ot >= out.length || !isUserDefined(src[at(fromSchema, ifc2x3, kind)]) || !holdsValue(value) || holdsValue(out[ot])) return converted;
     out[ot] = value!;
   } else {
     const ot = at(toSchema, ifc2x3, 'ObjectType');

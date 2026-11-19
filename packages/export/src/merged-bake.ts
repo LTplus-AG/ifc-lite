@@ -32,11 +32,13 @@ function viewHasMutations(view: MutablePropertyView | undefined): boolean {
 const GEOREF_NOT_WRITTEN = 'Georeferencing edits were not written.';
 
 /**
- * The name a merge warning gives `model`, unique among `models` since the warnings reach a de-duplicated list: its
- * name, or `name (id)` when another model has that name or that name is another model's `name (id)` ("Same (a)").
+ * The name a merge warning gives `model`, unique among `models` (ids unique) since the warnings reach a
+ * de-duplicated list: its name, or `name (id)` when another model has that name or that name is another model's
+ * `name (id)` ("Same (a)"). An id holding `(`, `)` or `"` is written as a JSON string, so `name (id)` always
+ * reads back to one id and two qualified labels never agree.
  */
 export function mergeWarningLabel(model: Pick<MergeModelInput, 'id' | 'name'>, models: readonly Pick<MergeModelInput, 'id' | 'name'>[]): string {
-  const qualified = (entry: Pick<MergeModelInput, 'id' | 'name'>) => `${entry.name} (${entry.id})`;
+  const qualified = (entry: Pick<MergeModelInput, 'id' | 'name'>) => `${entry.name} (${/[()"]/.test(entry.id) ? JSON.stringify(entry.id) : entry.id})`;
   return models.some(other => other.id !== model.id && (other.name === model.name || qualified(other) === model.name))
     ? qualified(model) : model.name;
 }

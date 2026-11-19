@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
+import { mergeWarningLabel } from './merged-bake.js';
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
@@ -134,5 +135,19 @@ describe('MergedExporter normalize warnings for models with one name (#10669)', 
     const result = await new MergedExporter(inputs).exportAsync({ schema: 'IFC4', unitReconciliation: 'normalize' });
     const caveats = result.stats.warnings.filter(warning => /carries georeferencing/.test(warning));
     expect(caveats.map(warning => warning.split('"')[1])).toEqual(['Same (a)', 'Same (b)']);
+  });
+});
+
+describe('mergeWarningLabel (#10669)', () => {
+  const labels = (models: { id: string; name: string }[]) => models.map(entry => mergeWarningLabel(entry, models));
+  it('gives every model a distinct label, whatever the names and ids', () => {
+    const sets = [
+      [{ id: 'a', name: 'Same' }, { id: 'b', name: 'Same' }, { id: 'c', name: 'Same (a)' }, { id: 'd', name: 'Same (a) (c)' }],
+      [{ id: 'b (c)', name: 'A' }, { id: 'z', name: 'A' }, { id: 'c)', name: 'A (b' }, { id: 'w', name: 'A (b' }],
+      [{ id: 'x', name: 'A (b)' }, { id: 'y', name: 'A (b)' }, { id: 'b) (x', name: 'A' }, { id: 'v', name: 'A' }],
+      [{ id: 'q"', name: 'A' }, { id: 'r', name: 'A' }, { id: 's', name: 'A ("q\\"")' }],
+    ];
+    for (const models of sets) expect(new Set(labels(models)).size, JSON.stringify(labels(models))).toBe(models.length);
+    expect(labels([{ id: 'a', name: 'House' }, { id: 'b', name: 'Terrain' }])).toEqual(['House', 'Terrain']);
   });
 });

@@ -12,7 +12,7 @@ interface ImportMetaEnv {
    * refuses to start without it.
    */
   readonly VITE_VIEWER_CONFIG_URL?: string;
-  /** Local OCI registry demo, using the development server's same-origin proxy. */
+  /** Enable OCI file stores and the local registry demo's development proxy. */
   readonly VITE_REGISTRY_ENABLED?: string;
   readonly VITE_REGISTRY_ADDRESS?: string;
   /** Enable reviewed model reports only after the report service is deployed and qualified. */

@@ -271,3 +271,51 @@ download API; publishing is a registry-specific action within Cloud Sources.
 The [recorded browser walkthrough](https://github.com/zahmadsaleem/ifc-lite/blob/897e9c9f730849aa090a2117ce03423bde09ddfc/docs/architecture/evidence/registry-pkce-login/README.md)
 shows the password-free viewer, successful registry login, publication and reopen,
 with independent ORAS integrity verification.
+
+## Open and save a version from a file store
+
+### Subsoil setup
+
+1. Sign in to [Subsoil](https://cde.subsoil.dev/) and open **My workspace → Workspace apps**. Register IFC Lite with the launch URL `http://localhost:5173/open-artifact` and these callback URLs.
+
+   ```text
+   http://localhost:5173/open-artifact/callback
+   http://localhost:5173/oauth/registry/callback
+   ```
+
+   Add `application/vnd.ifc-lite.ifc.v1` to both **View package types** and **Edit package types**. Copy the client ID and repository from the app configuration.
+
+2. Open a viewer built with `VITE_REGISTRY_ENABLED=true` at the origin you registered. For the local example, start the viewer from a checkout with dependencies and workspace packages built.
+
+   ```sh
+   VITE_REGISTRY_ENABLED=true pnpm --filter @ifc-lite/viewer dev --host localhost --port 5173 --strictPort
+   ```
+
+3. In IFC Lite, open **File → Cloud Sources → Add file store**. Enter the registry address `https://registry.subsoil.dev`, authorization issuer `https://auth.subsoil.dev/realms/subsoil`, and client ID from Subsoil. Choose **Save file store**. You can add and edit connections in this browser at runtime.
+4. Load an IFC, enter the repository from Subsoil in **Folder**, and **Push to…** a new tag such as `model-v1`. Sign in when prompted.
+5. In Subsoil, open that version with **Open with… → Edit with IFC Lite**. Edit the model, then **Push to…** the same repository with a fresh tag such as `model-v2`.
+6. **Open saved version** reopens the exact published digest. In the same folder, **Browse versions** lists tagged IFC packages so you can open either version. Subsoil also lists both versions in **My workspace**.
+
+### OCI connections
+
+Start with a repository from the handoff, workspace configuration, or **Folder**. **Browse versions** uses `@ifc-lite/oci` to follow tag pages and check manifest digests. It shows tags with supported IFC packages. Untagged manifests can still be opened when you have their digest. The existing registry browser can discover repository names on servers that expose the optional Distribution catalog and grant you access. [OCI tag listing](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags) · [Distribution catalog](https://distribution.github.io/distribution/spec/api/#listing-repositories)
+
+Publishing uploads the IFC and puts its OCI manifest under the tag you choose. Use a fresh tag per version and configure server-side tag immutability if the repository requires it. The saved locator uses the manifest digest. [OCI manifest push](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pushing-manifests)
+
+A handoff is an unpadded base64url encoding of UTF-8 JSON in `/open-artifact#handoff=<encoded>`.
+
+```json
+{
+  "protocol": "oci-handoff/1",
+  "source": {
+    "registry": "https://registry.example.org",
+    "repository": "project/model",
+    "digest": "sha256:32982f1d25a7c6d12f627c1fbc5d3d09df56514c3a24de7647bcc6808d6be214"
+  },
+  "intent": "edit"
+}
+```
+
+Save the source registry in **Cloud Sources** before opening a handoff. The optional `destination` can suggest a saved `registry` and `repository` for publishing. The viewer verifies the manifest and its single `application/x-step` layer. It signs in with Authorization Code and PKCE S256, using repository pull access to open or browse and a separate pull and push grant to publish. For providers using RFC 8693, enter the endpoint, authorization resource, and scopes under **Token exchange (optional)**. [OAuth token exchange](https://www.rfc-editor.org/rfc/rfc8693.html)
+
+For a custom hosted setup, register both callback paths at the viewer's exact origin and allow that origin at the issuer and registry endpoints. Expose `Link` for tag pagination and `Location` and `Docker-Content-Digest` for OCI transfers. The callback requires a matching `iss` when the provider advertises RFC 9207 support or the browser has saved file stores from multiple issuers.

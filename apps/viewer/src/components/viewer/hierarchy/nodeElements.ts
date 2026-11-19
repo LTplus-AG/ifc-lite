@@ -88,19 +88,28 @@ function resolveNodeElements(node: TreeNode, inputs: NodeElementsInputs): number
   return [];
 }
 
+/** The rows' views' mutation revisions: remote and skip-history writes advance them without a viewer mutationVersion. */
+function revisionOf(node: TreeNode, views: ReadonlyMap<string, MutablePropertyView>): string {
+  return node.modelIds.map((modelId) => views.get(modelId)?.getMutationRevision() ?? -1).join(',');
+}
+
 /**
  * The elements of a row, resolved once per row for one input generation
  * (#10535). The panel asks for every visible row on each render, up to three
  * times per row, and a storey's membership reads the session's relationship
  * overlay; a placement edit and its mesh swap render the panel several times
- * with the same inputs. Callers must not mutate the returned array.
+ * with the same inputs. An entry is reused only while its models' views are
+ * at the revision it was resolved at. Callers must not mutate the returned array.
  */
 export function createNodeElementsResolver(inputs: NodeElementsInputs): (node: TreeNode) => number[] {
-  const resolved = new Map<string, number[]>();
+  const resolved = new Map<string, { revision: string; elements: number[] }>();
   return (node) => {
     if (!resolvesMembership(node)) return resolveNodeElements(node, inputs);
-    let elements = resolved.get(node.id);
-    if (!elements) resolved.set(node.id, elements = resolveNodeElements(node, inputs));
+    const revision = revisionOf(node, inputs.mutationViews);
+    const cached = resolved.get(node.id);
+    if (cached?.revision === revision) return cached.elements;
+    const elements = resolveNodeElements(node, inputs);
+    resolved.set(node.id, { revision, elements });
     return elements;
   };
 }

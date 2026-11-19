@@ -9,11 +9,11 @@
  * resolved once per input generation.
  */
 
-import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { shareUnchangedNodes } from './sharedTreeNodes';
 import { createNodeElementsResolver, type NodeElementsInputs } from './nodeElements';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { TreeNode, UnifiedStorey } from './types';
 
 function row(id: string, extra: Partial<TreeNode> = {}): TreeNode {
@@ -90,6 +90,19 @@ describe('createNodeElementsResolver (#10535)', () => {
     assert.deepEqual(createNodeElementsResolver(inputs(resolveStorey))(unifiedRow), [10]);
     members = [10, 12];
     assert.deepEqual(createNodeElementsResolver(inputs(resolveStorey))(unifiedRow), [10, 12]);
+  });
+
+  it('a write that advances the view revision without a new generation resolves again', () => {
+    // Skip-history and remote writes advance the view revision but no viewer mutationVersion.
+    const view = new MutablePropertyView(null, 'm');
+    let members = [10];
+    const resolve = createNodeElementsResolver({ ...inputs(() => members), mutationViews: new Map([['m', view]]) });
+    const storeyRow = row('unified-k', { type: 'unified-storey', globalIds: [], modelIds: ['m'] });
+    assert.deepEqual(resolve(storeyRow), [10]);
+    members = [10, 12];
+    assert.deepEqual(resolve(storeyRow), [10], 'same revision: reused');
+    view.setProperty(7, 'Pset_Test', 'Note', 'x', undefined, undefined, true);
+    assert.deepEqual(resolve(storeyRow), [10, 12]);
   });
 
   it('rows that carry their elements read them from the node, uncached', () => {

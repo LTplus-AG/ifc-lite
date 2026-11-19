@@ -126,4 +126,14 @@ fn a_point_or_board_member_the_target_lacks_is_reconciled_10856() {
         convert("#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,$);", "IFC4", "IFC2X3").0,
         "#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'SOUNDPOWERLEVELUNIT');"
     );
+    let warnings = |line: &str, from: &str| {
+        let mut checks = ConversionChecks::default();
+        let out = convert_step_line(line, from, "IFC2X3", 7, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        (out, checks.enums.warnings())
+    };
+    assert_eq!(warnings("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", "IFC4X3").1, Vec::<String>::new());
+    // A label already set keeps its value; the member name is reported lost.
+    let (out, w) = warnings("#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,'dB');", "IFC4");
+    assert_eq!(out, "#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'dB');");
+    assert!(w.iter().any(|w| w.contains("label slot already held a value") && w.contains("IFCDERIVEDUNIT.UnitType .SOUNDPOWERLEVELUNIT.")), "{w:?}");
 }

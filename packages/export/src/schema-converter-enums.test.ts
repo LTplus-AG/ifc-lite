@@ -75,5 +75,7 @@ describe('schema conversion reconciles enum members the target lacks (#5365)', (
     expect(label('PointFunction', 'UserDefinedFunction', 'UserDefinedPointFunction')).toEqual({ kind: 'userdefined', labelIndex: 2 });
     expect(label('DistributionPointFunction', 'UserDefinedFunction', 'UserDefinedPointFunction')).toEqual({ kind: 'notdefined' });
     expect(label('DistributionPointFunction', 'UserDefinedType')).toEqual({ kind: 'notdefined' });
+    // `Function` owns `UserDefinedFunction` by its full name.
+    expect(label('PointFunction', 'Function', 'UserDefinedFunction')).toEqual({ kind: 'notdefined' });
   });
 });

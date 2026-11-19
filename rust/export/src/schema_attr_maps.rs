@@ -173,9 +173,11 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
 }
 
 /// The first member of a STEP list `value`, and how many more members hold a
-/// value. A value that is not a list is its own first member.
+/// value. Comments before the list are skipped. A value that is not a list is
+/// its own first member.
 fn first_member(value: &str) -> (String, usize) {
-    let Some(members) = crate::schema_ifc2x3_records::list(Some(value)) else { return (value.to_owned(), 0) };
+    let start = ifc_lite_core::parser::skip_step_trivia(value.as_bytes(), 0).unwrap_or(0);
+    let Some(members) = crate::schema_ifc2x3_records::list(Some(&value[start..])) else { return (value.to_owned(), 0) };
     let mut held = members.into_iter().filter(|m| holds_value(m));
     match held.next() {
         Some(first) => (first.trim().to_owned(), held.count()),

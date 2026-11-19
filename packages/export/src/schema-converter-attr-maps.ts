@@ -20,6 +20,8 @@
 
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { list } from './schema-ifc2x3-records.js';
+import { skipStepTrivia } from './step-slot-grammar.js';
+import { stepRecordHead } from './step-record-frame.js';
 
 /** One reviewed IFC2X3 <-> IFC4 map. A same-named attribute in both lists is
  *  carried unless listed in `retyped` or, on a downgrade, `upOnly`. */
@@ -84,7 +86,8 @@ const BY_IFC4: ReadonlyMap<string, AttrMap> = new Map(ATTR_MAPS.map((m) => [m.if
 /** True when an IFC4 `line` has a type a map writes, which can leave a required
  *  slot with no source value, so an IFC2X3 upgrade counts its required slots. */
 export function isMappedIfc4Record(line: string): boolean {
-  return BY_IFC4.has(/=\s*([A-Z0-9_]+)/i.exec(line)?.[1].toUpperCase() ?? '');
+  const head = stepRecordHead(line);
+  return head !== null && BY_IFC4.has(line.slice(head.typeStart, head.typeEnd).toUpperCase());
 }
 
 /** The map for writing `entityType` as `newType`, and whether it runs upward. */
@@ -124,9 +127,10 @@ function holdsValue(slot: string): boolean {
   return v !== '' && v !== '$' && v !== '*';
 }
 
-/** The first member of a STEP list, or the value itself when it is not one. */
+/** The first member of a STEP list (comments before it skipped), or the value
+ *  itself when it is not one. */
 function firstMember(value: string): string {
-  const members = list(value);
+  const members = list(value.slice(Math.max(0, skipStepTrivia(value, 0))));
   if (members === null) return value;
   return members.find(holdsValue)?.trim() ?? '$';
 }

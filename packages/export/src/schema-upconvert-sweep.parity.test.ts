@@ -71,7 +71,7 @@ describe('convertStepLine matches the shared cross-language upconversion sweep',
       const type = readStepSlots(c.line)!.type;
       const info = classifyEntityTypeConversion(type, c.from, c.to);
       expect(info.droppedAttributes, `${c.from}->${c.to} [${c.why}]`).toEqual(c.lost);
-      const unlost = info.targetType === type.toUpperCase() ? 'identity' : 'renamed';
+      const unlost = readStepSlots(c.expect)!.type.toUpperCase() === type.toUpperCase() ? 'identity' : 'renamed';
       expect(info.kind, `${c.from}->${c.to} [${c.why}]`).toBe(c.lost!.length > 0 ? 'lossy' : unlost);
     }
   });

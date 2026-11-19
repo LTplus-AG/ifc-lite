@@ -248,7 +248,7 @@ pub fn convert_step_line(
         }
         converted = checks.enums.apply(converted, cto);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
-        let ty = converted.split_once('=').and_then(|(_, s)| s.split_once('(')).map_or("", |(t, _)| t.trim());
+        let ty = crate::step_record_frame::record_head(&converted).map_or("", |head| head.type_name(&converted));
         (cto == "IFC4" && (cfrom != "IFC2X3" || ty.starts_with("IFCSTRUCTURAL") || crate::schema_attr_maps::is_mapped_ifc4_type(ty))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })

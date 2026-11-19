@@ -13114,9 +13114,9 @@ export const operationContracts: readonly OperationContract[] = [
     "description": "Prepare the canonical room proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.",
     "needs": "model",
     "effects": [
-      "read"
+      "view"
     ],
-    "capability": "read",
+    "capability": "commands-and-edits",
     "inputSchema": {
       "type": "object",
       "properties": {

@@ -31,6 +31,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
+import { readStepSlots } from './step-argument-parser.js';
 
 interface SweepCase {
   why: string;
@@ -67,8 +68,7 @@ describe('convertStepLine matches the shared cross-language upconversion sweep',
     const rows = fixture.cases.filter((c) => c.lost !== undefined);
     expect(rows.length).toBeGreaterThanOrEqual(8);
     for (const c of rows) {
-      const type = /=([A-Z0-9]+)\(/.exec(c.line)![1];
-      const info = classifyEntityTypeConversion(type, c.from, c.to);
+      const info = classifyEntityTypeConversion(readStepSlots(c.line)!.type, c.from, c.to);
       expect(info.droppedAttributes, `${c.from}->${c.to} [${c.why}]`).toEqual(c.lost);
       expect(info.kind, `${c.from}->${c.to} [${c.why}]`).toBe(c.lost!.length > 0 ? 'lossy' : 'identity');
     }

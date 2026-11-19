@@ -60,11 +60,7 @@ fn convert_through_exporter(line: &str, from: &str, to: &str) -> String {
 
 /// The values a row's conversion drops, counted by the exporter (#10758).
 fn values_dropped(line: &str, from: &str, to: &str) -> usize {
-    let src = format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
-         FILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('{from}'));\nENDSEC;\n\
-         DATA;\n{line}\nENDSEC;\nEND-ISO-10303-21;\n"
-    );
+    let src = ifc_lite_testkit::step_file(from, &[line]);
     let options = ifc_lite_export::StepOptions { schema: Some(to.to_string()), ..Default::default() };
     ifc_lite_export::export_step_with_stats(src.as_bytes(), &options).expect("export_step_with_stats").1.attribute_values_dropped
 }

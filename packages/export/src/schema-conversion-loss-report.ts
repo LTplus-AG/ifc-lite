@@ -146,17 +146,14 @@ export function classifyEntityTypeConversion(
   // #10758: the converter writes `$` where a schema replaced an attribute in place.
   const replaced = replacedSlot(upper, srcAttrs, tgtAttrs);
   const replacedName = replaced === undefined ? [] : [srcAttrs[replaced]];
-  if (isStrictAttrPrefix(tgtAttrs, srcAttrs, upper)) {
+  // A pad drops nothing past the source's own length, so one branch serves both.
+  if (isStrictAttrPrefix(tgtAttrs, srcAttrs, upper) || isStrictAttrPrefix(srcAttrs, tgtAttrs, upper)) {
     const dropped = [...replacedName, ...srcAttrs.slice(tgtAttrs.length)];
     return {
       targetType: newType,
       kind: dropped.length > 0 ? 'lossy' : upper === newType ? 'identity' : 'renamed',
       droppedAttributes: dropped,
     };
-  }
-  if (isStrictAttrPrefix(srcAttrs, tgtAttrs, upper)) {
-    if (replacedName.length > 0) return { targetType: newType, kind: 'lossy', droppedAttributes: replacedName };
-    return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
   if (upper !== newType && BY_NAME_ATTR_REMAP_TYPES.has(upper)) {
     const dropped = srcAttrs.filter((name) => !tgtAttrs.includes(name));

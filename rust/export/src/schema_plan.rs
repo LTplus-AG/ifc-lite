@@ -74,10 +74,7 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
         (Some(src), Some(tgt)) if entity_type == crate::schema_grid_frames::GRID_PLACEMENT && src != tgt => Adjust::ByName(src, tgt),
         _ => Adjust::Keep,
     };
-    let replaced = match (adjust, src_names, tgt_names) {
-        (Adjust::Trim(_) | Adjust::Pad(_), Some(src), Some(tgt)) => replaced_slot(entity_type, src, tgt),
-        _ => None,
-    };
+    let replaced = src_names.zip(tgt_names).and_then(|(src, tgt)| replaced_slot(entity_type, src, tgt));
     Plan::Write { renamed, adjust, replaced }
 }
 

@@ -63,13 +63,12 @@ function newerName(entityType: string | undefined, name: string): string {
 
 /**
  * The index at which `src` and `tgt` hold the two sides of `entityType`'s
- * {@link POSITIONAL_REPLACEMENTS} pair, when the conversion trims or pads (one
- * list a strict prefix of the other). Twin of Rust `replaced_slot`, which the
- * plan asks only for a trim or pad.
+ * {@link POSITIONAL_REPLACEMENTS} pair, in either order. Twin of Rust
+ * `replaced_slot`.
  */
 export function replacedSlot(entityType: string, src: readonly string[], tgt: readonly string[]): number | undefined {
   const pair = POSITIONAL_REPLACEMENTS[entityType];
-  if (!pair || !(isStrictAttrPrefix(src, tgt, entityType) || isStrictAttrPrefix(tgt, src, entityType))) return undefined;
+  if (!pair) return undefined;
   const slot = src.findIndex((name, i) => (name === pair[0] && tgt[i] === pair[1]) || (name === pair[1] && tgt[i] === pair[0]));
   return slot < 0 ? undefined : slot;
 }

@@ -337,9 +337,9 @@ fn convert_record(
             let new_type = renamed.unwrap_or(&entity_type);
             // #10758: a slot a schema replaced in place keeps no value across.
             let rebuilt;
-            let attrs = match replaced.filter(|&i| i < args.len()) {
+            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| holds_value(v))) {
                 Some(i) => {
-                    lost += usize::from(holds_value(&args[i]));
+                    lost += 1;
                     args[i] = "$".to_owned();
                     rebuilt = args.join(",");
                     rebuilt.as_str()
@@ -361,7 +361,7 @@ fn convert_record(
                 // `GridFrames` already wrote this one in the target's layout.
                 Adjust::ByName(_, tgt) if &*entity_type == crate::schema_grid_frames::GRID_PLACEMENT && args.len() == tgt.len() => Cow::Borrowed(attrs),
                 Adjust::ByName(src, tgt) => {
-                    lost = values_without_a_name(&args, src, tgt, cause_carried);
+                    lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Keep => Cow::Borrowed(attrs),

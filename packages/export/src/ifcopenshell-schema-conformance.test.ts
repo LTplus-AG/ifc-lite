@@ -550,11 +550,8 @@ describe.skipIf(!ifcopenshellAvailable())('MEP downgrade schema oracle (#8019)',
 });
 
 /** #10758: a profile and a transport element whose attributes a schema renamed or replaced in place. */
-const PREAMBLE_10758 = [
-  "#1=IFCPERSON($,$,'author',$,$,$,$,$);", "#2=IFCORGANIZATION($,'author',$,$,$);",
-  '#3=IFCPERSONANDORGANIZATION(#1,#2,$);', "#4=IFCAPPLICATION(#2,'1','author','author');",
-  '#5=IFCOWNERHISTORY(#3,#4,$,.NOCHANGE.,$,$,$,0);', '#8=IFCCARTESIANPOINT((0.,0.));', '#9=IFCAXIS2PLACEMENT2D(#8,$);',
-];
+// Lines #1-#5 (owner history) are schema-neutral between IFC2X3 and IFC4.
+const PREAMBLE_10758 = [...IFC2X3_PREAMBLE('').slice(0, 5), '#8=IFCCARTESIANPOINT((0.,0.));', '#9=IFCAXIS2PLACEMENT2D(#8,$);'];
 const stepFile10758 = (schema: string, lines: string[]): string => [
   'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
   "FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'t','t','');", `FILE_SCHEMA(('${schema}'));`,

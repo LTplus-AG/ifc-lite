@@ -6066,6 +6066,7 @@
     "isExpressibleMapUnit: function",
     "isGeorefRefusal: function",
     "isParquet: function",
+    "mergeWarningLabel: function",
     "needsConversion: function",
     "parseGLB: function",
     "parseGLBToMeshData: function",

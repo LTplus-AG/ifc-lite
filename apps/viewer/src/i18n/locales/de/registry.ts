@@ -77,6 +77,7 @@ export const registryDe = {
   "registry.connections.writeScope": "Schreibberechtigung",
   "registry.connections.save": "Dateispeicher speichern",
   "registry.connections.cancel": "Abbrechen",
+  "registry.launch.disabled": "Der Registry-Zugriff ist in diesem Viewer deaktiviert. Fragen Sie den Registry-Eigentümer nach der richtigen Viewer-Adresse.",
   "registry.launch.viewer": "Zum Viewer",
   "registry.launch.loading": "Ausgewähltes Modell wird geöffnet …",
   "registry.launch.retry": "Erneut öffnen",

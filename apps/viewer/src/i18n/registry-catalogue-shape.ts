@@ -77,6 +77,7 @@ export const registryCatalogueShape = {
   "registry.connections.writeScope": [],
   "registry.connections.save": [],
   "registry.connections.cancel": [],
+  "registry.launch.disabled": [],
   "registry.launch.viewer": [],
   "registry.launch.loading": [],
   "registry.launch.retry": [],

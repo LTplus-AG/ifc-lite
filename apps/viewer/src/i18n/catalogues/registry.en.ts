@@ -75,6 +75,7 @@ export const registryEn = {
   'registry.connections.writeScope': 'Write scope',
   'registry.connections.save': 'Save file store',
   'registry.connections.cancel': 'Cancel',
+  'registry.launch.disabled': 'Registry access is not enabled in this viewer. Ask the registry owner for the correct viewer address.',
   'registry.launch.viewer': 'Go to viewer',
   'registry.launch.loading': 'Opening the selected model…',
   'registry.launch.retry': 'Try opening again',

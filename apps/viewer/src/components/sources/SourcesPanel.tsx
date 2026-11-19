@@ -322,8 +322,8 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
         />
 
         <ul className="space-y-2">
-          <RegistrySources catalogEnabled={registryEnabled} expanded={browsing === 'oci-registry'} navigationDisabled={downloading} onBusyChange={setRegistryBusy}
-            onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />
+          {registryEnabled && <RegistrySources expanded={browsing === 'oci-registry'} navigationDisabled={downloading} onBusyChange={setRegistryBusy}
+            onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />}
           {[...providers].sort((a, b) => Number(pins.ids.includes(b.manifest.name)) - Number(pins.ids.includes(a.manifest.name))).map((p) => (
             <SourceProviderRow
               key={p.manifest.name}

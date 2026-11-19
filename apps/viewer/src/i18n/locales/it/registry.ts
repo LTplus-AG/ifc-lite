@@ -77,6 +77,7 @@ export const registryIt = {
   "registry.connections.writeScope": "Ambito di scrittura",
   "registry.connections.save": "Salva archivio file",
   "registry.connections.cancel": "Annulla",
+  "registry.launch.disabled": "L’accesso al registro è disattivato in questo visualizzatore. Chiedi al proprietario del registro l’indirizzo del visualizzatore da usare.",
   "registry.launch.viewer": "Vai al visualizzatore",
   "registry.launch.loading": "Apertura del modello selezionato…",
   "registry.launch.retry": "Riprova ad aprire",

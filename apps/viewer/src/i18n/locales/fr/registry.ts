@@ -77,6 +77,7 @@ export const registryFr = {
   "registry.connections.writeScope": "Portée d’écriture",
   "registry.connections.save": "Enregistrer l’espace de stockage",
   "registry.connections.cancel": "Annuler",
+  "registry.launch.disabled": "L’accès au registre est désactivé dans cette visionneuse. Demandez au propriétaire du registre l’adresse de la visionneuse à utiliser.",
   "registry.launch.viewer": "Accéder à la visionneuse",
   "registry.launch.loading": "Ouverture du modèle sélectionné…",
   "registry.launch.retry": "Réessayer d’ouvrir",

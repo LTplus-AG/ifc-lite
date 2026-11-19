@@ -7,8 +7,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 const RegistrySource = lazy(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
 const OciPushTo = lazy(() => import('./OciPushTo').then(module => ({ default: module.OciPushTo })));
 
-export function RegistrySources({ catalogEnabled, expanded, navigationDisabled, onBusyChange, onToggle }: {
-  catalogEnabled: boolean;
+export function RegistrySources({ expanded, navigationDisabled, onBusyChange, onToggle }: {
   expanded: boolean;
   navigationDisabled: boolean;
   onBusyChange: (busy: boolean) => void;
@@ -22,8 +21,8 @@ export function RegistrySources({ catalogEnabled, expanded, navigationDisabled, 
     return () => onBusyChange(false);
   }, [busy, onBusyChange]);
   return <Suspense fallback={null}>
-    {catalogEnabled && <RegistrySource expanded={expanded} navigationDisabled={navigationDisabled || publicationBusy}
-      onBusyChange={setBrowserBusy} onToggle={onToggle} />}
+    <RegistrySource expanded={expanded} navigationDisabled={navigationDisabled || publicationBusy}
+      onBusyChange={setBrowserBusy} onToggle={onToggle} />
     <li className="rounded border p-3">
       <OciPushTo disabled={navigationDisabled || browserBusy} onBusyChange={setPublicationBusy} />
     </li>

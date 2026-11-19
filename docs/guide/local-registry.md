@@ -285,13 +285,13 @@ with independent ORAS integrity verification.
 
    Add `application/vnd.ifc-lite.ifc.v1` to both **View package types** and **Edit package types**. Copy the client ID and repository from the app configuration.
 
-2. Open IFC Lite at the origin you registered. For the local example, start the viewer from a checkout with dependencies and workspace packages built.
+2. Open a viewer built with `VITE_REGISTRY_ENABLED=true` at the origin you registered. For the local example, start the viewer from a checkout with dependencies and workspace packages built.
 
    ```sh
-   pnpm --filter @ifc-lite/viewer dev --host localhost --port 5173 --strictPort
+   VITE_REGISTRY_ENABLED=true pnpm --filter @ifc-lite/viewer dev --host localhost --port 5173 --strictPort
    ```
 
-3. In IFC Lite, open **File → Cloud Sources → Add file store**. Enter the registry address `https://registry.subsoil.dev`, authorization issuer `https://auth.subsoil.dev/realms/subsoil`, and client ID from Subsoil. Choose **Save file store**. Settings are saved in the current browser for this viewer origin.
+3. In IFC Lite, open **File → Cloud Sources → Add file store**. Enter the registry address `https://registry.subsoil.dev`, authorization issuer `https://auth.subsoil.dev/realms/subsoil`, and client ID from Subsoil. Choose **Save file store**. You can add and edit connections in this browser at runtime.
 4. Load an IFC, enter the repository from Subsoil in **Folder**, and **Push to…** a new tag such as `model-v1`. Sign in when prompted.
 5. In Subsoil, open that version with **Open with… → Edit with IFC Lite**. Edit the model, then **Push to…** the same repository with a fresh tag such as `model-v2`.
 6. **Open saved version** reopens the exact published digest. In the same folder, **Browse versions** lists tagged IFC packages so you can open either version. Subsoil also lists both versions in **My workspace**.

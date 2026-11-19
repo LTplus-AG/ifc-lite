@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { memo, useCallback, useMemo, type MutableRefObject } from 'react';
+import { memo, useCallback } from 'react';
 import { HierarchyNode, type HierarchyNodeProps } from './HierarchyNode';
 import type { HierarchyRowAction } from './HierarchyRowActions';
 import type { TreeNode } from './types';
@@ -26,7 +26,7 @@ export interface HierarchyRowCallbacks {
  * Handlers with one identity for the panel's lifetime that call the latest
  * callbacks, so a row re-renders only when what it shows changes (#10535).
  */
-export function stableRowHandlers(latest: MutableRefObject<HierarchyRowCallbacks>): HierarchyRowCallbacks {
+export function stableRowHandlers(latest: { readonly current: HierarchyRowCallbacks }): HierarchyRowCallbacks {
   return {
     click: (node, event, section, index) => latest.current.click(node, event, section, index),
     toggleExpand: (nodeId) => latest.current.toggleExpand(nodeId),
@@ -56,12 +56,10 @@ export interface HierarchyRowProps extends RowValues {
 
 function Row({ section, index, start, size, handlers, registerRow, focusRow, ...values }: HierarchyRowProps) {
   const { node } = values;
-  const virtualRow = useMemo(() => ({ start, size }), [start, size]);
-  const onNodeClick = useCallback((_: TreeNode, event: ActivationEvent) =>
-    handlers.click(node, event, section, index), [handlers, node, section, index]);
+  // Stable so a re-render does not unregister and re-register the row element.
   const rowRef = useCallback((el: HTMLElement | null) => registerRow(node.id, el), [registerRow, node.id]);
-  const onRowFocus = useCallback(() => focusRow(node.id), [focusRow, node.id]);
-  return <HierarchyNode {...values} virtualRow={virtualRow} onNodeClick={onNodeClick} rowRef={rowRef} onRowFocus={onRowFocus}
+  return <HierarchyNode {...values} virtualRow={{ start, size }} rowRef={rowRef} onRowFocus={() => focusRow(node.id)}
+    onNodeClick={(_: TreeNode, event: ActivationEvent) => handlers.click(node, event, section, index)}
     onToggleExpand={handlers.toggleExpand} onVisibilityToggle={handlers.visibilityToggle} onAction={handlers.action}
     onModelVisibilityToggle={handlers.modelVisibilityToggle} onRemoveModel={handlers.removeModel}
     onSyncSourceModel={handlers.syncSourceModel} onModelHeaderClick={handlers.modelHeaderClick} />;

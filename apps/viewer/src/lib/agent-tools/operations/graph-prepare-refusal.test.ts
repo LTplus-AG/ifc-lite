@@ -92,8 +92,12 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     });
     for (let i = 0; i < 32; i++) {
       const { job } = (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured as { job: { id: string } };
-      for (let tick = 0; tick < 50; tick++) await new Promise(resolve => setTimeout(resolve, 0));
-      assert.throws(() => operationJob(host, job.id), /Model replaced, closed, or edited during the operation/);
+      // Poll until it leaves 'running'; the edit already landed when it succeeded, so that first poll refuses.
+      let refusal: unknown;
+      for (let tick = 0; refusal === undefined && tick < 1000; tick++) {
+        try { assert.equal(operationJob(host, job.id).state, 'running'); await new Promise(resolve => setTimeout(resolve, 0)); } catch (error) { refusal = error; }
+      }
+      assert.match(String((refusal as Error)?.message), /Model replaced, closed, or edited during the operation/);
       assert.equal(operationJob(host, job.id).state, 'failed', 'refused once, then reported failed');
     }
     mock.restoreAll();
@@ -109,5 +113,22 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })); // e.g. the agent applied another token
     assert.throws(() => operationJob(host, job.id), /Model replaced, closed, or edited during the operation/);
     answer(await invoke('authoring.graph.apply', { token }, true));
+  });
+
+  it('a background prepare whose host closed before collection is cancelled and discarded', async () => {
+    const lifetime = new AbortController();
+    host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), { lifetimeSignal: lifetime.signal });
+    const proposal_json = await groupProposal();
+    const entry = viewerOperation('authoring.group.prepare'), validate = entry.validateResult.bind(entry);
+    let succeeded = false;
+    mock.method(entry, 'validateResult', (value: unknown) => { validate(value); succeeded = true; });
+    const discard = mock.method(entry as Required<Operation>, 'discard');
+    const { job } = (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured as { job: { id: string } };
+    for (let tick = 0; !succeeded && tick < 1000; tick++) await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(succeeded, true);
+    lifetime.abort(new Error('Session closed'));
+    assert.throws(() => operationJob(host, job.id));
+    assert.equal(discard.mock.callCount(), 1);
+    assert.equal(operationJob(host, job.id).state, 'cancelled');
   });
 });

@@ -204,8 +204,9 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
   if (job.snapshot.state === 'succeeded') {
     try { job.current(); } catch (error) {
       // A result never delivered and refused for good (the model changed, the host closed) never will be: discard
-      // what its handler stored, once. A delivered result is the caller's; a passing refusal keeps the job as it is.
-      const aborted = error instanceof DOMException && error.name === 'AbortError';
+      // what its handler stored, once. A delivered result is the caller's; a passing refusal (a disabled feature)
+      // keeps the job as it is, holding its candidate until the job is evicted or the host closes.
+      const aborted = host.lifetimeSignal?.aborted === true;
       if (!job.delivered && (aborted || (error instanceof ToolExecutionError && error.code === ToolErrorCode.STATE_CHANGED))) {
         job.discard();
         Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });

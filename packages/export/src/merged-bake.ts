@@ -43,10 +43,10 @@ export function needsBake(model: MergeModelInput): boolean {
  * source schema (mutations and georeference edits applied, geometry + quantities
  * kept), except an IFC2X3 source with georeference edits, which cannot hold them
  * and so converts to `targetSchema` here. The resulting bytes are re-parsed into
- * a fresh data store. The merge
- * pipeline then sees the edited entities as ordinary source, so unit-aware
- * federation, GlobalId reconciliation and id offsetting are unaffected. Models
- * without edits pass through untouched (no export/parse cost).
+ * a fresh data store. The merge pipeline then sees the edited entities as
+ * ordinary source, so unit-aware federation, GlobalId reconciliation and id
+ * offsetting are unaffected. Models without edits pass through untouched (no
+ * export/parse cost).
  *
  * A georeference edit the exporter refuses (a partial position) or that
  * `targetSchema` cannot hold (IFC2X3) is left out and named in `warnings`, as
@@ -67,18 +67,16 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
     // target schema per entity. An IFC2X3 source cannot hold georeference edits,
     // so with edits it converts here instead, as single-model export and section
     // cropping do.
-    const converts = (georefMutations: typeof georef) => !!georefMutations && sourceSchema === 'IFC2X3';
-    const bake = (georefMutations: typeof georef) => new StepExporter(model.dataStore, model.mutationView).export({
-      schema: converts(georefMutations) ? targetSchema : sourceSchema,
+    const bake = (schema: IfcSchemaVersion, georefMutations?: typeof georef) => ({ schema, result: new StepExporter(model.dataStore, model.mutationView).export({
+      schema,
       applyMutations: true,
       includeGeometry: true,
       includeQuantities: true,
       georefMutations,
-    });
+    }) });
     let exported: ReturnType<typeof bake> | null = null;
-    let converted = false;
     if (georef) {
-      try { exported = bake(georef); converted = converts(georef); } catch (error) {
+      try { exported = bake(sourceSchema === 'IFC2X3' ? targetSchema : sourceSchema, georef); } catch (error) {
         if (!isGeorefRefusal(error)) throw error;
         warnings.push(`${model.name}: ${GEOREF_NOT_WRITTEN} ${error.message}`);
       }
@@ -87,13 +85,13 @@ export async function bakeMutatedModels(models: readonly MergeModelInput[], targ
       baked.push(model);
       continue;
     }
-    exported ??= bake(undefined);
+    const { schema, result } = exported ?? bake(sourceSchema);
     // A converting bake reports its conversion warnings too: the merge loop sees an already-converted store.
-    const reported = converted ? exported.stats.warnings : exported.stats.georeferencingWarnings ?? [];
+    const reported = schema !== sourceSchema ? result.stats.warnings : result.stats.georeferencingWarnings ?? [];
     for (const warning of reported) warnings.push(`${model.name}: ${warning}`);
     parser = parser ?? new IfcParser();
     // slice() yields an exact-length ArrayBuffer-backed copy for the parser.
-    const reparsed = await parser.parseColumnar(exported.content.slice().buffer, {
+    const reparsed = await parser.parseColumnar(result.content.slice().buffer, {
       disableWorkerScan: true,
     });
     baked.push({

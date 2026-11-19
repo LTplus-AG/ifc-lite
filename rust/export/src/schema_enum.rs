@@ -185,6 +185,8 @@ pub(crate) struct ConversionChecks {
     pub(crate) structural: crate::schema_structural_diagnostics::StructuralDiagnostics,
     pub(crate) ifc4_slots: Ifc4SlotCheck,
     pub(crate) enums: EnumReconciliation,
+    /// Values a target slot's type cannot hold (#10847).
+    pub(crate) forms: crate::schema_value_forms::ValueForms,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     /// Non-`$` source values the converted record has no slot for (#7683):
@@ -257,6 +259,7 @@ impl ConversionChecks {
     pub(crate) fn warnings(&self) -> Vec<String> {
         let mut out = self.ifc4_slots.warnings();
         out.extend(self.enums.warnings());
+        out.extend(self.forms.warnings());
         out.extend(self.structural.warnings());
         out
     }

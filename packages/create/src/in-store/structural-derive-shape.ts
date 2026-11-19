@@ -197,8 +197,8 @@ const STATED_CENTRE: Record<string, { arity: number; x?: number; y?: number }> =
   IFCASYMMETRICISHAPEPROFILEDEF: { arity: 12, y: 11 },
 };
 
-function statedOffset(stated: unknown, computed: number, halfExtent: number): number {
-  const value = num(stated);
+function statedOffset(a: readonly unknown[], slot: number | undefined, computed: number, halfExtent: number): number {
+  const value = slot === undefined ? null : num(a[slot]);
   const offset = Math.abs(computed);
   // Measured from the outer edge instead, the same centroid is `halfExtent - offset` away. On a thin angle the two
   // readings are within 20% of each other, so a stated value cannot say which one it is: keep the computed offset.
@@ -249,7 +249,7 @@ function sectionCentroidOffset(type: string, a: readonly unknown[], x: number, y
   const offset: Flat = [parts.reduce((sum, [cx, , w, h]) => sum + cx * w * h, 0) / area, parts.reduce((sum, [, cy, w, h]) => sum + cy * w * h, 0) / area];
   const stated = STATED_CENTRE[type];
   if (stated?.arity !== a.length) return offset;
-  return [stated.x === undefined ? offset[0] : statedOffset(a[stated.x], offset[0], x / 2), stated.y === undefined ? offset[1] : statedOffset(a[stated.y], offset[1], y / 2)];
+  return [statedOffset(a, stated.x, offset[0], x / 2), statedOffset(a, stated.y, offset[1], y / 2)];
 }
 
 /** A closed ring's points from a polyline, composite or indexed poly curve; a reason when the curve is not read. */

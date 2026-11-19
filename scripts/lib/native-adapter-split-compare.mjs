@@ -57,43 +57,69 @@ export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : t
   ? Object.fromEntries(Object.entries(v).filter(([k]) => !VOLATILE_KEY.test(k)).map(([k, x]) => [k, stripVolatile(x)])) : v);
 
 /**
- * m11-n-native.json, ORDER-INSENSITIVE (owner decision 2026-11-19). Two runs of
- * one commit emitted the same meshes with triangles in a different order (run
- * 44547513676); a separate investigation into that non-deterministic native
- * producer is open, and this PR does not change it. Every value is kept: each
- * triangle carries its three corners (position and corner normal) and its
- * per-triangle revisionLocalFaces and surfaceIndices entries; its corners are
- * rotated to the smallest first, never sorted, so the winding still counts.
- * The triangles of a part are then sorted, and positions no triangle uses are
- * kept, sorted. Parts, rows, frames and every other field compare exactly.
+ * m11-n-native.json is compared by its mesh INVARIANTS, not its bytes (owner
+ * decision 2026-11-19, after the root-cause investigation). The pinned SMLib
+ * orders Boolean and tessellation output by object address, which follows heap
+ * layout and ASLR: six ordinary runs gave six distinct files, while the worker
+ * alone with ASLR off always gave one. In run 44547513676 three Boolean products
+ * differed: issue_2019 #30 (same triangles, other order) and f-e #96 and f-f #1003,
+ * whose vertex and polygon order differ AND some planar quads are split along the
+ * other diagonal. No sorted-triangle form can match those, so per part this
+ * compares what stayed identical across every observed run, exactly:
+ *   - the frame and every non-mesh field;
+ *   - the multiset of vertex positions and the triangle count;
+ *   - per face (revisionLocalFaces): its triangle count, its set of corner
+ *     normals and its source surfaces (surfaceIndices);
+ * and, as a coverage check, each face's total triangle area within 1e-9
+ * relative. The producer is unchanged here; its fix is tracked separately.
  */
-export function canonicalM11N(reference) {
+export const M11N_AREA_RELATIVE = 1e-9;
+
+export function m11nInvariants(reference) {
+  const areas = [];
   const part = (p) => {
     if (!Array.isArray(p?.indices) || !Array.isArray(p?.positions)) return p;
     const { positions, indices, normals, revisionLocalFaces, surfaceIndices, ...rest } = p;
-    const xyz = (list, i) => (Array.isArray(list) ? list.slice(i * 3, i * 3 + 3) : null);
-    const used = new Set(indices);
-    const triangles = [];
+    const xyz = (list, i) => list.slice(i * 3, i * 3 + 3);
+    const vertices = [];
+    for (let v = 0; v * 3 < positions.length; v += 1) vertices.push(JSON.stringify(xyz(positions, v)));
+    const faces = new Map();
     for (let t = 0; t * 3 < indices.length; t += 1) {
-      const corners = [0, 1, 2].map((k) => JSON.stringify([xyz(positions, indices[t * 3 + k]), xyz(normals, t * 3 + k)]));
-      const first = corners.indexOf([...corners].sort()[0]);
-      const rotated = [...corners.slice(first), ...corners.slice(0, first)].map((c) => JSON.parse(c));
-      triangles.push(JSON.stringify([rotated, revisionLocalFaces?.[t] ?? null, surfaceIndices?.[t] ?? null]));
+      const id = revisionLocalFaces?.[t] ?? null;
+      const face = faces.get(id) ?? { triangles: 0, normals: new Set(), surfaces: new Set(), area: 0 };
+      face.triangles += 1;
+      for (let k = 0; k < 3; k += 1) if (Array.isArray(normals)) face.normals.add(JSON.stringify(xyz(normals, t * 3 + k)));
+      face.surfaces.add(JSON.stringify(surfaceIndices?.[t] ?? null));
+      const [a, b, c] = [0, 1, 2].map((k) => xyz(positions, indices[t * 3 + k]));
+      const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+      face.area += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2;
+      faces.set(id, face);
     }
-    const unused = [];
-    for (let v = 0; v * 3 < positions.length; v += 1) if (!used.has(v)) unused.push(JSON.stringify(xyz(positions, v)));
-    return { ...rest, triangles: triangles.sort().map((x) => JSON.parse(x)), unreferencedPositions: unused.sort().map((x) => JSON.parse(x)), listLengths: [positions.length, indices.length, normals?.length ?? null, revisionLocalFaces?.length ?? null, surfaceIndices?.length ?? null] };
+    const ids = [...faces.keys()].sort((x, y) => String(x).localeCompare(String(y), 'en', { numeric: true }));
+    for (const id of ids) areas.push(faces.get(id).area);
+    return {
+      ...rest, vertices: vertices.sort(), triangleCount: indices.length / 3,
+      faces: ids.map((id) => [id, faces.get(id).triangles, [...faces.get(id).normals].sort(), [...faces.get(id).surfaces].sort()]),
+    };
   };
-  return reference.map((model) => ({ ...model, rows: model.rows?.map((row) => (Array.isArray(row.parts) ? { ...row, parts: row.parts.map(part) } : row)) }));
+  const exact = reference.map((model) => ({ ...model, rows: model.rows?.map((row) => (Array.isArray(row.parts) ? { ...row, parts: row.parts.map(part) } : row)) }));
+  return { exact, areas };
 }
 
-/** References compared without their order; named one by one (see canonicalM11N). */
-export const ORDER_INSENSITIVE = { 'm11-n-native.json': canonicalM11N };
+/** References compared by invariants instead of bytes, named one by one (see m11nInvariants). */
+export const BY_INVARIANTS = { 'm11-n-native.json': m11nInvariants };
+
+/** Whether two copies of reference `rel` agree: by invariants where named, otherwise by volatile-free hash. */
+export function sameReference(rel, aBytes, bBytes) {
+  const invariants = BY_INVARIANTS[rel.split('/').at(-1)];
+  if (!invariants) return timingFreeHash(rel, aBytes) === timingFreeHash(rel, bBytes);
+  const [a, b] = [aBytes, bBytes].map((x) => invariants(JSON.parse(x.toString('utf8'))));
+  if (JSON.stringify(stripVolatile(a.exact)) !== JSON.stringify(stripVolatile(b.exact)) || a.areas.length !== b.areas.length) return false;
+  return a.areas.every((x, i) => Math.abs(x - b.areas[i]) <= M11N_AREA_RELATIVE * Math.max(Math.abs(x), Math.abs(b.areas[i])));
+}
 
 /** sha256 of a reference or output with its volatile fields (columns, keys) removed. */
 export function timingFreeHash(name, bytes) {
-  const canonical = ORDER_INSENSITIVE[name.split('/').at(-1)];
-  if (canonical) return digest(JSON.stringify(stripVolatile(canonical(JSON.parse(bytes.toString('utf8'))))));
   if (name.endsWith('.tsv')) {
     const rows = bytes.toString('utf8').split('\n').map((l) => l.split('\t'));
     const keep = rows[0].map((h, i) => (VOLATILE_KEY.test(h) ? -1 : i)).filter((i) => i >= 0);
@@ -211,13 +237,12 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
     for (const m of changed) problems.push(`witness record ${m} content differs in ${name}`);
   }
 
-  lines.push('', '### References (sha256, timing-free)', '', '| file | raw equal | timing-free equal |', '|---|---|---|');
+  lines.push('', '### References (sha256; m11-n by mesh invariants)', '', '| file | raw equal | volatile-free equal |', '|---|---|---|');
   const native = split['na-native'];
   for (const rel of [...new Set([...Object.keys(mono.refs), ...Object.keys(native.refs)])].sort()) {
     if (!mono.refs[rel] && SPLIT_ONLY_REFS.includes(rel)) { lines.push(`| ${rel} | split only (by design) | - |`); continue; }
     if (!mono.refs[rel] || !native.refs[rel]) { lines.push(`| ${rel} | only in ${mono.refs[rel] ? 'single job' : 'split'} | - |`); problems.push(`reference ${rel} produced by one layout only`); continue; }
-    const free = (e) => timingFreeHash(rel, readFileSync(join(e.dir, 'refs', rel)));
-    const same = free(mono) === free(native);
+    const same = sameReference(rel, readFileSync(join(mono.dir, 'refs', rel)), readFileSync(join(native.dir, 'refs', rel)));
     lines.push(`| ${rel} | ${mono.refs[rel] === native.refs[rel] ? 'yes' : 'no'} | ${same ? 'yes' : '**no**'} |`);
     if (!same) problems.push(`reference ${rel} differs`);
   }

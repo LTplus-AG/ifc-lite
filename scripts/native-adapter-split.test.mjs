@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { collect, pack, unpack, verdict } from './native-adapter-split.mjs';
 import { jobLaneSteps, judge, LANES, SPLIT_LANE_JOBS } from './lib/native-adapter-split.mjs';
-import { compareLayouts, markers, timingFreeHash } from './lib/native-adapter-split-compare.mjs';
+import { compareLayouts, markers, sameReference, timingFreeHash } from './lib/native-adapter-split-compare.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 
@@ -137,43 +137,46 @@ test('timings inside text (Rust Instant, *_ms fields, Durations) do not count, t
   assert.notDeepEqual([...markers(line(1), []).keys()], [...markers(line(1).replace('Some(2.5)', 'Some(2.6)'), []).keys()]);
 });
 
-/** One m11-n model with one published product: a unit square as two triangles (and one unused vertex). */
-const m11n = ({ order = [0, 1], rotate = 0, positions = [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 9, 9, 9], extra = false, drop = false } = {}) => {
-  const tris = [[0, 1, 2], [0, 2, 3]];
-  const normals = [[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]];
-  let picked = order.map((t) => ({ idx: tris[t], nrm: normals.slice(t * 3, t * 3 + 3), face: t, surface: 7 }));
-  if (drop) picked = picked.slice(0, 1);
-  if (extra) picked.push({ idx: [1, 2, 3], nrm: normals.slice(0, 3), face: 2, surface: 7 });
-  const r = (list) => [...list.slice(rotate), ...list.slice(0, rotate)];
+/**
+ * One m11-n model, one published part: the unit square z=0 (face 0, surface 7) as
+ * two triangles, plus the triangle (0,0,1)-(1,0,1)-(0,1,1) (face 1, surface 8).
+ * `diagonal` 1 splits the square along 1-3 instead of 0-2; `order` reorders
+ * triangles; `vertexOrder` permutes the vertex list (indices follow).
+ */
+const m11n = ({ diagonal = 0, order = null, vertexOrder = null, edit = () => {} } = {}) => {
+  const verts = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1]];
+  let tris = [...(diagonal ? [[0, 1, 3], [1, 2, 3]] : [[0, 1, 2], [0, 2, 3]]).map((idx) => ({ idx, face: 0, surface: 7, n: [0, 0, 1] })), { idx: [4, 5, 6], face: 1, surface: 8, n: [0, 0, 1] }];
+  if (order) tris = order.map((i) => tris[i]);
+  const perm = vertexOrder ?? verts.map((_, i) => i); // new position -> old vertex
+  const where = new Map(perm.map((old, now) => [old, now]));
   const part = {
-    frame: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], positions,
-    indices: picked.flatMap((p) => r(p.idx)), normals: picked.flatMap((p) => r(p.nrm).flat()),
-    revisionLocalFaces: picked.map((p) => p.face), surfaceIndices: picked.map((p) => p.surface),
+    frame: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    positions: perm.flatMap((old) => verts[old]), indices: tris.flatMap((t) => t.idx.map((i) => where.get(i))),
+    normals: tris.flatMap((t) => [t.n, t.n, t.n].flat()), revisionLocalFaces: tris.map((t) => t.face), surfaceIndices: tris.map((t) => t.surface),
   };
-  return Buffer.from(JSON.stringify([{ model: 'm.ifc', ids: null, source: 'x', rows: [{ id: 5, status: 'published', sourceSurfaces: [], parts: [part] }, { id: 6, status: 'refused', code: 'c' }] }]));
+  edit(part);
+  return Buffer.from(JSON.stringify([{ model: 'm.ifc', ids: null, source: 'x', rows: [{ id: 96, status: 'published', sourceSurfaces: [], parts: [part] }, { id: 6, status: 'refused', code: 'c' }] }]));
 };
 
-test('m11-n compares order-insensitively and nothing else is relaxed', () => {
-  const h = (b) => timingFreeHash('temp/m11-n-native.json', b);
-  // Reordered triangles, or each triangle's corners rotated (same winding): a match.
-  assert.equal(h(m11n()), h(m11n({ order: [1, 0] })));
-  assert.equal(h(m11n()), h(m11n({ rotate: 1 })));
-  // A moved vertex, an extra or a missing triangle, a changed unused vertex: a mismatch.
-  assert.notEqual(h(m11n()), h(m11n({ positions: [0, 0, 0, 1, 0, 0, 1, 1.5, 0, 0, 1, 0, 9, 9, 9] })));
-  assert.notEqual(h(m11n()), h(m11n({ extra: true })));
-  assert.notEqual(h(m11n()), h(m11n({ drop: true })));
-  assert.notEqual(h(m11n()), h(m11n({ positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 9, 9, 8] })));
-  // Reversed winding is a different surface orientation, not an order: a mismatch.
-  const flipped = JSON.parse(m11n().toString());
-  const idx = flipped[0].rows[0].parts[0].indices;
-  [idx[1], idx[2]] = [idx[2], idx[1]];
-  assert.notEqual(h(m11n()), h(Buffer.from(JSON.stringify(flipped))));
-  // A per-triangle attribute travels with its triangle.
-  const relabelled = JSON.parse(m11n().toString());
-  relabelled[0].rows[0].parts[0].surfaceIndices = [7, 8];
-  assert.notEqual(h(m11n()), h(Buffer.from(JSON.stringify(relabelled))));
-  // Only m11-n is order-insensitive: the same reorder in any other reference still differs.
-  assert.notEqual(timingFreeHash('temp/m11-t-native-surface.json', m11n()), timingFreeHash('temp/m11-t-native-surface.json', m11n({ order: [1, 0] })));
+test('m11-n compares by mesh invariants: SMLib order and quad diagonals do not count, geometry does', () => {
+  const same = (b) => sameReference('temp/m11-n-native.json', m11n(), b);
+  // What SMLib's address-keyed ordering changes between runs: a match.
+  assert.equal(same(m11n({ order: [2, 1, 0] })), true, 'reordered triangles');
+  assert.equal(same(m11n({ vertexOrder: [6, 5, 4, 3, 2, 1, 0] })), true, 'reordered vertices');
+  assert.equal(same(m11n({ diagonal: 1, order: [1, 2, 0], vertexOrder: [3, 0, 1, 2, 6, 4, 5] })), true, 'other diagonal, reordered');
+  // What must not change: a mismatch.
+  assert.equal(same(m11n({ edit: (p) => { p.positions[3] = 1.5; } })), false, 'moved vertex');
+  assert.equal(same(m11n({ edit: (p) => { p.indices.splice(3, 3); p.normals.splice(9, 9); p.revisionLocalFaces.splice(1, 1); p.surfaceIndices.splice(1, 1); } })), false, 'missing triangle');
+  assert.equal(same(m11n({ edit: (p) => { p.indices.push(4, 5, 6); p.normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1); p.revisionLocalFaces.push(1); p.surfaceIndices.push(8); } })), false, 'extra triangle');
+  assert.equal(same(m11n({ edit: (p) => { p.normals[2] = -1; } })), false, 'changed normal');
+  assert.equal(same(m11n({ edit: (p) => { p.surfaceIndices[2] = 9; } })), false, 'changed face-surface mapping');
+  assert.equal(same(m11n({ edit: (p) => { p.frame[12] = 2; } })), false, 'changed frame');
+  // Same vertices, counts, normals and surfaces, but the square only half covered (a degenerate triangle): the area check.
+  assert.equal(same(m11n({ edit: (p) => { p.indices.splice(3, 3, 0, 2, 2); } })), false, 'face area');
+  // A non-mesh field still compares exactly.
+  assert.equal(sameReference('temp/m11-n-native.json', m11n(), Buffer.from(m11n().toString().replace('"refused"', '"published"'))), false, 'row status');
+  // Only m11-n is compared this way: the same reorder elsewhere still differs.
+  assert.equal(sameReference('temp/m11-t-native-surface.json', m11n(), m11n({ order: [2, 1, 0] })), false);
 });
 
 test('markers reads native witness lines and registered cli/viewer records, through reporter decoration', () => {

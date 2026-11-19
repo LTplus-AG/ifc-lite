@@ -6,7 +6,7 @@
  * #10535: a loaded-column edit re-rendered every visible hierarchy row and
  * re-resolved each storey row's membership on every panel render. Through the
  * hook the panel uses: an edit the tree does not show keeps its row objects
- * (what lets the memoized rows skip rendering), a real change still shows, and
+ * (the input the memoized rows compare), a real change still shows, and
  * a storey's members are resolved once per input generation and view
  * revision. Real STEP store, real actions.
  */
@@ -72,7 +72,9 @@ const geometryOf = (meshes: MeshData[]) => ({
   },
 }) as unknown as GeometryResult;
 
-async function mountTree(): Promise<{ tree: () => ReturnType<typeof useHierarchyTree>; view: MutablePropertyView; globalOf: (id: number) => number }> {
+type Tree = ReturnType<typeof useHierarchyTree>;
+
+async function mountTree(): Promise<{ tree: () => Tree; view: MutablePropertyView; globalOf: (id: number) => number }> {
   const bytes = new TextEncoder().encode(FIXTURE);
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
   const base = { ...fixtureModel(MODEL), ifcDataStore: dataStore } as FederatedModel;
@@ -82,10 +84,9 @@ async function mountTree(): Promise<{ tree: () => ReturnType<typeof useHierarchy
   const view = new MutablePropertyView(dataStore.properties || null, MODEL);
   useViewerStore.setState({
     ...fixtureModels(model), geometryResult: geometry, hierarchyMode: 'spatial', loading: false, editEnabled: true,
-    mutationViews: new Map([[MODEL, view]]), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(),
-    geometryContentVersion: 0, mutationVersion: 0,
+    mutationViews: new Map([[MODEL, view]]),
   });
-  let tree!: ReturnType<typeof useHierarchyTree>;
+  let tree!: Tree;
   function Probe() {
     tree = useHierarchyTree({ models: useViewerStore((s) => s.models), ifcDataStore: null, isMultiModel: false });
     return null;

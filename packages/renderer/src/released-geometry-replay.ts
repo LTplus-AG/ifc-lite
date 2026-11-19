@@ -64,5 +64,11 @@ export async function replayReleasedGeometry(
     if (scene.isEphemeralStreaming()) await scene.finalizeStreamingAsync(device, pipeline);
     renderer.requestRender();
   }
+  // The iterator's final next() and finalization are asynchronous too. A
+  // device/content change or cancellation during either must not report success.
+  if (!stopped) {
+    if (options.signal?.aborted) stopped = 'cancelled';
+    else if (!current()) stopped = 'superseded';
+  }
   return stopped ? { status: stopped, batches: count, meshes } : { status: 'complete', batches: count, meshes };
 }

@@ -87,6 +87,32 @@ describe('replayReleasedGeometry', () => {
     assert.equal((await replayReleasedGeometry(renderer, swap())).status, 'superseded');
   });
 
+  for (const change of ['abort', 'device', 'owner'] as const) {
+    it(`#10903 a ${change} change after the final yielded batch prevents a complete result`, async () => {
+      const scene = new Scene();
+      let gpu: GPUDevice = device();
+      let current = true;
+      const controller = new AbortController();
+      const renderer = { getScene: () => scene, getGPUDevice: () => gpu,
+        getPipeline: () => pipeline, requestRender() {} };
+      async function* source(): AsyncGenerator<readonly MeshData[]> {
+        yield [tri(1, 0, 0)];
+        // The consumer is awaiting next(); there is no second batch at which
+        // its in-loop fence can notice the change.
+        await Promise.resolve();
+        if (change === 'abort') controller.abort();
+        else if (change === 'device') gpu = device();
+        else current = false;
+      }
+      const result = await replayReleasedGeometry(renderer, source(), {
+        signal: controller.signal, isCurrent: () => current,
+      });
+      assert.deepEqual(result, { status: change === 'abort' ? 'cancelled' : 'superseded', batches: 1, meshes: 1 });
+      assert.equal(scene.isEphemeralStreaming(), false, 'a partial final result still closes the pass');
+      assert.equal(scene.isGeometryDataReleased(), true);
+    });
+  }
+
   it('an error mid-stream still closes the pass before rethrowing', async () => {
     const scene = new Scene();
     async function* broken(): AsyncGenerator<readonly MeshData[]> { yield [tri(1, 0, 0)]; throw new Error('backing read failed'); }

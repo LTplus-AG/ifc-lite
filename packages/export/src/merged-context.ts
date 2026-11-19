@@ -180,6 +180,37 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
   return contextId === undefined ? null : resolveContextWcsMetres(dataStore, contextId, lengthUnitScale);
 }
 
+/** `IfcMapConversion` and its subtype, by raw STEP name: `byType` is not resolved to a supertype. */
+const MAP_CONVERSION_TYPES = ['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED'] as const;
+
+/**
+ * The georeference of `dataStore`'s first representation context: the `IfcMapConversion` whose `SourceCRS` is
+ * that context, as its target CRS name and numeric attributes (Eastings onward, plus a scaled conversion's
+ * factors), or null when it has none or it cannot be read. Two contexts in one frame with different conversions
+ * place the same coordinates at two places on the map, so they must not be unified (#10798).
+ */
+export function resolveModelContextGeoref(dataStore: IfcDataStore): string | null {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current conversions
+  const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+  if (contextId === undefined) return null;
+  for (const type of MAP_CONVERSION_TYPES) {
+    // @raw-entity-enumeration-ok as above: the conversions of the merged input's current snapshot
+    for (const id of dataStore.entityIndex.byType.get(type) ?? []) {
+      if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
+      const target = refId(getStepAttr(dataStore, id, 1));
+      const crsName = target === null ? null : getStepAttr(dataStore, target, 0);
+      const values: number[] = [];
+      for (let index = 2; ; index++) {
+        const raw = getStepAttr(dataStore, id, index);
+        if (raw === null) break;
+        values.push(raw === '$' ? NaN : Number(raw));
+      }
+      return JSON.stringify([type, crsName, values.map(value => (Number.isNaN(value) ? null : value))]);
+    }
+  }
+  return null;
+}
+
 /**
  * The primary model's context state {@link planInfrastructureUnify} matches
  * every later model against: its subcontexts grouped by kind key
@@ -190,6 +221,8 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
 export interface PrimaryContextState {
   subContextsByKey: Map<string, number[]>;
   contextWcs: WcsSignature | null;
+  /** {@link resolveModelContextGeoref} of the primary model. */
+  contextGeoref: string | null;
 }
 
 /** Build the {@link PrimaryContextState} for the primary model. */
@@ -201,6 +234,7 @@ export function resolvePrimaryContextState(
   return {
     subContextsByKey: groupSubContextsByKey(dataStore, subContextIds),
     contextWcs: resolveModelContextWcs(dataStore, primaryScale),
+    contextGeoref: resolveModelContextGeoref(dataStore),
   };
 }
 
@@ -261,8 +295,12 @@ export function planInfrastructureUnify(
   // Computed once, up front — not per type in the loop below — so its result
   // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
+  // A georeference only one side declares still unifies (one model georeferences the shared frame); two that
+  // differ keep this model's context, and its conversion with it, as its own root (#10798).
+  const georef = resolveModelContextGeoref(dataStore);
   const contextsCompatible = wcsSignaturesCompatible(firstModelContext.contextWcs,
-    resolveModelContextWcs(dataStore, lengthUnitScale));
+    resolveModelContextWcs(dataStore, lengthUnitScale))
+    && (firstModelContext.contextGeoref === null || georef === null || georef === firstModelContext.contextGeoref);
   // Only the model's FIRST top-level context is (positionally) unified below;
   // any later sibling context — a model with both a 'Model' and a 'Plan'
   // context, say — is always retained. A subcontext may therefore unify ONLY

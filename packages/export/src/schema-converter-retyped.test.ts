@@ -37,6 +37,11 @@ describe('retyped slots (#10778)', () => {
     expect(slots.warnings()).toContainEqual(expect.stringMatching(/^1 slot\(s\) keep \$ where IFC2X3 requires/));
   });
 
+  it('reads the currency past comments beside it, as Rust does', () => {
+    expect(convertStepLine('#5=IFCMONETARYUNIT(/* c */.EUR. /* d */);', 'IFC2X3', 'IFC4')).toBe("#5=IFCMONETARYUNIT('EUR');");
+    expect(convertStepLine("#5=IFCMONETARYUNIT(/* c */'EUR'/* d */);", 'IFC4', 'IFC2X3')).toBe('#5=IFCMONETARYUNIT(.EUR.);');
+  });
+
   it('leaves other schema pairs alone', () => {
     expect(convertStepLine("#5=IFCMONETARYUNIT('EUR');", 'IFC4', 'IFC4X3')).toBe("#5=IFCMONETARYUNIT('EUR');");
   });

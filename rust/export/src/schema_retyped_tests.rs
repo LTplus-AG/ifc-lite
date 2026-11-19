@@ -65,3 +65,12 @@ fn other_types_and_schema_pairs_are_left_alone_10778() {
     assert_eq!(convert("#5=IFCMONETARYUNIT('EUR');", "IFC4", "IFC4X3").0, "#5=IFCMONETARYUNIT('EUR');");
     assert_eq!(convert("#5=IFCLABELLED(.EUR.);", "IFC2X3", "IFC4").0, "#5=IFCLABELLED(.EUR.);");
 }
+
+/// A comment beside the value does not hide it.
+#[test]
+fn a_comment_beside_the_currency_is_read_past_10778() {
+    assert_eq!(convert("#5=IFCMONETARYUNIT(/* c */.EUR. /* d */);", "IFC2X3", "IFC4").0, "#5=IFCMONETARYUNIT('EUR');");
+    assert_eq!(convert("#5=IFCMONETARYUNIT(/* c */'EUR'/* d */);", "IFC4", "IFC2X3").0, "#5=IFCMONETARYUNIT(.EUR.);");
+    assert_eq!(sole_value("'a/*b*/'"), Some("'a/*b*/'"), "a comment opener inside a literal is text");
+    assert_eq!(sole_value(".EUR. .USD."), None, "two tokens are not one value");
+}

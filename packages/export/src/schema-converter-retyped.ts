@@ -17,7 +17,8 @@
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { readStepSlots } from './step-argument-parser.js';
-import { decodeStepStringLiteral } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral, stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { skipStepTrivia } from './step-slot-grammar.js';
 
 /** IFC2X3 `IfcCurrencyEnum`. */
 const CURRENCY: readonly string[] = [
@@ -34,6 +35,16 @@ const CURRENCY: readonly string[] = [
 export const RETYPED_SLOTS: readonly (readonly [string, number, readonly string[]])[] = [['IFCMONETARYUNIT', 0, CURRENCY]];
 
 // IFC5 holds Currency as IFC4X3 does; the retype reads values, not attribute lists.
+/** The one enum or string token in `slot`, past the whitespace and comments
+ *  around it; null for anything else. Twin of Rust `sole_value`. */
+function soleValue(slot: string): string | null {
+  const start = skipStepTrivia(slot, 0);
+  let end = -1;
+  if (slot[start] === "'") end = stepStringLiteralEnd(slot, start);
+  else if (slot[start] === '.') end = slot.indexOf('.', start + 1) + 1 || -1;
+  return start !== -1 && end !== -1 && skipStepTrivia(slot, end) === slot.length ? slot.slice(start, end) : null;
+}
+
 const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3' || s === 'IFC5';
 
 /** `line`, already converted from `fromSchema` to `toSchema`, with every
@@ -47,8 +58,8 @@ export function retypeInPlace(line: string | null, fromSchema: IfcSchemaVersion,
   const record = slot ? readStepSlots(line) : null;
   if (!slot || !record || slot[1] >= record.slots.length) return line;
   const slots = [...record.slots];
-  const value = slots[slot[1]].trim();
-  if (value.length < 2) return line;
+  const value = soleValue(slots[slot[1]]);
+  if (value === null) return line;
   const inner = value.slice(1, -1).trim();
   if (up) {
     if (!value.startsWith('.') || !value.endsWith('.')) return line;

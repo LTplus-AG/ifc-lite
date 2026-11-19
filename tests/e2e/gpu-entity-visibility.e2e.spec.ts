@@ -144,6 +144,7 @@ async function diff(page: Page, a: string, b: string): Promise<Diff> {
       return context.getImageData(0, 0, bitmap.width, bitmap.height);
     };
     const [p, q] = await Promise.all([pixels(x), pixels(y)]);
+    if (p.width !== q.width || p.height !== q.height) throw new Error(`frames differ in size: ${p.width}x${p.height} vs ${q.width}x${q.height}`);
     const out = new ImageData(p.width, p.height);
     let differing = 0;
     let strong = 0;
@@ -430,33 +431,42 @@ test('a model move and rotation keep instanced hide, selection, colour override 
       clear: [['removeOverlayLayer', 'e2e-10767']] },
     { name: 'xray', set: [['setGhostExceptEntities', new Set<number>()]], clear: [['setGhostExceptEntities', null]] },
   ];
-  const all = { set: states.flatMap((st) => st.set), clear: states.flatMap((st) => st.clear) };
   const moves: Record<string, StoreCall[]> = {
-    move: [['openReposition', [modelId]], ['previewModelTranslation', [5, 0, 0]], ['applyModelTranslation'], ['closeReposition']],
+    // A preview frame is drawn before the move is applied, as during a drag.
+    move: [['openReposition', [modelId]], ['previewModelTranslation', [5, 0, 0]]],
     rotate: [['setModelRotation', [modelId], { angle: Math.PI / 2, pivot: [0, 0, 0] }]],
   };
+  const applyMove: Record<string, StoreCall[]> = { move: [['applyModelTranslation'], ['closeReposition']], rotate: [] };
   const rows: Record<string, unknown>[] = [];
-  const check = async (name: string, state: { set: StoreCall[]; clear: StoreCall[] }, move: StoreCall[]) => {
+  const check = async (name: string, state: { set: StoreCall[]; clear: StoreCall[] }, kind: 'move' | 'rotate') => {
     const plain = await stillFrame(page, info, `${name}-0-plain`);
     await storeCalls(page, state.set);
-    const before = await stillFrame(page, info, `${name}-1-state`);
-    const shown = await diff(page, before, plain);
-    await storeCalls(page, move);
-    const carried = await stillFrame(page, info, `${name}-2-moved-carried`);
-    const moved = await diff(page, carried, before);
-    await storeCalls(page, state.clear);
-    await settle(page);
-    await storeCalls(page, state.set);
-    const rewritten = await stillFrame(page, info, `${name}-3-moved-rewritten`);
-    const lost = await diff(page, carried, rewritten);
-    await info.attach(`${name}-carried-vs-rewritten-diff.png`, { body: Buffer.from(lost.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
-    rows.push({ name, shownDiffering: shown.differing, movedDiffering: moved.differing, lostDiffering: lost.differing, lostStrong: lost.strong });
-    await storeCalls(page, [...state.clear, ['undoModelTranslation']]);
-    expect(shown.differing, `${name}: the state is on screen`).toBeGreaterThan(200);
-    expect(moved.differing, `${name}: the move changed the frame`).toBeGreaterThan(1000);
-    expect(lost.differing, `${name}: the moved frame keeps the state (carried = rewritten)`).toBeLessThanOrEqual(Math.floor(shown.differing * 0.05));
+    try {
+      const before = await stillFrame(page, info, `${name}-1-state`);
+      const shown = await diff(page, before, plain);
+      await storeCalls(page, moves[kind]!);
+      await settle(page);
+      await storeCalls(page, applyMove[kind]!);
+      const carried = await stillFrame(page, info, `${name}-2-moved-carried`);
+      const moved = await diff(page, carried, before);
+      await storeCalls(page, state.clear);
+      const movedPlain = await stillFrame(page, info, `${name}-3-moved-cleared`);
+      await storeCalls(page, state.set);
+      const rewritten = await stillFrame(page, info, `${name}-4-moved-rewritten`);
+      const visible = await diff(page, rewritten, movedPlain);
+      const lost = await diff(page, carried, rewritten);
+      await info.attach(`${name}-carried-vs-rewritten-diff.png`, { body: Buffer.from(lost.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
+      rows.push({ name, shownDiffering: shown.differing, movedDiffering: moved.differing, visibleAfterMove: visible.differing, lostDiffering: lost.differing, lostStrong: lost.strong });
+      expect(shown.differing, `${name}: the state is on screen`).toBeGreaterThan(200);
+      expect(moved.differing, `${name}: the move changed the frame`).toBeGreaterThan(1000);
+      expect(visible.differing, `${name}: the state is still on screen after the move`).toBeGreaterThan(200);
+      // Losing the state repaints thousands of facade pixels; allow only edge noise.
+      expect(lost.differing, `${name}: the moved frame keeps the state (carried = rewritten)`).toBeLessThanOrEqual(50);
+    } finally {
+      await storeCalls(page, [...state.clear, ['undoModelTranslation']]);
+      await settle(page);
+    }
   };
-  for (const state of states) await check(`move-${state.name}`, state, moves.move!);
-  await check('rotate-all', all, moves.rotate!);
+  for (const kind of ['move', 'rotate'] as const) for (const state of states) await check(`${kind}-${state.name}`, state, kind);
   await info.attach('move.json', { body: JSON.stringify({ instancedOnly: ids.length, rows }, null, 2), contentType: 'application/json' });
 });

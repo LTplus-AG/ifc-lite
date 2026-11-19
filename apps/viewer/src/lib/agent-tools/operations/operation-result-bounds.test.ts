@@ -260,6 +260,29 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     assert.equal(prepared.truncated, true); assert.ok(prepared.rows.length > 0 && prepared.rows.length < prepared.row_count);
   });
 
+  it('#24 zones.writeback.apply refuses after the assignments behind the reviewed table were replaced', async () => {
+    const { walls } = await assemblyOf(20);
+    const setId = useViewerStore.getState().createZoneSet('Writeback'); useViewerStore.getState().addZone(setId, { name: 'Zone', center: [0, 0, 0], size: [1, 1, 1], rotationY: 0 });
+    const zone = useViewerStore.getState().zoneSets[0].zones[0];
+    const assigned = (ids: number[]) => new Map(ids.map(id => [id, { [setId]: { zoneId: zone.id, zoneName: zone.name, straddles: false, touchedZoneIds: [zone.id] } }]));
+    useViewerStore.setState({ zoneAssignments: assigned(walls) });
+    const prepared = json<{ token: string; row_count: number }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'write' }, 'A'));
+    assert.ok(prepared.row_count > 0);
+    // A recompute assigns fewer walls: the reviewed table no longer matches what apply would write.
+    useViewerStore.setState({ zoneAssignments: assigned(walls.slice(0, 10)) });
+    const applied = await run('zones.writeback.apply', { token: prepared.token }, 'A');
+    assert.equal(applied.isError, true, 'a write from an unreviewed table is refused'); assert.match(applied.text, /changed after review/);
+    // Reviewing the current table again is what unblocks it.
+    const again = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'write' }, 'A'));
+    const written = await run('zones.writeback.apply', { token: again.token }, 'A');
+    assert.equal(written.isError, false, written.text);
+    // A removal reads only the zone set, so a recompute of the assignments does not block it.
+    const removal = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'remove' }, 'A'));
+    useViewerStore.setState({ zoneAssignments: assigned(walls.slice(0, 5)) });
+    const removed = await run('zones.writeback.apply', { token: removal.token }, 'A');
+    assert.equal(removed.isError, false, removed.text);
+  });
+
   const anon = { target_model_id: 'A', seed_ids: [2], excluded_ids: [], excluded_types: [], file_stem: 'anonymous', anonymize: { ...DEFAULT_ANONYMIZE_TOGGLES },
     relations: { IfcRelVoidsElement: false, IfcRelFillsElement: false, IfcRelAggregates: 'down', IfcRelNests: 'none', IfcRelDefinesByType: false, IfcRelAssociatesMaterial: false, IfcRelContainedInSpatialStructure: false, IfcRelDefinesByProperties: false, IfcRelConnectsPathElementsDepth: 0 } };
 

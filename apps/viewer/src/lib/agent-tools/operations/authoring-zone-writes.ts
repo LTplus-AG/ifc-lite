@@ -8,23 +8,39 @@ import { operation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
+import type { ZoneSet } from '@/lib/zones/types';
 import { evictOldest } from './host-handles';
 import { boundedPage } from './result-limit';
+import { stateRevision } from './state-revision';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, effect: 'read' | 'model' | 'artifact' = 'read') => ({ id, owner: 'zones', description, effects: [effect],
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema,
   policy: effect === 'model' ? { model: 'native-reviewed' as const } : effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
-interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ReturnType<typeof useViewerStore.getState>['models']; revision: number; geometry: unknown; configuration: string; result?: unknown }
+interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ReturnType<typeof useViewerStore.getState>['models']; revision: number; geometry: unknown; inputs: string; result?: unknown }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) { let value = hosts.get(c.host); if (!value) { value = new Map(); hosts.set(c.host, value); } return value; }
 function zoneSet(id: string) { const set = useViewerStore.getState().zoneSets.find(row => row.id === id); if (!set) throw new Error('Unknown zone set.'); return set; }
+type BuildTable = typeof import('@/hooks/useZoneTableExport').buildZoneTable;
+/**
+ * One digest of what the write depends on (#10794). A write uses the zone set and its full facts table, which reads
+ * the assignments, apportionment and quantities the preview showed; a removal uses only the zone set. An apply whose
+ * rebuilt digest differs is refused, so a write never uses a table nobody reviewed.
+ */
+function writebackInputs(action: Candidate['action'], set: ZoneSet, rows?: unknown) { return stateRevision(action === 'write' ? { set, rows } : { set }); }
+/** The cheap checks: model identities, mutation version, geometry, and the caller's edit permission. */
 function validate(candidate: Candidate) {
   const state = useViewerStore.getState();
   // geometryResult: a geometry-only update changes the proved volumes without touching models or mutationVersion.
   // (Not geometryUpdateTick, which a recolour also bumps.)
-  if (state.models !== candidate.models || state.mutationVersion !== candidate.revision || state.geometryResult !== candidate.geometry || JSON.stringify(zoneSet(candidate.setId)) !== candidate.configuration) throw new Error('Zone/model inputs changed after review.');
+  if (state.models !== candidate.models || state.mutationVersion !== candidate.revision || state.geometryResult !== candidate.geometry) throw new Error('Zone/model inputs changed after review.');
   const permission = mutationPermissionForModels(state, candidate.modelIds); if (!permission.allowed) throw new Error(`Native write refused: ${permission.reason}`);
+}
+/** The full check, once per apply and after permission: rebuild the digest of what the write would use. */
+function validateInputs(candidate: Candidate, build: BuildTable) {
+  validate(candidate); const set = zoneSet(candidate.setId);
+  if (writebackInputs(candidate.action, set, candidate.action === 'write' ? build(set, candidate.basis) : undefined) !== candidate.inputs) throw new Error('Zone/model inputs changed after review.');
+  return set;
 }
 export const zoneWriteOperations = [
   operation<{ set_id: string; model_ids: string[]; basis: VolumeBasis; action: 'write' | 'remove' }>(meta('zones.writeback.prepare', 'Prepare native zone property/quantity writeback or removal with explicit complete target model population. The preview is the same native facts table as export: row_count rows, with as many as fit the result limit (truncated says when some were left out; apply writes every row, so review a truncated table in full with zones.table.export). Native writeback reports per-model partial outcomes and uses explicit Remove as its inverse; it does not enter native Undo history.'), {
@@ -35,7 +51,8 @@ export const zoneWriteOperations = [
     const current = [...state.models].filter(([, model]) => model.ifcDataStore).map(([id]) => id).sort();
     if (JSON.stringify([...i.model_ids].sort()) !== JSON.stringify(current) || !i.model_ids.includes(c.model.id)) throw new Error('model_ids must explicitly name every currently loaded IFC target.');
     const set = zoneSet(i.set_id), rows = buildZoneTable(set, i.basis);
-    const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult, configuration: JSON.stringify(set) };
+    const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult,
+      inputs: writebackInputs(i.action, set, rows) };
     validate(candidate); evictOldest(owned(c), 32); const token = crypto.randomUUID(); owned(c).set(token, candidate);
     // The token covers every row; the preview carries as many as fit the result limit (#10794).
     const rest = { token, action: i.action, model_ids: i.model_ids, row_count: rows.length, truncated: true, undo: 'explicit-native-remove; not history Undo', partial_outcomes: true };
@@ -47,10 +64,11 @@ export const zoneWriteOperations = [
     type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false,
   }, async (i, c) => {
     const candidate = owned(c).get(i.token); if (!candidate) throw new Error('Unknown zone candidate for this host.'); if (candidate.result) return out(candidate.result);
-    const { applyZoneWriteBack, removeZoneWriteBack } = await import('@/hooks/useZoneWriteBack'); validate(candidate); assertToolActive(c);
+    const [{ applyZoneWriteBack, removeZoneWriteBack }, { buildZoneTable }] = await Promise.all([import('@/hooks/useZoneWriteBack'), import('@/hooks/useZoneTableExport')]);
+    validate(candidate); assertToolActive(c);
     // A refusal throws inside commit, so it is never reported as a committed write.
     candidate.result = c.commit(() => {
-      validate(candidate); const set = zoneSet(candidate.setId);
+      const set = validateInputs(candidate, buildZoneTable);
       const result = candidate.action === 'write' ? applyZoneWriteBack(set, candidate.basis) : removeZoneWriteBack(set);
       if (result.blocked) throw new Error(`Native zone writeback refused: ${result.blocked}`);
       return result;

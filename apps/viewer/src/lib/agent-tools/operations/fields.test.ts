@@ -8,6 +8,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { resetFeaturesForTest } from '@/lib/features';
 import { model, parseStep, seed, viewerHost } from '@/test/agent-tools-fixture';
+import { discoverFilterValues } from '@/lib/search/filter-schema';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
 import { boundedFieldValues, boundedPropertyValues } from './fields';
 import { MAX_RESULT_BYTES } from './result-limit';
@@ -37,8 +38,8 @@ test('fields.values shares one byte budget across all five fields and names the 
   assert.deepEqual(bounded.materials, values.materials);
   assert.deepEqual(bounded.predefinedTypes, values.predefinedTypes);
   assert.deepEqual(bounded.propertyValues, Object.fromEntries(values.propertyValues));
-  const split = Math.abs(bytes(bounded.classificationSystems) - bytes(bounded.classifications));
-  assert.ok(split < 250, `large fields differ by ${split} bytes`);
+  // Each cut field leaves less than one item unused, so the result nearly fills the budget.
+  assert.ok(bytes(bounded) > budget - 2 * bytes(values.classificationSystems[0]) - 200, `${bytes(bounded)} bytes leaves budget unused`);
   assert.deepEqual(bounded.classifications, values.classifications.slice(0, bounded.classifications.length), 'a cut list keeps its sorted prefix');
   const whole = boundedFieldValues(values, Number.MAX_SAFE_INTEGER);
   assert.equal(whole.truncated, undefined);
@@ -60,15 +61,28 @@ function oversizedStore(): Promise<IfcDataStore> {
   return parseStep(new TextEncoder().encode(text));
 }
 
+test('a cut field passes the share it cannot use to the next cut field (#10598)', () => {
+  // One property key far larger than any share: propertyValues keeps nothing, and its share goes to classifications.
+  const values = { materials: [], classificationSystems: [], classifications: Array.from({ length: 5000 }, (_, i) => `Code${String(i).padStart(5, '0')}${'x'.repeat(200)}`),
+    predefinedTypes: [], propertyValues: new Map([['Pset.Huge', ['y'.repeat(300_000)]]]) };
+  const bounded = boundedFieldValues(values, 200_000);
+  assert.deepEqual(bounded.truncated, ['classifications', 'propertyValues']);
+  assert.deepEqual(bounded.propertyValues, {});
+  assert.ok(bytes(bounded.classifications) > 190_000, `${bytes(bounded.classifications)} bytes of classifications`);
+});
+
 test('fields.values returns a result under the executor limit for a model whose classifications alone exceed it (#10598)', async () => {
   resetFeaturesForTest();
-  seed([model('A', await oversizedStore())]);
+  const store = await oversizedStore();
+  seed([model('A', store)]);
+  const sampled = discoverFilterValues(store);
+  assert.ok(bytes(sampled.classificationSystems) > MAX_RESULT_BYTES, 'the fixture alone exceeds the limit');
   const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_execute', { model_id: 'A', operation_id: 'fields.values', input: {} }, { canEdit: () => true });
   assert.equal(result.isError, false, result.text);
   const values = (result.structured as { result: { classificationSystems: string[]; classifications: string[]; predefinedTypes: string[]; truncated?: string[] } }).result;
   assert.ok(bytes(values) <= MAX_RESULT_BYTES);
   assert.deepEqual(values.truncated, ['classificationSystems']);
-  assert.ok(values.classificationSystems.length > 1000 && values.classificationSystems.length < 5000, `${values.classificationSystems.length} systems`);
-  assert.equal(values.classifications.length, 10_000, 'the smaller classification field stays whole');
-  assert.deepEqual(values.predefinedTypes, ['STANDARD']);
+  assert.deepEqual(values.classificationSystems, sampled.classificationSystems.slice(0, values.classificationSystems.length));
+  assert.deepEqual(values.classifications, sampled.classifications, 'the smaller classification field stays whole');
+  assert.deepEqual(values.predefinedTypes, sampled.predefinedTypes);
 });

@@ -5,6 +5,8 @@ import { discoverFilterSchema, discoverPropertyAndQuantitySchema, discoverFilter
 import { operation, emptySchema } from './contract';
 import { MAX_RESULT_BYTES } from './result-limit';
 const string = { type: 'string' };
+/** Margin under the executor's limit, so a change to how the executor measures or wraps a result cannot tip it over. */
+const RESULT_HEADROOM = 16 * 1024;
 const utf8 = new TextEncoder();
 const bytes = (value: unknown) => utf8.encode(JSON.stringify(value)).length;
 const strings = { type: 'array', items: string };
@@ -42,28 +44,26 @@ const VALUE_FIELDS = Object.keys(valueLists) as ValueField[];
 type FieldValues = Omit<FilterValueSchema, 'propertyValues'> & { propertyValues: Record<string, string[]>; truncated?: ValueField[] };
 /**
  * One byte budget across all five fields (#10598): the returned object, keys and `truncated` included, fits `budget`.
- * A field smaller than an equal share of what is left keeps all of it; the larger fields split the remainder equally,
- * so no single field can starve the others or overflow the result. A field is cut exactly when its share is below its size.
+ * Fields are filled smallest first, each up to an equal share of what is left, so a small field keeps all of it and
+ * no field can starve the others. A cut field charges only the bytes it kept; the rest flows to the larger fields.
  */
 export function boundedFieldValues(values: FilterValueSchema, budget: number): FieldValues {
-  const full = { ...values, propertyValues: Object.fromEntries(values.propertyValues) };
-  // Reserve keys and a full `truncated` list; the null placeholders and each share's own brackets are slack, never overflow.
+  const out: FieldValues = { ...values, propertyValues: Object.fromEntries(values.propertyValues) };
+  // Reserve keys and a full `truncated` list; the null placeholders and each field's own brackets are slack.
   let left = budget - bytes({ ...Object.fromEntries(VALUE_FIELDS.map(field => [field, null])), truncated: VALUE_FIELDS });
-  const bySize = VALUE_FIELDS.map(field => ({ field, size: bytes(full[field]) })).sort((a, b) => a.size - b.size);
-  const share = new Map<ValueField, number>(), truncated: ValueField[] = [];
+  const bySize = VALUE_FIELDS.map(field => ({ field, size: bytes(out[field]) })).sort((a, b) => a.size - b.size);
+  const truncated = new Set<ValueField>();
   bySize.forEach(({ field, size }, index) => {
-    const granted = Math.min(size, Math.floor(left / (bySize.length - index)));
-    share.set(field, granted); left -= granted;
-    if (granted < size) truncated.push(field);
+    const share = Math.floor(left / (bySize.length - index));
+    if (size <= share) { left -= size; return; }
+    truncated.add(field);
+    if (field === 'propertyValues') {
+      // Sorted like the lists, so which keys survive does not depend on entity order.
+      out.propertyValues = boundedPropertyValues([...values.propertyValues].sort(([a], [b]) => a.localeCompare(b)), share);
+    } else out[field] = boundedList(out[field], share);
+    left -= bytes(out[field]);
   });
-  // Only a cut field pays for the per-item pass.
-  const list = (field: Exclude<ValueField, 'propertyValues'>) => truncated.includes(field) ? boundedList(full[field], share.get(field) ?? 0) : full[field];
-  const out: FieldValues = {
-    materials: list('materials'), classificationSystems: list('classificationSystems'), classifications: list('classifications'),
-    predefinedTypes: list('predefinedTypes'),
-    propertyValues: truncated.includes('propertyValues') ? boundedPropertyValues(values.propertyValues, share.get('propertyValues') ?? 0) : full.propertyValues,
-  };
-  return truncated.length ? { ...out, truncated: VALUE_FIELDS.filter(field => truncated.includes(field)) } : out;
+  return truncated.size ? { ...out, truncated: VALUE_FIELDS.filter(field => truncated.has(field)) } : out;
 }
 export const fieldOperations = [
   operation(meta('fields.schema', 'Discover the native effective IFC-type/storey selectors used by filter, list and chart editors. Uses the current model mutation view.', object({
@@ -77,5 +77,5 @@ export const fieldOperations = [
   operation(meta('fields.values', 'Discover native bounded sampled material, classification, predefined-type and property-value choices. Sampling limits remain those of the native UI discovery service. The five fields share the result size limit; a field cut to fit is named in truncated.', {
     type: 'object', properties: { ...valueLists, truncated: { type: 'array', items: { type: 'string', enum: [...VALUE_FIELDS] }, minItems: 1, uniqueItems: true } },
     required: Object.keys(valueLists), additionalProperties: false,
-  }), emptySchema, (_, c) => boundedFieldValues(discoverFilterValues(c.model.store, c.model.mutationView()), MAX_RESULT_BYTES)),
+  }), emptySchema, (_, c) => boundedFieldValues(discoverFilterValues(c.model.store, c.model.mutationView()), MAX_RESULT_BYTES - RESULT_HEADROOM)),
 ];

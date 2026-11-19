@@ -29,7 +29,8 @@ function answer<T>(result: AgentToolResult): T {
   const value = (result.structured as { result: { native_json?: string } }).result;
   return (value?.native_json === undefined ? value : JSON.parse(value.native_json)) as T;
 }
-const prepare = (command?: Record<string, unknown>) => invoke('authoring.room.prepare', { proposal_json: JSON.stringify(roomEnvelope(command)) });
+/** Through viewer_operation_execute, as an agent preparing a room to apply calls it. */
+const prepare = (command?: Record<string, unknown>) => invoke('authoring.room.prepare', { proposal_json: JSON.stringify(roomEnvelope(command)) }, true);
 async function setup() {
   await seedReviewedRoom();
   host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));

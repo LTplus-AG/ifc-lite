@@ -65,7 +65,7 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect((await entry("#20=IFCMATERIALCONSTITUENT('c',$,#9,0.5,$);\n#22=IFCMATERIALCONSTITUENT('d',$,#8,0.5,$);\n#21=IFCMATERIALCONSTITUENTSET('s',$,(#20,#22));"))?.expressIds).toEqual([5]);
   });
 
-  it('checks the record and its referents as edited (/code-review)', async () => {
+  it('checks the record and its referents as edited (#10781)', async () => {
     const data = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);\n#12=IFCMATERIALLAYER(#9,0.1,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10,#12),'Wall',$);\n#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#13);`;
     const edited = async (edit: (view: MutablePropertyView) => void) => {
       const store = await parse(model('IFC4', `${BASE}\n${data}`));
@@ -123,13 +123,13 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(result.stats.warnings.join('\n')).toContain('1 IfcMaterialProperties record(s) were not written');
   });
 
-  it('checks a record without its semicolon like one with it (CodeRabbit)', () => {
+  it('checks a record without its semicolon like one with it (#10911)', () => {
     // No lookup proves #13 an IfcMaterial either way, so neither form is written.
     expect(convertStepLine("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", 'IFC4', 'IFC2X3')).toBeNull();
     expect(convertStepLine("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13)", 'IFC4', 'IFC2X3')).toBeNull();
   });
 
-  it('leaves out and names a record it cannot read (/code-review)', () => {
+  it('leaves out and names a record it cannot read (#10911)', () => {
     const referents = new MaterialReferents({ typeOf: (id) => (id === 8 ? 'IFCMATERIAL' : undefined), slots: () => undefined });
     expect(referents.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);");
     const commented = "#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);/* c */";

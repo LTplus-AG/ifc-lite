@@ -238,6 +238,33 @@ describe('loadFromServer — a superseded stream must not paint into the active 
     );
   });
 
+  it('a superseded processed stream passes its cancellation to the transport (#10469)', async () => {
+    const controller = new AbortController();
+    let observedAbort = false;
+    let started = false;
+    IfcServerClient.prototype.parseParquetStream = async (_file, onBatch, options) => {
+      started = true;
+      if (options && 'signal' in options && options.signal instanceof AbortSignal) {
+        options.signal.addEventListener('abort', () => { observedAbort = true; }, { once: true });
+      }
+      onBatch(BATCH_1);
+      await batch2Gate;
+      onBatch(BATCH_2);
+      return STREAM_RESULT;
+    };
+    const result = loadFromServer!({ sha256: 'a'.repeat(64) }, new ArrayBuffer(0), () => false, controller.signal, 'server');
+    for (let i = 0; i < 50 && !started; i++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(started, true);
+    assert.deepEqual(snapshot().geometryMeshIds, [1]);
+    controller.abort();
+    releaseBatch2();
+    assert.equal(await result, false);
+    assert.equal(observedAbort, true);
+    assert.deepEqual(snapshot().geometryMeshIds, [1], 'a transport that ignores abort must still be unable to publish');
+  });
+
   it('refuses an aborted load before starting model properties (#9538)', async () => {
     const controller = new AbortController();
     controller.abort();

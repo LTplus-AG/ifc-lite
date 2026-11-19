@@ -1,0 +1,158 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Capped-memory load repro for #10264: a large IFC is refused, or awaits the
+# user's consent, instead of the tab being killed.
+#
+# scripts/perf/oom-load-probe.mjs generates a synthetic dense IFC
+# (gen-dense-ifc.mjs, nothing committed), opens it in the built viewer with
+# navigator.deviceMemory overridden, and runs only Chrome inside a cgroup v2
+# scope with MemoryMax and no swap. `--expect not-killed` passes on loaded,
+# refused, awaiting-decision or cancelled, and fails on a killed tab, an error
+# or a timeout. A missing cgroup or systemd user manager exits 2: the lane
+# goes red rather than skipping.
+#
+# Cases (the issue's acceptance):
+# - dense tfs, 300 MB, reported 4 GB, 3 GiB cap: refused (#10264 A1).
+# - dense tfs, 1100 MB, reported 8 GB, 6 GiB cap: awaiting-decision (the
+#   consent dialog at the browser-capped 8 GB report, #10353).
+# SwiftShader, so the numbers are not GPU memory. Not a PR gate; a red
+# scheduled run opens or updates the scheduled-lane issue.
+
+name: OOM load probe (capped memory)
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  probe:
+    name: Capped load (4 GB / 3 GiB, 8 GB / 6 GiB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Resolve prebuilt-WASM eligibility
+        id: wasm
+        run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup WASM build toolchain
+        if: steps.wasm.outputs.eligible != 'true'
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: oom-load-probe
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch prebuilt WASM
+        if: steps.wasm.outputs.eligible == 'true'
+        run: |
+          for attempt in 1 2 3; do
+            if node scripts/fetch-prebuilt-wasm.mjs; then exit 0; fi
+            echo "::warning::prebuilt WASM fetch attempt ${attempt} failed; retrying…"
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not fetch the prebuilt @ifc-lite/wasm bundle after 3 attempts."
+          exit 1
+
+      - name: Build WASM
+        if: steps.wasm.outputs.eligible != 'true'
+        run: bash scripts/build-wasm.sh
+
+      - name: Build viewer app
+        run: pnpm turbo build --filter=@ifc-lite/viewer
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The probe caps Chrome with `systemd-run --user --scope`. A hosted
+      # runner has no login session, so start the runner user's manager and
+      # point the job at its bus; the probe's own preflight then proves the
+      # memory controller is delegated (exit 2 if not).
+      - name: Start the systemd user manager
+        run: |
+          sudo loginctl enable-linger "$USER"
+          uid="$(id -u)"
+          for _ in $(seq 1 30); do [ -S "/run/user/$uid/bus" ] && break; sleep 1; done
+          echo "XDG_RUNTIME_DIR=/run/user/$uid" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus" >> "$GITHUB_ENV"
+          cat "/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/cgroup.subtree_control" || true
+
+      - name: Dense 300 MB at a reported 4 GB under a 3 GiB cap (expect refused)
+        run: |
+          node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
+            --kind tfs --target-mb 300 --device-memory 4 --cores 4 --cap 3G \
+            --out test-results/oom-load-probe/tfs-300-4g
+
+      - name: Dense 1100 MB at a reported 8 GB under a 6 GiB cap (expect awaiting-decision)
+        if: always()
+        run: |
+          node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
+            --kind tfs --target-mb 1100 --device-memory 8 --cores 4 --cap 6G \
+            --out test-results/oom-load-probe/tfs-1100-8g
+
+      # not-killed also accepts `loaded`; pin the outcome each case is for.
+      - name: Check each case's outcome
+        if: always()
+        run: |
+          node --input-type=module - <<'OUTCOMES'
+          import { readFileSync } from 'node:fs';
+          const expected = { 'tfs-300-4g': 'refused', 'tfs-1100-8g': 'awaiting-decision' };
+          let failed = false;
+          for (const [name, outcome] of Object.entries(expected)) {
+            let got;
+            try { got = JSON.parse(readFileSync(`test-results/oom-load-probe/${name}/result.json`, 'utf8')).outcome; }
+            catch (error) { got = `no result (${error.message})`; }
+            console.log(`${name}: ${got} (expected ${outcome})`);
+            if (got !== outcome) failed = true;
+          }
+          if (failed) process.exit(1);
+          OUTCOMES
+
+      - name: Upload probe results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: oom-load-probe-${{ github.sha }}
+          path: test-results/oom-load-probe/
+          if-no-files-found: error
+          retention-days: 30
+
+  report-scheduled-failure:
+    needs: [probe]
+    if: always() && github.event_name == 'schedule' && needs.probe.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: OOM load probe (capped memory)
+      jobs: probe
+      result: probe=${{ needs.probe.result }}
+    permissions:
+      actions: read
+      contents: read
+      issues: write

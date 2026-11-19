@@ -194,10 +194,12 @@ scene, so treat it as a `timeout`, not a pass. These numbers are not comparable 
 campaign runs that put the driver process inside the cap as well: there tfs-225 was killed on
 hardware, here it loads with about 90 MiB to spare.
 
-CI: not wired. Per-PR CI is too heavy (a viewer build plus a ~1 min browser run). The proposed
-home is a `workflow_dispatch`/nightly job, added only once the cap is verified on a GitHub-hosted
-runner: that needs `systemd-run --user` with a delegated memory controller there, or the job run
-inside a container with `--memory=3g --memory-swap=3g`. Neither was verified from here.
+CI: `.github/workflows/oom-load-probe.yml`, nightly and `workflow_dispatch`, not a PR gate (a
+viewer build plus two browser runs). It starts the runner user's systemd manager with
+`loginctl enable-linger` so `systemd-run --user` works on a hosted runner, then pins each case's
+outcome: dense 300 MB at a reported 4 GB / 3 GiB is `refused`, dense 1100 MB at a reported
+8 GB / 6 GiB is `awaiting-decision`. If the hosted runner does not delegate the memory controller
+to the user manager, the probe's preflight exits 2 and the lane is red, never skipped.
 
 ## Gaussian capture memory ownership (#9018, #10401)
 

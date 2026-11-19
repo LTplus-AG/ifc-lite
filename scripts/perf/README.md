@@ -199,7 +199,8 @@ viewer build plus two browser runs). It starts the runner user's systemd manager
 `loginctl enable-linger` so `systemd-run --user` works on a hosted runner, then pins each case's
 outcome: dense 300 MB at a reported 4 GB / 3 GiB is `refused`, dense 1100 MB at a reported
 8 GB / 6 GiB is `awaiting-decision`. If the hosted runner does not delegate the memory controller
-to the user manager, the probe's preflight exits 2 and the lane is red, never skipped.
+to the user manager, the probe's preflight exits 2 and the lane is red, never skipped. Whether a
+hosted runner allows this is proven only by the lane's own runs (see the PR that added it).
 
 ## Gaussian capture memory ownership (#9018, #10401)
 

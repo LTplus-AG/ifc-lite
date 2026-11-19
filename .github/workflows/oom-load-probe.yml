@@ -26,13 +26,17 @@ on:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
+  # Proof run on a hosted runner before merge: a workflow not yet on the default
+  # branch cannot be dispatched. Remove before queueing.
+  push:
+    branches: [test/10264-capped-repro-ci]
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false # a cancelled scheduled run would be filed as a lane failure
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -86,6 +90,7 @@ jobs:
         run: bash scripts/build-wasm.sh
 
       - name: Build viewer app
+        id: build
         run: pnpm turbo build --filter=@ifc-lite/viewer
 
       - name: Install Chromium
@@ -100,18 +105,21 @@ jobs:
           sudo loginctl enable-linger "$USER"
           uid="$(id -u)"
           for _ in $(seq 1 30); do [ -S "/run/user/$uid/bus" ] && break; sleep 1; done
+          if [ ! -S "/run/user/$uid/bus" ]; then echo "::error::the systemd user manager's bus /run/user/$uid/bus never appeared"; exit 1; fi
           echo "XDG_RUNTIME_DIR=/run/user/$uid" >> "$GITHUB_ENV"
           echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus" >> "$GITHUB_ENV"
           cat "/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/cgroup.subtree_control" || true
 
       - name: Dense 300 MB at a reported 4 GB under a 3 GiB cap (expect refused)
+        timeout-minutes: 20
         run: |
           node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
             --kind tfs --target-mb 300 --device-memory 4 --cores 4 --cap 3G \
             --out test-results/oom-load-probe/tfs-300-4g
 
       - name: Dense 1100 MB at a reported 8 GB under a 6 GiB cap (expect awaiting-decision)
-        if: always()
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 20
         run: |
           node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
             --kind tfs --target-mb 1100 --device-memory 8 --cores 4 --cap 6G \
@@ -119,7 +127,7 @@ jobs:
 
       # not-killed also accepts `loaded`; pin the outcome each case is for.
       - name: Check each case's outcome
-        if: always()
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           node --input-type=module - <<'OUTCOMES'
           import { readFileSync } from 'node:fs';
@@ -140,13 +148,16 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oom-load-probe-${{ github.sha }}
-          path: test-results/oom-load-probe/
+          # A killed probe can leave its generated model behind; never upload it.
+          path: |
+            test-results/oom-load-probe/
+            !test-results/oom-load-probe/**/*.ifc
           if-no-files-found: error
           retention-days: 30
 
   report-scheduled-failure:
     needs: [probe]
-    if: always() && github.event_name == 'schedule' && needs.probe.result != 'success'
+    if: always() && github.event_name == 'schedule' && needs.probe.result != 'success' && needs.probe.result != 'cancelled'
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
       workflow_name: OOM load probe (capped memory)

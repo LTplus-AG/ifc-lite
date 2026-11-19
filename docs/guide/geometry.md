@@ -1003,6 +1003,12 @@ matching native admission-refusal semantics. Repeated reads and batches do not a
 record twice. These counters are separate from owned-producer refusal warnings
 and CSG failure diagnostics. They do not change which geometry is emitted.
 
+Pipeline diagnostics schema 2 counts `silentNoOps` using measured area and
+volume for clean rectangular cuts, matching geometry diagnostics schema 6.
+Both measurements must stay within 0.1% of the original. Pipeline schema 1
+and geometry schema 5 used equal triangle counts. Merging batches with both
+versions includes only measured batches in the new count.
+
 `omittedTypeRecords` (#8341) makes a different loss countable: a type product
 whose RepresentationMaps the scan can read, but whose own record the full
 decoder rejects (a syntax error in another attribute), cannot be meshed, so its
@@ -1023,7 +1029,7 @@ Rust callers can use
 `ifc_lite_processing::pipeline_diagnostics::PipelineDiagnosticsReport` via
 `Default` or `from_processing_stats`. It contains the original counters/timings,
 the two refusal counters and `omitted_type_records`, serialized as one flat object. The published
-`PipelineDiagnostics` v1 struct and its constructor remain available unchanged;
+`PipelineDiagnostics` struct and its constructor retain their original fields;
 the new report is non-exhaustive so future counters can be added without
 breaking struct literals. Inspection of the published `ifc-lite-processing`
 27.0.0 crate confirmed that directly adding fields or `#[non_exhaustive]` to

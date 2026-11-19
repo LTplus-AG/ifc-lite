@@ -27,7 +27,7 @@ fn native_pass_surfaces_geometry_diagnostics() {
     // The contract carries the compatibility handshake on the native path too.
     assert_eq!(
         diag.schema_version,
-        ifc_lite_geometry::GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+        6,
         "native diagnostics must be version-stamped"
     );
 

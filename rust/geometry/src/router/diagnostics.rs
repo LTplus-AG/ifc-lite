@@ -147,7 +147,11 @@ pub struct WorstHost {
 /// - 3: added `total_unsupported_items` / `unsupported_items_by_type` (previously uncounted drops).
 /// - 4: total_unsupported_items / unsupported_items_by_type also count openings whose id does not decode or whose body fails/meshes empty (ROUTER-37, #8385).
 /// - 5: work-budget refusals carry budget, demand and product/source identity separately from unsupported items.
-pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 5;
+/// - 6: silent_no_ops uses measured area and volume instead of equal triangle counts (#10510).
+pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = MEASURED_CUT_SCHEMA_VERSION;
+
+const LEGACY_CUT_SCHEMA_VERSION: u32 = 5;
+const MEASURED_CUT_SCHEMA_VERSION: u32 = 6;
 
 /// Aggregate CSG / opening diagnostics for one geometry pass — the public
 /// diagnostics contract. Built by [`aggregate_diagnostics`] from drained router
@@ -173,7 +177,8 @@ pub struct GeometryDiagnostics {
     pub classification: ClassificationSummary,
     /// Failure counts by stable reason label, sorted desc by count.
     pub failures_by_reason: Vec<ReasonCount>,
-    /// Hosts where rectangular cutters ran clean and left the area and volume unchanged.
+    /// Hosts where rectangular cutters ran clean and left the area and volume
+    /// unchanged within tolerance (v6 onward). Earlier producers used equal triangle counts.
     pub silent_no_ops: u64,
     /// rect_fast fast-path engagement.
     pub rect_fast: RectFastSummary,
@@ -231,6 +236,18 @@ impl Default for GeometryDiagnostics {
 }
 
 impl GeometryDiagnostics {
+    /// Attach the measured rectangular cut count and advertise its compatibility version.
+    pub fn with_measured_silent_no_ops(mut self, count: u64) -> Self {
+        self.schema_version = GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION;
+        self.silent_no_ops = count;
+        self
+    }
+
+    /// Whether this producer measured area and volume for the silent no-op count.
+    pub fn has_measured_silent_no_ops(&self) -> bool {
+        self.schema_version >= MEASURED_CUT_SCHEMA_VERSION
+    }
+
     /// Whether any CSG failure, silent no-op, or dropped item was recorded.
     pub fn has_issues(&self) -> bool {
         self.total_budget_refusals > 0 || !self.budget_refusals.is_empty() || self.total_csg_failures > 0 || self.silent_no_ops > 0 || self.total_unsupported_items > 0
@@ -252,8 +269,9 @@ impl GeometryDiagnostics {
     }
 }
 
-/// Build a [`GeometryDiagnostics`] from drained router data. wasm-free so both
-/// the wasm/viewer path and a future native path can produce the same contract.
+/// Build a v5 [`GeometryDiagnostics`] from drained router data and triangle counts.
+/// Producers with measured cuts attach their count with
+/// [`GeometryDiagnostics::with_measured_silent_no_ops`].
 /// The caller owns draining: the router accessors are destructive (`mem::take`),
 /// so drain once and pass the results here — do not double-`take`.
 /// `budget_refusals` is [`GeometryRouter::take_budget_refusal_report`]'s
@@ -339,7 +357,7 @@ pub fn aggregate_diagnostics(
         .collect();
 
     GeometryDiagnostics {
-        schema_version: GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+        schema_version: LEGACY_CUT_SCHEMA_VERSION,
         total_csg_failures,
         products_with_failures,
         hosts_with_openings,

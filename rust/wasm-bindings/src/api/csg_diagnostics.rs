@@ -56,7 +56,7 @@ fn drain_diagnostics(
     for (product_id, fails) in collected_failures {
         csg_failures.entry(product_id).or_default().extend(fails);
     }
-    let mut diagnostics = ifc_lite_geometry::aggregate_diagnostics(
+    ifc_lite_geometry::aggregate_diagnostics(
         drain.classification,
         &csg_failures,
         &drain.hosts,
@@ -65,7 +65,6 @@ fn drain_diagnostics(
         drain.oversized_refs,
         &router.take_unsupported_items(),
         router.take_budget_refusal_report(),
-    );
-    diagnostics.silent_no_ops = no_ops;
-    diagnostics
+    )
+    .with_measured_silent_no_ops(no_ops)
 }

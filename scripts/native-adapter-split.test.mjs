@@ -180,6 +180,15 @@ test('a lane, a witness, a reference or a verdict that differs is a mismatch', a
   assert.ok(verdicts.problems.some((p) => p.startsWith('verdicts differ')), verdicts.markdown);
 });
 
+test('missing evidence from either layout is a mismatch, never an empty match', async (context) => {
+  const noMono = await compareLayouts(layouts(scratch(context), (b) => rmSync(join(b, 'mono'), { recursive: true })));
+  assert.equal(noMono.match, false);
+  assert.ok(noMono.problems.some((p) => p.startsWith('no evidence from native-adapter')), noMono.markdown);
+  const noSplit = await compareLayouts(layouts(scratch(context), (b) => rmSync(join(b, 'split'), { recursive: true })));
+  assert.equal(noSplit.match, false);
+  for (const job of SPLIT_LANE_JOBS) assert.ok(noSplit.problems.some((p) => p.startsWith(`no evidence from ${job}`)), job);
+});
+
 test('a lane the single job never reached is reported, not counted', async (context) => {
   const report = await compareLayouts(layouts(scratch(context), (b) => {
     const p = join(b, 'mono/steps.json');

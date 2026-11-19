@@ -68,6 +68,8 @@ function evidence(dir) {
     meta: readJson(join(dir, 'meta.json'), {}),
     refs: readJson(join(dir, 'refs', 'manifest.json'), { files: {} }).files,
     logs: existsSync(join(dir, 'logs')) ? readdirSync(join(dir, 'logs')).sort() : [],
+    // collect always writes meta.json, so its absence means the evidence never arrived.
+    present: existsSync(join(dir, 'meta.json')),
     dir,
   };
 }
@@ -102,6 +104,8 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
   const lines = ['## native-adapter: single job vs split (shadow)', ''];
   const mono = evidence(monoDir);
   const split = Object.fromEntries(SPLIT_LANE_JOBS.map((job) => [job, evidence(join(splitDir, `na-split-evidence-${job}`))]));
+  // Absent evidence reads as empty steps, logs and references: never let it certify a match.
+  for (const [label, e] of [['native-adapter', mono], ...Object.entries(split)]) if (!e.present) problems.push(`no evidence from ${label} (${e.dir}); nothing of it was compared`);
   const monoGreen = needs?.['native-adapter']?.result === 'success';
   const j = judge(needs);
   lines.push(`Verdict: single job **${needs?.['native-adapter']?.result ?? 'absent'}**, split judge **${j.ok ? 'success' : 'failure'}**`);

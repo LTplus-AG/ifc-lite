@@ -17,7 +17,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState, type Dispatch, type SetStateAction } from 'react';
 import { render, cleanup, click } from '@/test/render.js';
-import { HierarchyRow, stableRowHandlers, type HierarchyRowCallbacks } from './HierarchyRow.js';
+import { HierarchyRow, useStableRowHandlers, type HierarchyRowCallbacks } from './HierarchyRow.js';
 import { hierarchyRowActions } from './HierarchyRowActions.js';
 import type { TreeNode } from './types.js';
 
@@ -44,12 +44,13 @@ function callbacks(click: HierarchyRowCallbacks['click']): HierarchyRowCallbacks
     removeModel: noop, syncSourceModel: noop, modelHeaderClick: noop };
 }
 
-/** Mount one row inside a host whose re-render (and the row's selection) the test controls. */
-function mountRow(node: TreeNode, handlers: HierarchyRowCallbacks) {
-  let update: Dispatch<SetStateAction<{ tick: number; isSelected: boolean }>> = noop;
+/** Mount one row inside a panel-like host that owns its handlers and whose re-render the test controls. */
+function mountRow(node: TreeNode, click: HierarchyRowCallbacks['click'] = noop) {
+  let update: Dispatch<SetStateAction<{ tick: number; isSelected: boolean; click: HierarchyRowCallbacks['click'] }>> = noop;
   function Panel() {
-    const [state, set] = useState({ tick: 0, isSelected: false });
+    const [state, set] = useState({ tick: 0, isSelected: false, click });
     update = set;
+    const handlers = useStableRowHandlers(callbacks(state.click));
     return <HierarchyRow node={node} section="storeys" index={3} start={84} size={28} handlers={handlers}
       isSelected={state.isSelected} nodeHidden={false} isMultiModel={false} modelsCount={1}
       actions={hierarchyRowActions(node, true)} registerRow={noop} focusRow={noop} />;
@@ -59,13 +60,15 @@ function mountRow(node: TreeNode, handlers: HierarchyRowCallbacks) {
     container,
     rerender: () => act(() => update((s) => ({ ...s, tick: s.tick + 1 }))),
     select: () => act(() => update((s) => ({ ...s, isSelected: true }))),
+    /** A panel render with a new click callback, as when its selection rows change. */
+    setClick: (next: HierarchyRowCallbacks['click']) => act(() => update((s) => ({ ...s, click: next }))),
   };
 }
 
 describe('HierarchyRow (#10535)', () => {
   it('skips rendering when the panel re-renders with the same row, and renders when its state changes', () => {
     const { node, reads } = countedRow();
-    const row = mountRow(node, stableRowHandlers({ current: callbacks(noop) }));
+    const row = mountRow(node);
     const afterMount = reads();
     assert.ok(afterMount > 0, 'the row rendered its name');
     row.rerender();
@@ -74,13 +77,16 @@ describe('HierarchyRow (#10535)', () => {
     assert.ok(reads() > afterMount, 'a row whose selection changed renders');
   });
 
-  it('a skipped row calls the latest click handler with its section and index', () => {
+  it('a skipped row calls the panel\'s committed click handler with its section and index', () => {
+    const { node, reads } = countedRow();
     const calls: string[] = [];
-    const latest = { current: callbacks((n, _e, section, index) => calls.push(`first ${n.id} ${section} ${index}`)) };
-    const row = mountRow(countedRow().node, stableRowHandlers(latest));
-    latest.current = callbacks((n, _e, section, index) => calls.push(`latest ${n.id} ${section} ${index}`));
-    row.rerender();
-    click(row.container.querySelector('[role="treeitem"]')!);
+    const row = mountRow(node, (n, _e, section, index) => calls.push(`first ${n.id} ${section} ${index}`));
+    const afterMount = reads();
+    row.setClick((n, _e, section, index) => calls.push(`latest ${n.id} ${section} ${index}`));
+    assert.equal(reads(), afterMount, 'a new panel callback does not re-render the row');
+    const treeitem = row.container.querySelector('[role="treeitem"]');
+    assert.ok(treeitem);
+    click(treeitem);
     assert.deepEqual(calls, ['latest storey-7 storeys 3']);
   });
 });

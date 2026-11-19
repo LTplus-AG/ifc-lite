@@ -61,6 +61,7 @@ export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
+import { propertyBefore, rememberPublishedEdit } from './mutation-room-history.js';
 import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
 import { hasPendingWorkOutsideView } from './pending-outside-view.js';
@@ -1118,6 +1119,7 @@ export const createMutationSlice: StateCreator<
       dataType = declaration.dataType;
       valueType = declaration.valueType;
     }
+    const previous = propertyBefore(view, entityId, psetName, propName);
     const mutation = view.setProperty(entityId, psetName, propName, value, valueType, undefined, false, dataType);
 
     set((state) => recordHistory(state, modelId, [mutation]));
@@ -1127,6 +1129,7 @@ export const createMutationSlice: StateCreator<
     // is handed, so this call site cannot get the subject wrong. See
     // `@/lib/collab/room-model-target`.)
     get().mirrorPropertyEdit(modelId, entityId, psetName, propName, value, valueType, dataType);
+    rememberPublishedEdit(mutation, { valueType, dataType, previousType: previous?.type, previousDataType: previous?.dataType });
 
     return mutation;
   },
@@ -1137,6 +1140,7 @@ export const createMutationSlice: StateCreator<
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
+    const previous = propertyBefore(view, entityId, psetName, propName);
     const mutation = view.deleteProperty(entityId, psetName, propName);
     if (!mutation) return null;
 
@@ -1145,6 +1149,7 @@ export const createMutationSlice: StateCreator<
     // Mirror into the collab CRDT — room model only, gated in the callee. See
     // the note in `setProperty`.
     get().mirrorPropertyDelete(modelId, entityId, psetName, propName);
+    rememberPublishedEdit(mutation, { previousType: previous?.type, previousDataType: previous?.dataType });
 
     return mutation;
   },
@@ -1232,6 +1237,7 @@ export const createMutationSlice: StateCreator<
     // Mirror into the collab CRDT — room model only, gated in the callee. See
     // the note in `setProperty`.
     get().mirrorAttributeEdit(modelId, entityId, attrName, value);
+    rememberPublishedEdit(mutation);
 
     return mutation;
   },

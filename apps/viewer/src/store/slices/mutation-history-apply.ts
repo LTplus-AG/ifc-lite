@@ -11,13 +11,13 @@
  */
 
 import { replayQuantityMutation, type MutablePropertyView, type IfcAttributeValue, type Mutation } from '@ifc-lite/mutations';
-import { PropertyValueType, type PropertyValue } from '@ifc-lite/data';
 import type { ViewerState } from '../index.js';
 import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { mirrorCreateEntityRedo, mirrorSourceEntityRestore } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh } from './mutation-mesh-stash.js';
 import { isTargetTombstoned } from './mutation-redo-remote-guard.js';
 import { toast } from '@/components/ui/toast';
+import { mirrorHistoryStep } from './mutation-room-history.js';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
@@ -75,25 +75,15 @@ function reportUnreplayable(
   toast.error(`Could not ${direction} this change: it was recorded without the data needed to reverse it.`);
 }
 
-/**
- * Tell the collab room what an undo or redo step left, as the forward edit does (#10695): without this, peers keep
- * the value the local user just undid. The mirrors are no-ops outside a room and for any model but the room's.
- * `mirrorEdits: false` (the apply functions' last argument) leaves property and attribute steps to a command that
- * publishes its own history; entity create and delete steps always mirror.
- */
-function mirrorPropertyStep(get: Get, modelId: string, mutation: Mutation, left: { value: PropertyValue } | 'removed'): void {
-  if (!mutation.psetName || !mutation.propName) return;
-  if (left === 'removed') get().mirrorPropertyDelete(modelId, mutation.entityId, mutation.psetName, mutation.propName);
-  else get().mirrorPropertyEdit(modelId, mutation.entityId, mutation.psetName, mutation.propName, left.value, mutation.valueType ?? PropertyValueType.String);
-}
-
 /** Apply the inverse of `mutation` to `view` (one undo step, stacks untouched). */
-export function applyUndoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation, mirrorEdits = true): void {
+export function applyUndoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation): void {
   if (mutation.type === 'SESSION_EDIT') return; // Its retained domain state follows the Undo head.
   // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
-  } else if (mutation.setOverlay) {
+    return;
+  }
+  if (mutation.setOverlay) {
     // A whole-set edit carries its set's overlay rows from right before (#5965).
     view.restoreSetOverlay(mutation.setOverlay.before);
   } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
@@ -103,7 +93,6 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
     // restores its prior value — which may legitimately be null/unset (#1107).
     if (mutation.type === 'CREATE_PROPERTY' && mutation.psetName && mutation.propName) {
       view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
-      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, 'removed');
     } else if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
       view.setProperty(
         mutation.entityId,
@@ -114,7 +103,6 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
         undefined,
         true // skipHistory
       );
-      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, { value: mutation.oldValue });
     }
   } else if (mutation.type === 'DELETE_PROPERTY') {
     if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
@@ -127,7 +115,6 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
         undefined,
         true // skipHistory
       );
-      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, { value: mutation.oldValue });
     }
   } else if (mutation.type === 'CREATE_QUANTITY') {
     // Undo creation: remove the quantity mutation
@@ -137,9 +124,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (mutation.attributeName) {
       if (mutation.oldValue !== undefined && mutation.oldValue !== null) {
-        const value = String(mutation.oldValue);
-        view.setAttribute(mutation.entityId, mutation.attributeName, value, undefined, true);
-        if (mirrorEdits) get().mirrorAttributeEdit(modelId, mutation.entityId, mutation.attributeName, value);
+        view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.oldValue), undefined, true);
       } else {
         view.removeAttributeMutation(mutation.entityId, mutation.attributeName);
       }
@@ -222,15 +207,18 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else {
     reportUnreplayable('undo', mutation.type, mutation.entityId);
   }
+  mirrorHistoryStep(get, modelId, mutation, 'undo');
 }
 
 /** Re-apply `mutation` to `view` (one redo step, stacks untouched). */
-export function applyRedoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation, mirrorEdits = true): void {
+export function applyRedoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation): void {
   if (mutation.type === 'SESSION_EDIT') return; // Revisit the retained domain state at the Redo head.
   // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
   if (isTargetTombstoned(view, mutation)) {
     set({ collabGeometryNotice: 'An element was removed by a collaborator. Its local history was skipped.' });
-  } else if (mutation.setOverlay) {
+    return;
+  }
+  if (mutation.setOverlay) {
     // ...and from right after, so redo lands the edit exactly again (#5965).
     view.restoreSetOverlay(mutation.setOverlay.after);
   } else if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
@@ -244,20 +232,16 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
         undefined,
         true // skipHistory
       );
-      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, { value: mutation.newValue });
     }
   } else if (mutation.type === 'DELETE_PROPERTY') {
     if (mutation.psetName && mutation.propName) {
       view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
-      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, 'removed');
     }
   } else if (mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY') {
     replayQuantityMutation(view, mutation, 'redo', true);
   } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (mutation.attributeName && mutation.newValue !== undefined) {
-      const value = String(mutation.newValue);
-      view.setAttribute(mutation.entityId, mutation.attributeName, value, undefined, true);
-      if (mirrorEdits) get().mirrorAttributeEdit(modelId, mutation.entityId, mutation.attributeName, value);
+      view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.newValue), undefined, true);
     }
   } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
     const index = positionalIndex(mutation.attributeName);
@@ -324,4 +308,5 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else {
     reportUnreplayable('redo', mutation.type, mutation.entityId);
   }
+  mirrorHistoryStep(get, modelId, mutation, 'redo');
 }

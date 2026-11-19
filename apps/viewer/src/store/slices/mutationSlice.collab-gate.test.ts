@@ -36,6 +36,8 @@ function makeViewSpy() {
       createQuantitySet: (..._a: unknown[]) => { calls.push('createQuantitySet'); return mutation; },
       deletePropertySet: (..._a: unknown[]) => { calls.push('deletePropertySet'); return mutation; },
       setEntityType: (..._a: unknown[]) => { calls.push('setEntityType'); return mutation; },
+      // Read before a property edit, for the types its undo publishes (#10695).
+      getForEntity: () => [],
     },
   };
 }

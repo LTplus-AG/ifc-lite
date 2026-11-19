@@ -3,70 +3,87 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Undo and redo tell the collab room what they left, as the forward edit does (#10695). Without the mirror, a
- * peer keeps the value the local user just undid.
+ * Undo and redo publish to the collab room what the forward edit published (#10695). Without this, a peer keeps
+ * the value the local user just undid.
  */
 
-import { describe, it } from 'node:test';
+import '@/test/setup-dom.js';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
-import type { ViewerState } from '../index.js';
-import { applyRedoToView, applyUndoToView } from './mutation-history-apply.js';
+import { useViewerStore } from '@/store';
+import { WALL_ID, model, parseHelloWall, seed } from '@/test/agent-tools-fixture';
 
-function harness() {
-  const mirrored: unknown[][] = [];
-  const state = {
-    mirrorPropertyEdit: (...args: unknown[]) => { mirrored.push(['edit', ...args]); },
-    mirrorPropertyDelete: (...args: unknown[]) => { mirrored.push(['delete', ...args]); },
-    mirrorAttributeEdit: (...args: unknown[]) => { mirrored.push(['attribute', ...args]); },
-    mutationMeshTranslations: new Map(),
-  };
-  const get = () => state as unknown as ViewerState;
-  const set = () => {};
-  return { mirrored, undo: (view: MutablePropertyView, m: Mutation) => applyUndoToView(get, set, 'm1', view, m),
-    redo: (view: MutablePropertyView, m: Mutation) => applyRedoToView(get, set, 'm1', view, m) };
-}
+const initial = useViewerStore.getState();
+let mirrored: unknown[][];
+beforeEach(async () => {
+  seed([model('hello', await parseHelloWall())]);
+  mirrored = [];
+  useViewerStore.setState({
+    mirrorPropertyEdit: (...args) => { mirrored.push(['edit', ...args]); },
+    mirrorPropertyDelete: (...args) => { mirrored.push(['delete', ...args]); },
+    mirrorAttributeEdit: (...args) => { mirrored.push(['attribute', ...args]); },
+  });
+});
+afterEach(() => useViewerStore.setState(initial));
+const state = () => useViewerStore.getState();
+/** The mirror calls an action made, cleared for the next step. */
+const take = () => mirrored.splice(0);
 
-describe('undo and redo mirror property edits to the collab room (#10695)', () => {
-  it('undoing an update mirrors the restored value, redoing it mirrors the new one', () => {
-    const view = new MutablePropertyView(null, 'm1');
-    view.setProperty(1, 'Pset_WallCommon', 'FireRating', 'REI30', PropertyValueType.String);
-    const update = view.setProperty(1, 'Pset_WallCommon', 'FireRating', 'REI60', PropertyValueType.String);
-    const { mirrored, undo, redo } = harness();
-    undo(view, update);
-    redo(view, update);
-    assert.deepEqual(mirrored, [
-      ['edit', 'm1', 1, 'Pset_WallCommon', 'FireRating', 'REI30', PropertyValueType.String],
-      ['edit', 'm1', 1, 'Pset_WallCommon', 'FireRating', 'REI60', PropertyValueType.String],
-    ]);
+describe('undo and redo publish what the forward edit published (#10695)', () => {
+  it('a property update: undo restores the old value, redo the new one', () => {
+    state().setProperty('hello', WALL_ID, 'Pset_Custom', 'FireRating', 'REI30', PropertyValueType.String);
+    state().setProperty('hello', WALL_ID, 'Pset_Custom', 'FireRating', 'REI60', PropertyValueType.String);
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['edit', 'hello', WALL_ID, 'Pset_Custom', 'FireRating', 'REI30', PropertyValueType.String, undefined]]);
+    state().redo('hello');
+    assert.deepEqual(take(), [['edit', 'hello', WALL_ID, 'Pset_Custom', 'FireRating', 'REI60', PropertyValueType.String, undefined]]);
   });
 
-  it('undoing a create mirrors a removal, and a deleted property comes back on undo', () => {
-    const view = new MutablePropertyView(null, 'm1');
-    const create = view.setProperty(2, 'Pset_Custom', 'Note', 'removed', PropertyValueType.String);
-    const { mirrored, undo, redo } = harness();
-    undo(view, create);
-    redo(view, create);
-    const remove = view.deleteProperty(2, 'Pset_Custom', 'Note');
-    assert.ok(remove);
-    undo(view, remove);
-    redo(view, remove);
-    assert.deepEqual(mirrored, [
-      ['delete', 'm1', 2, 'Pset_Custom', 'Note'],
-      // A value that happens to read 'removed' is still a value.
-      ['edit', 'm1', 2, 'Pset_Custom', 'Note', 'removed', PropertyValueType.String],
-      ['edit', 'm1', 2, 'Pset_Custom', 'Note', 'removed', PropertyValueType.String],
-      ['delete', 'm1', 2, 'Pset_Custom', 'Note'],
-    ]);
+  it('a created property is removed on undo, and a deleted one returns with its own type', () => {
+    state().setProperty('hello', WALL_ID, 'Pset_Custom', 'IsLoadBearing', true, PropertyValueType.Boolean);
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['delete', 'hello', WALL_ID, 'Pset_Custom', 'IsLoadBearing']]);
+    state().redo('hello');
+    take();
+    state().deleteProperty('hello', WALL_ID, 'Pset_Custom', 'IsLoadBearing');
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['edit', 'hello', WALL_ID, 'Pset_Custom', 'IsLoadBearing', true, PropertyValueType.Boolean, undefined]]);
+    state().redo('hello');
+    assert.deepEqual(take(), [['delete', 'hello', WALL_ID, 'Pset_Custom', 'IsLoadBearing']]);
   });
 
-  it('undo and redo of a named attribute edit mirror the restored and the new value', () => {
-    const view = new MutablePropertyView(null, 'm1');
-    const rename = view.setAttribute(3, 'Name', 'New name', 'Old name');
-    const { mirrored, undo, redo } = harness();
-    undo(view, rename);
-    redo(view, rename);
-    assert.deepEqual(mirrored, [['attribute', 'm1', 3, 'Name', 'Old name'], ['attribute', 'm1', 3, 'Name', 'New name']]);
+  it('an attribute edit: undo restores the prior value, or the source value when none was recorded', () => {
+    state().setAttribute('hello', WALL_ID, 'Name', 'Renamed', 'Before');
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Name', 'Before']]);
+    state().redo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Name', 'Renamed']]);
+    const source = state().models.get('hello')!.ifcDataStore!.getEntity!(WALL_ID)!.attributes[3];
+    state().setAttribute('hello', WALL_ID, 'Description', 'Typed');
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Description', source ?? null]]);
+  });
+
+  it('an edit the room never received is not published on undo', () => {
+    // Written straight to the view, as a draft-editor command does: nothing was mirrored, so nothing is undone remotely.
+    const view = state().getMutationView('hello')!;
+    const mutation = view.setProperty(WALL_ID, 'Pset_Custom', 'Note', 'local', PropertyValueType.String);
+    useViewerStore.setState({ undoStacks: new Map([['hello', [mutation]]]) });
+    state().undo('hello');
+    assert.deepEqual(take(), []);
+  });
+
+  it('a participant who can no longer edit undoes locally only', () => {
+    state().setProperty('hello', WALL_ID, 'Pset_Custom', 'FireRating', 'REI30', PropertyValueType.String);
+    take();
+    useViewerStore.setState({ canCollabEdit: () => false });
+    state().undo('hello');
+    assert.deepEqual(take(), []);
   });
 });

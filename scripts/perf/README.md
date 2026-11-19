@@ -79,8 +79,8 @@ Two tools:
   kill whose victim it could not identify, with the page alive, is `error`. `error` also covers
   any other load error, including main's "Ran out of memory while processing", always, and the
   worker/runtime crash messages that leave the tab alive. Messages are read from the store's load error and dialogs/alerts/toasts, never the whole
-  page. It also reports peak summed Chrome PSS, the cgroup peak, the phase reached and which process
-  types an OOM kill took.
+  page. It also reports peak summed Chrome PSS, the cgroup peak, the phase reached, which process
+  types an OOM kill took, and source tracking (below).
   Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;
   anything missing exits 2, never skips.
 
@@ -96,6 +96,42 @@ then reports `loaded` or `killed-after-continue`. `--expect not-killed` accepts 
 `refused`, `awaiting-decision` and `cancelled`; a kill after an explicit Continue passes only
 `--expect warned`, and its verdict says so. The warning title, its button names and the refusal
 text come from draft PR #10353 and may drift; they live together in `oom-load-probe-lib.mjs`.
+Source tracking (`oom-load-probe-tracker.mjs`, injected into the page) identifies the picked file
+by object identity: the `File` a file `<input>` delivers, and every `Blob.slice` of it. Only reads
+of those count as source reads (with bytes; "large" means the whole file or at least 1 MiB). A read
+of any other Blob of 1 MiB or more is reported as an unattributed read, never as a source read.
+Every `postMessage` to a worker, a `MessagePort` or a `BroadcastChannel` is scanned whole (nested
+objects, arrays, Maps, Sets and the transfer list, cycle-safe, up to 50,000 objects per message);
+each Blob found is recorded with its time, the receiver (worker script URL), its path in the
+message and whether it was the source. A message beyond the budget is marked `scanTruncated` and
+makes the post verdict `null`. `URL.createObjectURL` of the source and every `new Worker` (with a
+`blob:` flag) are recorded too. The result lists the channels that are not watched
+(`channels.notInstrumented`: copies of the source as ArrayBuffer or stream, whose producing read
+is counted as a source read; reads and fetches inside workers; SharedWorker/ServiceWorker;
+IndexedDB/Cache API), so a `false` means only that every listed instrumented channel reported none.
+Counts and the facts the verdicts use (first and largest source read, first large source read,
+first unattributed read, first source post) are kept for every event; only the detailed event log
+is bounded (first and last 100 per kind, with `truncated` and the number dropped), and no flag is
+computed from it. Dialogs, alerts and toasts are stamped every time their text changes, and the
+store's load error by a subscription the moment it is set. If a decision was only seen by the
+probe's 2 s poll, an event inside that window has unknown order (`null`). Peak summed PSS is
+sampled every 500 ms; the cgroup peak is the kernel's exact high-water mark.
+
+`--watch-url URL` records every request to that origin in the page (`fetch` and `XMLHttpRequest`,
+on the page clock); the driver's view of the same requests is kept only for the browser's error
+code. The time origin is the page's own pick stamp, taken when the tracker marks the source, so
+every order is on one clock; without it (source never marked) every order is `null`. The probe
+builds a timeline relative to that pick: server attempts, dialogs (stamped when they
+appear), the store's load error, source reads, unattributed reads and worker posts. Each derived
+flag (`attemptBeforeDecision`, `readBeforeDecision`, `unattributedReadBeforeDecision`,
+`sourcePostBeforeDecision`) is `true`, `false` only when the instrument that would have seen the
+event was installed and reported, or `null`. `--expect-server-first` additionally requires a
+server attempt before the warning or refusal and no large source read or source post before it;
+a `null` fails it. Only requests at or after the file pick count as this load's attempt;
+earlier ones are reported as `startupRequests`. If the picked file was never marked (it arrived
+without a file-input `change` event), or an unattributed read or worker post of at least 1 MiB
+happened before the decision, the identity-dependent flags are `null` with the reason in
+`unknownBecause`.
 
 ```bash
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist

@@ -86,7 +86,6 @@ const RENAME_TARGETS = {
     'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALLOADGROUP', 'IFCSTRUCTURALPLANARACTION', 'IFCWINDOWSTYLE'],
   IFC4: ['IFCBUILDING', 'IFCBUILDINGELEMENTPROXY', 'IFCBUILDINGSTOREY', 'IFCCOMMUNICATIONSAPPLIANCE',
     'IFCELECTRICDISTRIBUTIONBOARD', 'IFCFLOWSEGMENT', 'IFCFLOWTERMINAL', 'IFCFLOWTREATMENTDEVICE', 'IFCFOOTING', 'IFCSLAB'],
-  IFC4X3: [],
 };
 
 const DIRECTIONS = [
@@ -131,12 +130,13 @@ for (const [from, to] of DIRECTIONS) {
   // #10856: every enum slot of a rename target, whatever the source enum.
   for (const [entityName, meta] of Object.entries(target.entities).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     const upper = entityName.toUpperCase();
-    if (meta.isAbstract || !RENAME_TARGETS[to].includes(upper) || to === 'IFC4X3') continue;
+    if (meta.isAbstract || !RENAME_TARGETS[to]?.includes(upper)) continue;
     const attributes = meta.allAttributes ?? meta.attributes;
     attributes.forEach((attribute, index) => {
       const members = Object.hasOwn(target.enums, attribute.type) ? target.enums[attribute.type] : undefined;
+      if (!members) return;
       const row = rustRows[to].get(upper) ?? { arity: attributes.length, slots: new Map() };
-      if (!members || row.slots.has(index)) return;
+      if (row.slots.has(index)) return;
       const resolution = resolveMissingEnumMember(attributes, index, members);
       rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing: ['(renamed into this type: any member not listed)'], resolution, attributes });
       row.slots.set(index, { attribute: attribute.name, members, resolution });

@@ -16,7 +16,7 @@
  */
 
 import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
-import { resolveIdsTargetFilter } from '@/lib/ids/resolve-target-filter';
+import { resolveIdsTargetFilter, targetFilterRefusal } from '@/lib/ids/resolve-target-filter';
 import { runIdsCheck } from '@/lib/validation/run-ids-check';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
 import { useCallback, useEffect, useRef } from 'react';
@@ -192,6 +192,12 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     }
     const { modelId, dataStore } = target;
     const filterAtStart = useViewerStore.getState().idsTargetFilter;
+    // Refused like the guards above, before a job starts: input to fix, not a failure to report (#10753).
+    const filterRefusal = filterAtStart && targetFilterRefusal(filterAtStart.groups);
+    if (filterRefusal) {
+      setIdsError(filterRefusal);
+      return null;
+    }
     const myEpoch = bumpEpoch();
     workerAbortRef.current?.abort();
     const abortController = new AbortController();

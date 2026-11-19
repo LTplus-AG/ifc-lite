@@ -29,7 +29,6 @@ import { ensureWasm } from '@/test/scan-slab-fixture';
 import { seedZoneExport } from '@/test/zone-export-fixture';
 import { nativeZoneEmissionEvidence } from '@/lib/actions/zone-emission-evidence';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
-import { admitCandidate } from './host-handles';
 import { seedReviewedRoom, roomProposal } from '@/test/reviewed-room-fixture';
 import { MODEL as ROOM_MODEL } from '@/test/native-sdk-model';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
@@ -687,6 +686,7 @@ describe('Room review admission probe (#10792)', () => {
     await seedReviewedRoom();
     // Only one Room review per model is ever current (a newer preparation supersedes the rest), so the cap is filled
     // by 31 other pending reviews beside it, as graph admission counts them.
+    const { admitCandidate } = await import('./host-handles'); // loaded here so the file also loads where it does not exist
     const review = await prepareRoomReview(roomProposal(), new AbortController().signal);
     try {
       const entries = new Map<string, { review?: { sourcesCurrent(): boolean } }>(Array.from({ length: 31 }, (_, i) => [`other-${i}`, {}]));

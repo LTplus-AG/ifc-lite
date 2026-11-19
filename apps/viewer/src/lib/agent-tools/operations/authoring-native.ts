@@ -29,11 +29,16 @@ function candidates(c: OperationContext) {
 }
 /** The permanent half of apply's check: the model has not changed since the preview. */
 const previewCurrent = (entry: Pick<Candidate, 'revision'>) => entry.revision === useViewerStore.getState().mutationVersion;
+/** Make room for `count` model candidates, or refuse before evicting anything. A multi-batch prepare reserves all
+ * its batches this way first, so a refusal part way cannot have evicted another candidate. */
+export function reserveCandidates(c: OperationContext, count = 1): void {
+  const stillApplies = candidateStillApplies(c.host);
+  admitCandidate(candidates(c), { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.handedOff,
+    canApply: entry => stillApplies(entry.receipt !== undefined, () => previewCurrent(entry), entry), count });
+}
 function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) {
   const entries = candidates(c);
-  const stillApplies = candidateStillApplies(c.host);
-  admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.handedOff,
-    canApply: entry => stillApplies(entry.receipt !== undefined, () => previewCurrent(entry), entry) });
+  reserveCandidates(c);
   const token = crypto.randomUUID(), revision = useViewerStore.getState().mutationVersion;
   entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
   return { token, revision, preview_json: JSON.stringify(preview) };

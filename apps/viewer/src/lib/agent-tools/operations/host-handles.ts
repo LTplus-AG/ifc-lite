@@ -13,13 +13,13 @@ export function evictOldest<K, V>(handles: Map<K, V>, cap: number): void {
 }
 
 /**
- * Make room for one more reviewed candidate. Every admission site answers one question, `canApply`: could this
+ * Make room for `count` more reviewed candidates (one by default). Every admission site answers one question, `canApply`: could this
  * candidate still apply (or, once applied, replay)? Those that cannot are dropped and `release`d. Of the rest, only
  * `pending` ones count against `cap`, and a host full of them is refused with `refusal`; the others share the cap
  * and the oldest goes first. Call it again after any await: a concurrent prepare may have taken the room.
  */
-export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending, canApply, release = () => {} }: {
-  cap: number; refusal: string; pending: (value: V) => boolean; canApply: (value: V) => boolean; release?: (value: V) => void;
+export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending, canApply, release = () => {}, count = 1 }: {
+  cap: number; refusal: string; pending: (value: V) => boolean; canApply: (value: V) => boolean; release?: (value: V) => void; count?: number;
 }): void {
   let open = 0;
   for (const [key, value] of handles) {
@@ -27,9 +27,10 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
     handles.delete(key);
     try { release(value); } catch (error) { console.warn('[viewer operations] Releasing a stale candidate failed:', error); }
   }
-  if (open >= cap) throw new Error(refusal);
+  // Refused before anything settled is evicted, so a refusal leaves the host as it was.
+  if (open + count > cap) throw new Error(refusal);
   for (const [key, value] of handles) {
-    if (handles.size < cap) break;
+    if (handles.size + count <= cap) break;
     if (!pending(value)) handles.delete(key);
   }
 }

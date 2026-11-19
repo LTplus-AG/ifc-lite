@@ -189,6 +189,14 @@ fn a_commented_empty_caused_by_on_a_varying_action_is_not_reported_10779() {
     let (up, warnings) = convert(&model("IFC2X3", &[&geometry, REACTION, &action].join("\n")), "IFC4");
     assert!(record(&up, 30).starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{up}");
     assert!(!warnings.contains("CausedBy has no slot"), "{warnings}");
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    for (cause, warned, dropped) in [("/* none */$", false, 0), ("#999", true, 1)] {
+        let action = VARYING.replace(",.F.,#20,.TRUE_LENGTH.", &format!(",.F.,{cause},.TRUE_LENGTH."));
+        let source = model("IFC2X3", &[&geometry, REACTION, &action].join("\n"));
+        let (_, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+        assert_eq!(stats.attribute_values_dropped, dropped, "{cause}");
+        assert_eq!(warnings.iter().any(|w| w.contains("CausedBy has no slot")), warned, "{cause}: {warnings:?}");
+    }
 }
 
 #[test]

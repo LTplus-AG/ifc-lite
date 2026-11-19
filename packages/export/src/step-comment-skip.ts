@@ -22,7 +22,7 @@ export function skipStepComment(text: string, i: number): number {
 
 /** `value` with each `/* ... *\/` comment read as a space, trimmed. Literals and comments
  *  end by the shared rules; an unclosed one runs to the end. Twin of Rust
- *  `step_slot::without_comments`. */
+ *  `step_slot::without_comments` (rust/export/src/step_slot.rs). */
 export function withoutComments(value: string): string {
   let out = '';
   let kept = 0;
@@ -39,7 +39,8 @@ export function withoutComments(value: string): string {
 }
 
 /** A slot that carries information: not `$`, `*` or empty once comments go
- *  (#10779). Twin of Rust `schema_convert::holds_value`. */
+ *  (#10779). Twin of Rust `schema_convert::holds_value`
+ *  (rust/export/src/schema_convert.rs). */
 export function holdsValue(slot: string): boolean {
   const v = slot.includes('/*') ? withoutComments(slot) : slot.trim();
   return v !== '' && v !== '$' && v !== '*';

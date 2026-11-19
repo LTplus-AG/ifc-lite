@@ -104,9 +104,14 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
   });
 
   it('does not warn about a CausedBy that holds only a comment and $ (#10779)', async () => {
-    const commented = IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', ',.F.,/* none */$,.PROJECTED_LENGTH.');
-    const result = new StepExporter(await parse(commented)).export({ schema: 'IFC4' });
-    expect(result.stats.warnings.join('\n')).not.toContain('CausedBy has no slot in IFC4');
+    for (const empty of ['/* none */$', '*']) {
+      const store = await parse(IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', `,.F.,${empty},.PROJECTED_LENGTH.`));
+      const result = new StepExporter(store).export({ schema: 'IFC4' });
+      expect(result.stats.warnings.join('\n'), empty).not.toContain('CausedBy has no slot in IFC4');
+      // The loss preview agrees with the export's warning.
+      const lost = analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries.filter((e) => e.droppedAttributes.includes('CausedBy'));
+      expect(lost, empty).toEqual([]);
+    }
     const withValue = new StepExporter(await parse(IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', ',.F.,#99,.PROJECTED_LENGTH.'))).export({ schema: 'IFC4' });
     expect(withValue.stats.warnings.join('\n')).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4');
   });

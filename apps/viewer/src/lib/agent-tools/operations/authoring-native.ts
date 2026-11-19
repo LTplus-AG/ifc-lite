@@ -9,7 +9,7 @@ import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
 import { operation, emptySchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { admitCandidate, persistReceipt } from './host-handles';
+import { admitCandidate, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const previewOutput = { type: 'object', properties: { token: { type: 'string' }, preview_json: { type: 'string' }, revision: { type: 'integer' } }, required: ['token', 'preview_json', 'revision'], additionalProperties: false };
 const receiptOutput = { type: 'object', properties: { receipt_json: { type: 'string' }, persisted: { type: 'boolean' } }, required: ['receipt_json', 'persisted'], additionalProperties: false };
@@ -19,9 +19,9 @@ const meta = (id: string, owner: string, description: string, write = false) => 
   effects: write ? ['model'] as const : ['read'] as const, capability: write ? 'commands-and-edits' as const : 'read' as const,
   implementation: 'native-store' as const, policy: write ? { model: 'native-reviewed' as const } : undefined,
   outputSchema: write ? receiptOutput : previewOutput });
-interface Candidate {
+interface Candidate extends ReceiptHolder {
   modelId: string; store: OperationContext['model']['store']; revision: number;
-  authoring?: ModelAuthoringPreview; properties?: ModelChangePreview; receipt?: ModelChangeReceipt; persisting?: Promise<boolean>; settled?: boolean;
+  authoring?: ModelAuthoringPreview; properties?: ModelChangePreview; receipt?: ModelChangeReceipt;
 }
 const owned = new WeakMap<ToolHost, Map<string, Candidate>>();
 function candidates(c: OperationContext) {

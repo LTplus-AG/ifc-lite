@@ -31,11 +31,14 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
   }
 }
 
+/** An applied candidate's receipt write. `settled` once it resolved: admission may then evict the candidate. */
+export interface ReceiptHolder { persisting?: Promise<boolean>; settled?: boolean }
+
 /** Write an applied candidate's receipt once. A replay returns the first write's result unwritten, so it never
  * overwrites the library row the Changes panel has since marked undone. A write that resolved `false` is not
- * lost: the library keeps the receipt as a draft and retries it itself. Only a write that threw is retried, by
- * the next replay. `settled` marks the candidate done with its write, so admission may evict it. */
-export function persistReceipt(holder: { persisting?: Promise<boolean>; settled?: boolean }, receipt: ModelChangeReceipt): Promise<boolean> {
+ * lost: `createContentLibrary`'s put keeps the receipt as a dirty draft and its `retry` writes it again
+ * (lib/storage/content-library.ts). Only a write that threw is retried, by the next replay. */
+export function persistReceipt(holder: ReceiptHolder, receipt: ModelChangeReceipt): Promise<boolean> {
   holder.persisting ??= import('@/lib/actions/receipts').then(({ modelChangeLibrary }) => modelChangeLibrary.put(receipt.id, receipt))
     .then(ok => { holder.settled = true; return ok; }, (error: unknown) => { holder.persisting = undefined; throw error; });
   return holder.persisting;

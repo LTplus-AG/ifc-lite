@@ -3,6 +3,7 @@
   "version": "4.14.0",
   "description": "Export formats for IFC-Lite",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -10,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./merged-exporter": {
+      "types": "./dist/merged-exporter.d.ts",
+      "import": "./dist/merged-exporter.js",
+      "default": "./dist/merged-exporter.js"
     }
   },
   "scripts": {

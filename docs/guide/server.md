@@ -1098,6 +1098,9 @@ URL, or a same-origin path such as `/ifc` behind a reverse proxy), it opens
 ```
 
 from the server alone: no IFC is requested, and there is no local fallback.
+If a page URL contains both `?processed=` and `?model=`, the viewer uses the
+processed entry and skips the `?model=` request. A malformed processed hash
+still shows its link error.
 A host that builds its own entry does the same without a URL, and can name the
 server at runtime instead of at build time:
 

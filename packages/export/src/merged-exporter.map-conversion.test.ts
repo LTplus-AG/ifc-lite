@@ -62,7 +62,7 @@ async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IF
   const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation })).content);
   const contexts: string[] = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
   const sources = [...content.matchAll(/=\s*(?:\/\*.*?\*\/\s*)?IFC(?:MAPCONVERSION(?:SCALED)?|RIGIDOPERATION)\((?:\/\*.*?\*\/\s*)?(#\d+),/g)].map(match => match[1]);
-  return { contexts, sources, listed: projectContexts(content), crs: content.match(/=\s*IFCPROJECTEDCRS\(/g)?.length ?? 0 };
+  return { contexts, sources, listed: projectContexts(content), crs: content.match(/=\s*IFCPROJECTEDCRS\(/g)?.length ?? 0, wkt: content.match(/=\s*IFCWELLKNOWNTEXT\(/g)?.length ?? 0 };
 }
 
 /** Every georeference sits on its own context, each a context of the file. */
@@ -160,6 +160,18 @@ describe('merged STEP export and map conversions (#10798)', () => {
     }
     // The shared georeference stays one when a different one arrives after it.
     expectApart(await merge([at(X), at(X), at(Y)]), 2);
+  });
+
+  it('keeps one WKT on the shared CRS, and leaves an operation into another context alone (#10873)', async () => {
+    const withWkt: Georef = { raw: `${METRE_CRS}\n#21=IFCMAPCONVERSION(#14,#20,${X});\n#22=IFCWELLKNOWNTEXT('PROJCS["CH1903+ / LV95"]',#20);` };
+    const wkt = await merge([withWkt, withWkt], 'IFC4X3');
+    expect([wkt.sources.length, wkt.crs, wkt.wkt]).toEqual([1, 1, 1]);
+    // IFC4X3 lets an operation's TargetCRS be another context: B's plan context, in its own frame, stays B's.
+    const planAt = (x: string): Georef => ({ raw: `#15=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-05,#16,$);
+#16=IFCAXIS2PLACEMENT2D(#17,$);
+#17=IFCCARTESIANPOINT((${x},0.));
+#21=IFCRIGIDOPERATION(#14,#15,IFCLENGTHMEASURE(10.),IFCLENGTHMEASURE(20.),0.);` });
+    expect((await merge([planAt('0.'), planAt('500.')], 'IFC4X3')).contexts).toHaveLength(3);
   });
 
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {

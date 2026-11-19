@@ -26,7 +26,7 @@ export interface HierarchyRowCallbacks {
  * Handlers with one identity for the panel's lifetime that call the latest
  * callbacks, so a row re-renders only when what it shows changes (#10535).
  */
-export function stableRowHandlers(latest: { readonly current: HierarchyRowCallbacks }): HierarchyRowCallbacks {
+function stableRowHandlers(latest: { readonly current: HierarchyRowCallbacks }): HierarchyRowCallbacks {
   return {
     click: (node, event, section, index) => latest.current.click(node, event, section, index),
     toggleExpand: (nodeId) => latest.current.toggleExpand(nodeId),

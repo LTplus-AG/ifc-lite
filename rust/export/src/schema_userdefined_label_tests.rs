@@ -104,3 +104,23 @@ fn the_plan_before_the_carry_drops_and_counts_the_label_10824() {
     let unterminated = "#7=IFCPROCEDURE('g',#2,'P',$,$,'P-1',.USERDEFINED.,'Flush')";
     assert_eq!(convert(unterminated, "IFC2X3", "IFC4").0, "#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.USERDEFINED.);", "no ';'");
 }
+
+/// #10856: a function member IfcElectricDistributionBoard lacks becomes
+/// `.USERDEFINED.` with its name in ObjectType; on the way down a board member
+/// IFC2X3 lacks becomes `.NOTDEFINED.` (the policy finds no label slot for
+/// DistributionPointFunction), and both are reported.
+#[test]
+fn a_point_or_board_member_the_target_lacks_is_reconciled_10856() {
+    assert_eq!(
+        convert("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", "IFC2X3", "IFC4").0,
+        "#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);"
+    );
+    assert_eq!(
+        convert("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", "IFC4X3", "IFC2X3").0,
+        "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.NOTDEFINED.,$);"
+    );
+    let mut checks = ConversionChecks::default();
+    convert_step_line("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", "IFC4X3", "IFC2X3", 7, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+    let warnings = checks.enums.warnings();
+    assert!(warnings.iter().any(|w| w.contains("NOTDEFINED") && w.contains("IFCELECTRICDISTRIBUTIONPOINT.DistributionPointFunction .DISPATCHINGBOARD.")), "{warnings:?}");
+}

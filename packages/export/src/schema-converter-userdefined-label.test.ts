@@ -5,6 +5,7 @@
 /** #10824: a `.USERDEFINED.` label carried through ObjectType, as the Rust twin does. Reached through convertStepLine. */
 import { describe, it, expect } from 'vitest';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
 
 const up = (line: string, to: IfcSchemaVersion = 'IFC4') => convertStepLine(line, 'IFC2X3', to);
 const down = (line: string, from: IfcSchemaVersion = 'IFC4') => convertStepLine(line, from, 'IFC2X3');
@@ -46,5 +47,17 @@ describe('the .USERDEFINED. label (#10824)', () => {
     expect(down("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.);"))
       .toBe("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.,'Custom');");
     expect(down("#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.SHUTDOWN.);")).toBe("#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',.SHUTDOWN.,$);");
+  });
+
+  it('reconciles a point or board member the target lacks, as Rust does (#10856)', () => {
+    const run = (line: string, from: IfcSchemaVersion, to: IfcSchemaVersion) => {
+      const enums = new EnumReconciliation();
+      return { out: convertStepLine(line, from, to, undefined, undefined, undefined, undefined, enums), warnings: enums.warnings() };
+    };
+    expect(run("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", 'IFC2X3', 'IFC4').out)
+      .toBe("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);");
+    const down = run("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", 'IFC4X3', 'IFC2X3');
+    expect(down.out).toBe("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.NOTDEFINED.,$);");
+    expect(down.warnings.join('\n')).toContain('IFCELECTRICDISTRIBUTIONPOINT.DistributionPointFunction .DISPATCHINGBOARD.');
   });
 });

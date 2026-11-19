@@ -121,7 +121,7 @@ async function main() {
   const handles = {}, counts = {};
   demo.phase = 'captures';
   for (const asset of adapter ? assets : []) {
-    status.textContent = `Decoding ${asset.id} with @playcanvas/splat-transform 3.10.3 (${asset.format} reader)…`;
+    status.textContent = `Decoding ${asset.id} with @playcanvas/splat-transform 3.11.2 (${asset.format} reader)…`;
     const attributes = normalizeGaussianAttributes(await loadCaptureColumns(asset.url, asset.format));
     counts[asset.id] = { count: attributes.count, shDegree: attributes.sphericalHarmonicsDegree };
     status.textContent = `Uploading ${asset.id} (${attributes.count.toLocaleString()} Gaussians) to the viewer device…`;

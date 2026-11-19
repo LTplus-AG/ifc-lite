@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 import { useTranslation } from '@/i18n';
 import type { LayerGrouping } from './presentationLayerGroups';
 
@@ -321,7 +322,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       const modelId = node.modelIds[0];
 
       if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = effectiveSpatialMembers(ifcDataStore, mutationViews.get('legacy'), storeyId);
+        const elements = effectiveSpatialMembers(ifcDataStore, getLegacyMutationView(mutationViews), storeyId);
         if (elements.length) return elements;
       }
 
@@ -335,7 +336,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       const modelId = node.modelIds[0];
 
       if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = effectiveSpatialMembers(ifcDataStore, mutationViews.get('legacy'), spaceId);
+        const elements = effectiveSpatialMembers(ifcDataStore, getLegacyMutationView(mutationViews), spaceId);
         return [spaceId, ...elements];
       }
 

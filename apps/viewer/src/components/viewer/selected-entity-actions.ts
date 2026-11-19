@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Renderer selection destination shared by the palette and Elements ribbon (#8947). */
+import { getLegacySourceMutationView } from '@/sdk/adapters/model-compat';
 import { useViewerStore, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 
@@ -14,9 +15,9 @@ export function selectedEntityActionTarget(s: ViewerState = useViewerStore.getSt
   if (id == null) return null;
   // Prefer the store-backed resolver, which includes overlay allocated ids.
   const ref = s.resolveGlobalIdFromModels(id) ?? resolveEntityRef(id);
-  const store = ref.modelId === 'legacy' ? s.ifcDataStore : s.models.get(ref.modelId)?.ifcDataStore;
-  const view = s.mutationViews.get(ref.modelId)
-    ?? (ref.modelId === 'legacy' ? s.mutationViews.get('__legacy__') ?? s.mutationViews.get('default') : undefined);
+  const legacy = ref.modelId === 'legacy';
+  const store = legacy ? s.ifcDataStore : s.models.get(ref.modelId)?.ifcDataStore;
+  const view = legacy ? getLegacySourceMutationView(s) : s.getMutationView(ref.modelId);
   if (!store || view?.isDeleted(ref.expressId)) return null;
   return view?.getNewEntity(ref.expressId) || store.entities.expressId.includes(ref.expressId) ? id : null;
 }

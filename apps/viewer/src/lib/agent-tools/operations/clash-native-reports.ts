@@ -40,7 +40,7 @@ function owned(host: ToolHost) {
 /** Every live and durable dependency, refusing a preview that could not read them all: a reference it
  * cannot see would be broken by the deletion. */
 async function dependencies(id: string) {
-  const [{ loadDocuments }, { reportChartDependencies, dependenciesUnreadable }] = await Promise.all([
+  const [{ loadDocuments }, { reportChartDependencies }] = await Promise.all([
     import('@/lib/document/persistence'),
     import('@/lib/reports/chart-dependencies'),
   ]);
@@ -48,8 +48,10 @@ async function dependencies(id: string) {
   const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
   // Opening the library is a configuration effect of its own, so a read does not do it here.
   if (preview.documentPhase === 'loading') throw new Error('The Documents library is not open yet. Run document.initialize, then prepare again.');
-  if (dependenciesUnreadable(preview))
-    throw new Error('Dashboards or Documents could not all be read, so the report’s dependencies are unknown. Retry once storage is available.');
+  // Invalid single dashboards (omittedDashboards) and recovered documents stay in the preview for the agent to
+  // weigh, as the panel shows them; only storage that could not be read at all hides every reference in it.
+  if (preview.documentPhase === 'unavailable' || preview.dashboardsUnavailable)
+    throw new Error('Saved dashboards or Documents could not be read, so their references to this report are unknown. Restore that storage, then prepare again.');
   return preview;
 }
 export const clashReportOperations = [

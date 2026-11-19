@@ -120,6 +120,17 @@ describe('reviewed model candidates (#10792)', () => {
     for (let i = 0; i < 65; i++) answer(await invoke('changes.revert.prepare', { id: change.id }));
   });
 
+  it('#19: graph reviews of a replaced model free their capacity', async () => {
+    const proposal_json = await groupProposal();
+    for (let i = 0; i < 32; i++) answer(await invoke('authoring.group.prepare', { proposal_json }));
+    assert.equal((await invoke('authoring.group.prepare', { proposal_json })).isError, true, 'a host of 32 pending reviews is full');
+    await seedAuthoringSample(); // the same model id, a new store
+    const sample = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+    let maxExpressId = 0; for (const id of sample.ifcDataStore!.entities.expressId) maxExpressId = Math.max(maxExpressId, id);
+    useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...sample, maxExpressId }]]) });
+    answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+  });
+
   it('#52: two concurrent graph prepares cannot both take the last place', async () => {
     const proposal_json = await groupProposal();
     for (let i = 0; i < 31; i++) answer(await invoke('authoring.group.prepare', { proposal_json }));
@@ -261,7 +272,11 @@ describe('saved clash report deletion (#10792)', () => {
     localStorage.setItem('ifc-lite-dashboards', '{}');
     const prepared = await invoke('clash.reports.delete.prepare', { id });
     assert.equal(prepared.isError, true);
-    assert.match(prepared.text, /could not all be read/);
+    assert.match(prepared.text, /could not be read/);
+    // One invalid dashboard is reported in the preview, not a lockout: it cannot be repaired by retrying.
+    localStorage.setItem('ifc-lite-dashboards', JSON.stringify([{ broken: true }]));
+    const flagged = answer<{ preview: { omittedDashboards: number } }>(await invoke('clash.reports.delete.prepare', { id }));
+    assert.equal(flagged.preview.omittedDashboards, 1);
   });
 
   it('#1: a storage retry after the deleting call lost its grant restores the report', async () => {

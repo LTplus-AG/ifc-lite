@@ -82,7 +82,12 @@ export const graphAuthoringOperations = [
   ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
-    const admit = () => admitCandidate(owned(c), 32, 'At most 32 graph review candidates may be retained.', entry => !entry.receipt);
+    // A review of a closed or replaced model can never apply; dropping it releases its native handles.
+    const admit = () => {
+      const live = new Map(c.host.models().map(model => [model.id, model.store]));
+      admitCandidate(owned(c), 32, 'At most 32 graph review candidates may be retained.', entry => !entry.receipt,
+        entry => live.get(entry.modelId) !== entry.store, entry => entry.review?.dispose?.());
+    };
     admit();
     const review = await prepare(kind, i.proposal_json, c);
     // Again after the await: a concurrent prepare may have taken the last place.

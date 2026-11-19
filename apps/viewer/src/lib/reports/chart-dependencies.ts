@@ -19,9 +19,6 @@ export interface ChartDependencyPreview {
   omittedDashboards: number;
   signature: string;
 }
-/** Some dashboards or documents could not be read, so references in them are unknown. */
-export const dependenciesUnreadable = (preview: ChartDependencyPreview): boolean => preview.documentPhase === 'unavailable'
-  || preview.documentsRecovered || preview.dashboardsUnavailable || preview.omittedDashboards > 0;
 const pointsTo = (chart: ChartSpec, source: ReportSource) => chart.source === source.kind
   && (source.kind === 'compare' ? chart.comparisonId : chart.clashReportId) === source.id;
 /** Library references that become unavailable after deletion. Embedded snapshots are independent. */

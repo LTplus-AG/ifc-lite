@@ -180,3 +180,33 @@ it('#10868 an empty lease is fenced and cancellable like any other read', async 
     await assert.rejects(backing.reader.leaseChunks([]), StaleGeometryGenerationError);
   } finally { await registry.close(); }
 });
+
+it('#10868 concurrent producers share one copy budget and close waits for accepted appends', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  const db = databaseOf(registry);
+  const original = db.commit.bind(db);
+  let unblock!: () => void;
+  const gate = new Promise<void>(resolve => { unblock = resolve; });
+  db.commit = async (stores, write) => { await gate; await original(stores, write); };
+  const backing = await registry.begin('m', { chunkBytes: 1, queueBytes: 4096 });
+  const appends = Array.from({ length: 200 }, (_, i) =>
+    backing.writer.append([fullMesh(i + 1, new Uint32Array(3))]));
+  const closed = backing.writer.close();
+  try {
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.ok(backing.writer.pendingBytes <= 4096 + 256, `copied ${backing.writer.pendingBytes} bytes`);
+    assert.equal(backing.isComplete, false);
+    unblock();
+    await Promise.all(appends);
+    await closed;
+    assert.equal(backing.isComplete, true);
+    let count = 0;
+    for await (const batch of backing.reader.meshes()) count += batch.length;
+    assert.equal(count, 200, 'close must not acknowledge a prefix of concurrent appends');
+  } finally {
+    unblock();
+    await Promise.allSettled([...appends, closed]);
+    db.commit = original;
+    await registry.close();
+  }
+});

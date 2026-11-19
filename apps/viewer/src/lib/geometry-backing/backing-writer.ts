@@ -64,6 +64,7 @@ export class BackingWriter {
   private closed = false;
   private progress: Waiter[] = [];
   private readonly recordWaiters = new Map<string, Waiter[]>();
+  private appendTurn: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly db: BackingDatabase,
@@ -89,8 +90,24 @@ export class BackingWriter {
     if (this.closed) throw new GeometryBackingFailedError('Geometry backing writer is closed');
   }
 
+  /** Serialize copying and close/flush boundaries, including concurrent callers.
+   * The barrier itself always resolves; operation failures reach their callers
+   * and terminal writer state rather than becoming an unhandled tail rejection.
+   * Producers must leave their input unchanged until their append resolves. */
+  private async serialized(operation: () => Promise<void>): Promise<void> {
+    const previous = this.appendTurn;
+    let release!: () => void;
+    this.appendTurn = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try { await operation(); } finally { release(); }
+  }
+
   /** Copy `meshes` into the backing; resolves when the queue has room again. */
-  async append(meshes: readonly MeshData[]): Promise<void> {
+  append(meshes: readonly MeshData[]): Promise<void> {
+    return this.serialized(() => this.appendMeshes(meshes));
+  }
+
+  private async appendMeshes(meshes: readonly MeshData[]): Promise<void> {
     this.usable();
     try {
       for (const mesh of meshes) {
@@ -116,7 +133,11 @@ export class BackingWriter {
   }
 
   /** Back one decoded instanced shard: templates and every occurrence. */
-  async appendInstancedShard(shard: DecodedInstancedShard): Promise<void> {
+  appendInstancedShard(shard: DecodedInstancedShard): Promise<void> {
+    return this.serialized(() => this.appendShard(shard));
+  }
+
+  private async appendShard(shard: DecodedInstancedShard): Promise<void> {
     this.usable();
     let encoded: ReturnType<typeof encodeShardRecord>;
     try {
@@ -236,7 +257,11 @@ export class BackingWriter {
   }
 
   /** Seal the partial chunk and resolve once everything appended is committed. */
-  async flush(): Promise<void> {
+  flush(): Promise<void> {
+    return this.serialized(() => this.flushPending());
+  }
+
+  private async flushPending(): Promise<void> {
     this.usable();
     this.seal();
     while (this.queue.length > 0) await this.nextProgress();
@@ -244,9 +269,11 @@ export class BackingWriter {
   }
 
   /** Flush, then refuse further appends. Resolution = complete, committed backing. */
-  async close(): Promise<void> {
-    await this.flush();
-    this.closed = true;
+  close(): Promise<void> {
+    return this.serialized(async () => {
+      await this.flushPending();
+      this.closed = true;
+    });
   }
 
   /** Resolves once a sealed record is committed; rejects if it never will be. */

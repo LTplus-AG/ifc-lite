@@ -84,9 +84,9 @@ export function revertChangeOperation(store: StoreApi<ViewerState>, requested: C
   if (!permission.allowed && (permission.reason === 'edit-mode' || permission.reason === 'workflow-running')) {
     return { ok: false, reason: permission.reason };
   }
-  // The generic history replay writes the local overlay, but property and
-  // quantity inverses do not mirror into the room CRDT. Never show a local-only
-  // Revert as a successful shared edit (#5902).
+  // The generic history replay writes the local overlay, but quantity,
+  // whole-set and placement inverses do not mirror into the room CRDT. Never
+  // show a local-only Revert as a successful shared edit (#5902).
   if (state.collabRoomId !== null) return { ok: false, reason: 'shared-room' };
   if (!permission.allowed) return { ok: false, reason: permission.reason };
   for (const modelId of live.modelIds) {

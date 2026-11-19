@@ -92,6 +92,8 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
   };
 
   let batchId: string | undefined;
+  // A batch whose command publishes its own history leaves its edits to that command (#10695).
+  let mirrorEdits = true;
   for (let first = true; ; first = false) {
     const stack = get()[source].get(modelId) ?? [];
     const mutation = stack[stack.length - 1 - moved.length];
@@ -99,7 +101,7 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
     const tag = get().mutationBatchTags.get(mutation.id);
     if (!first && (batchId === undefined || tag !== batchId)) break;
     batchId = tag;
-    const mirror = !publishesOwnHistory(get, modelId, tag);
+    if (first) mirrorEdits = !publishesOwnHistory(get, modelId, tag);
 
     const inverseTarget = inverseMutationTargets(api).get(mutation.id);
     if (inverseTarget) {
@@ -112,8 +114,8 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
       } else {
         const view = get().mutationViews.get(modelId);
         if (!view) break;
-        if (direction === 'undo') applyRedoToView(get, set, modelId, view, inverseTarget);
-        else applyUndoToView(get, set, modelId, view, inverseTarget);
+        if (direction === 'undo') applyRedoToView(get, set, modelId, view, inverseTarget, mirrorEdits);
+        else applyUndoToView(get, set, modelId, view, inverseTarget, mirrorEdits);
       }
       moved.push(mutation);
       continue;
@@ -130,8 +132,8 @@ function replayHistoryBatch(get: Get, set: Set, api: StoreApi<ViewerState>, mode
     }
     const view = get().mutationViews.get(modelId);
     if (!view) break;
-    if (direction === 'undo') applyUndoToView(get, set, modelId, view, mutation, mirror);
-    else applyRedoToView(get, set, modelId, view, mutation, mirror);
+    if (direction === 'undo') applyUndoToView(get, set, modelId, view, mutation, mirrorEdits);
+    else applyRedoToView(get, set, modelId, view, mutation, mirrorEdits);
     moved.push(mutation);
   }
   flush();

@@ -78,16 +78,17 @@ function reportUnreplayable(
 /**
  * Tell the collab room what an undo or redo step left, as the forward edit does (#10695): without this, peers keep
  * the value the local user just undid. The mirrors are no-ops outside a room and for any model but the room's.
- * `mirror: false` (the apply functions' last argument) leaves it to a command that publishes its own history.
+ * `mirrorEdits: false` (the apply functions' last argument) leaves property and attribute steps to a command that
+ * publishes its own history; entity create and delete steps always mirror.
  */
-function mirrorProperty(get: Get, modelId: string, mutation: Mutation, left: { value: PropertyValue } | 'removed'): void {
+function mirrorPropertyStep(get: Get, modelId: string, mutation: Mutation, left: { value: PropertyValue } | 'removed'): void {
   if (!mutation.psetName || !mutation.propName) return;
   if (left === 'removed') get().mirrorPropertyDelete(modelId, mutation.entityId, mutation.psetName, mutation.propName);
   else get().mirrorPropertyEdit(modelId, mutation.entityId, mutation.psetName, mutation.propName, left.value, mutation.valueType ?? PropertyValueType.String);
 }
 
 /** Apply the inverse of `mutation` to `view` (one undo step, stacks untouched). */
-export function applyUndoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation, mirror = true): void {
+export function applyUndoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation, mirrorEdits = true): void {
   if (mutation.type === 'SESSION_EDIT') return; // Its retained domain state follows the Undo head.
   // Apply inverse mutation (skipHistory=true); skip onto a peer-deleted entity (#5223, see mutation-redo-remote-guard.ts)
   if (isTargetTombstoned(view, mutation)) {
@@ -102,7 +103,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
     // restores its prior value — which may legitimately be null/unset (#1107).
     if (mutation.type === 'CREATE_PROPERTY' && mutation.psetName && mutation.propName) {
       view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
-      if (mirror) mirrorProperty(get, modelId, mutation, 'removed');
+      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, 'removed');
     } else if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
       view.setProperty(
         mutation.entityId,
@@ -113,7 +114,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
         undefined,
         true // skipHistory
       );
-      if (mirror) mirrorProperty(get, modelId, mutation, { value: mutation.oldValue });
+      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, { value: mutation.oldValue });
     }
   } else if (mutation.type === 'DELETE_PROPERTY') {
     if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
@@ -126,7 +127,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
         undefined,
         true // skipHistory
       );
-      if (mirror) mirrorProperty(get, modelId, mutation, { value: mutation.oldValue });
+      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, { value: mutation.oldValue });
     }
   } else if (mutation.type === 'CREATE_QUANTITY') {
     // Undo creation: remove the quantity mutation
@@ -136,8 +137,9 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (mutation.attributeName) {
       if (mutation.oldValue !== undefined && mutation.oldValue !== null) {
-        view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.oldValue), undefined, true);
-        if (mirror) get().mirrorAttributeEdit(modelId, mutation.entityId, mutation.attributeName, String(mutation.oldValue));
+        const value = String(mutation.oldValue);
+        view.setAttribute(mutation.entityId, mutation.attributeName, value, undefined, true);
+        if (mirrorEdits) get().mirrorAttributeEdit(modelId, mutation.entityId, mutation.attributeName, value);
       } else {
         view.removeAttributeMutation(mutation.entityId, mutation.attributeName);
       }
@@ -223,7 +225,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
 }
 
 /** Re-apply `mutation` to `view` (one redo step, stacks untouched). */
-export function applyRedoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation, mirror = true): void {
+export function applyRedoToView(get: Get, set: Set, modelId: string, view: MutablePropertyView, mutation: Mutation, mirrorEdits = true): void {
   if (mutation.type === 'SESSION_EDIT') return; // Revisit the retained domain state at the Redo head.
   // Re-apply mutation (skipHistory=true); same tombstone guard as undo() (#5223)
   if (isTargetTombstoned(view, mutation)) {
@@ -242,19 +244,20 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
         undefined,
         true // skipHistory
       );
-      if (mirror) mirrorProperty(get, modelId, mutation, { value: mutation.newValue });
+      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, { value: mutation.newValue });
     }
   } else if (mutation.type === 'DELETE_PROPERTY') {
     if (mutation.psetName && mutation.propName) {
       view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
-      if (mirror) mirrorProperty(get, modelId, mutation, 'removed');
+      if (mirrorEdits) mirrorPropertyStep(get, modelId, mutation, 'removed');
     }
   } else if (mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY') {
     replayQuantityMutation(view, mutation, 'redo', true);
   } else if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (mutation.attributeName && mutation.newValue !== undefined) {
-      view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.newValue), undefined, true);
-      if (mirror) get().mirrorAttributeEdit(modelId, mutation.entityId, mutation.attributeName, String(mutation.newValue));
+      const value = String(mutation.newValue);
+      view.setAttribute(mutation.entityId, mutation.attributeName, value, undefined, true);
+      if (mirrorEdits) get().mirrorAttributeEdit(modelId, mutation.entityId, mutation.attributeName, value);
     }
   } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
     const index = positionalIndex(mutation.attributeName);

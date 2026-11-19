@@ -9,6 +9,8 @@ test('evictOldest drops the oldest evictable handle and keeps pinned ones', () =
   const handles = new Map([['a', { busy: true }], ['b', { busy: false }], ['c', { busy: false }]]);
   evictOldest(handles, 3, (handle) => !handle.busy);
   assert.deepEqual([...handles.keys()], ['a', 'c']);
+  evictOldest(handles, 1, () => false);
+  assert.deepEqual([...handles.keys()], ['a', 'c'], 'pinned handles stay above the cap');
   evictOldest(handles, 2);
   assert.deepEqual([...handles.keys()], ['c']);
 });

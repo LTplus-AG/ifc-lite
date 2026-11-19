@@ -263,9 +263,11 @@ interface EPSetSpec {
   escapedNames?: true;
   /** The MapUnit property's NominalValue and Unit, written as given (e.g. `$,#3`), in place of `mapUnit`. */
   mapUnitSlots?: string;
+  /** The whole Scale property record, in place of `scale`. */
+  scaleRecord?: string;
 }
 
-const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots }: EPSetSpec) => {
+const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escapedNames, mapUnitSlots, scaleRecord }: EPSetSpec) => {
   const guid = (n: number) => `'0${name.toUpperCase()}EPSet${String(n).padStart(15, '0')}'`;
   // `\X\65` is `e`, `\X\45` is `E`, `\X\4E` is `N`, `\X\4F` is `O`.
   const [eps, east, north, height] = escapedNames ? ['\\X\\65PSet', '\\X\\45astings', '\\X\\4Eorthings', '\\X\\4FrthogonalHeight']
@@ -273,8 +275,9 @@ const epsetModel = (name: string, { unit, easting, scale, mapUnit, crsSet, escap
   const georef = easting === null ? '' : `#30=IFCPROPERTYSINGLEVALUE('${east}',$,IFCLENGTHMEASURE(${easting}.),$);
 #31=IFCPROPERTYSINGLEVALUE('${north}',$,IFCLENGTHMEASURE(1200000.),$);
 #32=IFCPROPERTYSINGLEVALUE('${height}',$,IFCLENGTHMEASURE(500.),$);
-${scale === undefined ? '' : `#33=IFCPROPERTYSINGLEVALUE('Scale',$,${scale.startsWith('IFC') ? scale : `IFCREAL(${scale})`},$);`}
-#34=IFCPROPERTYSET(${guid(2)},#8,'${eps}_MapConversion',$,(#30,#31,#32${scale === undefined ? '' : ',#33'}));
+${scaleRecord !== undefined ? `#33=${scaleRecord};`
+    : scale === undefined ? '' : `#33=IFCPROPERTYSINGLEVALUE('Scale',$,${scale.startsWith('IFC') ? scale : `IFCREAL(${scale})`},$);`}
+#34=IFCPROPERTYSET(${guid(2)},#8,'${eps}_MapConversion',$,(#30,#31,#32${scale === undefined && scaleRecord === undefined ? '' : ',#33'}));
 #35=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2056'),$);
 ${mapUnitSlots !== undefined ? `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnitSlots});`
     : mapUnit === undefined ? '' : `#36=IFCPROPERTYSINGLEVALUE('MapUnit',$,${mapUnit === '$' ? '$' : `IFCLABEL('${mapUnit}')`},$);`}
@@ -372,12 +375,25 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     ['its Scale is written as a length', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: 'IFCLENGTHMEASURE(1.)' }, true],
     ['its Scale is an escaped number', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: "IFCLABEL('\\X\\30.001')" }, true],
     ['its MapUnit label is empty', { unit: 'mm', easting: 2600100, mapUnit: '' }, true],
+    ['a comment sits before its typed MapUnit', { unit: 'mm', easting: 2600100, mapUnitSlots: "/* u */ IFCLABEL('MILLIMETRE'),$", scale: '0.5' }, true],
+    ['its MapUnit is an enumeration', { unit: 'mm', easting: 2600100, mapUnitSlots: '.MILLIMETRE.,$', scale: '0.5' }, true],
+    ['its Scale is a malformed real', { unit: 'mm', easting: 2600100, mapUnit: 'MILLIMETRE', scale: 'IFCREAL(1.52.3)' }, false],
+    ['a comment follows its typed Scale', { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scale: 'IFCREAL(0.001) /* grid */' }, true],
+    ['its Scale is an enumerated value', { unit: 'mm', easting: 2600100, mapUnit: 'MILLIMETRE',
+      scaleRecord: "IFCPROPERTYENUMERATEDVALUE('Scale',$,(IFCREAL(0.5)),$)" }, true],
   ] as const)('puts a millimetre model where the viewer puts it alone when %s', async (_, later, placed) => {
     const alone = viewerEPSet(await parse(epsetModel('b', later)));
     expect(alone === 'none').toBe(!placed);
     const { merged } = await mergeEPSets([{ unit: 'm', easting: null }, later]);
     expect(viewerEPSet(await parse(merged))).toEqual(alone);
     expect(merged.match(/IFCPROPERTYSINGLEVALUE\('MapUnit',/g)).toHaveLength(1);
+  });
+
+  it('leaves a Scale property that is no single value as it is, and names its set', async () => {
+    const { merged, warnings } = await mergeEPSets([{ unit: 'm', easting: null },
+      { unit: 'mm', easting: 2600100, mapUnit: 'MILLIMETRE', scaleRecord: "IFCPROPERTYENUMERATEDVALUE('Scale',$,(IFCREAL(0.5)),$)" }]);
+    expect(merged).toContain("IFCPROPERTYENUMERATEDVALUE('Scale',$,(IFCREAL(0.5)),$)");
+    expect(warnings.some(warning => warning.includes('cannot show its map conversion #34 (an id in "b")'))).toBe(true);
   });
 
   it('gives an empty MapUnit label METRE, and leaves a MapUnit that carries its own Unit', async () => {

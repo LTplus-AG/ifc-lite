@@ -16,12 +16,12 @@
  *
  * IFC2X3 spells the same georeference as the `ePSet_MapConversion` and `ePSet_ProjectedCRS` property sets (#10915),
  * and they follow the same rule: the offset properties are left as written, a CRS set without a MapUnit is given a
- * `METRE` one, and the Scale property is chosen as above.
+ * `METRE` one, and the Scale property is chosen as above. Their values come from the parser's own reading, the one
+ * the viewer places the model by, so the plan never reads a property value itself.
  */
 
-import { isCompleteStepNumericLiteral } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
-import { extractGeoreferenceCandidatesOnDemand, type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
+import { extractGeoreferenceCandidatesOnDemand, type IfcDataStore, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import { COORDINATE_OPERATION_STEP_TYPES, MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
 import { refsIn } from './merged-project-contexts.js';
 import { decodeEntity, getStepAttr } from './merged-subcontext.js';
@@ -80,21 +80,6 @@ const label = (raw: string | null) => { const text = stepString(raw ?? undefined
 /** The record type of `id`, a deferred property atom included. */
 // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
 const typeOf = (dataStore: IfcDataStore, id: number) => (dataStore.entityIndex.byId.get(id) ?? dataStore.deferredEntityIndex?.get(id))?.type?.toUpperCase();
-/**
- * A property's NominalValue as the parser keeps it (`readPsetSingleValues`): a string's decoded text or a number's
- * literal, else undefined (unset, or a boolean or enum the parser skips). A STEP comment may sit beside a number
- * inside its typed value; a string's inside is kept verbatim.
- */
-function nominalValue(raw: string | null): string | undefined {
-  if (raw === null || slotUnset(raw)) return undefined;
-  const inner = raw.match(/^\s*\w+\s*\(([\s\S]*)\)\s*$/)?.[1] ?? raw;
-  const text = stepString(inner);
-  if (text !== null) return decodeStepStringLiteral(text);
-  const literal = inner.replace(/\/\*[\s\S]*?\*\//g, ' ').trim();
-  return isCompleteStepNumericLiteral(literal) ? literal : undefined;
-}
-/** A kept NominalValue as a number the way the parser's `getNumber` reads it: a complete, finite literal only. */
-const numberOf = (value: string) => isCompleteStepNumericLiteral(value.trim()) && Number.isFinite(Number(value)) ? Number(value) : undefined;
 
 /** The normalize advisory for a model's georeference, or null when it carries none. */
 export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, plan: GeorefNormalizePlan | undefined): string | null {
@@ -146,61 +131,68 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
     if (choice.unkept) unkept.push(conversion.id);
   }
   // An ePSet_MapConversion's properties are left as written: its offsets are in the map unit, and its other values
-  // are no project lengths. Beyond that, the ePSets are planned only where the viewer reads them: when the parser
-  // places the model by its ePSet and not by an IFC4 entity. The first ePSet_ProjectedCRS gives the map unit.
-  for (const { kind, ids } of psets) if (kind === 'epset_mapconversion') for (const id of ids) records.set(id, { kind: 'keep' });
-  const viewerReads = !!candidates?.ePSetMapConversion && !candidates.entities.hasGeoreference;
-  const hasCrsSet = psets.some(({ kind }) => kind === 'epset_projectedcrs');
-  const mapUnitScale = candidates?.ePSetMapConversion?.projectedCRS?.mapUnitScale;
-  for (const { id, kind, byName } of viewerReads ? psets : []) {
-    const append = (text: string) => { minted.refOf(text); records.set(id, { kind: 'append', attr: PSET_PROPERTIES_ATTR, mint: text }); };
-    if (kind === 'epset_projectedcrs') {
-      const unit = byName.get('MapUnit');
-      const metreLabel = "IFCLABEL('METRE')";
-      if (unit === undefined) append(`IFCPROPERTYSINGLEVALUE('MapUnit',$,${metreLabel},$)`);
-      // A missing MapUnit as the parser's `asString` sees it: unset, empty, or no string or number. A MapUnit that is
-      // no single value, or carries its own Unit, is left alone.
-      else if (!nominalValue(getStepAttr(dataStore, unit, PROPERTY_VALUE_ATTR)) && typeOf(dataStore, unit) === 'IFCPROPERTYSINGLEVALUE'
-        && slotUnset(getStepAttr(dataStore, unit, PROPERTY_UNIT_ATTR) ?? '$')) {
-        records.set(unit, { kind: 'edit', attr: PROPERTY_VALUE_ATTR, value: metreLabel });
-      }
-      continue;
-    }
-    if (!hasCrsSet) implicitUnit.push(id);
-    const scaleProperty = byName.get('Scale');
-    const kept = scaleProperty === undefined ? undefined : nominalValue(getStepAttr(dataStore, scaleProperty, PROPERTY_VALUE_ATTR));
-    const written = kept === undefined ? undefined : numberOf(kept);
-    // A Scale the parser cannot read as a number refuses the whole placement, so the set stays as written.
-    if (kept !== undefined && written === undefined) continue;
-    const choice = chooseScale({ scale: written }, mapUnitScale, modelScale, primaryScale);
-    if (choice.unkept) unkept.push(id);
-    if (choice.scale === undefined) continue;
-    const value = `IFCREAL(${toStepRealScaled(choice.scale)})`;
-    if (scaleProperty === undefined) append(`IFCPROPERTYSINGLEVALUE('Scale',$,${value},$)`);
-    else records.set(scaleProperty, { kind: 'edit', attr: PROPERTY_VALUE_ATTR, value });
-  }
-  return { records, minted, unkept, implicitUnit };
+  // are no project lengths.
+  for (const ids of psets) for (const id of ids) records.set(id, { kind: 'keep' });
+  // The ePSet the viewer reads (when no IFC4 entity places the model) is planned from the parser's reading of it. A
+  // placement the parser refused has no conversion and is left as written.
+  const epset = candidates?.entities.hasGeoreference ? undefined : candidates?.ePSetMapConversion;
+  const plan = { records, minted, unkept, implicitUnit };
+  if (epset?.mapConversion) planViewerEPSet(dataStore, epset.mapConversion, epset.projectedCRS, plan, modelScale, primaryScale);
+  return plan;
+}
+
+/** The property ids of each of a model's `ePSet_MapConversion` sets (any casing, as the parser finds them). */
+function planEPSets(dataStore: IfcDataStore): number[][] {
+  // As in the parser's prefilter, a set whose record has neither `epset_` nor a backslash (which may escape part of
+  // the name) is passed over before any attribute is parsed.
+  return idsOf(dataStore, ['IFCPROPERTYSET']).flatMap(id => {
+    if (!/epset_|\\/i.test(decodeEntity(dataStore, id) ?? '')) return [];
+    if (label(getStepAttr(dataStore, id, PSET_NAME_ATTR)).toLowerCase() !== 'epset_mapconversion') return [];
+    return [refsIn(getStepAttr(dataStore, id, PSET_PROPERTIES_ATTR) ?? '').map(ref => Number(ref.slice(1)))];
+  });
 }
 
 /**
- * A model's `ePSet_MapConversion` and `ePSet_ProjectedCRS` sets (any casing, as the parser finds them), with their
- * property ids and, by name, the last property the parser would read (one with a string or number value). As in the
- * parser's prefilter, a set whose record has neither `epset_` nor a backslash (which may escape part of the name) is
- * passed over before any attribute is parsed.
+ * A set's properties by name, `editable` when a single value without its own Unit; null when one cannot be read, and
+ * then the set is left as written.
  */
-function planEPSets(dataStore: IfcDataStore) {
-  return idsOf(dataStore, ['IFCPROPERTYSET']).flatMap(id => {
-    if (!/epset_|\\/i.test(decodeEntity(dataStore, id) ?? '')) return [];
-    const kind = label(getStepAttr(dataStore, id, PSET_NAME_ATTR)).toLowerCase();
-    if (kind !== 'epset_mapconversion' && kind !== 'epset_projectedcrs') return [];
-    const ids = refsIn(getStepAttr(dataStore, id, PSET_PROPERTIES_ATTR) ?? '').map(ref => Number(ref.slice(1)));
-    const byName = new Map<string, number>();
-    for (const property of ids) {
-      const name = label(getStepAttr(dataStore, property, PROPERTY_NAME_ATTR));
-      if (!byName.has(name) || nominalValue(getStepAttr(dataStore, property, PROPERTY_VALUE_ATTR)) !== undefined) byName.set(name, property);
-    }
-    return [{ id, kind, ids, byName }];
-  });
+function propertiesOf(dataStore: IfcDataStore, setId: number): Array<{ id: number; name: string; editable: boolean }> | null {
+  const properties = [];
+  for (const ref of refsIn(getStepAttr(dataStore, setId, PSET_PROPERTIES_ATTR) ?? '')) {
+    const id = Number(ref.slice(1)), name = getStepAttr(dataStore, id, PROPERTY_NAME_ATTR);
+    if (name === null) return null;
+    const editable = typeOf(dataStore, id) === 'IFCPROPERTYSINGLEVALUE' && slotUnset(getStepAttr(dataStore, id, PROPERTY_UNIT_ATTR) ?? '$');
+    properties.push({ id, name: label(name), editable });
+  }
+  return properties;
+}
+
+/** Plans the ePSet the viewer reads, from the parser's `conversion` and `crs` (whose id is the conversion's own when the model has no ePSet_ProjectedCRS). */
+function planViewerEPSet(dataStore: IfcDataStore, conversion: MapConversion, crs: ProjectedCRS | undefined,
+  plan: { records: Map<number, GeorefRecord>; minted: MintedRecords; unkept: number[]; implicitUnit: number[] },
+  modelScale: number, primaryScale: number): void {
+  const { records, minted, unkept, implicitUnit } = plan;
+  const properties = propertiesOf(dataStore, conversion.id);
+  if (!properties) return;
+  // Writes `value` into the last property named `name` (the one the parser reads), or appends one when the set has
+  // none; false when that property is no editable single value, which is left as it is.
+  const write = (setId: number, of: NonNullable<typeof properties>, name: string, value: string): boolean => {
+    const last = of.filter(property => property.name === name).at(-1);
+    if (last === undefined) {
+      const text = `IFCPROPERTYSINGLEVALUE('${name}',$,${value},$)`;
+      minted.refOf(text);
+      records.set(setId, { kind: 'append', attr: PSET_PROPERTIES_ATTR, mint: text });
+    } else if (last.editable) records.set(last.id, { kind: 'edit', attr: PROPERTY_VALUE_ATTR, value });
+    return last === undefined || last.editable;
+  };
+  if (!crs || crs.id === conversion.id) implicitUnit.push(conversion.id);
+  else if (crs.mapUnit === undefined) {
+    const crsProperties = propertiesOf(dataStore, crs.id);
+    if (crsProperties) write(crs.id, crsProperties, 'MapUnit', "IFCLABEL('METRE')");
+  }
+  const choice = chooseScale(conversion, crs?.mapUnitScale, modelScale, primaryScale);
+  const written = choice.scale === undefined || write(conversion.id, properties, 'Scale', `IFCREAL(${toStepRealScaled(choice.scale)})`);
+  if (choice.unkept || !written) unkept.push(conversion.id);
 }
 
 /**

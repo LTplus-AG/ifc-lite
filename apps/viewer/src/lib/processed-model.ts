@@ -34,6 +34,9 @@ export interface OpenProcessedModelOptions {
 let serverUrl: string = cleanServerUrl(SERVER_URL);
 /** A stored result and, when a request picked one, the processing server to ask for it (also on Retry). */
 export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: string };
+
+/** The normalized reference stored on a loaded model. Zero means the source size is unknown. */
+export type ProcessedModelRecord = ProcessedModelSource & { readonly bytes: number };
 export type FiledProcessedModelRequest = ProcessedModelRequest & Pick<ProcessedModelSource, 'serverUrl'>;
 let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();

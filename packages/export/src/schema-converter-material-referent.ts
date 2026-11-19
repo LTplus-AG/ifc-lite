@@ -110,7 +110,7 @@ export class MaterialReferents {
       const slots = [...record.slots];
       slots[at] = `#${material}`;
       const out = `${record.prefix}${slots.join(',')}${record.suffix}`;
-      return bare ? out.slice(0, out.lastIndexOf(';')) + out.slice(out.lastIndexOf(';') + 1) : out;
+      return bare ? out.slice(0, -1) : out; // the ';' it was read with is the last character
     }
     // Named as Rust names it: a material record by its type, anything else as unread.
     const type = named === null ? undefined : this.source.typeOf(named);

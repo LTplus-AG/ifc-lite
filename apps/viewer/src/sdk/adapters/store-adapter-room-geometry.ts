@@ -104,10 +104,8 @@ export function roomGeometryLease(get:()=>ViewerState,modelId:string,storeyId:nu
   return {
     validate:()=>{ if (!holds(get(),true)) throw new Error('The native Room geometry or model/storey frame changed; prepare again'); },
     current:()=>{
-      const state=get();
-      if (unmoved(state)) return true;
-      try { return holds(state,false); }
-      catch (error) { console.debug('[Room] geometry lease no longer holds', error); return false; } // unreadable geometry is changed geometry
+      try { const state=get(); return unmoved(state) || holds(state,false); }
+      catch (error) { console.debug('[Room]', error); return false; } // unreadable geometry is changed geometry
     },
   };
 }

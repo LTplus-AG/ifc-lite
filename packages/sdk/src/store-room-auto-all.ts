@@ -62,7 +62,7 @@ export async function prepareAllStoreyRooms(
     if (host.layouts.version()!==layout) throw new RoomCommandConflictError('The native Room layout changed');
     for (const geometry of geometries) {
       if (!probe || !geometry.current) geometry.validate?.();
-      else if (!geometry.current()) throw new RoomCommandConflictError('The native Room geometry changed');
+      else if (!geometry.current()) throw new RoomCommandConflictError('Room geometry changed');
     }
   };
   const validate = () => check(false);
@@ -80,7 +80,7 @@ export async function prepareAllStoreyRooms(
   });
   return {result:structuredClone(draft.result.result),preview:draft.result.preview,
     validate:()=>{validate();draft.validate();},
-    current:()=>{ try { check(true); draft.validate(); return true; } catch (error) { console.debug('[Room] AutoAll preparation no longer current', error); return false; } },
+    current:()=>{ try { check(true); draft.validate(); return true; } catch (error) { console.debug('[Room]', error); return false; } },
     commit:()=> {
       validate();draft.validate();
       if (unavailable) throw new Error('Some storeys are unavailable: complete AutoAll approval is refused');

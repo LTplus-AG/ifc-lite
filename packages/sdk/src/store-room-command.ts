@@ -176,13 +176,13 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
           if (disposed || committed) throw new RoomCommandConflictError('This Room preparation is no longer available; prepare it again');
           currentModel();
           if (!probe || !geometry.current) geometry.validate?.();
-          else if (!geometry.current()) throw new RoomCommandConflictError('The native Room geometry changed; prepare it again');
+          else if (!geometry.current()) throw new RoomCommandConflictError('Room geometry changed');
           if (host.layouts.version() !== layoutVersion) throw new RoomCommandConflictError('The native Room layout changed; prepare it again');
           draft.validate();
         };
         const validate = () => check(false);
         return { result: structuredClone(draft.result.result), preview: draft.result.preview, ...(layoutAfter ? { layoutAfter: structuredClone(layoutAfter) } : {}), validate,
-          current: () => { try { check(true); return true; } catch (error) { console.debug('[Room] preparation no longer current', error); return false; } },
+          current: () => { try { check(true); return true; } catch (error) { console.debug('[Room]', error); return false; } },
           commit: () => {
             validate();
             applied = op.action === 'query' ? draft.result.result : host.record(modelId, write);

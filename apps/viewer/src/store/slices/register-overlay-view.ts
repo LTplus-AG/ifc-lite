@@ -4,6 +4,7 @@
 
 import { prepareMutationViewMerge, type MutablePropertyView } from '@ifc-lite/mutations';
 import { isLegacyMutationRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
+import { mutationViewBaseStore } from '@/utils/configureMutationView';
 import type { ViewerState } from '../index.js';
 import { dropFromChangeSets } from './mutation-history-record.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
@@ -23,7 +24,14 @@ export function registerOverlayView(
   const [primary, ...others] = aliases;
   if (!primary || others.length === 0) return { mutationViews };
 
-  const merge = prepareMutationViewMerge(primary[1], others.map(([, aliasView]) => aliasView));
+  const primaryView = primary[1];
+  const otherViews = others.map(([, aliasView]) => aliasView);
+  const source = mutationViewBaseStore(primaryView);
+  if (otherViews.some(aliasView => aliasView !== primaryView &&
+    (!source || mutationViewBaseStore(aliasView) !== source || (state.ifcDataStore && state.ifcDataStore !== source)))) {
+    throw new Error('Legacy overlays must be bound to the same source before merging.');
+  }
+  const merge = prepareMutationViewMerge(primaryView, otherViews);
   let history = {
     undoStacks: state.undoStacks, redoStacks: state.redoStacks,
     mutationBatchTags: state.mutationBatchTags, mutationMeshTranslations: state.mutationMeshTranslations,

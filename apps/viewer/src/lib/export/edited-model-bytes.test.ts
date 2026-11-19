@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { QuantityType } from '@ifc-lite/data';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
@@ -22,6 +23,7 @@ import { storesWithMutationViews } from '@/components/viewer/lists/list-builder-
 import { zoneQuantitySourceIdentity, zoneQuantitySources } from '@/lib/assistant/adapters/zone-volume-bases';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { fixtureModel } from '@/test/store-fixture';
+import { selectedEntityActionTarget } from '@/components/viewer/selected-entity-actions';
 
 // Loaded at runtime: the changed-test oracle removes new production files, and
 // a missing module must fail an assertion rather than the whole file's import.
@@ -227,6 +229,51 @@ it('registration with an overlapping allocated EXPRESS ID preserves both input v
     assert.equal(historical.getNewEntity(legacyEntity.expressId)?.attributes[2], 'Legacy allocation');
     assert.equal(canonical.getNewEntity(canonicalEntity.expressId)?.attributes[2], 'Canonical allocation');
   } finally {
+    useViewerStore.setState(initial);
+  }
+});
+
+it('registration refuses to merge edited aliases bound to different sources (#10676)', async () => {
+  const sourceA = await parse(new TextEncoder().encode(FIXTURE));
+  const sourceB = await parse(new TextEncoder().encode(FIXTURE.replace('Wall A', 'Other source')));
+  const initial = useViewerStore.getState();
+  const historical = new MutablePropertyView(sourceA.properties, 'default');
+  const incoming = new MutablePropertyView(sourceB.properties, '__legacy__');
+  configureMutationView(historical, sourceA);
+  configureMutationView(incoming, sourceB);
+  historical.setAttribute(11, 'Name', 'Source A edit');
+  incoming.setAttribute(10, 'Name', 'Source B edit');
+  useViewerStore.setState({ models: new Map(), ifcDataStore: sourceA, mutationViews: new Map() });
+  try {
+    const state = useViewerStore.getState();
+    state.registerMutationView('default', historical);
+    assert.throws(() => state.registerMutationView('__legacy__', incoming), /same source/);
+    assert.equal(useViewerStore.getState().getMutationView('legacy'), historical);
+    assert.deepEqual(incoming.getAttributeMutationsForEntity(11), []);
+    assert.equal(historical.getAttributeMutationsForEntity(11)[0]?.value, 'Source A edit');
+  } finally {
+    useViewerStore.setState(initial);
+  }
+});
+
+it('selected entity actions reject a deleted legacy target during federation (#10676)', async () => {
+  const store = await parse(new TextEncoder().encode(FIXTURE));
+  const initial = useViewerStore.getState();
+  const offset = federationRegistry.registerModel('legacy', 11);
+  const other = fixtureModel('federated', { idOffset: offset + 1_000_000 });
+  const view = new MutablePropertyView(store.properties, '__legacy__');
+  configureMutationView(view, store);
+  useViewerStore.setState({
+    models: new Map([[other.id, other]]), ifcDataStore: store,
+    mutationViews: new Map([['__legacy__', view]]),
+    selectedEntityId: federationRegistry.toGlobalId('legacy', 10), selectedEntityIds: new Set(),
+  });
+  try {
+    assert.equal(selectedEntityActionTarget(), offset + 10);
+    view.deleteEntity(10);
+    assert.equal(selectedEntityActionTarget(), null);
+  } finally {
+    federationRegistry.unregisterModel('legacy');
     useViewerStore.setState(initial);
   }
 });

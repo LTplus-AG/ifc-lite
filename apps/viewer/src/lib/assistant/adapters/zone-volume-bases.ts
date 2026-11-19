@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
-  getLegacyMutationView, isLegacyMutationRef, LEGACY_MUTATION_MODEL_ID, LEGACY_MUTATION_MODEL_IDS,
+  getLegacySourceMutationView, isLegacyMutationRef, LEGACY_MUTATION_MODEL_ID, LEGACY_MUTATION_MODEL_IDS,
 } from '@/sdk/adapters/model-compat';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { RelationshipType } from '@ifc-lite/data';
@@ -27,17 +27,6 @@ function canReadLegacySource(s: ViewerState, modelId: string): boolean {
   return isLegacyMutationRef(s, modelId) || modelId === LEGACY_MUTATION_MODEL_ID || modelId === 'legacy';
 }
 
-function legacyZoneView(s: ViewerState): MutablePropertyView | null {
-  if (s.models.size === 0) return getLegacyMutationView(s.mutationViews) ?? null;
-  for (const alias of LEGACY_MUTATION_MODEL_IDS) {
-    const store = s.models.get(alias)?.ifcDataStore;
-    if (store && store !== s.ifcDataStore) continue;
-    const view = s.mutationViews.get(alias);
-    if (view) return view;
-  }
-  return null;
-}
-
 /** Declared shares belong to these exact native sources and overlay revisions,
  * including edits that do not publish a viewer mutationVersion. This walks
  * loaded sources only, never their elements, quantities or geometry. */
@@ -50,7 +39,7 @@ export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySe
       model.sourceContentHash, view, view?.getMutationRevision());
   }
   if (!modelIds || LEGACY_MUTATION_MODEL_IDS.some(id => modelIds.has(id) && canReadLegacySource(s, id))) {
-    const legacyView = legacyZoneView(s);
+    const legacyView = getLegacySourceMutationView(s);
     identity.push(s.ifcDataStore, s.ifcDataStore?.source, legacyView, legacyView?.getMutationRevision());
   }
   return identity;
@@ -71,7 +60,7 @@ export function zoneQuantitySources(s: ViewerState) {
       const modelStore = s.models.get(ref.modelId)?.ifcDataStore;
       const legacy = !modelStore && canReadLegacySource(s, ref.modelId);
       const store = modelStore ?? (legacy ? s.ifcDataStore : null);
-      const view = legacy ? legacyZoneView(s) : s.mutationViews.get(ref.modelId) ?? null;
+      const view = legacy ? getLegacySourceMutationView(s) : s.mutationViews.get(ref.modelId) ?? null;
       const units = currentProjectUnitContext(store, view);
       source = { store, query: store ? new IfcQuery(store) : null, units, view };
       models.set(ref.modelId, source);

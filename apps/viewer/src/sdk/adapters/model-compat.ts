@@ -14,6 +14,7 @@
  * single-model state when the `models` Map is empty.
  */
 
+import { mutationViewBaseStore } from '@/utils/configureMutationView';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '@ifc-lite/sdk';
 import type { ViewerState } from '../../store/index.js';
@@ -33,6 +34,23 @@ export function getLegacyMutationView<T>(views: ReadonlyMap<string, T>): T | und
     if (view !== undefined) return view;
   }
   return undefined;
+}
+
+/** Resolve the overlay paired with the legacy source during single-model
+ * loading and while another model is being added to the federation. */
+export function getLegacySourceMutationView(
+  state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>,
+) {
+  for (const alias of LEGACY_MUTATION_MODEL_IDS) {
+    const view = state.mutationViews.get(alias);
+    if (!view) continue;
+    const modelStore = state.models.get(alias)?.ifcDataStore;
+    if (modelStore && modelStore !== state.ifcDataStore) continue;
+    const viewStore = mutationViewBaseStore(view);
+    if (state.ifcDataStore && viewStore && viewStore !== state.ifcDataStore) continue;
+    return view;
+  }
+  return null;
 }
 
 export function isLegacyMutationRef(state: Pick<ViewerState, 'models'>, modelId: string): boolean {

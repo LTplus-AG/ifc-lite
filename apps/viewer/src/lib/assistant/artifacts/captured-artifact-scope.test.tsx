@@ -364,7 +364,7 @@ test('#7186 native Document captured List replays through file, durable storage 
   const document = { ...coverSheetDocument(), blocks: [{ kind: 'table' as const, id: 'captured-table',
     source: { kind: 'list' as const, list: listCopyForDocument(definition, 'document-list-copy') }, maxRows: 10 }] };
   const capturedListVersion = 13;
-  assert.equal(document.version, DOCUMENT_VERSION);
+  assert.ok(document.version >= capturedListVersion, 'a new captured List declares a version that supports its executable population');
   const run = async (doc: import('@/lib/document/types').DocumentSpec) => {
     const block = doc.blocks[0];
     if (block.kind !== 'table' || block.source.kind !== 'list') throw new Error('Expected native table');

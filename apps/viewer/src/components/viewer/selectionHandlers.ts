@@ -34,10 +34,13 @@ export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: num
   const mode = useViewerStore.getState().measureMode;
   // Released geometry (#10264): read back under the click first; a tool or mode
   // change in the meantime drops the click rather than applying it elsewhere.
+  let synchronous = true;
   runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current }, () => {
     const now = useViewerStore.getState();
-    if (now.activeTool === 'measure' && now.measureMode === mode) measureClickAt(ctx, x, y, mode);
+    // Resident clicks run now, unchanged; only a deferred click re-checks the tool and mode.
+    if (synchronous || (now.activeTool === 'measure' && now.measureMode === mode)) measureClickAt(ctx, x, y, mode);
   });
+  synchronous = false;
 }
 
 function measureClickAt(ctx: MouseHandlerContext, x: number, y: number, mode: string): void {

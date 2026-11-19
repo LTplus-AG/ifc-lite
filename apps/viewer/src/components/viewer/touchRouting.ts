@@ -276,13 +276,15 @@ export function handleMeasureTap(ctx: MouseHandlerContext, x: number, y: number)
     return;
   }
   // A tap has no hover in front of it: read released geometry back on demand (#10264).
+  let synchronous = true;
   runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current }, () => {
-    if (useViewerStore.getState().measureMode !== 'drag') return;
+    if (!synchronous && useViewerStore.getState().measureMode !== 'drag') return;
     const point = pickMeasurePoint(ctx, x, y);
     if (!point) return;
     if (ctx.activeMeasurementRef.current) finishDistance(ctx, point, { x, y });
     else beginDistance(ctx, point, { x, y });
   });
+  synchronous = false;
 }
 
 /** The mouse controls' handler context, while registered: a touch tap in Section or the command tool runs through it (#9042). */

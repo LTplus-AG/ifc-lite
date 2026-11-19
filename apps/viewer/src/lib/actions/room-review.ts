@@ -148,13 +148,14 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     // identity. A recolour copies meshes with the same buffers; a remesh, re-frame or in-place vertex edit changes one.
     // Held weakly, so a remesh or a geometry release can still free the old buffers.
     const geometry = current.models.get(proposal.modelId)?.geometryResult;
-    const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1, buffers = new WeakSet<object>();
-    for (const mesh of geometry?.meshes ?? []) { buffers.add(mesh.positions); buffers.add(mesh.indices); }
+    const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1;
+    const buffers = new WeakMap<object, object>(); // each mesh's positions to its own indices
+    for (const mesh of geometry?.meshes ?? []) buffers.set(mesh.positions, mesh.indices);
     const content = current.geometryContentVersion;
     const geometryCurrent = (state: ViewerState) => {
       const now = state.models.get(proposal.modelId)?.geometryResult;
       return !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length === meshCount
-        && now.meshes.every(mesh => buffers.has(mesh.positions) && buffers.has(mesh.indices));
+        && now.meshes.every(mesh => buffers.get(mesh.positions) === mesh.indices);
     };
     const validate = () => {
       signal.throwIfAborted();

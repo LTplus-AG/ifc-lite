@@ -26,10 +26,8 @@ export const CLASH_REF_UNRESOLVED_MESSAGE =
 export function createClashFocus(options: {
   installClashIsolation: (ids: Set<number>) => void;
   installClashGhost: (ids: Set<number>) => void;
-  /** The owning operation's cancellation: its pending group framing never moves the camera after it. */
-  signal?: AbortSignal;
 }) {
-  const { installClashIsolation, installClashGhost, signal } = options;
+  const { installClashIsolation, installClashGhost } = options;
   const elementsByIdentity = clashElementCache;
   const elementIdentity = (e: Pick<ClashElement, 'model' | 'key'>) => JSON.stringify([e.model, e.key]);
   const refOf = (ref: ClashElementRef): SelectionRef | null => {
@@ -59,7 +57,8 @@ export function createClashFocus(options: {
       state.setClashVisibilityOwned(null);
     }
   };
-  const focusClashes = (clashes: readonly Clash[], mode: ClashFocusMode = 'highlight') =>
+  /** `signal`: a capture that owns this focus; its cancellation drops the pending framing. */
+  const focusClashes = (clashes: readonly Clash[], mode: ClashFocusMode = 'highlight', signal?: AbortSignal) =>
     focusClashGroup(clashes, refOf, applyFocusMode, mode, signal);
   const focusClash = (clash: Clash, mode: ClashFocusMode = 'highlight'): void => {
     const state = useViewerStore.getState();

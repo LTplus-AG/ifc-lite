@@ -145,6 +145,20 @@ describe('viewer operations: no effects after cancel and no stale captures (#107
     assert.equal(useViewerStore.getState().bcfProject, null);
   });
 
+  it('#6: clash.focus keeps framing the group after its call has returned', async () => {
+    await seedCoincidentWalls(1, 3);
+    const { run_seq, ids } = await clashRun();
+    assert.ok(ids.length > 1, 'a group focus');
+    let framed = 0;
+    useViewerStore.setState(s => ({ cameraCallbacks: { ...s.cameraCallbacks, frameSelection: () => { framed++; return true; } } }));
+    const controller = new AbortController();
+    const result = await execute('clash.focus', { clash_ids: ids, run_seq, mode: 'highlight', element: 'pair' }, controller.signal);
+    assert.equal(result.isError, false, result.text);
+    controller.abort(); // the call is over: its signal no longer owns the dispatched framing
+    await settle();
+    assert.equal(framed, 1);
+  });
+
   it('#10: clash.topic.create refuses when its snapshot frame fails instead of publishing a camera-only topic', async () => {
     await seedCoincidentWalls(1);
     const { run_seq, ids } = await clashRun();

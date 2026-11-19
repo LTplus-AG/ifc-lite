@@ -31,7 +31,7 @@ interface TopicOptions {
   groupName?: string;
   mode: ClashFocusMode;
   focusClash?: (clash: Clash, mode: ClashFocusMode) => void;
-  focusClashes: (clashes: readonly Clash[], mode: ClashFocusMode) => FocusedClashGroup | null;
+  focusClashes: (clashes: readonly Clash[], mode: ClashFocusMode, signal?: AbortSignal) => FocusedClashGroup | null;
   isCurrent: () => boolean;
   signal?: AbortSignal;
   commit?: <T>(write: () => T) => T;
@@ -50,7 +50,7 @@ export async function createNativeClashTopic(options: TopicOptions): Promise<{ g
   const clash = !groupName ? clashes[0] : undefined;
   let focused: FocusedClashGroup | null = null;
   if (groupName) {
-    focused = options.focusClashes(clashes, mode === 'ghost' ? 'highlight' : mode);
+    focused = options.focusClashes(clashes, mode === 'ghost' ? 'highlight' : mode, options.signal);
     if (!focused) throw new Error('None of this group’s objects are available in the loaded models.');
   } else if (clash) {
     if (!options.focusClash) throw new Error('Native pair focus is required.');

@@ -79,6 +79,7 @@ export const stepExportOperations = [
     current();
     // Loaded on use: the merged export is its own lazy chunk, off the startup bundle.
     const { MergedExporter } = await import('@ifc-lite/export/merged-exporter');
+    current();
     const result = await new MergedExporter(prepared.inputs).exportBlobAsync({ schema: i.schema, projectStrategy: 'keep-first', unitReconciliation: i.unit_reconciliation,
       visibleOnly: i.visible_only, hiddenEntityIdsByModel: prepared.visibility.hidden, isolatedEntityIdsByModel: prepared.visibility.isolated,
       application: 'ifc-lite', description: 'Merged export through native viewer operations', onProgress: () => current() });

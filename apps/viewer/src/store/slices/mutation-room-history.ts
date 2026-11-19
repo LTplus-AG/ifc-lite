@@ -9,7 +9,8 @@
  * draft editor (modelling, roofs) publish on their own terms, or not at all. So history replay cannot mirror every
  * step it applies: it would republish writes a command never shared, and bypass a command's own rollback. Instead
  * the forward action records what it published, with the value types the room needs, and an undo or redo of that
- * mutation publishes its inverse in kind. A mutation with no record replays locally, as before.
+ * mutation publishes its inverse in kind. A mutation with no record replays locally, as before. An attribute undo
+ * needs the prior value the edit recorded; without one it replays locally and the user gets the room notice.
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
@@ -57,10 +58,15 @@ export function rememberPublishedEdit(mutation: Mutation, session: Session, type
 function publishStep(state: ViewerState, modelId: string, mutation: Mutation, edit: PublishedEdit, direction: 'undo' | 'redo'): void {
   const { entityId, psetName, propName, attributeName } = mutation;
   if (mutation.type === 'UPDATE_ATTRIBUTE') {
-    // An undo restores a prior value only when the edit recorded one. Without it the original is not known here (a
-    // created entity's payload, a select, a reference slot), so the step stays local: see #10695 follow-ups.
-    const value = direction === 'redo' ? mutation.newValue : mutation.oldValue;
-    if (attributeName && value !== undefined && value !== null) state.mirrorAttributeEdit(modelId, entityId, attributeName, String(value));
+    if (!attributeName) return;
+    if (direction === 'redo') {
+      if (mutation.newValue !== undefined) state.mirrorAttributeEdit(modelId, entityId, attributeName, mutation.newValue === null ? null : String(mutation.newValue));
+      return;
+    }
+    // An undo restores a prior value only when the edit recorded one: without it the original is not known here (a
+    // created entity's payload, a select, a reference slot). The room keeps the edited value, so the user is told.
+    if (mutation.oldValue === undefined || mutation.oldValue === null) throw new Error(`the prior ${attributeName} was not recorded`);
+    state.mirrorAttributeEdit(modelId, entityId, attributeName, String(mutation.oldValue));
     return;
   }
   if (!psetName || !propName) return;

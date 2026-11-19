@@ -67,11 +67,13 @@ describe('undo and redo publish what the forward edit published (#10695)', () =>
     assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Name', 'Before']]);
     state().redo('hello');
     assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Name', 'Renamed']]);
-    // With no recorded prior value the original is not known here, so the undo stays local (a #10695 follow-up).
+    // With no recorded prior value the original is not known here: the undo stays local and says so.
+    useViewerStore.setState({ collabGeometryNotice: null });
     state().setAttribute('hello', WALL_ID, 'Description', 'Typed');
     take();
     state().undo('hello');
     assert.deepEqual(take(), []);
+    assert.match(state().collabGeometryNotice ?? '', /undo was applied locally, but could not be shared/);
   });
 
   it('an edit the room never received is not published on undo', () => {

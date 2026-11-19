@@ -271,9 +271,9 @@ describe('multi-batch IDS corrections (#10792)', () => {
     answer(await invoke('authoring.apply', { token: applied }, true)); // still held: its replay answers
   });
 
-  it('#68: a correction whose later batch fails stages none of its batches', async () => {
+  it('#68: a correction that cannot fit is refused whole and stages none of its batches', async () => {
     for (let i = 0; i < 63; i++) answer(await invoke('properties.prepare', { proposal_json: renameWall(`Name ${i}`) }));
-    // The first batch takes the 64th place and the second is refused.
+    // Two batches cannot fit beside 63: every batch is previewed first, then none is admitted.
     const express_ids = Array.from({ length: WALLS }, (_, i) => i + 1);
     const fix = await invoke('validation.fix.prepare', { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value: 'yes', title: 'Mark reviewed' });
     assert.equal(fix.isError, true);

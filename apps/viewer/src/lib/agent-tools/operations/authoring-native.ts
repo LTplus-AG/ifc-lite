@@ -29,20 +29,21 @@ function candidates(c: OperationContext) {
 }
 /** The permanent half of apply's check: the model has not changed since the preview. */
 const previewCurrent = (entry: Pick<Candidate, 'revision'>) => entry.revision === useViewerStore.getState().mutationVersion;
-/** Make room for `count` model candidates, or refuse before evicting anything. A multi-batch prepare reserves all
- * its batches this way first, so a refusal part way cannot have evicted another candidate. */
-export function reserveCandidates(c: OperationContext, count = 1): void {
-  const stillApplies = candidateStillApplies(c.host);
-  admitCandidate(candidates(c), { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.handedOff,
-    canApply: entry => stillApplies(entry.receipt !== undefined, () => previewCurrent(entry), entry), count });
+/** Admit `inputs` as new candidates in one synchronous step: room for all of them is made (refusing before any
+ * candidate that can still apply is evicted) and all are stored, or none are. Nothing awaits between the two, so a
+ * concurrent prepare cannot take the room. */
+function rememberAll<T extends object>(c: OperationContext, inputs: ReadonlyArray<{ input: Omit<Candidate, 'modelId' | 'store' | 'revision'>; preview: T }>) {
+  const entries = candidates(c), stillApplies = candidateStillApplies(c.host);
+  admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.handedOff,
+    canApply: entry => stillApplies(entry.receipt !== undefined, () => previewCurrent(entry), entry), count: inputs.length });
+  const revision = useViewerStore.getState().mutationVersion;
+  return inputs.map(({ input, preview }) => {
+    const token = crypto.randomUUID();
+    entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
+    return { token, revision, preview_json: JSON.stringify(preview) };
+  });
 }
-function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) {
-  const entries = candidates(c);
-  reserveCandidates(c);
-  const token = crypto.randomUUID(), revision = useViewerStore.getState().mutationVersion;
-  entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
-  return { token, revision, preview_json: JSON.stringify(preview) };
-}
+const remember = (c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) => rememberAll(c, [{ input, preview }])[0];
 function ownedCandidate(c: OperationContext, token: string) {
   const saved = candidates(c).get(token);
   if (!saved || saved.modelId !== c.model.id || saved.store !== c.model.store) throw new Error('Unknown reviewed candidate for this host and model.');
@@ -56,17 +57,19 @@ function candidate(c: OperationContext, token: string) {
 async function persist(saved: Candidate, receipt: ModelChangeReceipt) {
   return { receipt_json: JSON.stringify(receipt), persisted: await persistReceipt(saved, receipt) };
 }
-/** Drop candidates a caller prepared and will not hand back, such as the earlier batches of a failed multi-batch prepare. */
-export function discardCandidates(c: OperationContext, tokens: readonly string[]): void {
-  for (const token of tokens) candidates(c).delete(token);
+/** Preview each property batch, changing nothing, then admit them all at once: a failure or a refusal at any point
+ * leaves the host as it was, apart from stale candidates admission drops anyway. */
+export async function preparePropertyCandidates(c: OperationContext, proposals: readonly string[]) {
+  const [{ parseModelChangeBatch }, { previewModelChanges }] = await Promise.all([import('@ifc-lite/ai/artifacts'), import('@/lib/actions/model-change-preview')]);
+  assertToolActive(c);
+  const previews = proposals.map(proposal => {
+    const preview = previewModelChanges(useViewerStore.getState(), parseModelChangeBatch(proposal));
+    if (preview.rows.some(row => row.modelId !== null && row.modelId !== c.model.id)) throw new Error('All reviewed properties must belong to the selected model.');
+    return { input: { properties: preview }, preview };
+  });
+  return rememberAll(c, previews);
 }
 
-export async function preparePropertyCandidate(c: OperationContext, proposal: string) {
-  const [{ parseModelChangeBatch }, { previewModelChanges }] = await Promise.all([import('@ifc-lite/ai/artifacts'), import('@/lib/actions/model-change-preview')]);
-  assertToolActive(c); const preview = previewModelChanges(useViewerStore.getState(), parseModelChangeBatch(proposal));
-  if (preview.rows.some(row => row.modelId !== null && row.modelId !== c.model.id)) throw new Error('All reviewed properties must belong to the selected model.');
-  return remember(c, { properties: preview }, preview);
-}
 
 export const authoringOperations = [
   operation({ ...meta('authoring.describe', 'model', 'Discover the complete native reviewed authoring vocabulary and its exact input guidance. No arbitrary STEP or method-path execution.'), outputSchema: {
@@ -88,7 +91,7 @@ export const authoringOperations = [
     return remember(c, { authoring: preview }, preview);
   }),
   operation<{ proposal_json: string }>(meta('properties.prepare', 'properties', 'Prepare a canonical model.changes batch for property, quantity or exact IFC attribute edits. Native expected-value checks and role gates are preserved.'), proposalInput, async (i, c) => {
-    return preparePropertyCandidate(c, i.proposal_json);
+    return (await preparePropertyCandidates(c, [i.proposal_json]))[0];
   }),
   operation<{ token: string }>(meta('authoring.apply', 'model', 'Apply every ready row of the exact prepared model/attribute/property candidate as a native transaction. Refuses an incomplete/conflicting preview; repeated apply returns the same receipt.', true), tokenInput, async (i, c) => {
     const saved = candidate(c, i.token);

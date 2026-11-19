@@ -83,15 +83,12 @@ export const nativeValidationOperations = [
   operation<{ express_ids: number[]; pset: string; name: string; facet_data_type: string; raw_value: string; title: string }>(meta('validation.fix.prepare', 'Draft a native IDS property correction from explicit target IDs and a supplied raw value. Uses native type inference, IDS-to-model unit conversion and expected-value capture, then the existing properties review/apply service.'), {
     type: 'object', properties: { express_ids: { type: 'array', maxItems: 1000, minItems: 1, items: { type: 'integer', minimum: 1 } }, pset: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 }, facet_data_type: { type: 'string', maxLength: 100 }, raw_value: { type: 'string', maxLength: 2000 }, title: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['express_ids', 'pset', 'name', 'facet_data_type', 'raw_value', 'title'], additionalProperties: false,
   }, async (i, c) => {
-    const [{ idsCorrectionToModelChanges }, { preparePropertyCandidate, discardCandidates, reserveCandidates }, { resolveRef }] = await Promise.all([import('@/lib/actions/ids-changes'), import('./authoring-native'), import('../refs')]);
+    const [{ idsCorrectionToModelChanges }, { preparePropertyCandidates }, { resolveRef }] = await Promise.all([import('@/lib/actions/ids-changes'), import('./authoring-native'), import('../refs')]);
     for (const express_id of i.express_ids) resolveRef(c.model, { express_id }); assertToolActive(c);
     const converted = idsCorrectionToModelChanges(useViewerStore.getState(), { modelId: c.model.id, target: { psetName: i.pset, propName: i.name }, expressIds: i.express_ids, rawValue: i.raw_value, title: i.title,
       ...(i.facet_data_type ? { facetDataType: i.facet_data_type } : {}) });
-    // All batches or none: room for every batch is reserved first, and a later failure discards those already staged.
-    reserveCandidates(c, converted.batches.length);
-    const candidates: Awaited<ReturnType<typeof preparePropertyCandidate>>[] = [];
-    try { for (const batch of converted.batches) candidates.push(await preparePropertyCandidate(c, JSON.stringify(batch))); }
-    catch (error) { discardCandidates(c, candidates.map(row => row.token)); throw error; }
+    // All batches or none: every batch is previewed before any is admitted, then all are admitted in one step.
+    const candidates = await preparePropertyCandidates(c, converted.batches.map(batch => JSON.stringify(batch)));
     return out({ converted, candidates });
   }),
   operation<{ rules_json: string; model_ids: string[] }>(meta('validation.rules.run', 'Run a canonical information-rule definition over an explicit loaded model population through the shared native rule executor. Pending edits are materialized by its canonical effective-store path. Returns a host-owned, revision-bound run handle; native cancellation is forwarded.'), {

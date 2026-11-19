@@ -198,6 +198,11 @@ for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of un
   assert.deepEqual(asked, [], 'the one-shot route is not taken for an unknown size');
   assert.equal(model()?.loadState, 'complete');
   assert.equal(model()?.geometryResult?.meshes.length, 1);
+  const record = model()?.processedModel;
+  assert.ok(record);
+  // The record always carries a number even when the load input does not (#10469).
+  const recordedBytes: number = record.bytes;
+  assert.equal(recordedBytes, 0);
   assert.equal(model()?.fileSize, 0, 'unknown, shown as N/A rather than as a size');
 });
 

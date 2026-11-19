@@ -554,14 +554,14 @@ describe('Room review admission probe (#10792)', () => {
       withGeometry(mesh => ({ ...mesh, color: [1, 0, 0, 1] })); // a recolour copies meshes with the same buffers
       assert.equal(review.sourcesCurrent(), true);
       review.validate();
-      // Released meshes share one empty positions array with different indices; that alone changes nothing.
-      const shared = new Float32Array(0);
-      const released = useViewerStore.getState().models.get(ROOM_MODEL)!.geometryResult!.meshes.map(mesh => ({ ...mesh, positions: shared }));
-      useViewerStore.setState(s => ({ models: new Map(s.models).set(ROOM_MODEL, { ...s.models.get(ROOM_MODEL)!, geometryResult: { ...s.models.get(ROOM_MODEL)!.geometryResult!, meshes: released } }) }));
-      const releasedReview = await prepareRoomReview(roomProposal(), new AbortController().signal);
-      try { assert.equal(releasedReview.sourcesCurrent(), true, 'shared positions with distinct indices stay current'); } finally { releasedReview.dispose(); }
       withGeometry(mesh => ({ ...mesh, positions: mesh.positions.slice() })); // a remesh replaces the buffers
       assert.equal(review.sourcesCurrent(), false);
     } finally { review.dispose(); }
+    // Released meshes share one empty positions array but keep distinct indices; that alone must not read as a change.
+    assert.ok(useViewerStore.getState().models.get(ROOM_MODEL)!.geometryResult!.meshes.length >= 2, 'several meshes share the released positions');
+    const empty = new Float32Array(0);
+    withGeometry(mesh => ({ ...mesh, positions: empty }));
+    const released = await prepareRoomReview(roomProposal(), new AbortController().signal);
+    try { assert.equal(released.sourcesCurrent(), true); } finally { released.dispose(); }
   });
 });

@@ -147,22 +147,29 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     const captured = sources(current);
     // What the geometry lease read, cheaply and without re-capturing it: the target model's frame and mesh buffers by
     // identity. A recolour copies meshes with the same buffers; a remesh, re-frame or in-place vertex edit changes one.
-    // Keyed weakly by positions, so a remesh can still free the old buffers. Released meshes share one empty positions
-    // array, so each key holds every indices array captured with it. Order and duplication are not checked: that can
-    // only keep a review admitted that apply then refuses, never drop one that would apply.
+    // Keyed weakly by positions, so a remesh that replaces positions can free them (the indices captured with a still
+    // live positions array stay referenced while the review lives). Released meshes share one empty positions array,
+    // so each key holds every indices array captured with it. Order and duplication are not checked: that can keep a
+    // review admitted, never drop one roomGeometryLease would still accept.
     const geometry = current.models.get(proposal.modelId)?.geometryResult;
     const frame = geometry?.coordinateInfo, meshCount = geometry?.meshes.length ?? -1;
     const buffers = new WeakMap<object, Set<unknown>>();
+    let unbuffered = 0;
     for (const mesh of geometry?.meshes ?? []) {
-      if (!isWeakKey(mesh.positions)) continue;
+      if (!isWeakKey(mesh.positions)) { unbuffered++; continue; }
       const indices = buffers.get(mesh.positions) ?? new Set();
       indices.add(mesh.indices); buffers.set(mesh.positions, indices);
     }
     const content = current.geometryContentVersion;
     const geometryCurrent = (state: ViewerState) => {
       const now = state.models.get(proposal.modelId)?.geometryResult;
-      return !!now && now.coordinateInfo === frame && state.geometryContentVersion === content && now.meshes.length === meshCount
-        && now.meshes.every(mesh => !isWeakKey(mesh.positions) || buffers.get(mesh.positions)?.has(mesh.indices) === true);
+      if (!now || now.coordinateInfo !== frame || state.geometryContentVersion !== content || now.meshes.length !== meshCount) return false;
+      let missing = 0;
+      for (const mesh of now.meshes) {
+        if (!isWeakKey(mesh.positions)) missing++;
+        else if (buffers.get(mesh.positions)?.has(mesh.indices) !== true) return false;
+      }
+      return missing === unbuffered;
     };
     const validate = () => {
       signal.throwIfAborted();

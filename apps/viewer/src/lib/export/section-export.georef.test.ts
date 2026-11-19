@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { MergeModelInput } from '@ifc-lite/export';
+import { MergedExporter, type MergeModelInput } from '@ifc-lite/export';
 import { parseStep } from '@/test/agent-tools-fixture';
 import { sectionMergeInputs } from './section-export';
 
@@ -40,6 +40,10 @@ test('a cropped merge input carries its georeference edits into the cropped byte
   assert.deepEqual(prepared.warnings, []);
   assert.equal(prepared.inputs[0].georefMutations, undefined, 'the merge must not apply them again');
   assert.equal(mapConversions(prepared.inputs[0]), 1);
+  // The cropped bytes carry the edited values, and merging them writes exactly one conversion.
+  const merged = new TextDecoder().decode((await new MergedExporter(prepared.inputs).exportAsync({ schema: 'IFC4' })).content);
+  assert.match(merged, /IFCPROJECTEDCRS\('EPSG:2056'/);
+  assert.equal(merged.match(/=IFCMAPCONVERSION\(#\d+,#\d+,2600000\.,1200000\.,500\.,1\.,0\.,1\.\);/g)?.length, 1);
 });
 
 test('a cropped merge input whose georeference edits the target cannot hold is cropped without them (#10669)', async () => {

@@ -146,7 +146,7 @@ export interface CarrierSet {
   readonly rel: number;
   readonly pset: number;
   readonly related: readonly number[];
-  /** Property name -> its id; empty for a set that names two properties alike, which is then never read. */
+  /** Property name -> its id; empty for a set that names two properties alike or lists one it cannot read, or whose relationship lists a non-reference; such a set is never read. */
   readonly props: ReadonlyMap<string, number>;
   /** Whether the set and each of its properties are named by no other source record than this relationship and this set; undefined unless `checkExclusive`. */
   readonly exclusive?: boolean;
@@ -167,17 +167,19 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
   // A carrier is exclusive when its relationship is the only record naming its set, and its set the only one naming each property.
   const uses = checkExclusive ? source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)]))) : undefined;
   return members.map(({ rel, pset, propIds }) => {
-    let props = new Map<string, number>();
-    let duplicate = false;
-    for (const p of propIds) {
-      const propName = stepString(source.slots(p)?.[0]);
-      duplicate ||= propName !== null && props.has(propName);
-      if (p !== null && propName !== null) props.set(propName, p);
-    }
     // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that does
-    // not still counts as present (for ambiguity checks) but gives no property and is never consumed.
-    if (duplicate) props = new Map();
-    const related = (listItems(source.slots(rel)?.[4] ?? '') ?? []).map(slotRef).filter((r): r is number => r !== null);
+    // not, that lists a property it cannot read, or whose relationship lists a non-reference, still counts as
+    // present for the objects it does name (for ambiguity checks) but gives no property and is never consumed.
+    const listed = listItems(source.slots(rel)?.[4] ?? '')?.map(slotRef) ?? [];
+    const related = listed.filter((r): r is number => r !== null);
+    const props = new Map<string, number>();
+    if (related.length === listed.length) {
+      for (const p of propIds) {
+        const propName = stepString(source.slots(p)?.[0]);
+        if (p === null || propName === null || props.has(propName)) { props.clear(); break; }
+        props.set(propName, p);
+      }
+    }
     const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
     return { rel, pset, related, props, exclusive };
   });

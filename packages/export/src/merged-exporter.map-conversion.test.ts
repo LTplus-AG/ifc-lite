@@ -91,6 +91,9 @@ describe('merged STEP export and map conversions (#10798)', () => {
     // A CRS without a map unit uses the project's.
     expectApart(await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'normalize'), 2);
     expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$' }])).contexts).toHaveLength(1);
+    // Two spellings of one georeference agree: an explicit metre and the project's metre, an omitted and a unit scale.
+    expect((await merge([at(X), { values: X, unit: '$' }])).contexts).toHaveLength(1);
+    expect((await merge([at(X), at('2600000.,1200000.,500.,$,$,$')])).contexts).toHaveLength(1);
     // A conversion-based unit compares by its factor, not by its record's id.
     expectApart(await merge([{ values: X, unit: '#4', factor: '0.3048' }, { values: X, unit: '#4', factor: '1.' }]), 2);
     expect((await merge([{ values: X, unit: '#4' }, { values: X, unit: '#4' }])).contexts).toHaveLength(1);

@@ -53,6 +53,9 @@ test('verdict: a pass on the first attempt, or on the retry in `on` only, passes
   assert.deepEqual(verdict({ exitCode: 1, mode: 'shadow', retry: retried }), { passed: false, failedFiles: ['src/a.test.ts'] }, 'shadow keeps the first verdict');
   assert.deepEqual(verdict({ exitCode: 1, mode: 'on', retry: { ...retried, result: { passed: false } } }), { passed: false, failedFiles: ['src/a.test.ts'] });
   assert.deepEqual(verdict({ exitCode: 1, mode: 'off', retry: null }), { passed: false, failedFiles: [] });
+  const mixed = { plan: { retry: true }, files: ['src/a.test.ts', 'src/b.test.ts'], results: [{ file: 'src/a.test.ts', passed: true }, { file: 'src/b.test.ts', passed: false }], result: { passed: false } };
+  assert.deepEqual(verdict({ exitCode: 1, mode: 'on', retry: mixed }), { passed: false, failedFiles: ['src/b.test.ts'], passedOnRetry: ['src/a.test.ts'] }, 'a file that recovered is not counted failed');
+  assert.deepEqual(verdict({ exitCode: 1, mode: 'shadow', retry: mixed }), { passed: false, failedFiles: ['src/a.test.ts', 'src/b.test.ts'] }, 'shadow keeps the first verdict');
 });
 
 test('planSelectedRetry: refuses without a TAP, without job time, and for a file the run was not given', () => {

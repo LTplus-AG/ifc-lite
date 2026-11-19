@@ -23,7 +23,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { retryBudgetMs } from '../ci-shard-retry.mjs';
 import {
@@ -106,15 +106,23 @@ export function verdict({ exitCode, mode, retry }) {
   if (exitCode === 0) return { passed: true, failedFiles: [] };
   const retried = retry?.plan?.retry === true && retry.result?.passed === true;
   if (mode === 'on' && retried) return { passed: true, failedFiles: [], passedOnRetry: retry.files };
-  // An unattributed failure names no file; the status then says so.
-  return { passed: false, failedFiles: retry?.files ?? [] };
+  // In `on`, a file that passed its own retry is not a failure even when
+  // another file failed again (its flake is still reported); a file never
+  // retried (the loop stops at the first file that fails again) is. `shadow`
+  // keeps the first attempt's verdict, files included. An unattributed
+  // failure names no file.
+  const recovered = new Set(mode === 'on' ? (retry?.results ?? []).filter((x) => x.passed).map((x) => x.file) : []);
+  const failedFiles = (retry?.files ?? []).filter((f) => !recovered.has(f));
+  return { passed: false, failedFiles, ...(recovered.size > 0 ? { passedOnRetry: [...recovered] } : {}) };
 }
 
 /**
  * @param {{ root: string, viewer: string, dir: string, env: NodeJS.ProcessEnv, runner: string[] }} input
  *   `runner` is the tsx argv from the viewer `test` script (runnerArgs).
  */
-export function runSelectedTests({ root, viewer, dir, env, runner }) {
+export function runSelectedTests({ root, viewer, dir: given, env, runner }) {
+  // Absolute: the TAP destinations are opened by a child running in apps/viewer.
+  const dir = resolve(given);
   const files = readFileSync(join(dir, 'files.txt'), 'utf8').split('\n').filter(Boolean);
   if (files.length === 0) throw new Error('files.txt is empty; tsx would fall back to its default glob');
   const cwd = join(root, viewer);
@@ -161,6 +169,7 @@ export function runSelectedTests({ root, viewer, dir, env, runner }) {
         if (mode === 'on' && !v.passed) break;
       }
       const failed = results.filter((x) => !x.passed);
+      retry.results = results;
       retry.result = failed.length === 0
         ? { passed: true, reason: `all ${results.length} file(s) passed on retry` }
         : { passed: false, reason: failed.map((x) => `${x.file}: ${x.reason}`).join('; ') };
@@ -175,6 +184,7 @@ export function runSelectedTests({ root, viewer, dir, env, runner }) {
   if (!v.passed) {
     const msg = `${files.length} selected viewer test file(s) ran and at least one failed (exit ${exitCode}). The \`PR viewer selection\` status blocks queue entry; see the log above.`;
     console.log(`::warning title=Selected viewer tests::${msg}`);
+    for (const f of v.passedOnRetry ?? []) console.log(`::warning title=Flaky test (selected viewer tests)::${f} needed a retry`);
     summary(['', `**${msg}**`]);
   } else if (v.passedOnRetry) {
     for (const f of v.passedOnRetry) console.log(`::warning title=Flaky test (selected viewer tests)::${f} needed a retry`);

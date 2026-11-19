@@ -21,11 +21,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { STATUS_CONTEXT } from '../ci-viewer-select-status.mjs';
-
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const cfg = parse(readFileSync(join(REPO_ROOT, '.mergify.yml'), 'utf8'));
 const CEILING_FILES = readdirSync(join(REPO_ROOT, 'tests/perf-ratchets'))
+  // @source-text-assertion-ok a directory listing of ceiling files by name, not file text
   .filter((f) => f.endsWith('.json'))
   .map((f) => `tests/perf-ratchets/${f}`);
 
@@ -76,8 +75,13 @@ const READY = ['CLA', 'PR review signal'];
 /** One ordinary PR and one ceiling PR, one per non-release queue. */
 const QUEUED_FILES = [['apps/viewer/src/main.tsx'], ['tests/perf-ratchets/bundle.json']];
 const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: READY, failing: [], pending: [], unresolvedThreads: 0, ...extra });
-/** The status the selected viewer tests post (test.yml), by the name the poster uses. */
-const VIEWER_SELECTION = STATUS_CONTEXT;
+/**
+ * The status the selected viewer tests post (test.yml). A literal, not an
+ * import of the new poster, so the revert oracle can still load this file on
+ * main's production code; ci-viewer-select-status.test.mjs pins the poster's
+ * name against .mergify.yml.
+ */
+const VIEWER_SELECTION = 'PR viewer selection';
 const RELEASE = 'changeset-release/main';
 
 test('a lowering PR like #8459 goes to the ceilings queue, for every committed ceiling family', () => {
@@ -156,8 +160,9 @@ test('the viewer selection status gates entry only: no queue re-checks it while 
   for (const files of QUEUED_FILES) {
     const q = queueFor(pr(files, red));
     assert.ok(q, 'still admitted by its queue');
-    // Every check-success green: only a condition reading this status could fail.
-    const green = { includes: () => true };
+    // Every check green except this status, which is failing and pending: a
+    // queue condition of any kind on it would fail here.
+    const green = { includes: (name) => name !== VIEWER_SELECTION };
     assert.ok(all(q.merge_conditions, pr(files, { ...red, statuses: green })), `${q.name}: still mergeable`);
   }
 });

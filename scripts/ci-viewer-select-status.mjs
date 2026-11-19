@@ -165,8 +165,12 @@ function readResult(dir) {
 }
 
 async function api(env, method, path, body) {
+  // Bounded through the body read: an API that stalls must fail the post in
+  // seconds, well inside the `changes` job's five minutes, so --entry still
+  // fails open rather than dying with its job.
   const res = await fetch(`${env.GITHUB_API_URL || 'https://api.github.com'}/${path}`, {
     method,
+    signal: AbortSignal.timeout(env.STATUS_API_TIMEOUT_MS ? Number(env.STATUS_API_TIMEOUT_MS) : 15_000),
     headers: {
       authorization: `Bearer ${env.GITHUB_TOKEN}`,
       accept: 'application/vnd.github+json',

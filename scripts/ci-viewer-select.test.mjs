@@ -508,7 +508,8 @@ test('WIRING: the select step feeds the switch inputs, and every heavy step wait
   assert.equal(upload.name, 'Upload the selection', 'the upload is last, so it carries result.json');
   assert.equal(upload.if, "always() && steps.select.outputs.artifact == 'true'");
   const status = steps.at(-2);
-  assert.equal(status.if, 'always()', 'the verdict is posted even when a step before it broke or the job was cancelled');
+  /* eslint-disable-next-line no-template-curly-in-string */
+  assert.equal(status.if, '${{ !cancelled() }}', 'the verdict is posted even when a step before it broke, never after cancellation');
   for (const s of steps.slice(select + 1, -2)) {
     assert.ok(String(s.if ?? '').startsWith("steps.select.outputs.run == 'true'"), `${s.name ?? s.uses ?? s.run} must wait on run`); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
   }

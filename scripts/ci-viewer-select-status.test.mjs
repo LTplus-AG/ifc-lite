@@ -168,6 +168,23 @@ test('main --shards posts the full-lane verdict, and a failed post fails the (ad
   });
 });
 
+test('main: a stalled API ends the post in time: --entry still fails open, --final fails', async () => {
+  // Accepts the request and never answers.
+  const server = createServer(() => {});
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const api = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const t0 = Date.now();
+    assert.equal(await main(['--entry'], env(api, { ...entryEnv, STATUS_API_TIMEOUT_MS: '200' })), 0);
+    const dir = mkdtempSync(join(tmpdir(), 'viewer-status-'));
+    assert.equal(await main(['--final', dir], env(api, { JOB_STATUS: 'success', SELECT_OUTCOME: 'success', SELECT_RUN: 'false', STATUS_API_TIMEOUT_MS: '200' })), 1);
+    assert.ok(Date.now() - t0 < 10_000, 'bounded by the request deadline, not the job timeout');
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+});
+
 test('main: a fork PR or a no-op edit posts nothing', async () => {
   await withApi(201, async (api, posts) => {
     assert.equal(await main(['--entry'], env(api, { ...entryEnv, HEAD_REPO: 'someone/ifc-lite' })), 0);
@@ -252,6 +269,7 @@ function jobRuns(job, ctx) {
     .replace(/\bvars\.CI_PR_VIEWER_SELECT\b/g, lit(ctx.mode))
     .replace(/\bgithub\.event_name\b/g, lit(ctx.event))
     .replace(/\bneeds\.changes\.outputs\.(\w+)\b/g, (_, k) => lit(ctx[k]))
+    .replace(/\bneeds\.viewer-tests\.result\b/g, lit(ctx.shardsResult))
     .replace(/==/g, '===').replace(/!===/g, '!==');
   if (!/^[\s"a-z_.\-()&|=!]*$/.test(js)) throw new Error(`cannot evaluate ${job.name}'s if: ${js}`); // @source-text-assertion-ok evaluator guard: refuses a workflow expression it cannot evaluate, rather than reading it as true
   return Function(`return (${js});`)();
@@ -266,18 +284,25 @@ test('WIRING: entry gates exactly the runs a verdict job will close, on either l
           const ctx = { ...ENTRY, replay: 'false', mode, lane, frontend, rust };
           const on = mode === 'on';
           const selected = jobRuns(TESTS, ctx) && on;
-          const full = jobRuns(SHARDS, ctx) && on;
+          const shardsRan = jobRuns(SHARDS, ctx);
+          const full = shardsRan && on;
           const d = entry(ctx);
           assert.equal(d.state === 'pending', selected || full, `pending iff a verdict follows: ${JSON.stringify(ctx)}`);
-          assert.equal(jobRuns(SHARDS_STATUS, ctx), full, `the full-lane verdict job runs exactly when the shards gate: ${JSON.stringify(ctx)}`);
+          for (const result of ['success', 'failure']) {
+            const after = { ...ctx, shardsResult: shardsRan ? result : 'skipped' };
+            assert.equal(jobRuns(SHARDS_STATUS, after), full, `the full-lane verdict job runs exactly when the shards gate: ${JSON.stringify(after)}`);
+          }
+          assert.equal(jobRuns(SHARDS_STATUS, { ...ctx, shardsResult: 'cancelled' }), false, 'cancelled shards: no verdict job');
           if (full) assert.equal(shards('success', ctx).state, 'success', 'and it can close what entry opened');
           assert.ok(!(selected && full), 'one verdict per run');
           cases += 1;
         }
   assert.equal(cases, 32);
   for (const job of [TESTS, SHARDS_STATUS]) {
-    assert.equal(jobRuns(job, { ...ENTRY, lane: 'full', mode: 'on', noop: 'true' }), false, `${job.name}: a no-op edit (entry posts nothing)`);
-    assert.equal(jobRuns(job, { ...ENTRY, lane: 'full', mode: 'on', batch: 'true' }), false, `${job.name}: a batch`);
+    const ran = { ...ENTRY, lane: job === TESTS ? 'fast' : 'full', mode: 'on', shardsResult: 'success' };
+    assert.equal(jobRuns(job, ran), true, `${job.name}: the base case runs`);
+    assert.equal(jobRuns(job, { ...ran, noop: 'true' }), false, `${job.name}: a no-op edit (entry posts nothing)`);
+    assert.equal(jobRuns(job, { ...ran, batch: 'true' }), false, `${job.name}: a batch`);
   }
 });
 
@@ -326,7 +351,8 @@ test('WIRING: only `changes`, the tests job and the full-lane verdict job write 
   /* eslint-disable-next-line no-template-curly-in-string */
   assert.equal(FINAL_STEP.env.DOWNLOAD_OUTCOME, '${{ steps.download.outcome }}');
   assert.ok(TESTS.steps.some((s) => s.id === 'download'), 'the download step the status reads');
-  assert.equal(FINAL_STEP.if, 'always()');
+  /* eslint-disable-next-line no-template-curly-in-string */
+  assert.equal(FINAL_STEP.if, '${{ !cancelled() }}', 'posts after a failed step, never after cancellation');
 });
 
 test('WIRING: .mergify.yml keeps a failing or pending status out, by the name this script posts', () => {

@@ -1646,16 +1646,18 @@ jobs:
     name: Viewer shards status (full lane)
     needs: [changes, viewer-tests]
     continue-on-error: true
-    # Keep in step with gateApplies() in scripts/ci-viewer-select-status.mjs
-    # and the shards' own `if:` (pinned in its test).
+    # Runs exactly when the shards reached a verdict, which is when they ran:
+    # the full lane with a frontend or Rust change (their own `if:`, so no
+    # second copy of the lane test, which ci-pr-lane.test.mjs keeps to the
+    # aggregate's FAST_SKIPPED_JOBS). Cancelled or skipped shards: no post.
+    # Pinned against gateApplies() in scripts/ci-viewer-select-status.test.mjs.
     if: >-
       !cancelled() &&
       github.event_name == 'pull_request' &&
       vars.CI_PR_VIEWER_SELECT == 'on' &&
-      needs.changes.outputs.lane != 'fast' &&
       needs.changes.outputs.batch != 'true' &&
       needs.changes.outputs.noop != 'true' &&
-      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
+      (needs.viewer-tests.result == 'success' || needs.viewer-tests.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # The checkout reads this public repo; the only write is the status.
@@ -1809,10 +1811,12 @@ jobs:
         env:
           CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
           JOB_TIMEOUT_MINUTES: '20'  # this job's timeout-minutes
-      # The verdict as the queue-entry status, on always(): a broken job posts
-      # failure; a cancelled one posts nothing, leaving pending (see the script).
+      # The verdict as the queue-entry status, also when a step failed: a
+      # broken job posts failure. Not always(): on cancellation the runner
+      # re-tests this, skips it (or cancels it mid-post), so a cancelled run
+      # cannot land a late verdict over the cancelling run's pending.
       - name: Post the PR viewer selection status
-        if: always()
+        if: ${{ !cancelled() }}
         run: node scripts/ci-viewer-select-status.mjs --final "$RUNNER_TEMP/viewer-selection"
         env:
           GITHUB_TOKEN: ${{ github.token }}

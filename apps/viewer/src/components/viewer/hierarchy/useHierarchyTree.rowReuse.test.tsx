@@ -84,8 +84,9 @@ async function mountTree(): Promise<{ tree: () => Tree; view: MutablePropertyVie
   const view = new MutablePropertyView(dataStore.properties || null, MODEL);
   useViewerStore.setState({
     ...fixtureModels(model), geometryResult: geometry, hierarchyMode: 'spatial', loading: false, editEnabled: true,
-    // Fresh maps: addColumn caches its StoreEditor into storeEditors in place, which the reset would otherwise carry over.
-    mutationViews: new Map([[MODEL, view]]), storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(),
+    // addColumn caches its StoreEditor into storeEditors in place, and afterEach restores
+    // INITIAL_STATE's same Map object, so each test starts from a fresh one.
+    mutationViews: new Map([[MODEL, view]]), storeEditors: new Map(),
   });
   let tree!: Tree;
   function Probe() {

@@ -113,8 +113,8 @@ source and unfinished stash, preserving diagnostics and user settings. See the
 [content lifetime contract](../../docs/api/wasm.md#content-installation-and-cleanup).
 
 
-`getPipelineDiagnostics()` returns a plain `schemaVersion: 1` report with
-additive `refusedInputElements` (attempted jobs, including retries) and
+`getPipelineDiagnostics()` returns a plain `schemaVersion: 2` report with
+measured `silentNoOps` and `refusedInputElements` (attempted jobs, including retries) and
 `refusedPrepassRecords` (distinct semantic refusal IDs per API/worker).
 Syntax-invalid type drops are excluded there and counted instead, per distinct
 record, in `omittedTypeRecords`. Prepass-only refusals and omissions are reportable;

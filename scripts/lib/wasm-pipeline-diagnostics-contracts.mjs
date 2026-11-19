@@ -38,7 +38,7 @@ export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT
       const one = diagApi.getPipelineDiagnostics();
       assert.ok(one && typeof one === 'object', 'diagnostics must be an object after a batch');
       // Versioned wire shape: the schema-stability contract on the real boundary.
-      assert.equal(one.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
+      assert.equal(one.schemaVersion, 2, 'schemaVersion must match the pinned contract (bump = breaking)');
       assert.equal(one.batches, 1, 'exactly one batch recorded');
       assert.equal(one.refusedInputElements, 0);
       assert.equal(one.refusedPrepassRecords, 0);
@@ -95,7 +95,7 @@ export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT
           pre.styleIds, pre.styleColors, pre.planeAngleToRadians);
         meshes.free();
         const diag = diagApi.getPipelineDiagnostics();
-        assert.equal(diag.schemaVersion, 1);
+        assert.equal(diag.schemaVersion, 2);
         assert.equal(diag.refusedInputElements, attempts);
         assert.equal(diag.refusedPrepassRecords, 1);
         assert.equal(diag.omittedTypeRecords, 1, 'F2: the dropped type #500 is counted separately, once');
@@ -114,7 +114,7 @@ export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT
       assert.ok(ids.includes(100), 'the valid orphan neighbour is scheduled');
       const before = diagApi.getPipelineDiagnostics();
       assert.ok(before && typeof before === 'object', 'a prepass-only omission is reportable');
-      assert.equal(before.schemaVersion, 1);
+      assert.equal(before.schemaVersion, 2);
       assert.equal(before.batches, 0);
       assert.equal(before.omittedTypeRecords, 1, 'one record although it carries two maps');
       assert.equal(before.refusedInputElements, 0);
@@ -146,7 +146,7 @@ export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT
       diagApi.buildPrePassOnce(new TextEncoder().encode(source));
       const diag = diagApi.getPipelineDiagnostics();
       assert.ok(diag && typeof diag === 'object', 'prepass API must expose its own refusals');
-      assert.equal(diag.schemaVersion, 1);
+      assert.equal(diag.schemaVersion, 2);
       assert.equal(diag.batches, 0);
       assert.equal(diag.refusedInputElements, 0);
       assert.equal(diag.refusedPrepassRecords, 1, 'only the refused unit record #801');
@@ -216,6 +216,7 @@ ENDSEC;END-ISO-10303-21;`;
       try {
         const diag = meshes.diagnostics;
         assert.ok(diag, 'refusal must survive the normal diagnostics path');
+        assert.equal(diag.schemaVersion, 6, 'geometry diagnostics advertise the measured cut count contract');
         assert.equal(diag.totalUnsupportedItems, 0);
         assert.equal(diag.totalCsgFailures, 0);
         assert.equal(diag.totalBudgetRefusals, 1);

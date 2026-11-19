@@ -62,6 +62,14 @@ export function statedMergeSkips(models: ReadonlyMap<string, FederatedModel>): M
     .map(model => ({ name: model.name, reason: 'noRecords' as const }));
 }
 
+/**
+ * The loaded models a merged export writes: the ones `buildMergeInputs` keeps, by the same store test. Read
+ * before hydration, so a store still loading counts as left out until it arrives.
+ */
+export function mergedModels(models: ReadonlyMap<string, FederatedModel>): FederatedModel[] {
+  return exportableModels(models).filter(model => model.ifcDataStore && !stepSkipReason(model.ifcDataStore));
+}
+
 /** Assemble one `MergeModelInput` per writable model, and name the rest. */
 export function buildMergeInputs(
   hydrated: readonly HydratedMergeModel[],

@@ -54,7 +54,7 @@ import { canExportRoomAsStep } from '@/lib/collab/room-step-export';
 import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { canWriteIfcFromStores, listExportModels, resolveExportModel, stepSkipReason } from './export-model-selection';
-import { buildMergeInputs, emptyMergeRefusal, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
+import { buildMergeInputs, emptyMergeRefusal, mergedModels, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
@@ -247,10 +247,20 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
       return count;
     }
-    // The merged export applies every model's georeferencing edits too (#10669).
-    return getModifiedEntityCount() + [...georefMutations.values()].filter(hasGeorefEdits).length;
+    // A merged export writes only the models `buildMergeInputs` keeps, each with its georeferencing edits (#10669).
+    // The store's total counts every model's overlay edits, plus a georeference edit only for a model without an
+    // overlay; recount both per model.
+    const kept = new Set(mergedModels(models).map(model => model.id));
+    let count = getModifiedEntityCount();
+    for (const id of models.keys()) {
+      const view = getMutationView(id), georef = hasGeorefEdits(georefMutations.get(id));
+      if (!view && georef) count -= 1;
+      if (!kept.has(id)) count -= view?.getModifiedEntityCount() ?? 0;
+      else if (georef) count += 1;
+    }
+    return count;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
+  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations, models]);
 
   /**
    * Resolve local (per-model) hidden/isolated expressIds for `modelId` from

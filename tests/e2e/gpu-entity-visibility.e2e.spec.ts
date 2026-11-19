@@ -131,10 +131,10 @@ async function act(page: Page, steps: Step[], ids: number[] = []): Promise<void>
   await settle(page);
 }
 
-async function capture(page: Page, info: TestInfo, name: string): Promise<string> {
+async function capture(page: Page, info: TestInfo, name: string, attach = true): Promise<string> {
   const png = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!());
   expect(png, `${name}: the renderer returned its colour frame`).toBeTruthy();
-  await info.attach(`${name}.png`, { body: Buffer.from(png!.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  if (attach) await info.attach(`${name}.png`, { body: Buffer.from(png!.split(',')[1]!, 'base64'), contentType: 'image/png' });
   return png!;
 }
 
@@ -391,11 +391,7 @@ async function diffWithin(page: Page, a: string, b: string, on: string, off: str
 
 /** A still frame: wait until two frames 20 animation frames apart match. */
 async function stillCapture(page: Page, info: TestInfo, name: string): Promise<string> {
-  const grab = async () => {
-    const png = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!());
-    expect(png, `${name}: the renderer returned its colour frame`).toBeTruthy();
-    return png!;
-  };
+  const grab = () => capture(page, info, name, false);
   let frame = await grab();
   let still = false;
   for (let i = 0; i < 20 && !still; i++) {

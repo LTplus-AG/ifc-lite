@@ -361,6 +361,7 @@ export class StoreGeometryBackingTap {
     for (const stop of this.stops.splice(0)) stop();
     await Promise.all([...this.tracked.values()].map((tracked) => tracked.chain));
     this.tracked.clear();
+    this.acknowledged.clear();
     await this.registry.close();
   }
 }

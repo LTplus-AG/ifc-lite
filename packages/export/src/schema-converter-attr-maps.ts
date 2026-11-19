@@ -89,6 +89,10 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCPERFORMANCEHISTORY'),
     same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
+    // #10807: same arity as IFC2X3, so the source layout shifted unnoticed.
+    same('IFCPROCEDURE', { renamed: [['ProcedureID', 'Identification'], ['ProcedureType', 'PredefinedType']] }),
+    same('IFCOBJECTIVE', { retyped: ['CreationTime'], upOnly: ['BenchmarkValues'], setOfOne: ['BenchmarkValues', 'BenchmarkValues'] }),
+    same('IFCDOCUMENTINFORMATION', { renamed: [['DocumentId', 'Identification']], retyped: ['CreationTime', 'LastRevisionTime', 'ElectronicFormat', 'ValidFrom', 'ValidUntil'] }),
   ];
   attrMapIndex = {
     maps,

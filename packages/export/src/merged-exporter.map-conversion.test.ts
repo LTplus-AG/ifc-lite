@@ -47,6 +47,8 @@ async function input(id: string, georef: Georef | null, schema: 'IFC4' | 'IFC4X3
   return { id, name: id, dataStore: await new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer) };
 }
 
+/** A projected CRS in metres, for the records `raw` replaces. */
+const METRE_CRS = "#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);";
 const X = '2600000.,1200000.,500.,1.,0.,1.';
 const Y = '2700000.,1200000.,500.,1.,0.,1.';
 const at = (values: string): Georef => ({ values });
@@ -99,14 +101,14 @@ describe('merged STEP export and map conversions (#10798)', () => {
   });
 
   it('tells apart two different rigid operations', async () => {
-    const rigid = (eastings: number): Georef => ({ raw: `#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);
+    const rigid = (eastings: number): Georef => ({ raw: `${METRE_CRS}
 #21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(${eastings}.),IFCLENGTHMEASURE(1200000.),500.);` });
     expectApart(await merge([rigid(2600000), rigid(2700000)], 'IFC4X3'), 2);
     expect((await merge([rigid(2600000), rigid(2600000)], 'IFC4X3')).contexts).toHaveLength(1);
   });
 
   it('tells apart two scaled conversions with different factors', async () => {
-    const scaled = (factorX: string): Georef => ({ raw: `#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);
+    const scaled = (factorX: string): Georef => ({ raw: `${METRE_CRS}
 #21=IFCMAPCONVERSIONSCALED(#14,#20,${X},${factorX},1.,1.);` });
     expectApart(await merge([scaled('1.'), scaled('2.')], 'IFC4X3'), 2);
     expect((await merge([scaled('1.'), scaled('1.')], 'IFC4X3')).contexts).toHaveLength(1);

@@ -138,12 +138,32 @@ describe('viewer operations: no effects after cancel and no stale captures (#107
     assert.equal(useViewerStore.getState().bcfProject?.topics.size, 1);
   });
 
+  it('#77: a cancelled pair topic queued behind another capture takes no frame', async () => {
+    await seedCoincidentWalls(1);
+    const { run_seq, ids } = await clashRun();
+    let finishFirst = () => {};
+    const held = new Promise<void>(resolve => { finishFirst = resolve; });
+    viewport.state.gpu = () => held;
+    const first = captureViewportFrame(viewport.renderer, { read: () => 'first' });
+    const controller = new AbortController();
+    const topic = execute('clash.topic.create', { kind: 'pair', clash_ids: [ids[0]], run_seq, group_name: '', mode: 'highlight' }, controller.signal);
+    // The topic frames its pair (two animation frames), then queues its capture behind the held one.
+    const queued = await Promise.race([topic.then(() => false), new Promise<boolean>(resolve => setTimeout(() => resolve(true), 500))]);
+    assert.equal(queued, true, 'the topic is waiting on the viewport');
+    controller.abort();
+    finishFirst();
+    await first;
+    assert.equal((await topic).isError, true);
+    assert.equal(viewport.state.renders, 1, 'the cancelled topic rendered no frame');
+    assert.equal(useViewerStore.getState().bcfProject, null);
+  });
+
   it('#7: clash.exportBcf refuses snapshots once a model unloads mid-export', async () => {
     const { run_seq } = await clashRun();
     viewport.state.onRender = unloadModelB;
     const result = await execute('clash.exportBcf', { run_seq, groupBy: 'element', severities: ['critical', 'major', 'minor', 'info'], includeSnapshots: true, maxTopics: 10, clash_ids: [] });
     assert.equal(result.isError, true, result.text);
-    assert.match(result.text, /loaded models changed/);
+    assert.match(result.text, /unloaded during the clash BCF export/);
     assert.equal(viewport.state.renders, 1);
     await seedCoincidentWalls(2);
     viewport.state.onRender = () => {};

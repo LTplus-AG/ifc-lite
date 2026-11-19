@@ -94,6 +94,7 @@ export async function createNativeClashTopic(options: TopicOptions): Promise<{ g
       captureNativeBcfViewpoint(getGlobalRenderer(), getGlobalCanvas(), {
         includeSnapshot: true,
         requireSnapshot: options.requireSnapshot,
+        signal: options.signal,
         includeSelection: !focused,
         includeHidden: true,
         // Only a group capture stops early when stale: it re-checks the framed camera and

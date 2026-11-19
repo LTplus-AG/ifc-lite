@@ -27,7 +27,7 @@ export async function captureNativeBcfViewpoint(renderer: Renderer | null, canva
   const getBounds = () => renderFrameBounds(models);
   const getWorldOffset = () => bcfWorldOffset(models, useViewerStore.getState().geometryResult);
   const getCameraState = () => bcfCameraState(renderer);
-  const captureFrame = () => captureBcfFrame(renderer, canvas, getCameraState);
+  const captureFrame = () => captureBcfFrame(renderer, canvas, getCameraState, opts.signal);
   const {
     includeSnapshot = true, snapshotOverride, capturedSectionPlane,
     includeSelection = true,

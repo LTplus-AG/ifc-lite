@@ -56,7 +56,7 @@ export function createClashExport(
         const assertScene = () => {
           options.signal?.throwIfAborted();
           if (isAnalysisStale(stamp, useViewerStore.getState()))
-            throw new Error('The loaded models changed during the clash BCF export. Export again.');
+            throw new Error('The models were edited, moved or unloaded during the clash BCF export. Export again.');
         };
         snapshotProvider = async (group: ClashGroup): Promise<Uint8Array | undefined> => {
           const b = group.bounds;

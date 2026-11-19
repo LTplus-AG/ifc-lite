@@ -57,6 +57,7 @@ function blockFields(block: DocumentBlock): Record<string, unknown> {
         savedSource: isSavedClashReportChart(block.chart) ? 'clashReport' : isSavedComparisonChart(block.chart) ? 'comparison' : null,
         dimension: block.chart.dimension ?? null, measure: block.chart.measure, filtered: block.chart.filter !== undefined,
         snapshot: block.snapshot };
+    case 'quality-gate': return { clashReportId: block.clashReportId, row: block.row };
     case 'topic': return { topicGuid: block.guid, snapshot: block.snapshot };
     case 'spacer': return { heightPt: block.height };
     case 'page-break': return {};

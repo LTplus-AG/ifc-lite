@@ -84,6 +84,7 @@ import {
   INSTANCE_FINISH_FLAGS_MASK,
 } from './instanced-render.js';
 import { translateInstanceRecord } from './scene-instance-translation.js';
+import { tombstoneInstanceRecords } from './instanced-tombstones.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
@@ -252,6 +253,7 @@ export class Scene {
     this.evictHighlightMeshes(id);
   });
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
+  private readonly tombstonedTemplates = new Set<number>();         // template slots holding a deleted entity's records (#10639)
   private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
   private instancedGhosted: Set<number> = new Set();               // currently X-Ray ghosted instanced express_ids
   // The colours the instanced channel was last overridden with. Ghosting reads
@@ -1336,19 +1338,24 @@ export class Scene {
 
   /**
    * Tombstone a GPU-instanced entity on delete/split: set its HIDDEN flag on the
-   * GPU (both render + pick shaders discard it) before forgetting its occurrence
-   * locations, then drop all instanced state for it. The occurrence's buffer slots
-   * are not reclaimed (delete/split is rare) — hiding them is sufficient and never
-   * touches other entities' slots. Returns true if the id was instanced. (#1238)
+   * GPU (both render + pick shaders discard it) and in the CPU instance records
+   * that recovery and model moves re-upload, then drop all instanced state for
+   * it. The slots are not reclaimed (delete/split is rare) and never touch other
+   * entities' slots; `tombstonedTemplates` keeps the discarding shader on while
+   * they exist (#10639). Returns true if the id was instanced. (#1238)
    */
   private removeInstancedEntity(expressId: number): boolean {
-    if (!this.instancedEntityMap.has(expressId)) return false;
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (!occurrences) return false;
     const device = this.instancedDevice;
     if (device && !this.instanceSuppression.has(expressId)) {
       // Must set the flag while the occurrence locations are still in the map.
       this.instancedHidden.add(expressId);
       this.writeInstanceFlags(device, expressId);
     }
+    // After the GPU write: if it throws, the entity stays registered and its CPU records stay unmarked.
+    tombstoneInstanceRecords(this.instancedTemplateCpu, occurrences);
+    for (const o of occurrences) this.tombstonedTemplates.add(o.templateIndex);
     // Release the contribution-cull exemption BEFORE forgetting the occurrence
     // locations — deleting the map entry first would leak selectedCount and
     // leave the templates permanently uncullable.
@@ -2819,6 +2826,7 @@ export class Scene {
       freed.add(i);
     }
     if (freed.size === 0) return 0;
+    for (const slot of freed) this.tombstonedTemplates.delete(slot);
     this.bumpPickGeometryRevision();
 
     for (const [eid, occurrences] of this.instancedEntityMap) {
@@ -3311,13 +3319,15 @@ export class Scene {
 
   /**
    * True when the opaque instanced pass's fragment discards can fire: an
-   * occurrence carries the hidden bit (hide/isolate or an appearance
-   * suppression) or is translucent (the opacity routing). While false the
-   * renderer may draw that pass with the discard-free shader
-   * (opaque-draw-variants.ts). Conservative: any retained suppression counts.
+   * occurrence carries the hidden bit (hide/isolate, an appearance
+   * suppression, or a deleted entity's tombstone) or is translucent (the
+   * opacity routing). While false the renderer may draw that pass with the
+   * discard-free shader (opaque-draw-variants.ts). Conservative: any retained
+   * suppression counts, and a tombstone keeps the discard path until its
+   * model's templates are removed (slots are not reclaimed).
    */
   instancedMayDiscard(): boolean {
-    return this.instancedHidden.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
+    return this.instancedHidden.size > 0 || this.tombstonedTemplates.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
   }
 
   /**
@@ -3583,7 +3593,7 @@ export class Scene {
     this.instancedEntityMap.clear(); this.bumpPickGeometryRevision();
     this.instancedSelected.clear();
     this.instancedSelectedItemExpressId = this.instancedSelectedItemId = undefined;
-    this.instancedHidden.clear();
+    this.instancedHidden.clear(); this.tombstonedTemplates.clear();
     this.instancedOverridden.clear();
     this.instancedGhosted.clear();
     this.instancedGhostDirty = false;

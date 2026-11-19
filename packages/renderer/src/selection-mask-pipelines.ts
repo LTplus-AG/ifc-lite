@@ -20,7 +20,7 @@ import { emptyBindGroup, emptyBindGroupLayout, sectionExclusions, withSectionExc
  * occurrences, or the hovered id's.
  */
 
-import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS, TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS, MESH_VERTEX_BUFFERS, QUANTIZED_VERTEX_BUFFERS, TEXTURED_HIGHLIGHT_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import type { WorldPoint } from './relative-to-eye.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
@@ -47,13 +47,24 @@ export type MaskKind = 'selectedVisible' | 'hoverVisible' | 'selectedAll';
 
 export type MaskPipelines = Record<MaskKind, GPURenderPipeline>;
 
-export function createGeometricMaskPipelines(device: GPUDevice, meshLayout: GPUBindGroupLayout, samples: number, hoverLayout?: GPUBindGroupLayout, textured = false): MaskPipelines {
+/**
+ * The vertex records a non-instanced mask draw reads: a flat copy or colour
+ * batch, a textured piece's UV-bearing buffer, or a quantized colour batch
+ * (#10264 S3 draws batches into the mask).
+ */
+export type MaskVertexLayout = 'flat' | 'textured' | 'quantized';
+
+/** The non-instanced mask vertex stage over `module` (main.wgsl) for `layout`. */
+export function maskVertexStage(module: GPUShaderModule, layout: MaskVertexLayout): GPUVertexState {
+  if (layout === 'quantized') return { module, entryPoint: 'vs_main_quantized', buffers: QUANTIZED_VERTEX_BUFFERS };
+  return { module, entryPoint: 'vs_main', buffers: layout === 'textured' ? TEXTURED_HIGHLIGHT_VERTEX_BUFFERS : MESH_VERTEX_BUFFERS };
+}
+
+export function createGeometricMaskPipelines(device: GPUDevice, meshLayout: GPUBindGroupLayout, samples: number, hoverLayout?: GPUBindGroupLayout, vertexLayout: MaskVertexLayout = 'flat'): MaskPipelines {
   const instanced = hoverLayout !== undefined;
   const layout = device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(device, [meshLayout, hoverLayout ?? emptyBindGroupLayout(device), opaqueVisibilityLayout(device, samples)]) });
-  const vertex: GPUVertexState = {
-    module: device.createShaderModule({ code: mainShaderSource.replace('@location(8) @interpolate(linear)', '@location(8) @interpolate(linear, sample)') }),
-    entryPoint: instanced ? 'vs_instanced' : 'vs_main', buffers: instanced ? INSTANCED_VERTEX_BUFFERS : textured ? TEXTURED_HIGHLIGHT_VERTEX_BUFFERS : [INSTANCED_VERTEX_BUFFERS[0]],
-  };
+  const module = device.createShaderModule({ code: mainShaderSource.replace('@location(8) @interpolate(linear)', '@location(8) @interpolate(linear, sample)') });
+  const vertex: GPUVertexState = instanced ? { module, entryPoint: 'vs_instanced', buffers: INSTANCED_VERTEX_BUFFERS } : maskVertexStage(module, vertexLayout);
   return createMaskPipelines(device, 'geometric-mask', layout, vertex, device.createShaderModule({ code: selectionMaskFragmentSource(instanced, samples) }), samples);
 }
 

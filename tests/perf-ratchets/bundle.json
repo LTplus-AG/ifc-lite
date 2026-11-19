@@ -7,14 +7,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle; its brotli size is reported, not gated",
-      "ceiling": 10542719,
+      "ceiling": 10410322,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "b7387112c77530a60a8f6a471f067b2d8f3fc13e",
-        "measuredAt": "2026-11-17T08:55:39.000Z"
+        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
+        "measuredAt": "2026-11-19T00:06:05.630Z"
       }
     },
     {
@@ -22,14 +22,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
-      "ceiling": 2184003,
+      "ceiling": 2000098,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "3c86942bc77b156a582a273ea7c38bea4d4b55eb",
-        "measuredAt": "2026-11-11T10:47:00.000Z"
+        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
+        "measuredAt": "2026-11-19T00:06:05.630Z"
       }
     },
     {
@@ -37,14 +37,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 17761137,
+      "ceiling": 13453783,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "3e5b79659becb6e30c18c48825149468dd0aec29",
-        "measuredAt": "2026-11-11T07:18:06.896Z"
+        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
+        "measuredAt": "2026-11-19T00:06:05.630Z"
       }
     },
     {
@@ -52,14 +52,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of apps/viewer/dist/assets/parser.worker-*.js, the parser worker's own chunk (chunks it imports on demand are not counted)",
-      "ceiling": 4491334,
+      "ceiling": 1459413,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "4f8f7934bba2d3f34d68ea7251287d0d6bcdcdfb",
-        "measuredAt": "2026-11-12T08:53:00.000Z"
+        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
+        "measuredAt": "2026-11-19T00:06:05.630Z"
       }
     }
   ]

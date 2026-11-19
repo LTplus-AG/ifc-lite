@@ -79,3 +79,13 @@ fn comments_counts_and_required_slots_10847() {
     let (_, _, warnings) = convert("#5=IFCQUANTITYCOUNT('n',$,$,2.5,$);", "IFC4", "IFC4X3");
     assert_eq!(warnings, ["1 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCQUANTITYCOUNT.CountValue (#10847)."]);
 }
+
+/// From CodeRabbit: a real is whole by its digits, not after float rounding.
+#[test]
+fn a_fraction_float_rounding_hides_is_still_dropped_10847() {
+    let (out, dropped, _) = convert("#5=IFCQUANTITYCOUNT('n',$,$,2.0000000000000001,$);", "IFC4", "IFC4X3");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCQUANTITYCOUNT('n',$,$,$,$);", 1));
+    assert_eq!(convert("#5=IFCQUANTITYCOUNT('n',$,$,20.E-1,$);", "IFC4", "IFC4X3").0, "#5=IFCQUANTITYCOUNT('n',$,$,2,$);");
+    assert_eq!(convert("#5=IFCQUANTITYCOUNT('n',$,$,25.E-1,$);", "IFC4", "IFC4X3").0, "#5=IFCQUANTITYCOUNT('n',$,$,$,$);");
+    assert_eq!(convert("#5=IFCQUANTITYCOUNT('n',$,$,3.E2,$);", "IFC4", "IFC4X3").0, "#5=IFCQUANTITYCOUNT('n',$,$,300,$);");
+}

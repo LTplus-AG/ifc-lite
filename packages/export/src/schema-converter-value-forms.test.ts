@@ -56,6 +56,14 @@ describe('value forms a target slot rejects (#10847)', () => {
     ]);
   });
 
+  it('reads a real as whole by its digits, not after float rounding (CodeRabbit)', () => {
+    const count = (v: string) => convert(`#5=IFCQUANTITYCOUNT('n',$,$,${v},$);`, 'IFC4', 'IFC4X3').out;
+    expect(count('2.0000000000000001')).toBe("#5=IFCQUANTITYCOUNT('n',$,$,$,$);");
+    expect(count('20.E-1')).toBe("#5=IFCQUANTITYCOUNT('n',$,$,2,$);");
+    expect(count('25.E-1')).toBe("#5=IFCQUANTITYCOUNT('n',$,$,$,$);");
+    expect(count('3.E2')).toBe("#5=IFCQUANTITYCOUNT('n',$,$,300,$);");
+  });
+
   it('leaves convertStepLine without a reconciliation object unchanged (callers opt in)', () => {
     expect(convertStepLine("#5=IFCCLASSIFICATION('src','1',#9,'name');", 'IFC2X3', 'IFC4')).toBe("#5=IFCCLASSIFICATION('src','1',#9,'name',$,$,$);");
   });

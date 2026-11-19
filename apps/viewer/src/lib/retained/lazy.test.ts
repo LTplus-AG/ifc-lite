@@ -12,11 +12,14 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act, createElement } from 'react';
+import { cleanup, render } from '@/test/render';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { requestedGeometryKernel, saveGeometryKernel } from '@/store/geometryKernel';
 import type { GeometryKernelLoad } from '@/hooks/ingest/geometryEventSource';
 import type { RetainedKernel } from './kernel';
-import { beginLazy, loadRetainedKernel, resetRetainedKernelForTest } from './lazy';
+import { beginLazy, loadRetainedKernel, resetRetainedKernelForTest, retainedKernel } from './lazy';
 
 const file = new File(['ISO-10303-21;'], 'model.ifc');
 const primary = { kind: 'primary' } as const;
@@ -99,4 +102,36 @@ describe('#7955 lazy retained kernel', () => {
     await loadRetainedKernel(module.importer);
     assert.equal(module.imports(), 1, 'a failed fetch is not cached');
   });
+});
+
+
+it('renders the retained chip when a later kernel request succeeds after a chunk failure (#10684)', async () => {
+  assert.ok(retainedKernel);
+  const model = fixtureModel('retained');
+  model.retainedGeometry = {
+    kernel: 'retained', candidates: 1, published: 1, refused: [], cancelled: 0,
+    obligationsUnmet: [], completeness: 'complete',
+  };
+  const previous = { models: useViewerStore.getState().models, activeModelId: useViewerStore.getState().activeModelId };
+  useViewerStore.setState(fixtureModels(model));
+  sessionStorage.setItem('ifclite:chunk-skew-reload-ts', String(Date.now()));
+  let rejectImport!: (error: Error) => void;
+  const first = loadRetainedKernel(() => new Promise((_, reject) => { rejectImport = reject; }));
+  const container = render(createElement(retainedKernel.Chip, { reload: () => undefined }));
+  try {
+    await act(async () => {
+      rejectImport(new TypeError('Importing a module script failed.'));
+      await assert.rejects(first, /Importing a module script failed/);
+    });
+    assert.equal(container.textContent, '');
+
+    await act(async () => {
+      const { retainedKernel: kernel } = await fakeModule().importer();
+      await loadRetainedKernel(async () => ({ retainedKernel: { ...kernel, Chip: () => 'Retained chip' } }));
+    });
+    assert.equal(container.textContent, 'Retained chip');
+  } finally {
+    cleanup();
+    useViewerStore.setState(previous);
+  }
 });

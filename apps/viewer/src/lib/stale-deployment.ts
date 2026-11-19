@@ -29,13 +29,30 @@ export function isStaleDeploymentError(err: unknown): boolean {
 
 // Module memory, never storage: a reload is the fix, and it must land clean.
 let reported = false;
+let offlineChunkFailure = false;
 const listeners = new Set<() => void>();
 
 /** Raise the reload notice. Idempotent; the notice stays up until the page reloads. */
 export function reportStaleDeployment(): void {
   if (reported) return;
   reported = true;
+  notifyListeners();
+}
+
+export function reportOfflineChunkFailure(): void {
+  if (offlineChunkFailure) return;
+  offlineChunkFailure = true;
+  notifyListeners();
+}
+
+function notifyListeners(): void {
   for (const listener of listeners) listener();
+}
+
+export function getDeploymentNotice(): 'offline' | 'stale' | 'reconnected' | null {
+  if (offlineChunkFailure && typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
+  if (reported) return 'stale';
+  return offlineChunkFailure ? 'reconnected' : null;
 }
 
 /**
@@ -44,7 +61,11 @@ export function reportStaleDeployment(): void {
  */
 export function surfaceStaleDeployment(err: unknown): boolean {
   if (!isStaleDeploymentError(err)) return false;
-  reportStaleDeployment();
+  if (isChunkLoadError(err) && typeof navigator !== 'undefined' && navigator.onLine === false) {
+    reportOfflineChunkFailure();
+  } else {
+    reportStaleDeployment();
+  }
   return true;
 }
 
@@ -55,10 +76,21 @@ export function isStaleDeploymentReported(): boolean {
 /** `useSyncExternalStore` subscribe. */
 export function subscribeStaleDeployment(listener: () => void): () => void {
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', listener);
+    window.addEventListener('offline', listener);
+  }
+  return () => {
+    listeners.delete(listener);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', listener);
+      window.removeEventListener('offline', listener);
+    }
+  };
 }
 
 /** Test-only: clear the flag between cases. */
 export function __resetStaleDeploymentForTests(): void {
   reported = false;
+  offlineChunkFailure = false;
 }

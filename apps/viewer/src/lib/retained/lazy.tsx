@@ -22,8 +22,10 @@
  * the kernel exactly as the `on` build does.
  */
 
-import { Suspense } from 'react';
-import { lazyChunk } from '@/lib/lazy-chunk';
+import { Suspense, useEffect, useState, useSyncExternalStore } from 'react';
+import { captureUnavailableChunk, lazyChunk } from '@/lib/lazy-chunk';
+import { isChunkLoadError } from '@/lib/chunk-load-error';
+import { recoverChunkLoad } from '@/lib/chunk-version-skew';
 import { useViewerStore } from '@/store';
 import { chooseGeometryKernel, requestedGeometryKernel, type GeometryKernel } from '@/store/geometryKernel';
 import { hasRetainedGeometryModel } from '@/store/retainedGeometry';
@@ -35,6 +37,16 @@ type Importer = () => Promise<{ retainedKernel: RetainedKernel | null }>;
 
 let loaded: LoadedKernel | null = null;
 let pending: Promise<LoadedKernel> | null = null;
+const kernelListeners = new Set<() => void>();
+
+function subscribeToLoadedKernel(listener: () => void): () => void {
+  kernelListeners.add(listener);
+  return () => { kernelListeners.delete(listener); };
+}
+
+function readLoadedKernel(): LoadedKernel | null {
+  return loaded;
+}
 
 /** Fetch the retained module once; a failed fetch is not cached, so a later load retries it. */
 export function loadRetainedKernel(importer: Importer = () => import('./index')): Promise<LoadedKernel> {
@@ -42,6 +54,7 @@ export function loadRetainedKernel(importer: Importer = () => import('./index'))
     const attempt = importer().then((module) => {
       if (!module.retainedKernel) throw new Error('The retained module has no kernel');
       loaded = module.retainedKernel;
+      for (const listener of kernelListeners) listener();
       return loaded;
     });
     attempt.catch(() => { if (pending === attempt) pending = null; });
@@ -91,12 +104,32 @@ export function beginLazy(
   return deferredLoad(retry, importer);
 }
 
-const LazyChip = lazyChunk(() => loadRetainedKernel().then((kernel) => ({ default: kernel.Chip })));
+function RetainedChip({ reload }: { reload: (file: File) => unknown }) {
+  const kernel = useSyncExternalStore(subscribeToLoadedKernel, readLoadedKernel);
+  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  useEffect(() => {
+    if (kernel) return;
+    let cancelled = false;
+    loadRetainedKernel().catch((error: unknown) => {
+      if (cancelled) return;
+      if (isChunkLoadError(error)) {
+        recoverChunkLoad();
+        captureUnavailableChunk(error);
+      } else {
+        setFailure({ error });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [kernel]);
+
+  if (kernel) return <kernel.Chip reload={reload} />;
+  if (failure) throw failure.error;
+  return null;
+}
 
 function Chip({ reload }: { reload: (file: File) => unknown }) {
   const open = useViewerStore((state) => hasRetainedGeometryModel(state.models));
-  if (!open) return null;
-  return <Suspense fallback={null}><LazyChip reload={reload} /></Suspense>;
+  return open ? <RetainedChip reload={reload} /> : null;
 }
 
 const LazySetting = lazyChunk(() => import('@/components/viewer/settings/GeometryKernelSetting')

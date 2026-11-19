@@ -4,11 +4,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { isChunkLoadError, isCssPreloadFailure } from './chunk-load-error.js';
 
 import {
   handlePreloadError,
-  isChunkLoadError,
-  isCssPreloadFailure,
   shouldSuppressChunkSkewNoise,
   type ChunkSkewDeps,
   type VitePreloadErrorEvent,
@@ -30,6 +29,7 @@ interface Harness {
   reloads: number;
   /** How many times the user was asked to reload instead. */
   refused: number;
+  offline: number;
   pendingAt: number | null;
   /** Epoch-ms of the last recorded reload, mirroring the sessionStorage key. */
   stored: number | null;
@@ -52,6 +52,7 @@ function makeDeps(opts: {
   const h: Harness = {
     reloads: 0,
     refused: 0,
+    offline: 0,
     pendingAt: null,
     stored: opts.lastReloadAt ?? null,
     clock: opts.now ?? 1_000_000,
@@ -71,7 +72,7 @@ function makeDeps(opts: {
       return true;
     },
     markReloadPending: (now) => { h.pendingAt = now; },
-    reportRefused: () => { h.refused += 1; },
+    reportRefused: (reason) => { if (reason === 'offline') h.offline += 1; else h.refused += 1; },
   };
   return h;
 }
@@ -174,27 +175,27 @@ describe('handlePreloadError', () => {
     assert.equal(h.reloads, 1);
   });
 
-  it('leaves module evaluation errors to the caller without starting recovery (#10684)', () => {
+  it('recovers from a Vite preload rejection with unrecognized wording (#10684)', () => {
     const h = makeDeps();
-    const event = makeEvent(new Error('Cannot access module before initialization'));
-    assert.equal(handlePreloadError(event, h.deps), 'surfaced');
+    const event = makeEvent(new Error('Module load rejected'));
+    assert.equal(handlePreloadError(event, h.deps), 'reloaded');
     assert.equal(event.defaultPrevented, false);
-    assert.equal(h.reloads, 0);
+    assert.equal(h.reloads, 1);
     assert.equal(h.refused, 0);
   });
 
   it('never spends two reloads on one skew', () => {
     const h = makeDeps();
-    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'reloaded');
-    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
-    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'reloaded');
+    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
     assert.equal(h.reloads, 1);
   });
 
   it('shares the pending reload across concurrent failures (#10684)', () => {
     const h = makeDeps();
     h.deps.isReloadPending = () => h.pendingAt !== null;
-    const failure = makeEvent(new TypeError('Importing a module script failed.'));
+    const failure = makeEvent(new Error('boom'));
     assert.equal(handlePreloadError(failure, h.deps), 'reloaded');
     assert.equal(handlePreloadError(failure, h.deps), 'reloaded');
     assert.equal(h.reloads, 1);
@@ -210,18 +211,18 @@ describe('handlePreloadError', () => {
     const h = makeDeps();
     for (let i = 0; i < 20; i++) {
       h.clock += 250; // a reload cycle, far inside the debounce window
-      handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps);
+      handlePreloadError(makeEvent(new Error('boom')), h.deps);
     }
     assert.equal(h.reloads, 1);
   });
 
   it('lets a genuinely later deploy recover once the window elapses', () => {
     const h = makeDeps();
-    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'reloaded');
+    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'reloaded');
     h.clock += DEBOUNCE_MS - 1;
-    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
     h.clock += 2;
-    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'reloaded');
+    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'reloaded');
     assert.equal(h.reloads, 2);
   });
 
@@ -243,14 +244,14 @@ describe('handlePreloadError', () => {
   it('refuses to reload when the attempt cannot be read', () => {
     // Unbounded retries on a permanently missing chunk would loop forever.
     const h = makeDeps({ unreadable: true });
-    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
     assert.equal(h.reloads, 0);
     assert.equal(h.pendingAt, null);
   });
 
   it('refuses to reload when the attempt cannot be persisted', () => {
     const h = makeDeps({ unwritable: true });
-    assert.equal(handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps), 'surfaced');
+    assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
     assert.equal(h.reloads, 0);
     assert.equal(h.pendingAt, null);
   });
@@ -258,11 +259,14 @@ describe('handlePreloadError', () => {
   it('still suppresses the CSS arm when no reload is allowed', () => {
     // The two decisions are independent: whether to reload is a budget question,
     // whether to suppress is about what the import resolves to.
-    const h = makeDeps({ unreadable: true });
-    const event = makeEvent(new Error('Unable to preload CSS for /assets/panel.css'));
-    assert.equal(handlePreloadError(event, h.deps), 'surfaced');
-    assert.equal(event.defaultPrevented, true);
-    assert.equal(h.reloads, 0);
+    for (const options of [{ lastReloadAt: 999_000 }, { unreadable: true }, { unwritable: true }]) {
+      const h = makeDeps(options);
+      const event = makeEvent(new Error('Unable to preload CSS for /assets/panel.css'));
+      assert.equal(handlePreloadError(event, h.deps), 'surfaced');
+      assert.equal(event.defaultPrevented, true);
+      assert.equal(h.reloads, 0);
+      assert.equal(h.refused, 0, 'a prevented CSS failure leaves no reload notice');
+    }
   });
 
   // #10684: the wasm sibling already raised the reload notice when its reload
@@ -278,18 +282,18 @@ describe('handlePreloadError', () => {
 
     for (const opts of [{ unreadable: true }, { unwritable: true }]) {
       const h = makeDeps(opts);
-      handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps);
+      handlePreloadError(makeEvent(new Error('boom')), h.deps);
       assert.equal(h.refused, 1, JSON.stringify(opts));
     }
   });
 
   it('marks the reload pending only on the path that actually reloads', () => {
     const h = makeDeps({ now: 5_000 });
-    handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), h.deps);
+    handlePreloadError(makeEvent(new Error('boom')), h.deps);
     assert.equal(h.pendingAt, 5_000);
 
     const debounced = makeDeps({ now: 5_000, lastReloadAt: 4_900 });
-    handlePreloadError(makeEvent(new TypeError('Importing a module script failed.')), debounced.deps);
+    handlePreloadError(makeEvent(new Error('boom')), debounced.deps);
     assert.equal(debounced.pendingAt, null);
   });
 });
@@ -363,7 +367,12 @@ it('offline panel imports surface without navigation or spending reload recovery
     assert.equal(h.reloads, 0);
     assert.equal(h.stored, null, 'offline failures do not consume the reload budget');
     assert.equal(h.pendingAt, null, 'offline errors are not suppressed as reload noise');
-    assert.equal(h.refused, 1, 'the user can reload after reconnecting');
+    assert.equal(h.refused, 0, 'offline failures do not claim there is a new version');
+    assert.equal(h.offline, 1, 'offline failures offer a connection-specific notice');
+    const css = makeEvent(new Error('Unable to preload CSS for /assets/panel.css'));
+    handlePreloadError(css, h.deps);
+    assert.equal(css.defaultPrevented, true);
+    assert.equal(h.offline, 1, 'a prevented CSS failure leaves no offline notice');
     network.onLine = true;
     assert.equal(handlePreloadError(event, h.deps), 'reloaded', 'online deploy-skew recovery still works');
     assert.equal(h.reloads, 1);

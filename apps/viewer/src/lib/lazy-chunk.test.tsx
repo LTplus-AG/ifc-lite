@@ -8,7 +8,8 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { waitFor } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
+import { posthog } from './analytics.js';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from '@/components/StaleDeploymentNotice';
 import { RhinoExportCommand } from '@/components/viewer/RhinoExportCommand';
@@ -22,7 +23,8 @@ function rejectRhinoImport(...[specifier, context, nextResolve]: Parameters<node
   return nextResolve(specifier, context);
 }
 
-it('keeps the ribbon and reload action available after the Rhino dynamic import fails (#10684)', async () => {
+it('keeps the ribbon and reload action available after the Rhino dynamic import fails (#10684)', async ({ mock }) => {
+  const capture = mock.method(posthog, 'captureException', () => undefined);
   // Represent the page the user gets after the one automatic reload.
   sessionStorage.setItem('ifclite:chunk-skew-reload-ts', String(Date.now()));
   // Match the kind of hook tsx uses on this Node version. The older async
@@ -43,30 +45,59 @@ it('keeps the ribbon and reload action available after the Rhino dynamic import 
       <>
         <button>Working ribbon action</button>
         <RhinoExportCommand surface="ribbon" />
-        <ChunkErrorBoundary label="Layers panel">
-          <RhinoExportCommand surface="ribbon" />
-        </ChunkErrorBoundary>
+        <RhinoExportCommand surface="ribbon" />
         <StaleDeploymentNotice />
       </>,
     ));
-
     await waitFor(
-      () => uncaught.length > 0 || !!container.textContent?.includes('Layers panel could not be loaded'),
+      () => uncaught.length > 0 || !!container.querySelector('[role="alert"]'),
       'the lazy rejection reaches React',
     );
 
     assert.equal(uncaught.length, 0, 'the failed import must not unmount the viewer');
     assert.match(container.textContent ?? '', /Working ribbon action/);
-    assert.match(container.textContent ?? '', /Layers panel could not be loaded/);
     const notice = Array.from(container.querySelectorAll('[role="alert"]'))
       .find((alert) => alert.textContent?.includes('A new version of the viewer is available'));
     assert.ok(notice, 'the shared reload notice is visible');
     assert.equal(notice?.querySelector('button')?.textContent, 'Reload');
+    const unavailableReports = capture.mock.calls.filter(
+      ({ arguments: [, properties] }) => properties?.context === 'lazy_chunk_unavailable',
+    );
+    assert.equal(unavailableReports.length, 1, 'report the unwrapped unavailable chunk once');
+
+    await act(async () => root.render(
+      <ChunkErrorBoundary label="Layers panel">
+        <RhinoExportCommand surface="ribbon" />
+      </ChunkErrorBoundary>,
+    ));
+    assert.match(container.textContent ?? '', /Layers panel could not be loaded/);
+    assert.equal(capture.mock.callCount(), 1, 'the boundary does not report the same rejection twice');
   } finally {
     await act(async () => root.unmount());
     container.remove();
     hooks?.deregister();
     sessionStorage.removeItem('ifclite:chunk-skew-reload-ts');
+    __resetStaleDeploymentForTests();
+  }
+});
+
+it('replaces the offline chunk notice after reconnecting (#10684)', ({ mock }) => {
+  const online = mock.getter(navigator, 'onLine', () => false);
+  const container = render(<StaleDeploymentNotice />);
+  try {
+    act(() => {
+      const failure = new TypeError('Importing a module script failed.');
+      handlePreloadError(Object.assign(new Event('vite:preloadError'), { payload: failure }));
+    });
+    assert.match(container.textContent ?? '', /offline/i);
+    assert.equal(container.querySelector('button'), null);
+
+    online.mock.mockImplementation(() => true);
+    act(() => { window.dispatchEvent(new Event('online')); });
+    assert.match(container.textContent ?? '', /connection restored/i);
+    assert.equal(container.querySelector('button')?.textContent, 'Reload');
+  } finally {
+    cleanup();
     __resetStaleDeploymentForTests();
   }
 });

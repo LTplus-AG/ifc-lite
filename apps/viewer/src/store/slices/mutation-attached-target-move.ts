@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { Mutation } from '@ifc-lite/mutations';
 import { readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
-import { setProductPosition } from '@/lib/placement-edit';
+import { resolvePlacementChain, setProductPosition } from '@/lib/placement-edit';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from './mutation-modelling-records';
 import { prepareWallRoomUpdate } from './mutation-placement-rooms';
@@ -19,6 +19,7 @@ export function moveAttachedTargetIn(store: ModellingStore, modelId: string, id:
     && readTopAttachment(readStoreyInventory(target.dataStore, target.view), id)?.targetElementId !== undefined;
   if (!/^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE)$/.test(type) && !attached) return null;
   const rooms = type.startsWith('IFCWALL') && attached ? prepareWallRoomUpdate(store, modelId, id) : null;
+  const pointId = resolvePlacementChain(target.dataStore, target.view, target.editor, id)?.cartesianPointId;
   try {
     const result = recordModellingEdit(store, modelId, (_methods, draft) => {
       const update = rooms?.(draft);
@@ -26,9 +27,17 @@ export function moveAttachedTargetIn(store: ModellingStore, modelId: string, id:
       if (!result.ok) throw new Error(result.reason);
       return { ...result, rooms: update ? update() : [] };
     }, batchId);
-    const undo = store.getState().undoStacks.get(modelId)?.at(-1);
+    const stack = store.getState().undoStacks.get(modelId) ?? [], undo = stack.at(-1);
     const batch = undo ? store.getState().mutationBatchTags.get(undo.id) ?? null : null;
+    // The room's record of the move goes on the element's own placement write, not a later refit in the batch, which
+    // a peer's edit of that other element can drop from history.
+    let placed: Mutation | undefined;
+    for (let index = stack.length - 1; pointId !== undefined && index >= 0 && !placed; index--) {
+      const entry = stack[index];
+      if (store.getState().mutationBatchTags.get(entry.id) !== batch) break;
+      if (entry.type === 'UPDATE_POSITIONAL_ATTRIBUTE' && entry.entityId === pointId) placed = entry;
+    }
     remeshAfterCommit(store.getState, modelId, batch, [id, ...(result.remesh ?? []), ...result.rooms], 'shape');
-    return { ok: true, newCoordinates: native, mutation: undo };
+    return { ok: true, newCoordinates: native, mutation: placed ?? undo };
   } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : String(error) }; }
 }

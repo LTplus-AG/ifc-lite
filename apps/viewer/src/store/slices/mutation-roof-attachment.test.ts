@@ -81,6 +81,10 @@ for (const movement of ['translate', 'position'] as const) it(`in a room, undo a
   const result = movement === 'translate' ? state.translateEntity('m', slab, [0, 0, 1]) : state.setEntityPosition('m', slab, [0, 0, 5]);
   assert.ok(result.ok, result.ok ? '' : result.reason);
   mirrored.length = 0;
+  // A peer's edit of the attached wall drops the batch's last write (its refit) from history: the slab's own
+  // placement write must still carry the room's record.
+  const stack = useViewerStore.getState().undoStacks.get('m')!;
+  useViewerStore.setState({ undoStacks: new Map([['m', stack.slice(0, -1)]]) });
   useViewerStore.getState().undo('m');
   assert.deepEqual(mirrored, [['m', slab, [-0, -0, -1]]]);
   mirrored.length = 0;

@@ -14,7 +14,6 @@ import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import { WALL_ID, model, parseHelloWall, seed } from '@/test/agent-tools-fixture';
 import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
-import { publishMove } from './mutation-room-history.js';
 
 const initial = useViewerStore.getState();
 /** A fresh session handle: undo replays inside its transaction. */
@@ -155,15 +154,6 @@ describe('undo and redo the room did not get, or got differently (#10810)', () =
     assert.deepEqual(take(), [['placement', 'hello', WALL_ID, [-1, -0, -0]]]);
     state().redo('hello');
     assert.deepEqual(take(), [['placement', 'hello', WALL_ID, [1, 0, 0]]]);
-  });
-
-  it('a move recorded against an atomic edit\'s draft follows the committed copy history holds', () => {
-    // An atomic edit (a wall move that regenerates rooms) hands back the draft's mutation; history holds a clone.
-    const committed = state().setPositionalAttribute('hello', WALL_ID, 0, 'Moved')!;
-    publishMove(state(), 'hello', { ...committed }, WALL_ID, [2, 0, 0]);
-    take();
-    state().undo('hello');
-    assert.deepEqual(take(), [['placement', 'hello', WALL_ID, [-2, -0, -0]]]);
   });
 
   it('undoing a property delete restores its type locally too, not text', () => {

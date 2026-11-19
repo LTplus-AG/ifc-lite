@@ -79,7 +79,8 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
         (Some(src), Some(tgt), _) if entity_type == crate::schema_grid_frames::GRID_PLACEMENT && src != tgt => Adjust::ByName(src, tgt),
         _ => Adjust::Keep,
     };
-    let replaced = src_names.zip(tgt_names).and_then(|(src, tgt)| replaced_slot(entity_type, src, tgt));
+    // A map decides every slot itself, as in the TypeScript twin.
+    let replaced = src_names.zip(tgt_names).filter(|_| !matches!(adjust, Adjust::Mapped(..))).and_then(|(src, tgt)| replaced_slot(entity_type, src, tgt));
     Plan::Write { renamed, adjust, replaced }
 }
 

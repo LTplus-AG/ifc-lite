@@ -407,12 +407,12 @@ function convertRecord(
   if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
-  const mapped = srcAttrs && tgtAttrs && args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
-  if (mapped && srcAttrs && tgtAttrs) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
-  else if (srcAttrs && tgtAttrs) {
-    const replaced = replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
+  if (srcAttrs && tgtAttrs) {
+    const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
+    const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
     if (replaced !== undefined && replaced < args.length && args[replaced].trim() !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
-    if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
+    if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
+    else if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);
     } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs, entityType)) {
       const currentCount = args.length;

@@ -69,7 +69,8 @@ export const ATTR_MAPS: readonly AttrMap[] = [
   same('IFCDOCUMENTINFORMATIONRELATIONSHIP'),
   same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
   // IFC4 deleted these IFC2X3 subtypes for its now-concrete supertype, so a
-  // downgrade writes the deleted subtype (`IFC4_TO_IFC2X3`).
+  // downgrade writes the deleted subtype (`IFC4_TO_IFC2X3`). Downgrade only:
+  // nothing renames the IFC2X3 subtypes on an upgrade.
   map('IFCEXTENDEDMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES', { renamed: [['ExtendedProperties', 'Properties']] }),
   map('IFCGENERALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
   same('IFCPERFORMANCEHISTORY'),
@@ -150,8 +151,10 @@ export function remapByAttrMap(
   }).join(',');
 }
 
-/** Source attribute names whose values `remapByAttrMap` has no target slot for. */
+/** Source attribute names whose values `remapByAttrMap` has no target slot
+ *  for. A downgraded SET is named too: its members past the first are dropped,
+ *  which a per-type report cannot rule out (Rust counts them per record). */
 export function attrsDroppedByMap(map: AttrMap, up: boolean, src: readonly string[], tgt: readonly string[]): string[] {
   const used = new Set(tgt.flatMap((name) => sourceOf(map, up, name, src)?.name ?? []));
-  return src.filter((name) => !used.has(name));
+  return src.filter((name) => !used.has(name) || (!up && name === map.setOfOne?.[1]));
 }

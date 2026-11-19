@@ -210,3 +210,15 @@ it('#10868 concurrent producers share one copy budget and close waits for accept
     await registry.close();
   }
 });
+
+it('#10868 concurrent acknowledgements name the same complete generation', async () => {
+  const registry = await GeometryBackingRegistry.open({ name: uniqueName(), locks: null });
+  try {
+    const backing = await registry.begin('m');
+    await backing.writer.append([fullMesh(1, new Uint32Array(3))]);
+    const [first, second] = await Promise.all([backing.acknowledge(), backing.acknowledge()]);
+    assert.deepEqual(first, second);
+    assert.equal(registry.verify(first), true);
+    assert.equal(registry.verify(second), true);
+  } finally { await registry.close(); }
+});

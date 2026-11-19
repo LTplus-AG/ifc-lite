@@ -271,6 +271,8 @@ export class BackingWriter {
   /** Flush, then refuse further appends. Resolution = complete, committed backing. */
   close(): Promise<void> {
     return this.serialized(async () => {
+      // Two consumers can request the same final acknowledgement concurrently.
+      if (this.closed && !this.failure) return;
       await this.flushPending();
       this.closed = true;
     });

@@ -98,6 +98,31 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     return { rows, token, pages, counts, of: (kind: string) => rows.filter(row => row.kind === kind) };
   };
 
+  it('#4 #37 library reads page each entry with its save state when the save states alone pass 1 MB', async (t: TestContext) => {
+    t.mock.method(clashGroupLibrary, 'initialize', async () => true);
+    const ids = Array.from({ length: 5000 }, (_, i) => `${String(i).padStart(6, '0')}${'k'.repeat(194)}`);
+    // A failed deletion leaves a save state whose entry is gone; it must stay visible by id.
+    const status = { phase: 'ready' as const, recovered: false, items: { ...Object.fromEntries(ids.map(id => [id, 'saved'])), 'deleted-but-stuck': 'conflict' } };
+    assert.ok(bytes(status.items) > MAX_RESULT_BYTES, 'the save states alone exceed the limit');
+    useClashGroupLibrary.setState({ entries: ids.map(id => ({ version: 1, id, name: 'W', groups: [] })) as never, status: status as never });
+    useViewerStore.setState({ savedClashReports: ids.map(id => ({ id, name: 'R' })) as never, savedClashReportsStorage: status as never, initializeSavedClashReports: async () => true,
+      savedValidationReports: ids.map(id => ({ id, name: 'V' })) as never, validationReportsStorage: status as never, initializeValidationReports: async () => true });
+    for (const [operation, field, storageField] of [['clash.groups.read', 'entries', 'status'], ['clash.reports.read', 'reports', 'storage'], ['validation.reports.read', 'reports', 'storage']] as const) {
+      const seen: string[] = [], saved: string[] = []; let offset: number | null = 0, counts: Record<string, number> = {};
+      while (offset !== null) {
+        type LibraryPage = Record<string, unknown> & { next_offset: number | null };
+        const value: LibraryPage = json<LibraryPage>(await run(operation, { offset }));
+        seen.push(...(value[field] as Array<{ id: string }>).map(row => row.id));
+        const storage = value[storageField] as { items: Record<string, string>; counts: Record<string, number> };
+        saved.push(...Object.keys(storage.items)); counts = storage.counts; offset = value.next_offset;
+      }
+      assert.deepEqual(seen, ids, `${operation}: every entry once, in order`);
+      // storage.items is a map, so its key order is not the entry order.
+      assert.deepEqual([...saved].sort(), [...ids, 'deleted-but-stuck'].sort(), `${operation}: every save state once, including one whose entry is gone`);
+      assert.deepEqual(counts, { saved: 5000, conflict: 1 }, `${operation}: the summary counts every save state`);
+    }
+  });
+
   it('#29 zones.read pages assignments over 1 MB and returns one short configuration_revision', async () => {
     const setId = useViewerStore.getState().createZoneSet('Large');
     const record = { [setId]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };

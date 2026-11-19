@@ -7,7 +7,8 @@ import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { evictOldest } from './host-handles';
-import { boundedPage, pageInput, type PageInput } from './result-limit';
+import { pageInput, type PageInput } from './result-limit';
+import { libraryPage } from './library-page';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
 const outputSchema = {
   type: 'object',
@@ -51,16 +52,16 @@ export const clashReportOperations = [
   viewerOperation<PageInput>(
     meta(
       'clash.reports.read',
-      'Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_reports changes between pages. expected_reports is the whole library revision. Saved results never install historical runtime IDs into the current scene.',
+      'Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_reports changes between pages. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Saved results never install historical runtime IDs into the current scene.',
     ),
     pageInput,
     async (i, c) => {
       await useViewerStore.getState().initializeSavedClashReports();
       assertToolActive(c);
       const s = useViewerStore.getState();
-      const rest = { storage: s.savedClashReportsStorage, expected_reports: stateRevision(s.savedClashReports) };
-      const { items: reports, ...page } = boundedPage(s.savedClashReports, i.offset, rest);
-      return out({ reports, ...page, ...rest });
+      const expected_reports = stateRevision(s.savedClashReports);
+      const { entries: reports, page, storage } = libraryPage(s.savedClashReports, s.savedClashReportsStorage, i.offset, { expected_reports });
+      return out({ reports, ...page, storage, expected_reports });
     },
   ),
   viewerOperation<{ name: string; run_seq: number }>(

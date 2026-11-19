@@ -12621,7 +12621,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "validation.reports.read",
     "version": 1,
     "owner": "validation",
-    "description": "Read the native durable report library, one page at a time (pass next_offset as offset until it is null; restart from 0 if expected_reports changes), and its persistence diagnostics with no model required. expected_reports is the whole library revision. Historical evidence never installs old entity IDs into the scene.",
+    "description": "Read the native durable report library, one page at a time (pass next_offset as offset until it is null; restart from 0 if expected_reports changes), and its persistence diagnostics with no model required. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Historical evidence never installs old entity IDs into the scene.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -19089,7 +19089,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.groups.read",
     "version": 1,
     "owner": "clash",
-    "description": "Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create.",
+    "description": "Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create. status summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -19353,7 +19353,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.reports.read",
     "version": 1,
     "owner": "clash",
-    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_reports changes between pages. expected_reports is the whole library revision. Saved results never install historical runtime IDs into the current scene.",
+    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_reports changes between pages. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Saved results never install historical runtime IDs into the current scene.",
     "needs": "viewer",
     "effects": [
       "read"

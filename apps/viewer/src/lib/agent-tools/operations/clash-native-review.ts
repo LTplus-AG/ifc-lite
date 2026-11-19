@@ -5,7 +5,8 @@ import { useViewerStore } from '@/store';
 import { viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { currentClashes } from './clash-native';
-import { boundedPage, pageInput, type PageInput } from './result-limit';
+import { pageInput, type PageInput } from './result-limit';
+import { libraryPage } from './library-page';
 import { revisionInput } from './state-revision';
 import { groupLibraryRevision } from './clash-group-revision';
 const outputSchema = {
@@ -74,16 +75,16 @@ export const clashReviewOperations = [
   viewerOperation<PageInput>(
     meta(
       'clash.groups.read',
-      'Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create.',
+      'Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset until it is null, and restart from 0 if expected_library changes between pages), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create. status summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries.',
     ),
     pageInput,
     async (i, c) => {
       const { useClashGroupLibrary, clashGroupLibrary } = await import('@/lib/clash/group-workspace');
       await clashGroupLibrary.initialize();
       assertToolActive(c);
-      const { entries, status, activeId } = useClashGroupLibrary.getState(), rest = { status, activeId, expected_library: groupLibraryRevision({ entries, activeId }) };
-      const { items, ...page } = boundedPage(entries, i.offset, rest);
-      return out({ entries: items, ...page, ...rest });
+      const { entries, status, activeId } = useClashGroupLibrary.getState(), expected_library = groupLibraryRevision({ entries, activeId });
+      const paged = libraryPage(entries, status, i.offset, { activeId, expected_library });
+      return out({ entries: paged.entries, ...paged.page, status: paged.storage, activeId, expected_library });
     },
   ),
   viewerOperation<{ clash_ids: string[]; run_seq: number }>(

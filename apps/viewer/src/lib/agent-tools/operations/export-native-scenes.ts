@@ -14,6 +14,7 @@ import { RHINO_UNITS, RHINO_COORDINATES, RHINO_LAYER_SCHEMES, RHINO_PROPERTIES, 
 import { nativeExportBlockReason } from '@/lib/export/native-policy';
 import { viewerOperation } from './contract';
 import { exportMetadata } from './exports-common';
+import { instancedModelRangeOf } from '@/utils/instancedExport';
 import { nativeExportTarget, nativeStepTarget, nativeExportGuard, nativeArtifact, targetSchema } from './export-native-runtime';
 const rhino: JSONSchemaType<RhinoExportSettings> = { type: 'object', properties: {
   units: { type: 'string', enum: RHINO_UNITS }, coordinates: { type: 'string', enum: RHINO_COORDINATES }, layerScheme: { type: 'string', enum: RHINO_LAYER_SCHEMES }, properties: { type: 'string', enum: RHINO_PROPERTIES }, instancing: { type: 'boolean' }, includeSpaces: { type: 'boolean' }, visibleOnly: { type: 'boolean' }, version: { type: 'integer', enum: RHINO_3DM_VERSIONS },
@@ -41,7 +42,7 @@ export const exportNativeSceneOperations = [
     const model = nativeExportTarget(i.target_model_id); const s = useViewerStore.getState();
     if (hasRetainedShapeOnlyModel(s.models)) throw new Error(RETAINED_SHAPE_ONLY_REASON);
     if (!model.geometryResult || !model.ifcDataStore) throw new Error('Native KMZ requires IFC geometry and georeferencing data.');
-    const check = nativeExportGuard(c, [model.id]); check(); const result = await buildKmzForModel({ geometryResult: model.geometryResult, instancedModelRange: model.id === '__legacy__' ? null : { modelId: model.id, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }, dataStore: model.ifcDataStore, mutations: s.georefMutations.get(model.id), name: sanitizeFilename(stripExtension(model.name), { fallback: 'model' }), altitudeMode: i.altitude_mode });
+    const check = nativeExportGuard(c, [model.id]); check(); const result = await buildKmzForModel({ geometryResult: model.geometryResult, instancedModelRange: model.id === '__legacy__' ? null : instancedModelRangeOf(model.id, s.models), dataStore: model.ifcDataStore, mutations: s.georefMutations.get(model.id), name: sanitizeFilename(stripExtension(model.name), { fallback: 'model' }), altitudeMode: i.altitude_mode });
     check(); if (typeof result === 'string') throw new Error(`Native KMZ refused: ${result}`);
     return nativeArtifact(c, new Blob([new Uint8Array(result)], { type: 'application/vnd.google-earth.kmz' }), modelExportFilename(model.name, 'kmz'), { model_id: model.id, altitude_mode: i.altitude_mode }, check);
   }),

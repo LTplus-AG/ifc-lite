@@ -66,3 +66,17 @@ test('a visible-only STEP export is voided when the view changes, a full one is 
   assert.equal(full.isError, false, full.text);
   assert.equal(useViewerStore.getState().hiddenEntities.size, 1, 'the hide landed during the full export too');
 });
+
+test('a composed layer is not exported as its own model (#10695)', async () => {
+  resetFeaturesForTest();
+  // The shape a federated IFCX composition publishes: every layer over one shared store, only the base with a parse range.
+  const store = await parseHelloWall();
+  seed([model('overlay', store, { idOffset: 0, maxExpressId: 0 }), model('base', store, { idOffset: 0, maxExpressId: 5_000 })]);
+  const host = viewerHost();
+  const json = (target_model_id: string) => dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'exports.json', input: { target_model_id } }, { canEdit: () => true });
+  const layer = await json('overlay');
+  assert.equal(layer.isError, true);
+  assert.match(layer.text, /Pass target_model_id 'base'/);
+  const base = await json('base');
+  assert.equal(base.isError, false, base.text);
+});

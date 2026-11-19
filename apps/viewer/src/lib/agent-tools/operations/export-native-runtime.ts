@@ -5,6 +5,7 @@ import { useViewerStore } from '@/store';
 import { isCaptureModel } from '@/lib/export/capture-export';
 import type { FederatedModel } from '@/store/types';
 import { exportCheckpoint } from './exports-common';
+import { compositionOwners } from '../main-viewer-host';
 import type { ViewerOperationContext } from './contract';
 type NativeExportTarget = Pick<FederatedModel, 'id' | 'name' | 'ifcDataStore' | 'geometryResult' | 'sourceFile' | 'schemaVersion' | 'idOffset' | 'maxExpressId'>;
 export function nativeExportTarget(id: string): NativeExportTarget {
@@ -14,6 +15,10 @@ export function nativeExportTarget(id: string): NativeExportTarget {
   };
   const model = s.models.get(id);
   if (!model || isCaptureModel(model)) throw new Error('Choose one existing exportable model; Gaussian captures are excluded by the native export registry.');
+  // A composed IFCX layer shares its composition's store; exporting it would write the whole composition under this
+  // layer's id, without the edits keyed to the owner (#10695).
+  const owner = compositionOwners([...s.models], s).get(id);
+  if (owner) throw new Error(`Model '${model.name}' is one layer of a composed model. Pass target_model_id '${owner}' instead.`);
   return model;
 }
 export function nativeStepTarget(id: string) {

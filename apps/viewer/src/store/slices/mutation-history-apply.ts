@@ -207,7 +207,7 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else {
     reportUnreplayable('undo', mutation.type, mutation.entityId);
   }
-  mirrorHistoryStep(get, view, modelId, mutation, 'undo', collabGeometryNotice => set({ collabGeometryNotice }));
+  mirrorHistoryStep(get, set, view, modelId, mutation, 'undo');
 }
 
 /** Re-apply `mutation` to `view` (one redo step, stacks untouched). */
@@ -308,5 +308,5 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
   } else {
     reportUnreplayable('redo', mutation.type, mutation.entityId);
   }
-  mirrorHistoryStep(get, view, modelId, mutation, 'redo', collabGeometryNotice => set({ collabGeometryNotice }));
+  mirrorHistoryStep(get, set, view, modelId, mutation, 'redo');
 }

@@ -19,9 +19,10 @@ import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { attributeNamesForStore } from '@/lib/collab/schema-attribute-names.js';
 
 interface ValueTypes { type: PropertyValueType; dataType?: string }
+type Session = NonNullable<ViewerState['collabSession']>;
 interface PublishedEdit {
   /** The session the edit went to: after leaving it (even to rejoin the same room), its undo is local only. */
-  session: object;
+  session: Session;
   /** The value types the forward edit published, which a redo publishes again. */
   forward?: ValueTypes;
   /** The property's types before the edit, which an undo restores. Absent when it did not exist or was not loaded. */
@@ -31,7 +32,7 @@ interface PublishedEdit {
 const published = new WeakMap<Mutation, PublishedEdit>();
 
 /** The live session `modelId`'s edits are mirrored to, or null when they stay local. */
-export function mirroredSession(state: ViewerState, modelId: string): object | null {
+export function mirroredSession(state: ViewerState, modelId: string): Session | null {
   return state.collabRoomId && state.collabSession && roomSlotFor(state, modelId) ? state.collabSession : null;
 }
 
@@ -42,7 +43,7 @@ export function propertyBefore(view: MutablePropertyView, entityId: number, pset
 }
 
 /** Record that `mutation` was mirrored into `session`, so its undo and redo are too. */
-export function rememberPublishedEdit(mutation: Mutation, session: object, types: Omit<PublishedEdit, 'session'> = {}): void {
+export function rememberPublishedEdit(mutation: Mutation, session: Session, types: Omit<PublishedEdit, 'session'> = {}): void {
   published.set(mutation, { session, ...types });
 }
 
@@ -58,7 +59,7 @@ function ownAttributeValue(state: ViewerState, view: MutablePropertyView, modelI
   return index < 0 ? undefined : entity.attributes[index] ?? null;
 }
 
-/** Send what an undo or redo step left; `undefined` means it left nothing to send. */
+/** Send what an undo or redo step left, if it left anything to send. */
 function publishStep(state: ViewerState, view: MutablePropertyView, modelId: string, mutation: Mutation, edit: PublishedEdit, direction: 'undo' | 'redo'): void {
   const { entityId, psetName, propName, attributeName } = mutation;
   if (mutation.type === 'UPDATE_ATTRIBUTE') {
@@ -82,15 +83,15 @@ function publishStep(state: ViewerState, view: MutablePropertyView, modelId: str
 /**
  * Publish what an applied undo or redo step left, for a mutation the forward edit published to this same session.
  * Gated like the forward edit on the collab role. The local step has already happened, so a publication failure
- * (a value the room's type rejects) is reported to `notify`, never thrown into the history replay.
+ * (a value the room's type rejects) becomes a room notice, never an error thrown into the history replay.
  */
-export function mirrorHistoryStep(get: () => ViewerState, view: MutablePropertyView, modelId: string, mutation: Mutation,
-  direction: 'undo' | 'redo', notify: (message: string) => void): void {
+export function mirrorHistoryStep(get: () => ViewerState, set: (patch: Partial<ViewerState>) => void, view: MutablePropertyView,
+  modelId: string, mutation: Mutation, direction: 'undo' | 'redo'): void {
   const edit = published.get(mutation), state = get();
   if (!edit || edit.session !== state.collabSession || !state.canCollabEdit()) return;
   try { publishStep(state, view, modelId, mutation, edit, direction); }
   catch (error) {
     console.warn(`[collab] ${direction} of #${mutation.entityId} was not published to the room`, error);
-    notify(`Your ${direction} was applied locally, but could not be shared with the room${error instanceof Error ? ` (${error.message})` : ''}.`);
+    set({ collabGeometryNotice: `Your ${direction} was applied locally, but could not be shared with the room${error instanceof Error ? ` (${error.message})` : ''}.` });
   }
 }

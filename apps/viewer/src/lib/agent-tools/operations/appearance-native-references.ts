@@ -9,6 +9,7 @@ import { decodeAppearanceSettings } from './appearance-native-common';
 import {
   prepareNativeAppearanceReference,
   placeNativeAppearanceReference,
+  assertReferencePlacementCurrent,
   type NativeAppearanceReference,
 } from '@/lib/appearance/appearance-native-reference';
 import { ownReference, type RegisteredAppearanceReference } from '@/lib/appearance/references/types';
@@ -196,7 +197,7 @@ export const appearanceReferenceOperations = [
         const current = useViewerStore.getState().appearanceReferences.get(expected.id);
         if (!current || JSON.stringify(current) !== JSON.stringify(expected)) {
           await placeNativeAppearanceReference(saved.prepared, saved.renderer, c.signal, saved.editing, (write) => c.commit(write));
-        }
+        } else assertReferencePlacementCurrent(saved.prepared);
         saved.placed = expected.id;
         release(saved);
         return out({ reference_id: expected.id, placed: true });

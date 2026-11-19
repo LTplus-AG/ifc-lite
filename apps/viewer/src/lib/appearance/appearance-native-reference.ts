@@ -68,6 +68,17 @@ export async function prepareNativeAppearanceReference(
 export type NativeAppearanceReference = Awaited<ReturnType<typeof prepareNativeAppearanceReference>>;
 /** Rendering is prepared before the synchronous native history publication.
  * Any refusal removes only the provisional reference, leaving an edit's old record. */
+/** Refuse a placement whose room, workspace frame or source changed since preparation. */
+export function assertReferencePlacementCurrent(prepared: Pick<NativeAppearanceReference, 'record' | 'source'>) {
+  const state = useViewerStore.getState();
+  if (
+    state.collabRoomId ||
+    placementFrameKey(state) !== prepared.record.frameKey ||
+    state.appearanceSources.find((item) => item.id === prepared.record.sourceId) !== prepared.source
+  )
+    throw new ReferenceAppearanceError('appearance.reference.sourceChanged');
+}
+
 export async function placeNativeAppearanceReference(
   prepared: Pick<NativeAppearanceReference, 'record' | 'source' | 'bitmap'>,
   renderer: Renderer,
@@ -86,12 +97,7 @@ export async function placeNativeAppearanceReference(
     signal.throwIfAborted();
     const write = () => {
       const state = useViewerStore.getState();
-      if (
-        state.collabRoomId ||
-        placementFrameKey(state) !== record.frameKey ||
-        state.appearanceSources.find((item) => item.id === record.sourceId) !== prepared.source
-      )
-        throw new ReferenceAppearanceError('appearance.reference.sourceChanged');
+      assertReferencePlacementCurrent(prepared);
       if (editing) {
         if (state.appearanceReferences.get(editing.id) !== editing)
           throw new ReferenceAppearanceError('appearance.reference.drawingChanged');

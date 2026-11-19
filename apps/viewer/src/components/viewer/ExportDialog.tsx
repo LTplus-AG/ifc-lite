@@ -54,7 +54,6 @@ import { canExportRoomAsStep } from '@/lib/collab/room-step-export';
 import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { canWriteIfcFromStores, listExportModels, resolveExportModel, stepSkipReason } from './export-model-selection';
-import { collectChangedModels } from '@/lib/export/model-changes';
 import { buildMergeInputs, emptyMergeRefusal, mergedModels, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
@@ -247,12 +246,12 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
       return count;
     }
-    // A merged export writes only the models `buildMergeInputs` keeps, each with its georeferencing edits (#10669):
-    // the per-model counts the changed-models export uses, summed over those models.
-    const kept = new Set(mergedModels(models).map(model => model.id));
-    return collectChangedModels(useViewerStore.getState()).models.reduce((count, model) => kept.has(model.id) ? count + model.changeCount : count, 0);
+    // A merged export writes only the models `buildMergeInputs` keeps: their overlay edits, and their georeferencing
+    // edits unless an IFC2X3 target cannot hold them. It splices no schedule (#10669).
+    return mergedModels(models).reduce((count, model) => count + (getMutationView(model.id)?.getModifiedEntityCount() ?? 0)
+      + (schema !== 'IFC2X3' && hasGeorefEdits(georefMutations.get(model.id)) ? 1 : 0), 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportScope, selectedModelId, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations, models]);
+  }, [exportScope, selectedModelId, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations, models, schema]);
 
   /**
    * Resolve local (per-model) hidden/isolated expressIds for `modelId` from

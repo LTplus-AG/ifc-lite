@@ -26,7 +26,7 @@ function tabularModel(id: string): FederatedModel {
   return { ...fixtureModel(id), schemaVersion: 'IFC4' as const, ifcDataStore: tabularFixtureStore() };
 }
 
-afterEach(() => { cleanup(); clearDownloads(); });
+afterEach(() => { cleanup(); clearDownloads(); useViewerStore.setState({ georefMutations: new Map() }); });
 
 describe('merged STEP export reports the models it leaves out', () => {
   it('names a tabular model as skipped, before and after the export', async () => {

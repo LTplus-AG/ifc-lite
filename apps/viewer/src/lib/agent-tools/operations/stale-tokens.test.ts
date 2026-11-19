@@ -171,7 +171,8 @@ describe('reviewed model candidates (#10792)', () => {
       return first;
     };
     try { assert.equal(answer<{ persisted: boolean }>(await invoke('authoring.apply', { token }, true)).persisted, true); }
-    finally { modelChangeLibrary.put = put; assert.equal(await undo, true); }
+    finally { modelChangeLibrary.put = put; await undo?.catch(() => false); }
+    assert.equal(await undo, true);
   });
 
   it('#20: a replay never puts back a receipt draft that a library restore dropped', async () => {

@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
-import { MergedExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { exportModelStep } from '@/lib/export/model-step-export';
 import { ensureModelExportReady } from '@/services/desktop-export';
@@ -78,6 +77,8 @@ export const stepExportOperations = [
     const prepared = await sectionMergeInputs(inputs, visibility, i.schema,
       id => i.visible_only ? sectionExportOptions(state, i.section_mode, id) : undefined);
     current();
+    // Loaded on use: the merged export is its own lazy chunk, off the startup bundle.
+    const { MergedExporter } = await import('@ifc-lite/export/merged-exporter');
     const result = await new MergedExporter(prepared.inputs).exportBlobAsync({ schema: i.schema, projectStrategy: 'keep-first', unitReconciliation: i.unit_reconciliation,
       visibleOnly: i.visible_only, hiddenEntityIdsByModel: prepared.visibility.hidden, isolatedEntityIdsByModel: prepared.visibility.isolated,
       application: 'ifc-lite', description: 'Merged export through native viewer operations', onProgress: () => current() });

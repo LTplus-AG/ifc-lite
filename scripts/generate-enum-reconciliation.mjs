@@ -137,8 +137,9 @@ for (const [from, to] of DIRECTIONS) {
     attributes.forEach((attribute, index) => {
       const members = Object.hasOwn(target.enums, attribute.type) ? target.enums[attribute.type] : undefined;
       if (!members) return;
+      // `rows` is this direction's; `rustRows` is shared by every direction into `to`.
+      if (rows.some((r) => r.entity === entityName && r.attribute === attribute.name)) return;
       const row = rustRows[to].get(upper) ?? { arity: attributes.length, slots: new Map() };
-      if (row.slots.has(index)) return;
       const resolution = resolveMissingEnumMember(attributes, index, members);
       rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing: ['(renamed into this type: any member not listed)'], resolution, attributes });
       row.slots.set(index, { attribute: attribute.name, members, resolution });

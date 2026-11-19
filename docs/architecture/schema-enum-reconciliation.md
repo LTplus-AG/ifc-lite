@@ -20,10 +20,10 @@ enum lost members in that direction (#5365).
 | --- | --- | --- | --- |
 | IFC4X3 → IFC4 | 110 | 409 | 0 |
 | IFC4X3 → IFC2X3 | 80 | 232 | 11 |
-| IFC4 → IFC2X3 | 46 | 111 | 4 |
-| IFC2X3 → IFC4 | 20 | 71 | 0 |
+| IFC4 → IFC2X3 | 63 | 128 | 10 |
+| IFC2X3 → IFC4 | 29 | 80 | 0 |
 | IFC2X3 → IFC4X3 | 23 | 74 | 0 |
-| IFC4 → IFC4X3 | 0 | 0 | 0 |
+| IFC4 → IFC4X3 | 3 | 3 | 0 |
 
 ## IFC4X3 → IFC4
 
@@ -275,6 +275,23 @@ enum lost members in that direction (#5365).
 | IfcTransportElementType.PredefinedType | IfcTransportElementTypeEnum | CRANEWAY, LIFTINGGEAR | `.USERDEFINED.`, name in `ElementType` |
 | IfcUnitaryEquipmentType.PredefinedType | IfcUnitaryEquipmentTypeEnum | DEHUMIDIFIER | `.USERDEFINED.`, name in `ElementType` |
 | IfcWallType.PredefinedType | IfcWallTypeEnum | MOVABLE, PARAPET, PARTITIONING, SOLIDWALL | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcBuildingElementProxy.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcGasTerminalType.PredefinedType | IfcGasTerminalTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcSlab.PredefinedType | IfcSlabTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcStructuralLinearAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralLinearAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcStructuralLoadGroup.ActionType | IfcActionTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcStructuralLoadGroup.ActionSource | IfcActionSourceTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcStructuralPlanarAction.GlobalOrLocal | IfcGlobalOrLocalEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcStructuralPlanarAction.ProjectedOrTrue | IfcProjectedOrTrueLengthEnum | (renamed into this type: any member not listed) | **refused**: kept as written, reported |
+| IfcWindowStyle.ConstructionType | IfcWindowStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcWindowStyle.OperationType | IfcWindowStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 
 ## IFC2X3 → IFC4
 
@@ -300,6 +317,15 @@ enum lost members in that direction (#5365).
 | IfcTankType.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ElementType` |
 | IfcWasteTerminal.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminalType.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ElementType` |
+| IfcBuilding.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcBuildingStorey.CompositionType | IfcElementCompositionEnum | (renamed into this type: any member not listed) | `$` (reported) |
+| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcCommunicationsAppliance.PredefinedType | IfcCommunicationsApplianceTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcFooting.PredefinedType | IfcFootingTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcRelAssignsToProduct.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcSlab.PredefinedType | IfcSlabTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 
 ## IFC2X3 → IFC4X3
 
@@ -331,4 +357,8 @@ enum lost members in that direction (#5365).
 
 ## IFC4 → IFC4X3
 
-No enum member of a shared enum is missing in this direction.
+| Entity.Attribute | Enum | Members the target lacks | Written as |
+| --- | --- | --- | --- |
+| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |

@@ -25,7 +25,9 @@ export type GeometryBackingCommand =
   /** TEST ONLY: read the camera pose, or pin it first, so screen probes compare like for like. */
   | { action: 'camera-for-test'; pose?: CameraPose }
   /** TEST ONLY: the scene's own instanced occurrence bounds (placed frame), independent of any backing. */
-  | { action: 'instanced-bounds-for-test' };
+  | { action: 'instanced-bounds-for-test' }
+  /** TEST ONLY: destroy the live GPU device (a real loss), or read whether the renderer is lost / ready again. */
+  | { action: 'lose-device-for-test' | 'device-state-for-test' };
 
 type Xyz = { x: number; y: number; z: number };
 export interface CameraPose { position: Xyz; target: Xyz; up: Xyz }
@@ -43,6 +45,8 @@ export interface SnapProbe {
 
 let starting: Promise<StoreGeometryBackingTap> | undefined;
 let active: StoreGeometryBackingTap | undefined;
+/** The renderer the test-only release registered a released-scene rebuild on. */
+let rebuildOn: Renderer | undefined;
 
 /** The running tap, if a test or debug session started one. */
 export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined { return active; }
@@ -50,7 +54,12 @@ export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined 
 /** `renderer` is needed only by `release-for-test`; a test may start the tap
  * before the viewport has one, so the whole stream is observed. */
 export async function geometryBackingCommand(store: StoreApi<TapState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[] | CameraPose[] | InstancedOccurrenceBounds[]> {
+  Promise<ModelBackingStatus[] | SnapProbe[] | CameraPose[] | InstancedOccurrenceBounds[] | Array<{ lost: boolean; ready: boolean }>> {
+  if (command.action === 'lose-device-for-test' || command.action === 'device-state-for-test') {
+    if (!renderer) throw new Error('Device actions need the viewport renderer');
+    if (command.action === 'lose-device-for-test') renderer.getGPUDevice()?.destroy();
+    return [{ lost: renderer.isDeviceLost(), ready: renderer.isReady() }];
+  }
   if (command.action === 'camera-for-test') {
     const camera = renderer?.getCamera();
     if (!camera) throw new Error('Camera poses need the viewport renderer');
@@ -84,6 +93,8 @@ export async function geometryBackingCommand(store: StoreApi<TapState>, renderer
     return releaseForTest(tap, store, renderer);
   }
   const final = tap.status();
+  rebuildOn?.setReleasedSceneRebuild?.(null);
+  rebuildOn = undefined;
   active = undefined;
   starting = undefined;
   await tap.stop();
@@ -117,6 +128,10 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<TapS
   scene.releaseGeometryData();
   if (scene.isGeometryDataReleased() !== true) throw new Error('The scene refused to release; store geometry was kept');
   for (const model of models.values()) if (model.geometryResult) releaseCpuMeshBuffers(model.geometryResult.meshes);
+  // A device loss from here on rebuilds from the backing (no CPU restore); without this it is refused.
+  const { rebuildReleasedScene } = await import('./released-device-recovery');
+  renderer.setReleasedSceneRebuild?.(rebuildReleasedScene);
+  rebuildOn = renderer;
   return tap.status();
 }
 

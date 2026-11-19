@@ -246,6 +246,76 @@ for (const fixture of FIXTURES) {
       expect(b.snap?.type, `probe ${i} snap kind`).toBe(a.snap?.type);
       if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `probe ${i} snap`).toBeLessThan(1e-6);
     }
+    // A real GPU device loss after release (#10264 PR8): the renderer replaces the device and the viewer
+    // rebuilds the released scene from the backing, flat in bounded batches and instancing from shards.
+    const canvasBox = (await page.locator('canvas').first().boundingBox())!;
+    const shot = async () => (await page.screenshot({ clip: canvasBox })).toString('base64');
+    const beforeLoss = await shot();
+    const recovery = await page.evaluate(async ([points]) => {
+      const g = globalThis as Probe;
+      const hook = g.__ifc_lite_geometry_backing__!;
+      const settle = async () => {
+        for (let i = 0; i < 200 && !(g.__ifc_lite_scene_settled__?.()); i++) await new Promise((r) => setTimeout(r, 50));
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      };
+      const grid = async () => (await g.__ifc_lite_pick_parity__!({ columns: 48, rows: 32 })).rows
+        .map((row) => (row.annotation ? null : row.gpu?.expressId ?? null));
+      const [pose] = await hook({ action: 'camera-for-test' });
+      const gpuBefore = await grid();
+      const heldBefore = (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes;
+      await hook({ action: 'lose-device-for-test' });
+      const started = performance.now();
+      let state = { lost: true, ready: false };
+      for (let i = 0; i < 1200; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        state = (await hook({ action: 'device-state-for-test' }))[0] as typeof state;
+        if (!state.lost && state.ready) break;
+      }
+      const recoveredMs = Math.round(performance.now() - started);
+      await hook({ action: 'camera-for-test', pose });
+      await settle();
+      const gpuAfter = await grid();
+      const held = (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes;
+      const snaps = await hook({ action: 'snap-probe-for-test', points });
+      return { state, recoveredMs, gpuBefore, gpuAfter, heldBefore, held, snaps };
+    }, [phase1.points] as const);
+    const afterRecovery = await shot();
+    await page.screenshot({ path: info.outputPath('after-recovery.png') });
+    const pixels = await page.evaluate(async ([a, b]) => {
+      const decode = async (base64: string) => {
+        const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${base64}`)).blob());
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(bitmap, 0, 0);
+        return ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+      };
+      const [x, y] = await Promise.all([decode(a), decode(b)]);
+      let differing = 0;
+      for (let i = 0; i < x.length; i += 4) {
+        if (Math.max(Math.abs(x[i] - y[i]), Math.abs(x[i + 1] - y[i + 1]), Math.abs(x[i + 2] - y[i + 2])) > 8) differing++;
+      }
+      return { total: x.length / 4, differing };
+    }, [beforeLoss, afterRecovery] as const);
+    const toolsRecovered = await toolProbe(page, phase1.modelId);
+    const recovered = recovery.snaps as SnapRow[];
+    const drawnTexels = recovery.gpuBefore.filter((id) => id !== null).length;
+    const gpuDiffering = recovery.gpuBefore.filter((id, i) => id !== recovery.gpuAfter[i]).length;
+    await writeFile(info.outputPath('device-recovery.json'), JSON.stringify({ state: recovery.state, recoveredMs: recovery.recoveredMs,
+      heldBefore: recovery.heldBefore, held: recovery.held, gpuTexels: recovery.gpuBefore.length, drawnTexels, gpuDiffering, pixels,
+      toolsMatch: JSON.stringify(toolsRecovered) === JSON.stringify(toolsResident) }, null, 2));
+    expect(recovery.state, 'the renderer recovered from a real device loss').toEqual({ lost: false, ready: true });
+    expect(drawnTexels, 'the released scene drew entities before the loss').toBeGreaterThan(100);
+    expect(gpuDiffering, `GPU picks after recovery (${gpuDiffering} of ${recovery.gpuBefore.length} texels differ)`).toBe(0);
+    expect(recovery.held, 'no CPU restore: recovery keeps no CPU pieces').toBeLessThanOrEqual(recovery.heldBefore);
+    expect(pixels.differing / pixels.total, `${pixels.differing} of ${pixels.total} pixels differ after recovery`).toBeLessThan(0.002);
+    expect(toolsRecovered, 'exports, caps, plans, centre and areas after recovery').toEqual(toolsResident);
+    for (let i = 0; i < after.length; i++) {
+      const a = after[i], b = recovered[i];
+      expect(b.expressId, `recovered probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
+      if (a.expressId === null) continue;
+      for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `recovered probe ${i} hit`).toBeLessThan(1e-6);
+      expect(b.snap?.type, `recovered probe ${i} snap kind`).toBe(a.snap?.type);
+    }
     // A content-version reload after release (realign, rebase, collab): the scene rebuilds from the
     // store list, whose released members are replayed from the backing in bounded batches.
     const reload = await page.evaluate(async ([points]) => {

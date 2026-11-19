@@ -66,7 +66,9 @@ export function supersedeReleasedReplays(): void {
  * A replay that fails in its own epoch retries, then parks until the backing changes;
  * one a reshape superseded is dropped (the newer pass owns its meshes).
  */
-export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], replayOnce: typeof replay = replay): MeshData[] {
+export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], drawn?: readonly MeshData[],
+  replayOnce: typeof replay = replay): MeshData[] {
+  if (drawn) sceneGeometry = drawn; // the whole list the scene now draws (streamed appends included)
   if (!meshes.some(isReleasedMesh)) return meshes;
   const released = meshes.filter(isReleasedMesh);
   const mine = epoch;
@@ -128,34 +130,51 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
 export function releasedReplaysIdle(): Promise<void> { return chain.then(() => undefined); }
 
 async function replay(renderer: Renderer, released: readonly MeshData[], isCurrent: () => boolean): Promise<boolean> {
-  const [{ replayReleasedGeometry }, { activeGeometryBackingTap }, { replayStoreList }, { canonicalStoreMesh }, { GeometryUnavailableError }, { getViewerState }] =
-    await Promise.all([import('@ifc-lite/renderer'), import('./backing-debug-hook'), import('./generation-replay'),
+  const [{ replayReleasedGeometry }, { captureLevelLift }, { placeNewMeshesAtCurrentLevel }, { getViewerState }] = await Promise.all([
+    import('@ifc-lite/renderer'), import('@/lib/level-lift-fence'), import('@/lib/level-arrival'), import('@/store/viewerStoreHandle')]);
+  // The same arrival placement as a resident upload: the current Exploded lift, fenced entry by entry.
+  const level = captureLevelLift(getViewerState());
+  const flat = await releasedBatches(released);
+  async function* placed(): AsyncGenerator<MeshData[]> { for await (const batch of flat) yield placeNewMeshesAtCurrentLevel(batch, level.lift); }
+  const result = await replayReleasedGeometry(renderer, placed(), { isCurrent: () => isCurrent() && level.current(getViewerState()) });
+  if (result.status !== 'complete') console.warn(`[GeometryBacking] released geometry replay ${result.status}; it will be retried`, result);
+  return result.status === 'complete';
+}
+
+/**
+ * `meshes` (released or resident, in any order) as bounded batches: resident ones as they are,
+ * released ones (or copies of them) from their model's ACKNOWLEDGED backing generation, one chunk
+ * lease at a time. A reload follows a content bump, so the CURRENT generation may still be
+ * rebuilding; the acknowledged one stays durable until that rebuild is acknowledged.
+ */
+export async function releasedBatches(meshes: readonly MeshData[]): Promise<AsyncGenerator<MeshData[]>> {
+  const [{ activeGeometryBackingTap }, { replayStoreList }, { canonicalStoreMesh }, { GeometryUnavailableError }, { getViewerState }] =
+    await Promise.all([import('./backing-debug-hook'), import('./generation-replay'),
       import('./store-mesh-readback'), import('./geometry-readback'), import('@/store/viewerStoreHandle')]);
   const tap = activeGeometryBackingTap();
-  // The same arrival placement as a resident upload: the current Exploded lift, fenced entry by entry.
-  const [{ captureLevelLift }, { placeNewMeshesAtCurrentLevel }] = await Promise.all([import('@/lib/level-lift-fence'), import('@/lib/level-arrival')]);
-  const level = captureLevelLift(getViewerState());
-  // Each released mesh (or copy of one) by the model whose store list holds its source.
   const owner = new Map<MeshData, string>();
   for (const [modelId, model] of getViewerState().models) for (const mesh of model.geometryResult?.meshes ?? []) owner.set(mesh, modelId);
+  const resident: MeshData[] = [];
   const byModel = new Map<string, MeshData[]>();
-  for (const mesh of released) {
+  for (const mesh of meshes) {
+    if (!isReleasedMesh(mesh)) { resident.push(mesh); continue; }
     const found = canonicalStoreMesh(mesh, owner);
     if (!found) throw new GeometryUnavailableError(`Released mesh of entity ${mesh.expressId} belongs to no model`);
     let group = byModel.get(found.at);
     if (!group) byModel.set(found.at, (group = []));
     group.push(mesh);
   }
-  // A reload follows a content bump, so the model's CURRENT generation is still being
-  // rebuilt; the acknowledged one stays durable until that rebuild is acknowledged.
-  async function* batches(): AsyncGenerator<readonly MeshData[]> {
-    for (const [modelId, meshes] of byModel) {
+  return (async function* batches(): AsyncGenerator<MeshData[]> {
+    for (let i = 0; i < resident.length; i += SLICE) yield resident.slice(i, i + SLICE);
+    for (const [modelId, list] of byModel) {
       const source = tap?.replaySource(modelId);
       if (!source) throw new GeometryUnavailableError(`Model ${modelId} has no acknowledged backing to replay from`);
-      for await (const batch of replayStoreList(meshes, source, SLICE)) yield placeNewMeshesAtCurrentLevel([...batch], level.lift);
+      yield* replayStoreList(list, source, SLICE);
     }
-  }
-  const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => isCurrent() && level.current(getViewerState()) });
-  if (result.status !== 'complete') console.warn(`[GeometryBacking] released geometry replay ${result.status}; it will be retried`, result);
-  return result.status === 'complete';
+  })();
 }
+
+/** What the scene draws: the geometry of its latest flat reshape (later appends grow it in place). */
+let sceneGeometry: readonly MeshData[] = [];
+export function noteSceneGeometry(geometry: readonly MeshData[]): void { sceneGeometry = geometry; }
+export function currentSceneGeometry(): readonly MeshData[] { return sceneGeometry; }

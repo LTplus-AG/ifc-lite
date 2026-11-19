@@ -11,6 +11,9 @@
  * Per-request parse options shared by all parse endpoints.
  */
 export interface ParseRequestOptions {
+  /** Abort the request and response stream before the client's timeout. */
+  signal?: AbortSignal;
+
   /**
    * Tessellation detail level (#976). Omitted = `'medium'`, which is
    * byte-identical to the historical output — and to what the wasm path

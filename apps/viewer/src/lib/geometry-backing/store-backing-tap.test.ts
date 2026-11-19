@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
-import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { completeInstancedShardSupply, discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
@@ -191,13 +191,13 @@ describe('store geometry backing tap (test/debug only)', () => {
     assert.equal(releasedGeometryMetadata(), null);
   });
 
-  it('lost instancing stays lost through later edits and partial re-supplies, until a completed load proves it whole', async () => {
+  it('lost instancing stays lost through later edits and partial re-supplies, until the model states its fresh set whole', async () => {
     const store = storeWith({ st: [mesh(1)] });
-    const setLoad = (loadState: string) => store.setState((state) => ({ models: new Map([['st', { ...state.models.get('st')!, loadState }]]) }));
     const recolour = () => store.setState((state) => ({ models: new Map([['st', { ...state.models.get('st')!, geometryResult: {
       meshes: state.models.get('st')!.geometryResult!.meshes.map((m) => ({ ...m, color: [1, 0, 0, 1] as [number, number, number, number] })) } }]]) }));
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('st', [shardBytes(77), shardBytes(78)], instancedShardGeneration());
+    completeInstancedShardSupply('st', 2, instancedShardGeneration());
     await tap.seal();
     const acknowledged = tap.backing('st')!;
     const idsOf = async (backing: typeof acknowledged) => {
@@ -206,29 +206,67 @@ describe('store geometry backing tap (test/debug only)', () => {
       return ids.sort();
     };
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // occurrences may have moved
+    completeInstancedShardSupply('st', 2, instancedShardGeneration()); // a statement for the pre-loss generation proves nothing
     recolour(); // must not fall back to the pre-bump occurrences
     let [status] = await tap.seal();
     assert.equal(status.instancedLost, true, 'the invalidation survives the recolour');
     assert.equal(status.complete, false);
-    // A fresh queue generation alone is not completeness: one of two new shards, the load still running.
+    // A fresh queue generation alone is not completeness: one of two new shards.
     discardInstancedShards();
-    setLoad('loading');
-    enqueueInstancedShards('st', [shardBytes(80)], instancedShardGeneration());
+    const fresh = instancedShardGeneration();
+    enqueueInstancedShards('st', [shardBytes(80)], fresh);
     [status] = await tap.seal();
     assert.equal(status.complete, false, 'a partial fresh supply is never complete');
     assert.equal(acknowledged.isCurrent, true, 'the acknowledged durable copy survives');
     assert.deepEqual(await idsOf(acknowledged), [77, 78], 'and stays readable with its own occurrences');
-    recolour(); // an edit during the re-supply keeps the fresh shard
-    enqueueInstancedShards('st', [shardBytes(81)], instancedShardGeneration());
-    setLoad('complete'); // load done, but two shards are still queued for upload
+    completeInstancedShardSupply('st', 2, fresh); // the producer says two: one has arrived
     [status] = await tap.seal();
-    assert.equal(status.complete, false, 'shards still pending: not yet whole');
-    assert.equal(acknowledged.isCurrent, true);
-    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
-    [status] = await tap.seal(); // the drain is the last step: now proven whole
+    assert.equal(status.complete, false, 'a statement the received shards do not match proves nothing');
+    completeInstancedShardSupply('other', 1, fresh); // another model's statement is not this model's
+    recolour(); // an edit during the re-supply keeps the fresh shard
+    enqueueInstancedShards('st', [shardBytes(81)], fresh);
+    [status] = await tap.seal();
+    assert.equal(status.complete, false, 'all shards in, but not yet stated whole');
+    completeInstancedShardSupply('st', 2, fresh);
+    [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     assert.equal(acknowledged.isCurrent, false, 'retired only now');
     assert.deepEqual(await idsOf(tap.backing('st')!), [80, 81], 'only the fresh occurrences, never the stale ones');
+    await tap.stop();
+  });
+
+  it('a global queue reset with no model statement never proves an empty replacement', async () => {
+    const store = createStore<TapState>(() => ({ models: new Map([['z0', { geometryResult: { meshes: [mesh(1)] }, idOffset: 0, loadState: 'complete' }]]),
+      geometryContentVersion: 0 }) as TapState);
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('z0', [shardBytes(77)], instancedShardGeneration());
+    await tap.seal();
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    discardInstancedShards(); // global reset, empty queue, the model's load still reads complete
+    store.setState((state) => ({ models: new Map([['z0', { ...state.models.get('z0')!, loadState: 'loading' }]]) }));
+    store.setState((state) => ({ models: new Map([['z0', { ...state.models.get('z0')!, loadState: 'complete' }]]) }));
+    let [status] = await tap.seal();
+    assert.equal(status.complete, false, 'load state and an empty queue say nothing about this model');
+    completeInstancedShardSupply('z0', 0, instancedShardGeneration()); // the model itself states: no shards
+    [status] = await tap.seal();
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
+    assert.equal(status.shards, 0, 'the stale occurrence is not carried');
+    await tap.stop();
+  });
+
+  it('a second reset during a re-supply never completes it', async () => {
+    const store = storeWith({ r2: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('r2', [shardBytes(77)], instancedShardGeneration());
+    await tap.seal();
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    discardInstancedShards();
+    enqueueInstancedShards('r2', [shardBytes(80)], instancedShardGeneration());
+    discardInstancedShards(); // superseded mid-supply: shard 80 belongs to an abandoned load
+    enqueueInstancedShards('r2', [shardBytes(81)], instancedShardGeneration());
+    completeInstancedShardSupply('r2', 1, instancedShardGeneration());
+    const [status] = await tap.seal();
+    assert.equal(status.complete, false, 'the backing would hold an abandoned shard');
     await tap.stop();
   });
 
@@ -274,7 +312,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
-  it('a fresh shard without a load cycle never re-supplies lost instancing', async () => {
+  it('a fresh shard without the model statement never re-supplies lost instancing', async () => {
     const store = storeWith({ nl: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('nl', [shardBytes(77)], instancedShardGeneration());

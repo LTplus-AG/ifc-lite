@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "why": "Keep the generation replay loadable while reintroducing the partial re-supply bug: after instancing is lost, the first shard of a fresh queue generation clears the loss, so a seal acknowledges an incomplete shard set and retires the last complete durable copy.",
+  "why": "Keep the generation replay loadable while reintroducing the partial re-supply bug: after instancing is lost, the first shard of a fresh queue generation clears the loss, so a seal acknowledges an incomplete (or, after a bare global reset, empty) shard set and retires the last complete durable copy. Only the model's own supply statement, matched shard for shard, may clear it.",
   "key": "apps/viewer/src/lib/geometry-backing/generation-replay.ts",
   "mutation": "tests/evidence/geometry-backing-resupply-10264/behaviour.oracle.patch",
   "test": "apps/viewer/src/lib/geometry-backing/store-backing-tap.test.ts"

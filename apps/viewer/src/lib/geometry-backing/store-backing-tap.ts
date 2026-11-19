@@ -21,34 +21,33 @@
  *   geometry alone, so committed shards are carried into the new generation.
  *   A content-version bump may move occurrences, so a model that had shards
  *   is then reported `instancedLost` and never complete (fail closed) until a
- *   fresh shard set arrives AND its load is seen running, then complete with
- *   nothing pending: a new queue generation alone is not coverage. So is a model whose shards were
+ *   fresh shard set arrives AND its producer states that set whole for the
+ *   model (`completeInstancedShardSupply`), shard for shard. So is a model whose shards were
  *   enqueued before the tap started (the queue's revision is ahead of what
  *   the tap saw): those shards never reached the backing.
  * Appends for one model are chained in order; a writer failure is reported in
  * `status()` and stops that model's chain, never retried.
  *
- * Known limit, recorded for the consumer audit: geometry written into the
- * existing typed arrays without a list or content-version change (in-place
- * entity translation) is not seen here; such paths must invalidate explicitly
- * before release can rely on the backing.
+ * Known limit, for the consumer audit: geometry written into the existing
+ * typed arrays with no list or content-version change (in-place translation)
+ * is not seen here; such paths must invalidate explicitly before release.
  */
 
 import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
-import { hasPendingInstancedShards, instancedShardGeneration, subscribeInstancedShards } from '@/store/instancedShardQueue';
+import { type InstancedShardSupply, instancedShardGeneration, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
 import { collectMeshAreas, type MeshAreaEntry } from '@/components/viewer/tools/measure-modes/mesh-area';
 import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
-import { replayStoreList } from './generation-replay';
+import { type PreviousGeneration, replayStoreList } from './generation-replay';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
 import type { BackingDatabaseOptions } from './backing-database';
 
 /** The store fields the tap reads. */
 export interface TapState {
-  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null; idOffset?: number; loadState?: string }>;
+  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null; idOffset?: number }>;
   geometryContentVersion: number;
 }
 
@@ -70,8 +69,8 @@ interface Tracked {
   instancedLost: boolean;
   /** Shard-queue generation when instancing was lost; only a newer one can re-supply current transforms. */
   lostAtQueueGeneration?: number;
-  /** A fresh supply after the loss: accepted, but not complete until the load proves it whole. */
-  resupply?: { sawLoading: boolean };
+  /** Fresh shards after the loss, per queue generation; whole only on a matching supply statement. */
+  resupply?: { generation: number; received: number; broken?: boolean };
   shards: number;
   /** Instanced occurrences backed; empty shard records are not instancing. */
   occurrences: number;
@@ -120,9 +119,8 @@ export class StoreGeometryBackingTap {
     const registry = await GeometryBackingRegistry.open(options.database);
     const tap = new StoreGeometryBackingTap(registry, store, options);
     tap.stops.push(store.subscribe((state) => tap.sync(state)));
+    tap.stops.push(subscribeInstancedShardSupply((supply) => tap.onSupply(supply)));
     tap.stops.push(subscribeInstancedShards((event) => {
-      // A drain can be the last step of a load that already reported complete.
-      if (event.kind === 'drained') { tap.observeResupplies(event.modelIds); return; }
       if (event.kind !== 'enqueued' || !event.shards) return;
       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
       for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
@@ -153,6 +151,11 @@ export class StoreGeometryBackingTap {
     return tracked && !tracked.stale ? tracked.backing : undefined;
   }
 
+  /** The last acknowledged generation and its store members: what released meshes are replayed from. */
+  replaySource(modelId: string): PreviousGeneration | undefined {
+    const ack = this.acknowledged.get(modelId); return ack && { meshes: ack.members, backing: ack.backing };
+  }
+
   private sync(state: TapState): void {
     if (this.stopped) return;
     const versionChanged = state.geometryContentVersion !== this.contentVersion;
@@ -161,7 +164,6 @@ export class StoreGeometryBackingTap {
       const meshes = model.geometryResult?.meshes;
       const tracked = this.tracked.get(modelId);
       if (!tracked) { this.regenerate(modelId, meshes, 'none'); continue; }
-      this.observeResupply(modelId, tracked, model.loadState);
       // First geometry of a model whose shards arrived earlier: an append.
       if (!versionChanged && tracked.meshes === undefined && tracked.consumed === 0 && meshes) tracked.meshes = meshes;
       if (tracked.stale) continue;
@@ -223,14 +225,11 @@ export class StoreGeometryBackingTap {
 
   /** Released members come from the acknowledged generation's records, chunk by chunk (no CPU restore). */
   private replay(modelId: string, next: Tracked, meshes: MeshData[]): void {
-    next.consumed = meshes.length;
-    const list = meshes.slice();
-    next.members = list;
+    const list = meshes.slice(); next.consumed = list.length; next.members = list;
     this.enqueue(next, async () => {
       // Captured when the step runs: overlapping edits all replay from the one acknowledged source,
       // and a released copy of a copy reaches its record through its ancestry.
-      const source = this.acknowledged.get(modelId);
-      for await (const batch of replayStoreList(list, { meshes: source?.members, backing: source?.backing }, APPEND_BATCH)) {
+      for await (const batch of replayStoreList(list, this.replaySource(modelId) ?? { meshes: undefined, backing: undefined }, APPEND_BATCH)) {
         for (const [id, entry] of collectMeshAreas([batch])) {
           const prior = next.areas.get(id);
           next.areas.set(id, prior ? { area: prior.area + entry.area, incomplete: prior.incomplete || entry.incomplete } : entry);
@@ -274,9 +273,12 @@ export class StoreGeometryBackingTap {
     const target = tracked;
     if (target.instancedLost) {
       // Only a supply after the loss (the shard queue was reset since) can carry current transforms,
-      // and only a completed load proves it whole (`observeResupply`); until then it stays lost.
-      if (target.lostAtQueueGeneration === undefined || instancedShardGeneration() === target.lostAtQueueGeneration) return;
-      target.resupply ??= { sawLoading: false };
+      // and only the model's supply statement proves it whole (`onSupply`); until then it stays lost.
+      const generation = instancedShardGeneration();
+      if (target.lostAtQueueGeneration === undefined || generation === target.lostAtQueueGeneration) return;
+      // A second reset mid-supply leaves superseded fresh shards behind: never whole.
+      const resupply = (target.resupply ??= { generation, received: 0 });
+      if (resupply.generation !== generation) resupply.broken = true;
     }
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.
@@ -286,31 +288,24 @@ export class StoreGeometryBackingTap {
     const idOffset = this.store.getState().models.get(modelId)?.idOffset;
     if (idOffset === undefined) {
       target.instancedLost = true;
+      if (target.resupply) target.resupply.broken = true;
       console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`);
       return;
     }
     applyFederationOffsetToShard(shard, idOffset);
     target.occurrences += shard.instances.length;
+    if (target.resupply) target.resupply.received++;
     this.enqueue(target, () => this.writer(target).appendInstancedShard(shard));
   }
 
-  private observeResupplies(modelIds: Iterable<string>): void {
-    if (this.stopped) return;
-    const models = this.store.getState().models;
-    for (const id of modelIds) { const t = this.tracked.get(id); if (t) this.observeResupply(id, t, models.get(id)?.loadState); }
-  }
-
-  /** A re-supply is whole once the model's load is seen running and then complete, nothing pending. */
-  private observeResupply(modelId: string, tracked: Tracked, loadState: string | undefined): void {
-    if (!tracked.instancedLost) return;
-    // The load may start before its first fresh shard: note it either way.
-    if (loadState !== undefined && loadState !== 'complete') { (tracked.resupply ??= { sawLoading: true }).sawLoading = true; return; }
-    const resupply = tracked.resupply;
-    if (resupply?.sawLoading && loadState === 'complete' && !hasPendingInstancedShards(modelId)
-      && tracked.lostAtQueueGeneration !== undefined && instancedShardGeneration() !== tracked.lostAtQueueGeneration) {
-      tracked.instancedLost = false;
-      tracked.lostAtQueueGeneration = tracked.resupply = undefined;
-    }
+  /** Lost instancing is whole again only by the model's own statement, matched shard for shard. */
+  private onSupply(supply: InstancedShardSupply): void {
+    const tracked = this.stopped ? undefined : this.tracked.get(supply.modelId);
+    if (!tracked?.instancedLost || tracked.lostAtQueueGeneration === undefined || supply.generation === tracked.lostAtQueueGeneration) return;
+    const resupply = tracked.resupply ?? { generation: supply.generation, received: 0 };
+    if (resupply.broken || resupply.generation !== supply.generation || resupply.received !== supply.count) return;
+    tracked.instancedLost = false;
+    tracked.lostAtQueueGeneration = tracked.resupply = undefined;
   }
 
   private enqueue(tracked: Tracked, step: () => Promise<void>): void {
@@ -328,8 +323,7 @@ export class StoreGeometryBackingTap {
   }
 
   private drop(modelId: string, reason: string): void {
-    const tracked = this.tracked.get(modelId);
-    if (!tracked) return;
+    const tracked = this.tracked.get(modelId); if (!tracked) return;
     this.tracked.delete(modelId);
     this.acknowledged.delete(modelId);
     notifyReleasedGeometryMetadataChanged();

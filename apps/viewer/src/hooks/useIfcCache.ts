@@ -31,7 +31,7 @@ import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
-import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { publishMetadataAtMark } from '../lib/geometry-restore-gate.js';
@@ -251,6 +251,7 @@ export function useIfcCache() {
         // were partitioned off the flat meshes).
         const shards = readCachedInstancedShards({ dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection });
         if (shards.length > 0 && !adopted) enqueueInstancedShards(modelId, shards, shardGeneration);
+        if (!adopted) completeInstancedShardSupply(modelId, shards.length, shardGeneration); // an adopted snapshot states its own
 
         // Measurement (post-pixel attribution): the store write, with its synchronous subscribers.
         if (!earlyPublished) trace.span('cache.publishStore', () => setIfcDataStore(dataStore));

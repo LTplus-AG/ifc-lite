@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
-import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
@@ -631,9 +631,8 @@ export function useIfcLoader() {
           // entity id by `idOffset`, only known now (registerModelOffset ran above).
           // AFTER addModel: the drain runs in a later task, once React committed it,
           // so Viewport.tsx's `modelIdToIndex` / `modelIdToOffset` see this model.
-          if (instancedShards.length > 0) {
-            enqueueInstancedShards(modelId, instancedShards, shardGeneration);
-          }
+          if (instancedShards.length > 0) enqueueInstancedShards(modelId, instancedShards, shardGeneration);
+          completeInstancedShardSupply(modelId, instancedShards.length, shardGeneration); // the whole set, zero included
           return;
         }
 
@@ -1932,6 +1931,7 @@ export function useIfcLoader() {
                   return;
                 }
 
+                completeInstancedShardSupply(modelId, allInstancedShards.length, shardGeneration); // every streamed shard is queued
                 await trace.span('load.finalize', () => finalizeModel(dataStore, useViewerStore.getState().geometryResult, getViewerSchemaVersion(dataStore), {
                   loadState: 'complete',
                   // Only show "writing" when this file will actually be cached

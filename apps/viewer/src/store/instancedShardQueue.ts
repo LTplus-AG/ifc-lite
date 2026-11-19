@@ -142,6 +142,30 @@ export function discardInstancedShards(modelId?: string): void {
   emit({ kind: 'discarded', modelIds: modelIdsOf(dropped) });
 }
 
+/** A producer's statement that `modelId`'s whole shard set for `generation` is enqueued: `count` shards, zero included. */
+export interface InstancedShardSupply { readonly modelId: string; readonly generation: number; readonly count: number }
+const supplyListeners = new Set<(supply: InstancedShardSupply) => void>();
+
+/**
+ * Call once a load has enqueued EVERY shard it will produce for `modelId`
+ * (none is a valid answer). Model-scoped completeness proof for consumers that
+ * must know a fresh shard set is whole (the geometry backing, #10264); a
+ * superseded load's statement is ignored. A path that never states it simply
+ * never proves completeness.
+ */
+export function completeInstancedShardSupply(modelId: string, count: number, fromGeneration: number): void {
+  if (fromGeneration !== generation) return;
+  const supply = { modelId, generation, count };
+  for (const listener of supplyListeners) {
+    try { listener(supply); } catch (error) { console.error('[instancedShardQueue] supply listener failed:', error); }
+  }
+}
+
+export function subscribeInstancedShardSupply(listener: (supply: InstancedShardSupply) => void): () => void {
+  supplyListeners.add(listener);
+  return () => { supplyListeners.delete(listener); };
+}
+
 export function hasPendingInstancedShards(modelId?: string): boolean {
   return modelId === undefined ? pending.length > 0 : pending.some((shard) => shard.modelId === modelId);
 }

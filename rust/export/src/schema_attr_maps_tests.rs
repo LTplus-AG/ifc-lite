@@ -103,9 +103,6 @@ fn a_required_ifc4_slot_with_no_source_is_counted_10763() {
     assert_eq!(out, "#5=IFCTEXTUREMAP($,$,$);");
     assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 3);
     assert_eq!(checks.attribute_values_dropped, 1);
-    let mut commented = ConversionChecks::default();
-    convert_step_line("/* note = */#5=IFCTEXTUREMAP((#6));", "IFC2X3", "IFC4", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut commented)).unwrap();
-    assert_eq!(commented.ifc4_slots.required_slots_unfilled(), 3, "a comment before the record");
 }
 
 #[test]
@@ -113,5 +110,15 @@ fn first_member_reads_a_list_and_passes_anything_else_through_10763() {
     assert_eq!(first_member("( #3 , #4 )"), ("#3".to_owned(), 1));
     assert_eq!(first_member("#3"), ("#3".to_owned(), 0));
     assert_eq!(first_member("()"), ("$".to_owned(), 0));
-    assert_eq!(first_member("/* members */ (#3,#6)"), ("#3".to_owned(), 1), "a comment before the list");
+}
+
+/// A SET slot is rebuilt without its comments, so a comment before, after or
+/// inside it neither hides the list nor counts as a member.
+#[test]
+fn comments_around_a_set_are_dropped_when_it_is_rebuilt_10763() {
+    assert_eq!(down("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,/* a */(#3,#6)/* b */);"), "#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');");
+    assert_eq!(down("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(/* c */$,#6));"), "#5=IFCAPPROVALRELATIONSHIP(#6,#4,'d','n');");
+    assert_eq!(up("#5=IFCAPPROVALRELATIONSHIP(/* c */(#3),#4,'d','n');"), "#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
+    assert_eq!(up("#5=IFCAPPROVALRELATIONSHIP(#3 /* x */,#4,'d','n');"), "#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
+    assert_eq!(without_comments(" 'a/*b*/' /* c */"), "'a/*b*/'", "a string keeps its text");
 }

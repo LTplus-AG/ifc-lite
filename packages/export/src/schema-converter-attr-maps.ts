@@ -20,7 +20,6 @@
 
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { list } from './schema-ifc2x3-records.js';
-import { skipStepTrivia } from './step-slot-grammar.js';
 import { stepRecordHead } from './step-record-frame.js';
 
 /** One reviewed IFC2X3 <-> IFC4 map. A same-named attribute in both lists is
@@ -83,11 +82,14 @@ export const ATTR_MAPS: readonly AttrMap[] = [
 const BY_IFC2X3: ReadonlyMap<string, AttrMap> = new Map(ATTR_MAPS.map((m) => [m.ifc2x3, m]));
 const BY_IFC4: ReadonlyMap<string, AttrMap> = new Map(ATTR_MAPS.map((m) => [m.ifc4, m]));
 
-/** True when an IFC4 `line` has a type a map writes, which can leave a required
- *  slot with no source value, so an IFC2X3 upgrade counts its required slots. */
-export function isMappedIfc4Record(line: string): boolean {
+/** True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
+ *  counted: a structural record, or one a map wrote, which can leave a
+ *  required slot with no source value (#10763). The type is read from the
+ *  record head. Twin of Rust `upgrade_counts_ifc4_slots`. */
+export function upgradeCountsIfc4Slots(line: string): boolean {
   const head = stepRecordHead(line);
-  return head !== null && BY_IFC4.has(line.slice(head.typeStart, head.typeEnd).toUpperCase());
+  const type = head ? line.slice(head.typeStart, head.typeEnd) : '';
+  return type.startsWith('IFCSTRUCTURAL') || BY_IFC4.has(type);
 }
 
 /** The map for writing `entityType` as `newType`, and whether it runs upward. */
@@ -127,12 +129,29 @@ function holdsValue(slot: string): boolean {
   return v !== '' && v !== '$' && v !== '*';
 }
 
-/** The first member of a STEP list (comments before it skipped), or the value
- *  itself when it is not one. */
+/** The first member of a STEP list, or the value itself when it is not one. */
 function firstMember(value: string): string {
-  const members = list(value.slice(Math.max(0, skipStepTrivia(value, 0))));
+  const members = list(value);
   if (members === null) return value;
   return members.find(holdsValue)?.trim() ?? '$';
+}
+
+/** `value` without its `/* ... *\/` comments (none is read inside a string),
+ *  trimmed. An unclosed comment runs to the end. Twin of Rust `without_comments`. */
+function withoutComments(value: string): string {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < value.length; i++) {
+    if (!inString && value.startsWith('/*', i)) {
+      const end = value.indexOf('*/', i + 2);
+      if (end === -1) break;
+      i = end + 1;
+      continue;
+    }
+    if (value[i] === "'") inString = !inString;
+    out += value[i];
+  }
+  return out.trim();
 }
 
 /** `values` (in the source layout `src`) written in the target layout `tgt`.
@@ -148,10 +167,12 @@ export function remapByAttrMap(
     const from = sourceOf(map, up, name, src);
     const i = from ? src.indexOf(from.name) : -1;
     const value = i >= 0 && i < values.length ? values[i] : '$';
-    if (!from || !holdsValue(value)) return '$';
-    if (from.how === 'unwrap') return firstMember(value);
-    if (from.how === 'wrap' && !value.trimStart().startsWith('(')) return `(${value.trim()})`;
-    return value;
+    if (!from || from.how === 'value') return from && holdsValue(value) ? value : '$';
+    // A SET is rebuilt, so comments around it or its members go.
+    const bare = withoutComments(value);
+    if (!holdsValue(bare)) return '$';
+    if (from.how === 'unwrap') return firstMember(bare);
+    return bare.startsWith('(') ? bare : `(${bare})`;
   }).join(',');
 }
 

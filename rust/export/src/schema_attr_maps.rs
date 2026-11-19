@@ -109,10 +109,13 @@ pub(crate) fn attr_map(entity_type: &str, new_type: &str, cfrom: &str, cto: &str
     ATTR_MAPS.iter().find(|m| m.ifc2x3 == src && m.ifc4 == tgt).map(|m| (m, up))
 }
 
-/// True when IFC4 `ty` is written by a map, which can leave a required slot
-/// with no source value, so an IFC2X3 upgrade counts its required slots.
-pub(crate) fn is_mapped_ifc4_type(ty: &str) -> bool {
-    ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
+/// True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
+/// counted: a structural record, or one a map wrote, which can leave a
+/// required slot with no source value (#10763). The type is read from the
+/// record head. Twin of the TypeScript `upgradeCountsIfc4Slots`.
+pub(crate) fn upgrade_counts_ifc4_slots(line: &str) -> bool {
+    let ty = crate::step_record_frame::record_head(line).map_or("", |head| head.type_name(line));
+    ty.starts_with("IFCSTRUCTURAL") || ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
 }
 
 /// How a target slot is filled from its source value.
@@ -154,18 +157,20 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
             };
             used[i] = true;
             let value = values[i].as_str();
-            if !holds_value(value) {
+            if let How::Value = how {
+                return if holds_value(value) { value.to_owned() } else { "$".to_owned() };
+            }
+            // A SET is rebuilt, so comments around it or its members go.
+            let bare = without_comments(value);
+            if !holds_value(&bare) {
                 return "$".to_owned();
             }
-            match how {
-                How::Wrap if !value.trim_start().starts_with('(') => format!("({})", value.trim()),
-                How::Unwrap => {
-                    let (first, extra) = first_member(value);
-                    *lost += extra;
-                    first
-                }
-                How::Value | How::Wrap => value.to_owned(),
+            if let How::Unwrap = how {
+                let (first, extra) = first_member(&bare);
+                *lost += extra;
+                return first;
             }
+            if bare.starts_with('(') { bare } else { format!("({bare})") }
         })
         .collect();
     *lost += values.iter().zip(&used).filter(|(v, used)| !**used && holds_value(v)).count();
@@ -173,16 +178,32 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
 }
 
 /// The first member of a STEP list `value`, and how many more members hold a
-/// value. Comments before the list are skipped. A value that is not a list is
-/// its own first member.
+/// value. A value that is not a list is its own first member.
 fn first_member(value: &str) -> (String, usize) {
-    let start = ifc_lite_core::parser::skip_step_trivia(value.as_bytes(), 0).unwrap_or(0);
-    let Some(members) = crate::schema_ifc2x3_records::list(Some(&value[start..])) else { return (value.to_owned(), 0) };
+    let Some(members) = crate::schema_ifc2x3_records::list(Some(value)) else { return (value.to_owned(), 0) };
     let mut held = members.into_iter().filter(|m| holds_value(m));
     match held.next() {
         Some(first) => (first.trim().to_owned(), held.count()),
         None => ("$".to_owned(), 0),
     }
+}
+
+/// `value` without its `/* ... */` comments (none is read inside a string),
+/// trimmed. An unclosed comment runs to the end.
+fn without_comments(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    let mut in_string = false;
+    while let Some(c) = rest.chars().next() {
+        if !in_string && rest.starts_with("/*") {
+            rest = rest[2..].find("*/").map_or("", |end| &rest[end + 4..]);
+            continue;
+        }
+        in_string ^= c == '\'';
+        out.push(c);
+        rest = &rest[c.len_utf8()..];
+    }
+    out.trim().to_owned()
 }
 
 #[cfg(test)]

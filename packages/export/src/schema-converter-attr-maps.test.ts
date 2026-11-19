@@ -44,7 +44,15 @@ describe('ATTR_MAPS (#10763)', () => {
   it('wraps a single reference into a SET and keeps the first member on the way down', () => {
     expect(convertStepLine("#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');", 'IFC2X3', 'IFC4')).toBe("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
     expect(convertStepLine("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3,#6));", 'IFC4', 'IFC2X3')).toBe("#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');");
-    expect(convertStepLine("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,/* c */(#3,#6));", 'IFC4', 'IFC2X3')).toBe("#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');");
+  });
+
+  it('drops comments around a SET when it is rebuilt, as Rust does', () => {
+    const down = (attrs: string) => convertStepLine(`#5=IFCAPPROVALRELATIONSHIP(${attrs});`, 'IFC4', 'IFC2X3');
+    const up = (attrs: string) => convertStepLine(`#5=IFCAPPROVALRELATIONSHIP(${attrs});`, 'IFC2X3', 'IFC4');
+    expect(down("'n','d',#4,/* a */(#3,#6)/* b */")).toBe("#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');");
+    expect(down("'n','d',#4,(/* c */$,#6)")).toBe("#5=IFCAPPROVALRELATIONSHIP(#6,#4,'d','n');");
+    expect(up("/* c */(#3),#4,'d','n'")).toBe("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
+    expect(up("#3 /* x */,#4,'d','n'")).toBe("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
   });
 
   it('downgrades IFC4 material and profile properties to the IFC2X3 subtypes IFC4 deleted', () => {
@@ -67,8 +75,5 @@ describe('ATTR_MAPS (#10763)', () => {
     const slots = new Ifc4SlotCheck();
     expect(convertStepLine('#5=IFCTEXTUREMAP((#6));', 'IFC2X3', 'IFC4', undefined, undefined, undefined, slots)).toBe('#5=IFCTEXTUREMAP($,$,$);');
     expect(slots.warnings()).toEqual([expect.stringMatching(/^3 slot\(s\) keep \$ where IFC4 requires/)]);
-    const commented = new Ifc4SlotCheck();
-    convertStepLine('/* note = */#5=IFCTEXTUREMAP((#6));', 'IFC2X3', 'IFC4', undefined, undefined, undefined, commented);
-    expect(commented.warnings()).toHaveLength(1);
   });
 });

@@ -323,13 +323,13 @@ END-ISO-10303-21;
 `;
 };
 
-async function mergeEPSets(specs: EPSetSpec[]) {
+async function mergeEPSets(specs: EPSetSpec[], schema: 'IFC2X3' | 'IFC4' = 'IFC2X3') {
   const inputs: MergeModelInput[] = await Promise.all(specs.map(async (spec, index) => {
     const id = String.fromCharCode(97 + index);
     const options = spec.deferAtoms ? { disableWorkerScan: true, deferPropertyAtomIndex: true } : undefined;
     return { id, name: id, dataStore: await parse(epsetModel(id, spec), options) };
   }));
-  const { content, stats } = await new MergedExporter(inputs).exportAsync({ schema: 'IFC2X3', unitReconciliation: 'normalize' });
+  const { content, stats } = await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation: 'normalize' });
   return { merged: new TextDecoder().decode(content), warnings: stats.warnings };
 }
 
@@ -441,6 +441,14 @@ describe('normalize keeps an IFC2X3 ePSet_MapConversion georeference (#10915)', 
     const shared = merged.match(/^#\d+=IFCPROPERTYSET\([^;]*'Pset_Shared',\$,\((#\d+)\)\);$/m)?.[1];
     // 2600100 mm in Pset_Shared is 2600.1 m once normalized into metres.
     expect(merged).toMatch(new RegExp(`^${shared}=IFCPROPERTYSINGLEVALUE\\('Eastings',\\$,IFCLENGTHMEASURE\\(2600\\.1\\),\\$\\);$`, 'm'));
+  });
+
+  it('converts a placement property that is no single value to the target schema', async () => {
+    const { merged } = await mergeEPSets([{ unit: 'm', easting: null },
+      { unit: 'mm', easting: 2600100, mapUnit: 'METRE', scaleRecord: "IFCPROPERTYBOUNDEDVALUE('Scale',$,IFCREAL(0.001),$,$)" }], 'IFC4');
+    // IFC4 IfcPropertyBoundedValue has six arguments (SetPointValue), IFC2X3 five; no five-argument one is left.
+    expect(merged).not.toMatch(/=IFCPROPERTYBOUNDEDVALUE\('Scale',\$,IFCREAL\(0\.001\),\$,\$\);/);
+    expect(merged).toMatch(/=IFCPROPERTYBOUNDEDVALUE\('Scale',\$,IFCREAL\(0\.001\),\$,\$,\$\);/);
   });
 
   it('keeps the Description of the Scale property it replaces', async () => {

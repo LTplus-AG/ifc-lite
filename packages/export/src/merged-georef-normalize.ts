@@ -150,14 +150,16 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
   }
   // An ePSet_MapConversion's placement properties are left as written: its offsets are in the map unit, and its axis
   // and Scale are ratios. The set gets an as-written copy of each, and the original is rescaled like any other length
-  // for any other set that lists it too. A property that cannot be read, or that names another record (which a copy
-  // past every model's ids could not), is kept itself. Any other property of the set is rescaled like any other.
+  // for any other set that lists it too. A property that cannot be read, names another record (which a copy past
+  // every model's ids could not), or is no single value (whose shape differs between schemas, and a copy skips schema
+  // conversion) is kept itself. Any other property of the set is rescaled like any other.
   for (const { setId, ids } of psets) {
     for (const [at, id] of ids.entries()) {
       const name = getStepAttr(dataStore, id, PROPERTY_NAME_ATTR);
       if (name !== null && !EPSET_PLACEMENT.has(label(name))) continue;
-      const copy = decodeEntity(dataStore, id)?.match(/^\s*#\d+\s*=\s*([^#]*?)\s*;?\s*$/)?.[1];
-      if (name === null || copy === undefined) records.set(id, { kind: 'keep' });
+      const copy = recordBody(decodeEntity(dataStore, id));
+      const single = typeOf(dataStore, id) === 'IFCPROPERTYSINGLEVALUE';
+      if (name === null || copy === undefined || copy.includes('#') || !single) records.set(id, { kind: 'keep' });
       else listEntry(records, minted, setId, copy, at);
     }
   }
@@ -167,6 +169,13 @@ export function planGeorefNormalize(dataStore: IfcDataStore, minted: MintedRecor
   const plan = { records, minted, unkept, implicitUnit, scaleLeft };
   if (epset?.mapConversion) planViewerEPSet(dataStore, epset.mapConversion, epset.projectedCRS, plan, modelScale, primaryScale);
   return plan;
+}
+
+/** A record's text from its type name to its closing `)`, as the package's record frame reads it, or undefined. */
+function recordBody(text: string | null): string | undefined {
+  if (text === null) return undefined;
+  const frame = stepRecordFrame(text, { allowMissingSemicolon: true });
+  return frame ? text.slice(frame.head.typeStart, frame.close + 1) : undefined;
 }
 
 /** Each of a model's `ePSet_MapConversion` sets (any casing, as the parser finds them) with its property ids. */

@@ -142,11 +142,20 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
   it.each([
     ['a mm model with a mm map unit and Scale 0.001', { unit: 'mm', mapUnit: 'mm', scale: '0.001' }, 'm'],
     ['an m model with an m map unit and Scale 1000', { unit: 'm', mapUnit: 'm', scale: '1000.' }, 'mm'],
+    // Divided, 0.9999999989997 is written to 12 digits as 0.999999999, which the viewer reads as an unset Scale.
+    ['a mm model whose divided Scale rounds to 1', { unit: 'mm', mapUnit: 'mm', scale: '0.0009999999989997' }, 'm'],
   ] as const)('names a map conversion whose viewer scale no Scale keeps: %s', async (_, later, primaryUnit) => {
     const { stats } = await mergeResult([{ unit: primaryUnit, mapUnit: primaryUnit, easting: 2600000 }, { ...later, easting: 2600100 }]);
-    expect(stats.warnings.some(warning => /cannot show map conversion #\d+ at its own scale/.test(warning))).toBe(true);
-    const fine = await mergeResult([{ unit: 'm', mapUnit: 'm', easting: 2600000 }, { unit: 'mm', mapUnit: 'm', easting: 2600100, scale: '0.001' }]);
-    expect(fine.stats.warnings.some(warning => warning.includes('cannot show'))).toBe(false);
+    // #21 is the conversion's id in model "b", the later model.
+    expect(stats.warnings.filter(warning => warning.includes('cannot show'))).toEqual([
+      expect.stringContaining('The viewer cannot show its map conversion #21 (an id in "b") at its own scale'),
+    ]);
+  });
+
+  it('names no map conversion when a Scale keeps the viewer\'s scale', async () => {
+    const { stats } = await mergeResult([{ unit: 'm', mapUnit: 'm', easting: 2600000 }, { unit: 'mm', mapUnit: 'm', easting: 2600100, scale: '0.001' }]);
+    expect(stats.warnings.some(warning => warning.includes('georeferencing'))).toBe(true);
+    expect(stats.warnings.some(warning => warning.includes('cannot show'))).toBe(false);
   });
 
   it('copies the viewer\'s scale rule exactly', () => {

@@ -48,8 +48,10 @@ const idsOf = (dataStore: IfcDataStore, types: Iterable<string>) => [...types].f
 /** The normalize advisory for a model's georeference, or null when it carries none. */
 export function georefNormalizeCaveat(name: string, dataStore: IfcDataStore, plan: GeorefNormalizePlan | undefined): string | null {
   if (idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length === 0) return null;
-  const unkept = plan?.unkept.length ? ` The viewer cannot show map conversion ${plan.unkept.map(id => `#${id}`).join(', ')} ` +
-    'at its own scale in the merged unit, so its Scale is written as the IFC specification reads it.' : '';
+  const unkeptIds = plan?.unkept ?? [], ids = unkeptIds.map(id => `#${id}`).join(', ');
+  const unkept = unkeptIds.length === 0 ? '' : unkeptIds.length === 1
+    ? ` The viewer cannot show its map conversion ${ids} (an id in "${name}") at its own scale in the merged unit, so its Scale is written as the IFC specification reads it.`
+    : ` The viewer cannot show its map conversions ${ids} (ids in "${name}") at their own scale in the merged unit, so their Scale is written as the IFC specification reads it.`;
   return `Model "${name}" carries georeferencing, whose offsets normalize leaves in the CRS unit (a CRS without one ` +
     `is written in metres). If the model was georeferenced in its own unit, review the merged coordinate operation.${unkept}`;
 }
@@ -68,7 +70,8 @@ export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit, m
     const alone = viewerAxisScales(conversion, targetCRS?.mapUnitScale, modelScale);
     const keeps = (scale: number | undefined) => viewerAxisScales({ ...conversion, scale }, targetCRS?.mapUnitScale, primaryScale)
       .every((value, axis) => Math.abs(value - alone[axis]) <= 1e-9 * Math.max(1, Math.abs(alone[axis])));
-    const divided = (conversion.scale ?? 1) / lengthFactor;
+    // As written: a value that rounds to within 1e-9 of 1 reads as unset in the viewer.
+    const divided = Number(toStepRealScaled((conversion.scale ?? 1) / lengthFactor));
     if (keeps(divided)) records.set(conversion.id, { kind: 'operation', scale: divided });
     else if (!keeps(conversion.scale)) {
       records.set(conversion.id, { kind: 'operation', scale: divided });

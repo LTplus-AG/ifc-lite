@@ -1361,7 +1361,7 @@ export const createMutationSlice: StateCreator<
     if (attached) {
       if (!attached.ok) return attached;
       // Same canonical placement as the plain move below; the remesh publishes the refit geometry.
-      get().mirrorPlacementEdit(modelId, expressId, delta);
+      publishMove(get(), modelId, attached.mutation, expressId, delta);
       return { ok: true, newCoordinates: pointToMetres(dataStore, attached.newCoordinates) };
     }
     // Go through the slice's own `setPositionalAttribute` action so
@@ -1448,7 +1448,7 @@ export const createMutationSlice: StateCreator<
     const attached = moveAttachedTargetIn(api, modelId, expressId, pointToNative(dataStore, position));
     if (attached) {
       if (!attached.ok) return attached;
-      if (dx !== 0 || dy !== 0 || dz !== 0) get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
+      if (dx !== 0 || dy !== 0 || dz !== 0) publishMove(get(), modelId, attached.mutation, expressId, [dx, dy, dz]);
       return { ok: true, newCoordinates: position };
     }
     const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, pointToNative(dataStore, position));

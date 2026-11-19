@@ -68,6 +68,26 @@ for (const movement of ['translate', 'position'] as const) it(`public slab ${mov
   assert.deepEqual(mirrored, [['m', slab, [0, 0, 1]]], 'peers receive the slab placement, as for any other move');
 });
 
+for (const movement of ['translate', 'position'] as const) it(`in a room, undo and redo of an attached ${movement} move the room copy too (#10810)`, async () => {
+  const s = await newStorey(), mirrored: unknown[] = [];
+  const slab = addSlabToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .3, ExtrudedDirection: [0, 0, -1] }).slabId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [1, 2, 0], End: [9, 2, 0], Height: 3, Thickness: .2 }).wallId;
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'slab', slabId: slab });
+  seedViewer(s, mirrored);
+  // 'm' is the room's model, so its atomic edits commit as copies: the record must follow the committed one.
+  useViewerStore.setState({ collabRoomId: 'room', collabSession: { roomId: 'room', transact: (run: () => void) => run() } as never,
+    collabRoomModels: new Map([['m', { slotId: 'm0', pathPrefix: '/m0' }]]) });
+  const state = useViewerStore.getState();
+  const result = movement === 'translate' ? state.translateEntity('m', slab, [0, 0, 1]) : state.setEntityPosition('m', slab, [0, 0, 5]);
+  assert.ok(result.ok, result.ok ? '' : result.reason);
+  mirrored.length = 0;
+  useViewerStore.getState().undo('m');
+  assert.deepEqual(mirrored, [['m', slab, [-0, -0, -1]]]);
+  mirrored.length = 0;
+  useViewerStore.getState().redo('m');
+  assert.deepEqual(mirrored, [['m', slab, [0, 0, 1]]]);
+});
+
 it('a storey-attached wall keeps the plain move presentation and placement mirror (#9296)', async () => {
   const s = await newStorey(), mirrored: unknown[] = [];
   const wall = addWallToStore(s.editor, s.anchor, { Start: [1, 2, 0], End: [9, 2, 0], Height: 3, Thickness: .2 }).wallId;

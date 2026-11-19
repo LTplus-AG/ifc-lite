@@ -40,6 +40,7 @@ function revertMutation(view: MutationView, mutation: Mutation): void {
           mutation.valueType,
           undefined,
           true,
+          mutation.dataType, // a deleted property's measure type (absent on an update)
         );
       }
       return;

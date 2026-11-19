@@ -19,6 +19,7 @@ import { changeOperations } from '@/lib/changes/change-operations';
 import { revertChangeOperation, type RevertRefusal } from '@/lib/changes/revert-change-operation';
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { attributeUndoPrior } from './model-change-values';
 import type { ChangeScalar, ModelChange } from '@ifc-lite/ai/artifacts';
 import type { StructuralOpName } from './structural-graph-proposal';
 import type { GroupOperation } from './group-lifecycle-proposal';
@@ -79,7 +80,7 @@ function propertyType(value: Exclude<ChangeScalar, null>): PropertyValueType {
 }
 
 /** Write one change through the store's gated actions; throws so the transaction rolls back. */
-function write(state: ViewerState, modelId: string, expressId: number, change: ModelChange, before: ChangeScalar): void {
+function write(state: ViewerState, modelId: string, expressId: number, change: ModelChange): void {
   const target = modelEditTarget(state, modelId);
   if (!target) throw new Error(`Model ${modelId} is not loaded`);
   let written: unknown;
@@ -98,8 +99,8 @@ function write(state: ViewerState, modelId: string, expressId: number, change: M
       break;
     }
     case 'attribute.set':
-      // `before` is the effective IfcRoot string, '' when unset: recorded as unset, so undo restores `$`, not ''.
-      written = state.setAttribute(modelId, expressId, change.name, change.value, typeof before === 'string' ? before || null : undefined);
+      // A session edit is restored exactly; an unset source attribute is recorded as unset, so undo restores `$`, not ''.
+      written = state.setAttribute(modelId, expressId, change.name, change.value, attributeUndoPrior(target, expressId, change.name));
       break;
   }
   if (!written) throw new Error(`The model refused ${changeField(change)} on ${change.target.globalId}`);
@@ -125,7 +126,7 @@ export function commitModelChanges(
       id: 'assistant.modelChanges', labelKey: 'modelChanges.commandLabel', hud: {}, snap: 'modeling',
       init: () => null, pointerMove: (g) => g, pointerDown: (g) => g,
       commit: (_g, tx) => {
-        for (const row of rows) write(tx.store, modelId, row.expressId!, row.change, row.current ?? null);
+        for (const row of rows) write(tx.store, modelId, row.expressId!, row.change);
         return { created: [], deleted: [], remesh: [] };
       },
     };

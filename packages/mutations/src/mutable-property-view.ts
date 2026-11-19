@@ -492,8 +492,8 @@ export class MutablePropertyView extends MutableOverlayState {
   deleteProperty(entityId: number, psetName: string, propName: string, skipHistory: boolean = false): Mutation | null {
     const key = propertyKey(entityId, psetName, propName);
     const oldValue = this.getPropertyValue(entityId, psetName, propName);
-    // The row's types, so an undo restores the property as it was rather than as text.
-    const row = this.getForEntity(entityId).find(set => set.name === psetName)?.properties.find(prop => prop.name === propName);
+    // The row's types, so an undo restores the property as it was rather than as text (a replay records no undo).
+    const row = skipHistory ? undefined : this.getForEntity(entityId).find(set => set.name === psetName)?.properties.find(prop => prop.name === propName);
 
     // A property can legitimately exist with a null value — an unset Boolean
     // added from bSDD lives in `newPsets` with value=null (issue #1107). So

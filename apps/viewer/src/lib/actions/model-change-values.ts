@@ -69,10 +69,13 @@ export function effectiveAttribute(reader: ModelReader, expressId: number, name:
 }
 
 /**
- * The value an undo of an edit to attribute `name` restores: the effective string, null when unset, or undefined for
- * an attribute this reader cannot read (anything but IfcRoot's editable strings).
+ * The value an undo of an edit to attribute `name` restores: a session edit's value exactly (even '' or `$`), else the
+ * source string, null when unset, or undefined for an attribute this reader cannot read (anything but IfcRoot's
+ * editable strings).
  */
 export function attributeUndoPrior(reader: ModelReader, expressId: number, name: string): string | null | undefined {
+  const edited = reader.view.getAttributeMutationsForEntity(expressId).find(mutation => mutation.name === name);
+  if (edited) return edited.value;
   return (EDITABLE_ATTRIBUTES as readonly string[]).includes(name) ? effectiveAttribute(reader, expressId, name) || null : undefined;
 }
 

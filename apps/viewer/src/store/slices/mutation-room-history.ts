@@ -65,13 +65,21 @@ export function publishMove(state: ViewerState, modelId: string, mutation: Mutat
   entityId: number, delta: readonly [number, number, number]): void {
   state.mirrorPlacementEdit(modelId, entityId, [delta[0], delta[1], delta[2]]);
   const session = mirroredSession(state, modelId);
-  // A copy: the caller's delta array may be reused, as a drag's per-frame one is.
-  if (session && mutation) rememberPublishedEdit(mutation, session, { placement: { entityId, delta: [delta[0], delta[1], delta[2]] } });
+  // History holds the committed copy of an atomic edit's mutation, so the record goes on that one, found by id.
+  const committed = mutation && (state.undoStacks.get(modelId)?.find(entry => entry.id === mutation.id) ?? mutation);
+  // A copy of the delta: the caller's array may be reused, as a drag's per-frame one is.
+  if (session && committed) rememberPublishedEdit(committed, session, { placement: { entityId, delta: [delta[0], delta[1], delta[2]] } });
 }
 
 /** Send what an undo or redo step left, if it left anything; false when the room cannot be given the prior value. */
 function publishStep(state: ViewerState, modelId: string, mutation: Mutation, edit: PublishedEdit, direction: 'undo' | 'redo'): boolean {
   const { entityId, psetName, propName, attributeName } = mutation;
+  // A move's record sits on one mutation of its batch, whatever that mutation's own type.
+  if (edit.placement) {
+    const sign = direction === 'undo' ? -1 : 1, [x, y, z] = edit.placement.delta;
+    state.mirrorPlacementEdit(modelId, edit.placement.entityId, [sign * x, sign * y, sign * z]);
+    return true;
+  }
   if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (!attributeName) return true;
     if (direction === 'redo') {
@@ -82,12 +90,6 @@ function publishStep(state: ViewerState, modelId: string, mutation: Mutation, ed
     // entity's payload, a select or a reference slot. An unset prior publishes `$`, as clearing the attribute does.
     if (edit.attributePrior === undefined) return false;
     state.mirrorAttributeEdit(modelId, entityId, attributeName, edit.attributePrior ?? '$');
-    return true;
-  }
-  if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
-    if (!edit.placement) return true;
-    const sign = direction === 'undo' ? -1 : 1, [x, y, z] = edit.placement.delta;
-    state.mirrorPlacementEdit(modelId, edit.placement.entityId, [sign * x, sign * y, sign * z]);
     return true;
   }
   if (!psetName || !propName) return true;

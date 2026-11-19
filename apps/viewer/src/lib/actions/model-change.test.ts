@@ -161,3 +161,14 @@ test('undoing a reviewed edit to an unset attribute leaves it unset, not an empt
   useViewerStore.getState().undo('A');
   assert.deepEqual(views.get('A')!.getAttributeMutationsForEntity(101), [], 'no overlay is left, so the source $ stands');
 });
+
+test('undoing a reviewed edit restores an earlier session edit exactly, even a cleared one (#10810)', async () => {
+  const { views } = await install();
+  useViewerStore.getState().setAttribute('A', 101, 'Tag', '$', 'T1');
+  const preview = previewModelChanges(useViewerStore.getState(), batch([
+    { op: 'attribute.set', target: { globalId: W1 }, name: 'Tag', expected: '', value: 'T9' },
+  ]));
+  assert.ok(commitModelChanges(useViewerStore, preview, new Set([0]), 'test').ok);
+  useViewerStore.getState().undo('A');
+  assert.deepEqual(views.get('A')!.getAttributeMutationsForEntity(101), [{ name: 'Tag', value: '$' }], 'the clear stands, not the source T1');
+});

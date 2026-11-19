@@ -39,13 +39,23 @@ export const SPLIT_ONLY_REFS = ['temp/native-references/m1-native-unit-rectangle
  * `browserMemory`), cache counters (`*_cache_hits`/`_misses`) and timestamps (`*At`).
  * Measured in the first dispatched run (44547513676).
  */
-export const VOLATILE_KEY = /(?:^ms$|_ms$|Ms(?:P\d+)?$|Milliseconds$|^milliseconds$|^msPer|^timings?$|Bytes$|RssKiB$|^browserMemory$|_cache_(?:hits|misses)$|At$)/;
+// nativeProductsSha256 hashes the raw products.tsv, whose ms/cutMs columns differ every run
+// (that table itself is compared without them). The viewer records' `spans` (load-trace
+// telemetry; their number varies with scheduling) and `draws` (frames drawn while polling;
+// the test asserts only > 0) count frames, not results.
+export const VOLATILE_KEY = /(?:^ms$|_ms$|Ms(?:P\d+)?$|Milliseconds$|^milliseconds$|^msPer|^timings?$|Bytes$|RssKiB$|^browserMemory$|_cache_(?:hits|misses)$|At$|^nativeProductsSha256$|^spans$|^draws$)/;
 
 /**
  * The same, inside text: Rust Debug output carries `Instant { tv_sec: …, tv_nsec: … }`
- * in refusal messages and `…_ms: 12.3` in witness lines. The value becomes `_`.
+ * in refusal messages and `…_ms: 12.3` in witness lines, the viewer gives every
+ * loaded model a random UUID (`model.id`), and captured output carries the node pid
+ * and Vite's timestamped temp-config name. The value becomes `_`.
  */
 export const stripVolatileText = (text) => text
+  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '_uuid_')
+  .replace(/\(node:\d+\)/g, '(node:_)')
+  // Vite's per-start temp config name in stack traces: vite.config.ts.timestamp-<ms>-<hex>.mjs
+  .replace(/\.timestamp-\d+-[0-9a-f]+\.mjs/g, '.timestamp-_.mjs')
   .replace(/\b(tv_sec|tv_nsec|secs|nanos): \d+/g, '$1: _')
   .replace(/\b([A-Za-z_]*(?:_ms|Ms|Milliseconds|milliseconds)): -?[\d.]+(?:e[+-]?\d+)?/g, '$1: _')
   .replace(/\b(duration|elapsed): [\d.]+(?:ns|µs|us|ms|s)\b/g, '$1: _');
@@ -53,8 +63,12 @@ const readJson = (path, fallback) => (existsSync(path) ? JSON.parse(readFileSync
 const digest = (text) => createHash('sha256').update(text).digest('hex');
 
 /** `value` with every volatile field removed, at any depth. */
+// A record's captured process `output` prints the build's warnings in varying order:
+// compared as a multiset of lines, every line still counted.
+const LINES_AS_MULTISET = new Set(['output']);
 export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : typeof v === 'string' ? stripVolatileText(v) : v && typeof v === 'object'
-  ? Object.fromEntries(Object.entries(v).filter(([k]) => !VOLATILE_KEY.test(k)).map(([k, x]) => [k, stripVolatile(x)])) : v);
+  ? Object.fromEntries(Object.entries(v).filter(([k]) => !VOLATILE_KEY.test(k)).map(([k, x]) => [k, LINES_AS_MULTISET.has(k) && typeof x === 'string'
+    ? stripVolatileText(x).split('\n').sort().join('\n') : stripVolatile(x)])) : v);
 
 /**
  * m11-n-native.json is compared by its mesh INVARIANTS, not its bytes (owner

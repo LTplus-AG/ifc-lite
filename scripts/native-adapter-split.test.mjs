@@ -130,6 +130,15 @@ test('timings inside text (Rust Instant, *_ms fields, Durations) do not count, t
   assert.notEqual(timingFreeHash('products.tsv', tsv(1, 1)), timingFreeHash('products.tsv', Buffer.from('model\tmessage\nA\tRefused { code: 8 }\n')));
   const json = (rss, ms) => Buffer.from(JSON.stringify({ retained: { processMaxRssKiB: rss, productMilliseconds: ms, published: 2 } }));
   assert.equal(timingFreeHash('s.json', json(74820, 950.9)), timingFreeHash('s.json', json(74596, 683.9)));
+  // The viewer's per-load model UUID and the raw products.tsv hash are run-dependent; the model name is not.
+  const viewer = (id, sha, name) => Buffer.from(JSON.stringify({ model: { id, name }, nativeProductsSha256: sha }));
+  assert.equal(timingFreeHash('r.json', viewer('573e9f49-b653-4617-825f-32c70c137488', 'aa', 'A.ifc')), timingFreeHash('r.json', viewer('059a0902-0c68-4e7c-a81a-a94bb63b759f', 'bb', 'A.ifc')));
+  assert.notEqual(timingFreeHash('r.json', viewer('573e9f49-b653-4617-825f-32c70c137488', 'aa', 'A.ifc')), timingFreeHash('r.json', viewer('573e9f49-b653-4617-825f-32c70c137488', 'aa', 'B.ifc')));
+  // Load-trace spans and drawn-frame counts are telemetry; captured output compares as a multiset of lines.
+  const viewerRecord = (spans, draws, output, triangles) => Buffer.from(JSON.stringify({ spans, draws, output, shards: [{ triangles }] }));
+  assert.equal(timingFreeHash('s.json', viewerRecord(['a', 'b'], 1, '(node:30931) Warning\n- x\n- y\n at f (vite.config.ts.timestamp-1795108932722-6a4fbbf269381.mjs:247:24)', 12)), timingFreeHash('s.json', viewerRecord(['b', 'a', 'b'], 2, '(node:11107) Warning\n- y\n- x\n at f (vite.config.ts.timestamp-1795107135978-880e7ec5e58e5.mjs:247:24)', 12)));
+  assert.notEqual(timingFreeHash('s.json', viewerRecord([], 1, '- x\n- y', 12)), timingFreeHash('s.json', viewerRecord([], 1, '- x', 12)));
+  assert.notEqual(timingFreeHash('s.json', viewerRecord([], 1, '- x', 12)), timingFreeHash('s.json', viewerRecord([], 1, '- x', 13)));
   const layers = (p95, hits) => Buffer.from(JSON.stringify({ layers: { bandMsP95: p95, count: 3 }, phases: { point_cache_hits: hits } }));
   assert.equal(timingFreeHash('s.json', layers(463.5, 1090)), timingFreeHash('s.json', layers(304.9, 1084)));
   const line = (ms) => `sdk witness executed: m8 issue_3641 mask=0 codes_volumes=[(1, Some(2.5))] timings=NativeTimings { startup_and_qualification_ms: ${ms}, construction_count: 4 }\n`;

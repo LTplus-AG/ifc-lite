@@ -11,23 +11,23 @@
  * - A CRS with no unit there is read as metres, as the viewer reads it (`@ifc-lite/geo` `map-unit.ts`), and is
  *   given the merge's one {@link MetreUnit} so every reader agrees.
  * - A map conversion's Scale carries project-unit distances into map units, so it is divided by the length factor,
- *   except where the viewer ignores it (`getEffectiveAxisScales`, `apps/viewer/src/lib/geo/geo-scale.ts`): Scale
- *   unset or 1, map unit not the project unit, and no Factor bridging the two.
+ *   unless keeping it as written is what keeps the scale the viewer gives the model ({@link viewerAxisScales}).
  */
 
 import { extractGeoreferenceCandidatesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
-import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
+import { COORDINATE_OPERATION_STEP_TYPES, MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
 import { CRS_TYPES } from './merged-context.js';
 import { getStepAttr } from './merged-subcontext.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
 import { computeNormalizeFactor, toStepRealScaled } from './unit-normalize.js';
+import { viewerAxisScales } from './viewer-georef-scale.js';
 
 /** The metre unit a merge writes once, at output id `id`, when a CRS needed it. */
 export interface MetreUnit { id: number; used: boolean }
 
-/** A coordinate operation, with the Scale it is written with when that changes, or a CRS without a unit. */
-type GeorefRecord = { kind: 'operation'; scale?: number } | { kind: 'unitless' };
+/** A coordinate operation, with the Scale it is written with when that changes, or a CRS without a unit at `unitAttr`. */
+type GeorefRecord = { kind: 'operation'; scale?: number } | { kind: 'unitless'; unitAttr: number };
 
 /** How normalize treats one model's georeference records, by source id. */
 export interface GeorefNormalizePlan {
@@ -35,35 +35,34 @@ export interface GeorefNormalizePlan {
   metre: MetreUnit;
 }
 
-/** 0-based index of `IfcProjectedCRS.MapUnit` and `IfcGeographicCRS.HeightUnit` (IFC4, IFC4X3). */
-const CRS_UNIT_ATTR = 6;
+/** 0-based index of the CRS's length unit: `IfcProjectedCRS.MapUnit` (IFC4, IFC4X3), `IfcGeographicCRS.HeightUnit`. */
+const CRS_UNIT_ATTR: Record<string, number> = { IFCPROJECTEDCRS: 6, IFCGEOGRAPHICCRS: 5 };
 /** 0-based index of `IfcMapConversion.Scale`. */
 const SCALE_ATTR = 7;
-/** The viewer's tolerance for a Factor that bridges the units (`geo-scale.ts` `NEAR_UNITY`). */
-const NEAR_UNITY = 0.005;
+
+// @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
+const idsOf = (dataStore: IfcDataStore, types: Iterable<string>) => [...types].flatMap(type => dataStore.entityIndex.byType.get(type) ?? []);
 
 /** True when `dataStore` carries a coordinate operation. */
-export const hasCoordinateOperation = (dataStore: IfcDataStore): boolean =>
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
-  COORDINATE_OPERATION_STEP_TYPES.some(type => (dataStore.entityIndex.byType.get(type)?.length ?? 0) > 0);
+export const hasCoordinateOperation = (dataStore: IfcDataStore): boolean => idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES).length > 0;
 
 /** The {@link GeorefNormalizePlan} of a model in length unit `modelScale` normalized into `primaryScale`. */
 export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit, modelScale: number, primaryScale: number): GeorefNormalizePlan {
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
-  const { byType } = dataStore.entityIndex;
   const records = new Map<number, GeorefRecord>();
-  for (const id of COORDINATE_OPERATION_STEP_TYPES.flatMap(type => byType.get(type) ?? [])) records.set(id, { kind: 'operation' });
-  for (const id of [...CRS_TYPES].flatMap(type => byType.get(type) ?? [])) {
-    if ((getStepAttr(dataStore, id, CRS_UNIT_ATTR) ?? '$') === '$') records.set(id, { kind: 'unitless' });
+  for (const id of idsOf(dataStore, COORDINATE_OPERATION_STEP_TYPES)) records.set(id, { kind: 'operation' });
+  for (const type of CRS_TYPES) {
+    const unitAttr = CRS_UNIT_ATTR[type];
+    for (const id of idsOf(dataStore, [type])) if ((getStepAttr(dataStore, id, unitAttr) ?? '$') === '$') records.set(id, { kind: 'unitless', unitAttr });
   }
+  // The Scale that keeps the viewer's scale: divided by the length factor (the spec reading), else as written.
   const lengthFactor = computeNormalizeFactor(modelScale, primaryScale);
-  for (const { conversion: c, targetCRS } of extractGeoreferenceCandidatesOnDemand(dataStore)?.mapConversions ?? []) {
-    const mapScale = targetCRS?.mapUnitScale && targetCRS.mapUnitScale > 0 ? targetCRS.mapUnitScale : 1;
-    const scaleUnset = !(c.scale != null && Math.abs(c.scale - 1) > 1e-9);
-    const factorBridges = [c.factorX, c.factorY, c.factorZ]
-      .some(factor => factor !== undefined && Math.abs((c.scale ?? 1) * factor * mapScale / modelScale - 1) <= NEAR_UNITY);
-    if (scaleUnset && Math.abs(mapScale - modelScale) > 1e-9 && !factorBridges) continue;
-    records.set(c.id, { kind: 'operation', scale: (c.scale ?? 1) / lengthFactor });
+  const conversions = idsOf(dataStore, MAP_CONVERSION_STEP_TYPES).length ? extractGeoreferenceCandidatesOnDemand(dataStore)?.mapConversions : [];
+  for (const { conversion, targetCRS } of conversions ?? []) {
+    const alone = viewerAxisScales(conversion, targetCRS?.mapUnitScale, modelScale);
+    const keeps = (scale: number | undefined) => viewerAxisScales({ ...conversion, scale }, targetCRS?.mapUnitScale, primaryScale)
+      .every((value, axis) => Math.abs(value - alone[axis]) <= 1e-9 * Math.max(1, Math.abs(alone[axis])));
+    const divided = (conversion.scale ?? 1) / lengthFactor;
+    if (keeps(divided) || !keeps(conversion.scale)) records.set(conversion.id, { kind: 'operation', scale: divided });
   }
   return { records, metre };
 }
@@ -79,7 +78,7 @@ export function normalizeGeorefRecord(text: string, sourceId: number, plan: Geor
     const { scale } = record;
     return scale === undefined ? text : withArgs(text, SCALE_ATTR, args => { args[SCALE_ATTR] = toStepRealScaled(scale); });
   }
-  return withArgs(text, CRS_UNIT_ATTR, args => { args[CRS_UNIT_ATTR] = `#${plan.metre.id}`; plan.metre.used = true; });
+  return withArgs(text, record.unitAttr, args => { args[record.unitAttr] = `#${plan.metre.id}`; plan.metre.used = true; });
 }
 
 /** Appends the merge's {@link MetreUnit} when a CRS was given it. */

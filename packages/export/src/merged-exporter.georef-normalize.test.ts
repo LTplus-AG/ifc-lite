@@ -8,9 +8,14 @@
  * left as written.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IfcParser, extractGeoreferenceCandidatesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
+import { viewerAxisScales, viewerMapUnitScale } from './viewer-georef-scale.js';
+// The viewer's own scale rule is the oracle. Its file re-exports from `@ifc-lite/geo/proj4`, which export does not
+// depend on, so that one module is served from geo's source.
+vi.mock('@ifc-lite/geo/proj4', () => import('../../geo/src/map-unit.js'));
+import { getEffectiveAxisScales } from '../../../apps/viewer/src/lib/geo/geo-scale.js';
 
 type Unit = 'm' | 'mm';
 interface Spec { unit: Unit; mapUnit: Unit | '$'; easting: number; scale?: string; schema?: 'IFC4' | 'IFC4X3'; operation?: string }
@@ -61,17 +66,11 @@ function viewerOrigins(store: IfcDataStore): number[][] {
   });
 }
 
-/**
- * The scale the viewer gives each map conversion's model geometry (`getEffectiveAxisScales`,
- * `apps/viewer/src/lib/geo/geo-scale.ts`, Factors 1): `Scale · mapUnit / projectUnit`, or 1 when Scale is unset or
- * 1 and the two units differ.
- */
-function viewerScales(store: IfcDataStore): number[] {
-  const projectUnit = store.lengthUnitScale ?? 1;
-  return (extractGeoreferenceCandidatesOnDemand(store)?.mapConversions ?? []).map(({ conversion: { scale }, targetCRS }) => {
-    const mapUnit = targetCRS?.mapUnitScale && targetCRS.mapUnitScale > 0 ? targetCRS.mapUnitScale : 1;
-    const unset = !(scale != null && Math.abs(scale - 1) > 1e-9);
-    return unset && Math.abs(mapUnit - projectUnit) > 1e-9 ? 1 : (scale ?? 1) * mapUnit / projectUnit;
+/** The scale the viewer gives each map conversion's geometry, by the viewer's own rule. */
+function viewerScales(store: IfcDataStore): string[] {
+  return (extractGeoreferenceCandidatesOnDemand(store)?.mapConversions ?? []).map(({ conversion, targetCRS }) => {
+    const { x, y, z } = getEffectiveAxisScales(conversion, viewerMapUnitScale(targetCRS?.mapUnitScale), store.lengthUnitScale ?? 1);
+    return [x, y, z].map(value => value.toPrecision(9)).join(',');
   });
 }
 
@@ -104,7 +103,7 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
   for (const [primary, later] of [['m', 'mm'], ['mm', 'm']] as const) {
     for (const mapUnit of [later, primary, '$'] as const) {
       const bridging = SCALE[later] / SCALE[mapUnit];
-      for (const scale of new Set(['$', '1.', Number.isInteger(bridging) ? `${bridging}.` : `${bridging}`])) {
+      for (const scale of new Set(['$', '1.', '0.9996', Number.isInteger(bridging) ? `${bridging}.` : `${bridging}`])) {
         scaleCases.push([`${later} into ${primary}, map unit ${mapUnit}, Scale ${scale}`,
           { unit: primary, mapUnit: primary, easting: 2600000 }, { unit: later, mapUnit, easting: 2600100, scale }]);
       }
@@ -114,7 +113,46 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
   it.each(scaleCases)('keeps the scale the viewer gives each model: %s', async (_, primary, later) => {
     const alone = [...viewerScales(await parse(model('a', primary))), ...viewerScales(await parse(model('b', later)))];
     const merged = viewerScales(await parse(await merge([primary, later])));
-    expect(merged.map(scale => scale.toPrecision(9))).toEqual(alone.map(scale => scale.toPrecision(9)));
+    expect(merged).toEqual(alone);
+  });
+
+  it('keeps apart two equal records the viewer scales differently in their own units', async () => {
+    // Same offsets, Scale and MapUnit `$`, so the same origin; but 0.9996 scales metres and millimetres differently.
+    const primary: Spec = { unit: 'm', mapUnit: '$', easting: 2600000, scale: '0.9996' };
+    const later: Spec = { unit: 'mm', mapUnit: '$', easting: 2600000, scale: '0.9996' };
+    const alone = [...viewerScales(await parse(model('a', primary))), ...viewerScales(await parse(model('b', later)))];
+    expect(viewerScales(await parse(await merge([primary, later])))).toEqual(alone);
+  });
+
+  it('copies the viewer\'s scale rule exactly', () => {
+    for (const scale of [undefined, 1, 0.001, 0.9996, 1000]) {
+      for (const factor of [undefined, 1, 0.3048, 0.9996]) {
+        for (const [mapUnit, project] of [[1, 1], [1, 0.001], [0.001, 1], [0.3048, 0.001], [undefined, 0.3048]] as const) {
+          const conversion = { scale, factorX: factor, factorY: factor, factorZ: factor === undefined ? undefined : 1 };
+          const { x, y, z } = getEffectiveAxisScales(conversion, viewerMapUnitScale(mapUnit), project);
+          expect(viewerAxisScales(conversion, mapUnit, project)).toEqual([x, y, z]);
+        }
+      }
+    }
+  });
+
+  it.each([['factors bridging feet', 'ft'], ['grid factors', 'grid']])('keeps the viewer\'s scale with %s', async (_, kind) => {
+    const factors = kind === 'ft' ? '0.3048,0.3048,1.' : '0.9996,0.9996,1.';
+    const operation = `#21=IFCMAPCONVERSIONSCALED(#14,#20,2600100.,1200000.,500.,1.,0.,$,${factors});`;
+    const primary: Spec = { unit: 'm', mapUnit: 'm', easting: 2600000, schema: 'IFC4X3' };
+    const later: Spec = { unit: 'mm', mapUnit: 'm', easting: 0, schema: 'IFC4X3', operation };
+    const alone = [...viewerScales(await parse(model('a', primary))), ...viewerScales(await parse(model('b', later)))];
+    expect(viewerScales(await parse(await merge([primary, later])))).toEqual(alone);
+  });
+
+  it('gives a geographic CRS without a height unit the metre unit', async () => {
+    const operation = `#21=IFCRIGIDOPERATION(#14,#22,IFCPLANEANGLEMEASURE(8.5),IFCPLANEANGLEMEASURE(47.4),500.);
+#22=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,$,$);`;
+    const merged = await merge([{ unit: 'm', mapUnit: 'm', easting: 2600000, schema: 'IFC4X3' },
+      { unit: 'mm', mapUnit: 'mm', easting: 0, schema: 'IFC4X3', operation }]);
+    const metre = [...merged.matchAll(METRE_UNIT)].at(-1)![1];
+    expect(merged).toMatch(new RegExp(`=IFCGEOGRAPHICCRS\\('EPSG:4326',\\$,\\$,\\$,\\$,#${metre}\\);`));
+    expect(merged).toMatch(/=IFCRIGIDOPERATION\(#\d+,#\d+,IFCPLANEANGLEMEASURE\(8\.5\),IFCPLANEANGLEMEASURE\(47\.4\),500\.\);/);
   });
 
   it('gives a CRS without a map unit one explicit metre unit, and none when no CRS needs it', async () => {

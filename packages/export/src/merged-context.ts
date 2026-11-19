@@ -33,8 +33,8 @@
  * same.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { viewerAxisScales } from './viewer-georef-scale.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
 import { BARE_REF_RE } from './reference-collector.js';
@@ -164,13 +164,13 @@ export interface GeorefSignature { placement: string; unitScale: number | null }
 
 /**
  * The {@link GeorefSignature} of `dataStore`'s first representation context, or null when no coordinate operation
- * sits on it. It reads the parser's georeference, which resolves the map unit, and fills IFC defaults (scale 1, no
- * rotation), so two spellings of one georeference agree; a CRS without a map unit is read as metres, as the viewer
- * reads it (#10886). An operation the parser does not read as the model's georeference, and a geographic CRS (whose
+ * sits on it. It reads the parser's georeference, which resolves the map unit, fills IFC defaults (no rotation) and
+ * takes the scale the viewer gives geometry in `lengthUnitScale`, so two spellings of one georeference agree; a CRS
+ * without a map unit is read as metres, as the viewer reads it (#10886). An operation the parser does not read as the model's georeference, and a geographic CRS (whose
  * height unit it does not read), match no other. Two contexts in one frame with different georeferences
  * place the same coordinates at two places on the map, so they must not be unified (#10798).
  */
-export function resolveModelContextGeorefSignature(dataStore: IfcDataStore): GeorefSignature | null {
+export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, lengthUnitScale: number): GeorefSignature | null {
   const contextId = firstContextId(dataStore);
   if (contextId === undefined || contextOperation(dataStore, contextId) === null) return null;
   const { mapConversion: op, projectedCRS: crs } = extractGeoreferencingOnDemand(dataStore) ?? {};
@@ -178,7 +178,7 @@ export function resolveModelContextGeorefSignature(dataStore: IfcDataStore): Geo
   return {
     placement: JSON.stringify([op.operation ?? 'mapConversion', crs?.kind, crs?.name, crs?.geodeticDatum, crs?.verticalDatum,
       crs?.mapProjection, crs?.mapZone, crs?.wellKnownText, op.eastings, op.northings, op.orthogonalHeight,
-      op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, op.scale ?? 1, op.factorX ?? 1, op.factorY ?? 1, op.factorZ ?? 1]),
+      op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, ...viewerAxisScales(op, crs?.mapUnitScale, lengthUnitScale)]),
     unitScale: crs?.mapUnitResolved === false || crs?.kind === 'geographic' ? null : crs?.mapUnitScale ?? 1,
   };
 }
@@ -256,7 +256,7 @@ export function resolvePrimaryContextState(
   return {
     subContextsByKey: groupSubContextsByKey(dataStore, subContextIds),
     contextWcs: resolveModelContextWcs(dataStore, primaryScale),
-    contextGeoref: resolveModelContextGeorefSignature(dataStore),
+    contextGeoref: resolveModelContextGeorefSignature(dataStore, primaryScale),
     contextOperation: contextId === undefined ? null : offsetOperation(contextOperation(dataStore, contextId), offset),
   };
 }
@@ -337,7 +337,7 @@ export function planInfrastructureUnify(
   // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
   // Two georeferences that differ keep this model's context, and its conversion with it, as its own root (#10798).
-  const georef = resolveModelContextGeorefSignature(dataStore);
+  const georef = resolveModelContextGeorefSignature(dataStore, lengthUnitScale);
   const modelContextIds = modelInfra.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
   // A context holds one coordinate operation (HasCoordinateOperation SET [0:1], #10873). Two equal in every attribute,
   // both into a CRS that starts no operation of its own, become one below; any other pair keeps this context apart.

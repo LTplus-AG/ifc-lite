@@ -99,7 +99,7 @@ export interface BatchedMesh {
    *  modelIndex here rather than treating the batch as single-model. Absent
    *  entries (or `undefined` values) mean "unscoped": legacy or single-model. */
   modelIndices?: (number | undefined)[];
-  laneIds?: number[]; // sorted non-primary vertex-lane ids of colour-merged pieces; see batch-entities.ts (#10653)
+  laneIds?: number[]; // sorted vertex-lane ids pieces carry besides their own primary; see batch-entities.ts (#10653)
   bindGroup?: GPUBindGroup;
   /** This batch's mesh uniform block in the shared arena (mesh-uniform-arena.ts). */
   uniformSlot?: MeshUniformSlot;

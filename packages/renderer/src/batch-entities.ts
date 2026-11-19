@@ -24,21 +24,17 @@ export interface BatchEntityIds {
 }
 
 /**
- * Sorted unique vertex-lane ids of `meshes` that are not a primary entry of
- * the batch, or undefined when there are none (every in-tree producer).
+ * Sorted unique vertex-lane ids of `meshes` other than each piece's own
+ * primary id, or undefined when there are none (every in-tree producer). An id
+ * that is also another piece's primary is kept: the piece still hosts that
+ * entity's geometry, so the batch is colour-merged and cannot be split by piece.
  */
 export function foreignLaneIds(meshes: readonly Pick<MeshData, 'expressId' | 'entityIds'>[]): number[] | undefined {
-  let primary: Set<number> | undefined;
   let foreign: Set<number> | undefined;
   for (const mesh of meshes) {
     const ids = mesh.entityIds;
     if (!ids) continue;
-    for (let i = 0; i < ids.length; i++) {
-      const id = ids[i]!;
-      if (id === mesh.expressId) continue;
-      primary ??= new Set(meshes.map((m) => m.expressId));
-      if (!primary.has(id)) (foreign ??= new Set()).add(id);
-    }
+    for (let i = 0; i < ids.length; i++) if (ids[i] !== mesh.expressId) (foreign ??= new Set()).add(ids[i]!);
   }
   return foreign ? [...foreign].sort((a, b) => a - b) : undefined;
 }
@@ -51,13 +47,13 @@ export function laneIdsOf(meshes: readonly Pick<MeshData, 'expressId' | 'entityI
 
 const cache = new WeakMap<object, readonly number[]>();
 
-/** Primary and secondary ids of a batch; the primary list itself when it has no secondary ids. */
+/** Primary and secondary ids of a batch, each once; the primary list itself when it has no secondary ids. */
 export function batchEntities(batch: BatchEntityIds): readonly number[] {
   const lanes = batch.laneIds;
   if (!lanes || lanes.length === 0) return batch.expressIds;
   let all = cache.get(batch);
   if (!all) {
-    all = [...batch.expressIds, ...lanes];
+    all = [...new Set([...batch.expressIds, ...lanes])];
     cache.set(batch, all);
   }
   return all;

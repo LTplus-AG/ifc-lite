@@ -149,11 +149,14 @@ export function collectShadowOccluders(
     const entities = batchEntities(batch); // with secondary lane ids, as the colour pass classifies (#10653)
     const visible = visibleCount(entities, visibility);
     if (visible === 0) continue;
+    const anchor = batchEntityIdAnchor(batch), filtered = visible < entities.length;
+    // A partly hidden batch with no lane anchor cannot be tested per fragment: left out, never cast whole (#10653).
+    if (filtered && anchor === null) continue;
     const q = batch.quantized;
     draws.push({
       kind: q ? 'quantized' : 'flat',
-      entityIdAnchor: batchEntityIdAnchor(batch) ?? 0xFFFFFFFF,
-      ...(visible < entities.length ? { visibilityFiltered: true } : {}),
+      entityIdAnchor: anchor ?? 0xFFFFFFFF,
+      ...(filtered ? { visibilityFiltered: true } : {}),
       vertexBuffer: batch.vertexBuffer,
       indexBuffer: batch.indexBuffer,
       indexCount: batch.indexCount,

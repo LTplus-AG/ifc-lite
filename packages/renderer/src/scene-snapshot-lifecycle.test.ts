@@ -408,6 +408,12 @@ describe('colour-merged lane ids survive finalize, rebuild, snapshot and release
     assert.notStrictEqual(classifyBatch(batch, new Set([1]), null), 'none');
   });
 
+  it('marks a batch colour-merged when a piece hosts another piece\'s entity (review on #10785)', async () => {
+    const device = stubDevice();
+    await captureScene([merged(), triangle(2, 2)], device);
+    assert.deepStrictEqual(holding(lastFinalized).laneIds, [2], 'entity 2 also lives in piece 1');
+  });
+
   it('keeps laneIds when an edit rebuilds the batch through createSceneBatch', async () => {
     const device = stubDevice();
     await captureScene([merged(), triangle(3, 1)], device);

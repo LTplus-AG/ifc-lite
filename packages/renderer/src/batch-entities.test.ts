@@ -24,7 +24,10 @@ const merged = (laneIds?: number[], extra: Partial<BatchedMesh> = {}): BatchedMe
 describe('colour-merged batches decide by every vertex-lane entity (#10653)', () => {
   it('records the non-primary lane ids of the pieces, sorted and unique', () => {
     const piece = (expressId: number, entityIds?: number[]) => ({ expressId, ...(entityIds ? { entityIds: new Uint32Array(entityIds) } : {}) });
-    assert.deepEqual(foreignLaneIds([piece(1, [1, 5, 2, 5]), piece(2, [2]), piece(3)]), [5], 'a lane id that is another piece\'s primary is already listed');
+    // A lane id that is also another piece's primary still marks the batch colour-merged (review on #10785):
+    // piece 1 hosts entity 2's geometry, so a per-piece split could not keep 2 apart.
+    assert.deepEqual(foreignLaneIds([piece(1, [1, 5, 2, 5]), piece(2, [2]), piece(3)]), [2, 5]);
+    assert.deepEqual(batchEntities(merged([2], { expressIds: [1, 2], modelIndices: [0, 0] })), [1, 2], 'each entity once');
     assert.equal(foreignLaneIds([piece(1, [1, 1]), piece(3)]), undefined, 'own-id lanes (every in-tree producer) add nothing');
     assert.deepEqual(batchEntities(merged([2])), [1, 2]);
     const plain = merged();
@@ -52,6 +55,13 @@ describe('colour-merged batches decide by every vertex-lane entity (#10653)', ()
     const [draw] = collectShadowOccluders({ batches: [batch], instanced: [], textured: [] } as unknown as Parameters<typeof collectShadowOccluders>[0], { hiddenIds: new Set([2]) });
     assert.equal(draw?.visibilityFiltered, true);
     assert.equal(collectShadowOccluders({ batches: [batch], instanced: [], textured: [] } as unknown as Parameters<typeof collectShadowOccluders>[0], { hiddenIds: new Set([1]) }).length, 1, 'the secondary still casts');
+  });
+
+  it('casts no filtered shadow a cross-page secondary would resolve wrongly (review on #10785)', () => {
+    const batch = merged([ENTITY_LANE_ID_SPAN + 2]);
+    const sources = { batches: [batch], instanced: [], textured: [] } as unknown as Parameters<typeof collectShadowOccluders>[0];
+    assert.deepEqual(collectShadowOccluders(sources, { hiddenIds: new Set([ENTITY_LANE_ID_SPAN + 2]) }), [], 'partly hidden with no anchor: left out');
+    assert.equal(collectShadowOccluders(sources, {}).length, 1, 'unfiltered it still casts');
   });
 
   it('the lane anchor covers the secondary ids, so a cross-page secondary refuses the GPU test', () => {

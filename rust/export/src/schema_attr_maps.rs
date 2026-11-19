@@ -82,12 +82,31 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     AttrMap { retyped: &["RateDateTime"], ..same("IFCCURRENCYRELATIONSHIP") },
     same("IFCDOCUMENTINFORMATIONRELATIONSHIP"),
     AttrMap { retyped: &["VersionDate"], up_only: &["Publisher"], ..same("IFCLIBRARYINFORMATION") },
-    // IFC4 deleted this IFC2X3 subtype and made the abstract supertype concrete
-    // in its place, so a downgrade writes the deleted subtype
-    // (`schema_convert::map_4_to_2x3`). Downgrade only: nothing renames the
-    // IFC2X3 subtype on an upgrade. IfcMaterialProperties is left unmapped
-    // here: its Material referent must be resolved first (#10763 follow-up).
+    // IFC4 deleted these IFC2X3 subtypes and made the abstract supertype
+    // concrete in their place. A downgrade writes IfcGeneralProfileProperties
+    // (`schema_convert::map_4_to_2x3`); an IfcMaterialProperties downgrade waits
+    // on its Material referent (#10911). An upgrade writes every one as its IFC4
+    // supertype (`upgrade_type`, #10777). The typed subtypes keep only
+    // `Material` or `ProfileDefinition`: IFC4 holds their measures as
+    // IfcProperty records, so each is counted dropped.
+    AttrMap {
+        renamed: &[("ExtendedProperties", "Properties")],
+        ..map("IFCEXTENDEDMATERIALPROPERTIES", "IFCMATERIALPROPERTIES")
+    },
     map("IFCGENERALPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCMECHANICALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCMECHANICALCONCRETEMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCMECHANICALSTEELMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCTHERMALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCHYGROSCOPICMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCGENERALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCOPTICALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCWATERPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCFUELPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCPRODUCTSOFCOMBUSTIONPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCSTRUCTURALPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCSTRUCTURALSTEELPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCRIBPLATEPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },
     same("IFCPROPERTYDEPENDENCYRELATIONSHIP"),
@@ -105,6 +124,12 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
         ..same("IFCDOCUMENTINFORMATION")
     },
 ];
+
+/// The IFC4 type an IFC2X3 type IFC4 deleted is written as on an upgrade: the
+/// map that pairs it with another name (#10777).
+pub(crate) fn upgrade_type(ifc2x3: &str) -> Option<&'static str> {
+    ATTR_MAPS.iter().find(|m| m.ifc2x3 == ifc2x3 && m.ifc4 != m.ifc2x3).map(|m| m.ifc4)
+}
 
 /// The map for writing `entity_type` as `new_type` from `cfrom` to `cto`, and
 /// whether it runs upward (IFC2X3 source).

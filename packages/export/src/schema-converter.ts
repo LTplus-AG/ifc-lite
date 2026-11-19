@@ -26,7 +26,7 @@ import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
-import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-converter-attr-maps.js';
+import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
@@ -165,7 +165,7 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
-  const mepTarget = toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined;
+  const mepTarget = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
   if (mepTarget) return mepTarget;
 
   const map = getConversionMap(fromSchema, toSchema);

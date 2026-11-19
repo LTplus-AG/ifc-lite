@@ -15,7 +15,7 @@
 //! - C, the exact tail: dense-host refinement and cutter preparation, then the
 //!   coaxial union, the disjoint batch, the sequential exact cut and the #635
 //!   AABB fallback (`strategy::exact::ExactTail`).
-//! - D, post passes on the exact cut: failure drain, sliver refinement,
+//! - D, post passes on the exact cut: failure drain, cut vertex canonicalization,
 //!   malformed recut, flap clip, the shard sweep when a pass changed the host,
 //!   and the cut-effect record (`post::finish`).
 //!

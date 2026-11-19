@@ -37,11 +37,11 @@ export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: st
 export type FiledProcessedModelRequest = ProcessedModelRequest & Pick<ProcessedModelSource, 'serverUrl'>;
 let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
-const hostRequestListeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`); a model named in the page URL then yields. */
 let hostRequested = false;
 type PageUrlParameter = 'processed' | 'model' | 'room';
 const ignoredLogged = new Set<PageUrlParameter>();
+const hostRequestListeners = new Set<() => void>();
 
 /** The processing server the viewer asks: the runtime value, else the build's `VITE_IFC_SERVER_URL`. */
 export function getProcessingServerUrl(): string {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { CloudUpload } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { openSourceWriteBack } from '@/services/sources/source-writeback-command';
@@ -16,11 +16,11 @@ export function SourceWriteBackAction({ modelId }: { modelId: string }) {
   const provider = tag && host?.get(tag.provider);
   if (!model?.ifcDataStore || !tag?.revisionId || !provider?.uploadFile ||
       !provider.manifest.capabilities.writeBack?.length || !/\.ifc$/i.test(model.sourceFile?.name ?? model.name)) return null;
-  return <Button type="button" variant="ghost" size="icon-xs" className="size-6"
-    title={t('sources.writeBack.open')} aria-label={t('sources.writeBack.openModel', { name: model.name })}
+  return <IconButton size="icon-xs" className="size-6"
+    tooltip={t('sources.writeBack.open')} label={t('sources.writeBack.openModel', { name: model.name })}
     onClick={event => { event.stopPropagation(); openSourceWriteBack(modelId); }}>
     <CloudUpload aria-hidden />
-  </Button>;
+  </IconButton>;
 }
 
 /** Also keeps the action reachable in single-model hierarchy mode. */

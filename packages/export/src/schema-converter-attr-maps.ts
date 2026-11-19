@@ -21,8 +21,7 @@
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { list } from './schema-ifc2x3-records.js';
 import { stepRecordHead } from './step-record-frame.js';
-import { skipStepComment } from './step-comment-skip.js';
-import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { holdsValue, withoutComments } from './step-comment-skip.js';
 
 /** One reviewed IFC2X3 <-> IFC4 map. A same-named attribute in both lists is
  *  carried unless listed in `retyped` or, on a downgrade, `upOnly`. */
@@ -143,36 +142,11 @@ function sourceOf(map: AttrMap, up: boolean, name: string, src: readonly string[
   return carried && src.includes(name) ? { name, how: 'value' } : undefined;
 }
 
-/** A slot that carries information: not `$`, `*` or empty once comments go
- *  (#10779). Twin of Rust `schema_convert::holds_value`. */
-function holdsValue(slot: string): boolean {
-  const v = slot.includes('/*') ? withoutComments(slot) : slot.trim();
-  return v !== '' && v !== '$' && v !== '*';
-}
-
 /** The first member of a STEP list, or the value itself when it is not one. */
 function firstMember(value: string): string {
   const members = list(value);
   if (members === null) return value;
   return members.find(holdsValue)?.trim() ?? '$';
-}
-
-/** `value` with each `/* ... *\/` comment read as a space, trimmed. Literals and comments
- *  end by the shared rules; an unclosed one runs to the end. Twin of Rust
- *  `without_comments`. */
-function withoutComments(value: string): string {
-  let out = '';
-  let kept = 0;
-  for (let i = 0; i < value.length;) {
-    if (value[i] === "'") {
-      const end = stepStringLiteralEnd(value, i);
-      i = end === -1 ? value.length : end;
-    } else if (value.startsWith('/*', i)) {
-      out += `${value.slice(kept, i)} `; // a space keeps the tokens the comment parted apart
-      i = kept = skipStepComment(value, i);
-    } else i++;
-  }
-  return (out + value.slice(kept)).trim();
 }
 
 /** `values` (in the source layout `src`) written in the target layout `tgt`.

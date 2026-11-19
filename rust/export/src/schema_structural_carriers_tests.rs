@@ -180,6 +180,17 @@ fn commented_varying_action_converts_before_its_causes_is_written_10597() {
     assert!(relationships(&up)[0].ends_with("'Causes',$,(#20),$,#30);"), "{up}");
 }
 
+/// #10779: a CausedBy holding only a comment and `$` is no value, so a converted
+/// varying action neither warns about it nor counts it dropped.
+#[test]
+fn a_commented_empty_caused_by_on_a_varying_action_is_not_reported_10779() {
+    let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");
+    let action = VARYING.replace(",.F.,#20,.TRUE_LENGTH.", ",.F.,/* none */$,.TRUE_LENGTH.");
+    let (up, warnings) = convert(&model("IFC2X3", &[&geometry, REACTION, &action].join("\n")), "IFC4");
+    assert!(record(&up, 30).starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{up}");
+    assert!(!warnings.contains("CausedBy has no slot"), "{warnings}");
+}
+
 #[test]
 fn the_last_id_goes_to_the_varying_load_configuration_10597() {
     let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");

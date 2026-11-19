@@ -56,6 +56,50 @@ async function readAll(tap: StoreGeometryBackingTap, id: string): Promise<MeshDa
 }
 
 describe('generation replacement after a CPU release', () => {
+  for (const clear of ['undefined', 'delete'] as const) {
+    it(`#10888 replay preserves an origin cleared by ${clear}`, async () => {
+      const list = [mesh(1, 4)];
+      const store = setup('cleared-origin', list);
+      const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+      try {
+        await tap.seal();
+        releaseCpuMeshBuffers(list);
+        if (clear === 'delete') delete list[0].origin;
+        else list[0].origin = undefined;
+        store.setState({ geometryContentVersion: 1 });
+        const [status] = await tap.seal();
+        assert.equal(status.complete, true, status.error ?? 'replacement should be complete');
+        const [restored] = await readAll(tap, 'cleared-origin');
+        assert.equal(restored.origin, undefined, 'a cleared origin must not reuse the old offset');
+        assert.deepEqual([...restored.positions], [0, 0, 4, 1, 0, 4, 0, 1, 4]);
+      } finally {
+        await tap.stop();
+      }
+    });
+  }
+
+  it('#10888 undo can restore original released objects after sealing a recolour', async () => {
+    const list = [mesh(1, 2), mesh(2, 5)];
+    const original = list.map((m) => [...m.positions]);
+    const store = setup('undo', list);
+    const tap = await StoreGeometryBackingTap.start(store, { database: database(), chunkBytes: 64 });
+    try {
+      await tap.seal();
+      releaseCpuMeshBuffers(list);
+      const recoloured = list.map((m) => carryReleasedMesh(m, { ...m, color: [1, 0, 0, 1] }));
+      store.setState({ models: new Map([['undo', { geometryResult: { meshes: recoloured }, idOffset: 0 }]]) });
+      assert.equal((await tap.seal())[0].complete, true);
+      store.setState({ models: new Map([['undo', { geometryResult: { meshes: list }, idOffset: 0 }]]) });
+      const [status] = await tap.seal();
+      assert.equal(status.complete, true, status.error ?? 'undo should carry the acknowledged geometry');
+      const restored = await readAll(tap, 'undo');
+      assert.deepEqual(restored.map((m) => [...m.positions]), original, 'each ancestor maps to its own stored piece');
+      assert.deepEqual(restored.map((m) => m.color), [[1, 1, 1, 1], [1, 1, 1, 1]], 'undo restores the original colour');
+    } finally {
+      await tap.stop();
+    }
+  });
+
   it('a recolour of released meshes keeps the exact arrays and takes the new colour, chunk by chunk', async () => {
     const list = Array.from({ length: 6 }, (_, i) => mesh(i + 1, i));
     const bytes = list.map((m) => [...m.positions]);

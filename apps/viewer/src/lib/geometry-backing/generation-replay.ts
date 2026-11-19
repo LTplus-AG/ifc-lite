@@ -27,13 +27,13 @@ const RECORD_FIELDS = new Set<keyof MeshData>(['positions', 'normals', 'indices'
 
 /** The released store mesh's current scalars over its backed record's arrays. */
 export function mergeReleased(store: MeshData, record: MeshData): MeshData {
-  const merged: MeshData = { ...record };
-  for (const key of Object.keys(store) as Array<keyof MeshData>) {
-    if (RECORD_FIELDS.has(key)) continue;
-    const value = store[key];
-    // Lanes the release leaves on the store mesh (entityIds, uvs) are current there.
-    if (value === undefined) continue;
-    (merged as unknown as Record<string, unknown>)[key] = value;
+  // The current store is authoritative even when an optional scalar was
+  // cleared or deleted. Only released array-bearing fields come from disk.
+  const merged: MeshData = { ...store };
+  const fields = merged as unknown as Partial<Record<keyof MeshData, unknown>>;
+  for (const key of RECORD_FIELDS) {
+    if (Object.hasOwn(record, key)) fields[key] = record[key];
+    else delete fields[key];
   }
   return merged;
 }
@@ -46,6 +46,11 @@ export async function* replayStoreList(
 ): AsyncGenerator<MeshData[]> {
   const index = new Map<MeshData, number>();
   (previous.meshes ?? []).forEach((mesh, i) => index.set(mesh, i));
+  // An undo can restore an ancestor of the acknowledged copy. Index that
+  // direction too; direct members retain priority over an ancestor alias.
+  (previous.meshes ?? []).forEach((mesh, i) => {
+    for (const source of releasedAncestry(mesh)) if (!index.has(source)) index.set(source, i);
+  });
   const backing = previous.backing;
   const starts: number[] = [];
   let total = 0;

@@ -161,6 +161,13 @@ ENDSEC;\nEND-ISO`));
     expect(reopened.map(mesh => mesh.expressId).sort((a,b) => a-b)).toEqual([50,51,52]);
     expect(reopened.filter(mesh => mesh.expressId === 51).reduce((sum,mesh) => sum+meshVolume(mesh),0)).toBeCloseTo(38,4);
   });
+  it('keeps the georeference through a crop by real planes (#10669)', async () => {
+    // A merged export crops each sectioned model after its georeference edits are baked in, so the crop must keep them.
+    const georeferenced = new TextDecoder().decode(source()).replace('ENDSEC;\nEND-ISO', "#100=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);\n#101=IFCMAPCONVERSION(#10,#100,2600000.,1200000.,500.,1.,0.,1.);\nENDSEC;\nEND-ISO");
+    const store = await parse((await exportSectionedStep(new TextEncoder().encode(georeferenced), { planes })).content);
+    expect(store.entityIndex.byType.get('IFCMAPCONVERSION')).toHaveLength(1);
+    expect(store.entityIndex.byType.get('IFCPROJECTEDCRS')).toHaveLength(1);
+  });
   it('reopens a closed palette-split cube with its cut face and both authored colours', async () => {
     const bytes = new Uint8Array(readFileSync(new URL('../../../rust/export/tests/fixtures/section_palette.ifc', import.meta.url)));
     const result = await exportSectionedStep(bytes, {planes:[{normal:[1,0,0],offset:0.5}]});

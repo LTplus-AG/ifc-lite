@@ -99,7 +99,9 @@ export class MaterialReferents {
     // A length check first, so most records never build an upper-case copy.
     if (!head || head.typeEnd - head.typeStart !== PROPERTIES.length || line.slice(head.typeStart, head.typeEnd).toUpperCase() !== PROPERTIES) return line;
     const at = attrNameTable(from as IfcSchemaVersion)?.get(PROPERTIES)?.indexOf('Material') ?? -1;
-    const record = at < 0 ? null : readStepSlots(line);
+    // `convertRecord` also accepts a record without its ';', so it is read the same way here.
+    const bare = !line.trimEnd().endsWith(';');
+    const record = at < 0 ? null : readStepSlots(bare ? `${line};` : line);
     if (!record) return line;
     const named = slotRef(record.slots[at]);
     const material = named === null ? null : this.resolve(named, from);
@@ -107,7 +109,8 @@ export class MaterialReferents {
       if (material === named) return line;
       const slots = [...record.slots];
       slots[at] = `#${material}`;
-      return `${record.prefix}${slots.join(',')}${record.suffix}`;
+      const out = `${record.prefix}${slots.join(',')}${record.suffix}`;
+      return bare ? out.slice(0, out.lastIndexOf(';')) + out.slice(out.lastIndexOf(';') + 1) : out;
     }
     // Named as Rust names it: a material record by its type, anything else as unread.
     const type = named === null ? undefined : this.source.typeOf(named);

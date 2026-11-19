@@ -122,6 +122,8 @@ impl MaterialReferents {
                 self.records.insert(id, (ty, slots, schema));
             }
         }
+        // A duplicate id the export leaves out does not hide the occurrence it keeps.
+        self.gone.retain(|id| !self.records.contains_key(id));
     }
 
     /// The material records as the export writes them: those `keep` refuses go
@@ -137,7 +139,7 @@ impl MaterialReferents {
             // Typed from the head first: most edited records are not materials.
             if !is_material(line) && !self.records.contains_key(&id) { continue; }
             match crate::step_log::read_slots(line) {
-                Some((ty, slots)) if keep(id) && ty.starts_with(MATERIAL) => drop(self.records.insert(id, (ty, slots, schema))),
+                Some((ty, slots)) if keep(id) && ty.starts_with(MATERIAL) => { self.gone.remove(&id); self.records.insert(id, (ty, slots, schema)); }
                 _ => { self.records.remove(&id); self.gone.insert(id); }
             }
         }
@@ -180,10 +182,17 @@ impl MaterialReferents {
         let Some(head) = crate::step_record_frame::record_head(line) else { return Some(line.into()) };
         if !head.type_name(line).eq_ignore_ascii_case(PROPERTIES) { return Some(line.into()); }
         let Some(at) = crate::schema_convert::schema_attribute_names(schema, PROPERTIES).and_then(|n| n.iter().position(|a| *a == "Material")) else { return Some(line.into()) };
-        let Some((_, slots)) = crate::step_log::read_slots(line) else { return Some(line.into()) };
+        // `convert_record` also accepts a record without its ';', so it is read the same way here.
+        let bare = !line.trim_end().ends_with(';');
+        let framed: Cow<str> = if bare { format!("{line};").into() } else { line.into() };
+        let Some((_, slots)) = crate::step_log::read_slots(&framed) else { return Some(line.into()) };
         let named = slots.get(at).and_then(|s| slot_ref(s));
         match (named, named.and_then(|r| resolve(&self.records, &self.gone, r))) {
-            (Some(r), Some(m)) if m != r => Some(crate::step_log::replace_argument(line, at, &format!("#{m}")).map_or(line.into(), Cow::Owned)),
+            (Some(r), Some(m)) if m != r => {
+                let Some(mut out) = crate::step_log::replace_argument(&framed, at, &format!("#{m}")) else { return Some(line.into()) };
+                if bare { if let Some(semi) = out.rfind(';') { out.remove(semi); } }
+                Some(Cow::Owned(out))
+            }
             (_, Some(_)) => Some(line.into()),
             _ => {
                 *dropped += slots.iter().filter(|s| !slot_unset(s)).count();

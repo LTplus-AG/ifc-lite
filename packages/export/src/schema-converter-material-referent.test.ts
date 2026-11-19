@@ -5,6 +5,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
+import { convertStepLine } from './schema-converter.js';
 import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 
 const model = (schema: string, data: string): string =>
@@ -115,5 +116,11 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(out.split('\n').filter((l) => l.includes('=IFCEXTENDEDMATERIALPROPERTIES('))).toEqual(["#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');"]);
     expect(out).not.toContain('IFCMATERIALPROPERTIES(');
     expect(result.stats.warnings.join('\n')).toContain('1 IfcMaterialProperties record(s) were not written');
+  });
+
+  it('checks a record without its semicolon like one with it (CodeRabbit)', () => {
+    // No lookup proves #13 an IfcMaterial either way, so neither form is written.
+    expect(convertStepLine("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", 'IFC4', 'IFC2X3')).toBeNull();
+    expect(convertStepLine("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13)", 'IFC4', 'IFC2X3')).toBeNull();
   });
 });

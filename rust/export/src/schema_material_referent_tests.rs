@@ -168,3 +168,18 @@ fn the_merged_writer_resolves_each_models_referents_10763() {
     assert!(!out.contains("IFCMATERIALPROPERTIES("), "{out}");
     assert!(stats.warnings.iter().any(|w| w.starts_with("1 IfcMaterialProperties record(s) were not written")), "{:?}", stats.warnings);
 }
+
+/// From CodeRabbit on #10911: a record without its ';' is checked like one
+/// with it, and a duplicate id left out does not hide the occurrence kept.
+#[test]
+fn a_bare_record_is_checked_and_a_kept_duplicate_counts_10763() {
+    let src = model("IFC4", "#8=IFCMATERIAL('Concrete',$,$);\n#9=IFCMATERIAL('Steel',$,$);\n#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);\n#12=IFCMATERIALLAYER(#9,0.1,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10,#12),'Wall',$);\n#14=IFCMATERIALLAYERSET((#10),'One',$);");
+    let mut scanned = super::MaterialReferents::scan(src.as_bytes(), "IFC4", "IFC2X3", true, &|_, _| true);
+    assert_eq!(scanned.apply(5, "#5=IFCMATERIALPROPERTIES('P',$,(#6),#13)", "IFC4", &mut 0), None);
+    assert_eq!(scanned.apply(5, "#5=IFCMATERIALPROPERTIES('P',$,(#6),#14)", "IFC4", &mut 0).as_deref(), Some("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8)"));
+    // The second #10 is the one `kept` refuses; the first stays a Concrete layer.
+    let dup = model("IFC4", "#8=IFCMATERIAL('Concrete',$,$);\n#9=IFCMATERIAL('Steel',$,$);\n#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);\n#10=IFCMATERIALLAYER(#9,0.2,$,$,$,$,$);\n#12=IFCMATERIALLAYER(#9,0.1,$,$,$,$,$);\n#13=IFCMATERIALLAYERSET((#10,#12),'Wall',$);");
+    let second = dup.match_indices("#10=").nth(1).unwrap().0;
+    let mut scanned = super::MaterialReferents::scan(dup.as_bytes(), "IFC4", "IFC2X3", true, &|id, start| id != 10 || start < second);
+    assert_eq!(scanned.apply(5, "#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", "IFC4", &mut 0), None, "two materials: left out");
+}

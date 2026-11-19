@@ -62,11 +62,12 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     const entry = viewerOperation('zones.read'), overhead = bytes({ native_json: '' });
     const sized = (total: number) => ({ native_json: 'x'.repeat(total - overhead) });
     assert.equal(bytes(sized(MAX_RESULT_BYTES - 1)), MAX_RESULT_BYTES - 1);
-    t.mock.method(entry, 'execute', async () => sized(MAX_RESULT_BYTES - 1));
+    // One mock, re-pointed below: two mocks of one method restore the first mock, not the real execute.
+    const execute = t.mock.method(entry, 'execute', async () => sized(MAX_RESULT_BYTES - 1));
     const under = await run('zones.read', {});
     assert.equal(under.isError, false, under.text.slice(0, 200));
     assert.equal(bytes((under.structured as { result: unknown }).result), MAX_RESULT_BYTES - 1, 'returned whole, though the wrapper around it is larger');
-    t.mock.method(entry, 'execute', async () => sized(MAX_RESULT_BYTES + 1));
+    execute.mock.mockImplementation(async () => sized(MAX_RESULT_BYTES + 1));
     const over = await run('zones.read', {});
     assert.equal(over.isError, true); assert.match(over.text, /exceeds the 1 MB operation result limit/);
   });
@@ -174,6 +175,33 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     useViewerStore.setState({ zoneAssignments: assignments });
     const next = await run('zones.read', { offset: first.page.next_offset, page_revision: first.page.page_revision });
     assert.equal(next.isError, true, 'a shifted list is refused, not paged past'); assert.match(next.text, /changed since the previous page/);
+  });
+
+  it('zones.read releases its row snapshot when a model unloads mid-paging', async () => {
+    await assemblyOf(10);
+    const setId = useViewerStore.getState().createZoneSet('Large');
+    const record = { [setId]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };
+    useViewerStore.setState({ zoneAssignments: new Map(Array.from({ length: 12000 }, (_, i) => [i + 1, record])) });
+    // Reached dynamically, so with the fix reverted this file still loads and the assertion below fails.
+    const zones = await import('./authoring-zones') as { zoneRowsSnapshotHeld?: () => boolean };
+    const first = json<{ page: { next_offset: number | null } }>(await run('zones.read', {}));
+    assert.notEqual(first.page.next_offset, null, 'the client stops after page 1');
+    assert.equal(zones.zoneRowsSnapshotHeld?.(), true, 'page 1 holds the snapshot for page 2');
+    // Another model update replaces the Map but unloads nothing: the snapshot stays.
+    useViewerStore.setState({ models: new Map(useViewerStore.getState().models) });
+    assert.equal(zones.zoneRowsSnapshotHeld?.(), true, 'a model update that removes no model keeps it');
+    useViewerStore.setState({ models: new Map() });
+    assert.equal(zones.zoneRowsSnapshotHeld?.(), false, 'unloading the model released it without another read');
+    // An assignment recompute releases it too.
+    json(await run('zones.read', {})); assert.equal(zones.zoneRowsSnapshotHeld?.(), true);
+    useViewerStore.setState({ zoneAssignments: new Map(useViewerStore.getState().zoneAssignments) });
+    assert.equal(zones.zoneRowsSnapshotHeld?.(), false, 'an assignment change released it');
+    // Reading through the last page releases it, and a read that fits one page never holds one.
+    let page: { next_offset: number | null; page_revision: string } = json<{ page: typeof page }>(await run('zones.read', {})).page;
+    while (page.next_offset !== null) page = json<{ page: typeof page }>(await run('zones.read', { offset: page.next_offset, page_revision: page.page_revision })).page;
+    assert.equal(zones.zoneRowsSnapshotHeld?.(), false, 'the last page released it');
+    useViewerStore.setState({ zoneAssignments: new Map() });
+    json(await run('zones.read', {})); assert.equal(zones.zoneRowsSnapshotHeld?.(), false, 'a single-page read holds nothing');
   });
 
   it('#29 zones.read pages assignments over 1 MB and returns one short configuration_revision', async () => {

@@ -23,15 +23,37 @@ function revision(expected: string) { assertRevision(useViewerStore.getState().z
  * zones.read pages flat rows under one cursor beside a fixed-size header (#10794): a `set` row per zone set (without
  * its zones), a `zone` row per zone, an `apportionment` row per computed set, an `apportioned` or `refused` row per
  * element of it, and an `assignment` row per element and set. A row grows only with its own item, never with the
- * configuration; one item too large for a page is refused with the offset to continue from. The rows are built once
- * per store change and dropped after the last page is read.
+ * configuration; one item too large for a page is refused with the offset to continue from.
  */
 type ZoneRow = { kind: string } & Record<string, unknown>;
 const ZONE_ROW_KINDS = ['set', 'zone', 'apportionment', 'apportioned', 'refused', 'assignment'] as const;
-let sequence: { from: readonly unknown[]; rows: ZoneRow[]; counts: Record<string, number>; configuration_revision: string; revision: string } | null = null;
-function zoneRows(): NonNullable<typeof sequence> {
-  const s = useViewerStore.getState(), from = [s.zoneSets, s.zoneApportionment, s.zoneAssignments];
-  if (sequence && sequence.from.every((value, index) => value === from[index])) return sequence;
+type ViewerState = ReturnType<typeof useViewerStore.getState>;
+type Snapshot = { zoneSets: unknown; apportionment: unknown; assignments: unknown; modelIds: string[]; rows: ZoneRow[]; counts: Record<string, number>; configuration_revision: string; revision: string };
+/**
+ * At most one snapshot (#10794). It is released when the last page is read, and while later pages are pending, as
+ * soon as a zone source changes or a model it was built with unloads, so a client that stops mid-paging does not keep
+ * the old store maps alive.
+ */
+let sequence: Snapshot | null = null;
+let unsubscribe: (() => void) | null = null;
+function releaseSnapshot() { sequence = null; unsubscribe?.(); unsubscribe = null; }
+const sameZones = (snapshot: Snapshot, s: ViewerState) => snapshot.zoneSets === s.zoneSets && snapshot.apportionment === s.zoneApportionment && snapshot.assignments === s.zoneAssignments;
+function watchSnapshot(snapshot: Snapshot) {
+  if (unsubscribe) return;
+  let models = useViewerStore.getState().models;
+  unsubscribe = useViewerStore.subscribe(state => {
+    if (sequence !== snapshot) return;
+    if (!sameZones(snapshot, state)) { releaseSnapshot(); return; }
+    // Only a model leaving matters: other model updates replace the Map without touching any row.
+    if (state.models !== models) { models = state.models; if (snapshot.modelIds.some(id => !models.has(id))) releaseSnapshot(); }
+  });
+}
+/** For tests: whether a zones.read snapshot is held. */
+export const zoneRowsSnapshotHeld = () => sequence !== null;
+function zoneRows(): Snapshot {
+  const s = useViewerStore.getState();
+  if (sequence && sameZones(sequence, s)) return sequence;
+  releaseSnapshot();
   const rows: ZoneRow[] = [];
   for (const { zones, ...set } of s.zoneSets) {
     rows.push({ kind: 'set', set: { ...set, zone_count: zones.length } });
@@ -49,15 +71,16 @@ function zoneRows(): NonNullable<typeof sequence> {
   const counts: Record<string, number> = Object.fromEntries(ZONE_ROW_KINDS.map(kind => [kind, 0]));
   for (const row of rows) counts[row.kind]++;
   const configuration_revision = stateRevision(s.zoneSets);
-  sequence = { from, rows, counts, configuration_revision, revision: stateRevision([configuration_revision, rows]) };
+  sequence = { zoneSets: s.zoneSets, apportionment: s.zoneApportionment, assignments: s.zoneAssignments, modelIds: [...s.models.keys()],
+    rows, counts, configuration_revision, revision: stateRevision([configuration_revision, rows]) };
   return sequence;
 }
 function zonesPage(request: PageRequest) {
-  const { rows, counts, configuration_revision, revision } = zoneRows();
+  const snapshot = zoneRows(), { rows, counts, configuration_revision, revision } = snapshot;
   const header = { configuration_revision, timing: useViewerStore.getState().zoneAssignmentTiming, counts };
   // The cached revision digests every row, so any change between two pages refuses the second.
   const { items, ...page } = boundedPage(rows, request, header, revision);
-  if (page.next_offset === null) sequence = null;
+  if (page.next_offset === null) releaseSnapshot(); else watchSnapshot(snapshot);
   return out({ ...header, rows: items, page });
 }
 const idInput = { type: 'object' as const, properties: { set_id: { type: 'string' as const, minLength: 1, maxLength: 200 } }, required: ['set_id' as const], additionalProperties: false as const };

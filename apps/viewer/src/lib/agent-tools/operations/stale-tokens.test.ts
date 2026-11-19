@@ -656,6 +656,20 @@ describe('Room review admission probe (#10792)', () => {
     } finally { review.dispose(); }
   });
 
+  it('#19: a Room review of a model rotated since reads as changed, as its lease does', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await seedReviewedRoom();
+    const review = await prepareRoomReview(roomProposal(), new AbortController().signal);
+    try {
+      assert.equal(review.sourcesCurrent(), true);
+      const models = useViewerStore.getState().models;
+      useViewerStore.getState().setModelRotation([ROOM_MODEL], { angle: Math.PI / 2, pivot: [0, 0, 0] }); // placement only
+      assert.equal(useViewerStore.getState().models, models, 'the rotation left the model entries alone');
+      assert.throws(() => review.validate(), /geometry or model\/storey frame changed/);
+      assert.equal(review.sourcesCurrent(), false);
+    } finally { review.dispose(); }
+  });
+
   it('#19: a Room review a newer preparation superseded reads as changed, as its validate() does', async (t) => {
     if (!ensureRoomWasm(t)) return;
     await seedReviewedRoom();

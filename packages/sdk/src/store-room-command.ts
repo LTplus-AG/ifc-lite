@@ -94,7 +94,7 @@ export interface PreparedRoomCommand {
   validate(): void;
   /** Cheap and non-throwing: whether `validate` would still pass. The same checks, except that geometry is compared
    * through the host's probe (`NativeRoomGeometry.current`) when it has one. */
-  current(): boolean;
+  current?(): boolean;
   commit(): RoomCommandResult;
   dispose(): void;
 }

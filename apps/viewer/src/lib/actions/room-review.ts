@@ -149,7 +149,7 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     const check = (probe: boolean) => {
       signal.throwIfAborted();
       if (!sourcesCurrent(captured, useViewerStore.getState())) throw new Error('The loaded sources changed after Room preparation; prepare again');
-      if (!probe) prepared.validate();
+      if (!probe || !prepared.current) prepared.validate();
       else if (!prepared.current()) throw new Error('The native Room preparation changed; prepare again');
       if (target(useViewerStore.getState(), proposal.modelId, proposal.storey, 'IfcBuildingStorey') !== storeyId) throw new Error('The current storey identity changed');
     };

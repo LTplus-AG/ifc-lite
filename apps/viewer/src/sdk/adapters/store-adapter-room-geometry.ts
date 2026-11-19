@@ -70,20 +70,23 @@ function roomGeometryLayout({ids,frame,meshes}:RoomGeometryCapture) {
 
 /** Exact native input bytes and frame: a later remesh may replace buffers without changing geometry. `validate` and
  * its cheap probe `current` run one check, `holds`, so they cannot disagree on frame, room ids, mesh order, ids, types,
- * origins or bytes. The probe alone may skip comparing bytes of a slot whose buffers are the ones last compared and
- * whose geometry content version has not moved (in-place vertex edits bump it); buffers a remesh replaced with
- * identical bytes are compared once, then adopted, so a remesh does not read as a change. */
+ * origins or bytes. The probe takes two shortcuts: it skips the check entirely while every state input the capture
+ * reads is the object or number of the last check that held (`inputs`; a new capture input must be added there), and
+ * it skips the bytes of a slot whose buffers are the ones last compared while the geometry content version has not
+ * moved (in-place vertex edits bump it). Buffers a remesh replaced with identical bytes are compared once, then
+ * adopted, so a remesh does not read as a change. */
 export function roomGeometryLease(get:()=>ViewerState,modelId:string,storeyId:number):{validate():void;current():boolean} {
   const before=captureRoomGeometry(get(),modelId,storeyId),sameLayout=roomGeometryLayout(before);
   const saved=before.meshes.map(mesh=>({positions:mesh.positions.slice(),indices:mesh.indices.slice()}));
   let content=get().geometryContentVersion;
-  // Everything the capture reads: the model entries (geometry, federation), the mutation views (overlay ids, edits)
-  // and the geometry content version. While none moved since the last check that held, the probe holds without
-  // capturing again; the capture walks every storey wall, which is too slow to repeat on each admission.
-  const inputs=(state:ViewerState)=>({models:state.models,views:state.mutationViews,revision:state.mutationViews.get(modelId)?.getMutationRevision(),content:state.geometryContentVersion});
+  // Every state input the capture reads, directly or through the workplane, storey and federation helpers: model
+  // entries (geometry, id ranges), mutation views and their in-place revisions (edits, overlay ids), model placement,
+  // georeference edits and the federation anchor, plus the geometry content version. While none moved since the last
+  // check that held, the probe holds without capturing again; the capture walks every storey wall.
+  const inputs=(state:ViewerState)=>[state.models,state.mutationViews,[...state.mutationViews.values()].map(view=>view.getMutationRevision()).join(),
+    state.modelPlacement,state.georefMutations,state.anchorModelIdOverride,state.geometryContentVersion];
   let anchor=inputs(get());
-  const unmoved=(state:ViewerState)=>{const now=inputs(state);
-    return now.models===anchor.models && now.views===anchor.views && now.revision===anchor.revision && now.content===anchor.content;};
+  const unmoved=(state:ViewerState)=>inputs(state).every((value,i)=>value===anchor[i]);
   const weakBuffers=(mesh:RoomGeometryCapture['meshes'][number])=>[new WeakRef(mesh.positions),new WeakRef(mesh.indices)] as const;
   const compared=before.meshes.map(weakBuffers);
   const holds=(state:ViewerState,exact:boolean)=> {

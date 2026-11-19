@@ -31,7 +31,7 @@ import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/r
 import { trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { buildKmzForModel, kmzSuggestsAbsoluteAltitude, modelHasGeoreference, type KmzBuildError } from '@/lib/geo/kmz-export';
-import type { InstancedModelRange } from '@/utils/instancedExport';
+import { instancedModelRangeOf, type InstancedModelRange } from '@/utils/instancedExport';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
@@ -93,8 +93,8 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
         // Every model can carry GPU-instanced occurrences since #2255
         // (2026-08-06) — scope `withInstancedMeshes` to THIS model's bracket so
         // a federation of N models doesn't splice every other model's instanced
-        // entities into this one's KMZ (#2865/#2878 follow-up).
-        instancedModelRange: { idOffset: m.idOffset ?? 0, maxExpressId: m.maxExpressId ?? 0 },
+        // entities into this one's KMZ (#2865/#2878 follow-up), nor an overlapping-id collab model's (#10695).
+        instancedModelRange: instancedModelRangeOf(m.id, models),
       }));
     if (list.length === 0 && legacyGeometryResult && legacyDataStore) {
       // The legacy single-model slot is provably the sole model loaded — nothing

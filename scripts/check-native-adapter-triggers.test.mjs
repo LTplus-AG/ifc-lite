@@ -21,7 +21,7 @@ const BISECT = '.github/workflows/native-adapter-bisect.yml';
 function copyTree(context) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-triggers-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/workflow-job-condition.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', '.github/workflows/report-scheduled-failure.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
+  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/workflow-job-condition.mjs', 'scripts/lib/is-main-entry.mjs', 'scripts/lib/workflow-permissions.mjs', 'scripts/native-adapter-split.mjs', 'scripts/lib/native-adapter-split.mjs', 'scripts/lib/native-adapter-split-compare.mjs', '.github/workflows/report-scheduled-failure.yml', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
   // The bisect workflow is optional, so a revert of it reads as an audit failure, not a copy error.
   if (existsSync(join(REPO, BISECT))) files.push(BISECT);
   for (const f of files) {
@@ -483,4 +483,82 @@ test('a bisect probe that would run the adapter it was not asked for is reported
   const root = copyTree(context);
   mutate(root, (t) => t.replace('      (!inputs.bisect_sha || inputs.bisect_adapter) && (\n', '      (\n'));
   assert.ok(audit(root).some((f) => f.includes('a bisect probe only with bisect_adapter')));
+});
+
+// ------------------------------------------------------------ the split lane (shadow phase)
+
+/** Replaces `from` with `to` inside one top-level job only (`to` null drops the job). Each test's own assertion fails if it did not apply. */
+const inJob = (root, id, from, to) => mutate(root, (t) => {
+  const block = jobBlock(t, id);
+  return to === null ? t.replace(`  ${id}:\n${block}`, '') : t.replace(`  ${id}:\n${block}`, `  ${id}:\n${block.replace(from, to)}`);
+});
+
+test('a split lane job that loses the opt-in gate or the shadow switch is reported', (context) => {
+  const noShadow = copyTree(context);
+  inJob(noShadow, 'na-wasm', " && vars.NATIVE_ADAPTER_SPLIT == 'shadow'\n", '\n');
+  assert.ok(audit(noShadow).some((f) => f.includes('split job na-wasm must be gated on exactly')));
+  const noBisect = copyTree(context);
+  inJob(noBisect, 'na-viewer', '      !cancelled() && (!inputs.bisect_sha || inputs.bisect_adapter) && (\n', '      !cancelled() && (\n');
+  assert.ok(audit(noBisect).some((f) => f.includes('split job na-viewer must be gated on exactly')));
+  // A downstream job without !cancelled() is skipped whenever any upstream job fails.
+  const noCancelled = copyTree(context);
+  inJob(noCancelled, 'na-browser', '      !cancelled() && (!inputs.bisect_sha', '      (!inputs.bisect_sha');
+  assert.ok(audit(noCancelled).some((f) => f.includes('split job na-browser must be gated on exactly')));
+});
+
+test('a split lane job sharing the single job\'s concurrency group, or cancelling a nightly, is reported', (context) => {
+  const shared = copyTree(context);
+  inJob(shared, 'na-native', 'group: geometry-platform-na-native-', 'group: geometry-platform-');
+  assert.ok(audit(shared).some((f) => f.includes('split job na-native needs its own job-level concurrency group')));
+  const cancels = copyTree(context);
+  inJob(cancels, 'na-split-judge', `cancel-in-progress: \${{ github.event_name == 'pull_request' && !inputs.batch }}`, 'cancel-in-progress: true');
+  assert.ok(audit(cancels).some((f) => f.includes('split job na-split-judge needs its own job-level concurrency group')));
+});
+
+test('a split job that checks out the event commit on a bisect probe is reported', (context) => {
+  const root = copyTree(context);
+  inJob(root, 'na-cli-parity', '          ref: ${{ inputs.bisect_sha }}\n', '');
+  assert.ok(audit(root).some((f) => f.includes('every checkout of this repository in split job na-cli-parity must use ref')));
+});
+
+test('a split job that runs the corpus, or a script that cannot trigger the lane, is reported', (context) => {
+  const corpus = copyTree(context);
+  inJob(corpus, 'na-native', '--committed --gate', '--manifest tests/models/manifest.json');
+  assert.ok(audit(corpus).some((f) => f.includes('na-native runs the corpus itself')));
+  const script = copyTree(context);
+  inJob(script, 'na-wasm', 'run: node --test packages/wasm/test/retained-browser.test.mjs', 'run: node scripts/zz-untriggered-split-probe.mjs');
+  assert.ok(audit(script).some((f) => f.includes('scripts/zz-untriggered-split-probe.mjs is run by')));
+  const lib = copyTree(context);
+  mutate(lib, (t) => t.replaceAll("      - 'scripts/lib/native-adapter-split-compare.mjs'\n", ''));
+  assert.ok(audit(lib).some((f) => f.includes('scripts/lib/native-adapter-split-compare.mjs is run by')));
+});
+
+test('a partial split, a judge that misses a lane job or a lane step that is fatal is reported', (context) => {
+  const partial = copyTree(context);
+  inJob(partial, 'na-split-compare', '', null);
+  assert.ok(audit(partial).some((f) => f.includes('split is partial; missing job(s) na-split-compare')));
+  const judge = copyTree(context);
+  inJob(judge, 'na-split-judge', ', na-cli-parity]', ']');
+  assert.ok(audit(judge).some((f) => f.includes('split job na-split-judge must need exactly')));
+  const fatal = copyTree(context);
+  inJob(fatal, 'na-native', '        id: finish-join\n        continue-on-error: true\n', '        id: finish-join\n');
+  assert.ok(audit(fatal).some((f) => f.includes('must run lane step finish-join with continue-on-error')));
+  const noVerdict = copyTree(context);
+  inJob(noVerdict, 'na-emscripten', '      verdict: ${{ steps.verdict.outputs.verdict }}\n', '');
+  assert.ok(audit(noVerdict).some((f) => f.includes('split job na-emscripten must end with an if: always() step id verdict')));
+});
+
+test('split artifacts and Rust caches stay namespaced per job', (context) => {
+  const artifact = copyTree(context);
+  inJob(artifact, 'na-wasm', 'name: na-split-wasm-pkg', 'name: wasm-pkg');
+  assert.ok(audit(artifact).some((f) => f.includes("split job na-wasm uploads 'wasm-pkg'")));
+  const cache = copyTree(context);
+  inJob(cache, 'na-browser', 'shared-key: main-na-browser', 'shared-key: main');
+  assert.ok(audit(cache).some((f) => f.includes('split job na-browser must give setup-wasm-build its own shared-key')));
+});
+
+test('the split lane map must cover exactly the single job\'s judged lanes', (context) => {
+  const root = copyTree(context);
+  inJob(root, 'native-adapter', 'for lane in HALFSPACE_GENERATED ', 'for lane in NEW_LANE HALFSPACE_GENERATED ');
+  assert.ok(audit(root).some((f) => f.includes('LANES in scripts/lib/native-adapter-split.mjs must map exactly')));
 });

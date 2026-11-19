@@ -58,11 +58,6 @@ function candidate(c: OperationContext, token: string) {
   if (!saved.receipt && !previewCurrent(saved)) throw stale('Model changed since preview; prepare again.');
   return saved;
 }
-/** A property preview made before a sibling batch of the same change applied is re-previewed at the current revision,
- * as the Changes panel's review does: the same batch, with every expected value checked again. */
-function currentProperties(preview: ModelChangePreview, previewModelChanges: typeof import('@/lib/actions/model-change-preview').previewModelChanges) {
-  return preview.mutationVersion === useViewerStore.getState().mutationVersion ? preview : previewModelChanges(useViewerStore.getState(), preview.batch);
-}
 async function persist(saved: Candidate, receipt: ModelChangeReceipt) {
   return { receipt_json: JSON.stringify(receipt), persisted: await persistReceipt(saved, receipt) };
 }
@@ -108,13 +103,17 @@ export const authoringOperations = [
     const [{ commitModelAuthoring }, { commitModelChanges }, { previewModelChanges }] = await Promise.all([import('@/lib/actions/model-authoring-commit'),
       import('@/lib/actions/model-change-commit'), import('@/lib/actions/model-change-preview')]);
     candidate(c, i.token); assertToolActive(c);
-    const preview = saved.authoring ?? currentProperties(saved.properties!, previewModelChanges);
+    // A property preview made before a sibling batch of the same change applied is previewed again at the current
+    // revision, as the Changes panel's review does: the same batch, with every expected value checked again.
+    const properties = saved.properties && (saved.properties.mutationVersion === useViewerStore.getState().mutationVersion
+      ? saved.properties : previewModelChanges(useViewerStore.getState(), saved.properties.batch));
+    const preview = saved.authoring ?? properties!;
     if (preview.rows.some(row => row.status !== 'ready' && row.status !== 'unchanged')) throw invalidInput('refused', 'The preview contains refused/conflicting rows. Prepare a complete valid candidate.');
     const approved = new Set(preview.rows.filter(row => row.status === 'ready').map(row => row.index));
     // A refusal throws inside commit, so it is not recorded as a committed write.
     const outcome = c.commit(() => {
       const result = saved.authoring ? commitModelAuthoring(useViewerStore, saved.authoring, approved, 'viewer-agent')
-        : commitModelChanges(useViewerStore, preview as ModelChangePreview, approved, 'viewer-agent');
+        : commitModelChanges(useViewerStore, properties!, approved, 'viewer-agent');
       if (!result.ok) {
         if (result.reason === 'stale') throw stale('Model changed since preview; prepare again.');
         if (result.reason === 'nothing-approved') throw invalidInput('invalid-value', 'The reviewed proposal has no changes to apply.');

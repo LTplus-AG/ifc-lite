@@ -488,8 +488,8 @@ describe('multi-batch IDS corrections (#10792)', () => {
   const applyBatch = async (token: string) => JSON.parse(answer<{ receipt_json: string }>(await invoke('authoring.apply', { token }, true)).receipt_json) as ModelChangeReceipt;
 
   it('#10894: a correction over 500 changes applies batch by batch without re-preparing, in either order', async () => {
-    for (const [round, order] of [[0, 1], [1, 0]].entries()) {
-      const tokens = await prepareCorrection(round === 0 ? 'yes' : 'no');
+    for (const [order, value] of [[[0, 1], 'yes'], [[1, 0], 'no']] as const) {
+      const tokens = await prepareCorrection(value);
       let applied = 0;
       for (const index of order) applied += (await applyBatch(tokens[index])).applied.length;
       assert.equal(applied, WALLS, `every change applied, order ${order.join(',')}`);

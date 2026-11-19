@@ -8779,7 +8779,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.read",
     "version": 1,
     "owner": "zones",
-    "description": "Inspect native zone sets, their configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), apportionment and assignment results. One cursor pages sets, then apportionment entries, then assignments: pass page.next_offset as offset until it is null, and restart from 0 if page.revision changes. Every page carries configuration_revision, timing and counts. Coordinates are renderer Y-up metres; rotations are radians.",
+    "description": "Inspect native zones as flat rows, each tagged with kind: set (one per zone set, without its zones), zone, apportionment (one per computed set, with stale when the set changed since), apportioned and refused (one per element of it), and assignment (one per element and zone set). Every page carries configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), timing and counts by kind. Pass page.next_offset as offset until it is null, and restart from 0 if page.revision changes. Coordinates are renderer Y-up metres; rotations are radians.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -8818,7 +8818,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.set.create",
     "version": 1,
     "owner": "zones",
-    "description": "Create a native zone set after checking the exact configuration snapshot.",
+    "description": "Create a native zone set after checking the exact configuration revision. Returns set_id and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -8928,7 +8928,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.box.write",
     "version": 1,
     "owner": "zones",
-    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians.",
+    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians. Returns set_id, zone_id and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -9035,7 +9035,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.box.remove",
     "version": 1,
     "owner": "zones",
-    "description": "Remove an exact existing native zone.",
+    "description": "Remove an exact existing native zone. Returns set_id, zone_id and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -9132,7 +9132,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.generateStoreys",
     "version": 1,
     "owner": "zones",
-    "description": "Generate and replace a zone set using the same native current-storey geometry/frame service as the panel.",
+    "description": "Generate and replace a zone set using the same native current-storey geometry/frame service as the panel. Returns set_id, zone_count and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -9257,7 +9257,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.apportion",
     "version": 1,
     "owner": "zones",
-    "description": "Run native proved-solid volume apportionment for a current zone set. Native unavailable/unproved-solid diagnostics remain explicit.",
+    "description": "Run native proved-solid volume apportionment for a current zone set. Returns apportioned_count, refused_count, refusals by reason (no-geometry, unproved-solid, ...) and timing; the per-element rows are stored and read through zones.read as apportioned and refused rows.",
     "needs": "viewer",
     "effects": [
       "read"

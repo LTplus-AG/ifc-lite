@@ -17,6 +17,8 @@ import { model, parseStep, seed, viewerHost } from '@/test/agent-tools-fixture';
 import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
 import { DEFAULT_ANONYMIZE_TOGGLES } from '@/components/viewer/anonymized-export/AnonymizationOptionsPanel';
 import { MAX_RESULT_BYTES } from './result-limit';
+import { seedAuthoringSample } from '@/test/authoring-sample-fixture';
+import { setGlobalRendererRef } from '@/hooks/useBCF';
 
 const initial = useViewerStore.getState();
 afterEach(() => { useViewerStore.setState(initial); useClashGroupLibrary.setState({ entries: [] }); resetFeaturesForTest(); });
@@ -32,12 +34,12 @@ function json<T>(result: AgentToolResult): T {
   return (value.native_json === undefined ? value : JSON.parse(value.native_json)) as T;
 }
 /** Read every page of a paged list operation; each page must fit the limit on its own. */
-async function readAll<T>(operation: string, field: string, page = (value: Record<string, unknown>) => value as { next_offset: number | null }) {
+async function readAll<T>(operation: string, field: string) {
   const items: T[] = []; let offset: number | null = 0, token = '';
   while (offset !== null) {
     const value: Record<string, unknown> = json(await run(operation, { offset }));
     items.push(...value[field] as T[]); token = (value.expected_reports ?? value.expected_library ?? value.configuration_revision) as string;
-    offset = page(value).next_offset;
+    offset = value.next_offset as number | null;
   }
   return { items, token };
 }
@@ -84,12 +86,24 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     assert.match((await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports: token })).text, /Unknown saved native report/);
   });
 
+  /** Every zones.read row, by following page.next_offset; each page must fit the limit on its own. */
+  type ZoneRow = { kind: string; set?: { id: string; zone_count: number }; set_id?: string; zone?: { id: string }; global_id?: number };
+  const zoneRows = async () => {
+    const rows: ZoneRow[] = []; let offset: number | null = 0, token = '', pages = 0, counts: Record<string, number> = {};
+    while (offset !== null) {
+      type ZonePage = { rows: ZoneRow[]; configuration_revision: string; counts: Record<string, number>; page: { next_offset: number | null } };
+      const value: ZonePage = json<ZonePage>(await run('zones.read', { offset }));
+      rows.push(...value.rows); token = value.configuration_revision; counts = value.counts; offset = value.page.next_offset; pages++;
+    }
+    return { rows, token, pages, counts, of: (kind: string) => rows.filter(row => row.kind === kind) };
+  };
+
   it('#29 zones.read pages assignments over 1 MB and returns one short configuration_revision', async () => {
     const setId = useViewerStore.getState().createZoneSet('Large');
     const record = { [setId]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };
     useViewerStore.setState({ zoneAssignments: new Map(Array.from({ length: 12000 }, (_, i) => [i + 1, record])) });
-    const { items, token } = await readAll<unknown>('zones.read', 'assignments', value => value.page as { next_offset: number | null });
-    assert.equal(items.length, 12000); assert.ok(token.length <= 64);
+    const { of, token } = await zoneRows();
+    assert.equal(of('assignment').length, 12000); assert.ok(token.length <= 64);
     const made = json<{ set_id: string; configuration_revision: string }>(await run('zones.set.create', { name: 'Next', expected_configuration: token }));
     assert.match((await run('zones.set.create', { name: 'Again', expected_configuration: token })).text, /configuration changed/);
     // The edit hands back the revision the next edit needs.
@@ -99,28 +113,78 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
   it('#29 zones.read pages a sets list over 1 MB and every page carries configuration_revision', async () => {
     for (let i = 0; i < 300; i++) useViewerStore.getState().createZoneSet(`Set ${i} ${pad(4000)}`);
     assert.ok(bytes(useViewerStore.getState().zoneSets) > MAX_RESULT_BYTES, 'the sets alone exceed the limit');
-    const { items, token } = await readAll<{ id: string }>('zones.read', 'sets', value => value.page as { next_offset: number | null });
-    assert.deepEqual(items.map(row => row.id), useViewerStore.getState().zoneSets.map(row => row.id)); assert.ok(token.length <= 64);
+    const { of, token } = await zoneRows();
+    assert.deepEqual(of('set').map(row => row.set!.id), useViewerStore.getState().zoneSets.map(row => row.id)); assert.ok(token.length <= 64);
     const made = json<{ set_id: string; configuration_revision: string }>(await run('zones.set.create', { name: 'Next', expected_configuration: token }));
     // An edit's own result stays small however large the configuration is, so a committed edit never reports failure.
     const renamed = json<{ configuration_revision: string }>(await run('zones.set.edit', { set_id: made.set_id, action: 'rename', name: 'Renamed', visible: true, expected_configuration: made.configuration_revision }));
     assert.equal(useViewerStore.getState().zoneSets.at(-1)!.name, 'Renamed'); assert.ok(renamed.configuration_revision.length <= 64);
   });
 
-  it('#29 zones.read pages straddle sets, apportionment and assignments without dropping or repeating a row', async () => {
-    for (let i = 0; i < 100; i++) useViewerStore.getState().createZoneSet(`Set ${i} ${pad(4000)}`);
-    const sets = useViewerStore.getState().zoneSets, record = { [sets[0].id]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };
-    const apportionment = new Map(sets.slice(0, 3).map(set => [set.id, { revision: 1, note: pad(150_000) }]));
-    useViewerStore.setState({ zoneApportionment: apportionment as never, zoneAssignments: new Map(Array.from({ length: 6000 }, (_, i) => [i + 1, record])) });
-    type ZonePage = { sets: Array<{ id: string }>; apportionment: Array<[string, unknown]>; assignments: Array<[number, unknown]>; counts: Record<string, number>; page: { next_offset: number | null } };
-    const pages: ZonePage[] = [];
-    for (let offset: number | null = 0; offset !== null;) { const value: ZonePage = json<ZonePage>(await run('zones.read', { offset })); pages.push(value); offset = value.page.next_offset; }
-    assert.ok(pages.length >= 3, `${pages.length} pages`);
-    assert.ok(pages.some(page => page.sets.length && page.apportionment.length) || pages.some(page => page.apportionment.length && page.assignments.length), 'a page crosses a segment boundary');
-    assert.deepEqual(pages.flatMap(page => page.sets.map(row => row.id)), sets.map(row => row.id));
-    assert.deepEqual(pages.flatMap(page => page.apportionment.map(([id]) => id)), [...apportionment.keys()]);
-    assert.deepEqual(pages.flatMap(page => page.assignments.map(([id]) => id)), Array.from({ length: 6000 }, (_, i) => i + 1));
-    assert.deepEqual(pages[0].counts, { sets: 100, apportionment: 3, assignments: 6000 });
+  it('#29 zones.read reads one set over 1 MB, its apportionment rows and assignments without dropping or repeating a row', async () => {
+    const setId = useViewerStore.getState().createZoneSet('Big');
+    for (let i = 0; i < 250; i++) useViewerStore.getState().addZone(setId, { name: `Zone ${i} ${pad(4000)}`, center: [i, 1, 0], size: [1, 1, 1], rotationY: 0 });
+    const set = useViewerStore.getState().zoneSets[0];
+    assert.ok(bytes(set) > MAX_RESULT_BYTES, 'one set alone exceeds the limit');
+    const share = { wholeVolumeM3: 1, shares: [{ zoneId: set.zones[0].id, zoneName: 'A', volumeM3: 1, fraction: 1 }], outsideVolumeM3: 0, outsideFraction: 0 };
+    const byElement = new Map(Array.from({ length: 8000 }, (_, i) => [i + 1, share])), refused = new Map(Array.from({ length: 8000 }, (_, i) => [i + 10_001, 'no-geometry']));
+    const record = { [setId]: { zoneId: null, zoneName: pad(60), straddles: false, touchedZoneIds: [] } };
+    useViewerStore.setState({ zoneApportionment: new Map([[setId, { revision: 'r', byElement, refused, computedAt: 0, elapsedMs: 0 }]]) as never,
+      zoneAssignments: new Map(Array.from({ length: 6000 }, (_, i) => [i + 1, record])) });
+    const { of, pages, counts } = await zoneRows();
+    assert.ok(pages >= 3, `${pages} pages`);
+    assert.deepEqual(of('set').map(row => row.set!.id), [setId]); assert.equal(of('set')[0].set!.zone_count, 250);
+    assert.deepEqual(of('zone').map(row => row.zone!.id), set.zones.map(zone => zone.id));
+    // The seeded entry's revision is not this set's, as after an edit following the run.
+    assert.deepEqual(of('apportionment').map(row => (row as { stale?: boolean }).stale), [true]);
+    assert.deepEqual(of('apportioned').map(row => row.global_id), [...byElement.keys()]);
+    assert.deepEqual(of('refused').map(row => row.global_id), [...refused.keys()]);
+    assert.deepEqual(of('assignment').map(row => row.global_id), Array.from({ length: 6000 }, (_, i) => i + 1));
+    assert.deepEqual(counts, { set: 1, zone: 250, apportionment: 1, apportioned: 8000, refused: 8000, assignment: 6000 });
+  });
+
+  it('#29 every zones.* write returns a small receipt and the next revision when the configuration is over 1 MB', async () => {
+    await seedAuthoringSample(); host = viewerHost();
+    // zones.generateStoreys reads storeys from the sample and footprint bounds from the renderer's scene.
+    setGlobalRendererRef({ current: { getScene: () => ({ getBounds: () => ({ min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 3, z: 10 } }), getMeshDataPieces: () => [] }) } } as never);
+    try {
+      useViewerStore.getState().createZoneSet('Imported'); const imported = useViewerStore.getState().exportZoneSetsJSON();
+      // The written set alone is over 1 MB, so a write that echoed it would fail after committing.
+      const set_id = useViewerStore.getState().createZoneSet('Target');
+      for (let i = 0; i < 250; i++) useViewerStore.getState().addZone(set_id, { name: `Zone ${i} ${pad(4000)}`, center: [i, 1, 0], size: [1, 1, 1], rotationY: 0 });
+      assert.ok(bytes(useViewerStore.getState().zoneSets.find(row => row.id === set_id)) > MAX_RESULT_BYTES, 'the target set exceeds the limit');
+      let revision = json<{ configuration_revision: string }>(await run('zones.read')).configuration_revision;
+      const write = async <T,>(operation: string, input: Record<string, unknown>): Promise<T> => {
+        const result = await run(operation, { ...input, expected_configuration: revision });
+        assert.equal(result.isError, false, `${operation}: ${result.text}`); assert.ok(bytes(result.structured) < 4096, `${operation} returned ${bytes(result.structured)} bytes`);
+        const value = json<T & { configuration_revision: string }>(result); revision = value.configuration_revision; return value;
+      };
+      await write('zones.set.edit', { set_id, action: 'rename', name: 'Renamed', visible: true });
+      const { zone_id } = await write<{ zone_id: string }>('zones.box.write', { set_id, zone_id: '', name: 'Box', center: [0, 1, 0], size: [2, 2, 2], rotationY: 0 });
+      await write('zones.box.write', { set_id, zone_id, name: 'Moved', center: [1, 1, 1], size: [2, 2, 2], rotationY: 0 });
+      await write('zones.box.remove', { set_id, zone_id });
+      // The receipts point at zones.read, and it can read this set back; zones.apportion on it stays small too.
+      assert.equal((await zoneRows()).of('zone').filter(row => row.set_id === set_id).length, 250);
+      const apportioned = await run('zones.apportion', { set_id });
+      assert.equal(apportioned.isError, false, apportioned.text); assert.ok(bytes(apportioned.structured) < 4096, `zones.apportion returned ${bytes(apportioned.structured)} bytes`);
+      await write('zones.set.create', { name: 'Another' });
+      assert.ok((await write<{ zone_count: number }>('zones.generateStoreys', { set_id })).zone_count > 0);
+      await write('zones.import', { json: imported });
+    } finally { setGlobalRendererRef({ current: null } as never); }
+  });
+
+  it('#29 zones.apportion returns counts when the per-element rows pass 1 MB', async () => {
+    const { walls } = await assemblyOf(60_000);
+    setGlobalRendererRef({ current: { getScene: () => ({ getBounds: () => null, getMeshDataPieces: () => [] }) } } as never);
+    try {
+      const setId = useViewerStore.getState().createZoneSet('Straddled');
+      const a = useViewerStore.getState().addZone(setId, { name: 'A', center: [0, 0, 0], size: [1, 1, 1], rotationY: 0 })!, b = useViewerStore.getState().addZone(setId, { name: 'B', center: [1, 0, 0], size: [1, 1, 1], rotationY: 0 })!;
+      useViewerStore.setState({ zoneAssignments: new Map(walls.map(id => [id, { [setId]: { zoneId: a, zoneName: 'A', straddles: true, touchedZoneIds: [a, b] } }])) });
+      const result = json<{ refused_count: number; refusals: Record<string, number> }>(await run('zones.apportion', { set_id: setId }));
+      const stored = useViewerStore.getState().zoneApportionment.get(setId)!;
+      assert.ok(bytes([...stored.refused]) + bytes([...stored.byElement]) > MAX_RESULT_BYTES, 'the stored rows exceed the limit');
+      assert.equal(result.refused_count, stored.refused.size); assert.equal(Object.values(result.refusals).reduce((sum, n) => sum + n, 0), stored.refused.size);
+    } finally { setGlobalRendererRef({ current: null } as never); }
   });
 
   it('#24 zones.writeback.prepare returns the row count and a bounded sample, not every row', async () => {

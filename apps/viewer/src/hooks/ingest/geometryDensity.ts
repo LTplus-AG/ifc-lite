@@ -31,13 +31,14 @@ const RECORD_START = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
  */
 export function denseRecordBytes(text: string): { dense: number; total: number } {
   let dense = 0, total = 0, start = -1, denseRecord = false;
+  const close = (end: number) => { if (start >= 0) { total += end - start; if (denseRecord) dense += end - start; } };
   RECORD_START.lastIndex = 0;
   for (let match = RECORD_START.exec(text); match; match = RECORD_START.exec(text)) {
-    if (start >= 0) { const bytes = match.index - start; total += bytes; if (denseRecord) dense += bytes; }
+    close(match.index);
     start = match.index;
     denseRecord = DENSE_TYPES.has(match[1]!);
   }
-  if (start >= 0) { const bytes = text.length - start; total += bytes; if (denseRecord) dense += bytes; }
+  close(text.length);
   return { dense, total };
 }
 

@@ -6,7 +6,7 @@ import { headIsZip } from './sourceBuffers';
 import { inspectIfcArchiveAdmission } from './archiveServerAdmission';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
-import { inspectLocalIfcAdmission } from './localIfcAdmission';
+import { inspectLocalIfcAdmission, localIfcBudget, localIfcWorkingSet } from './localIfcAdmission';
 import { sampleDenseGeometryShare } from './geometryDensity';
 
 /** Consent belongs to one load, never to a later file/pairing/session. An
@@ -44,8 +44,7 @@ export function createLocalIfcAdmission(options: {
 /** Whether the geometry density could change the decision: a load that fits even at the dense
  * rate is admitted without sampling, so ordinary loads read nothing past the header (#6431). */
 function densityCanDecide(bytes: number): boolean {
-  try { return inspectLocalIfcAdmission(bytes, undefined, 1) !== null; }
-  catch { return true; } // over budget at the dense rate (or past the wasm32 limit, which admit reports)
+  return localIfcWorkingSet(bytes, 1) > localIfcBudget().budget;
 }
 
 /** Inspect only the header before a primary scene reset or a cold-tier change. */

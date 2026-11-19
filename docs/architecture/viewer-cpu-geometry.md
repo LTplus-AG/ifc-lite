@@ -158,6 +158,15 @@ The design note inferred that host-tier eviction frees nothing, because the stor
 
 The host tier did evict: the scene let go of 336 MiB of bucket geometry, and the console reported the budget still exceeded by hot buckets. **But `totalBytes` did not move.** The same buffers became exclusive to `store.models`. So the inference is confirmed: **host eviction frees no geometry**, because the store's mesh list keeps every array the scene drops. A restore then decodes a second copy from the cache entry.
 
+The cold provider's decoded LRU now retains at most four chunks and 32 MiB of
+typed-array backing buffers. Shared arenas and canonical appearance arrays count
+once by buffer identity; an oversized chunk is returned without being cached.
+This bounds the LRU's references only: in-flight decode, returned meshes retained
+by the scene or callers, the source Blob/ArrayBuffer, and the chunk directory's
+appearance-source pool have separate owners. It does not enable geometry release
+or make a large bounds query bounded. Streaming writes and on-demand tool
+readback remain prerequisites before product release can be enabled.
+
 The JS heap and PSS did fall after the first zoom round, by about 510 MiB and 370 MiB. That is not geometry, since the figure shows the same buffers still referenced; this run does not say what it was. The extra 9 MiB on reopen is held by both the store and the scene.
 
 For S7 this means the store must learn about evictions (or stop holding the arrays) before the host tier saves anything.

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
-import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
+import { rectangleSides, type AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
@@ -29,7 +29,8 @@ export const inspectorOperations = [
   viewerOperation<{ kind: AuthoredElementKind; field: string; metres: number; expected_defaults: string }>(meta('authoring.defaults.dimension', 'Set one existing native default dimension in metres, preserving the command HUD/inspector’s shared state.'), {
     type: 'object', properties: { kind: kindSchema, field: { type: 'string', minLength: 1, maxLength: 100 }, metres: { type: 'number', minimum: -1000000, maximum: 1000000 }, expected_defaults: { type: 'string', maxLength: 200000 } }, required: ['kind', 'field', 'metres', 'expected_defaults'], additionalProperties: false,
   }, (i, c) => out(c.commit(() => { expected(i.expected_defaults); const s = useViewerStore.getState(); if (!Object.hasOwn(s.authoringDefaults.dims[i.kind], i.field)) throw new Error('Unknown native dimension.');
-    if (!['Bottom', 'Sill'].includes(i.field) && i.metres <= 0) throw new Error('A native construction dimension must be positive.'); s.setAuthoringDims(i.kind, { [i.field]: i.metres }); return { expected_defaults: JSON.stringify(useViewerStore.getState().authoringDefaults) };
+    // A beam's Bottom is an offset and may be anything; a sill may sit on the floor; sizes must be positive (#10793).
+    if (i.field !== 'Bottom' && (i.field === 'SillHeight' ? i.metres < 0 : i.metres <= 0)) throw new Error('A native construction dimension must be positive (a SillHeight may be zero).'); s.setAuthoringDims(i.kind, { [i.field]: i.metres }); return { expected_defaults: JSON.stringify(useViewerStore.getState().authoringDefaults) };
   }))),
   viewerOperation<{ wallAlign: 'left' | 'centre' | 'right'; wallTop: 'storeyAbove' | 'fixed'; chain: boolean; slabMode: 'rectangle' | 'polygon'; spaceMode: 'rectangle' | 'polygon'; slabClass: 'slab' | 'roof' | 'plate'; beamClass: 'beam' | 'member'; expected_defaults: string }>(meta('authoring.defaults.drawing', 'Set all native drawing modes/alignment/top/chain/class defaults after inspecting their exact snapshot.'), {
     type: 'object', properties: { wallAlign: { type: 'string', enum: ['left', 'centre', 'right'] }, wallTop: { type: 'string', enum: ['storeyAbove', 'fixed'] }, chain: { type: 'boolean' }, slabMode: { type: 'string', enum: ['rectangle', 'polygon'] }, spaceMode: { type: 'string', enum: ['rectangle', 'polygon'] }, slabClass: { type: 'string', enum: ['slab', 'roof', 'plate'] }, beamClass: { type: 'string', enum: ['beam', 'member'] }, expected_defaults: { type: 'string', maxLength: 200000 } }, required: ['wallAlign', 'wallTop', 'chain', 'slabMode', 'spaceMode', 'slabClass', 'beamClass', 'expected_defaults'], additionalProperties: false,
@@ -37,7 +38,11 @@ export const inspectorOperations = [
   viewerOperation<{ owner: 'column' | 'beam' | 'member'; profile_json: string; expected_defaults: string }>(meta('authoring.defaults.profile', 'Set a native cross-section choice using the same canonical profile parser and native per-kind dimension storage. profile_json is a ProfileSection in metres (Type plus exact EXPRESS dimension names).'), {
     type: 'object', properties: { owner: { type: 'string', enum: ['column', 'beam', 'member'] }, profile_json: { type: 'string', maxLength: 20000 }, expected_defaults: { type: 'string', maxLength: 200000 } }, required: ['owner', 'profile_json', 'expected_defaults'], additionalProperties: false,
   }, async (i, c) => { const { parseProfileSectionParams } = await import('@/lib/actions/model-authoring-shape-params'); const profile = parseProfileSectionParams(JSON.parse(i.profile_json), 'm', 'authoring defaults'); assertToolActive(c);
-    return out(c.commit(() => { expected(i.expected_defaults); const dims = Object.fromEntries(Object.entries(profile).filter((entry): entry is [string, number] => typeof entry[1] === 'number')); useViewerStore.getState().setAuthoringProfile(i.owner, profile.Type, dims); return { expected_defaults: JSON.stringify(useViewerStore.getState().authoringDefaults) }; }));
+    return out(c.commit(() => { expected(i.expected_defaults); const s = useViewerStore.getState();
+      // A rectangle is built from the kind's own Width x Height (a column's Width x Depth), never from profiles.dims (#10793).
+      if (profile.Type === 'Rectangle') { s.setAuthoringProfile(i.owner, 'Rectangle'); const [across, up] = rectangleSides(i.owner); s.setAuthoringDims(i.owner, { [across]: profile.XDim, [up]: profile.YDim }); }
+      else s.setAuthoringProfile(i.owner, profile.Type, Object.fromEntries(Object.entries(profile).filter((entry): entry is [string, number] => typeof entry[1] === 'number')));
+      return { expected_defaults: JSON.stringify(useViewerStore.getState().authoringDefaults) }; }));
   }),
   viewerOperation<{ minArea: number; namePattern: string; PredefinedType: string; ObjectType: string; expected_defaults: string }>(meta('authoring.defaults.room', 'Set the Room tool’s native minimum area, name pattern, exact PredefinedType and ObjectType defaults.'), {
     type: 'object', properties: { minArea: { type: 'number', exclusiveMinimum: 0, maximum: 1000000 }, namePattern: { type: 'string', minLength: 1, maxLength: 240 }, PredefinedType: { type: 'string', minLength: 1, maxLength: 100 }, ObjectType: { type: 'string', maxLength: 240 }, expected_defaults: { type: 'string', maxLength: 200000 } }, required: ['minArea', 'namePattern', 'PredefinedType', 'ObjectType', 'expected_defaults'], additionalProperties: false,
@@ -49,7 +54,8 @@ export const inspectorOperations = [
     if (i.express_id) { const ref = resolveRef(c.model, { express_id: i.express_id }), type = c.model.bim.entity(ref)?.type;
       if (type !== (i.channel === 'type' ? AUTHORED_KINDS[i.kind].type : 'IfcMaterialLayerSet')) throw new Error('The chosen entity has the wrong native IFC type.'); }
     return out(c.commit(() => { expected(i.expected_defaults); const s = useViewerStore.getState(), picks = { ...(i.channel === 'type' ? s.authoringDefaults.typeIds : s.authoringDefaults.layerSetIds) };
-      if (i.express_id) picks[i.kind] = { modelId: c.model.id, expressId: i.express_id }; else delete picks[i.kind];
+      // Setting replaces the kind's one pick with this model's; clearing must not drop a pick another model set (#10793).
+      if (i.express_id) picks[i.kind] = { modelId: c.model.id, expressId: i.express_id }; else if (picks[i.kind] && picks[i.kind]?.modelId !== c.model.id) throw new Error('That default pick belongs to another model.'); else delete picks[i.kind];
       s.setAuthoringDefaults(i.channel === 'type' ? { typeIds: picks } : { layerSetIds: picks }); return { expected_defaults: JSON.stringify(useViewerStore.getState().authoringDefaults) };
     }));
   }),

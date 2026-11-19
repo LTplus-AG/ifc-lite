@@ -21,7 +21,7 @@ describe('loadFailureReporter Retry', () => {
 
   it('offers no Retry when the browser lacks WebAssembly SIMD (#10784): the load would fail the same way', () => {
     loadFailureReporter(undefined, activity, () => {}, undefined)('no SIMD', 'wasm_simd_unsupported');
-    assert.match(useViewerStore.getState().error ?? '', /can't run the WebAssembly SIMD instructions/);
+    assert.equal(useViewerStore.getState().error, 'no SIMD', 'the caller already worded it');
     assert.equal(useViewerStore.getState().lastLoadRetry, null);
   });
 

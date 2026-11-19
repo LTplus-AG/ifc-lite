@@ -7,7 +7,6 @@ import { viewerOperation, operation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import type { ToolHost } from '../types';
-import { evictOldest } from './host-handles';
 import { nativeCapturedSurfaces } from '@/lib/appearance/appearance-native-capture';
 import { coordinationModelAdder } from '@/services/coordination-loader';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
@@ -123,7 +122,12 @@ export const appearanceCaptureOperations = [
         throw new Error('Unknown textured surface or triangle ordinal.');
       const capture = prepareCapturedRegion(i.source_model_id, mesh, i.triangles);
       capture.validate();
-      evictOldest(owned(c), 32);
+      // Evict only plain previews: a creating or created token must stay answerable.
+      for (const [key, row] of owned(c)) {
+        if (owned(c).size < 32) break;
+        if (!row.creating && !row.result) owned(c).delete(key);
+      }
+      if (owned(c).size >= 32) throw new Error('Discard created capture candidates before preparing more.');
       const token = crypto.randomUUID();
       owned(c).set(token, {
         capture,
@@ -202,7 +206,7 @@ export const appearanceCaptureOperations = [
     (i, c) => {
       const saved = owned(c).get(i.token);
       if (!saved || saved.modelId !== c.model.id) throw new Error('Unknown capture candidate.');
-      if (saved.creating || saved.result) throw new Error('The capture candidate is being created or already created IFC.');
+      if (saved.creating) throw new Error('The capture candidate is being created.');
       return out(c.commit(() => ({ discarded: owned(c).delete(i.token) })));
     },
   ),

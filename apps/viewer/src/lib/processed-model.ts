@@ -3,18 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The host-facing entry for server-processed models: which processing server
- * the viewer asks, and "open this stored result".
- *
- * Plain functions, callable before the viewer mounts or after, from code that
- * holds no React hook: a host reads its own configuration and calls
- *
- *     openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
- *
- * The request waits here until the mounted viewer takes it
- * (`useProcessedModelAutoload`), which loads it through the canonical
- * `loadFile` path. The `?processed=` URL entry files the same request, unless
- * a host has asked for a model: the host's model wins over the page URL.
+ * Request state shared by the viewer bootstrap and the page's processed-model URL.
+ * The autoload hook takes each request and starts the canonical model-load lifecycle.
  */
 
 import { assertProcessedModelHash, normalizeProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
@@ -125,17 +115,20 @@ function fileRequest(request: FiledProcessedModelRequest): void {
   for (const listener of [...listeners]) listener();
 }
 
-/**
- * Apply a host configuration's processing members (`server`, `open`). Called
- * once by `mountViewer`, after the feature set is fixed: the server first, so
- * the model opens from it.
- */
-export function applyProcessingConfig(config: Pick<ViewerRuntimeConfig, 'server' | 'open'> | undefined): void {
+/** Apply the host's startup settings and provide the mounted viewer's controls. */
+export function applyProcessingConfig(
+  config: Pick<ViewerRuntimeConfig, 'server' | 'open'> | undefined,
+  initialModel?: FiledProcessedModelRequest,
+) {
   if (config?.server) setProcessingServerUrl(config.server.url);
-  if (config?.open) {
-    if (!getProcessingServerUrl()) console.error('[viewer config] open.processedModel requires server.url or VITE_IFC_SERVER_URL.');
-    openProcessedModel(config.open.processedModel); // a host request: the page URL yields
+  const model = initialModel ?? config?.open?.processedModel;
+  if (model) {
+    if (!(initialModel?.serverUrl ?? getProcessingServerUrl())) {
+      console.error('[viewer config] open.processedModel requires server.url or VITE_IFC_SERVER_URL.');
+    }
+    openProcessedModel(model, { serverUrl: initialModel?.serverUrl });
   }
+  return { openProcessedModel, setProcessingServerUrl };
 }
 
 /** The mounted viewer's side: take the waiting request, once. */

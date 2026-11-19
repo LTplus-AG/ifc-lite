@@ -99,6 +99,34 @@ describe('applyProcessingConfig', () => {
       setProcessingServerUrl(initial);
     }
   });
+
+  it('opens the bootstrap option first and uses the returned handle for later requests (#10469)', () => {
+    resetProcessedModelRequestsForTests();
+    try {
+      const configured = { sha256: 'b'.repeat(64), bytes: 0, name: 'configured.ifc' };
+      const first = { sha256: 'a'.repeat(64), bytes: 0, name: 'startup.ifc' };
+      const later = { sha256: 'c'.repeat(64), bytes: 50, name: 'later.ifc' };
+
+      const handle = applyProcessingConfig({
+        server: { url: '/default/' },
+        open: { processedModel: configured },
+      }, { ...first, serverUrl: '/initial/' });
+
+      assert.deepEqual(takeProcessedModelRequest(), { ...first, serverUrl: '/initial' });
+      assert.equal(takeProcessedModelRequest(), null);
+      assert.equal(getProcessingServerUrl(), '/default');
+      assert.throws(() => handle.openProcessedModel({ ...later, sha256: 'invalid' }), TypeError);
+      assert.equal(takeProcessedModelRequest(), null);
+
+      handle.setProcessingServerUrl('/new-default/');
+      handle.openProcessedModel(later, { serverUrl: '/next/' });
+
+      assert.deepEqual(takeProcessedModelRequest(), { ...later, serverUrl: '/next' });
+      assert.equal(getProcessingServerUrl(), '/new-default');
+    } finally {
+      resetProcessedModelRequestsForTests();
+    }
+  });
 });
 
 it('applies host precedence to a malformed processed link before reporting it (#10469)', () => {

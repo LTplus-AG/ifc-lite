@@ -187,6 +187,11 @@ describe('IDS candidates and validation runs (#10792)', () => {
     useViewerStore.setState({ idsStudioState: fixture.state, idsStudioContexts: fixture.contexts, idsStudioRevision: 0, idsStudioRejection: null });
     newHost();
   });
+  const rules_json = JSON.stringify({ version: 1, name: 'Delivery rules', rules: [{
+    id: 'wall-name', name: 'Wall name is recorded',
+    applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
+    requirement: { kind: 'element', block: { groups: [{ rules: [{ kind: 'attribute', name: 'Name', op: 'isSet', value: '' }], combinator: 'AND' }], authoredAs: 'chips' } },
+  }] });
   const specId = () => useViewerStore.getState().idsStudioState!.doc.ids.specifications[0].id;
   const prepareOps = async (name: string) => answer<{ token: string }>(await invoke('ids.operations.prepare', {
     document_revision: useViewerStore.getState().idsStudioRevision, ops_json: JSON.stringify([setSpecTextOp(specId(), 'name', name)]) })).token;
@@ -234,11 +239,6 @@ describe('IDS candidates and validation runs (#10792)', () => {
     } },
   ])
     it(`#36: editing ${edit.name} between a rules run and its publish refuses the run`, async () => {
-      const rules_json = JSON.stringify({ version: 1, name: 'Delivery rules', rules: [{
-        id: 'wall-name', name: 'Wall name is recorded',
-        applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
-        requirement: { kind: 'element', block: { groups: [{ rules: [{ kind: 'attribute', name: 'Name', op: 'isSet', value: '' }], combinator: 'AND' }], authoredAs: 'chips' } },
-      }] });
       const run = async () => answer<{ run_id: string }>(await invoke('validation.rules.run', { rules_json, model_ids: [SAMPLE_MODEL] })).run_id;
       const control = await run();
       answer(await invoke('validation.publish', { run_id: control }, true));
@@ -250,11 +250,6 @@ describe('IDS candidates and validation runs (#10792)', () => {
     });
 
   it('#36: a rules run survives a lens that groups nothing, such as a list colour lens', async () => {
-    const rules_json = JSON.stringify({ version: 1, name: 'Delivery rules', rules: [{
-      id: 'wall-name', name: 'Wall name is recorded',
-      applicability: { groups: [{ rules: [{ kind: 'ifcType', values: ['IfcWall'], op: 'in' }], combinator: 'AND' }], authoredAs: 'chips' },
-      requirement: { kind: 'element', block: { groups: [{ rules: [{ kind: 'attribute', name: 'Name', op: 'isSet', value: '' }], combinator: 'AND' }], authoredAs: 'chips' } },
-    }] });
     const { run_id } = answer<{ run_id: string }>(await invoke('validation.rules.run', { rules_json, model_ids: [SAMPLE_MODEL] }));
     const lens = useViewerStore.getState().savedLenses.find(isGroupingLens)!;
     useViewerStore.setState(s => ({ savedLenses: [...s.savedLenses, { ...lens, id: 'colour-only', rules: [] }] }));

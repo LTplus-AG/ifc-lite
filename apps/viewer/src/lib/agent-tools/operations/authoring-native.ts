@@ -31,7 +31,8 @@ function remember(c: OperationContext, input: Omit<Candidate, 'modelId' | 'store
   const entries = candidates(c);
   // A candidate whose model was closed, replaced or edited since its preview can never apply. The host's own
   // model list also covers the single-model session, whose store is not in `models`.
-  const live = new Map(c.host.models().map(model => [model.id, model.store])), revision = useViewerStore.getState().mutationVersion;
+  const live = new Map(c.host.models().map(model => [model.id, model.store]));
+  const revision = useViewerStore.getState().mutationVersion;
   admitCandidate(entries, { cap: 64, refusal: 'At most 64 reviewed model candidates may be retained by a host.', pending: entry => !entry.receipt,
     gone: entry => live.get(entry.modelId) !== entry.store || (!entry.receipt && entry.revision !== revision) });
   const token = crypto.randomUUID();

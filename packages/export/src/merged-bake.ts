@@ -33,22 +33,12 @@ const GEOREF_NOT_WRITTEN = 'Georeferencing edits were not written.';
 
 /**
  * The name a merge warning gives `model`, unique among `models` since the warnings reach a de-duplicated list: its
- * name, or `name (id)` while that name equals another model's label. Repeated until no two labels agree, so a model
- * named like another's qualified label ("Same (a)") is qualified too.
+ * name, or `name (id)` when another model has that name or that name is another model's `name (id)` ("Same (a)").
  */
 export function mergeWarningLabel(model: Pick<MergeModelInput, 'id' | 'name'>, models: readonly Pick<MergeModelInput, 'id' | 'name'>[]): string {
-  const qualified = new Set<string>();
-  const label = (entry: Pick<MergeModelInput, 'id' | 'name'>) => qualified.has(entry.id) ? `${entry.name} (${entry.id})` : entry.name;
-  for (let changed = true; changed;) {
-    changed = false;
-    const byLabel = new Map<string, string[]>();
-    for (const entry of models) byLabel.set(label(entry), [...byLabel.get(label(entry)) ?? [], entry.id]);
-    for (const ids of byLabel.values()) {
-      if (ids.length < 2) continue;
-      for (const id of ids) if (!qualified.has(id)) { qualified.add(id); changed = true; }
-    }
-  }
-  return label(model);
+  const qualified = (entry: Pick<MergeModelInput, 'id' | 'name'>) => `${entry.name} (${entry.id})`;
+  return models.some(other => other.id !== model.id && (other.name === model.name || qualified(other) === model.name))
+    ? qualified(model) : model.name;
 }
 
 /** True when `model` carries edits that only a bake through {@link StepExporter} can apply. */

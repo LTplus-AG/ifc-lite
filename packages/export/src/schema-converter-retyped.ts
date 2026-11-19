@@ -17,6 +17,7 @@
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { readStepSlots } from './step-argument-parser.js';
+import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 
 /** IFC2X3 `IfcCurrencyEnum`. */
 const CURRENCY: readonly string[] = [
@@ -54,7 +55,9 @@ export function retypeInPlace(line: string | null, fromSchema: IfcSchemaVersion,
     slots[slot[1]] = `'${inner}'`;
   } else {
     if (!value.startsWith("'") || !value.endsWith("'")) return line;
-    const member = slot[2].find((m) => m.toUpperCase() === inner.toUpperCase());
+    // A label may spell the code in a STEP encoding (`\X2\0045...\X0\`).
+    const label = decodeStepStringLiteral(inner).trim().toUpperCase();
+    const member = slot[2].find((m) => m.toUpperCase() === label);
     slots[slot[1]] = member ? `.${member}.` : '$';
   }
   return `${record.prefix}${slots.join(',')}${record.suffix}`;

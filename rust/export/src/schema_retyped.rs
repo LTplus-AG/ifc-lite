@@ -48,6 +48,8 @@ pub(crate) fn apply(line: String, cfrom: &str, cto: &str, dropped: Option<&mut u
         format!("'{member}'")
     } else {
         let Some(label) = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) else { return line };
+        // A label may spell the code in a STEP encoding (`\X2\0045...\X0\`).
+        let label = ifc_lite_core::decode_ifc_string(&label.replace("''", "'")).into_owned();
         match members.iter().find(|m| m.eq_ignore_ascii_case(label.trim())) {
             Some(member) => format!(".{member}."),
             None => {

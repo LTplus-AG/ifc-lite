@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { memo, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { HierarchyNode, type HierarchyNodeProps } from './HierarchyNode';
 import type { TreeNode } from './types';
 
@@ -56,7 +56,9 @@ export interface HierarchyRowProps extends RowValues {
 function Row({ section, index, start, size, handlers, registerRow, focusRow, ...values }: HierarchyRowProps) {
   const { node } = values;
   const { click, ...nodeHandlers } = handlers;
-  return <HierarchyNode {...values} {...nodeHandlers} virtualRow={{ start, size }} rowRef={(el) => registerRow(node.id, el)} onRowFocus={() => focusRow(node.id)}
+  // Stable so a re-render does not unregister and re-register the row element.
+  const rowRef = useCallback((el: HTMLElement | null) => registerRow(node.id, el), [registerRow, node.id]);
+  return <HierarchyNode {...values} {...nodeHandlers} virtualRow={{ start, size }} rowRef={rowRef} onRowFocus={() => focusRow(node.id)}
     onNodeClick={(_: TreeNode, event: ActivationEvent) => click(node, event, section, index)} />;
 }
 

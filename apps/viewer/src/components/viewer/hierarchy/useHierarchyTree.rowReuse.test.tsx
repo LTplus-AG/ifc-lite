@@ -134,7 +134,7 @@ describe('hierarchy rows across edits (#10535)', () => {
     assert.equal(tree().getNodeElements(storey), members, 'another panel render shares the same resolution');
     assert.equal(tree().getNodeElements({ ...storey }), members, 'the cache is keyed by row id, so an equal row object shares it');
 
-    // An SDK raw write advances the view's revision without a mutationVersion.
+    // SDK raw, skip-history and remote writes advance the view's revision without a mutationVersion.
     act(() => { view.setProperty(50, 'Pset_Test', 'Note', 'x', undefined, undefined, true); });
     const again = tree().getNodeElements(storey);
     assert.notEqual(again, members, 'a new view revision resolves again');

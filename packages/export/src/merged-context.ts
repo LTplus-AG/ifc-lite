@@ -166,8 +166,8 @@ export interface GeorefSignature { placement: string; unitScale: number | null }
  * The {@link GeorefSignature} of `dataStore`'s first representation context, or null when no coordinate operation
  * sits on it. It reads the parser's georeference, which resolves the map unit, and fills IFC defaults (scale 1, no
  * rotation), so two spellings of one georeference agree; a CRS without a map unit is read as metres, as the viewer
- * reads it (`@ifc-lite/geo` `map-unit.ts`, #10886). An operation the parser does not read as the model's georeference, and a geographic CRS
- * (whose height unit it does not read), match no other. Two contexts in one frame with different georeferences
+ * reads it (#10886). An operation the parser does not read as the model's georeference, and a geographic CRS (whose
+ * height unit it does not read), match no other. Two contexts in one frame with different georeferences
  * place the same coordinates at two places on the map, so they must not be unified (#10798).
  */
 export function resolveModelContextGeorefSignature(dataStore: IfcDataStore): GeorefSignature | null {
@@ -205,7 +205,7 @@ function recordValue(dataStore: IfcDataStore, id: number, depth: number, skip: r
 }
 
 /** A coordinate operation's TargetCRS that is a CRS record; IFC4X3 also allows another context there. */
-const CRS_TYPES = new Set(['IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS']);
+export const CRS_TYPES = new Set(['IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS']);
 
 /** The first coordinate operation whose SourceCRS is `contextId`, with its TargetCRS, or null when none is. */
 function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOperation | null {

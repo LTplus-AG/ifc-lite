@@ -14,6 +14,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
+import { CRS_TYPES } from './merged-context.js';
 import { getStepAttr } from './merged-subcontext.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
@@ -23,14 +24,11 @@ export interface MetreUnit { id: number; used: boolean }
 
 /** How normalize treats one model's georeference records, by source id. */
 export interface GeorefNormalizePlan {
-  /** Coordinate operations, left as written. */
-  operations: ReadonlySet<number>;
-  /** CRSs with no unit at {@link CRS_UNIT_ATTR}. */
-  unitless: ReadonlySet<number>;
+  /** Coordinate operations, left as written, and CRSs with no unit at {@link CRS_UNIT_ATTR}, given {@link metre}. */
+  records: ReadonlyMap<number, 'operation' | 'unitless'>;
   metre: MetreUnit;
 }
 
-const CRS_TYPES = ['IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS'];
 /** 0-based index of `IfcProjectedCRS.MapUnit` and `IfcGeographicCRS.HeightUnit` (IFC4, IFC4X3). */
 const CRS_UNIT_ATTR = 6;
 
@@ -38,10 +36,12 @@ const CRS_UNIT_ATTR = 6;
 export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit): GeorefNormalizePlan {
   // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
   const { byType } = dataStore.entityIndex;
-  const operations = new Set(COORDINATE_OPERATION_STEP_TYPES.flatMap(type => byType.get(type) ?? []));
-  const unitless = new Set(CRS_TYPES.flatMap(type => byType.get(type) ?? [])
-    .filter(id => (getStepAttr(dataStore, id, CRS_UNIT_ATTR) ?? '$') === '$'));
-  return { operations, unitless, metre };
+  const records = new Map<number, 'operation' | 'unitless'>();
+  for (const id of COORDINATE_OPERATION_STEP_TYPES.flatMap(type => byType.get(type) ?? [])) records.set(id, 'operation');
+  for (const id of [...CRS_TYPES].flatMap(type => byType.get(type) ?? [])) {
+    if ((getStepAttr(dataStore, id, CRS_UNIT_ATTR) ?? '$') === '$') records.set(id, 'unitless');
+  }
+  return { records, metre };
 }
 
 /**
@@ -49,8 +49,9 @@ export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit): 
  * record, which the caller rescales as usual.
  */
 export function normalizeGeorefRecord(text: string, sourceId: number, plan: GeorefNormalizePlan | undefined): string | undefined {
-  if (plan?.operations.has(sourceId)) return text;
-  if (!plan?.unitless.has(sourceId)) return undefined;
+  const kind = plan?.records.get(sourceId);
+  if (!plan || kind === undefined) return undefined;
+  if (kind === 'operation') return text;
   const frame = stepRecordFrame(text, { allowMissingSemicolon: true });
   const args = frame && splitTopLevelStepArguments(frameArgs(text, frame));
   if (!frame || !args || args.length <= CRS_UNIT_ATTR) return text;

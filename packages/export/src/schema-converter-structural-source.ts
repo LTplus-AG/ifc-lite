@@ -173,12 +173,11 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
     const listed = listItems(source.slots(rel)?.[4] ?? '')?.map(slotRef) ?? [];
     const related = listed.filter((r): r is number => r !== null);
     const props = new Map<string, number>();
-    for (const p of propIds) {
+    if (related.length === listed.length) for (const p of propIds) {
       const propName = stepString(source.slots(p)?.[0]);
       if (p === null || propName === null || props.has(propName)) { props.clear(); break; }
       props.set(propName, p);
     }
-    if (related.length !== listed.length) props.clear();
     const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
     return { rel, pset, related, props, exclusive };
   });

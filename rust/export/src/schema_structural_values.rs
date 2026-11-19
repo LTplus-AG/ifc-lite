@@ -85,11 +85,10 @@ impl Source<'_> {
             // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that
             // does not, that lists a property it cannot read, or whose relationship lists a non-reference, still
             // counts as present for the objects it does name but gives no property.
-            let listed: Vec<Option<u32>> = list_items(related).unwrap_or_default().iter().map(|item| reference(item)).collect();
-            let members: Vec<u32> = listed.iter().flatten().copied().collect();
-            let ids = references(has_properties);
-            let properties = ids.as_deref().filter(|_| members.len() == listed.len()).and_then(|ids| self.properties(ids)).unwrap_or_default();
-            let ids = ids.unwrap_or_default();
+            let listed = list_items(related).unwrap_or_default();
+            let members: Vec<u32> = listed.iter().filter_map(|item| reference(item)).collect();
+            let ids = references(has_properties).unwrap_or_default();
+            let properties = if members.len() == listed.len() { self.properties(&ids).unwrap_or_default() } else { BTreeMap::new() };
             Some(PropertySet { rel, set, members, ids, properties })
         }).collect()
     }

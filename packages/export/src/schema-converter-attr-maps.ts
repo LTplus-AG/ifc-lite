@@ -143,9 +143,10 @@ function sourceOf(map: AttrMap, up: boolean, name: string, src: readonly string[
   return carried && src.includes(name) ? { name, how: 'value' } : undefined;
 }
 
-/** A slot that carries information: not `$`, `*` or empty. */
+/** A slot that carries information: not `$`, `*` or empty once comments go
+ *  (#10779). Twin of Rust `schema_convert::holds_value`. */
 function holdsValue(slot: string): boolean {
-  const v = slot.trim();
+  const v = slot.includes('/*') ? withoutComments(slot) : slot.trim();
   return v !== '' && v !== '$' && v !== '*';
 }
 

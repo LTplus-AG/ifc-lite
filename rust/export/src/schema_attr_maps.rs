@@ -157,7 +157,7 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
             Some((value, How::Value)) if holds_value(value) => out.push_str(value),
             // A SET is rebuilt, so comments around it or its members go.
             Some((value, how @ (How::Wrap | How::Unwrap))) => {
-                let bare = without_comments(value);
+                let bare = crate::step_slot::without_comments(value);
                 if !holds_value(&bare) {
                     out.push('$');
                 } else if let How::Unwrap = how {

@@ -112,6 +112,13 @@ describe('MergedExporter georeference warnings for models with one name (#10669)
     const refusals = result.stats.warnings.filter(warning => /Georeferencing edits were not written/.test(warning));
     expect(refusals.map(warning => warning.split(':')[0])).toEqual(['Same (a)', 'Same (b)']);
   });
+  it('keeps the labels distinct when a model is named like another\'s qualified label', async () => {
+    const inputs: MergeModelInput[] = await Promise.all([['a', 'Same'], ['b', 'Same'], ['c', 'Same (a)']].map(async ([id, name]) => (
+      { id, name, dataStore: await parse(model(name, `0Project${id.toUpperCase()}000000000000${id}`)), georefMutations: GEOREF })));
+    const result = await new MergedExporter(inputs).exportAsync({ schema: 'IFC2X3' });
+    const refusals = result.stats.warnings.filter(warning => /Georeferencing edits were not written/.test(warning));
+    expect(refusals.map(warning => warning.slice(0, warning.indexOf(': Georef')))).toEqual(['Same (a)', 'Same (b)', 'Same (a) (c)']);
+  });
 });
 
 describe('MergedExporter normalize warnings for models with one name (#10669)', () => {

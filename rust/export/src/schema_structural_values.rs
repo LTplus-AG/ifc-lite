@@ -7,6 +7,10 @@ use crate::schema_structural_axes::{list_items, reference, unset};
 const OBJECT_PLACEMENT: usize = ifc_lite_core::slot::IfcProduct::OBJECT_PLACEMENT.index();
 const RELATED_OBJECTS: usize = ifc_lite_core::slot::IfcRelAssignsToGroup::RELATED_OBJECTS.index();
 const RELATING_GROUP: usize = ifc_lite_core::slot::IfcRelAssignsToGroup::RELATING_GROUP.index();
+const DEFINED_OBJECTS: usize = ifc_lite_core::slot::IfcRelDefinesByProperties::RELATED_OBJECTS.index();
+const DEFINING_SET: usize = ifc_lite_core::slot::IfcRelDefinesByProperties::RELATING_PROPERTY_DEFINITION.index();
+const SET_NAME: usize = ifc_lite_core::slot::IfcPropertySet::NAME.index();
+const HAS_PROPERTIES: usize = ifc_lite_core::slot::IfcPropertySet::HAS_PROPERTIES.index();
 const REP_ITEMS: usize = 3;
 const PROPERTY_VALUE: usize = 2;
 
@@ -77,16 +81,16 @@ impl Source<'_> {
         self.ids("IFCRELDEFINESBYPROPERTIES").filter_map(|rel| {
             // Both records are read at any arity, as the TypeScript twin does.
             let args = self.slots(rel)?;
-            let set = reference(args.get(5)?)?;
+            let set = reference(args.get(DEFINING_SET)?)?;
             if !self.kind(set, "IFCPROPERTYSET") { return None; }
             let slots = self.slots(set)?;
-            if step_string(slots.get(2)?) != Some(name) { return None; }
+            if step_string(slots.get(SET_NAME)?) != Some(name) { return None; }
             // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that
             // does not, that lists a property it cannot read, or whose relationship lists a non-reference, still
             // counts as present for the objects it does name but gives no property.
-            let listed = args.get(4).and_then(|related| list_items(related)).unwrap_or_default();
+            let listed = args.get(DEFINED_OBJECTS).and_then(|related| list_items(related)).unwrap_or_default();
             let members: Vec<u32> = listed.iter().filter_map(|item| reference(item)).collect();
-            let ids = slots.get(4).and_then(|has| references(has)).unwrap_or_default();
+            let ids = slots.get(HAS_PROPERTIES).and_then(|has| references(has)).unwrap_or_default();
             let properties = if members.len() == listed.len() { self.properties(&ids).unwrap_or_default() } else { BTreeMap::new() };
             Some(PropertySet { rel, set, members, ids, properties })
         }).collect()

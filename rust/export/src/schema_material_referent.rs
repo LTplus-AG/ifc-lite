@@ -96,24 +96,28 @@ impl MaterialReferents {
     }
 
     /// One source converted from `from` to `to`, with its `kept` material records.
-    pub(crate) fn scan(content: &[u8], from: &str, to: &str, kept: &dyn Fn(u32, usize) -> bool) -> Self {
+    /// `edited`: the export may create or edit material records (a mutation
+    /// log), so any material record is read, not only a file holding properties.
+    pub(crate) fn scan(content: &[u8], from: &str, to: &str, edited: bool, kept: &dyn Fn(u32, usize) -> bool) -> Self {
         let mut out = Self::for_target(to);
-        out.add_model(content, from, MATERIAL, &|id, start| kept(id, start).then_some(id), &|bytes| String::from_utf8_lossy(bytes).into_owned());
+        out.add_model(content, from, if edited { MATERIAL } else { PROPERTIES }, &|id, start| (id, kept(id, start)), &|bytes| String::from_utf8_lossy(bytes).into_owned());
         out
     }
 
     /// Adds a model's material records: `id_of` gives a record's id in the
-    /// export (`None`: not written by it), `text_of` its text in the export's id space.
+    /// export and whether the export writes it, `text_of` its text in the export's id space.
     /// `gate`: a type a model must hold to be scanned (a merge needs IFCMATERIALPROPERTIES;
     /// a single export, whose log may create one, any IFCMATERIAL record).
-    pub(crate) fn add_model(&mut self, content: &[u8], from: &str, gate: &str, id_of: &dyn Fn(u32, usize) -> Option<u32>, text_of: &dyn Fn(&[u8]) -> String) {
+    pub(crate) fn add_model(&mut self, content: &[u8], from: &str, gate: &str, id_of: &dyn Fn(u32, usize) -> (u32, bool), text_of: &dyn Fn(&[u8]) -> String) {
         let Some(schema) = self.schema_for(from) else { return };
         // A file without a record of `gate` needs no pass.
         if !content.windows(gate.len()).any(|w| w.eq_ignore_ascii_case(gate.as_bytes())) { return; }
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, ty, start, end)) = scanner.next_entity() {
             if !ty.get(..MATERIAL.len()).is_some_and(|p| p.eq_ignore_ascii_case(MATERIAL)) { continue; }
-            let Some(id) = id_of(id, start) else { continue };
+            let (id, written) = id_of(id, start);
+            // A record the export does not write is left out of a set that lists it.
+            if !written { self.gone.insert(id); continue; }
             if let Some((ty, slots)) = crate::step_log::read_slots(&text_of(&content[start..end])) {
                 self.records.insert(id, (ty, slots, schema));
             }

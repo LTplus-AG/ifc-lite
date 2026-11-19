@@ -112,10 +112,9 @@ fn every_value_without_a_target_slot_is_counted_10763() {
 /// IfcMaterialProperties; IFC2X3 cannot instantiate its abstract namesake.
 #[test]
 fn ifc4_material_and_profile_properties_downgrade_to_the_deleted_subtypes_10763() {
-    assert_eq!(
-        down("#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);"),
-        "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');"
-    );
+    // Without the export's material records nothing proves #8 an IfcMaterial, so the
+    // record is not written (`schema_material_referent_tests` covers the map's layout).
+    assert_eq!(down("#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);"), "");
     assert_eq!(
         convert_step_line("#5=IFCPROFILEPROPERTIES('n',$,(#6),#8);", "IFC4X3", "IFC2X3", 1, &mut Ifc2x3SlotFill::new(None), None).unwrap(),
         "#5=IFCGENERALPROFILEPROPERTIES($,#8,$,$,$,$,$);"

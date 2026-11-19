@@ -222,7 +222,7 @@ impl ConversionChecks {
     pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: &dyn Fn(u32, usize) -> bool, allocate: &mut dyn FnMut() -> Option<u32>) -> Self {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         // Read from the source's types alone, so it runs for every export (#10763).
-        let mut checks = Self::new(crate::schema_material_referent::MaterialReferents::scan(content, from, to, kept));
+        let mut checks = Self::new(crate::schema_material_referent::MaterialReferents::scan(content, from, to, !unchanged, kept));
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }

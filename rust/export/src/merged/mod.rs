@@ -152,9 +152,11 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
 
 /// A model's material records as the merge writes them (#10763): its ids
 /// offset, its references rewritten, the records it leaves out left out.
-fn add_materials(checks: &mut ConversionChecks, content: &[u8], source_schema: &str, included: &HashSet<u32>, plan: &plan::ModelPlan, offset: u32) {
+/// Returns whether the model converts to `schema`, which is when it matters.
+fn add_materials(checks: &mut ConversionChecks, content: &[u8], source_schema: &str, schema: &str, included: &HashSet<u32>, plan: &plan::ModelPlan, offset: u32) -> bool {
     let written = |id: u32| included.contains(&id) && !plan.skip.contains(&id) && !plan.shared_remap.contains_key(&id);
-    checks.materials.add_model(content, crate::schema_convert::canon(source_schema), "IFCMATERIALPROPERTIES", &|id, _| written(id).then(|| id.saturating_add(offset)), &|bytes| rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied()));
+    checks.materials.add_model(content, crate::schema_convert::canon(source_schema), "IFCMATERIALPROPERTIES", &|id, _| (id.saturating_add(offset), written(id)), &|bytes| rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied()));
+    crate::schema_convert::needs_conversion(source_schema, schema)
 }
 
 /// Merge several parsed models into one STEP/IFC string, honoring per-model
@@ -299,7 +301,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
 
         // Emit.
         let source_schema = detect_schema(model.content);
-        let converting = crate::schema_convert::needs_conversion(&source_schema, &schema); add_materials(&mut checks, model.content, &source_schema, &included, &plan, offset); // #10763
+        let converting = add_materials(&mut checks, model.content, &source_schema, &schema, &included, &plan, offset); // and #10763's material records
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {

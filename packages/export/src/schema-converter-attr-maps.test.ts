@@ -63,8 +63,8 @@ describe('attribute maps (#10763)', () => {
   });
 
   it('downgrades IFC4 material and profile properties to the IFC2X3 subtypes IFC4 deleted', () => {
-    expect(convertStepLine("#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);", 'IFC4', 'IFC2X3'))
-      .toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');");
+    // Without the export's records nothing proves #8 an IfcMaterial, so the record is left out.
+    expect(convertStepLine("#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);", 'IFC4', 'IFC2X3')).toBeNull();
     expect(convertStepLine("#5=IFCPROFILEPROPERTIES('n',$,(#6),#8);", 'IFC4X3', 'IFC2X3')).toBe('#5=IFCGENERALPROFILEPROPERTIES($,#8,$,$,$,$,$);');
     expect(classifyEntityTypeConversion('IFCPROFILEPROPERTIES', 'IFC4', 'IFC2X3')).toEqual({
       targetType: 'IFCGENERALPROFILEPROPERTIES', kind: 'lossy', droppedAttributes: ['Name', 'Description', 'Properties'],

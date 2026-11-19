@@ -36,6 +36,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { asSourceBytes, extractGeoreferencingOnDemand, STEP_TRIVIA } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { MAP_CONVERSION_STEP_TYPES } from './georef-closure.js';
 import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
 
 /**
@@ -196,7 +197,7 @@ export function unitScalesEqual(a: number, b: number): boolean {
 export interface GeorefSignature { placement: string; unitScale: number | null }
 
 /** The coordinate operations a context can carry: the map conversions and IFC4X3's rigid operation. */
-const COORDINATE_OPERATION_STEP_TYPES = ['IFCMAPCONVERSION', 'IFCMAPCONVERSIONSCALED', 'IFCRIGIDOPERATION'];
+const COORDINATE_OPERATION_STEP_TYPES = [...MAP_CONVERSION_STEP_TYPES, 'IFCRIGIDOPERATION'];
 
 /**
  * The {@link GeorefSignature} of `dataStore`'s first representation context, or null when no coordinate operation

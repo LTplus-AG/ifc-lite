@@ -723,8 +723,9 @@ jobs:
         run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
       # The `PR viewer selection` queue-entry status, from the first job of
       # the run (scripts/ci-viewer-select-status.mjs --entry): `pending` when
-      # viewer-tests-selected will gate this run, else `success` "not gated",
-      # which also releases a hold an earlier run on this sha left. Last, so
+      # viewer-tests-selected (fast lane) or the viewer shards (full lane,
+      # viewer-shards-status) will gate this run, else `success` "not gated"
+      # (switch not `on`, no frontend/Rust change). Last, so
       # it reads the final lane and filter outputs; posts nothing on a no-op
       # edit, a batch PR or a fork. A failed post exits 0 (fails open).
       - name: Post the PR viewer selection entry status
@@ -1633,6 +1634,55 @@ jobs:
           test_step_outcome: ${{ steps.viewer_retry.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
 
+  # The full-lane verdict of the `PR viewer selection` status: on a full-lane
+  # PR run the `changes` job posted `pending` ("waiting for the viewer
+  # shards"), and this posts success only when every shard passed, failure
+  # when one failed, nothing when they were cancelled or skipped (the pending
+  # stays, as for the selected tests). So a full-lane run on a sha an earlier
+  # fast run held never releases it before the shards have actually passed.
+  # !cancelled(), not always(): a cancelled run posts nothing either way, so
+  # it need not start a runner. Advisory to the run like the job below.
+  viewer-shards-status:
+    name: Viewer shards status (full lane)
+    needs: [changes, viewer-tests]
+    continue-on-error: true
+    # Keep in step with gateApplies() in scripts/ci-viewer-select-status.mjs
+    # and the shards' own `if:` (pinned in its test).
+    if: >-
+      !cancelled() &&
+      github.event_name == 'pull_request' &&
+      vars.CI_PR_VIEWER_SELECT == 'on' &&
+      needs.changes.outputs.lane != 'fast' &&
+      needs.changes.outputs.batch != 'true' &&
+      needs.changes.outputs.noop != 'true' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The checkout reads this public repo; the only write is the status.
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Post the full-lane PR viewer selection status
+        run: node scripts/ci-viewer-select-status.mjs --shards
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT: ${{ github.event_name }}
+          LANE: ${{ needs.changes.outputs.lane }}
+          BATCH: ${{ needs.changes.outputs.batch }}
+          NOOP: ${{ needs.changes.outputs.noop }}
+          FRONTEND: ${{ needs.changes.outputs.frontend }}
+          RUST: ${{ needs.changes.outputs.rust }}
+          SHARDS_RESULT: ${{ needs.viewer-tests.result }}
+
   # SELECTED VIEWER TESTS on a fast-lane PR (scripts/ci-viewer-select.mjs).
   # The fast lane skips the shards above, so a viewer failure otherwise first
   # shows in the merge queue. This runs the viewer test files the PR's changes
@@ -1647,16 +1697,18 @@ jobs:
   # main. Test failures exit 0; continue-on-error covers the rest.
   # A GATE ON QUEUE ENTRY instead: in `on`, the verdict is the commit status
   # `PR viewer selection` on the PR head (scripts/ci-viewer-select-status.mjs).
-  # The `changes` job's last step posts it `pending` when this job will gate
-  # the run, else `success` "not gated" (full lane, switch not `on`, no
-  # frontend/Rust change); this job then posts success or failure.
+  # The `changes` job's last step posts it `pending` when this job (fast lane)
+  # or the viewer shards (full lane, verdict from `viewer-shards-status`) will
+  # gate the run, else `success` "not gated" (switch not `on`, no frontend/Rust
+  # change); this job re-posts pending, then success or failure.
   # .mergify.yml's auto_merge_conditions keep a PR whose status is failing or
   # pending out of the queue; absent (fork PR) passes. Per sha, so a push
-  # starts clean. A flake: re-run this job; its status replaces the old one.
+  # starts clean. A flake: re-run this job within a day (build-output is kept
+  # one day); after that, re-run all jobs or push. A stuck pending (run
+  # cancelled or broken before its verdict) says "if stuck: re-run all jobs".
   # ROLLBACK: CI_PR_VIEWER_SELECT=off releases every held PR on its next run
-  # (push, or close and reopen), which posts "not gated". Stuck pending (build
-  # failed, job cancelled by hand): re-run. The queue's full run is still the
-  # full gate.
+  # (push, or close and reopen), which posts "not gated". The queue's full run
+  # is still the full gate.
   viewer-tests-selected:
     name: Viewer tests, advisory (selected for this PR)
     needs: [changes, build]
@@ -1696,6 +1748,8 @@ jobs:
         run: node scripts/ci-viewer-select-status.mjs --entry
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Links this job, so a stuck pending points at what to re-run.
+          JOB_NAME: Viewer tests, advisory (selected for this PR)
           CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -1726,7 +1780,10 @@ jobs:
           cache: pnpm
       - if: steps.select.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
+      # build-output is kept one day: a re-run of this job alone after that
+      # fails here, and the status then says "re-run all jobs or push".
       - name: Download build artifacts
+        id: download
         if: steps.select.outputs.run == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -1766,6 +1823,7 @@ jobs:
           JOB_STATUS: ${{ job.status }}
           SELECT_OUTCOME: ${{ steps.select.outcome }}
           SELECT_RUN: ${{ steps.select.outputs.run }}
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
           RUN_OUTCOME: ${{ steps.run.outcome }}
       # Kept per PR run so a queue failure in a viewer test can be checked
       # against what this PR's selection covered (recall). Last, and on

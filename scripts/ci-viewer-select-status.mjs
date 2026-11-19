@@ -17,46 +17,64 @@
  *   --entry     the last step of the `changes` job, on every same-repo PR run
  *               that decides anything (not a no-op `edited` replay, which
  *               keeps the earlier verdict; not a Mergify batch PR):
- *                 gated (switch `on`, fast lane, frontend or Rust touched:
- *                 exactly the tests job's `if:`)  -> `pending`, so the gate
- *                 is closed from the first job of the run, before the build;
- *                 otherwise -> `success`, "Not gated on this run (<why>)".
- *               The second half RELEASES a hold an earlier run on the same
- *               sha left behind: `ci:full` plus close/reopen runs every viewer
- *               shard, and flipping CI_PR_VIEWER_SELECT off is an emergency
- *               rollback that frees every held PR on its next run. Exits 0
- *               even when the post fails (logged as a warning): that FAILS
- *               OPEN for the run (no pending, so the gate stays open until the
- *               verdict), which is deliberate: a status API blip must not
- *               turn the `changes` job, and so every lane, red.
+ *                 fast lane, gated (switch `on`, frontend or Rust touched:
+ *                 exactly the tests job's `if:`)  -> `pending`, closed from
+ *                 the first job of the run, before the build;
+ *                 full lane, same switch and paths (exactly the viewer
+ *                 shards' `if:`)  -> `pending` too, until --shards;
+ *                 otherwise (switch not `on`, no frontend/Rust change)
+ *                 -> `success`, "Not gated on this run (<why>)".
+ *               A later run on the same sha therefore REPLACES a hold an
+ *               earlier run left: `ci:full` plus close/reopen resolves it
+ *               through the shards' result, and flipping CI_PR_VIEWER_SELECT
+ *               off is an emergency rollback that frees every held PR on its
+ *               next run. Also the tests job's first status step, so a re-run
+ *               of that job alone turns an old verdict back to pending.
+ *               Exits 0 even when the post fails (logged as a warning): that
+ *               FAILS OPEN for the run (no pending, so the gate stays open
+ *               until the verdict), which is deliberate: a status API blip
+ *               must not turn the `changes` job, and so every lane, red.
  *   --final <dir>
  *               the tests job's last-but-one step, on always(): success when
  *               the selected files passed (a file that passed on the
  *               CI_SHARD_RETRY=on retry counts) or nothing was selected;
- *               failure when one failed, or the select or run step broke.
+ *               failure when one failed, or the job produced no verdict (a
+ *               step broke, the build artifacts expired: they are kept one
+ *               day, so a re-run of this job alone after that cannot work).
  *               A CANCELLED job posts nothing: its pending stays (fail
  *               closed), and a cancelling newer run on the same sha posts its
  *               own status, which a late "cancelled" post must not overwrite.
  *               Exits 1 when the post fails, which shows on the advisory
  *               job; the pending status then still holds the gate.
+ *   --shards    the full-lane verdict, from `viewer-shards-status` (needs
+ *               changes + viewer-tests): success when every viewer shard
+ *               passed, failure when one failed, nothing when they were
+ *               cancelled or skipped (pending stays, as for --final).
+ *
+ * Every pending says "if stuck: re-run all jobs": a pending is stuck only
+ * when its run was cancelled, timed out or broke before its verdict.
  *
  * ORDERING on one sha (the status is last-write-wins): within a run, entry
- * precedes the verdict (the tests job needs `changes`). Across runs, test.yml's
- * concurrency group cancels an older non-`edited` run when a newer one starts,
- * and a cancelled run posts nothing, so its verdict cannot land after the
- * newer run's entry. An `edited` run is not cancelling: it queues behind the
- * running one, so it starts after that verdict is posted, and a no-op edit
- * posts nothing. A verdict POST already in flight at the instant of
- * cancellation is the one residue (sub-second, against the newer run's
- * runner pickup, checkout and lane steps).
+ * precedes the verdict (the tests job and viewer-shards-status need
+ * `changes`). Across runs, test.yml's concurrency group cancels an older
+ * non-`edited` run when a newer one starts, and a cancelled run posts nothing,
+ * so its verdict cannot land after the newer run's entry. An `edited` run is
+ * not cancelling: it queues behind the running one, so it starts after that
+ * verdict is posted, and a no-op edit posts nothing. A verdict POST already in
+ * flight at the instant of cancellation is the one residue (sub-second,
+ * against the newer run's runner pickup, checkout and lane steps). No run
+ * posts `success` before the tests that justify it have passed, except where
+ * the gate does not apply at all (switch not `on`, no frontend/Rust change).
  *
  * Posts nothing for a fork PR: its token cannot write statuses, so there the
  * queue's full run stays the only gate. `--final` posts only in `on`.
  *
  * Env: GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_API_URL, GITHUB_SERVER_URL,
  * GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT, HEAD_SHA, HEAD_REPO, CI_PR_VIEWER_SELECT;
- * for --entry also EVENT, LANE, BATCH, NOOP, FRONTEND, RUST; for --final
- * JOB_NAME, JOB_STATUS, SELECT_OUTCOME, SELECT_RUN, RUN_OUTCOME.
+ * for --entry and --shards also EVENT, LANE, BATCH, NOOP, FRONTEND, RUST, and
+ * SHARDS_RESULT for --shards; for --final JOB_STATUS, SELECT_OUTCOME,
+ * SELECT_RUN, DOWNLOAD_OUTCOME, RUN_OUTCOME. JOB_NAME (any phase) links that
+ * job's page instead of the run's.
  */
 
 import { readFileSync } from 'node:fs';
@@ -73,48 +91,65 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const isOn = (mode) => String(mode ?? '').toLowerCase() === 'on';
 
+/** The remedy a stale pending needs, in the status text itself. */
+export const STUCK = 'if stuck: re-run all jobs';
+/** A missing verdict: the build artifacts a re-run downloads live one day. */
+const RERUN = 're-run all jobs or push';
+
 /**
- * Does this run gate queue entry? The same clauses as test.yml's
- * `viewer-tests-selected` `if:` with the switch at `on` (pinned in the test).
- * Lowercased and not trimmed, like Actions' `==`.
- * @returns {{ gated: true } | { gated: false, why: string }}
+ * Which verdict gates queue entry on this run. `selected`: the tests job's
+ * `if:` with the switch at `on`; `shards`: the viewer shards' `if:` with the
+ * switch at `on` (both pinned in the test). Lowercased and not trimmed, like
+ * Actions' `==`.
+ * @returns {{ gated: 'selected'|'shards' } | { gated: false, why: string }}
  */
 export function gateApplies({ mode, lane, frontend, rust }) {
   if (!isOn(mode)) return { gated: false, why: `CI_PR_VIEWER_SELECT is ${JSON.stringify(String(mode ?? ''))}` };
-  if (lane !== 'fast') return { gated: false, why: 'full lane: every viewer shard runs' };
   if (frontend !== 'true' && rust !== 'true') return { gated: false, why: 'no frontend or Rust change' };
-  return { gated: true };
+  return { gated: lane === 'fast' ? 'selected' : 'shards' };
 }
 
 /**
  * What to post, or why nothing is posted.
- * @param {{ phase: 'entry'|'final', mode?: string, headRepo?: string, repo?: string,
+ * @param {{ phase: 'entry'|'final'|'shards', mode?: string, headRepo?: string, repo?: string,
  *   event?: string, lane?: string, batch?: string, noop?: string, frontend?: string, rust?: string,
- *   jobStatus?: string, selectOutcome?: string, run?: string, runOutcome?: string,
- *   result?: { files: number, passed: boolean, failedFiles?: string[], passedOnRetry?: string[] } | null }} input
+ *   shardsResult?: string, jobStatus?: string, selectOutcome?: string, run?: string,
+ *   downloadOutcome?: string, runOutcome?: string,
+ *   result?: { files: number, passed: boolean, failedFiles?: string[], passedOnRetry?: string[], timedOut?: boolean } | null }} input
  * @returns {{ post: false, reason: string } | { post: true, state: 'pending'|'success'|'failure', description: string }}
  */
 export function decideStatus(input) {
   const { phase, mode, headRepo, repo } = input;
   if (!repo || headRepo !== repo) return { post: false, reason: 'the head is not in this repository (fork PR): its token cannot write statuses, so the merge queue run is the gate' };
   const post = (state, description) => ({ post: true, state, description: clip(description) });
-  if (phase === 'entry') {
+  if (phase === 'entry' || phase === 'shards') {
     if (input.event !== 'pull_request') return { post: false, reason: `a ${input.event || 'unknown'} run has no PR head to gate` };
     if (input.batch === 'true') return { post: false, reason: 'a Mergify batch PR is the queue run itself' };
     if (input.noop === 'true') return { post: false, reason: 'a no-op edit replays the earlier verdict, which stands' };
     const gate = gateApplies(input);
-    return gate.gated ? post('pending', 'Selected viewer tests are running') : post('success', `Not gated on this run (${gate.why})`);
+    if (phase === 'entry') {
+      if (!gate.gated) return post('success', `Not gated on this run (${gate.why})`);
+      return post('pending', gate.gated === 'selected' ? `Selected viewer tests running; ${STUCK}` : `Full lane: waiting for the viewer shards; ${STUCK}`);
+    }
+    if (gate.gated !== 'shards') return { post: false, reason: 'the viewer shards do not gate this run' };
+    if (input.shardsResult === 'success') return post('success', 'Full lane: every viewer shard passed');
+    if (input.shardsResult === 'failure') return post('failure', 'Full lane: a viewer shard failed; see the run');
+    return { post: false, reason: `the viewer shards ended ${input.shardsResult || 'unknown'}: the pending status stays` };
   }
   if (!isOn(mode)) return { post: false, reason: 'CI_PR_VIEWER_SELECT is not `on`; this run posted "not gated" from the changes job' };
   if (input.jobStatus === 'cancelled') return { post: false, reason: 'cancelled: the pending status stays, and a newer run on this sha posts its own' };
   const { selectOutcome, run, runOutcome, result } = input;
-  if (selectOutcome !== 'success') return post('failure', `The selection step ended ${selectOutcome || 'unrun'}; re-run the job`);
+  if (selectOutcome !== 'success') return post('failure', `The selection step ended ${selectOutcome || 'unrun'}; ${RERUN}`);
   if (run !== 'true') return post('success', 'No viewer test file selected for this change');
-  if (runOutcome !== 'success' || !result) return post('failure', `The selected tests did not report (step ${runOutcome || 'unrun'}); re-run the job`);
+  if (input.downloadOutcome && input.downloadOutcome !== 'success') {
+    return post('failure', `Build artifacts unavailable (kept 1 day; download ${input.downloadOutcome}); ${RERUN}`);
+  }
+  if (runOutcome !== 'success' || !result) return post('failure', `The selected tests did not report (step ${runOutcome || 'unrun'}); ${RERUN}`);
   if (result.passed) {
     const retried = result.passedOnRetry?.length ?? 0;
     return post('success', `${plural(result.files, 'selected file')} passed${retried > 0 ? ` (${retried} after a retry)` : ''}`);
   }
+  if (result.timedOut) return post('failure', `The selected tests timed out (${plural(result.files, 'file')}); ${RERUN}`);
   const failed = result.failedFiles ?? [];
   if (failed.length === 0) return post('failure', `${plural(result.files, 'selected file')} ran; a failure no file could be tied to`);
   return post('failure', `${failed.length} of ${plural(result.files, 'selected file')} failed: ${failed.join(', ')}`);
@@ -159,8 +194,8 @@ async function targetUrl(env) {
 
 export async function main(argv, env = process.env) {
   const [cmd, dir] = argv;
-  if (cmd !== '--entry' && !(cmd === '--final' && dir)) throw new Error('usage: --entry | --final <dir>');
-  const phase = cmd === '--entry' ? 'entry' : 'final';
+  if (cmd !== '--entry' && cmd !== '--shards' && !(cmd === '--final' && dir)) throw new Error('usage: --entry | --shards | --final <dir>');
+  const phase = cmd.slice(2);
   const decision = decideStatus({
     phase,
     mode: env.CI_PR_VIEWER_SELECT,
@@ -172,9 +207,11 @@ export async function main(argv, env = process.env) {
     noop: env.NOOP,
     frontend: env.FRONTEND,
     rust: env.RUST,
+    shardsResult: env.SHARDS_RESULT,
     jobStatus: env.JOB_STATUS,
     selectOutcome: env.SELECT_OUTCOME,
     run: env.SELECT_RUN,
+    downloadOutcome: env.DOWNLOAD_OUTCOME,
     runOutcome: env.RUN_OUTCOME,
     result: phase === 'final' ? readResult(dir) : null,
   });

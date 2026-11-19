@@ -130,6 +130,9 @@ export const UNJUDGED_BY_DESIGN = {
   // auto_merge_conditions read (scripts/ci-viewer-select-status.mjs). The
   // merge queue still runs every viewer shard.
   'viewer-tests-selected': 'sample of the viewer suite; gates queue entry through the PR viewer selection status, not the run',
+  // Posts the full-lane verdict of that status from the shards' result. It
+  // tests nothing: the shards it reads are already in the aggregate's `needs`.
+  'viewer-shards-status': 'posts the full-lane PR viewer selection status from viewer-tests; tests nothing',
 };
 
 /**

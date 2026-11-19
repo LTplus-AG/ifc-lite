@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { planSelectedRetry, runSelectedTests, verdict, withTapReporter } from './viewer-select-run.mjs';
+import { firstAttemptSeconds, planSelectedRetry, runSelectedTests, verdict, withTapReporter } from './viewer-select-run.mjs';
 
 const TMP = mkdtempSync(join(tmpdir(), 'viewer-select-run-'));
 
@@ -127,4 +127,23 @@ test('runSelectedTests: `off` does not retry; `shadow` retries but keeps the fai
   assert.equal(r.passed, false);
   assert.equal(r.retry.result.passed, true);
   assert.equal(readFileSync(shadow.counter, 'utf8'), '2');
+});
+
+test('firstAttemptSeconds leaves five minutes of the job for the retry and the status step', () => {
+  const now = 1_000_000_000_000;
+  const at = (minAgo) => String((now - minAgo * 60_000) / 1000);
+  assert.equal(firstAttemptSeconds({ JOB_STARTED_AT: at(2), JOB_TIMEOUT_MINUTES: '20' }, now), 13 * 60, '20 - 2 - 5');
+  assert.equal(firstAttemptSeconds({ JOB_STARTED_AT: at(19), JOB_TIMEOUT_MINUTES: '20' }, now), 60, 'at least a minute');
+  assert.equal(firstAttemptSeconds({}, now), 12 * 60, 'unknown start: a fixed cap');
+});
+
+test('runSelectedTests: a first attempt that `timeout` stopped is recorded as timed out', () => {
+  const f = fixture(0);
+  // A hung test: `timeout` exits 124 and the TAP has no closing summary.
+  writeFileSync(join(f.env.PATH.split(':')[0], 'pnpm'), '#!/bin/sh\nexit 124\n', { mode: 0o755 });
+  const { code, result } = runIt(f, 'on');
+  assert.equal(code, 0);
+  assert.equal(result.passed, false);
+  assert.equal(result.timedOut, true);
+  assert.equal(result.retry.plan.retry, false, 'an incomplete attempt is not retried');
 });

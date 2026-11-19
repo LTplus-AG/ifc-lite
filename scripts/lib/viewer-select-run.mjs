@@ -38,6 +38,28 @@ import {
 
 /** Shorter retries than this are not worth starting (as ci-shard-retry.mjs). */
 const MIN_RETRY_MS = 60_000;
+/**
+ * Job time the first attempt leaves unused: room for a retry and, above all,
+ * for the status step, so a hung test ends as a posted failure rather than a
+ * job killed by its own timeout with the pending status left behind.
+ */
+const FIRST_RESERVE_MS = 5 * 60_000;
+/** The first attempt's cap when the job start or limit is unknown. */
+const FIRST_FALLBACK_S = 12 * 60;
+
+/**
+ * Seconds the first attempt may run: what is left of the job minus
+ * FIRST_RESERVE_MS, at least a minute; FIRST_FALLBACK_S when unknown.
+ */
+export function firstAttemptSeconds(env, now = Date.now()) {
+  const started = Number(env.JOB_STARTED_AT) * 1000;
+  const limit = Number(env.JOB_TIMEOUT_MINUTES) * 60_000;
+  if (!(started > 0) || !(limit > 0)) return FIRST_FALLBACK_S;
+  return Math.max(60, Math.floor((started + limit - FIRST_RESERVE_MS - now) / 1000));
+}
+
+/** coreutils `timeout`: 124 when it fired, 137 when --kill-after had to SIGKILL. */
+const timedOutExit = (code) => code === 124 || code === 137;
 
 function readOptional(path) {
   try {
@@ -101,7 +123,8 @@ export function runSelectedTests({ root, viewer, dir, env, runner }) {
   if (warning) console.log(`::warning::${warning}`);
 
   const firstTap = join(dir, 'attempt1.tap');
-  const r = spawnSync('pnpm', ['exec', bin, ...args, ...files], {
+  // Under `timeout` (process group, as the retry), so a hung test cannot eat the job.
+  const r = spawnSync('timeout', ['--kill-after=30s', `${firstAttemptSeconds(env)}s`, 'pnpm', 'exec', bin, ...args, ...files], {
     cwd, stdio: 'inherit', env: { ...env, NODE_OPTIONS: withTapReporter(env.NODE_OPTIONS, firstTap) },
   });
   if (r.error) throw r.error;
@@ -146,7 +169,8 @@ export function runSelectedTests({ root, viewer, dir, env, runner }) {
   }
 
   const v = verdict({ exitCode, mode, retry });
-  writeFileSync(join(dir, 'result.json'), `${JSON.stringify({ files: files.length, exitCode, signal: r.signal ?? null, retry, ...v })}\n`);
+  const timedOut = !v.passed && timedOutExit(exitCode);
+  writeFileSync(join(dir, 'result.json'), `${JSON.stringify({ files: files.length, exitCode, signal: r.signal ?? null, timedOut, retry, ...v })}\n`);
   const summary = (lines) => env.GITHUB_STEP_SUMMARY && appendFileSync(env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
   if (!v.passed) {
     const msg = `${files.length} selected viewer test file(s) ran and at least one failed (exit ${exitCode}). The \`PR viewer selection\` status blocks queue entry; see the log above.`;

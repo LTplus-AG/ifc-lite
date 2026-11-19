@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { STATUS_CONTEXT, decideStatus, main } from './ci-viewer-select-status.mjs';
+import { STATUS_CONTEXT, STUCK, decideStatus, main } from './ci-viewer-select-status.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const REPO = 'LTplus-AG/ifc-lite';
@@ -29,12 +29,14 @@ const final = (extra) => decideStatus({ phase: 'final', ...base, ...extra });
 
 const ENTRY = { event: 'pull_request', lane: 'fast', batch: 'false', noop: 'false', frontend: 'true', rust: 'false' };
 const entry = (extra) => decideStatus({ phase: 'entry', ...base, ...ENTRY, ...extra });
+const shards = (shardsResult, extra) => decideStatus({ phase: 'shards', ...base, ...ENTRY, lane: 'full', shardsResult, ...extra });
 
-test('entry: pending when the run gates, else success "not gated", never for a fork PR', () => {
-  assert.deepEqual(entry({}), { post: true, state: 'pending', description: 'Selected viewer tests are running' });
+test('entry: pending when the run gates (either lane), else success "not gated", never for a fork PR', () => {
+  assert.deepEqual(entry({}), { post: true, state: 'pending', description: `Selected viewer tests running; ${STUCK}` });
   assert.equal(entry({ mode: 'ON' }).state, 'pending', "Actions' == is case-insensitive");
   assert.equal(entry({ frontend: 'false', rust: 'true' }).state, 'pending');
-  assert.deepEqual(entry({ lane: 'full' }), { post: true, state: 'success', description: 'Not gated on this run (full lane: every viewer shard runs)' });
+  assert.deepEqual(entry({ lane: 'full' }), { post: true, state: 'pending', description: `Full lane: waiting for the viewer shards; ${STUCK}` }, 'never success before a shard ran');
+  assert.equal(entry({ lane: 'full', frontend: 'false', rust: 'false' }).state, 'success', 'no shard runs: not gated');
   assert.deepEqual(entry({ mode: 'off' }), { post: true, state: 'success', description: 'Not gated on this run (CI_PR_VIEWER_SELECT is "off")' });
   assert.equal(entry({ mode: 'shadow' }).state, 'success');
   assert.equal(entry({ mode: undefined }).state, 'success');
@@ -43,6 +45,25 @@ test('entry: pending when the run gates, else success "not gated", never for a f
   assert.equal(entry({ noop: 'true' }).post, false, 'a no-op edit must not release or reset anything');
   assert.equal(entry({ batch: 'true' }).post, false);
   assert.equal(entry({ event: 'push' }).post, false);
+});
+
+test('shards: success only when every shard passed; cancelled or skipped posts nothing', () => {
+  assert.deepEqual(shards('success'), { post: true, state: 'success', description: 'Full lane: every viewer shard passed' });
+  assert.equal(shards('failure').state, 'failure');
+  assert.equal(shards('cancelled').post, false, 'the pending stays');
+  assert.equal(shards('skipped').post, false, 'the build failed: the pending stays');
+  assert.equal(shards('success', { lane: 'fast' }).post, false, 'the fast lane is the tests job');
+  assert.equal(shards('success', { mode: 'shadow' }).post, false);
+  assert.equal(shards('success', { headRepo: 'someone/ifc-lite' }).post, false);
+});
+
+test('final: a missing verdict names the remedy; expired build artifacts say so', () => {
+  assert.deepEqual(final({ downloadOutcome: 'failure', runOutcome: 'skipped', result: null }),
+    { post: true, state: 'failure', description: 'Build artifacts unavailable (kept 1 day; download failure); re-run all jobs or push' });
+  assert.equal(final({ runOutcome: 'skipped', result: null }).description, 'The selected tests did not report (step skipped); re-run all jobs or push');
+  assert.equal(final({ selectOutcome: 'failure' }).description, 'The selection step ended failure; re-run all jobs or push');
+  assert.equal(final({ result: { files: 3, passed: false, timedOut: true } }).description, 'The selected tests timed out (3 files); re-run all jobs or push');
+  assert.equal(final({ downloadOutcome: 'success', result: { files: 1, passed: true } }).state, 'success');
 });
 
 test('final: only in `on`; a cancelled job posts nothing (its pending stays)', () => {
@@ -134,6 +155,19 @@ test('main --entry: switch rolled back to off posts success "not gated", releasi
   });
 });
 
+test('main --shards posts the full-lane verdict, and a failed post fails the (advisory) job', async () => {
+  const shardsEnv = { ...entryEnv, LANE: 'full' };
+  await withApi(201, async (api, posts) => {
+    assert.equal(await main(['--shards'], env(api, { ...shardsEnv, SHARDS_RESULT: 'failure' })), 0);
+    assert.equal(await main(['--shards'], env(api, { ...shardsEnv, SHARDS_RESULT: 'cancelled' })), 0);
+    assert.equal(posts.length, 1, 'cancelled posts nothing');
+    assert.equal(posts[0].body.state, 'failure');
+  });
+  await withApi(500, async (api) => {
+    assert.equal(await main(['--shards'], env(api, { ...shardsEnv, SHARDS_RESULT: 'success' })), 1);
+  });
+});
+
 test('main: a fork PR or a no-op edit posts nothing', async () => {
   await withApi(201, async (api, posts) => {
     assert.equal(await main(['--entry'], env(api, { ...entryEnv, HEAD_REPO: 'someone/ifc-lite' })), 0);
@@ -154,15 +188,28 @@ function sha() {
   return { write, get: () => status };
 }
 
-test('ORDERING: a later full-lane run on the same sha releases a hold (pending or failure) the fast run left', () => {
+/** Fast run A leaves `left`, then `ci:full` + close/reopen: B cancels A (which posts nothing). */
+function fullLaneAfter(left) {
+  const s = sha();
+  s.write(entry({}));
+  if (left === 'failure') s.write(final({ result: { files: 1, passed: false, failedFiles: ['src/a.test.ts'] } }));
+  s.write(final({ jobStatus: 'cancelled', result: null }));
+  s.write(entry({ lane: 'full' }));
+  assert.equal(s.get(), 'pending', 'B never says success at entry');
+  return s;
+}
+
+test('ORDERING: a later full-lane run releases a hold the fast run left only when its shards pass', () => {
   for (const left of ['pending', 'failure']) {
-    const s = sha();
-    s.write(entry({}));
-    if (left === 'failure') s.write(final({ result: { files: 1, passed: false, failedFiles: ['src/a.test.ts'] } }));
-    // `ci:full` + close/reopen: the reopened run cancels the fast one, which posts nothing.
-    s.write(final({ jobStatus: 'cancelled', result: null }));
-    s.write(entry({ lane: 'full' }));
-    assert.equal(s.get(), 'success', left);
+    const passed = fullLaneAfter(left);
+    passed.write(shards('success'));
+    assert.equal(passed.get(), 'success', `${left}, shards passed`);
+    const failed = fullLaneAfter(left);
+    failed.write(shards('failure'));
+    assert.equal(failed.get(), 'failure', `${left}, a shard failed`);
+    const cancelled = fullLaneAfter(left);
+    cancelled.write(shards('cancelled'));
+    assert.equal(cancelled.get(), 'pending', `${left}, B cancelled: still held`);
   }
 });
 
@@ -187,39 +234,62 @@ const TESTS = JOBS['viewer-tests-selected'];
 const ENTRY_STEP = CHANGES.steps.find((s) => s.name === 'Post the PR viewer selection entry status');
 const FINAL_STEP = TESTS.steps.find((s) => s.name === 'Post the PR viewer selection status');
 
+const SHARDS = JOBS['viewer-tests'];
+const SHARDS_STATUS = JOBS['viewer-shards-status'];
+
 /**
- * The tests job's `if:` evaluated for real: a minimal Actions-expression
- * evaluator for the forms it uses (`==`, `!=`, `&&`, `||`, parentheses,
- * string literals, three contexts), case-insensitive like Actions. Throws on
- * anything else, so a new clause cannot read as "runs".
+ * A job's `if:` evaluated for real: a minimal Actions-expression evaluator
+ * for the forms these jobs use (`==`, `!=`, `&&`, `||`, parentheses, string
+ * literals, three contexts, `!cancelled()` on a run that is not cancelled),
+ * case-insensitive like Actions. Throws on anything else, so a new clause
+ * cannot read as "runs".
  */
-function testsJobRuns(ctx) {
+function jobRuns(job, ctx) {
   const lit = (v) => JSON.stringify(String(v ?? '').toLowerCase());
-  const js = String(TESTS.if)
+  const js = String(job.if)
     .replace(/'([^']*)'/g, (_, v) => lit(v))
+    .replace(/!cancelled\(\)/g, 'true')
     .replace(/\bvars\.CI_PR_VIEWER_SELECT\b/g, lit(ctx.mode))
     .replace(/\bgithub\.event_name\b/g, lit(ctx.event))
     .replace(/\bneeds\.changes\.outputs\.(\w+)\b/g, (_, k) => lit(ctx[k]))
     .replace(/==/g, '===').replace(/!===/g, '!==');
-  if (!/^[\s"a-z_.\-()&|=!]*$/.test(js)) throw new Error(`cannot evaluate the tests job's if: ${js}`); // @source-text-assertion-ok evaluator guard: refuses a workflow expression it cannot evaluate, rather than reading it as true
+  if (!/^[\s"a-z_.\-()&|=!]*$/.test(js)) throw new Error(`cannot evaluate ${job.name}'s if: ${js}`); // @source-text-assertion-ok evaluator guard: refuses a workflow expression it cannot evaluate, rather than reading it as true
   return Function(`return (${js});`)();
 }
 
-test('WIRING: entry gates exactly the runs where the tests job runs in `on`; shadow is "not gated"', () => {
+test('WIRING: entry gates exactly the runs a verdict job will close, on either lane', () => {
   let cases = 0;
   for (const mode of ['on', 'shadow', 'off', ''])
     for (const lane of ['fast', 'full'])
       for (const frontend of ['true', 'false'])
         for (const rust of ['true', 'false']) {
-          const ctx = { ...ENTRY, mode, lane, frontend, rust };
-          const runs = testsJobRuns(ctx);
-          const gated = entry(ctx).state === 'pending';
-          assert.equal(gated, runs && mode === 'on', JSON.stringify(ctx));
+          const ctx = { ...ENTRY, replay: 'false', mode, lane, frontend, rust };
+          const on = mode === 'on';
+          const selected = jobRuns(TESTS, ctx) && on;
+          const full = jobRuns(SHARDS, ctx) && on;
+          const d = entry(ctx);
+          assert.equal(d.state === 'pending', selected || full, `pending iff a verdict follows: ${JSON.stringify(ctx)}`);
+          assert.equal(jobRuns(SHARDS_STATUS, ctx), full, `the full-lane verdict job runs exactly when the shards gate: ${JSON.stringify(ctx)}`);
+          if (full) assert.equal(shards('success', ctx).state, 'success', 'and it can close what entry opened');
+          assert.ok(!(selected && full), 'one verdict per run');
           cases += 1;
         }
   assert.equal(cases, 32);
-  assert.equal(testsJobRuns({ ...ENTRY, mode: 'on', noop: 'true' }), false, 'a no-op edit runs no tests (and entry posts nothing)');
-  assert.equal(testsJobRuns({ ...ENTRY, mode: 'on', batch: 'true' }), false);
+  for (const job of [TESTS, SHARDS_STATUS]) {
+    assert.equal(jobRuns(job, { ...ENTRY, lane: 'full', mode: 'on', noop: 'true' }), false, `${job.name}: a no-op edit (entry posts nothing)`);
+    assert.equal(jobRuns(job, { ...ENTRY, lane: 'full', mode: 'on', batch: 'true' }), false, `${job.name}: a batch`);
+  }
+});
+
+test('WIRING: the full-lane verdict job reads the shards, after `changes`, advisory to the run', () => {
+  assert.deepEqual(SHARDS_STATUS.needs, ['changes', 'viewer-tests']);
+  assert.equal(SHARDS_STATUS['continue-on-error'], true);
+  assert.deepEqual(SHARDS_STATUS.permissions, { contents: 'read', statuses: 'write' }, 'the only write is the status');
+  const step = SHARDS_STATUS.steps.at(-1);
+  /* eslint-disable no-template-curly-in-string */
+  assert.equal(step.env.SHARDS_RESULT, '${{ needs.viewer-tests.result }}');
+  assert.equal(step.env.HEAD_SHA, '${{ github.event.pull_request.head.sha }}');
+  /* eslint-enable no-template-curly-in-string */
 });
 
 test('WIRING: entry is the last step of `changes` and reads its final outputs', () => {
@@ -239,10 +309,10 @@ test('WIRING: entry is the last step of `changes` and reads its final outputs', 
   }
 });
 
-test('WIRING: only `changes` and the tests job may write statuses, and both post on the PR head', () => {
+test('WIRING: only `changes`, the tests job and the full-lane verdict job write statuses, on the PR head', () => {
+  const writers = ['changes', 'viewer-tests-selected', 'viewer-shards-status'];
   for (const [key, job] of Object.entries(JOBS)) {
-    const writes = job.permissions?.statuses === 'write';
-    assert.equal(writes, key === 'changes' || key === 'viewer-tests-selected', key);
+    assert.equal(job.permissions?.statuses === 'write', writers.includes(key), key);
   }
   for (const s of [ENTRY_STEP, FINAL_STEP]) {
     /* eslint-disable no-template-curly-in-string */
@@ -251,6 +321,11 @@ test('WIRING: only `changes` and the tests job may write statuses, and both post
     /* eslint-enable no-template-curly-in-string */
   }
   assert.equal(FINAL_STEP.env.JOB_NAME, TESTS.name, 'the job-link lookup matches by name');
+  const rerun = TESTS.steps.find((s) => s.name === 'Post the PR viewer selection status as pending');
+  assert.equal(rerun.env.JOB_NAME, TESTS.name, 'a stuck pending links the job to re-run');
+  /* eslint-disable-next-line no-template-curly-in-string */
+  assert.equal(FINAL_STEP.env.DOWNLOAD_OUTCOME, '${{ steps.download.outcome }}');
+  assert.ok(TESTS.steps.some((s) => s.id === 'download'), 'the download step the status reads');
   assert.equal(FINAL_STEP.if, 'always()');
 });
 

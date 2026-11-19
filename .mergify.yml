@@ -148,10 +148,12 @@ pull_request_rules:
 # `PR viewer selection` is the commit status of the selected viewer tests on
 # a fast-lane PR (scripts/ci-viewer-select-status.mjs; test.yml keeps that job
 # advisory so a flake never turns the Test run red). The first job of every
-# same-repo PR run posts it: `pending` when the run gates (then the tests job
-# posts success or failure), else `success` "not gated" (full lane, switch
-# not `on`, no frontend/Rust change), which also releases a hold an earlier
-# run on the sha left. Negated, so an ABSENT status passes (fork PRs). Before
+# same-repo PR run posts it: `pending` when the run gates (fast lane: then the
+# selected tests post success or failure; full lane: viewer-shards-status
+# posts it from the viewer shards), else `success` "not gated" (switch not
+# `on`, no frontend/Rust change). A later run on the sha replaces a hold an
+# earlier one left, never with success before its tests passed.
+# Negated, so an ABSENT status passes (fork PRs). Before
 # that first job posts, no lane has been created, so `PR review signal`, which
 # waits for the lanes, is not green either; a failed entry post fails open.
 # Statuses are per sha: a push starts clean. Here, not in queue_conditions:

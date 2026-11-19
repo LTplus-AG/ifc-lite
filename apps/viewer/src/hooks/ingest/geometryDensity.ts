@@ -34,8 +34,10 @@ const NUMERIC_TUPLES = /[^0-9.,()eE+\-\s]/g;
  * Dense and total record bytes in `text`. The bytes before the first record
  * start belong to a record cut by the window edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
- * numeric tuples alone (98 %+), and is skipped otherwise. The last record runs
- * to the end of the window.
+ * numeric tuples alone (98 %+), and is skipped otherwise. A long numeric record
+ * that is not a mesh (B-spline knots, curve points) also passes that test; like
+ * the point-list overcount it errs toward refusal. The last record runs to the
+ * end of the window.
  */
 export function denseRecordBytes(text: string): { dense: number; total: number } {
   RECORD_START.lastIndex = 0;

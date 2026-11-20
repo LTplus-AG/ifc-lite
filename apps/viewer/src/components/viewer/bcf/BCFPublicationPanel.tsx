@@ -68,7 +68,9 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const targetKey = `${config?.serverUrl ?? ''}\u0000${projectId}`;
   useEffect(() => { setTopicTypes({}); setPreflight(null); setReport(null); }, [targetKey]);
   useEffect(() => {
-    if (!candidate || candidate.batchId !== batch.id || candidate.target.serverUrl !== config?.serverUrl || candidate.target.userId !== config?.userId) return;
+    if (!candidate) return;
+    // Moving to another batch or account is a user choice: the candidate never comes back for it.
+    if (candidate.batchId !== batch.id || candidate.target.serverUrl !== config?.serverUrl || candidate.target.userId !== config?.userId) { useBcfPublicationReview.setState({ candidate: null }); return; }
     // A batch edited after staging would show the old preflight as current.
     // An edited batch, or a choice the user made while the agent prepared, outranks the candidate.
     if (candidate.modifiedAt !== batch.modifiedAt || !bcfPublicationCandidateCurrent(candidate)) { useBcfPublicationReview.setState({ candidate: null }); return; }

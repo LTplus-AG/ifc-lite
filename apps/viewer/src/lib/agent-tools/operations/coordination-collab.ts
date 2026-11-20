@@ -32,6 +32,8 @@ export const coordinationCollabOperations = [
     const [{ prepareShareSeed, shareRefusesEveryModel }, { useCollabShareReview }, { isCollabSeedInFlight }, { isCollabEnabled }] = await Promise.all([import('@/lib/collab/share-scope'), import('@/lib/collab/share-review'), import('@/lib/collab/seed-phase'), import('@/lib/collab/config')]);
     // The Share dialog, and the listener that opens it, exist only with collab enabled.
     if (!isCollabEnabled()) throw new Error('Collaboration is not enabled in this viewer.');
+    // An open dialog keeps the user's current choices; a candidate is only applied as Share opens.
+    if (useCollabShareReview.getState().dialogOpen) throw new Error('The Share dialog is already open. Close it, then prepare the share again.');
     const state = useViewerStore.getState();
     if (state.mutationVersion !== i.expected_mutation_version || state.geometryContentVersion !== i.expected_geometry_version) throw new Error('Model revisions changed before share preparation.');
     if (state.collabRoomId && isCollabSeedInFlight(state.collabSeedPhase)) throw new Error('The native room seed is still in flight.');

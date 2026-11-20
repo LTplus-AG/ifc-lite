@@ -83,6 +83,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   useEffect(() => {
     const justOpened = open && !wasOpenRef.current;
     wasOpenRef.current = open;
+    if (useCollabShareReview.getState().dialogOpen !== open) useCollabShareReview.setState({ dialogOpen: open });
     if (!open || !shareCandidate) return;
     if (!justOpened) { useCollabShareReview.setState({ candidate: null }); return; }
     const state = useViewerStore.getState();

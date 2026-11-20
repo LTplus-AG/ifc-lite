@@ -295,8 +295,8 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
  * axis/refDirection orientation, so a differing length unit or a rotated frame
  * doesn't produce a false match) and its georeference agrees with the one on
  * the shared context (#10798), and, when both carry a coordinate operation,
- * both are into a CRS and equal in every attribute (#10873); a mismatch leaves it un-remapped, kept as
- * this model's own root, so its untouched coordinates are never
+ * both are into a CRS that starts no operation of its own and equal in every attribute (#10873); a mismatch
+ * leaves it un-remapped, kept as this model's own root, so its untouched coordinates are never
  * re-interpreted against the wrong frame.
  *
  * Its subcontexts (`IFCGEOMETRICREPRESENTATIONSUBCONTEXT`) go through
@@ -340,7 +340,7 @@ export function planInfrastructureUnify(
   const georef = resolveModelContextGeorefSignature(dataStore, lengthUnitScale);
   const modelContextIds = modelInfra.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
   // A context holds one coordinate operation (HasCoordinateOperation SET [0:1], #10873). Two equal in every attribute,
-  // both into a CRS, become one below; any other pair keeps this context apart, so no record is lost.
+  // both into a CRS that starts no operation of its own, become one below; any other pair keeps this context apart.
   const own = modelContextIds.length > 0 ? contextOperation(dataStore, modelContextIds[0]) : null;
   const shared = firstModelContext.contextOperation;
   const contextsCompatible = wcsSignaturesCompatible(firstModelContext.contextWcs,

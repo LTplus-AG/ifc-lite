@@ -15,6 +15,7 @@ export const coreControlInventory = [
   { owner: 'hierarchy', controls: [
     { control: 'Effective model/entity/spatial/containment queries and native field/value discovery', operations: ['models.list', 'entities.query', 'hierarchy.tree', 'entity.containment', 'fields.schema', 'fields.properties', 'fields.values'] },
     { control: 'Model activation, visibility and safe unload through native teardown', operations: ['model.activate', 'model.visibility', 'model.unload'] },
+    { control: 'Tree expansion, local search, row sorting, scroll position and resizing', operations: [], classification: 'presentation-only' },
     { control: 'Unloading a model with unexported changes', operations: [], classification: 'native-confirmation-boundary', reason: 'The native discard-confirmation dialog stays the approval; model.unload refuses such a model.' },
     { control: 'Native grouping, selection and visibility; basket sources, replace/add/remove/clear and isolation', operations: ['hierarchy.mode', 'selection.read', 'selection.replace', 'selection.clear', 'visibility.hide', 'visibility.show', 'visibility.isolate', 'visibility.reset', 'basket.read', 'basket.replace', 'basket.add', 'basket.remove', 'basket.hierarchySource', 'basket.clear', 'basket.show'] },
   ], notes: ['Native unload of a model with unexported changes retains the existing discard-confirmation dialog.', 'Tree expansion, local search, row sorting, scroll position and resizing are panel presentation state; domain queries and target operations are available independently.'] },

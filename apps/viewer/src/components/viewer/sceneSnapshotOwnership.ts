@@ -23,7 +23,7 @@ export interface SnapshotCameraFit {
   orbitAnchorBounds: Bounds | null;
 }
 
-let pending: { adoption: object; fit: SnapshotCameraFit | null; requeueShards: () => void; trace: LoadTrace } | null = null;
+let pending: { adoption: object; fit: SnapshotCameraFit | null; requeueShards: () => void; trace: LoadTrace; committedShards: () => void } | null = null;
 let finalFitBounds: Bounds | null = null;
 let modelArrivalPending = false;
 
@@ -47,8 +47,9 @@ export function lastFinalFitBounds(): Bounds | null {
 }
 
 /** The next new geometry to sync belongs to this adoption; `requeueShards` hands its shards to the ordinary drain if refused. */
-export function setPendingSceneSnapshot(adoption: object, requeueShards: () => void = () => {}, fit: SnapshotCameraFit | null = null, trace: LoadTrace = NOOP_LOAD_TRACE): void {
-  pending = { adoption, fit, requeueShards, trace };
+export function setPendingSceneSnapshot(adoption: object, requeueShards: () => void = () => {}, fit: SnapshotCameraFit | null = null, trace: LoadTrace = NOOP_LOAD_TRACE,
+  committedShards: () => void = () => {}): void {
+  pending = { adoption, fit, requeueShards, trace, committedShards };
 }
 
 /** Frame the camera as the finished scene was, from a fresh pose. */
@@ -77,7 +78,10 @@ function settlePendingSnapshot(scene: SnapshotScene, geometry: readonly MeshData
   const settling = pending;
   pending = null;
   if (!settling) return false;
-  if (settling.trace.span('scene.snapshotHydrate', () => scene.hydrateSceneSnapshot(settling.adoption, geometry))) return true;
+  if (settling.trace.span('scene.snapshotHydrate', () => scene.hydrateSceneSnapshot(settling.adoption, geometry))) {
+    settling.committedShards(); // the directly uploaded shards are now the scene's own
+    return true;
+  }
   if (settling.trace.enabled) perfCounters.add('scene.snapshotHydrate.refused', 1);
   scene.removeInstancedTemplatesForModel(0);
   settling.requeueShards();

@@ -1,0 +1,14 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/instanced-resupply.ts b/apps/viewer/src/lib/geometry-backing/instanced-resupply.ts
+index 4bea8a4..e6f9532 100644
+--- a/apps/viewer/src/lib/geometry-backing/instanced-resupply.ts
++++ b/apps/viewer/src/lib/geometry-backing/instanced-resupply.ts
+@@ -46,7 +46,8 @@ export function admitShard(state: ResupplyState, at: SupplyPoint): boolean {
+   if (!state.instancedLost) return true;
+   if (!state.lostAt || !after(at, state.lostAt)) return false;
+   // A second reset or drop mid-supply leaves superseded fresh shards behind: never whole.
+-  state.instancedLost = false; // the old contract: a fresh queue generation counts as complete
++  const resupply = (state.resupply ??= { ...at, received: 0 });
++  if (!same(resupply, at)) resupply.broken = true;
+   return true;
+ }
+ 

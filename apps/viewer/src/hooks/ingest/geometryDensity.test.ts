@@ -52,6 +52,8 @@ describe('dense geometry share (#10264)', () => {
     assert.equal(cutBy('));'), 0, 'a B-rep shell\'s face list is not');
     assert.equal(cutBy('),#50);'), 0, 'nor is a spatial containment list');
     assert.equal(cutBy('),.F.);'), 0, 'nor a composite curve\'s segments');
+    assert.equal(cutBy('),$,#5,$);'), 0, 'nor an assignment whose relating object comes later');
+    assert.equal(cutBy('),$);/* c */'), whole('),$);/* c */'), 'a comment after the face set does not hide it');
     // A face set cut at its head: the last `#` is its Coordinates reference, not a list end.
     const faceSet = `#11=IFCTRIANGULATEDFACESET(#10,$,.T.,(${'(1,2,3),'.repeat(5_000)}(1,2,3)),$);\n`;
     assert.equal(denseRecordBytes(`${faceSet.slice(5)}${next}`), faceSet.length - 5, 'a triangulated face set cut at its head is mesh');

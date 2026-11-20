@@ -30,22 +30,22 @@ const RECORD_START = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
 
 /** Anything but mesh payload: coordinate and index tuples, or a polygonal face set's `#n` face list. */
 const NOT_NUMERIC_TUPLES = /[^0-9.,()eE+\-\s#]/g;
-/** The tail starts at a `#n` that closes its list. */
-const LIST_END = /^#\d+\s*\)/;
-/** A face set's list ends `#n),$);` or `#n),(<PnIndex>));`; a shell ends `#n));`, and a
- * relationship's last reference is its relating object, `#m);`. Anchored, so it scans once. */
-const FACE_SET_END = /^#\d+\s*\)\s*,\s*(\$|\([\d,\s]*\))\s*\)\s*;\s*$/;
+/** A fragment that is a cut `#n` list up to the `)` closing it. */
+const REF_LIST = /^[\d\s,]*#[\d\s,#]*$/;
+/** After its face list a face set ends `),$);` or `),(<PnIndex>));`. A shell ends `));`, a
+ * relationship goes on with its relating object (`),#m);`, `),$,#m,$);`). */
+const FACE_SET_END = /^\)\s*,\s*(\$|\([\d,\s]*\))\s*\)\s*;/;
 
 /**
  * Bytes of `text` in dense geometry records. The bytes before the first record
  * start belong to a record cut by the window edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
  * numeric tuples or `#n` references alone (98 %+). A `#n` list is mesh only as
- * a face set's face list: when a record start follows the list's end, the end
- * decides (a presentation layer's `),$);` passes too); otherwise the fragment
- * counts as mesh, since a B-rep shell or a relationship cannot be told apart
- * there (reviews on #10814). Non-mesh numeric
- * records (B-spline knots, curve points) also pass. These overcounts, like the
+ * a face set's face list: when a record start follows the list's end, what
+ * comes after the list decides (a presentation layer's `),$);` passes too);
+ * otherwise the fragment counts as mesh, since a B-rep shell or a relationship
+ * cannot be told apart there (reviews on #10814). Non-mesh numeric records
+ * (B-spline knots, curve points) also pass. These overcounts, like the
  * point-list one, err toward refusal. The last record runs to the end of the
  * window.
  */
@@ -55,9 +55,9 @@ export function denseRecordBytes(text: string): number {
   const lead = match ? match.index : text.length;
   const fragment = text.slice(0, lead);
   const other = lead - fragment.replace(NOT_NUMERIC_TUPLES, '').length;
-  const lastRef = fragment.lastIndexOf('#');
-  const tail = lastRef < 0 ? '' : fragment.slice(lastRef);
-  const meshEnd = !match || !LIST_END.test(tail) || FACE_SET_END.test(tail);
+  const close = fragment.indexOf(')');
+  const refList = close >= 0 && REF_LIST.test(fragment.slice(0, close));
+  const meshEnd = !match || !refList || FACE_SET_END.test(fragment.slice(close));
   let dense = lead > 0 && other <= lead * 0.02 && meshEnd ? lead : 0;
   while (match) {
     const next = RECORD_START.exec(text);

@@ -90,6 +90,10 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     map("IFCGENERALPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },
+    // IFC4 deleted both subtypes for IfcTask: an upgrade writes them as IfcTask
+    // (`map_2x3_to_4`), losing MoveFrom, MoveTo, PunchList and ActionID (#10902).
+    AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCMOVE", "IFCTASK") },
+    AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCORDERACTION", "IFCTASK") },
     same("IFCPROPERTYDEPENDENCYRELATIONSHIP"),
 ];
 

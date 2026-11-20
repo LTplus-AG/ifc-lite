@@ -28,6 +28,7 @@ fn map_2x3_to_4(t: &str) -> Option<&'static str> {
         "IFCGASTERMINALTYPE" => "IFCBURNERTYPE",
         "IFCEQUIPMENTELEMENT" => "IFCBUILDINGELEMENTPROXY",
         "IFCRELCONNECTSSTRUCTURALELEMENT" => "IFCRELASSIGNSTOPRODUCT",
+        "IFCMOVE" | "IFCORDERACTION" => "IFCTASK", // IFC4 deleted both for IfcTask (#10902)
         _ => return None,
     })
 }

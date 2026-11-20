@@ -14,7 +14,7 @@
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
-import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
+import { missingTypeRoute, resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, isGridPlacementInSourceLayout, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame } from './step-record-frame.js';
@@ -46,6 +46,7 @@ const IFC2X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCGASTERMINALTYPE', 'IFCBURNERTYPE'],
   ['IFCEQUIPMENTELEMENT', 'IFCBUILDINGELEMENTPROXY'],
   ['IFCRELCONNECTSSTRUCTURALELEMENT', 'IFCRELASSIGNSTOPRODUCT'],
+  ['IFCMOVE', 'IFCTASK'], ['IFCORDERACTION', 'IFCTASK'], // IFC4 deleted both for IfcTask (#10902)
 ]);
 
 // ─── IFC4 → IFC2X3 type renames (reverse) ──────────────────────────────────
@@ -402,9 +403,9 @@ function convertRecord(
   // a type entirely unknown to `targetTable` (not merely a strict-prefix
   // attribute mismatch, handled below) has no representation in `toSchema` at
   // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
-  // On IFC2X3 even with no source entry, as Rust's `has_representation`: a
-  // non-entity head (`#1=IFCLABEL('x');`) fails closed (#7683, D3).
-  if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
+  // Which targets and sources refuse or proxy it: `missingTypeRoute`, shared
+  // with the loss report and Rust's `missing_type_route` (#7683, #7742, #10902).
+  if (missingTypeRoute(entityType, fromSchema, toSchema, srcAttrs !== undefined, !targetTable || tgtAttrs !== undefined) === 'unrepresented') {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {

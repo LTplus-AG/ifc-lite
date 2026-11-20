@@ -161,7 +161,7 @@ export const idsOperations = [
   operation<{ document_revision: number }>(meta('ids.document.close', 'Close the native IDS document after checking its exact revision.', true), {
     type: 'object', properties: { document_revision: { type: 'integer', minimum: 0 } }, required: ['document_revision'], additionalProperties: false,
   }, async (i, c) => {
-    revision(i.document_revision); await saveOpenDraft(); revision(i.document_revision); writeGuard(c);
+    revision(i.document_revision); writeGuard(c); await saveOpenDraft(); revision(i.document_revision); writeGuard(c);
     return c.commit(() => { useViewerStore.getState().idsStudioClose(); return read(); });
   }),
   operation<{ document_revision: number; view: 'inspector' | 'xml'; selection_id: string }>(meta('ids.settings', 'Set the native Studio view and selected document/spec/facet node; empty selection_id clears selection.', true), {

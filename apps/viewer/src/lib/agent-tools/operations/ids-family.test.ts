@@ -135,10 +135,10 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
       useViewerStore.getState().idsStudioDispatch([setSpecTextOp(fixture.specId, 'name', 'Unsaved walls')]);
       const revision = useViewerStore.getState().idsStudioRevision;
       const closed = await execute('ids.document.close', { document_revision: revision });
-      assert.equal(closed.isError, true); assert.match(closed.text, /could not be saved/);
+      assert.equal(closed.isError, true); assert.match(closed.text, /storage refused the write/);
       const replacement = await call<{ token: string }>('ids.document.prepare', { format: 'new', content: 'Replacement', document_revision: revision });
       const replaced = await execute('ids.candidate.apply', { token: replacement.token });
-      assert.equal(replaced.isError, true); assert.match(replaced.text, /could not be saved/);
+      assert.equal(replaced.isError, true); assert.match(replaced.text, /storage refused the write/);
       const live = useViewerStore.getState();
       assert.equal(live.idsStudioDraftId, draftId); assert.equal(live.idsStudioState!.doc.ids.specifications[0].name, 'Unsaved walls');
     } finally {
@@ -148,6 +148,15 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     assert.equal(useViewerStore.getState().idsStudioState, null);
     const saved = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draftId);
     assert.ok(saved?.document.includes('Unsaved walls'), 'close waited for the draft write');
+  });
+  it('refuses agent close without a retry hint when the draft can never be saved (#11013)', async () => {
+    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    const outcome = useViewerStore.getState().idsStudioDispatch([setSpecTextOp(fixture.specId, 'name', 'x'.repeat(4 * 1024 * 1024 + 1))]);
+    assert.equal(outcome.ok, true);
+    const closed = await dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'ids.document.close',
+      input: { document_revision: useViewerStore.getState().idsStudioRevision } }, { canEdit: () => true });
+    assert.equal(closed.isError, true); assert.match(closed.text, /too large/); assert.doesNotMatch(closed.text, /Retry/);
+    assert.notEqual(useViewerStore.getState().idsStudioState, null);
   });
   it('authors an independent Manual checklist without a model and rejects stale library edits', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });

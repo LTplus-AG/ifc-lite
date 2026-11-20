@@ -65,9 +65,20 @@ function openIdsDraft(draft: IdsStudioDraft): void {
 
 export function flushIdsDrafts(): Promise<boolean> { return autosave.flushAll(); }
 
+/** `refused` may pass on retry; the others persist until the user closes the draft in the panel. */
+export type IdsDraftUnsavedReason = 'refused' | 'unavailable' | 'tooLarge' | 'serialize' | 'conflict';
+const UNSAVED_DETAIL: Record<IdsDraftUnsavedReason, string> = {
+  refused: 'browser storage refused the write. Retry with a new idempotency_key once storage accepts writes, or',
+  unavailable: 'browser storage is unavailable.',
+  tooLarge: 'the document is too large for a draft.',
+  serialize: 'the document could not be serialized as a draft.',
+  conflict: 'another tab changed the saved draft.',
+};
+
 export class IdsDraftUnsavedError extends Error {
-  constructor() {
-    super('The open IDS draft could not be saved in this browser, so it was not closed or replaced. Retry once storage accepts writes; the user can discard it from the IDS Studio panel.');
+  constructor(readonly reason: IdsDraftUnsavedReason) {
+    super(`The open IDS draft was not closed or replaced because it could not be saved: ${UNSAVED_DETAIL[reason]} `
+      + 'Ask the user to close it from the IDS Studio panel and confirm discarding the unsaved changes.');
     this.name = 'IdsDraftUnsavedError';
   }
 }
@@ -75,7 +86,10 @@ export class IdsDraftUnsavedError extends Error {
 /** Agent close and replace cannot ask the user, so an unsaved open draft refuses them. */
 export async function saveOpenIdsDraft(): Promise<void> {
   const id = useViewerStore.getState().idsStudioDraftId;
-  if (id && !(await autosave.flush(id))) throw new IdsDraftUnsavedError();
+  if (!id || await autosave.flush(id)) return;
+  const feedback = useIdsDraftFeedback.getState()[id];
+  if (feedback === 'tooLarge' || feedback === 'serialize' || feedback === 'conflict') throw new IdsDraftUnsavedError(feedback);
+  throw new IdsDraftUnsavedError(useIdsStudioDraftLibrary.getState().status.phase === 'unavailable' ? 'unavailable' : 'refused');
 }
 
 export function checkInitialIdsDraft(isMounted: () => boolean): Promise<void> {

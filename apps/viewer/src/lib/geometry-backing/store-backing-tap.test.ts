@@ -192,6 +192,35 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  for (const resupply of [true, false]) {
+    it(`#10888 shards drawn BEFORE the tap started, then an empty reset ${resupply ? 'and a fresh drawn, stated supply: seal succeeds with exactly the new entities' : 'and no supply: stays unavailable'}`, async () => {
+      const id = `pretap-${resupply}`;
+      enqueueInstancedShards(id, [shardBytes(5)], instancedShardSupplyToken(id));
+      drawAll(); // the renderer drew 5; no tap saw it
+      const store = storeWith({ [id]: [mesh(1)] });
+      const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+      let [status] = await tap.seal();
+      assert.equal(status.complete, false, 'the pre-tap occurrence is not backed: unavailable');
+      discardInstancedShards(id); // an empty reset of the model's supply
+      if (resupply) {
+        const fresh = instancedShardSupplyToken(id);
+        enqueueInstancedShards(id, [shardBytes(40), shardBytes(41)], fresh);
+        completeInstancedShardSupply(id, 2, fresh);
+        drawAll();
+      }
+      [status] = await tap.seal();
+      if (resupply) {
+        assert.equal(status.error, undefined);
+        assert.equal(status.complete, true, 'the fresh supply replaced the old instances whole');
+        assert.deepEqual(await idsIn(tap.backing(id)!), [40, 41], 'exactly the new entities, nothing pre-tap');
+      } else {
+        assert.equal(status.complete, false, 'without a fresh supply the old instances are still unbacked');
+        assert.equal(status.instancedLost, true);
+      }
+      await tap.stop();
+    });
+  }
+
   it('a tap started after shards were enqueued fails closed for that model', async () => {
     enqueueInstancedShards('late', [shardBytes(9)], instancedShardGeneration());
     const store = storeWith({ late: [mesh(1)], flat: [mesh(2)] });
@@ -516,16 +545,16 @@ describe('store geometry backing tap (test/debug only)', () => {
   };
 
   it('#10888 two queued entries sharing one ArrayBuffer: dropping one keeps the drawn one backed', async () => {
-    const store = storeWith({ mx: [mesh(1)] });
+    const store = storeWith({ mxs: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     const shared = shardBytes(70);
-    enqueueInstancedShards('mx', [shared, shared], instancedShardSupplyToken('mx'));
+    enqueueInstancedShards('mxs', [shared, shared], instancedShardSupplyToken('mxs'));
     drainInstancedShards((shards, settle) => { settle(shards[0], 'uploaded'); settle(shards[1], 'dropped'); });
     drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, false, 'one occurrence never reached the scene');
     assert.equal(status.error, undefined, 'the drawn entry is resolved, not a collision failure');
-    assert.deepEqual(await idsIn(tap.backing('mx')!), [70], 'exactly the one drawn entry');
+    assert.deepEqual(await idsIn(tap.backing('mxs')!), [70], 'exactly the one drawn entry');
     await tap.stop();
   });
 

@@ -1,9 +1,9 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 78ca8c8..792dbaa 100644
+index e4c66b2..7239766 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -198,7 +198,6 @@ export class StoreGeometryBackingTap {
-       retained: previous ? [...previous.retained, previous.key] : [] };
+@@ -199,7 +199,6 @@ export class StoreGeometryBackingTap {
+     const preTap = this.preTap.lost(modelId); if (preTap && !next.instancedLost) { next.instancedLost = true; next.lostAt = preTap; } // drawn before the tap
      const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
        next.backing = await this.registry.begin(key, this.options);
 -      for (const old of next.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by a committed generation');

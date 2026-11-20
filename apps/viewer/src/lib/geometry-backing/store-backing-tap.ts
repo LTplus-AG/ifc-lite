@@ -22,7 +22,7 @@
 import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
 import { type InstancedShardSupply, type PendingInstancedShard, hasPendingInstancedShards, instancedShardGeneration, instancedShardModelEpoch, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
-import { instancedShardRevision } from '@/store/instancedShardModels';
+import { PreTapSupply } from './pre-tap-supply';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
 import { collectMeshAreas, type MeshAreaEntry } from '@/components/viewer/tools/measure-modes/mesh-area';
@@ -85,7 +85,7 @@ export class StoreGeometryBackingTap {
   private contentVersion: number;
   private readonly stops: Array<() => void> = [];
   /** Shard enqueue events seen per model since start, compared with the queue's revision. */
-  private readonly shardEvents = new Map<string, number>();
+  private readonly shardEvents = new Map<string, number>(); private readonly preTap = new PreTapSupply(); // `pre-tap-supply.ts`
   private sequence = 0;
   /** Per model, the last generation acknowledged complete: the only replay source. */
   private readonly acknowledged = new Map<string, Tracked>();
@@ -196,6 +196,7 @@ export class StoreGeometryBackingTap {
       lostAt: shards === 'lost' ? supplyPoint(modelId) : shards === 'withhold' ? { ...supplyPoint(modelId), epoch: instancedShardModelEpoch(modelId) - 1 } : previous?.lostAt,
       resupply: shards === 'carry' ? previous?.resupply : undefined, supplied: shards === 'carry' ? previous?.supplied : undefined, shards: 0, occurrences: 0, sources: [], areas: new Map(),
       retained: previous ? [...previous.retained, previous.key] : [] };
+    const preTap = this.preTap.lost(modelId); if (preTap && !next.instancedLost) { next.instancedLost = true; next.lostAt = preTap; } // drawn before the tap
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       next.backing = await this.registry.begin(key, this.options);
       // A re-supplying predecessor holds only fresh shards (never pre-loss ones); `withhold` keeps all the scene drew.
@@ -266,8 +267,7 @@ export class StoreGeometryBackingTap {
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.
     const shard = decodeInstancedShard(bytes.slice(0));
-    // The drain re-homes shard ids into the federated id space after decoding;
-    // do the same, so backed occurrences answer the ids picks and flat meshes use.
+    // Re-home ids into the federated id space, as the drain does: backed occurrences answer the ids picks use.
     const idOffset = this.store.getState().models.get(modelId)?.idOffset;
     if (idOffset === undefined) { // unregistered: its instancing is not backed
       this.unbacked.add(entry); target.instancedLost = true; if (target.resupply) target.resupply.broken = true;
@@ -283,7 +283,7 @@ export class StoreGeometryBackingTap {
   /** Lost instancing is whole again only by the model's own statement, matched shard for shard. */
   private onSupply(supply: InstancedShardSupply): void {
     const tracked = this.stopped ? undefined : this.tracked.get(supply.modelId);
-    if (tracked) acceptStatement(tracked, supply);
+    if (tracked) { acceptStatement(tracked, supply); if (!tracked.instancedLost) this.preTap.resupplied(supply.modelId); }
   }
 
   /** Shards dropped before upload: keep exactly what the scene drew, lost until the rest is stated. */
@@ -371,7 +371,7 @@ export class StoreGeometryBackingTap {
     const t = this.tracked.get(modelId), b = t?.backing;
     return !!t?.flatSealed && !!b && !t.failure && !t.stale && b.isCurrent && !b.writer.error && !b.writer.hasUnsealed && b.writer.pendingBytes === 0 && b.directory.chunks.every((c) => c.state === 'durable');
   }
-  private missedShards(modelId: string): boolean { return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0); }
+  private missedShards(modelId: string): boolean { return this.preTap.missed(modelId, this.shardEvents.get(modelId) ?? 0); }
 
   status(): ModelBackingStatus[] {
     return [...this.tracked].map(([modelId, tracked]) => {

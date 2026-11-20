@@ -1,5 +1,5 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 222399f..0ba44ab 100644
+index 40f35e3..7239766 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 @@ -109,6 +109,14 @@ export class StoreGeometryBackingTap {

@@ -125,6 +125,23 @@ fn a_comment_only_caused_by_is_not_warned_as_omitted_10779() {
     assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
 }
 
+/// /code-review on the #10802 restack: a structural profile-properties subtype
+/// IFC4 deleted is written as IfcProfileProperties by its attribute map, which
+/// counts what it drops; the warnings name each dropped measure, the only named
+/// loss signal the wasm export returns, as in the TypeScript twin (#10777).
+#[test]
+fn a_deleted_structural_profile_subtype_names_what_it_drops_10777() {
+    let n = crate::schema_convert::schema_attribute_names("IFC2X3", "IFCSTRUCTURALSTEELPROFILEPROPERTIES").unwrap().len();
+    let record = format!("#40=IFCSTRUCTURALSTEELPROFILEPROPERTIES('HEA',#9,12.5{});", ",$".repeat(n - 3));
+    let (up, warnings) = convert(&model("IFC2X3", &record), "IFC4");
+    // Only ProfileDefinition carries; the measures are dropped, not shifted into another slot.
+    assert!(up.lines().any(|l| l == "#40=IFCPROFILEPROPERTIES($,$,$,#9);"), "{up}");
+    assert!(warnings.contains("IFCSTRUCTURALSTEELPROFILEPROPERTIES.PhysicalWeight has no slot in IFC4; its value is omitted"), "{warnings}");
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    let (_, stats, _) = export_step_with_diagnostics(model("IFC2X3", &record).as_bytes(), &opts).unwrap();
+    assert_eq!(stats.attribute_values_dropped, 2, "ProfileName and PhysicalWeight");
+}
+
 // A varying action that stays unconverted is no IFC4 product, so no 'Causes' relationship may name it.
 const GEOMETRY: &str = "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
 #14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));

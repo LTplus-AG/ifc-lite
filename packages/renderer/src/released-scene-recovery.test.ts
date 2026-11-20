@@ -73,6 +73,27 @@ describe('released scene device recovery (#10264)', () => {
     assert.equal(template.positions.length + template.normals.length + template.indices.length, 0, 'released like the original release did');
   });
 
+  it('#10937 an incomplete first attempt, then a complete retry, restores the ORIGINAL pre-loss instanced membership', async () => {
+    const { renderer } = lostReleasedRenderer();
+    const scene = renderer.getScene() as unknown as { getInstancedModelIndices: () => number[] };
+    let templates = [0, 2]; // the scene drew instancing of models 0 and 2 before the loss
+    scene.getInstancedModelIndices = () => templates;
+    renderer['scene']['resetReleasedForRebuild'] = () => { templates = []; }; // the failed attempt's reset removes them
+    const seen: number[][] = [];
+    let complete = false;
+    renderer.setReleasedSceneRebuild(async (context) => { seen.push([...context.instancedModelIndices].sort()); return complete; });
+    assert.equal((await renderer.recoverDevice()).ok, false, 'the backing was incomplete');
+    complete = true;
+    assert.equal((await renderer.recoverDevice()).ok, true);
+    assert.deepStrictEqual(seen, [[0, 2], [0, 2]], 'the retry restages what the scene drew before the loss, never the emptied set');
+    templates = [5];
+    (renderer.getScene() as unknown as { clear: () => void }).clear(); // a successor scene: new content
+    renderer['deviceLost'] = true;
+    renderer['deviceLostGeneration'] = renderer['initGeneration'];
+    await renderer.recoverDevice();
+    assert.deepStrictEqual(seen.at(-1), [5], 'after a successful recovery and a successor, the membership is captured fresh');
+  });
+
   it('an incomplete rebuild leaves the renderer lost and reports a retryable failure', async () => {
     const { renderer } = lostReleasedRenderer();
     renderer.setReleasedSceneRebuild(async () => false);

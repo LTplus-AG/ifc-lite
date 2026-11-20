@@ -168,6 +168,37 @@ describe('Distance taps and Point clicks over released geometry', () => {
   });
 });
 
+describe('#10884 click order over released geometry', () => {
+  it('#10884 a second press still held when its own read lands finishes on its release', async () => {
+    const { ctx, log } = releasedCtx();
+    handleMeasureDown(ctx, down(10)); release(ctx, 10); // the first click, still reading back
+    handleMeasureDown(ctx, down(300)); // the second press, deferred too, and still held
+    await settleImports();
+    reads[0].settle('fed'); await tick(); // the first start lands (it marks the press as starting)
+    reads[1].settle('fed'); await measureReadbacksIdle(); // the second lands while held: a second click
+    assert.deepEqual(log, ['start 10']);
+    release(ctx, 300); // now released: an ordinary second click
+    await settleImports();
+    reads[2]?.settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(log, ['start 10', 'end 300', 'finished'], 'the second click finishes the distance');
+  });
+
+  it('#10884 two more quick clicks before the finishing read lands: the second finishes, the third starts the next distance', async () => {
+    const { ctx, log } = releasedCtx();
+    handleMeasureDown(ctx, down(10)); release(ctx, 10);
+    await settleImports();
+    reads[0].settle('fed'); await measureReadbacksIdle();
+    handleMeasureDown(ctx, down(300)); release(ctx, 300); // queued finish
+    handleMeasureDown(ctx, down(500)); release(ctx, 500); // queued behind it, the distance still pending
+    await settleImports();
+    reads[1].settle('fed'); await tick();
+    reads[2].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(log, ['start 10', 'end 300', 'finished', 'start 500'], 'no click is dropped: the third starts the next distance');
+  });
+});
+
 describe('#10880 a Distance point that cannot be read back discards the half-made distance', () => {
   const epoch = () => useViewerStore.getState().measureGestureEpoch;
 

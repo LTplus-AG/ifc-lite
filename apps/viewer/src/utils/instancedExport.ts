@@ -46,7 +46,7 @@ import { geometryOwnerNeedsReadback } from '@/lib/geometry-backing/geometry-owne
 import { storeGeometryOwners } from '@/lib/geometry-backing/store-geometry-owners';
 import { releasedCopyFrom } from '@/lib/geometry-backing/store-mesh-readback';
 import type { ReleasedExportGeometry } from '@/lib/geometry-backing/export-readback';
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { hasRetainedShapeOnlyModel, type RetainedGeometrySummary } from '@/store/retainedGeometry';
 
 /** This model's global-id bracket, for scoping `getAllInstancedMeshData()`'s

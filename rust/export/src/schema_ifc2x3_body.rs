@@ -14,16 +14,32 @@ use crate::schema_ifc2x3_placements::place_each_object_once;
 pub(crate) struct Body<'w> {
     out: &'w mut dyn Write,
     held: Option<Vec<u8>>,
+    typed_properties: bool,
 }
 
 impl<'w> Body<'w> {
     pub(crate) fn new(out: &'w mut dyn Write, ifc2x3: bool) -> Self {
-        Body { out, held: ifc2x3.then(Vec::new) }
+        Self::for_conversion(out, ifc2x3, false)
+    }
+
+    pub(crate) fn for_conversion(out: &'w mut dyn Write, ifc2x3: bool, typed_properties: bool) -> Self {
+        Body { out, held: (ifc2x3 || typed_properties).then(Vec::new), typed_properties }
     }
 
     /// Write the held section, adapted; the change in record count.
     pub(crate) fn finish(self) -> io::Result<isize> {
+        self.finish_with(|_| None)
+    }
+
+    pub(crate) fn finish_with(self, typed_properties: impl FnOnce(&str) -> Option<(String, usize)>) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
+        if self.typed_properties {
+            if let Some((text, added)) = std::str::from_utf8(&held).ok().and_then(typed_properties) {
+                self.out.write_all(text.as_bytes())?;
+                return Ok(added as isize);
+            }
+            return self.out.write_all(&held).map(|()| 0);
+        }
         let placed = match std::str::from_utf8(&held) {
             Ok(text) => place_each_object_once(text).map(|p| (p.body.into_bytes(), p.added, p.removed)),
             // Bytes that are not UTF-8 (a source's Latin-1 name, say) are read

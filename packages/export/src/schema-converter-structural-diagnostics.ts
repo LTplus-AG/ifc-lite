@@ -78,6 +78,14 @@ export class StructuralDiagnostics {
     return filled.line;
   }
 
+  /** Clear one omission once the writer has emitted a replacement property. */
+  restoreOmittedValue(entity: string, attribute: string, to: string): void {
+    const message = entity + '.' + attribute + ' has no slot in ' + to + '; its value is omitted';
+    const count = this.losses.get(message);
+    if (count === 1) this.losses.delete(message);
+    else if (count) this.losses.set(message, count - 1);
+  }
+
   inspect(id: number, line: string, from: string, to: string): void {
     const assignment = /^\s*#\d+\s*=\s*IFCRELCONNECTSSTRUCTURALELEMENT\s*\(/i.test(line) ? readStepSlots(line) : null;
     if (assignment && isStructuralAssignmentConversion(assignment.type, from, to)) {

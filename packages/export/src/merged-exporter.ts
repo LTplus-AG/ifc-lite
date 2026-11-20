@@ -91,6 +91,7 @@ interface SpatialLookup {
 /** Shared, model-independent state computed once per merge. */
 interface MergeSetup {
   /** ID offset applied to each model's express ids, keyed by model id. */
+  nextAvailableId: number;
   modelOffsets: Map<string, number>;
   /** Offset of the first (primary) model — always 0, but kept explicit. */
   firstModelOffset: number;
@@ -499,7 +500,7 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation()]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -536,9 +537,9 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
+    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural);
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
-    // Assemble final file as Uint8Array chunks to avoid V8 string length limit
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
     const content = assembleStepBytes(header, placeObjectsForSchema(schema, allEntityLines)); // #9209
 
@@ -622,7 +623,6 @@ export class MergedExporter {
     const allEntityLines: string[] = [];
     const guidToFinalId = new Map<string, GuidRecord>();
 
-    // First pass: count total entities for progress
     let totalEntities = 0;
     for (const model of models) {
       totalEntities += getCompleteEntityIndex(model.dataStore).size;
@@ -634,7 +634,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>(baked.warnings);
     const YIELD_INTERVAL = 2000;
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation()]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
@@ -702,9 +702,9 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
+    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural);
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
-    // Assembly phase
     if (onProgress) {
       onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });
     }
@@ -840,7 +840,7 @@ export class MergedExporter {
     const firstModelOffset = modelOffsets.get(firstModel.id)!;
     const firstModelInfraMap = this.findInfrastructureEntities(firstModel.dataStore);
     return {
-      modelOffsets,
+      modelOffsets, nextAvailableId,
       firstModelOffset,
       firstModelInfraMap,
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale, firstModelOffset),

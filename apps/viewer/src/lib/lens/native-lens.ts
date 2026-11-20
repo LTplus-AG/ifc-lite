@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 import { evaluateLens, evaluateAutoColorLens, rgbaToHex, isGhostColor, type Lens, type AutoColorEvaluationResult, type LensEvaluationResult } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
@@ -99,7 +100,7 @@ export async function evaluateNativeLens(activeLens: Lens, signal?: AbortSignal)
     globalId => useViewerStore.getState().resolveGlobalIdFromModels(globalId));
   if (activeLens.autoColor) return { lensId: activeLens.id, inputs, result: await evaluateAutoColorLens(activeLens.autoColor, provider, activeLens.capturedScope) };
   const evaluatorModels = models.size > 0 ? evaluatorModelsFromState(state)
-    : [{ id: 'legacy', store: ifcDataStore, mutationView: mutationViews.get('legacy'), customGroupings: customGroupingsFromLenses(state.savedLenses, []) }];
+    : [{ id: 'legacy', store: ifcDataStore, mutationView: getLegacyMutationView(mutationViews), customGroupings: customGroupingsFromLenses(state.savedLenses, []) }];
   const matched = await evaluateLensGroups(activeLens, evaluatorModels, models, definedModelTagIdsOf(state), signal);
   signal?.throwIfAborted();
   return { lensId: activeLens.id, inputs, result: evaluateLens(activeLens, provider, matched) };

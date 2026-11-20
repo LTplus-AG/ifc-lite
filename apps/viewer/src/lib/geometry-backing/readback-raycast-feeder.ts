@@ -124,10 +124,11 @@ export class ReadbackRaycastFeeder {
           const r = NEIGHBOURHOOD_METRES;
           // Instanced neighbours: the scene keeps occurrence bounds (placed frame) after release.
           for (const id of scene.getInstancedEntityIds()) {
-            if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) break;
             const b = scene.getInstancedEntityBounds(id);
             if (!b || b.min.x > p.x + r || b.max.x < p.x - r || b.min.y > p.y + r || b.max.y < p.y - r
               || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId) continue;
+            // A truncated neighbourhood could snap differently from the resident scene: refuse, never omit.
+            if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) throw new GeometryUnavailableError(`More than ${MAX_INSTANCED_NEIGHBOURS} instanced neighbours`);
             instancedIds.add(id);
           }
           // The hit is in the placed scene frame; directory bounds are model-local sources.

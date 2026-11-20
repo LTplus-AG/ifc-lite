@@ -9,6 +9,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { GeometryBackingRegistry, type ModelGeometryBacking } from './geometry-backing-registry';
 import { GeometryUnavailableError, leaseEntityGeometry, meshIsResident, modelGeometry } from './geometry-readback';
+import { readInstancedOccurrences } from './instanced-readback';
 import { ReadbackRaycastFeeder, type ReadbackRaycastHost } from './readback-raycast-feeder';
 import { instancedShard } from './geometry-backing.test-fixtures';
 
@@ -170,6 +171,34 @@ describe('released geometry readback for tools', () => {
     assert.equal(await feeder.prepare(0, 0), 'fed');
     assert.deepEqual(h.fed.at(-1)!.map((m) => m.expressId), [1], 'the surface behind the annotation');
     assert.equal(seen.length, 2);
+    await registry.close();
+  });
+
+  it('#10884 more instanced neighbours than the cap is refused, never silently truncated', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard());
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const crowd = new Map<number, Box>([[501, near]]);
+    for (let id = 1000; id < 1300; id++) crowd.set(id, near); // 300 neighbours inside the box
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, crowd);
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'unavailable', 'a truncated neighbourhood could snap differently');
+    assert.match(feeder.lastError!.message, /instanced neighbours/);
+    await registry.close();
+  });
+
+  it('#10884 an instanced readback bound that is not a byte count (NaN, negative) fails instead of passing any size', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard());
+    await backing.writer.close();
+    for (const budgetBytes of [Number.NaN, -1]) {
+      await assert.rejects(readInstancedOccurrences(backing, new Set([501]), 0, { budgetBytes }), GeometryUnavailableError);
+    }
     await registry.close();
   });
 });

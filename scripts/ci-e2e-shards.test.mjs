@@ -178,7 +178,10 @@ test('the workflow step, run for matrix shard 3, hands pnpm exactly that shard\'
   assert.equal(retry.env.E2E_SHARD, '${{ matrix.shard }}/8'); // eslint-disable-line no-template-curly-in-string
 });
 
-const listOf = (files) => files.map((f, i) => `  [viewer-e2e-ci] › ${f}:${10 + i}:1 › some test title (#${i})`).join('\n') + `\nTotal: ${files.length} tests in ${files.length} files\n`;
+// Playwright's real --list format: paths relative to the config's testDir
+// (./tests here), e.g. `[viewer-e2e-ci] › e2e/x.e2e.spec.ts:10:1 › title`
+// (CI run 44833636215 printed exactly this). Plan paths are repo-relative.
+const listOf = (files) => files.map((f, i) => `  [viewer-e2e-ci] › ${f.replace(/^tests\//, '')}:${10 + i}:1 › some test title (#${i})`).join('\n') + `\nTotal: ${files.length} tests in ${files.length} files\n`;
 
 test('--check-list: Playwright\'s listed files equal the plan, or the CLI names the difference', () => {
   const planned = plan().flatMap((s) => s.files);
@@ -197,6 +200,10 @@ test('--check-list: Playwright\'s listed files equal the plan, or the CLI names 
     const extra = check(planned.slice(1));
     assert.equal(extra.status, 1);
     assert.ok(extra.stderr.includes(`not selected by Playwright: ${planned[0]}`), extra.stderr); // @source-text-assertion-ok the CLI's output and the parsed workflow step are the subject; no source text is asserted
+    // Repo-relative paths are NOT what Playwright prints; reading them as
+    // testDir-relative names files that do not exist, so the check refuses.
+    writeFileSync(join(dir, 'rooted.txt'), planned.map((f) => `  [viewer-e2e-ci] › ${f}:1:1 › t`).join('\n'));
+    assert.equal(cli('--check-list', join(dir, 'rooted.txt')).status, 1, 'paths must be read relative to testDir');
     writeFileSync(join(dir, 'empty.txt'), '\nTotal: 0 tests in 0 files\n');
     assert.equal(cli('--check-list', join(dir, 'empty.txt')).status, 1, 'an unreadable list must not pass');
   } finally {

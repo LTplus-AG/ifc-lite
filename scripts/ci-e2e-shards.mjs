@@ -49,7 +49,7 @@
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
@@ -174,6 +174,16 @@ export function projectTestMatch(configSource) {
   return new RegExp(m[1]);
 }
 
+/**
+ * The config's top-level `testDir`, repo-relative with no leading `./` ('' when
+ * absent: Playwright then uses the config's own directory). `--list` prints spec
+ * paths relative to it, so the check prefixes it to compare with the plan.
+ */
+export function configTestDir(configSource) {
+  const m = configSource.match(/^\s*testDir:\s*['"]([^'"]+)['"]/m);
+  return m ? posix.normalize(m[1]).replace(/^\.\/?$/, '').replace(/\/$/, '') : '';
+}
+
 function walk(dir, out) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules') continue;
@@ -266,15 +276,17 @@ export function shardFilters(spec, root = REPO_ROOT, timings = TIMINGS_S) {
 
 /**
  * The distinct spec files named by `playwright test --list` output
- * (`  [viewer-e2e-ci] › tests/e2e/x.e2e.spec.ts:36:1 › title`), repo-relative.
+ * (`  [viewer-e2e-ci] › e2e/x.e2e.spec.ts:36:1 › title`). Playwright prints
+ * them relative to testDir; they are returned repo-relative.
  * @param {string} text
+ * @param {string} [testDir] repo-relative testDir ('' for the repo root)
  * @returns {string[]}
  */
-export function listedFiles(text) {
+export function listedFiles(text, testDir = '') {
   const files = new Set();
   for (const line of text.split('\n')) {
     const m = /›\s+(\S+\.[cm]?[jt]sx?):\d+:\d+\s+›/.exec(line);
-    if (m) files.add(m[1].split('\\').join('/'));
+    if (m) files.add(posix.join(testDir || '.', m[1].split('\\').join('/')));
   }
   return [...files].sort();
 }
@@ -283,9 +295,10 @@ export function listedFiles(text) {
  * Refuse unless Playwright's listed files are exactly the plan's.
  * @param {string} listOutput
  * @param {string[]} planned the union of the 8 shards
+ * @param {string} [testDir] repo-relative testDir the --list paths are relative to
  */
-export function assertListMatchesPlan(listOutput, planned) {
-  const listed = listedFiles(listOutput);
+export function assertListMatchesPlan(listOutput, planned, testDir = '') {
+  const listed = listedFiles(listOutput, testDir);
   if (listed.length === 0) fail('the --list output names no spec file; it is empty or in a format this check cannot read.');
   const missing = listed.filter((f) => !planned.includes(f));
   const extra = planned.filter((f) => !listed.includes(f));
@@ -313,7 +326,8 @@ function main(argv) {
     const timings = opt('--timings') ? JSON.parse(readFileSync(opt('--timings'), 'utf8')) : TIMINGS_S;
     if (argv.includes('--check-list')) {
       const { shards } = packShards(selectedFiles(root), SHARD_COUNT, timings);
-      assertListMatchesPlan(readFileSync(opt('--check-list'), 'utf8'), shards.flat());
+      const testDir = configTestDir(readFileSync(join(root, 'playwright.config.ts'), 'utf8'));
+      assertListMatchesPlan(readFileSync(opt('--check-list'), 'utf8'), shards.flat(), testDir);
       console.log('ci-e2e-shards: the 8 shards cover exactly the files Playwright lists');
       return;
     }

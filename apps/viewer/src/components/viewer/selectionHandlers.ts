@@ -134,9 +134,10 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
 /** A released scene reads the click point back first; a resident one answers now (returns false). */
 function deferForReadback(ctx: MouseHandlerContext, x: number, y: number, act: () => void): boolean {
   if (!sceneGeometryReleased(ctx.renderer)) return false;
-  const tool = ctx.activeToolRef.current;
+  // A placement: a later press never drops it, a gesture reset (Esc, mode or tool switch, reposition) does.
+  const tool = ctx.activeToolRef.current, gesture = useViewerStore.getState().measureGestureEpoch;
   runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current },
-    act, () => ctx.activeToolRef.current === tool);
+    act, () => ctx.activeToolRef.current === tool && useViewerStore.getState().measureGestureEpoch === gesture, 'placement');
   return true;
 }
 

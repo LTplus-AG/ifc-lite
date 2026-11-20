@@ -20,7 +20,7 @@
 //! - #40 maps the same triangle set twice, once through grey-styled #43 and
 //!   once through unstyled #44: each occurrence is coloured by its own mapped
 //!   item, so one draws grey and one teal, though both share the leaf #60.
-//! - #50 carries the triangle set #60 directly AND through a grey-styled
+//! - #50 carries the triangle set #60 directly AND through a glossy-grey-styled
 //!   mapped item (#53). The direct body is what renders (`Select::Meshed`
 //!   skips the duplicate map), so the grey occurrence must not colour it, nor
 //!   lend it a finish.
@@ -95,7 +95,10 @@ DATA;
 #53=IFCMAPPEDITEM(#63,#7);
 #54=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#53));
 #55=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#60));
-#56=IFCSTYLEDITEM(#53,(#91),$);
+#56=IFCSTYLEDITEM(#53,(#57),$);
+#57=IFCSURFACESTYLE('Glossy grey',.POSITIVE.,(#58));
+#58=IFCSURFACESTYLERENDERING(#59,0.,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.75),$,.NOTDEFINED.);
+#59=IFCCOLOURRGB($,0.6,0.65,0.7);
 #100=IFCSLAB('6SameColourTwoFinish',$,'Same RGBA, two finishes',$,$,#101,#102,$,.FLOOR.);
 #101=IFCLOCALPLACEMENT($,#5);
 #102=IFCPRODUCTDEFINITIONSHAPE($,$,(#105));
@@ -194,7 +197,7 @@ fn a_skipped_mapped_representation_does_not_colour_the_direct_body() {
     assert_eq!(meshes.len(), 1, "only the direct body renders, the mapped duplicate is skipped");
     let (mesh, finish) = &meshes[0];
     assert!(approx_eq(mesh.color, TEAL), "the direct body has no style of its own: expected teal, got {:?}", mesh.color);
-    assert_eq!(*finish, None, "the skipped grey occurrence lends no finish");
+    assert_eq!(*finish, None, "the skipped occurrence's glossy grey lends no finish");
 }
 
 #[test]

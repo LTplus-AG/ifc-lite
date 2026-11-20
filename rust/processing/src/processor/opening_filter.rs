@@ -137,12 +137,13 @@ fn is_opaque_opening(
         .into_iter()
         .filter_map(|repr_id| decoder.decode_by_id(repr_id).ok())
         .collect();
-    let pending: Vec<(u32, u32, bool)> = meshed_representations(&entity, &reprs)
+    let pending: Vec<(u32, u32, Option<bool>)> = meshed_representations(&entity, &reprs)
         .filter_map(|repr| repr.get_refs(3))
         .flatten()
-        .map(|id| (id, 0, false))
+        .map(|id| (id, 0, None))
         .collect();
-    let scan = scan_item_styles(pending, styles, decoder);
+    let materials = material_colors.get(&job.id).map_or(&[][..], Vec::as_slice);
+    let scan = scan_item_styles(pending, styles, !materials.is_empty(), decoder);
     if scan.glass {
         return false;
     }
@@ -151,7 +152,6 @@ fn is_opaque_opening(
     // element colour is the type default. An opening with no reachable geometry
     // item renders nothing to judge, so any transparent colour it would carry,
     // default or material, keeps it and its opening.
-    let materials = material_colors.get(&job.id).map_or(&[][..], Vec::as_slice);
     if !scan.leaf {
         return !(job.element_color[3] < 1.0 || materials.iter().any(|c| c[3] < 1.0));
     }
@@ -176,40 +176,54 @@ struct ItemStyles {
     unstyled_leaf: bool,
 }
 
-/// Visit `pending` items (id, depth, under a styled mapped item) and
-/// everything under them through nested `IfcMappedItem`s, as deep as the
+/// Visit `pending` items (id, depth, whether the nearest styled `IfcMappedItem`
+/// above it is glass)
+/// and everything under them through nested `IfcMappedItem`s, as deep as the
 /// geometry walk goes: leaves under up to `MAX_MAPPED_ITEM_DEPTH` mapped items. `visited` keeps the depth each item
 /// was explored at and allows a revisit only from nearer the root, the rule
 /// `element_color::find_geometry_item_color_at` documents.
+///
+/// With material colours, a leaf renders with its own style, else the nearest
+/// styled mapped item above it, else a material (`presentation_source::color`,
+/// #10698), so a mapped item's glass counts only at a leaf it wins for: an
+/// inner opaque occurrence style overrides an outer glass one. Without them
+/// the occurrence step does not run, and any glass style reached counts.
 fn scan_item_styles(
-    mut pending: Vec<(u32, u32, bool)>,
+    mut pending: Vec<(u32, u32, Option<bool>)>,
     styles: &FxHashMap<u32, GeometryStyleInfo>,
+    has_materials: bool,
     decoder: &mut EntityDecoder,
 ) -> ItemStyles {
     let mut scan = ItemStyles::default();
-    // Keyed by (item, under a styled mapped item): the same item reached with
-    // and without a styled ancestor answers `unstyled_leaf` differently.
-    let mut visited: FxHashMap<(u32, bool), u32> = FxHashMap::default();
-    while let Some((id, depth, inherited)) = pending.pop() {
+    // Keyed by (item, what an unstyled leaf below it would inherit): at most
+    // three states per item, however many occurrences share it.
+    let mut visited: FxHashMap<(u32, Option<bool>), u32> = FxHashMap::default();
+    while let Some((id, depth, nearest)) = pending.pop() {
         let own_style = styles.get(&id);
         if let Some(style) = own_style {
-            if has_glass_style(style) {
+            // Judged at the leaves it wins for, when occurrences can win.
+            let deferred = has_materials && is_mapped_item(id, decoder);
+            if has_glass_style(style) && !deferred {
                 scan.glass = true;
                 return scan;
             }
             scan.styled = true;
         }
-        if depth > MAX_MAPPED_ITEM_DEPTH || visited.get(&(id, inherited)).is_some_and(|&seen| seen <= depth) {
+        if depth > MAX_MAPPED_ITEM_DEPTH || visited.get(&(id, nearest)).is_some_and(|&seen| seen <= depth) {
             continue;
         }
-        visited.insert((id, inherited), depth);
+        visited.insert((id, nearest), depth);
         // IfcMappedItem → IfcRepresentationMap → MappedRepresentation.Items
         let Ok(item) = decoder.decode_by_id(id) else {
             continue;
         };
         if item.ifc_type != IfcType::IfcMappedItem {
             scan.leaf = true;
-            scan.unstyled_leaf |= own_style.is_none() && !inherited;
+            if own_style.is_none() && has_materials && nearest == Some(true) {
+                scan.glass = true;
+                return scan;
+            }
+            scan.unstyled_leaf |= own_style.is_none() && nearest.is_none();
             continue;
         }
         // A leaf under exactly `MAX_MAPPED_ITEM_DEPTH` mapped items still
@@ -223,12 +237,16 @@ fn scan_item_styles(
         else {
             continue;
         };
-        let styled_occurrence = inherited || own_style.is_some();
+        let nearest = own_style.map(has_glass_style).or(nearest);
         for child in mapped_repr.get_refs(3).unwrap_or_default() {
-            pending.push((child, depth + 1, styled_occurrence));
+            pending.push((child, depth + 1, nearest));
         }
     }
     scan
+}
+
+fn is_mapped_item(id: u32, decoder: &mut EntityDecoder) -> bool {
+    decoder.decode_by_id(id).is_ok_and(|item| item.ifc_type == IfcType::IfcMappedItem)
 }
 
 /// Returns `true` when a geometry style indicates a glass/transparent material.

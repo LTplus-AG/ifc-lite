@@ -38,6 +38,11 @@ fn process_filtered(ifc: &str, mode: OpeningFilterMode) -> ProcessingResult {
 /// unstyled face set, with the frame/pane material list. The mapped item's style
 /// styles that occurrence and outranks the material list, so the window renders
 /// opaque (#10698, `mapped_item_style_over_material.rs`).
+/// #160: #140's unstyled face set under two mapped items, the outer styled with
+/// the transparent pane, the inner opaque. The nearest styled occurrence wins,
+/// so the window renders opaque although a glass style is reachable.
+/// #180: the converse, outer opaque and inner the transparent pane, with only
+/// the opaque frame material, so only the inner occurrence can glaze it.
 const OPENINGS_IFC: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ignore-opaque resolved colour fixture'),'2;1');
@@ -155,6 +160,26 @@ DATA;
 #148=IFCCARTESIANPOINTLIST3D(((22.,0.,0.),(23.,0.,0.),(22.,1.,0.),(22.,0.,1.)));
 #149=IFCSTYLEDITEM(#144,(#17),$);
 #150=IFCRELASSOCIATESMATERIAL('2RelAssocWinMat00002',$,$,$,(#140),#30);
+#160=IFCWINDOW('1GlassOverOpaqueWin0',$,'G',$,$,#141,#161,$,$,$,$,$,$);
+#161=IFCPRODUCTDEFINITIONSHAPE($,$,(#162));
+#162=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#163));
+#163=IFCMAPPEDITEM(#164,#89);
+#164=IFCREPRESENTATIONMAP(#5,#165);
+#165=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#166));
+#166=IFCMAPPEDITEM(#145,#89);
+#167=IFCSTYLEDITEM(#163,(#100),$);
+#168=IFCSTYLEDITEM(#166,(#17),$);
+#169=IFCRELASSOCIATESMATERIAL('2RelAssocWinMat00003',$,$,$,(#160),#30);
+#179=IFCRELASSOCIATESMATERIAL('2RelAssocWinMat00004',$,$,$,(#180),#31);
+#180=IFCWINDOW('1OpaqueOverGlassWin0',$,'O',$,$,#141,#181,$,$,$,$,$,$);
+#181=IFCPRODUCTDEFINITIONSHAPE($,$,(#182));
+#182=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#183));
+#183=IFCMAPPEDITEM(#184,#89);
+#184=IFCREPRESENTATIONMAP(#5,#185);
+#185=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#186));
+#186=IFCMAPPEDITEM(#145,#89);
+#187=IFCSTYLEDITEM(#183,(#17),$);
+#188=IFCSTYLEDITEM(#186,(#100),$);
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -218,6 +243,9 @@ fn ignore_opaque_judges_the_colour_the_opening_renders_with() {
                 .all(|m| m.color[3] >= 1.0),
         "window #140 renders its unstyled mapped leaf in the mapped item's opaque style"
     );
+    let alphas = |id: u32| unfiltered.iter().filter(|m| m.express_id == id).map(|m| m.color[3]).collect::<Vec<_>>();
+    assert!(matches!(alphas(160)[..], [a] if a >= 1.0), "window #160 renders in the inner, opaque occurrence style");
+    assert!(matches!(alphas(180)[..], [a] if a < 1.0), "window #180 renders in the inner, glass occurrence style");
 
     let filtered = meshes(OpeningFilterMode::IgnoreOpaque);
     assert!(
@@ -252,6 +280,8 @@ fn ignore_opaque_judges_the_colour_the_opening_renders_with() {
         !has_mesh(&filtered, 140),
         "window #140's leaf takes the mapped item's opaque style, so IgnoreOpaque must suppress it"
     );
+    assert!(!has_mesh(&filtered, 160), "window #160's outer glass style is overridden, so IgnoreOpaque must suppress it");
+    assert!(has_mesh(&filtered, 180), "window #180's leaf takes the inner glass style, so IgnoreOpaque must keep it");
 }
 
 /// Door #110 again, with a second, non-body representation holding an unstyled

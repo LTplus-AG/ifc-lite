@@ -348,6 +348,15 @@ describe('released geometry readback for tools', () => {
     assert.deepEqual(none, [], 'an unbacked empty model yields nothing and does not fail');
   });
 
+  it('#10884 r4648098405 a flat overlay neighbour (a backed annotation beside the hit) is not fed', async () => {
+    const { registry, backing } = await backed([mesh(1, 0), mesh(900, 0.5)]); // 900: an IfcAnnotation over the wall
+    const h = host({ released: true, hit: { expressId: 1, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } });
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm', undefined, (id) => id !== 900);
+    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
+    assert.deepEqual(h.fed.at(-1)!.map((m) => m.expressId), [1], 'the overlay is never a raycast or snap target, as in the resident scene');
+    await registry.close();
+  });
+
   it('#10884 an instanced overlay neighbour (an annotation the resident raycast never tests) is not fed', async () => {
     const registry = await GeometryBackingRegistry.open(database());
     const backing = await registry.begin('m');

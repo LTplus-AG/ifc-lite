@@ -7,7 +7,9 @@ position can be invalid in the target. Each row is a target slot whose same-name
 can hold a STEP value form the target type cannot (`packages/export/src/schema-value-form-policy.ts`).
 Both converters write such a value as `$`, count it dropped and name the slot in the export
 warnings (#10847), separately when the target requires the slot, since the record is then invalid.
-A value another pass already rewrote into an accepted form is kept.
+A value another pass already rewrote into an accepted form is kept. An aggregate loses only its
+rejected members, unless they are positional (`whole`: those slots are written `$` together); a
+required aggregate that may be empty and loses every member is written `()`.
 
 Forms: `#` entity reference, `S` string, `R` real, `I` integer, `E` enumeration (and BOOLEAN /
 LOGICAL), `B` binary, `T:NAME` a typed select member, and `A` before a form for an aggregate member.
@@ -24,238 +26,238 @@ A reference is rejected only when no entity the source names is related to one t
 
 ## IFC2X3 → IFC4
 
-| Entity.Attribute | Source type | Target type | Required | Forms the target rejects |
-| --- | --- | --- | --- | --- |
-| IfcAppliedValue.ApplicableDate | IfcDateTimeSelect | IfcDate |  | `#` |
-| IfcAppliedValue.FixedUntilDate | IfcDateTimeSelect | IfcDate |  | `#` |
-| IfcAsset.IncorporationDate | IfcCalendarDate | IfcDate |  | `#` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthX | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthY | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthZ | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
-| IfcBoundaryNodeCondition.RotationalStiffnessX | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeCondition.RotationalStiffnessY | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeCondition.RotationalStiffnessZ | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessX | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessY | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessZ | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeConditionWarping.WarpingStiffness | IfcWarpingMomentMeasure | IfcWarpingStiffnessSelect |  | `R>T:IFCWARPINGMOMENTMEASURE` |
-| IfcClassification.EditionDate | IfcCalendarDate | IfcDate |  | `#` |
-| IfcCostValue.ApplicableDate | IfcDateTimeSelect | IfcDate |  | `#` |
-| IfcCostValue.FixedUntilDate | IfcDateTimeSelect | IfcDate |  | `#` |
-| IfcFillAreaStyleHatching.StartOfNextHatchLine | IfcHatchLineDistanceSelect | IfcHatchLineDistanceSelect | yes | `#` |
-| IfcFillAreaStyleTiles.TilingPattern | IfcOneDirectionRepeatFactor | IfcVector | yes | `#` |
-| IfcFillAreaStyleTiles.Tiles | IfcFillAreaStyleTileShapeSelect | IfcStyledItem | yes | `A#` |
-| IfcInventory.LastUpdateDate | IfcCalendarDate | IfcDate |  | `#` |
-| IfcIrregularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcIrregularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcMetric.CreationTime | IfcDateTimeSelect | IfcDateTime |  | `#` |
-| IfcPresentationLayerWithStyle.LayerStyles | IfcPresentationStyleSelect | IfcPresentationStyle | yes | `AT:IFCNULLSTYLE` |
-| IfcRegularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcRegularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcRelSequence.TimeLag | IfcTimeMeasure | IfcLagTime |  | `R` |
-| IfcWorkPlan.CreationDate | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcWorkPlan.Duration | IfcTimeMeasure | IfcDuration |  | `R` |
-| IfcWorkPlan.TotalFloat | IfcTimeMeasure | IfcDuration |  | `R` |
-| IfcWorkPlan.StartTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcWorkPlan.FinishTime | IfcDateTimeSelect | IfcDateTime |  | `#` |
-| IfcWorkSchedule.CreationDate | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcWorkSchedule.Duration | IfcTimeMeasure | IfcDuration |  | `R` |
-| IfcWorkSchedule.TotalFloat | IfcTimeMeasure | IfcDuration |  | `R` |
-| IfcWorkSchedule.StartTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcWorkSchedule.FinishTime | IfcDateTimeSelect | IfcDateTime |  | `#` |
+| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |
+| --- | --- | --- | --- | --- | --- |
+| IfcAppliedValue.ApplicableDate | IfcDateTimeSelect | IfcDate |  |  | `#` |
+| IfcAppliedValue.FixedUntilDate | IfcDateTimeSelect | IfcDate |  |  | `#` |
+| IfcAsset.IncorporationDate | IfcCalendarDate | IfcDate |  |  | `#` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthX | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthY | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthZ | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
+| IfcBoundaryNodeCondition.RotationalStiffnessX | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeCondition.RotationalStiffnessY | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeCondition.RotationalStiffnessZ | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessX | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessY | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessZ | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeConditionWarping.WarpingStiffness | IfcWarpingMomentMeasure | IfcWarpingStiffnessSelect |  |  | `R>T:IFCWARPINGMOMENTMEASURE` |
+| IfcClassification.EditionDate | IfcCalendarDate | IfcDate |  |  | `#` |
+| IfcCostValue.ApplicableDate | IfcDateTimeSelect | IfcDate |  |  | `#` |
+| IfcCostValue.FixedUntilDate | IfcDateTimeSelect | IfcDate |  |  | `#` |
+| IfcFillAreaStyleHatching.StartOfNextHatchLine | IfcHatchLineDistanceSelect | IfcHatchLineDistanceSelect | yes |  | `#` |
+| IfcFillAreaStyleTiles.TilingPattern | IfcOneDirectionRepeatFactor | IfcVector | yes |  | `#` |
+| IfcFillAreaStyleTiles.Tiles | IfcFillAreaStyleTileShapeSelect | IfcStyledItem | yes |  | `A#` |
+| IfcInventory.LastUpdateDate | IfcCalendarDate | IfcDate |  |  | `#` |
+| IfcIrregularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcIrregularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcMetric.CreationTime | IfcDateTimeSelect | IfcDateTime |  |  | `#` |
+| IfcPresentationLayerWithStyle.LayerStyles | IfcPresentationStyleSelect | IfcPresentationStyle | yes | `()` | `AT:IFCNULLSTYLE` |
+| IfcRegularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcRegularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcRelSequence.TimeLag | IfcTimeMeasure | IfcLagTime |  |  | `R` |
+| IfcWorkPlan.CreationDate | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcWorkPlan.Duration | IfcTimeMeasure | IfcDuration |  |  | `R` |
+| IfcWorkPlan.TotalFloat | IfcTimeMeasure | IfcDuration |  |  | `R` |
+| IfcWorkPlan.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcWorkPlan.FinishTime | IfcDateTimeSelect | IfcDateTime |  |  | `#` |
+| IfcWorkSchedule.CreationDate | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcWorkSchedule.Duration | IfcTimeMeasure | IfcDuration |  |  | `R` |
+| IfcWorkSchedule.TotalFloat | IfcTimeMeasure | IfcDuration |  |  | `R` |
+| IfcWorkSchedule.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcWorkSchedule.FinishTime | IfcDateTimeSelect | IfcDateTime |  |  | `#` |
 
 ## IFC2X3 → IFC4X3
 
-| Entity.Attribute | Source type | Target type | Required | Forms the target rejects |
-| --- | --- | --- | --- | --- |
-| IfcAppliedValue.ApplicableDate | IfcDateTimeSelect | IfcDate |  | `#` |
-| IfcAppliedValue.FixedUntilDate | IfcDateTimeSelect | IfcDate |  | `#` |
-| IfcAsset.IncorporationDate | IfcCalendarDate | IfcDate |  | `#` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthX | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthY | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthZ | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
-| IfcBoundaryNodeCondition.RotationalStiffnessX | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeCondition.RotationalStiffnessY | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeCondition.RotationalStiffnessZ | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessX | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessY | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessZ | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
-| IfcBoundaryNodeConditionWarping.WarpingStiffness | IfcWarpingMomentMeasure | IfcWarpingStiffnessSelect |  | `R>T:IFCWARPINGMOMENTMEASURE` |
-| IfcClassification.EditionDate | IfcCalendarDate | IfcDate |  | `#` |
-| IfcCostValue.ApplicableDate | IfcDateTimeSelect | IfcDate |  | `#` |
-| IfcCostValue.FixedUntilDate | IfcDateTimeSelect | IfcDate |  | `#` |
-| IfcFillAreaStyleHatching.StartOfNextHatchLine | IfcHatchLineDistanceSelect | IfcHatchLineDistanceSelect | yes | `#` |
-| IfcFillAreaStyleTiles.TilingPattern | IfcOneDirectionRepeatFactor | IfcVector | yes | `#` |
-| IfcFillAreaStyleTiles.Tiles | IfcFillAreaStyleTileShapeSelect | IfcStyledItem | yes | `A#` |
-| IfcInventory.LastUpdateDate | IfcCalendarDate | IfcDate |  | `#` |
-| IfcIrregularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcIrregularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcMetric.CreationTime | IfcDateTimeSelect | IfcDateTime |  | `#` |
-| IfcPresentationLayerWithStyle.LayerStyles | IfcPresentationStyleSelect | IfcPresentationStyle | yes | `AT:IFCNULLSTYLE` |
-| IfcQuantityCount.CountValue | IfcCountMeasure | IfcCountMeasure | yes | `R>I` |
-| IfcRegularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcRegularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcReinforcementBarProperties.BarCount | IfcCountMeasure | IfcCountMeasure |  | `R>I` |
-| IfcRelSequence.TimeLag | IfcTimeMeasure | IfcLagTime |  | `R` |
-| IfcSurfaceCurveSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  | `R>T:IFCPARAMETERVALUE` |
-| IfcSurfaceCurveSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  | `R>T:IFCPARAMETERVALUE` |
-| IfcWorkPlan.CreationDate | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcWorkPlan.Duration | IfcTimeMeasure | IfcDuration |  | `R` |
-| IfcWorkPlan.TotalFloat | IfcTimeMeasure | IfcDuration |  | `R` |
-| IfcWorkPlan.StartTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcWorkPlan.FinishTime | IfcDateTimeSelect | IfcDateTime |  | `#` |
-| IfcWorkSchedule.CreationDate | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcWorkSchedule.Duration | IfcTimeMeasure | IfcDuration |  | `R` |
-| IfcWorkSchedule.TotalFloat | IfcTimeMeasure | IfcDuration |  | `R` |
-| IfcWorkSchedule.StartTime | IfcDateTimeSelect | IfcDateTime | yes | `#` |
-| IfcWorkSchedule.FinishTime | IfcDateTimeSelect | IfcDateTime |  | `#` |
+| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |
+| --- | --- | --- | --- | --- | --- |
+| IfcAppliedValue.ApplicableDate | IfcDateTimeSelect | IfcDate |  |  | `#` |
+| IfcAppliedValue.FixedUntilDate | IfcDateTimeSelect | IfcDate |  |  | `#` |
+| IfcAsset.IncorporationDate | IfcCalendarDate | IfcDate |  |  | `#` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthX | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthY | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthZ | IfcModulusOfRotationalSubgradeReactionMeasure | IfcModulusOfRotationalSubgradeReactionSelect |  |  | `R>T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE` |
+| IfcBoundaryNodeCondition.RotationalStiffnessX | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeCondition.RotationalStiffnessY | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeCondition.RotationalStiffnessZ | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessX | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessY | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessZ | IfcRotationalStiffnessMeasure | IfcRotationalStiffnessSelect |  |  | `R>T:IFCROTATIONALSTIFFNESSMEASURE` |
+| IfcBoundaryNodeConditionWarping.WarpingStiffness | IfcWarpingMomentMeasure | IfcWarpingStiffnessSelect |  |  | `R>T:IFCWARPINGMOMENTMEASURE` |
+| IfcClassification.EditionDate | IfcCalendarDate | IfcDate |  |  | `#` |
+| IfcCostValue.ApplicableDate | IfcDateTimeSelect | IfcDate |  |  | `#` |
+| IfcCostValue.FixedUntilDate | IfcDateTimeSelect | IfcDate |  |  | `#` |
+| IfcFillAreaStyleHatching.StartOfNextHatchLine | IfcHatchLineDistanceSelect | IfcHatchLineDistanceSelect | yes |  | `#` |
+| IfcFillAreaStyleTiles.TilingPattern | IfcOneDirectionRepeatFactor | IfcVector | yes |  | `#` |
+| IfcFillAreaStyleTiles.Tiles | IfcFillAreaStyleTileShapeSelect | IfcStyledItem | yes |  | `A#` |
+| IfcInventory.LastUpdateDate | IfcCalendarDate | IfcDate |  |  | `#` |
+| IfcIrregularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcIrregularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcMetric.CreationTime | IfcDateTimeSelect | IfcDateTime |  |  | `#` |
+| IfcPresentationLayerWithStyle.LayerStyles | IfcPresentationStyleSelect | IfcPresentationStyle | yes | `()` | `AT:IFCNULLSTYLE` |
+| IfcQuantityCount.CountValue | IfcCountMeasure | IfcCountMeasure | yes |  | `R>I` |
+| IfcRegularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcRegularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcReinforcementBarProperties.BarCount | IfcCountMeasure | IfcCountMeasure |  |  | `R>I` |
+| IfcRelSequence.TimeLag | IfcTimeMeasure | IfcLagTime |  |  | `R` |
+| IfcSurfaceCurveSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
+| IfcSurfaceCurveSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
+| IfcWorkPlan.CreationDate | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcWorkPlan.Duration | IfcTimeMeasure | IfcDuration |  |  | `R` |
+| IfcWorkPlan.TotalFloat | IfcTimeMeasure | IfcDuration |  |  | `R` |
+| IfcWorkPlan.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcWorkPlan.FinishTime | IfcDateTimeSelect | IfcDateTime |  |  | `#` |
+| IfcWorkSchedule.CreationDate | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcWorkSchedule.Duration | IfcTimeMeasure | IfcDuration |  |  | `R` |
+| IfcWorkSchedule.TotalFloat | IfcTimeMeasure | IfcDuration |  |  | `R` |
+| IfcWorkSchedule.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcWorkSchedule.FinishTime | IfcDateTimeSelect | IfcDateTime |  |  | `#` |
 
 ## IFC4 → IFC2X3
 
-| Entity.Attribute | Source type | Target type | Required | Forms the target rejects |
-| --- | --- | --- | --- | --- |
-| IfcAsset.IncorporationDate | IfcDate | IfcCalendarDate | yes | `S` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthX | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthY | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthZ | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
-| IfcBoundaryNodeCondition.RotationalStiffnessX | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeCondition.RotationalStiffnessY | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeCondition.RotationalStiffnessZ | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessX | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessY | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessZ | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeConditionWarping.WarpingStiffness | IfcWarpingStiffnessSelect | IfcWarpingMomentMeasure |  | `T:IFCBOOLEAN`, `T:IFCWARPINGMOMENTMEASURE>U` |
-| IfcClassification.EditionDate | IfcDate | IfcCalendarDate |  | `S` |
-| IfcCostValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  | `T:IFCABSORBEDDOSEMEASURE`, `T:IFCACCELERATIONMEASURE`, `T:IFCAMOUNTOFSUBSTANCEMEASURE`, `T:IFCANGULARVELOCITYMEASURE`, `T:IFCAREADENSITYMEASURE`, `T:IFCAREAMEASURE`, `T:IFCBINARY`, `T:IFCBOOLEAN`, `T:IFCCOMPLEXNUMBER`, `T:IFCCOMPOUNDPLANEANGLEMEASURE`, `T:IFCCONTEXTDEPENDENTMEASURE`, `T:IFCCOUNTMEASURE`, `T:IFCCURVATUREMEASURE`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDESCRIPTIVEMEASURE`, `T:IFCDOSEEQUIVALENTMEASURE`, `T:IFCDURATION`, `T:IFCDYNAMICVISCOSITYMEASURE`, `T:IFCELECTRICCAPACITANCEMEASURE`, `T:IFCELECTRICCHARGEMEASURE`, `T:IFCELECTRICCONDUCTANCEMEASURE`, `T:IFCELECTRICCURRENTMEASURE`, `T:IFCELECTRICRESISTANCEMEASURE`, `T:IFCELECTRICVOLTAGEMEASURE`, `T:IFCENERGYMEASURE`, `T:IFCFORCEMEASURE`, `T:IFCFREQUENCYMEASURE`, `T:IFCHEATFLUXDENSITYMEASURE`, `T:IFCHEATINGVALUEMEASURE`, `T:IFCIDENTIFIER`, `T:IFCILLUMINANCEMEASURE`, `T:IFCINDUCTANCEMEASURE`, `T:IFCINTEGER`, `T:IFCINTEGERCOUNTRATEMEASURE`, `T:IFCIONCONCENTRATIONMEASURE`, `T:IFCISOTHERMALMOISTURECAPACITYMEASURE`, `T:IFCKINEMATICVISCOSITYMEASURE`, `T:IFCLABEL`, `T:IFCLENGTHMEASURE`, `T:IFCLINEARFORCEMEASURE`, `T:IFCLINEARMOMENTMEASURE`, `T:IFCLINEARSTIFFNESSMEASURE`, `T:IFCLINEARVELOCITYMEASURE`, `T:IFCLOGICAL`, `T:IFCLUMINOUSFLUXMEASURE`, `T:IFCLUMINOUSINTENSITYDISTRIBUTIONMEASURE`, `T:IFCLUMINOUSINTENSITYMEASURE`, `T:IFCMAGNETICFLUXDENSITYMEASURE`, `T:IFCMAGNETICFLUXMEASURE`, `T:IFCMASSDENSITYMEASURE`, `T:IFCMASSFLOWRATEMEASURE`, `T:IFCMASSMEASURE`, `T:IFCMASSPERLENGTHMEASURE`, `T:IFCMODULUSOFELASTICITYMEASURE`, `T:IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFSUBGRADEREACTIONMEASURE`, `T:IFCMOISTUREDIFFUSIVITYMEASURE`, `T:IFCMOLECULARWEIGHTMEASURE`, `T:IFCMOMENTOFINERTIAMEASURE`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCNORMALISEDRATIOMEASURE`, `T:IFCNUMERICMEASURE`, `T:IFCPARAMETERVALUE`, `T:IFCPHMEASURE`, `T:IFCPLANARFORCEMEASURE`, `T:IFCPLANEANGLEMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCPOSITIVELENGTHMEASURE`, `T:IFCPOSITIVEPLANEANGLEMEASURE`, `T:IFCPOSITIVERATIOMEASURE`, `T:IFCPOWERMEASURE`, `T:IFCPRESSUREMEASURE`, `T:IFCRADIOACTIVITYMEASURE`, `T:IFCREAL`, `T:IFCROTATIONALFREQUENCYMEASURE`, `T:IFCROTATIONALMASSMEASURE`, `T:IFCROTATIONALSTIFFNESSMEASURE`, `T:IFCSECTIONALAREAINTEGRALMEASURE`, `T:IFCSECTIONMODULUSMEASURE`, `T:IFCSHEARMODULUSMEASURE`, `T:IFCSOLIDANGLEMEASURE`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPOWERMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCSOUNDPRESSUREMEASURE`, `T:IFCSPECIFICHEATCAPACITYMEASURE`, `T:IFCTEMPERATUREGRADIENTMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTEXT`, `T:IFCTHERMALADMITTANCEMEASURE`, `T:IFCTHERMALCONDUCTIVITYMEASURE`, `T:IFCTHERMALEXPANSIONCOEFFICIENTMEASURE`, `T:IFCTHERMALRESISTANCEMEASURE`, `T:IFCTHERMALTRANSMITTANCEMEASURE`, `T:IFCTHERMODYNAMICTEMPERATUREMEASURE`, `T:IFCTIME`, `T:IFCTIMEMEASURE`, `T:IFCTIMESTAMP`, `T:IFCTORQUEMEASURE`, `T:IFCVAPORPERMEABILITYMEASURE`, `T:IFCVOLUMEMEASURE`, `T:IFCVOLUMETRICFLOWRATEMEASURE`, `T:IFCWARPINGCONSTANTMEASURE`, `T:IFCWARPINGMOMENTMEASURE` |
-| IfcCostValue.ApplicableDate | IfcDate | IfcDateTimeSelect |  | `S` |
-| IfcCostValue.FixedUntilDate | IfcDate | IfcDateTimeSelect |  | `S` |
-| IfcFillAreaStyleHatching.StartOfNextHatchLine | IfcHatchLineDistanceSelect | IfcHatchLineDistanceSelect | yes | `#` |
-| IfcFillAreaStyleTiles.TilingPattern | IfcVector | IfcOneDirectionRepeatFactor | yes | `A#` |
-| IfcFillAreaStyleTiles.Tiles | IfcStyledItem | IfcFillAreaStyleTileShapeSelect | yes | `A#` |
-| IfcInventory.LastUpdateDate | IfcDate | IfcCalendarDate | yes | `S` |
-| IfcIrregularTimeSeries.StartTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcIrregularTimeSeries.EndTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcIrregularTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
-| IfcMeasureWithUnit.ValueComponent | IfcValue | IfcValue | yes | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME` |
-| IfcMetric.CreationTime | IfcDateTime | IfcDateTimeSelect |  | `S` |
-| IfcMetric.DataValue | IfcMetricValueSelect | IfcMetricValueSelect | yes | `T:IFCABSORBEDDOSEMEASURE`, `T:IFCACCELERATIONMEASURE`, `T:IFCAMOUNTOFSUBSTANCEMEASURE`, `T:IFCANGULARVELOCITYMEASURE`, `T:IFCAREADENSITYMEASURE`, `T:IFCAREAMEASURE`, `T:IFCBINARY`, `T:IFCBOOLEAN`, `T:IFCCOMPLEXNUMBER`, `T:IFCCOMPOUNDPLANEANGLEMEASURE`, `T:IFCCONTEXTDEPENDENTMEASURE`, `T:IFCCOUNTMEASURE`, `T:IFCCURVATUREMEASURE`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDESCRIPTIVEMEASURE`, `T:IFCDOSEEQUIVALENTMEASURE`, `T:IFCDURATION`, `T:IFCDYNAMICVISCOSITYMEASURE`, `T:IFCELECTRICCAPACITANCEMEASURE`, `T:IFCELECTRICCHARGEMEASURE`, `T:IFCELECTRICCONDUCTANCEMEASURE`, `T:IFCELECTRICCURRENTMEASURE`, `T:IFCELECTRICRESISTANCEMEASURE`, `T:IFCELECTRICVOLTAGEMEASURE`, `T:IFCENERGYMEASURE`, `T:IFCFORCEMEASURE`, `T:IFCFREQUENCYMEASURE`, `T:IFCHEATFLUXDENSITYMEASURE`, `T:IFCHEATINGVALUEMEASURE`, `T:IFCIDENTIFIER`, `T:IFCILLUMINANCEMEASURE`, `T:IFCINDUCTANCEMEASURE`, `T:IFCINTEGER`, `T:IFCINTEGERCOUNTRATEMEASURE`, `T:IFCIONCONCENTRATIONMEASURE`, `T:IFCISOTHERMALMOISTURECAPACITYMEASURE`, `T:IFCKINEMATICVISCOSITYMEASURE`, `T:IFCLABEL`, `T:IFCLENGTHMEASURE`, `T:IFCLINEARFORCEMEASURE`, `T:IFCLINEARMOMENTMEASURE`, `T:IFCLINEARSTIFFNESSMEASURE`, `T:IFCLINEARVELOCITYMEASURE`, `T:IFCLOGICAL`, `T:IFCLUMINOUSFLUXMEASURE`, `T:IFCLUMINOUSINTENSITYDISTRIBUTIONMEASURE`, `T:IFCLUMINOUSINTENSITYMEASURE`, `T:IFCMAGNETICFLUXDENSITYMEASURE`, `T:IFCMAGNETICFLUXMEASURE`, `T:IFCMASSDENSITYMEASURE`, `T:IFCMASSFLOWRATEMEASURE`, `T:IFCMASSMEASURE`, `T:IFCMASSPERLENGTHMEASURE`, `T:IFCMODULUSOFELASTICITYMEASURE`, `T:IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFSUBGRADEREACTIONMEASURE`, `T:IFCMOISTUREDIFFUSIVITYMEASURE`, `T:IFCMOLECULARWEIGHTMEASURE`, `T:IFCMOMENTOFINERTIAMEASURE`, `T:IFCMONETARYMEASURE`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCNORMALISEDRATIOMEASURE`, `T:IFCNUMERICMEASURE`, `T:IFCPARAMETERVALUE`, `T:IFCPHMEASURE`, `T:IFCPLANARFORCEMEASURE`, `T:IFCPLANEANGLEMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCPOSITIVELENGTHMEASURE`, `T:IFCPOSITIVEPLANEANGLEMEASURE`, `T:IFCPOSITIVERATIOMEASURE`, `T:IFCPOWERMEASURE`, `T:IFCPRESSUREMEASURE`, `T:IFCRADIOACTIVITYMEASURE`, `T:IFCRATIOMEASURE`, `T:IFCREAL`, `T:IFCROTATIONALFREQUENCYMEASURE`, `T:IFCROTATIONALMASSMEASURE`, `T:IFCROTATIONALSTIFFNESSMEASURE`, `T:IFCSECTIONALAREAINTEGRALMEASURE`, `T:IFCSECTIONMODULUSMEASURE`, `T:IFCSHEARMODULUSMEASURE`, `T:IFCSOLIDANGLEMEASURE`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPOWERMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCSOUNDPRESSUREMEASURE`, `T:IFCSPECIFICHEATCAPACITYMEASURE`, `T:IFCTEMPERATUREGRADIENTMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTHERMALADMITTANCEMEASURE`, `T:IFCTHERMALCONDUCTIVITYMEASURE`, `T:IFCTHERMALEXPANSIONCOEFFICIENTMEASURE`, `T:IFCTHERMALRESISTANCEMEASURE`, `T:IFCTHERMALTRANSMITTANCEMEASURE`, `T:IFCTHERMODYNAMICTEMPERATUREMEASURE`, `T:IFCTIME`, `T:IFCTIMEMEASURE`, `T:IFCTIMESTAMP`, `T:IFCTORQUEMEASURE`, `T:IFCVAPORPERMEABILITYMEASURE`, `T:IFCVOLUMEMEASURE`, `T:IFCVOLUMETRICFLOWRATEMEASURE`, `T:IFCWARPINGCONSTANTMEASURE`, `T:IFCWARPINGMOMENTMEASURE` |
-| IfcPropertyBoundedValue.UpperBoundValue | IfcValue | IfcValue |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME` |
-| IfcPropertyBoundedValue.LowerBoundValue | IfcValue | IfcValue |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME` |
-| IfcPropertyEnumeratedValue.EnumerationValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
-| IfcPropertyEnumeration.EnumerationValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
-| IfcPropertyListValue.ListValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
-| IfcPropertySingleValue.NominalValue | IfcValue | IfcValue |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME` |
-| IfcPropertyTableValue.DefiningValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
-| IfcPropertyTableValue.DefinedValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
-| IfcRegularTimeSeries.StartTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcRegularTimeSeries.EndTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcRelDefinesByProperties.RelatingPropertyDefinition | IfcPropertySetDefinitionSelect | IfcPropertySetDefinition | yes | `T:IFCPROPERTYSETDEFINITIONSET` |
-| IfcRelSequence.TimeLag | IfcLagTime | IfcTimeMeasure | yes | `#` |
-| IfcTableRow.RowCells | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
-| IfcTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
-| IfcWorkPlan.CreationDate | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcWorkPlan.Duration | IfcDuration | IfcTimeMeasure |  | `S` |
-| IfcWorkPlan.TotalFloat | IfcDuration | IfcTimeMeasure |  | `S` |
-| IfcWorkPlan.StartTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcWorkPlan.FinishTime | IfcDateTime | IfcDateTimeSelect |  | `S` |
-| IfcWorkSchedule.CreationDate | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcWorkSchedule.Duration | IfcDuration | IfcTimeMeasure |  | `S` |
-| IfcWorkSchedule.TotalFloat | IfcDuration | IfcTimeMeasure |  | `S` |
-| IfcWorkSchedule.StartTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcWorkSchedule.FinishTime | IfcDateTime | IfcDateTimeSelect |  | `S` |
+| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |
+| --- | --- | --- | --- | --- | --- |
+| IfcAsset.IncorporationDate | IfcDate | IfcCalendarDate | yes |  | `S` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthX | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthY | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthZ | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
+| IfcBoundaryNodeCondition.RotationalStiffnessX | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeCondition.RotationalStiffnessY | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeCondition.RotationalStiffnessZ | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessX | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessY | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessZ | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeConditionWarping.WarpingStiffness | IfcWarpingStiffnessSelect | IfcWarpingMomentMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCWARPINGMOMENTMEASURE>U` |
+| IfcClassification.EditionDate | IfcDate | IfcCalendarDate |  |  | `S` |
+| IfcCostValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  |  | `T:IFCABSORBEDDOSEMEASURE`, `T:IFCACCELERATIONMEASURE`, `T:IFCAMOUNTOFSUBSTANCEMEASURE`, `T:IFCANGULARVELOCITYMEASURE`, `T:IFCAREADENSITYMEASURE`, `T:IFCAREAMEASURE`, `T:IFCBINARY`, `T:IFCBOOLEAN`, `T:IFCCOMPLEXNUMBER`, `T:IFCCOMPOUNDPLANEANGLEMEASURE`, `T:IFCCONTEXTDEPENDENTMEASURE`, `T:IFCCOUNTMEASURE`, `T:IFCCURVATUREMEASURE`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDESCRIPTIVEMEASURE`, `T:IFCDOSEEQUIVALENTMEASURE`, `T:IFCDURATION`, `T:IFCDYNAMICVISCOSITYMEASURE`, `T:IFCELECTRICCAPACITANCEMEASURE`, `T:IFCELECTRICCHARGEMEASURE`, `T:IFCELECTRICCONDUCTANCEMEASURE`, `T:IFCELECTRICCURRENTMEASURE`, `T:IFCELECTRICRESISTANCEMEASURE`, `T:IFCELECTRICVOLTAGEMEASURE`, `T:IFCENERGYMEASURE`, `T:IFCFORCEMEASURE`, `T:IFCFREQUENCYMEASURE`, `T:IFCHEATFLUXDENSITYMEASURE`, `T:IFCHEATINGVALUEMEASURE`, `T:IFCIDENTIFIER`, `T:IFCILLUMINANCEMEASURE`, `T:IFCINDUCTANCEMEASURE`, `T:IFCINTEGER`, `T:IFCINTEGERCOUNTRATEMEASURE`, `T:IFCIONCONCENTRATIONMEASURE`, `T:IFCISOTHERMALMOISTURECAPACITYMEASURE`, `T:IFCKINEMATICVISCOSITYMEASURE`, `T:IFCLABEL`, `T:IFCLENGTHMEASURE`, `T:IFCLINEARFORCEMEASURE`, `T:IFCLINEARMOMENTMEASURE`, `T:IFCLINEARSTIFFNESSMEASURE`, `T:IFCLINEARVELOCITYMEASURE`, `T:IFCLOGICAL`, `T:IFCLUMINOUSFLUXMEASURE`, `T:IFCLUMINOUSINTENSITYDISTRIBUTIONMEASURE`, `T:IFCLUMINOUSINTENSITYMEASURE`, `T:IFCMAGNETICFLUXDENSITYMEASURE`, `T:IFCMAGNETICFLUXMEASURE`, `T:IFCMASSDENSITYMEASURE`, `T:IFCMASSFLOWRATEMEASURE`, `T:IFCMASSMEASURE`, `T:IFCMASSPERLENGTHMEASURE`, `T:IFCMODULUSOFELASTICITYMEASURE`, `T:IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFSUBGRADEREACTIONMEASURE`, `T:IFCMOISTUREDIFFUSIVITYMEASURE`, `T:IFCMOLECULARWEIGHTMEASURE`, `T:IFCMOMENTOFINERTIAMEASURE`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCNORMALISEDRATIOMEASURE`, `T:IFCNUMERICMEASURE`, `T:IFCPARAMETERVALUE`, `T:IFCPHMEASURE`, `T:IFCPLANARFORCEMEASURE`, `T:IFCPLANEANGLEMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCPOSITIVELENGTHMEASURE`, `T:IFCPOSITIVEPLANEANGLEMEASURE`, `T:IFCPOSITIVERATIOMEASURE`, `T:IFCPOWERMEASURE`, `T:IFCPRESSUREMEASURE`, `T:IFCRADIOACTIVITYMEASURE`, `T:IFCREAL`, `T:IFCROTATIONALFREQUENCYMEASURE`, `T:IFCROTATIONALMASSMEASURE`, `T:IFCROTATIONALSTIFFNESSMEASURE`, `T:IFCSECTIONALAREAINTEGRALMEASURE`, `T:IFCSECTIONMODULUSMEASURE`, `T:IFCSHEARMODULUSMEASURE`, `T:IFCSOLIDANGLEMEASURE`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPOWERMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCSOUNDPRESSUREMEASURE`, `T:IFCSPECIFICHEATCAPACITYMEASURE`, `T:IFCTEMPERATUREGRADIENTMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTEXT`, `T:IFCTHERMALADMITTANCEMEASURE`, `T:IFCTHERMALCONDUCTIVITYMEASURE`, `T:IFCTHERMALEXPANSIONCOEFFICIENTMEASURE`, `T:IFCTHERMALRESISTANCEMEASURE`, `T:IFCTHERMALTRANSMITTANCEMEASURE`, `T:IFCTHERMODYNAMICTEMPERATUREMEASURE`, `T:IFCTIME`, `T:IFCTIMEMEASURE`, `T:IFCTIMESTAMP`, `T:IFCTORQUEMEASURE`, `T:IFCVAPORPERMEABILITYMEASURE`, `T:IFCVOLUMEMEASURE`, `T:IFCVOLUMETRICFLOWRATEMEASURE`, `T:IFCWARPINGCONSTANTMEASURE`, `T:IFCWARPINGMOMENTMEASURE` |
+| IfcCostValue.ApplicableDate | IfcDate | IfcDateTimeSelect |  |  | `S` |
+| IfcCostValue.FixedUntilDate | IfcDate | IfcDateTimeSelect |  |  | `S` |
+| IfcFillAreaStyleHatching.StartOfNextHatchLine | IfcHatchLineDistanceSelect | IfcHatchLineDistanceSelect | yes |  | `#` |
+| IfcFillAreaStyleTiles.TilingPattern | IfcVector | IfcOneDirectionRepeatFactor | yes |  | `A#` |
+| IfcFillAreaStyleTiles.Tiles | IfcStyledItem | IfcFillAreaStyleTileShapeSelect | yes |  | `A#` |
+| IfcInventory.LastUpdateDate | IfcDate | IfcCalendarDate | yes |  | `S` |
+| IfcIrregularTimeSeries.StartTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcIrregularTimeSeries.EndTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcIrregularTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
+| IfcMeasureWithUnit.ValueComponent | IfcValue | IfcValue | yes |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME` |
+| IfcMetric.CreationTime | IfcDateTime | IfcDateTimeSelect |  |  | `S` |
+| IfcMetric.DataValue | IfcMetricValueSelect | IfcMetricValueSelect | yes |  | `T:IFCABSORBEDDOSEMEASURE`, `T:IFCACCELERATIONMEASURE`, `T:IFCAMOUNTOFSUBSTANCEMEASURE`, `T:IFCANGULARVELOCITYMEASURE`, `T:IFCAREADENSITYMEASURE`, `T:IFCAREAMEASURE`, `T:IFCBINARY`, `T:IFCBOOLEAN`, `T:IFCCOMPLEXNUMBER`, `T:IFCCOMPOUNDPLANEANGLEMEASURE`, `T:IFCCONTEXTDEPENDENTMEASURE`, `T:IFCCOUNTMEASURE`, `T:IFCCURVATUREMEASURE`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDESCRIPTIVEMEASURE`, `T:IFCDOSEEQUIVALENTMEASURE`, `T:IFCDURATION`, `T:IFCDYNAMICVISCOSITYMEASURE`, `T:IFCELECTRICCAPACITANCEMEASURE`, `T:IFCELECTRICCHARGEMEASURE`, `T:IFCELECTRICCONDUCTANCEMEASURE`, `T:IFCELECTRICCURRENTMEASURE`, `T:IFCELECTRICRESISTANCEMEASURE`, `T:IFCELECTRICVOLTAGEMEASURE`, `T:IFCENERGYMEASURE`, `T:IFCFORCEMEASURE`, `T:IFCFREQUENCYMEASURE`, `T:IFCHEATFLUXDENSITYMEASURE`, `T:IFCHEATINGVALUEMEASURE`, `T:IFCIDENTIFIER`, `T:IFCILLUMINANCEMEASURE`, `T:IFCINDUCTANCEMEASURE`, `T:IFCINTEGER`, `T:IFCINTEGERCOUNTRATEMEASURE`, `T:IFCIONCONCENTRATIONMEASURE`, `T:IFCISOTHERMALMOISTURECAPACITYMEASURE`, `T:IFCKINEMATICVISCOSITYMEASURE`, `T:IFCLABEL`, `T:IFCLENGTHMEASURE`, `T:IFCLINEARFORCEMEASURE`, `T:IFCLINEARMOMENTMEASURE`, `T:IFCLINEARSTIFFNESSMEASURE`, `T:IFCLINEARVELOCITYMEASURE`, `T:IFCLOGICAL`, `T:IFCLUMINOUSFLUXMEASURE`, `T:IFCLUMINOUSINTENSITYDISTRIBUTIONMEASURE`, `T:IFCLUMINOUSINTENSITYMEASURE`, `T:IFCMAGNETICFLUXDENSITYMEASURE`, `T:IFCMAGNETICFLUXMEASURE`, `T:IFCMASSDENSITYMEASURE`, `T:IFCMASSFLOWRATEMEASURE`, `T:IFCMASSMEASURE`, `T:IFCMASSPERLENGTHMEASURE`, `T:IFCMODULUSOFELASTICITYMEASURE`, `T:IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFSUBGRADEREACTIONMEASURE`, `T:IFCMOISTUREDIFFUSIVITYMEASURE`, `T:IFCMOLECULARWEIGHTMEASURE`, `T:IFCMOMENTOFINERTIAMEASURE`, `T:IFCMONETARYMEASURE`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCNORMALISEDRATIOMEASURE`, `T:IFCNUMERICMEASURE`, `T:IFCPARAMETERVALUE`, `T:IFCPHMEASURE`, `T:IFCPLANARFORCEMEASURE`, `T:IFCPLANEANGLEMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCPOSITIVELENGTHMEASURE`, `T:IFCPOSITIVEPLANEANGLEMEASURE`, `T:IFCPOSITIVERATIOMEASURE`, `T:IFCPOWERMEASURE`, `T:IFCPRESSUREMEASURE`, `T:IFCRADIOACTIVITYMEASURE`, `T:IFCRATIOMEASURE`, `T:IFCREAL`, `T:IFCROTATIONALFREQUENCYMEASURE`, `T:IFCROTATIONALMASSMEASURE`, `T:IFCROTATIONALSTIFFNESSMEASURE`, `T:IFCSECTIONALAREAINTEGRALMEASURE`, `T:IFCSECTIONMODULUSMEASURE`, `T:IFCSHEARMODULUSMEASURE`, `T:IFCSOLIDANGLEMEASURE`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPOWERMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCSOUNDPRESSUREMEASURE`, `T:IFCSPECIFICHEATCAPACITYMEASURE`, `T:IFCTEMPERATUREGRADIENTMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTHERMALADMITTANCEMEASURE`, `T:IFCTHERMALCONDUCTIVITYMEASURE`, `T:IFCTHERMALEXPANSIONCOEFFICIENTMEASURE`, `T:IFCTHERMALRESISTANCEMEASURE`, `T:IFCTHERMALTRANSMITTANCEMEASURE`, `T:IFCTHERMODYNAMICTEMPERATUREMEASURE`, `T:IFCTIME`, `T:IFCTIMEMEASURE`, `T:IFCTIMESTAMP`, `T:IFCTORQUEMEASURE`, `T:IFCVAPORPERMEABILITYMEASURE`, `T:IFCVOLUMEMEASURE`, `T:IFCVOLUMETRICFLOWRATEMEASURE`, `T:IFCWARPINGCONSTANTMEASURE`, `T:IFCWARPINGMOMENTMEASURE` |
+| IfcPropertyBoundedValue.UpperBoundValue | IfcValue | IfcValue |  |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME` |
+| IfcPropertyBoundedValue.LowerBoundValue | IfcValue | IfcValue |  |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME` |
+| IfcPropertyEnumeratedValue.EnumerationValues | IfcValue | IfcValue | yes |  | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
+| IfcPropertyEnumeration.EnumerationValues | IfcValue | IfcValue | yes |  | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
+| IfcPropertyListValue.ListValues | IfcValue | IfcValue | yes |  | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
+| IfcPropertySingleValue.NominalValue | IfcValue | IfcValue |  |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME` |
+| IfcPropertyTableValue.DefiningValues | IfcValue | IfcValue | yes | whole: DefiningValues + DefinedValues | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
+| IfcPropertyTableValue.DefinedValues | IfcValue | IfcValue | yes | whole: DefiningValues + DefinedValues | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
+| IfcRegularTimeSeries.StartTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcRegularTimeSeries.EndTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcRelDefinesByProperties.RelatingPropertyDefinition | IfcPropertySetDefinitionSelect | IfcPropertySetDefinition | yes |  | `T:IFCPROPERTYSETDEFINITIONSET>U1` |
+| IfcRelSequence.TimeLag | IfcLagTime | IfcTimeMeasure | yes |  | `#` |
+| IfcTableRow.RowCells | IfcValue | IfcValue | yes | whole: RowCells | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
+| IfcTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME` |
+| IfcWorkPlan.CreationDate | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcWorkPlan.Duration | IfcDuration | IfcTimeMeasure |  |  | `S` |
+| IfcWorkPlan.TotalFloat | IfcDuration | IfcTimeMeasure |  |  | `S` |
+| IfcWorkPlan.StartTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcWorkPlan.FinishTime | IfcDateTime | IfcDateTimeSelect |  |  | `S` |
+| IfcWorkSchedule.CreationDate | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcWorkSchedule.Duration | IfcDuration | IfcTimeMeasure |  |  | `S` |
+| IfcWorkSchedule.TotalFloat | IfcDuration | IfcTimeMeasure |  |  | `S` |
+| IfcWorkSchedule.StartTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcWorkSchedule.FinishTime | IfcDateTime | IfcDateTimeSelect |  |  | `S` |
 
 ## IFC4X3 → IFC2X3
 
-| Entity.Attribute | Source type | Target type | Required | Forms the target rejects |
-| --- | --- | --- | --- | --- |
-| IfcAsset.IncorporationDate | IfcDate | IfcCalendarDate | yes | `S` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthX | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthY | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
-| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthZ | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
-| IfcBoundaryNodeCondition.RotationalStiffnessX | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeCondition.RotationalStiffnessY | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeCondition.RotationalStiffnessZ | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessX | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessY | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeConditionWarping.RotationalStiffnessZ | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
-| IfcBoundaryNodeConditionWarping.WarpingStiffness | IfcWarpingStiffnessSelect | IfcWarpingMomentMeasure |  | `T:IFCBOOLEAN`, `T:IFCWARPINGMOMENTMEASURE>U` |
-| IfcClassification.EditionDate | IfcDate | IfcCalendarDate |  | `S` |
-| IfcCostValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  | `T:IFCABSORBEDDOSEMEASURE`, `T:IFCACCELERATIONMEASURE`, `T:IFCAMOUNTOFSUBSTANCEMEASURE`, `T:IFCANGULARVELOCITYMEASURE`, `T:IFCAREADENSITYMEASURE`, `T:IFCAREAMEASURE`, `T:IFCBINARY`, `T:IFCBOOLEAN`, `T:IFCCOMPLEXNUMBER`, `T:IFCCOMPOUNDPLANEANGLEMEASURE`, `T:IFCCONTEXTDEPENDENTMEASURE`, `T:IFCCOUNTMEASURE`, `T:IFCCURVATUREMEASURE`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDESCRIPTIVEMEASURE`, `T:IFCDOSEEQUIVALENTMEASURE`, `T:IFCDURATION`, `T:IFCDYNAMICVISCOSITYMEASURE`, `T:IFCELECTRICCAPACITANCEMEASURE`, `T:IFCELECTRICCHARGEMEASURE`, `T:IFCELECTRICCONDUCTANCEMEASURE`, `T:IFCELECTRICCURRENTMEASURE`, `T:IFCELECTRICRESISTANCEMEASURE`, `T:IFCELECTRICVOLTAGEMEASURE`, `T:IFCENERGYMEASURE`, `T:IFCFORCEMEASURE`, `T:IFCFREQUENCYMEASURE`, `T:IFCHEATFLUXDENSITYMEASURE`, `T:IFCHEATINGVALUEMEASURE`, `T:IFCIDENTIFIER`, `T:IFCILLUMINANCEMEASURE`, `T:IFCINDUCTANCEMEASURE`, `T:IFCINTEGER`, `T:IFCINTEGERCOUNTRATEMEASURE`, `T:IFCIONCONCENTRATIONMEASURE`, `T:IFCISOTHERMALMOISTURECAPACITYMEASURE`, `T:IFCKINEMATICVISCOSITYMEASURE`, `T:IFCLABEL`, `T:IFCLENGTHMEASURE`, `T:IFCLINEARFORCEMEASURE`, `T:IFCLINEARMOMENTMEASURE`, `T:IFCLINEARSTIFFNESSMEASURE`, `T:IFCLINEARVELOCITYMEASURE`, `T:IFCLOGICAL`, `T:IFCLUMINOUSFLUXMEASURE`, `T:IFCLUMINOUSINTENSITYDISTRIBUTIONMEASURE`, `T:IFCLUMINOUSINTENSITYMEASURE`, `T:IFCMAGNETICFLUXDENSITYMEASURE`, `T:IFCMAGNETICFLUXMEASURE`, `T:IFCMASSDENSITYMEASURE`, `T:IFCMASSFLOWRATEMEASURE`, `T:IFCMASSMEASURE`, `T:IFCMASSPERLENGTHMEASURE`, `T:IFCMODULUSOFELASTICITYMEASURE`, `T:IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFSUBGRADEREACTIONMEASURE`, `T:IFCMOISTUREDIFFUSIVITYMEASURE`, `T:IFCMOLECULARWEIGHTMEASURE`, `T:IFCMOMENTOFINERTIAMEASURE`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCNORMALISEDRATIOMEASURE`, `T:IFCNUMERICMEASURE`, `T:IFCPARAMETERVALUE`, `T:IFCPHMEASURE`, `T:IFCPLANARFORCEMEASURE`, `T:IFCPLANEANGLEMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCPOSITIVELENGTHMEASURE`, `T:IFCPOSITIVEPLANEANGLEMEASURE`, `T:IFCPOSITIVERATIOMEASURE`, `T:IFCPOWERMEASURE`, `T:IFCPRESSUREMEASURE`, `T:IFCRADIOACTIVITYMEASURE`, `T:IFCREAL`, `T:IFCROTATIONALFREQUENCYMEASURE`, `T:IFCROTATIONALMASSMEASURE`, `T:IFCROTATIONALSTIFFNESSMEASURE`, `T:IFCSECTIONALAREAINTEGRALMEASURE`, `T:IFCSECTIONMODULUSMEASURE`, `T:IFCSHEARMODULUSMEASURE`, `T:IFCSOLIDANGLEMEASURE`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPOWERMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCSOUNDPRESSUREMEASURE`, `T:IFCSPECIFICHEATCAPACITYMEASURE`, `T:IFCTEMPERATUREGRADIENTMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTEXT`, `T:IFCTHERMALADMITTANCEMEASURE`, `T:IFCTHERMALCONDUCTIVITYMEASURE`, `T:IFCTHERMALEXPANSIONCOEFFICIENTMEASURE`, `T:IFCTHERMALRESISTANCEMEASURE`, `T:IFCTHERMALTRANSMITTANCEMEASURE`, `T:IFCTHERMODYNAMICTEMPERATUREMEASURE`, `T:IFCTIME`, `T:IFCTIMEMEASURE`, `T:IFCTIMESTAMP`, `T:IFCTORQUEMEASURE`, `T:IFCURIREFERENCE`, `T:IFCVAPORPERMEABILITYMEASURE`, `T:IFCVOLUMEMEASURE`, `T:IFCVOLUMETRICFLOWRATEMEASURE`, `T:IFCWARPINGCONSTANTMEASURE`, `T:IFCWARPINGMOMENTMEASURE` |
-| IfcCostValue.ApplicableDate | IfcDate | IfcDateTimeSelect |  | `S` |
-| IfcCostValue.FixedUntilDate | IfcDate | IfcDateTimeSelect |  | `S` |
-| IfcFillAreaStyleHatching.StartOfNextHatchLine | IfcHatchLineDistanceSelect | IfcHatchLineDistanceSelect | yes | `#` |
-| IfcFillAreaStyleTiles.TilingPattern | IfcVector | IfcOneDirectionRepeatFactor | yes | `A#` |
-| IfcFillAreaStyleTiles.Tiles | IfcStyledItem | IfcFillAreaStyleTileShapeSelect | yes | `A#` |
-| IfcInventory.LastUpdateDate | IfcDate | IfcCalendarDate | yes | `S` |
-| IfcIrregularTimeSeries.StartTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcIrregularTimeSeries.EndTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcIrregularTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
-| IfcMeasureWithUnit.ValueComponent | IfcValue | IfcValue | yes | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME`, `T:IFCURIREFERENCE` |
-| IfcMetric.CreationTime | IfcDateTime | IfcDateTimeSelect |  | `S` |
-| IfcMetric.DataValue | IfcMetricValueSelect | IfcMetricValueSelect | yes | `T:IFCABSORBEDDOSEMEASURE`, `T:IFCACCELERATIONMEASURE`, `T:IFCAMOUNTOFSUBSTANCEMEASURE`, `T:IFCANGULARVELOCITYMEASURE`, `T:IFCAREADENSITYMEASURE`, `T:IFCAREAMEASURE`, `T:IFCBINARY`, `T:IFCBOOLEAN`, `T:IFCCOMPLEXNUMBER`, `T:IFCCOMPOUNDPLANEANGLEMEASURE`, `T:IFCCONTEXTDEPENDENTMEASURE`, `T:IFCCOUNTMEASURE`, `T:IFCCURVATUREMEASURE`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDESCRIPTIVEMEASURE`, `T:IFCDOSEEQUIVALENTMEASURE`, `T:IFCDURATION`, `T:IFCDYNAMICVISCOSITYMEASURE`, `T:IFCELECTRICCAPACITANCEMEASURE`, `T:IFCELECTRICCHARGEMEASURE`, `T:IFCELECTRICCONDUCTANCEMEASURE`, `T:IFCELECTRICCURRENTMEASURE`, `T:IFCELECTRICRESISTANCEMEASURE`, `T:IFCELECTRICVOLTAGEMEASURE`, `T:IFCENERGYMEASURE`, `T:IFCFORCEMEASURE`, `T:IFCFREQUENCYMEASURE`, `T:IFCHEATFLUXDENSITYMEASURE`, `T:IFCHEATINGVALUEMEASURE`, `T:IFCIDENTIFIER`, `T:IFCILLUMINANCEMEASURE`, `T:IFCINDUCTANCEMEASURE`, `T:IFCINTEGER`, `T:IFCINTEGERCOUNTRATEMEASURE`, `T:IFCIONCONCENTRATIONMEASURE`, `T:IFCISOTHERMALMOISTURECAPACITYMEASURE`, `T:IFCKINEMATICVISCOSITYMEASURE`, `T:IFCLABEL`, `T:IFCLENGTHMEASURE`, `T:IFCLINEARFORCEMEASURE`, `T:IFCLINEARMOMENTMEASURE`, `T:IFCLINEARSTIFFNESSMEASURE`, `T:IFCLINEARVELOCITYMEASURE`, `T:IFCLOGICAL`, `T:IFCLUMINOUSFLUXMEASURE`, `T:IFCLUMINOUSINTENSITYDISTRIBUTIONMEASURE`, `T:IFCLUMINOUSINTENSITYMEASURE`, `T:IFCMAGNETICFLUXDENSITYMEASURE`, `T:IFCMAGNETICFLUXMEASURE`, `T:IFCMASSDENSITYMEASURE`, `T:IFCMASSFLOWRATEMEASURE`, `T:IFCMASSMEASURE`, `T:IFCMASSPERLENGTHMEASURE`, `T:IFCMODULUSOFELASTICITYMEASURE`, `T:IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFSUBGRADEREACTIONMEASURE`, `T:IFCMOISTUREDIFFUSIVITYMEASURE`, `T:IFCMOLECULARWEIGHTMEASURE`, `T:IFCMOMENTOFINERTIAMEASURE`, `T:IFCMONETARYMEASURE`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCNORMALISEDRATIOMEASURE`, `T:IFCNUMERICMEASURE`, `T:IFCPARAMETERVALUE`, `T:IFCPHMEASURE`, `T:IFCPLANARFORCEMEASURE`, `T:IFCPLANEANGLEMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCPOSITIVELENGTHMEASURE`, `T:IFCPOSITIVEPLANEANGLEMEASURE`, `T:IFCPOSITIVERATIOMEASURE`, `T:IFCPOWERMEASURE`, `T:IFCPRESSUREMEASURE`, `T:IFCRADIOACTIVITYMEASURE`, `T:IFCRATIOMEASURE`, `T:IFCREAL`, `T:IFCROTATIONALFREQUENCYMEASURE`, `T:IFCROTATIONALMASSMEASURE`, `T:IFCROTATIONALSTIFFNESSMEASURE`, `T:IFCSECTIONALAREAINTEGRALMEASURE`, `T:IFCSECTIONMODULUSMEASURE`, `T:IFCSHEARMODULUSMEASURE`, `T:IFCSOLIDANGLEMEASURE`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPOWERMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCSOUNDPRESSUREMEASURE`, `T:IFCSPECIFICHEATCAPACITYMEASURE`, `T:IFCTEMPERATUREGRADIENTMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTHERMALADMITTANCEMEASURE`, `T:IFCTHERMALCONDUCTIVITYMEASURE`, `T:IFCTHERMALEXPANSIONCOEFFICIENTMEASURE`, `T:IFCTHERMALRESISTANCEMEASURE`, `T:IFCTHERMALTRANSMITTANCEMEASURE`, `T:IFCTHERMODYNAMICTEMPERATUREMEASURE`, `T:IFCTIME`, `T:IFCTIMEMEASURE`, `T:IFCTIMESTAMP`, `T:IFCTORQUEMEASURE`, `T:IFCURIREFERENCE`, `T:IFCVAPORPERMEABILITYMEASURE`, `T:IFCVOLUMEMEASURE`, `T:IFCVOLUMETRICFLOWRATEMEASURE`, `T:IFCWARPINGCONSTANTMEASURE`, `T:IFCWARPINGMOMENTMEASURE` |
-| IfcPropertyBoundedValue.UpperBoundValue | IfcValue | IfcValue |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME`, `T:IFCURIREFERENCE` |
-| IfcPropertyBoundedValue.LowerBoundValue | IfcValue | IfcValue |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME`, `T:IFCURIREFERENCE` |
-| IfcPropertyEnumeratedValue.EnumerationValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
-| IfcPropertyEnumeration.EnumerationValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
-| IfcPropertyListValue.ListValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
-| IfcPropertySingleValue.NominalValue | IfcValue | IfcValue |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME`, `T:IFCURIREFERENCE` |
-| IfcPropertyTableValue.DefiningValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
-| IfcPropertyTableValue.DefinedValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
-| IfcRegularTimeSeries.StartTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcRegularTimeSeries.EndTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcRelDefinesByProperties.RelatingPropertyDefinition | IfcPropertySetDefinitionSelect | IfcPropertySetDefinition | yes | `T:IFCPROPERTYSETDEFINITIONSET` |
-| IfcRelSequence.TimeLag | IfcLagTime | IfcTimeMeasure | yes | `#` |
-| IfcSurfaceCurveSweptAreaSolid.StartParam | IfcCurveMeasureSelect | IfcParameterValue | yes | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
-| IfcSurfaceCurveSweptAreaSolid.EndParam | IfcCurveMeasureSelect | IfcParameterValue | yes | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
-| IfcTableRow.RowCells | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
-| IfcTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
-| IfcWorkPlan.CreationDate | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcWorkPlan.Duration | IfcDuration | IfcTimeMeasure |  | `S` |
-| IfcWorkPlan.TotalFloat | IfcDuration | IfcTimeMeasure |  | `S` |
-| IfcWorkPlan.StartTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcWorkPlan.FinishTime | IfcDateTime | IfcDateTimeSelect |  | `S` |
-| IfcWorkSchedule.CreationDate | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcWorkSchedule.Duration | IfcDuration | IfcTimeMeasure |  | `S` |
-| IfcWorkSchedule.TotalFloat | IfcDuration | IfcTimeMeasure |  | `S` |
-| IfcWorkSchedule.StartTime | IfcDateTime | IfcDateTimeSelect | yes | `S` |
-| IfcWorkSchedule.FinishTime | IfcDateTime | IfcDateTimeSelect |  | `S` |
+| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |
+| --- | --- | --- | --- | --- | --- |
+| IfcAsset.IncorporationDate | IfcDate | IfcCalendarDate | yes |  | `S` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthX | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthY | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
+| IfcBoundaryEdgeCondition.RotationalStiffnessByLengthZ | IfcModulusOfRotationalSubgradeReactionSelect | IfcModulusOfRotationalSubgradeReactionMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE>U` |
+| IfcBoundaryNodeCondition.RotationalStiffnessX | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeCondition.RotationalStiffnessY | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeCondition.RotationalStiffnessZ | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessX | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessY | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeConditionWarping.RotationalStiffnessZ | IfcRotationalStiffnessSelect | IfcRotationalStiffnessMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCROTATIONALSTIFFNESSMEASURE>U` |
+| IfcBoundaryNodeConditionWarping.WarpingStiffness | IfcWarpingStiffnessSelect | IfcWarpingMomentMeasure |  |  | `T:IFCBOOLEAN`, `T:IFCWARPINGMOMENTMEASURE>U` |
+| IfcClassification.EditionDate | IfcDate | IfcCalendarDate |  |  | `S` |
+| IfcCostValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  |  | `T:IFCABSORBEDDOSEMEASURE`, `T:IFCACCELERATIONMEASURE`, `T:IFCAMOUNTOFSUBSTANCEMEASURE`, `T:IFCANGULARVELOCITYMEASURE`, `T:IFCAREADENSITYMEASURE`, `T:IFCAREAMEASURE`, `T:IFCBINARY`, `T:IFCBOOLEAN`, `T:IFCCOMPLEXNUMBER`, `T:IFCCOMPOUNDPLANEANGLEMEASURE`, `T:IFCCONTEXTDEPENDENTMEASURE`, `T:IFCCOUNTMEASURE`, `T:IFCCURVATUREMEASURE`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDESCRIPTIVEMEASURE`, `T:IFCDOSEEQUIVALENTMEASURE`, `T:IFCDURATION`, `T:IFCDYNAMICVISCOSITYMEASURE`, `T:IFCELECTRICCAPACITANCEMEASURE`, `T:IFCELECTRICCHARGEMEASURE`, `T:IFCELECTRICCONDUCTANCEMEASURE`, `T:IFCELECTRICCURRENTMEASURE`, `T:IFCELECTRICRESISTANCEMEASURE`, `T:IFCELECTRICVOLTAGEMEASURE`, `T:IFCENERGYMEASURE`, `T:IFCFORCEMEASURE`, `T:IFCFREQUENCYMEASURE`, `T:IFCHEATFLUXDENSITYMEASURE`, `T:IFCHEATINGVALUEMEASURE`, `T:IFCIDENTIFIER`, `T:IFCILLUMINANCEMEASURE`, `T:IFCINDUCTANCEMEASURE`, `T:IFCINTEGER`, `T:IFCINTEGERCOUNTRATEMEASURE`, `T:IFCIONCONCENTRATIONMEASURE`, `T:IFCISOTHERMALMOISTURECAPACITYMEASURE`, `T:IFCKINEMATICVISCOSITYMEASURE`, `T:IFCLABEL`, `T:IFCLENGTHMEASURE`, `T:IFCLINEARFORCEMEASURE`, `T:IFCLINEARMOMENTMEASURE`, `T:IFCLINEARSTIFFNESSMEASURE`, `T:IFCLINEARVELOCITYMEASURE`, `T:IFCLOGICAL`, `T:IFCLUMINOUSFLUXMEASURE`, `T:IFCLUMINOUSINTENSITYDISTRIBUTIONMEASURE`, `T:IFCLUMINOUSINTENSITYMEASURE`, `T:IFCMAGNETICFLUXDENSITYMEASURE`, `T:IFCMAGNETICFLUXMEASURE`, `T:IFCMASSDENSITYMEASURE`, `T:IFCMASSFLOWRATEMEASURE`, `T:IFCMASSMEASURE`, `T:IFCMASSPERLENGTHMEASURE`, `T:IFCMODULUSOFELASTICITYMEASURE`, `T:IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFSUBGRADEREACTIONMEASURE`, `T:IFCMOISTUREDIFFUSIVITYMEASURE`, `T:IFCMOLECULARWEIGHTMEASURE`, `T:IFCMOMENTOFINERTIAMEASURE`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCNORMALISEDRATIOMEASURE`, `T:IFCNUMERICMEASURE`, `T:IFCPARAMETERVALUE`, `T:IFCPHMEASURE`, `T:IFCPLANARFORCEMEASURE`, `T:IFCPLANEANGLEMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCPOSITIVELENGTHMEASURE`, `T:IFCPOSITIVEPLANEANGLEMEASURE`, `T:IFCPOSITIVERATIOMEASURE`, `T:IFCPOWERMEASURE`, `T:IFCPRESSUREMEASURE`, `T:IFCRADIOACTIVITYMEASURE`, `T:IFCREAL`, `T:IFCROTATIONALFREQUENCYMEASURE`, `T:IFCROTATIONALMASSMEASURE`, `T:IFCROTATIONALSTIFFNESSMEASURE`, `T:IFCSECTIONALAREAINTEGRALMEASURE`, `T:IFCSECTIONMODULUSMEASURE`, `T:IFCSHEARMODULUSMEASURE`, `T:IFCSOLIDANGLEMEASURE`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPOWERMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCSOUNDPRESSUREMEASURE`, `T:IFCSPECIFICHEATCAPACITYMEASURE`, `T:IFCTEMPERATUREGRADIENTMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTEXT`, `T:IFCTHERMALADMITTANCEMEASURE`, `T:IFCTHERMALCONDUCTIVITYMEASURE`, `T:IFCTHERMALEXPANSIONCOEFFICIENTMEASURE`, `T:IFCTHERMALRESISTANCEMEASURE`, `T:IFCTHERMALTRANSMITTANCEMEASURE`, `T:IFCTHERMODYNAMICTEMPERATUREMEASURE`, `T:IFCTIME`, `T:IFCTIMEMEASURE`, `T:IFCTIMESTAMP`, `T:IFCTORQUEMEASURE`, `T:IFCURIREFERENCE`, `T:IFCVAPORPERMEABILITYMEASURE`, `T:IFCVOLUMEMEASURE`, `T:IFCVOLUMETRICFLOWRATEMEASURE`, `T:IFCWARPINGCONSTANTMEASURE`, `T:IFCWARPINGMOMENTMEASURE` |
+| IfcCostValue.ApplicableDate | IfcDate | IfcDateTimeSelect |  |  | `S` |
+| IfcCostValue.FixedUntilDate | IfcDate | IfcDateTimeSelect |  |  | `S` |
+| IfcFillAreaStyleHatching.StartOfNextHatchLine | IfcHatchLineDistanceSelect | IfcHatchLineDistanceSelect | yes |  | `#` |
+| IfcFillAreaStyleTiles.TilingPattern | IfcVector | IfcOneDirectionRepeatFactor | yes |  | `A#` |
+| IfcFillAreaStyleTiles.Tiles | IfcStyledItem | IfcFillAreaStyleTileShapeSelect | yes |  | `A#` |
+| IfcInventory.LastUpdateDate | IfcDate | IfcCalendarDate | yes |  | `S` |
+| IfcIrregularTimeSeries.StartTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcIrregularTimeSeries.EndTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcIrregularTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
+| IfcMeasureWithUnit.ValueComponent | IfcValue | IfcValue | yes |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME`, `T:IFCURIREFERENCE` |
+| IfcMetric.CreationTime | IfcDateTime | IfcDateTimeSelect |  |  | `S` |
+| IfcMetric.DataValue | IfcMetricValueSelect | IfcMetricValueSelect | yes |  | `T:IFCABSORBEDDOSEMEASURE`, `T:IFCACCELERATIONMEASURE`, `T:IFCAMOUNTOFSUBSTANCEMEASURE`, `T:IFCANGULARVELOCITYMEASURE`, `T:IFCAREADENSITYMEASURE`, `T:IFCAREAMEASURE`, `T:IFCBINARY`, `T:IFCBOOLEAN`, `T:IFCCOMPLEXNUMBER`, `T:IFCCOMPOUNDPLANEANGLEMEASURE`, `T:IFCCONTEXTDEPENDENTMEASURE`, `T:IFCCOUNTMEASURE`, `T:IFCCURVATUREMEASURE`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDESCRIPTIVEMEASURE`, `T:IFCDOSEEQUIVALENTMEASURE`, `T:IFCDURATION`, `T:IFCDYNAMICVISCOSITYMEASURE`, `T:IFCELECTRICCAPACITANCEMEASURE`, `T:IFCELECTRICCHARGEMEASURE`, `T:IFCELECTRICCONDUCTANCEMEASURE`, `T:IFCELECTRICCURRENTMEASURE`, `T:IFCELECTRICRESISTANCEMEASURE`, `T:IFCELECTRICVOLTAGEMEASURE`, `T:IFCENERGYMEASURE`, `T:IFCFORCEMEASURE`, `T:IFCFREQUENCYMEASURE`, `T:IFCHEATFLUXDENSITYMEASURE`, `T:IFCHEATINGVALUEMEASURE`, `T:IFCIDENTIFIER`, `T:IFCILLUMINANCEMEASURE`, `T:IFCINDUCTANCEMEASURE`, `T:IFCINTEGER`, `T:IFCINTEGERCOUNTRATEMEASURE`, `T:IFCIONCONCENTRATIONMEASURE`, `T:IFCISOTHERMALMOISTURECAPACITYMEASURE`, `T:IFCKINEMATICVISCOSITYMEASURE`, `T:IFCLABEL`, `T:IFCLENGTHMEASURE`, `T:IFCLINEARFORCEMEASURE`, `T:IFCLINEARMOMENTMEASURE`, `T:IFCLINEARSTIFFNESSMEASURE`, `T:IFCLINEARVELOCITYMEASURE`, `T:IFCLOGICAL`, `T:IFCLUMINOUSFLUXMEASURE`, `T:IFCLUMINOUSINTENSITYDISTRIBUTIONMEASURE`, `T:IFCLUMINOUSINTENSITYMEASURE`, `T:IFCMAGNETICFLUXDENSITYMEASURE`, `T:IFCMAGNETICFLUXMEASURE`, `T:IFCMASSDENSITYMEASURE`, `T:IFCMASSFLOWRATEMEASURE`, `T:IFCMASSMEASURE`, `T:IFCMASSPERLENGTHMEASURE`, `T:IFCMODULUSOFELASTICITYMEASURE`, `T:IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFROTATIONALSUBGRADEREACTIONMEASURE`, `T:IFCMODULUSOFSUBGRADEREACTIONMEASURE`, `T:IFCMOISTUREDIFFUSIVITYMEASURE`, `T:IFCMOLECULARWEIGHTMEASURE`, `T:IFCMOMENTOFINERTIAMEASURE`, `T:IFCMONETARYMEASURE`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCNORMALISEDRATIOMEASURE`, `T:IFCNUMERICMEASURE`, `T:IFCPARAMETERVALUE`, `T:IFCPHMEASURE`, `T:IFCPLANARFORCEMEASURE`, `T:IFCPLANEANGLEMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCPOSITIVELENGTHMEASURE`, `T:IFCPOSITIVEPLANEANGLEMEASURE`, `T:IFCPOSITIVERATIOMEASURE`, `T:IFCPOWERMEASURE`, `T:IFCPRESSUREMEASURE`, `T:IFCRADIOACTIVITYMEASURE`, `T:IFCRATIOMEASURE`, `T:IFCREAL`, `T:IFCROTATIONALFREQUENCYMEASURE`, `T:IFCROTATIONALMASSMEASURE`, `T:IFCROTATIONALSTIFFNESSMEASURE`, `T:IFCSECTIONALAREAINTEGRALMEASURE`, `T:IFCSECTIONMODULUSMEASURE`, `T:IFCSHEARMODULUSMEASURE`, `T:IFCSOLIDANGLEMEASURE`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPOWERMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCSOUNDPRESSUREMEASURE`, `T:IFCSPECIFICHEATCAPACITYMEASURE`, `T:IFCTEMPERATUREGRADIENTMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTHERMALADMITTANCEMEASURE`, `T:IFCTHERMALCONDUCTIVITYMEASURE`, `T:IFCTHERMALEXPANSIONCOEFFICIENTMEASURE`, `T:IFCTHERMALRESISTANCEMEASURE`, `T:IFCTHERMALTRANSMITTANCEMEASURE`, `T:IFCTHERMODYNAMICTEMPERATUREMEASURE`, `T:IFCTIME`, `T:IFCTIMEMEASURE`, `T:IFCTIMESTAMP`, `T:IFCTORQUEMEASURE`, `T:IFCURIREFERENCE`, `T:IFCVAPORPERMEABILITYMEASURE`, `T:IFCVOLUMEMEASURE`, `T:IFCVOLUMETRICFLOWRATEMEASURE`, `T:IFCWARPINGCONSTANTMEASURE`, `T:IFCWARPINGMOMENTMEASURE` |
+| IfcPropertyBoundedValue.UpperBoundValue | IfcValue | IfcValue |  |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME`, `T:IFCURIREFERENCE` |
+| IfcPropertyBoundedValue.LowerBoundValue | IfcValue | IfcValue |  |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME`, `T:IFCURIREFERENCE` |
+| IfcPropertyEnumeratedValue.EnumerationValues | IfcValue | IfcValue | yes |  | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
+| IfcPropertyEnumeration.EnumerationValues | IfcValue | IfcValue | yes |  | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
+| IfcPropertyListValue.ListValues | IfcValue | IfcValue | yes |  | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
+| IfcPropertySingleValue.NominalValue | IfcValue | IfcValue |  |  | `T:IFCAREADENSITYMEASURE`, `T:IFCBINARY`, `T:IFCDATE`, `T:IFCDATETIME`, `T:IFCDURATION`, `T:IFCNONNEGATIVELENGTHMEASURE`, `T:IFCPOSITIVEINTEGER`, `T:IFCSOUNDPOWERLEVELMEASURE`, `T:IFCSOUNDPRESSURELEVELMEASURE`, `T:IFCTEMPERATURERATEOFCHANGEMEASURE`, `T:IFCTIME`, `T:IFCURIREFERENCE` |
+| IfcPropertyTableValue.DefiningValues | IfcValue | IfcValue | yes | whole: DefiningValues + DefinedValues | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
+| IfcPropertyTableValue.DefinedValues | IfcValue | IfcValue | yes | whole: DefiningValues + DefinedValues | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
+| IfcRegularTimeSeries.StartTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcRegularTimeSeries.EndTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcRelDefinesByProperties.RelatingPropertyDefinition | IfcPropertySetDefinitionSelect | IfcPropertySetDefinition | yes |  | `T:IFCPROPERTYSETDEFINITIONSET>U1` |
+| IfcRelSequence.TimeLag | IfcLagTime | IfcTimeMeasure | yes |  | `#` |
+| IfcSurfaceCurveSweptAreaSolid.StartParam | IfcCurveMeasureSelect | IfcParameterValue | yes |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
+| IfcSurfaceCurveSweptAreaSolid.EndParam | IfcCurveMeasureSelect | IfcParameterValue | yes |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
+| IfcTableRow.RowCells | IfcValue | IfcValue | yes | whole: RowCells | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
+| IfcTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCAREADENSITYMEASURE`, `AT:IFCBINARY`, `AT:IFCDATE`, `AT:IFCDATETIME`, `AT:IFCDURATION`, `AT:IFCNONNEGATIVELENGTHMEASURE`, `AT:IFCPOSITIVEINTEGER`, `AT:IFCSOUNDPOWERLEVELMEASURE`, `AT:IFCSOUNDPRESSURELEVELMEASURE`, `AT:IFCTEMPERATURERATEOFCHANGEMEASURE`, `AT:IFCTIME`, `AT:IFCURIREFERENCE` |
+| IfcWorkPlan.CreationDate | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcWorkPlan.Duration | IfcDuration | IfcTimeMeasure |  |  | `S` |
+| IfcWorkPlan.TotalFloat | IfcDuration | IfcTimeMeasure |  |  | `S` |
+| IfcWorkPlan.StartTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcWorkPlan.FinishTime | IfcDateTime | IfcDateTimeSelect |  |  | `S` |
+| IfcWorkSchedule.CreationDate | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcWorkSchedule.Duration | IfcDuration | IfcTimeMeasure |  |  | `S` |
+| IfcWorkSchedule.TotalFloat | IfcDuration | IfcTimeMeasure |  |  | `S` |
+| IfcWorkSchedule.StartTime | IfcDateTime | IfcDateTimeSelect | yes |  | `S` |
+| IfcWorkSchedule.FinishTime | IfcDateTime | IfcDateTimeSelect |  |  | `S` |
 
 ## IFC4 → IFC4X3
 
-| Entity.Attribute | Source type | Target type | Required | Forms the target rejects |
-| --- | --- | --- | --- | --- |
-| IfcFixedReferenceSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  | `R>T:IFCPARAMETERVALUE` |
-| IfcFixedReferenceSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  | `R>T:IFCPARAMETERVALUE` |
-| IfcQuantityCount.CountValue | IfcCountMeasure | IfcCountMeasure | yes | `R>I` |
-| IfcReinforcementBarProperties.BarCount | IfcCountMeasure | IfcCountMeasure |  | `R>I` |
-| IfcSurfaceCurveSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  | `R>T:IFCPARAMETERVALUE` |
-| IfcSurfaceCurveSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  | `R>T:IFCPARAMETERVALUE` |
+| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |
+| --- | --- | --- | --- | --- | --- |
+| IfcFixedReferenceSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
+| IfcFixedReferenceSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
+| IfcQuantityCount.CountValue | IfcCountMeasure | IfcCountMeasure | yes |  | `R>I` |
+| IfcReinforcementBarProperties.BarCount | IfcCountMeasure | IfcCountMeasure |  |  | `R>I` |
+| IfcSurfaceCurveSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
+| IfcSurfaceCurveSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
 
 ## IFC4X3 → IFC4
 
-| Entity.Attribute | Source type | Target type | Required | Forms the target rejects |
-| --- | --- | --- | --- | --- |
-| IfcAppliedValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  | `T:IFCURIREFERENCE` |
-| IfcCostValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  | `T:IFCURIREFERENCE` |
-| IfcFixedReferenceSweptAreaSolid.StartParam | IfcCurveMeasureSelect | IfcParameterValue |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
-| IfcFixedReferenceSweptAreaSolid.EndParam | IfcCurveMeasureSelect | IfcParameterValue |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
-| IfcIrregularTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | `AT:IFCURIREFERENCE` |
-| IfcMeasureWithUnit.ValueComponent | IfcValue | IfcValue | yes | `T:IFCURIREFERENCE` |
-| IfcMetric.DataValue | IfcMetricValueSelect | IfcMetricValueSelect |  | `T:IFCURIREFERENCE` |
-| IfcPropertyBoundedValue.UpperBoundValue | IfcValue | IfcValue |  | `T:IFCURIREFERENCE` |
-| IfcPropertyBoundedValue.LowerBoundValue | IfcValue | IfcValue |  | `T:IFCURIREFERENCE` |
-| IfcPropertyBoundedValue.SetPointValue | IfcValue | IfcValue |  | `T:IFCURIREFERENCE` |
-| IfcPropertyEnumeratedValue.EnumerationValues | IfcValue | IfcValue |  | `AT:IFCURIREFERENCE` |
-| IfcPropertyEnumeration.EnumerationValues | IfcValue | IfcValue | yes | `AT:IFCURIREFERENCE` |
-| IfcPropertyListValue.ListValues | IfcValue | IfcValue |  | `AT:IFCURIREFERENCE` |
-| IfcPropertySingleValue.NominalValue | IfcValue | IfcValue |  | `T:IFCURIREFERENCE` |
-| IfcPropertyTableValue.DefiningValues | IfcValue | IfcValue |  | `AT:IFCURIREFERENCE` |
-| IfcPropertyTableValue.DefinedValues | IfcValue | IfcValue |  | `AT:IFCURIREFERENCE` |
-| IfcSurfaceCurveSweptAreaSolid.StartParam | IfcCurveMeasureSelect | IfcParameterValue |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
-| IfcSurfaceCurveSweptAreaSolid.EndParam | IfcCurveMeasureSelect | IfcParameterValue |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
-| IfcTableRow.RowCells | IfcValue | IfcValue |  | `AT:IFCURIREFERENCE` |
-| IfcTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | `AT:IFCURIREFERENCE` |
+| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |
+| --- | --- | --- | --- | --- | --- |
+| IfcAppliedValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  |  | `T:IFCURIREFERENCE` |
+| IfcCostValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  |  | `T:IFCURIREFERENCE` |
+| IfcFixedReferenceSweptAreaSolid.StartParam | IfcCurveMeasureSelect | IfcParameterValue |  |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
+| IfcFixedReferenceSweptAreaSolid.EndParam | IfcCurveMeasureSelect | IfcParameterValue |  |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
+| IfcIrregularTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCURIREFERENCE` |
+| IfcMeasureWithUnit.ValueComponent | IfcValue | IfcValue | yes |  | `T:IFCURIREFERENCE` |
+| IfcMetric.DataValue | IfcMetricValueSelect | IfcMetricValueSelect |  |  | `T:IFCURIREFERENCE` |
+| IfcPropertyBoundedValue.UpperBoundValue | IfcValue | IfcValue |  |  | `T:IFCURIREFERENCE` |
+| IfcPropertyBoundedValue.LowerBoundValue | IfcValue | IfcValue |  |  | `T:IFCURIREFERENCE` |
+| IfcPropertyBoundedValue.SetPointValue | IfcValue | IfcValue |  |  | `T:IFCURIREFERENCE` |
+| IfcPropertyEnumeratedValue.EnumerationValues | IfcValue | IfcValue |  |  | `AT:IFCURIREFERENCE` |
+| IfcPropertyEnumeration.EnumerationValues | IfcValue | IfcValue | yes |  | `AT:IFCURIREFERENCE` |
+| IfcPropertyListValue.ListValues | IfcValue | IfcValue |  |  | `AT:IFCURIREFERENCE` |
+| IfcPropertySingleValue.NominalValue | IfcValue | IfcValue |  |  | `T:IFCURIREFERENCE` |
+| IfcPropertyTableValue.DefiningValues | IfcValue | IfcValue |  | whole: DefiningValues + DefinedValues | `AT:IFCURIREFERENCE` |
+| IfcPropertyTableValue.DefinedValues | IfcValue | IfcValue |  | whole: DefiningValues + DefinedValues | `AT:IFCURIREFERENCE` |
+| IfcSurfaceCurveSweptAreaSolid.StartParam | IfcCurveMeasureSelect | IfcParameterValue |  |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
+| IfcSurfaceCurveSweptAreaSolid.EndParam | IfcCurveMeasureSelect | IfcParameterValue |  |  | `T:IFCLENGTHMEASURE`, `T:IFCPARAMETERVALUE>U` |
+| IfcTableRow.RowCells | IfcValue | IfcValue |  | whole: RowCells | `AT:IFCURIREFERENCE` |
+| IfcTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCURIREFERENCE` |

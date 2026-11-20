@@ -33,7 +33,15 @@
  *    unwrapped;
  *  - `R>I`: a real with no fraction, in an integer slot, is written as that
  *    integer (IFC4X3 made IfcCountMeasure an INTEGER); a fractional real is
- *    dropped, so this one is lossless only for whole numbers.
+ *    dropped, so this one is lossless only for whole numbers;
+ *  - `T:NAME>U1`: a typed NAME set of the references the target slot takes
+ *    (IFC4 IfcPropertySetDefinitionSet in IFC2X3's IfcPropertySetDefinition)
+ *    is written as its member when it has one, and dropped otherwise.
+ *
+ * An aggregate loses only its rejected members, except where its members are
+ * positional (`POSITIONAL`): a table's cells, a time series' values. There a
+ * rejected member drops the whole aggregate and the slots it pairs with,
+ * since removing one would shift every later member onto the wrong partner.
  *
  * Pure, and free of package imports, so `scripts/generate-value-forms.mjs`
  * runs the same policy over the registries to write the reviewed ledger and
@@ -54,6 +62,8 @@ export interface ValueFormAttribute {
   readonly isList?: boolean;
   readonly isSet?: boolean;
   readonly isArray?: boolean;
+  /** An aggregate's `[lower, upper]`; null for `?`. */
+  readonly arrayBounds?: readonly [number, number | null];
 }
 
 /** Form -> the entities a `#` form names. */
@@ -148,10 +158,24 @@ export function rejectedForms(
     if (fits) continue;
     if (own && 'SRIEB'.includes(form) && accepted.has(`T:${own}`)) rejected.push(`${form}>T:${own}`);
     else if (slot && form === `T:${slot}`) rejected.push(`${form}>U`);
+    else if (setOfAccepted(source, form, target, accepted)) rejected.push(`${form}>U1`);
     else if (form.endsWith('R') && accepted.has(`${form.slice(0, -1)}I`)) rejected.push(`${form}>${form.slice(0, -1)}I`);
     else rejected.push(form);
   }
   return rejected.sort();
+}
+
+/** Whether `form` is a typed set (`T:NAME`, NAME an aggregate type) whose every member form the target slot takes. */
+function setOfAccepted(source: ValueFormRegistry, form: string, target: ValueFormRegistry, accepted: Forms): boolean {
+  const name = form.startsWith('T:') ? Object.keys(source.types).find((t) => t.toUpperCase() === form.slice(2)) : undefined;
+  if (name === undefined || !/^(?:LIST|SET|BAG|ARRAY)\s*\[/i.test(source.types[name])) return false;
+  const inner: Forms = new Map();
+  collect(source, source.types[name], '', false, inner, new Set());
+  return inner.size > 0 && [...inner].every(([member, entities]) => {
+    const named = accepted.get(member.slice(1));
+    return member.startsWith('A') && named !== undefined && (!member.endsWith('#') || [...entities].some((e) =>
+      Object.hasOwn(target.entities, e) && [...named].some((t) => within(target, e, t) || within(target, t, e))));
+  });
 }
 
 /** The form of one STEP value as written, or null for `$`, `*` and anything unread. */
@@ -190,6 +214,10 @@ export interface ValueFormSlot {
   readonly targetType: string;
   /** The target requires the slot, so a dropped value leaves the record invalid. */
   readonly required: boolean;
+  /** The target slot is an aggregate that may be empty, so dropping every member writes `()`. */
+  readonly empty: boolean;
+  /** Positional members: target slot indexes written `$` together when one member is rejected; empty otherwise. */
+  readonly whole: readonly number[];
   readonly rejected: readonly string[];
 }
 
@@ -204,6 +232,20 @@ const DECIDED_ELSEWHERE: readonly string[] = [
   // #10778 converts the currency between the IFC2X3 enumeration and the IFC4 label.
   'IFCMONETARYUNIT.Currency',
 ];
+
+/**
+ * Aggregates whose members are positional, by UPPERCASE type: each group is
+ * dropped whole, together, when one member is rejected. A table row's cells
+ * line up with the table's columns, a time series value's list with the
+ * series' quantities, and IfcPropertyTableValue pairs DefiningValues with
+ * DefinedValues one to one (IFC4 WR21 wants their sizes equal).
+ */
+const POSITIONAL: Readonly<Record<string, readonly (readonly string[])[]>> = {
+  IFCPROPERTYTABLEVALUE: [['DefiningValues', 'DefinedValues']],
+  IFCTABLEROW: [['RowCells']],
+  IFCTIMESERIESVALUE: [['ListValues']],
+  IFCIRREGULARTIMESERIESVALUE: [['ListValues']],
+};
 
 interface EntityLike {
   readonly isAbstract?: boolean;
@@ -233,7 +275,11 @@ export function valueFormSlotsOf(source: Registry, target: Registry, from: strin
     if (DECIDED_ELSEWHERE.includes(`${type}.${tgt.name}`)) return;
     const src = srcAttrs.find((a) => a.name === name);
     const rejected = src ? rejectedForms(source, src, target, tgt) : [];
-    if (rejected.length) out.push({ type, entity, index, attribute: tgt.name, sourceType: src!.type, targetType: tgt.type, required: !tgt.optional, rejected });
+    if (!rejected.length) return;
+    const group = POSITIONAL[type]?.find((g) => g.includes(tgt.name)) ?? [];
+    const whole = group.map((a) => tgtAttrs.findIndex((t) => t.name === a)).filter((i) => i >= 0);
+    const empty = !!(tgt.isList || tgt.isSet || tgt.isArray) && tgt.arrayBounds?.[0] === 0;
+    out.push({ type, entity, index, attribute: tgt.name, sourceType: src!.type, targetType: tgt.type, required: !tgt.optional, empty, whole, rejected });
   });
   return out;
 }

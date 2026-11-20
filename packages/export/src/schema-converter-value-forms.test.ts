@@ -16,7 +16,7 @@ describe('value forms a target slot rejects (#10847)', () => {
   it("drops and names the issue's examples, both ways", () => {
     expect(convert("#5=IFCCLASSIFICATION('src','1',#9,'name');", 'IFC2X3', 'IFC4')).toEqual({
       out: "#5=IFCCLASSIFICATION('src','1',$,'name',$,$,$);",
-      warnings: ['1 value(s) of a type the target slot does not accept were written as $: IFCCLASSIFICATION.EditionDate (#10847).'],
+      warnings: ['1 value(s) of a type the target slot does not accept were dropped: IFCCLASSIFICATION.EditionDate (#10847).'],
     });
     expect(convert("#5=IFCWORKPLAN('g',$,'n',$,$,'id',#9,$,$,10.,2.,#10,$,.ACTUAL.);", 'IFC2X3', 'IFC4').out)
       .toBe("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,$,$,$,$,.ACTUAL.);");
@@ -62,6 +62,40 @@ describe('value forms a target slot rejects (#10847)', () => {
     expect(count('20.E-1')).toBe("#5=IFCQUANTITYCOUNT('n',$,$,2,$);");
     expect(count('25.E-1')).toBe("#5=IFCQUANTITYCOUNT('n',$,$,$,$);");
     expect(count('3.E2')).toBe("#5=IFCQUANTITYCOUNT('n',$,$,300,$);");
+  });
+
+  // Claude review on #10878 (discussion_r4632337546): positional members cannot go one by one.
+  it('drops positional members whole, with the slots they pair with', () => {
+    const table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCDATE('2020-01-01'),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
+    expect(convert(table, 'IFC4', 'IFC2X3')).toEqual({
+      out: "#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$);",
+      warnings: ['4 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCPROPERTYTABLEVALUE.DefiningValues (#10847).'],
+    });
+    // Optional in IFC4, so both go `$` and the record stays valid (WR21: neither, or equal sizes).
+    const uri = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCLABEL('k1'),IFCLABEL('k2')),(IFCLABEL('v'),IFCURIREFERENCE('u')),$,$,$,$);";
+    expect(convert(uri, 'IFC4X3', 'IFC4')).toEqual({
+      out: "#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$,$);",
+      warnings: ['4 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYTABLEVALUE.DefinedValues (#10847).'],
+    });
+    expect(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCDATE('2020-01-01')),.F.);", 'IFC4', 'IFC2X3').out).toBe('#5=IFCTABLEROW($,.F.);');
+    // A non-positional list still loses only the member.
+    expect(convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", 'IFC4', 'IFC2X3').out)
+      .toBe("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);");
+  });
+
+  it('writes a one-member IfcPropertySetDefinitionSet as its member in IFC2X3', () => {
+    expect(convert("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),IFCPROPERTYSETDEFINITIONSET((#9)));", 'IFC4', 'IFC2X3'))
+      .toEqual({ out: "#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),#9);", warnings: [] });
+    const two = convert("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),IFCPROPERTYSETDEFINITIONSET((#9,#10)));", 'IFC4X3', 'IFC2X3');
+    expect(two.out).toBe("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),$);");
+    expect(two.warnings.join('\n')).toContain('IFCRELDEFINESBYPROPERTIES.RelatingPropertyDefinition');
+  });
+
+  it('writes a required aggregate that may be empty as () when every member is dropped', () => {
+    expect(convert("#5=IFCPRESENTATIONLAYERWITHSTYLE('L',$,(#2),$,.T.,.F.,.F.,(IFCNULLSTYLE(.NULL.)));", 'IFC2X3', 'IFC4')).toEqual({
+      out: "#5=IFCPRESENTATIONLAYERWITHSTYLE('L',$,(#2),$,.T.,.F.,.F.,());",
+      warnings: ['1 value(s) of a type the target slot does not accept were dropped: IFCPRESENTATIONLAYERWITHSTYLE.LayerStyles (#10847).'],
+    });
   });
 
   it('leaves convertStepLine without a reconciliation object unchanged (callers opt in)', () => {

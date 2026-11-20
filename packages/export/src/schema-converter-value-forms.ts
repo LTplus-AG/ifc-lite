@@ -7,7 +7,9 @@
  * their rejected forms come from `schema-value-form-policy.ts`, run against
  * the registries once per type; a value of a rejected form is written `$`,
  * one a policy row converts is wrapped or unwrapped, and anything else stays.
- * An aggregate loses only its rejected members. Twin of Rust
+ * An aggregate loses only its rejected members, unless they are positional:
+ * then it and the slots it pairs with are written `$`. A required aggregate
+ * that may be empty and loses every member is written `()`. Twin of Rust
  * `schema_value_forms.rs`, which reads the same rows from
  * `generated/value_forms.rs` (`scripts/generate-value-forms.mjs --check`).
  */
@@ -25,7 +27,11 @@ interface Rule {
   readonly index: number;
   readonly where: string;
   readonly required: boolean;
-  /** Form -> null (drop), `T:NAME` (wrap), `U` (unwrap) or an integer form (`I`, `AI`). */
+  /** The target aggregate may be empty. */
+  readonly empty: boolean;
+  /** Slots written `$` together when a positional member is rejected. */
+  readonly whole: readonly number[];
+  /** Form -> null (drop), `T:NAME` (wrap), `U` (unwrap), `U1` (one member) or an integer form (`I`, `AI`). */
   readonly forms: ReadonlyMap<string, string | null>;
 }
 
@@ -51,6 +57,8 @@ function rulesFor(from: string, to: string, type: string): Rules {
     index: slot.index,
     where: `${type}.${slot.attribute}`,
     required: slot.required,
+    empty: slot.empty,
+    whole: slot.whole,
     forms: new Map(slot.rejected.map((f) => [f.split('>')[0], f.split('>')[1] ?? null])),
   })) };
   byType.set(type, rules);
@@ -62,6 +70,11 @@ function rulesFor(from: string, to: string, type: string): Rules {
 function wholeDecimal(token: string): boolean {
   const m = /^[+-]?(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(token);
   return !!m && /^0*$/.test(`${m[1]}${m[2] ?? ''}`.slice(Math.max(m[1].length + Number(m[3] ?? 0), 0)));
+}
+
+/** How many values a slot holds: its members, or one unless it is `$`. */
+function valueCount(slot: string): number {
+  return listItems(slot)?.length ?? (valueForm(withoutComments(slot)) === null ? 0 : 1);
 }
 
 /** `value` in the target's form (null to drop it), and how many values that lost. */
@@ -88,9 +101,12 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   if (to === undefined) return { value, lost: 0 };
   // The shared STEP number grammar gates the integer form; `wholeDecimal` reads the digits.
   const close = body.lastIndexOf(')'), n = parseStepNumber(body);
+  const inner = close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim();
+  const one = to === 'U1' && inner !== null ? listItems(inner) : null;
   const fixed = to === null ? null
     : to.startsWith('T:') ? `${to.slice(2)}(${body})`
-    : to === 'U' ? (close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim())
+    : to === 'U' ? inner
+    : to === 'U1' ? (one?.length === 1 ? one[0].trim() : null)
     : wholeDecimal(body) && Number.isSafeInteger(n) ? String(n) : null; // an integer form, `I` or `AI`
   return { value: fixed, lost: fixed === null ? 1 : 0 };
 }
@@ -115,9 +131,19 @@ export class ValueForms {
     for (const rule of rules) {
       if (rule.index >= slots.length) continue;
       const fixed = fix(slots[rule.index], '', rule);
-      const into = fixed.value === null && rule.required ? this.emptied : this.dropped;
-      if (fixed.lost) into.set(rule.where, (into.get(rule.where) ?? 0) + fixed.lost);
-      const value = fixed.value ?? '$';
+      let { lost, value } = fixed;
+      if (lost && rule.whole.length) {
+        // Positional members: the aggregate and its partners go whole.
+        lost = rule.whole.reduce((sum, i) => sum + valueCount(slots[i]), 0);
+        for (const i of rule.whole) {
+          if (i !== rule.index && slots[i] !== '$') { slots[i] = '$'; changed = true; }
+        }
+        value = null;
+      }
+      if (value === null && rule.empty && rule.required) value = '()';
+      const into = value === null && rule.required ? this.emptied : this.dropped;
+      if (lost) into.set(rule.where, (into.get(rule.where) ?? 0) + lost);
+      value ??= '$';
       if (value !== slots[rule.index]) {
         slots[rule.index] = value;
         changed = true;
@@ -133,7 +159,7 @@ export class ValueForms {
       return where.size ? [`${total} value(s) of a type the target slot does not accept ${what}: ${[...where.keys()].sort().join(', ')} (#10847).`] : [];
     };
     return [
-      ...line(this.dropped, 'were written as $'),
+      ...line(this.dropped, 'were dropped'),
       ...line(this.emptied, 'left a slot the target requires as $, so the file is not valid against its header'),
     ];
   }

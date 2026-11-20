@@ -135,9 +135,12 @@ describe('processedModelRequested', () => {
       window.history.replaceState(null, '', '/');
     }
   });
+});
 
-  it('trims the name of every request, and falls back to model.ifc for a blank one', () => {
-    resetProcessedModelRequestsForTests();
+describe('openProcessedModelFromUrl', () => {
+  afterEach(() => resetProcessedModelRequestsForTests());
+
+  it('trims the URL request name and falls back to model.ifc for a blank one', () => {
     openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '  Haus A.ifc  ' });
     assert.equal(takeProcessedModelRequest()?.name, 'Haus A.ifc');
     openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '   ' });

@@ -267,4 +267,22 @@ describe('replayReleasedGeometry', () => {
     assert.equal(scene.getEntityBoundingBox(2), null);
     assert.equal(scene.isEphemeralStreaming(), false);
   });
+  it('#10903 a flat reshape supersedes a replay in flight: the successor\'s ephemeral pass stays open until it finishes it', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    let resume!: () => void;
+    const gate = new Promise<void>((done) => { resume = done; });
+    async function* old(): AsyncGenerator<readonly MeshData[]> { yield [tri(1, 0, 0)]; await gate; yield [tri(2, 5, 0)]; }
+    const first = replayReleasedGeometry(host(scene, gpu).renderer, old()); // no isCurrent: only the scene fences it
+    await new Promise((done) => setTimeout(done, 0));
+    scene.clearFlatGeometry(); // a content reshape (not clear()): the scene's flat content is replaced
+    scene.setEphemeralStreamingMode(true); // the successor's own streaming pass
+    scene.appendToBatches([tri(9, 20, 0)], gpu, pipeline, true);
+    resume();
+    assert.equal((await first).status, 'superseded', 'the reshape superseded the old replay');
+    assert.equal(scene.isEphemeralStreaming(), true, "the old replay never finalized the successor's pass");
+    assert.deepEqual(drawnIds(scene), [9], "only the successor's geometry; none of the old replay's");
+    await scene.finalizeStreamingAsync(gpu, pipeline); // the successor finishes its own pass
+    assert.equal(scene.isEphemeralStreaming(), false);
+  });
 });

@@ -191,6 +191,16 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expect(plans.listed).toEqual([plans.contexts[0], plans.contexts[2]]);
   });
 
+  it('keeps a context apart when its CRS has an operation of its own, so no CRS gets two (#10873)', async () => {
+    // IFC4X3 lets an operation start at a CRS; HasCoordinateOperation is SET [0:1] there too, and that operation is not compared.
+    const chained: Georef = { raw: `${METRE_CRS}\n#21=IFCMAPCONVERSION(#14,#20,${X});
+#23=IFCPROJECTEDCRS('EPSG:4326',$,$,$,$,$,#2);
+#24=IFCRIGIDOPERATION(#20,#23,IFCLENGTHMEASURE(10.),IFCLENGTHMEASURE(20.),0.);` };
+    const { sources } = await merge([chained, chained], 'IFC4X3');
+    expect(sources).toHaveLength(4);
+    expect(new Set(sources).size, 'one operation per source').toBe(4);
+  });
+
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {
     expect((await merge([at(X), at(X)])).contexts).toHaveLength(1);
     expect((await merge([at(X), null])).contexts).toHaveLength(1);

@@ -184,8 +184,8 @@ export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, leng
 }
 
 /**
- * A context's coordinate operation, its target CRS (null when the target is no CRS) and that CRS's WKT records, and
- * `record`: all of them by value. Two operations merge only when their records are equal in every attribute.
+ * A context's coordinate operation, its target CRS (null for no CRS, or a CRS with an operation of its own, which is
+ * not compared) and its WKT ids, and `record`, all by value; two merge only when every attribute is equal (#10873).
  */
 export interface ContextOperation { operation: number; crs: number | null; wkt: number[]; record: string }
 
@@ -215,7 +215,8 @@ function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOp
     for (const id of byType.get(type) ?? []) {
       if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
       const target = refId(getStepAttr(dataStore, id, 1));
-      const crs = target !== null && CRS_TYPES.has(byId.get(target)?.type?.toUpperCase() ?? '') ? target : null;
+      const crs = target !== null && CRS_TYPES.has(byId.get(target)?.type?.toUpperCase() ?? '')
+        && ![...COORDINATE_OPERATION_STEP_TYPES].some(type => byType.get(type)?.some(op => refId(getStepAttr(dataStore, op, 0)) === target)) ? target : null;
       const wkt = crs === null ? [] : (byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === crs);
       const record = JSON.stringify([recordValue(dataStore, id, 4, [0, 1]), crs === null ? null : recordValue(dataStore, crs, 4),
         wkt.map(text => recordValue(dataStore, text, 0, [1]))]);

@@ -82,12 +82,13 @@ fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     // Classified and converted without comments, so a trailing `/* .. */` changes nothing.
     let body = crate::step_slot::without_comments(value);
     let Some(to) = value_form(&body).and_then(|form| rule(rows, &format!("{prefix}{form}"))) else { return (Some(value.to_owned()), 0) };
-    let inner = body.find('(').zip(body.rfind(')')).map(|(open, close)| body[open + 1..close].trim().to_owned());
+    // A typed value's argument, `NAME(arg)` -> `arg`.
+    let inner = || body.find('(').zip(body.rfind(')')).map(|(open, close)| body[open + 1..close].trim());
     let fixed = match to {
         None => None,
         Some(to) if to.starts_with("T:") => Some(format!("{}({body})", &to[2..])),
-        Some("U") => inner,
-        Some("U1") => inner.as_deref().and_then(list_items).filter(|m| m.len() == 1).map(|m| m[0].trim().to_owned()),
+        Some("U") => inner().map(str::to_owned),
+        Some("U1") => inner().and_then(list_items).filter(|m| m.len() == 1).map(|m| m[0].trim().to_owned()),
         Some(_) => body.parse::<f64>().ok().filter(|n| whole_decimal(&body) && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64)),
     };
     let lost = usize::from(fixed.is_none());

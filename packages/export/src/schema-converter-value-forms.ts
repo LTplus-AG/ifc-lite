@@ -77,6 +77,18 @@ function valueCount(slot: string): number {
   return listItems(slot)?.length ?? (valueForm(withoutComments(slot)) === null ? 0 : 1);
 }
 
+/** A typed value's argument, `NAME(arg)` -> `arg`. */
+function unwrapped(body: string): string | null {
+  const close = body.lastIndexOf(')');
+  return close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim();
+}
+
+/** The one member of an aggregate; null for any other count. */
+function onlyMember(list: string | null): string | null {
+  const members = list === null ? null : listItems(list);
+  return members?.length === 1 ? members[0].trim() : null;
+}
+
 /** `value` in the target's form (null to drop it), and how many values that lost. */
 function fix(value: string, prefix: string, rule: Rule): { value: string | null; lost: number } {
   const start = skipStepTrivia(value, 0);
@@ -100,13 +112,11 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   const to = form === null ? undefined : rule.forms.get(prefix + form);
   if (to === undefined) return { value, lost: 0 };
   // The shared STEP number grammar gates the integer form; `wholeDecimal` reads the digits.
-  const close = body.lastIndexOf(')'), n = parseStepNumber(body);
-  const inner = close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim();
-  const one = to === 'U1' && inner !== null ? listItems(inner) : null;
+  const n = parseStepNumber(body);
   const fixed = to === null ? null
     : to.startsWith('T:') ? `${to.slice(2)}(${body})`
-    : to === 'U' ? inner
-    : to === 'U1' ? (one?.length === 1 ? one[0].trim() : null)
+    : to === 'U' ? unwrapped(body)
+    : to === 'U1' ? onlyMember(unwrapped(body))
     : wholeDecimal(body) && Number.isSafeInteger(n) ? String(n) : null; // an integer form, `I` or `AI`
   return { value: fixed, lost: fixed === null ? 1 : 0 };
 }

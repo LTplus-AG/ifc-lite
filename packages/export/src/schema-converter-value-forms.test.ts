@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
+import { POSITIONAL } from './schema-value-form-policy.js';
+import { getCanonicalEntityName, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 
 const convert = (line: string, from: IfcSchemaVersion, to: IfcSchemaVersion) => {
   const enums = new EnumReconciliation();
@@ -81,6 +83,18 @@ describe('value forms a target slot rejects (#10847)', () => {
     // A non-positional list still loses only the member.
     expect(convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", 'IFC4', 'IFC2X3').out)
       .toBe("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);");
+  });
+
+  // /simplify: a misspelled POSITIONAL name would resolve to no slot and silently stop grouping.
+  it('names only attributes every schema declares in POSITIONAL', () => {
+    for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+      const registry = getSchemaRegistryForVersion(schema);
+      for (const [type, groups] of Object.entries(POSITIONAL)) {
+        const meta = registry.entities[getCanonicalEntityName(registry, type) ?? ''];
+        const names = (meta?.allAttributes ?? meta?.attributes ?? []).map((a) => a.name);
+        for (const name of groups.flat()) expect(names, `${schema} ${type}`).toContain(name);
+      }
+    }
   });
 
   it('writes a one-member IfcPropertySetDefinitionSet as its member in IFC2X3', () => {

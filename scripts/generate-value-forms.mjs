@@ -81,7 +81,7 @@ const sections = DIRECTIONS.map(([from, to]) => {
   if (!here.length) return [...lines, 'Every same-named attribute keeps a value form the target accepts.', ''].join('\n');
   lines.push('| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |', '| --- | --- | --- | --- | --- | --- |');
   for (const r of here) {
-    const names = r.whole.map((i) => REGISTRIES[to].entities[r.entity].allAttributes?.[i]?.name ?? i);
+    const names = r.whole.map((i) => REGISTRIES[to].entities[r.entity].allAttributes[i].name);
     const emptied = r.whole.length ? `whole: ${names.join(' + ')}` : r.empty ? '`()`' : '';
     lines.push(`| ${r.entity}.${r.attribute} | ${r.sourceType} | ${r.targetType} | ${r.required ? 'yes' : ''} | ${emptied} | ${r.rejected.map((f) => `\`${f}\``).join(', ')} |`);
   }

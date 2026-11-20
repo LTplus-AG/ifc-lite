@@ -22,6 +22,27 @@ records and statuses do not establish that model checks, imports or server
 topic retrieval are complete; the coverage indicator leaves that outcome
 unknown. Loaded IFC models are not automatically claimed as topic source scope.
 
+### Recovering an open project
+
+The viewer autosaves the open BCF project in IndexedDB for this browser profile
+and site. It restores the project at startup, including topics, comments,
+viewpoints, snapshots and component references. Load the related IFC models
+again to use those viewpoints in the viewport.
+
+Autosave runs after a short pause in editing. Check the BCF panel for the
+save status before you leave. Each working copy has a 32 MiB limit including
+encoded images. The panel reports size limits, full browser storage and other
+save failures. The last successful copy is retained when a save fails. Export
+a BCF archive to keep the current edits, or remove snapshot viewpoints to
+bring the project within the limit.
+
+**Close BCF project** in the BCF panel menu clears the recovery copy. Closing
+the panel keeps the project open. Importing a `.bcf` or `.bcfzip` replaces the
+working project. **Download library backup** includes the open BCF project
+within the same size limit. A library backup can restore its BCF project when
+the BCF panel has no open project. Export and close your current project before
+restoring a different one.
+
 ### Reading BCF Files
 
 ```typescript

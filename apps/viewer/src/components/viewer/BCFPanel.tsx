@@ -20,10 +20,10 @@ import {
   Upload,
   User,
   MapPin,
+  FolderX,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
@@ -36,6 +36,8 @@ import {
   createBCFComment,
 } from '@ifc-lite/bcf';
 import { getGlobalRenderer, useBCF } from '@/hooks/useBCF';
+import { BCFAuthorDialog } from './bcf/BCFAuthorDialog';
+import { BcfAutosaveNotice } from './bcf/BcfAutosaveNotice';
 import { BCFTopicList } from './bcf/BCFTopicList';
 import { BCFTopicDetail } from './bcf/BCFTopicDetail';
 import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
@@ -56,6 +58,7 @@ interface BCFPanelProps {
 
 export function BCFPanel({ onClose }: BCFPanelProps) {
   const { t } = useTranslation();
+  const { confirmDialog } = useDialogs();
   // Store state
   const bcfProject = useViewerStore((s) => s.bcfProject);
   const setBcfProject = useViewerStore((s) => s.setBcfProject);
@@ -315,13 +318,24 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     setActiveTopic(null);
   }, [activeTopicId, deleteTopic, setActiveTopic]);
 
-  // Save author
   const handleSaveAuthor = useCallback(() => {
     if (tempAuthor.trim()) {
       setBcfAuthor(tempAuthor.trim());
     }
     setShowAuthorDialog(false);
   }, [tempAuthor, setBcfAuthor]);
+
+  const closeProject = async () => {
+    if (!await confirmDialog({
+      description: t('bcf.autosave.closeConfirm'), confirmLabel: t('bcf.autosave.close'), destructive: true,
+    })) return;
+    const state = useViewerStore.getState();
+    if (state.bcfProject !== bcfProject || state.bcfLoading) return;
+    captureFlight.reset();
+    createFlight.reset();
+    setShowCreateForm(false);
+    state.clearBcfProject();
+  };
 
   return (
     <AnalysisPanel
@@ -342,6 +356,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
           id: 'bcf-export', label: t('bcf.panel.exportTitle'), icon: <Download className="h-4 w-4" />,
           disabled: !bcfProject || topics.length === 0 || exporting, onSelect: () => { void handleExport(); }, data: tourAnchor(TOUR_ANCHORS.bcfExport),
         },
+        bcfProject && { id: 'bcf-close-project', label: t('bcf.autosave.close'), icon: <FolderX className="h-4 w-4" />,
+          disabled: bcfLoading, onSelect: () => void closeProject() },
         bcfServer.server,
         bcfServer.drafts,
         {
@@ -367,7 +383,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
         </>
       )}
     >
-      {/* Content */}
+      <BcfAutosaveNotice />
       <div className="flex-1 overflow-hidden relative">
         {showCreateForm ? (
           // Scroll the form — the full field set + snapshot can exceed the panel.
@@ -429,24 +445,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
           />
         )}
 
-        {/* Author Dialog */}
-        {showAuthorDialog && (
-          <div className="absolute inset-0 bg-background/90 flex items-center justify-center p-4">
-            <div className="bg-card border rounded-lg p-4 w-full max-w-xs">
-              <h4 className="font-medium mb-3">{t('bcf.panel.setAuthorHeading')}</h4>
-              <Input aria-label={t('bcf.panel.authorEmailLabel')}
-                value={tempAuthor}
-                onChange={(e) => setTempAuthor(e.target.value)}
-                placeholder={t('bcf.shared.emailPlaceholder')}
-                className="mb-4"
-              />
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" size="sm" onClick={() => setShowAuthorDialog(false)}>{t('bcf.shared.cancel')}</Button>
-                <Button size="sm" onClick={handleSaveAuthor}>{t('bcf.shared.save')}</Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {showAuthorDialog && <BCFAuthorDialog value={tempAuthor} onChange={setTempAuthor}
+          onCancel={() => setShowAuthorDialog(false)} onSave={handleSaveAuthor} />}
       </div>
     </AnalysisPanel>
   );

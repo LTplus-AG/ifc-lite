@@ -64,7 +64,7 @@ describe('released device recovery rebuild (viewer)', () => {
     const { store, bytes } = await releasedModel(`recovery-ok-${process.pid}`);
     try {
       const { context, uploaded } = recordingScene();
-      assert.equal(await rebuildReleasedScene(context), true);
+      assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: new Set<number>() }), true); // a flat-only model: the scene held no templates
       assert.deepEqual(uploaded, bytes);
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
@@ -261,6 +261,23 @@ describe('released device recovery rebuild (viewer)', () => {
       // The model is hidden: the scene had removed its templates before the device was lost.
       assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: new Set<number>() }), true);
       assert.deepEqual(shards, [], 'never re-added (and drawn) on recovery');
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  });
+
+  it('#10937 r4648052532 a model whose templates the scene held but never came through the shard supply fails closed', async () => {
+    const id = `direct-${process.pid}`, meshes = [mesh(1, 0)];
+    const geometryResult: GeometryResult = { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    useViewerStore.setState({ models: new Map([[id, { id, idOffset: 0, maxExpressId: 100, geometryResult }]]) } as never);
+    const store = useViewerStore as unknown as StoreApi<TapState>;
+    await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `recovery-direct-${process.pid}`, locks: null } } as never });
+    try {
+      await geometryBackingCommand(store, undefined, { action: 'seal' });
+      releaseCpuMeshBuffers(meshes);
+      noteSceneGeometry(meshes);
+      const { context } = recordingScene();
+      // The scene held this model's instanced templates (added directly, outside the queue): no backing has them.
+      const held = new Set([modelIndices(useViewerStore.getState().models).get(id)!]);
+      assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: held }), false, 'never a whole recovery missing those instances');
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
 

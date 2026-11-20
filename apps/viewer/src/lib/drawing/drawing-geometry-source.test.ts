@@ -80,8 +80,9 @@ function canonical(d: Drawing2D): { lines: string[]; polygons: string[]; stats: 
   return { lines, polygons, stats };
 }
 
-const TYPES = new Map([[101, 'IfcColumn'], [102, 'IfcColumn'], [103, 'IfcFurnishingElement'], [104, 'IfcWindow'],
-  [201, 'IfcColumn'], [202, 'IfcColumn'], [203, 'IfcFurnishingElement'], [204, 'IfcWindow']]);
+// 103/203 are filtered out by class (keepAll drops IfcWindow); 104/204 are translucent and pass the filter.
+const TYPES = new Map([[101, 'IfcColumn'], [102, 'IfcColumn'], [103, 'IfcWindow'], [104, 'IfcColumn'],
+  [201, 'IfcColumn'], [202, 'IfcColumn'], [203, 'IfcWindow'], [204, 'IfcColumn']]);
 const MODELS = { a: { index: 0 }, b: { index: 1 } } as const;
 const PLACEMENT: Record<string, Translation> = { a: [0, 0, 0], b: [20, 0, 0] };
 
@@ -174,11 +175,19 @@ describe('drawing geometry source over released geometry', () => {
       const w = await world();
       const expected = canonical(await oracle(w, config));
       assert.ok(expected.lines.some((line) => line.includes('IfcColumn')), 'the oracle must draw instanced occurrences');
-      assert.ok(!expected.lines.some((line) => line.includes('|104|') || line.includes('|204|')), 'translucent occurrence is not instanced geometry');
+      // Checked on every drawing below, not only on the oracle.
+      const drawnIds = (d: Drawing2D) => new Set([...d.lines.map((l) => l.entityId), ...d.cutPolygons.map((p) => p.entityId)]);
+      const assertOccurrences = (d: Drawing2D, label: string) => {
+        const ids = drawnIds(d);
+        assert.ok(ids.has(101) && ids.has(201), `${label}: opaque occurrences of both models are drawn`);
+        for (const id of [103, 203]) assert.ok(!ids.has(id), `${label}: class-filtered occurrence ${id} is not drawn`);
+        for (const id of [104, 204]) assert.ok(!ids.has(id), `${label}: translucent occurrence ${id} is not instanced geometry`);
+      };
 
       const resident = new DrawingGeometry(w.merged, deps(w));
       assert.equal(resident.released, false);
       const residentDrawing = await new Drawing2DGenerator().generateFromSource(resident.source(keepAll, { instanced: true }), config, OPTIONS);
+      assertOccurrences(residentDrawing, 'resident');
       assert.deepEqual(canonical(residentDrawing), expected);
 
       release(w);
@@ -187,6 +196,7 @@ describe('drawing geometry source over released geometry', () => {
       const released = new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true }));
       assert.equal(released.released, true);
       const releasedDrawing = await new Drawing2DGenerator().generateFromSource(released.source(keepAll, { instanced: true }), config, OPTIONS);
+      assertOccurrences(releasedDrawing, 'released');
       assert.deepEqual(canonical(releasedDrawing), expected);
       for (const stats of leases) {
         assert.ok(stats.chunks > 1, 'each model streams several chunks');
@@ -245,6 +255,7 @@ describe('drawing geometry source over released geometry', () => {
     const w = await world();
     const extra = await w.registry.begin('a', { chunkBytes: 512 });
     await extra.writer.append(flatModel('a').slice(1));
+    await extra.writer.appendInstancedShard(w.shards.a);
     await extra.writer.close();
     w.backings.set('a', extra);
     release(w);
@@ -292,6 +303,16 @@ describe('drawing geometry source over released geometry', () => {
     release(w);
     assert.throws(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true })),
       /streamed instanced geometry its backing does not hold/);
+    // A backing holding some shards but not every listed entity is refused too.
+    const partial = await w.registry.begin('a', { chunkBytes: 512 });
+    await partial.writer.append(flatModel('a').map(({ modelIndex: _index, ...mesh }) => mesh));
+    await partial.writer.appendInstancedShard(shard([101, 102, 103, 104], 0));
+    await partial.writer.close();
+    w.backings.set('a', partial);
+    assert.throws(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: [101, 102, 105] })),
+      /Instanced entity 105 of model a is in no backed shard/);
+    assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: [101, 102] })));
+    w.backings.set('a', flatOnly);
     // A model that never had instancing needs no shards.
     assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true,
       hasInstanced: (id) => id !== 'a' })));

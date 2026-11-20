@@ -54,6 +54,8 @@ export interface DrawingGeometryDeps {
   instancedReleased: boolean;
   /** Whether the model ever streamed instanced shards (the store's record, independent of any backing). */
   hasInstanced(modelId: string): boolean;
+  /** Instanced entity ids the scene still lists after releasing their CPU templates, if it does. */
+  listedInstanced?: Iterable<number>;
   /** The model's current backing generation, if any. */
   backing(modelId: string): ModelGeometryBacking | undefined;
   /** False once a newer drawing request superseded this one: the next batch aborts the read. */
@@ -109,14 +111,24 @@ export class DrawingGeometry {
     for (const modelId of releasedModels) this.pinned.set(modelId, usableBacking(deps.backing(modelId), modelId));
     // Instanced occurrences come only from the backing once the scene let go of
     // them: a model that streamed shards but whose backing holds none is incomplete.
-    if (deps.instancedReleased) {
-      for (const modelId of deps.visibleModels) {
-        if (deps.hasInstanced(modelId) && this.pinned.get(modelId)?.directory.shards.length === 0) {
-          throw new GeometryUnavailableError(`Model ${modelId} streamed instanced geometry its backing does not hold`);
-        }
+    if (deps.instancedReleased) this.checkInstancedBacked();
+    this.released = releasedModels.size > 0;
+  }
+
+  /** Every instanced entity the model streamed must be held by its pinned backing's shards. */
+  private checkInstancedBacked(): void {
+    const { deps } = this;
+    for (const modelId of deps.visibleModels) {
+      if (deps.hasInstanced(modelId) && this.pinned.get(modelId)?.directory.shards.length === 0) {
+        throw new GeometryUnavailableError(`Model ${modelId} streamed instanced geometry its backing does not hold`);
       }
     }
-    this.released = releasedModels.size > 0;
+    for (const id of deps.listedInstanced ?? []) {
+      const modelId = deps.modelOf(id);
+      if (modelId === undefined || !deps.visibleModels.includes(modelId)) continue;
+      if (this.pinned.get(modelId)?.directory.shardsOf(id).length) continue;
+      throw new GeometryUnavailableError(`Instanced entity ${id} of model ${modelId} is in no backed shard`);
+    }
   }
 
   /** Abort the reads of a superseded request before its next batch. */

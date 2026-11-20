@@ -5,6 +5,7 @@
 import type { SavedConversation } from '../assistant/persistence.js';
 import type { ClashGroupWorkspace } from '../clash/group-workspace.js';
 import type { IdsStudioDraft } from '../ids-studio/draft-codec.js';
+import { decodeBcfProject } from '../bcf-project/project-codec.js';
 import type { DraftBatch } from '../bcf-drafts/draft-types.js';
 import type { BcfPublication } from '../bcf-publication/outbox-types.js';
 import type { ModelChangeReceipt } from '../actions/model-change-commit.js';
@@ -61,6 +62,8 @@ export interface ContentBackup {
   version: 1 | 2;
   exportedAt: string;
   libraries: ContentLibraries;
+  /** The current BCF working copy uses its own versioned codec. */
+  bcfProject?: string;
   /** Item-level status records distinguish unsaved drafts from committed evidence. */
   status?: Record<string, unknown>;
   /** Raw incomplete drafts stay recoverable without weakening durable validators. */
@@ -69,7 +72,7 @@ export interface ContentBackup {
 
 /** Export needs no database write/read: it works when browser storage is blocked. */
 export function createContentBackup(libraries: ContentLibraries, status?: Record<string, unknown>,
-  preservedDrafts: ContentDraftEvidence[] = []): ContentBackup {
+  preservedDrafts: ContentDraftEvidence[] = [], bcfProject?: string): ContentBackup {
   const copied = structuredClone(libraries), drafts: ContentDraftEvidence[] = [];
   const partition = <T extends { id: string }>(kind: ContentRow['kind'], entries: T[], decode: (raw: unknown) => T | null): T[] =>
     entries.flatMap(entry => {
@@ -82,7 +85,8 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
   for (const kind of ['filters', 'lists', 'lenses'] as const) {
     if (!artifactLibraries[kind]?.length) delete artifactLibraries[kind];
   }
-  return { version: Object.keys(artifactLibraries).length ? 2 : 1, exportedAt: new Date().toISOString(), status, libraries: {
+  return { version: Object.keys(artifactLibraries).length ? 2 : 1, exportedAt: new Date().toISOString(), status,
+    ...(bcfProject === undefined ? {} : { bcfProject }), libraries: {
     ...artifactLibraries,
     validation: partition('validation', copied.validation, CONTENT_DEFINITIONS.validation.decode),
     comparison: partition('comparison', copied.comparison, CONTENT_DEFINITIONS.comparison.decode),
@@ -118,6 +122,10 @@ export function parseContentBackup(text: string): ContentBackup {
     throw new Error('Standalone artifact libraries require backup version 2');
   }
   const artifacts = backup.version === 2 ? decodeArtifactLibraries(libraries) : {};
+  const bcfProject = backup.bcfProject;
+  if (bcfProject !== undefined && (typeof bcfProject !== 'string' || !decodeBcfProject(bcfProject))) {
+    throw new Error('Invalid BCF working copy');
+  }
   const parse = <T extends { id: string }>(kind: string, decode: (value: unknown) => T | null): T[] => {
     const values = libraries[kind];
     if (!Array.isArray(values)) throw new Error(`Invalid ${kind} library`);
@@ -150,7 +158,7 @@ export function parseContentBackup(text: string): ContentBackup {
     ...(libraries.assistantRecipes !== undefined ? { assistantRecipes: parse('assistantRecipes', CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
     ...(libraries.assistantPreferences !== undefined ? { assistantPreferences: parse('assistantPreferences', CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
     ...(libraries.analysisRuns !== undefined ? { analysisRuns: parse('analysisRuns', CONTENT_DEFINITIONS.analysisRuns.decode) } : {}),
-  }, drafts: parseContentDrafts(backup.drafts) };
+  }, ...(bcfProject === undefined ? {} : { bcfProject }), drafts: parseContentDrafts(backup.drafts) };
 }
 
 /** A refused commit carries the canonical independent drafts; UI does not re-plan it. */

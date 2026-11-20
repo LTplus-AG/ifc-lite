@@ -31,10 +31,12 @@
 
 import type { RenderOptions } from './types.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { batchEntities } from './batch-entities.js';
 
 /** The part of a batch (or sub-batch) alpha resolution reads. */
 export interface AlphaBatchLike {
   expressIds: readonly number[];
+  laneIds?: readonly number[];
   color: readonly [number, number, number, number];
 }
 
@@ -147,7 +149,7 @@ export class XRayAlpha {
     let ghost = this.ghostCache.get(batch);
     if (ghost === undefined) {
       ghost = batch.expressIds.length > 0;
-      for (const eid of batch.expressIds) {
+      for (const eid of batchEntities(batch)) {
         if (this.ghostExcept.has(eid) || this.selected.has(eid) || this.overrides?.has(eid)) {
           ghost = false;
           break;
@@ -196,7 +198,7 @@ export class XRayAlpha {
     let firstKey = 0;
     let haveFirstKey = false;
     let extraKeys: number[] | null = null;
-    for (const eid of batch.expressIds) {
+    for (const eid of batchEntities(batch)) { // secondary lane ids fade too (#10653)
       let alpha = fallback;
       if (!this.selected.has(eid)) {
         const o = this.overrides?.get(eid);

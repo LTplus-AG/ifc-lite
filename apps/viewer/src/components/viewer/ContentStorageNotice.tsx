@@ -5,6 +5,7 @@
 import { assistantLibrary, useAssistantLibrary } from '@/lib/assistant/library';
 import { clashGroupLibrary, useClashGroupLibrary } from '@/lib/clash/group-workspace';
 import { idsStudioDraftLibrary, useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
+import { decodeBcfProject, encodeBcfProject } from '@/lib/bcf-project/project-codec';
 import { bcfDraftLibrary, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import { bcfOutboxLibrary, initializeBcfOutbox, useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import { modelChangeLibrary, useModelChangeReceipts } from '@/lib/actions/receipts';
@@ -108,7 +109,14 @@ export function ContentStorageNotice({ status, retry, restore }: {
     if (!(await flushOpenIdsDrafts())) {
       toast.info(t('idsStudio.drafts.backupIncomplete'));
     }
+    await state.initializeBcfAutosave();
     const preserved = await readBackupDrafts();
+    const project = useViewerStore.getState().bcfProject;
+    const encodedProject = project ? encodeBcfProject(project) : undefined;
+    if (encodedProject && !encodedProject.ok) toast.error(t('bcf.autosave.backupOmitted'));
+    if (!project && ['unreadable', 'unavailable'].includes(useViewerStore.getState().bcfAutosaveStatus)) {
+      toast.error(t('bcf.autosave.backupUnreadable'));
+    }
     downloadFile(JSON.stringify(encodeContentBackup(createContentBackup(visibleLibraries(true), {
       validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage, assistant: useAssistantLibrary.getState().status,
       clashGroups: useClashGroupLibrary.getState().status, bcfDrafts: useBcfDraftLibrary.getState().status,
@@ -122,7 +130,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       assistantRecipes: useAssistantRecipes.getState().status,
       assistantPreferences: useAssistantPreferences.getState().status,
       analysisRuns: useSavedAnalysisRuns.getState().status,
-    }, preserved.drafts)), null, 2), 'ifc-lite-library-backup.json', 'application/json');
+    }, preserved.drafts, encodedProject?.ok ? encodedProject.data : undefined)), null, 2), 'ifc-lite-library-backup.json', 'application/json');
     if (!preserved.complete) toast.info(t('contentStorage.draftReadUnavailable'));
   };
   const importFile = async (file: File) => {
@@ -131,6 +139,16 @@ export function ContentStorageNotice({ status, retry, restore }: {
     // Opening the clash report library loads its validator, which parsing a backup needs.
     const clashReportsReady = await state.initializeSavedClashReports();
     const parsed = parseContentBackup(await file.text());
+    if (parsed.bcfProject !== undefined) {
+      await state.initializeBcfAutosave();
+      const project = decodeBcfProject(parsed.bcfProject);
+      const live = useViewerStore.getState();
+      if (live.bcfProject) toast.info(t('bcf.autosave.importConflict'));
+      else if (project) {
+        live.setBcfProject(project);
+        if (!await live.flushBcfAutosave()) toast.error(t('bcf.autosave.importUnsaved'));
+      }
+    }
     const drafts = parsed.drafts ?? [];
     stageContentDrafts(drafts);
     const initialized = await Promise.all([assistantLibrary.initialize(), clashGroupLibrary.initialize(), idsStudioDraftLibrary.initialize(), bcfDraftLibrary.initialize(), modelChangeLibrary.initialize(), clashGroupApplicationLibrary.initialize(), reviewWorkspaceLibrary.initialize(), semanticReviewLibrary.initialize(), assistantRecipeLibrary.initialize(), assistantPreferencesLibrary.initialize(), analysisRunLibrary.initialize(),

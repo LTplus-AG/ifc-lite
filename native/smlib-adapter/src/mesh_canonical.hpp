@@ -6,8 +6,10 @@ struct AdapterMesh;
 // The SDK lists polygons, vertices and triangle corners in an order that
 // follows heap addresses, so two runs on the same input can enumerate (and,
 // for planar quads, triangulate) the same solid differently. These steps put
-// every adapter mesh into one canonical form. No position, source-face ID or
-// boundary changes; flat normals are recomputed from each canonical corner order.
+// every adapter mesh into one canonical order and fix the diagonal of planar
+// two-triangle faces. No position, source-face ID or boundary changes; flat
+// normals are recomputed from each canonical corner order. A planar face of
+// more than two triangles keeps the SDK's triangulation (not canonicalized).
 
 // Vertices in (x, y, z) order (-0 before +0; coincident vertices by their
 // incident triangles), each triangle rotated to start at its smallest vertex

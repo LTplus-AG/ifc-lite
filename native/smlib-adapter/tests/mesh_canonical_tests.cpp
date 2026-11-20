@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 #include <numeric>
 #include <random>
@@ -73,8 +74,12 @@ bool has_edge(const AdapterMesh& mesh,const Point& a,const Point& b) {
     }
     return false;
 }
+// Byte comparison: operator== on doubles would accept -0 for +0.
+bool bytes(const std::vector<double>& a,const std::vector<double>& b) {
+    return a.size()==b.size() && (a.empty() || std::memcmp(a.data(),b.data(),a.size()*sizeof(double))==0);
+}
 void same_bytes(const AdapterMesh& a,const AdapterMesh& b,const char* message) {
-    require(a.positions==b.positions && a.indices==b.indices && a.faces==b.faces && a.normals==b.normals,message);
+    require(bytes(a.positions,b.positions) && a.indices==b.indices && a.faces==b.faces && bytes(a.normals,b.normals),message);
 }
 }
 

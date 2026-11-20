@@ -89,4 +89,16 @@ describe('released device recovery rebuild (viewer)', () => {
       assert.deepEqual(uploaded, []);
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
+
+  it('#10937 a mesh appended IN PLACE to the drawn and store lists during the read fences the rebuild', async () => {
+    const { store } = await releasedModel(`recovery-appended-${process.pid}`);
+    try {
+      const { context } = recordingScene(() => {
+        // Same arrays, one more member: the identity fence alone would pass and the snapshot would miss it.
+        const list = useViewerStore.getState().models.get('rm')!.geometryResult!.meshes;
+        list.push(mesh(7, 9));
+      });
+      assert.equal(await rebuildReleasedScene(context), false, 'never "whole" without the appended mesh');
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  });
 });

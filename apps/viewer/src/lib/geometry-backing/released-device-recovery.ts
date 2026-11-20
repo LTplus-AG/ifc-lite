@@ -41,8 +41,10 @@ function liftedCopy(shard: DecodedInstancedShard, lift: ReadonlyMap<number, numb
 
 /** What the rebuild was taken from: any change while it awaits the backing makes it stale. */
 function viewerSource(state: ReturnType<typeof getViewerState>): unknown[] {
-  return [releasedReplayEpoch(), state.geometryContentVersion, currentSceneGeometry(),
-    ...[...state.models].flatMap(([id, model]) => [id, model.geometryResult, model.idOffset])];
+  // Lengths too: a list grown in place keeps its identity but not its membership.
+  const drawn = currentSceneGeometry();
+  return [releasedReplayEpoch(), state.geometryContentVersion, drawn, drawn.length,
+    ...[...state.models].flatMap(([id, model]) => [id, model.geometryResult, model.geometryResult?.meshes, model.geometryResult?.meshes.length, model.idOffset])];
 }
 
 export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipeline, scene, isCurrent: deviceCurrent, requestRender }) => {

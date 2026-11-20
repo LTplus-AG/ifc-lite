@@ -1,10 +1,10 @@
 diff --git a/apps/viewer/src/lib/drawing/drawing-geometry-source.ts b/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
-index f2a2928828..d88234d1e5 100644
+index fac76a7dcf..c8cceacf8b 100644
 --- a/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
 +++ b/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
-@@ -182,7 +182,7 @@ export class DrawingGeometry {
-       const kept: MeshData[] = [];
-       for (const mesh of chunk) {
+@@ -231,7 +231,7 @@ export class DrawingGeometry {
+           throw new GeometryUnavailableError(`Model ${modelId}'s backed mesh ${read - 1} (#${mesh.expressId}) is not its current mesh${current ? ` #${current.expressId}` : ''}`);
+         }
          if (!keep(mesh)) continue;
 -        kept.push(withIndex(mesh, modelIndex));
 +        kept.push(placedMesh(withIndex(mesh, modelIndex), translation));

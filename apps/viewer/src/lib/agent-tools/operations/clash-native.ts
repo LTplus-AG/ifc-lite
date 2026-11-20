@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
+import { boundedMappedPage, pageInput, type PageInput } from './result-limit';
+import { stateRevision } from './state-revision';
 import type { Clash } from '@ifc-lite/clash';
 import { viewerOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
@@ -115,11 +117,12 @@ export const nativeClashOperations = [
       });
     },
   ),
-  viewerOperation<{ offset: number; limit: number; run_seq: number }>(
-    meta('clash.results', 'Read a bounded page of complete native clash pairs and durable review annotations.'),
+  viewerOperation<PageInput & { offset: number; limit: number; run_seq: number }>(
+    meta('clash.results', 'Read a bounded page of complete native clash pairs and durable review annotations. Pass next_offset and page_revision to continue.'),
     {
       type: 'object',
       properties: {
+        ...pageInput.properties,
         offset: { type: 'integer', minimum: 0 },
         limit: { type: 'integer', minimum: 1, maximum: 100 },
         run_seq: { type: 'integer', minimum: 0 },
@@ -132,13 +135,11 @@ export const nativeClashOperations = [
       assertToolActive(c);
       const s = useViewerStore.getState();
       if (s.clashRunSeq !== i.run_seq) throw new Error('Clash results changed.');
-      return out({
-        total: s.clashResult?.clashes.length ?? 0,
-        clashes:
-          s.clashResult?.clashes
-            .slice(i.offset, i.offset + i.limit)
-            .map((clash) => ({ clash, review: s.clashReviews.get(clashReviewKey(clash)) ?? { status: 'open' } })) ?? [],
-      });
+      const clashes = s.clashResult?.clashes ?? [];
+      const revision = stateRevision([i.run_seq, clashes, [...s.clashReviews]]);
+      const { items, ...page } = boundedMappedPage(clashes,
+        clash => ({ clash, review: s.clashReviews.get(clashReviewKey(clash)) ?? { status: 'open' } }), i, null, revision);
+      return out({ ...page, clashes: items });
     },
   ),
   viewerOperation<{

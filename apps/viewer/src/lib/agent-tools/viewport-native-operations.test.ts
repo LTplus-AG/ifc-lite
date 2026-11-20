@@ -43,6 +43,20 @@ test('native annotation edits retain the open draft and reject stale records or 
   assert.equal((await execute('annotations.manage', { id, expected_json, action: 'delete' })).isError, true);
   assert.equal(useViewerStore.getState().annotations.get(id)?.note, 'changed by user');
 });
+test('annotations.read refuses to continue after a record was removed (#10877)', async () => {
+  for (const note of ['first', 'second']) {
+    const created = await execute('annotations.create', { position: [1, 2, 3], note });
+    assert.equal(created.isError, false, created.text);
+  }
+  const first = await execute('annotations.read', { limit: 1 });
+  assert.equal(first.isError, false, first.text);
+  const { next_offset: offset, page_revision } = (first.structured as { result: { next_offset: number; page_revision: string } }).result;
+  assert.equal(offset, 1); assert.ok(page_revision);
+  assert.equal((await execute('annotations.read', { offset, page_revision, limit: 1 })).isError, false);
+  const [firstId] = useViewerStore.getState().annotations.keys();
+  useViewerStore.getState().removeAnnotation(firstId);
+  assert.equal((await execute('annotations.read', { offset, page_revision, limit: 1 })).errorCode, 'STATE_CHANGED');
+});
 test('discovery and execution use the same live section feature prerequisites', async () => {
   resetFeaturesForTest({ default: 'all', disable: ['tools.section'] });
   const detail = await dispatchMainViewerTool(host, 'viewer_operations', { operation_id: 'section.box' });

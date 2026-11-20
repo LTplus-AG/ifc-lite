@@ -8,6 +8,43 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Renderer-first edits: panels settle after the edit (#10535)
+
+**Maintainer decision, measured locally; the qualified Pop number is pending.**
+On the F5 tower an edit published its mutation and, a little later, its
+re-meshed geometry, and every mounted panel re-rendered synchronously for
+both. The worker meshed the column almost at once; its reply then waited
+behind that render, and the scene took the mesh only after a second one.
+
+`useViewerStore` used as a hook now reads a settled state: the live state,
+published synchronously, except while an edit is in flight. From a
+`mutationVersion` change it holds until the edit's re-mesh is in (a hold ends
+after 2 s), its mesh edits have drained and two frames have passed (capped at
+250 ms), or until the user's next input (`INPUT_EVENTS` in
+`settled-store.ts`), in this or a popped-out panel window, which publishes it with `flushSync` before any handler runs. An edit
+made by a form control's own input, change or click is published at once.
+The viewport reads live state inside a `LiveViewerScope`; `getState()` and
+the rest of the store API stay live for writes and staleness checks.
+
+Lessons: narrowing individual subscriptions (#9978, and a per-site prototype
+here) leaves dozens of other live paths into the same render; fixing the
+default and allowlisting the viewport by scope removes them all. Under the
+parity harness the publication must wait a second frame, or it can land
+before the frame that draws the drained edit. A guard test counts the
+component fibers each commit renders during an edit: only the live scope may
+appear.
+
+Publishing on a form control's `input` or `click` was wrong: the browser has
+already written the control's new value, and the re-render writes the old
+controlled value back, so React never sees the change (typed text, checkbox
+toggles). Holding a control's own edit is wrong for the same reason. A click
+outside a form control with no pointer press (`detail === 0`: keyboard,
+assistive technology, `element.click()`) publishes before its handler; a
+pressed click does not, since its `pointerdown` already did, so an edit a
+drag tool commits on `pointerup` stays held. Each new edit restarts the
+close, so it gets its own drain and frames; the first edit's cap still
+bounds the window.
+
 ## Hierarchy rows survive a loaded-tower edit (#10535, part)
 
 **Partial lever; the F5 edit target is still open.** A fiber census of one

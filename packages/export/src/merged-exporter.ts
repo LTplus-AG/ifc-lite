@@ -29,7 +29,7 @@ import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
-import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
+import { listKeptContexts, planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
@@ -66,9 +66,6 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
 
-/** Relative tolerance for comparing two length unit scale factors. */
-const UNIT_SCALE_TOLERANCE = 1e-6;
-
 /** SI prefix multipliers, for resolving prefixed area/volume units (rarely used). */
 const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
   ATTO: 1e-18, FEMTO: 1e-15, PICO: 1e-12, NANO: 1e-9, MICRO: 1e-6, MILLI: 1e-3,
@@ -99,6 +96,8 @@ interface MergeSetup {
   firstModelInfraMap: Map<string, number[]>;
   /** Primary model's subcontexts-by-key and context WCS frame — see `merged-context.ts`. */
   firstModelContext: PrimaryContextState;
+  /** Kept top-level contexts that a folded model's own IfcProject listed, as output ids (#10798). */
+  keptContexts: number[];
   /** IfcProject express ids of the primary model. */
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
@@ -529,6 +528,7 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
+    listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
@@ -693,6 +693,7 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
+    listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
     // Assembly phase
@@ -840,6 +841,7 @@ export class MergedExporter {
       firstModelOffset,
       firstModelInfraMap,
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
+      keptContexts: [],
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
       parentClaims: new InverseClaims(options.schema || 'IFC4'),
@@ -979,10 +981,7 @@ export class MergedExporter {
 
   /** True when two length unit scales are equal within relative tolerance. */
   private unitsCompatible(a: number, b: number): boolean {
-    if (a === b) return true;
-    const max = Math.max(Math.abs(a), Math.abs(b));
-    if (max === 0) return true;
-    return Math.abs(a - b) <= max * UNIT_SCALE_TOLERANCE;
+    return unitScalesEqual(a, b);
   }
 
   /**
@@ -1060,7 +1059,8 @@ export class MergedExporter {
     if (!isFirstModel && compatible) {
       // Remap this model's IfcProject references → first model's IfcProject.
       const projectIds = this.findEntitiesByType(model.dataStore, 'IFCPROJECT');
-      if (setup.firstProjectIds.length > 0) {
+      const folded = setup.firstProjectIds.length > 0; // a federated (incompatible) model never gets here and keeps its project
+      if (folded) {
         for (const pid of projectIds) {
           sharedRemap.set(pid, setup.firstProjectIds[0] + setup.firstModelOffset);
           skipEntityIds.add(pid);
@@ -1068,7 +1068,8 @@ export class MergedExporter {
       }
 
       // Remap and skip duplicate infrastructure (units, contexts) — WCS-gated; scale choice documented on planInfrastructureUnify (merged-context.ts).
-      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
+      const kept = planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
+      if (folded) setup.keptContexts.push(...kept.map(id => id + setup.modelOffsets.get(model.id)!)); // its project folded above
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the

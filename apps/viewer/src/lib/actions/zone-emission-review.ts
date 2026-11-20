@@ -9,6 +9,7 @@ import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { emitSpatialZones } from '@/lib/zones/emit-spatial-zones';
 import { zoneEvaluationIsCurrent, zoneEvaluationOwnerId } from '@/lib/zones/evaluation-owner';
+import { getGlobalRenderer } from '@/hooks/useBCF';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { resolveGlobalId } from './resolve-global-id';
 import { readZoneEmissionSnapshot } from './zone-emission-evidence';
@@ -40,19 +41,20 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
     return sources.length === current.models.size && sources.every(row => current.models.get(row.id) === row.model && row.model.ifcDataStore?.source === row.source
       && row.model.sourceContentHash === row.hash && row.model.sourceFingerprint === row.fingerprint);
   };
-  // What validate()'s snapshot read first, cheaply: the set object, which the zones slice replaces on every write to it,
-  // and the evaluation, which must be current and the reviewed one. Every evaluation records a new owner id, so once
-  // assignments are rebuilt (or no owner could be recorded) no older review can apply.
-  const zoneSet = state.zoneSets.find(row => row.id === proposal.zoneSetId);
+  // What validate()'s snapshot reads first: the set by content, and the evaluation, which must be current and the
+  // reviewed one. Every evaluation records a new owner id, so once assignments are rebuilt (or no owner could be
+  // recorded) no older review can apply. A missing scene (a renderer remount) is the one passing state: keep the review.
+  const zoneSet = JSON.stringify(state.zoneSets.find(row => row.id === proposal.zoneSetId));
   // The native lease binds the target model's mutation view and its revision, as the Group and Structural probes do.
   const view = state.mutationViews.get(proposal.modelId), viewRevision = view?.getMutationRevision();
   const zoneConfigurationCurrent = () => {
     const current = store.getState(), liveView = current.mutationViews.get(proposal.modelId);
     if (liveView !== view || liveView?.getMutationRevision() !== viewRevision) return false;
-    if (current.zoneSets.find(row => row.id === proposal.zoneSetId) !== zoneSet) return false;
+    if (JSON.stringify(current.zoneSets.find(row => row.id === proposal.zoneSetId)) !== zoneSet) return false;
+    if (zoneEvaluationOwnerId(current) !== snapshot.evaluationId) return false;
     // Not cached: the check also reads the scene and assignment records in place, outside the store. It walks at most
     // 10000 mesh bounds, once per retained zone review per admission.
-    return zoneEvaluationOwnerId(current) === snapshot.evaluationId && zoneEvaluationIsCurrent(current);
+    return !getGlobalRenderer()?.getScene() || zoneEvaluationIsCurrent(current);
   };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');

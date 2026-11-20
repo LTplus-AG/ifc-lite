@@ -43,7 +43,8 @@ export function remapEntityText(
   for (let i = 0; i < entityText.length; i++) {
     const char = entityText[i];
 
-    if (char === '/' && entityText[i + 1] === '*') {
+    // An unclosed `/*` is no comment: read on, as before (#10968).
+    if (char === '/' && entityText[i + 1] === '*' && entityText.includes('*/', i + 2)) {
       const stop = skipStepComment(entityText, i);
       out += entityText.slice(i, stop);
       i = stop - 1;

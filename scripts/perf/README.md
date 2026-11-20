@@ -109,8 +109,8 @@ Two tools:
   anything missing exits 2, never skips.
 
 `--expect` is required. `--expect killed` passes only while the tab is still killed and **fails
-on any other outcome** except `error` and `timeout`, telling you to switch to `--expect
-not-killed` (the #10264 acceptance: the tab is never killed). `--expect loaded`, `refused` and
+on any other outcome**; unless that outcome is `error` or `timeout`, it tells you to switch to
+`--expect not-killed` (the #10264 acceptance: the tab is never killed). `--expect loaded`, `refused` and
 `awaiting-decision` each pass only that exact outcome; the nightly lane below pins `refused` and
 `awaiting-decision`. `error` and `timeout` never pass. Admission now scales its estimate by the
 sampled share of dense triangulated geometry (`geometryDensity.ts`), so the dense minimal case

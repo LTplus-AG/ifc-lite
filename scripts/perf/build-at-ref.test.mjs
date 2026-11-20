@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -11,17 +11,23 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { boundedSpawnSync } from '../lib/bounded-process.mjs';
 import { skipUnlessCommand } from '../lib/host-preconditions.mjs';
+import { chooseToolchain } from '../lib/released-smoke-support.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const script = fileURLToPath(new URL('./build-at-ref.sh', import.meta.url));
 const CARGO_SKIP = skipUnlessCommand('cargo', ['--version'], 'install rustup', process.env, { cwd: tmpdir() });
-// RUSTUP_TOOLCHAIN outranks the ref's rust-toolchain.toml (PR #10977 review).
+// RUSTUP_TOOLCHAIN outranks the ref's rust-toolchain.toml, and RUSTC_BOOTSTRAP
+// makes a stable build apply [unstable] config (PR #10977 review).
 const OVERRIDES = ['RUSTC', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER',
-  'CARGO_BUILD_RUSTC', 'CARGO_BUILD_RUSTC_WRAPPER', 'CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER', 'RUSTUP_TOOLCHAIN'];
+  'CARGO_BUILD_RUSTC', 'CARGO_BUILD_RUSTC_WRAPPER', 'CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER', 'RUSTUP_TOOLCHAIN',
+  'RUSTC_BOOTSTRAP'];
 
 // The script drops inherited GIT_* variables; the test's own git calls must
 // too, or a hook's GIT_DIR would point them at another repository.
 const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+
+// Drop overrides the caller's shell exports (e.g. RUSTC_WRAPPER=sccache).
+const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !OVERRIDES.includes(key)));
 
 function buildAtRef(t, ref, env) {
   const directory = mkdtempSync(join(tmpdir(), 'build-at-ref-'));
@@ -35,11 +41,9 @@ function buildAtRef(t, ref, env) {
     rmSync(directory, { recursive: true, force: true });
   });
   const worktreeRoot = join(directory, 'worktrees');
-  // Drop overrides the caller's shell exports (e.g. RUSTC_WRAPPER=sccache) and
-  // CARGO_HOME's config. cargo still reads ~/.cargo/config.toml when the temp
-  // directory is under $HOME.
-  const base = Object.fromEntries(Object.entries(process.env).filter(([key]) => !OVERRIDES.includes(key)));
-  base.CARGO_HOME = join(directory, 'cargo-home');
+  // Skip CARGO_HOME's config too. cargo still reads ~/.cargo/config.toml when
+  // the temp directory is under $HOME.
+  const base = { ...baseEnv, CARGO_HOME: join(directory, 'cargo-home') };
   const run = (extra = []) => boundedSpawnSync('bash', [
     script, '--ref', ref, '--out', join(directory, 'probe'), '--worktree-root', worktreeRoot, ...extra,
   ], { encoding: 'utf8', env: { ...base, ...env }, timeout: 60_000 });
@@ -57,7 +61,7 @@ for (const [name, value, extra = {}] of [
     const result = run();
     assert.ifError(result.error);
     assert.equal(result.status, 1, result.stderr);
-    const fix = /WRAPPER|RUSTUP/.test(name) ? `unset ${name} or set it empty` : `unset ${name}`;
+    const fix = /WRAPPER|RUSTUP|BOOTSTRAP/.test(name) ? `unset ${name} or set it empty` : `unset ${name}`;
     assert.ok(result.stderr.includes(`build-at-ref.sh: ${fix} before building (compiler override)`), result.stderr);
     assert.equal(existsSync(worktreeRoot), false);
   });
@@ -159,4 +163,40 @@ test('build-at-ref accepts an empty RUSTUP_TOOLCHAIN, which rustup ignores (#109
   const stderr = withAncestorConfig(t, { RUSTUP_TOOLCHAIN: '' }, '');
   assert.doesNotMatch(stderr, /compiler override|before building \(/);
   assert.match(stderr, /build-at-ref\.sh: building example perf_probe of ifc-lite-processing at \w+ failed/);
+});
+
+// On a stable cargo the build ignores [unstable] config, but the bootstrapped
+// config query honours it, so the two could see different wrappers (PR #10977
+// review, discussion_r4642674475). The empty ref has no rust-toolchain.toml,
+// so this runs on the default toolchain, like the other cargo tests.
+const defaultCargo = spawnSync('cargo', ['-V'], { cwd: tmpdir(), env: baseEnv, encoding: 'utf8', timeout: 15_000 }).stdout ?? '';
+const NIGHTLY_DEFAULT = /-(nightly|dev)/.test(defaultCargo) && 'the default toolchain is nightly, which honours [unstable]';
+test('build-at-ref refuses [unstable] config on a stable toolchain (#10965)', { skip: CARGO_SKIP || NIGHTLY_DEFAULT }, (t) => {
+  const { directory, run } = buildAtRef(t, emptyRef(), {});
+  mkdirSync(join(directory, '.cargo'));
+  writeFileSync(join(directory, '.cargo', 'config.toml'), '[unstable]\nconfig-include = true\n');
+  const result = run();
+  assert.ifError(result.error);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /remove \[unstable\] from \S*\/\.cargo\/config\.toml before building: .* on a non-nightly cargo/);
+});
+
+// The pinned nightly honours [unstable] in both the build and the check, so it
+// is not refused there. It needs that toolchain installed (nothing is
+// fetched); scripts-tests installs none, so CI runs it only where the runner
+// image has it.
+const pinned = chooseToolchain({}, root, {}).name;
+const PINNED_SKIP = spawnSync('rustup', ['run', pinned, 'cargo', '-V'], {
+  env: { ...baseEnv, RUSTUP_AUTO_INSTALL: '0' }, encoding: 'utf8', timeout: 15_000,
+}).status !== 0 && `${pinned} is not installed`;
+test('build-at-ref accepts [unstable] config on the pinned nightly (#10965)', { skip: CARGO_SKIP || PINNED_SKIP }, (t) => {
+  const { directory, run } = buildAtRef(t, emptyRef(), {});
+  writeFileSync(join(directory, 'rust-toolchain.toml'), `[toolchain]\nchannel = "${pinned}"\n`);
+  mkdirSync(join(directory, '.cargo'));
+  writeFileSync(join(directory, '.cargo', 'config.toml'), '[unstable]\nconfig-include = true\n');
+  const result = run();
+  assert.ifError(result.error);
+  assert.equal(result.status, 1, result.stderr);
+  assert.doesNotMatch(result.stderr, /\[unstable\]|compiler override|before building \(/);
+  assert.match(result.stderr, /build-at-ref\.sh: building example perf_probe of ifc-lite-processing at \w+ failed/);
 });

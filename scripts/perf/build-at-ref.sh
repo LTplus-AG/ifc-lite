@@ -38,11 +38,13 @@
 #                         that built the binary (#10965).
 #
 # The worktree is removed on exit, success or not. Exit 1 if the patch does
-# not apply, cargo cannot read its config, the build fails, or --rustc-out
-# cannot record rustc -vV; the cause is in the log. Exit 1 too if RUSTC,
-# RUSTUP_TOOLCHAIN, a rustc wrapper, or build.rustc* is in effect, because the
-# binary would come from a compiler other than the ref's toolchain. An empty
-# wrapper or RUSTUP_TOOLCHAIN (or a "" wrapper in config) is no override.
+# not apply, cargo cannot report its version or config, the build fails, or
+# --rustc-out cannot record rustc -vV (cause in the log). Exit 1 too if RUSTC,
+# RUSTUP_TOOLCHAIN, RUSTC_BOOTSTRAP, a rustc wrapper, or build.rustc* is in
+# effect, because the binary would come from a compiler other than the ref's
+# toolchain, or if a non-nightly cargo meets [unstable] config, which the
+# build ignores but the check would apply. An empty wrapper, RUSTUP_TOOLCHAIN
+# or RUSTC_BOOTSTRAP (or a "" wrapper in config) is no override.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
@@ -73,7 +75,7 @@ while [ $# -gt 0 ]; do
     --worktree-root) WT_ROOT="${2:?--worktree-root needs a directory}"; shift 2;;
     --log) LOG="${2:?--log needs a file}"; shift 2;;
     --rustc-out) RUSTC_OUT="${2:?--rustc-out needs a path}"; shift 2;;
-    -h|--help) sed -n '2,45p' "$0"; exit 0;;
+    -h|--help) sed -n '2,47p' "$0"; exit 0;;
     *) echo "build-at-ref.sh: unknown argument $1" >&2; exit 2;;
   esac
 done
@@ -93,8 +95,9 @@ else
   exec 3>&2
 fi
 
-# RUSTUP_TOOLCHAIN outranks the ref's rust-toolchain.toml (PR #10977 review).
-for override in RUSTC RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER RUSTUP_TOOLCHAIN \
+# RUSTUP_TOOLCHAIN outranks the ref's rust-toolchain.toml, and RUSTC_BOOTSTRAP
+# makes a stable build apply [unstable] config (PR #10977 review).
+for override in RUSTC RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER RUSTUP_TOOLCHAIN RUSTC_BOOTSTRAP \
     CARGO_BUILD_RUSTC CARGO_BUILD_RUSTC_WRAPPER CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER; do
   # An empty wrapper means "no wrapper" to cargo (RUSTC_WRAPPER= skips
   # sccache), and rustup ignores an empty RUSTUP_TOOLCHAIN; an empty RUSTC is
@@ -105,7 +108,7 @@ for override in RUSTC RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER RUSTUP_TOOLCHAIN \
     CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER) [ -n "${RUSTC_WORKSPACE_WRAPPER+x}" ] && continue;;
   esac
   case "$override" in
-    *WRAPPER|RUSTUP_TOOLCHAIN) value="${!override:-}"; fix="unset $override or set it empty";;
+    *WRAPPER|RUSTUP_TOOLCHAIN|RUSTC_BOOTSTRAP) value="${!override:-}"; fix="unset $override or set it empty";;
     *) value="${!override+set}"; fix="unset $override";;
   esac
   if [ -n "$value" ]; then
@@ -144,8 +147,38 @@ fi
 # so ask it from the build directory after injections and patches.
 # RUSTC_BOOTSTRAP lets this one query run on a ref whose toolchain is stable;
 # it does not reach the build. Fail closed if the query itself fails.
-if ! CARGO_CONFIG="$(cd "$WT" && RUSTC_BOOTSTRAP=1 cargo -Z unstable-options config get 2>&3)"; then
+# On a non-nightly cargo the build ignores [unstable] and CARGO_UNSTABLE_*,
+# which the bootstrapped query would apply (they can change which config files
+# load), so drop the env and refuse the table: both then see the same config.
+if ! CARGO_VERSION="$(cd "$WT" && cargo -V 2>&3)"; then
+  echo "build-at-ref.sh: cargo failed at $REF before building (version query, see above)" >&3
+  exit 1
+fi
+case "$CARGO_VERSION" in *-nightly*|*-dev*) NIGHTLY=1;; *) NIGHTLY="";; esac
+config_get() (
+  cd "$WT"
+  [ -n "$NIGHTLY" ] || unset "${!CARGO_UNSTABLE_@}"
+  RUSTC_BOOTSTRAP=1 cargo -Z unstable-options config get "$@"
+)
+# The file that sets config key $1. One inside the worktree is gone after exit,
+# so it is named as the ref has it.
+config_origin() {
+  local where wt_real
+  where="$(config_get --show-origin "$1" 2>/dev/null | awk -F' # ' 'NF > 1 { print $NF; exit }')" || true
+  if [ -z "$where" ]; then echo "Cargo config"; return; fi
+  wt_real="$(cd "$WT" && pwd -P)"
+  case "$where" in
+    "$wt_real"/*) where="${where#"$wt_real"/} at $REF (from the ref, --inject or --patch)";;
+  esac
+  echo "$where"
+}
+if ! CARGO_CONFIG="$(config_get 2>&3)"; then
   echo "build-at-ref.sh: cargo failed at $REF before building (config query, see above)" >&3
+  exit 1
+fi
+if [ -z "$NIGHTLY" ] && grep -q '^unstable[.]' <<<"$CARGO_CONFIG"; then
+  echo "build-at-ref.sh: remove [unstable] from $(config_origin unstable) before building:" \
+    "the build ignores it on a non-nightly cargo ($CARGO_VERSION), so the override check cannot match it" >&3
   exit 1
 fi
 # A set RUSTC_*WRAPPER (empty, per the loop above) or an empty
@@ -163,16 +196,7 @@ if [ -n "$override" ]; then
     build.rustc-workspace-wrapper) hint="; or set RUSTC_WORKSPACE_WRAPPER= for this run";;
     *) hint="";;
   esac
-  # Name the file now: the worktree, and any config it carries, is removed on exit.
-  origin="$(cd "$WT" && RUSTC_BOOTSTRAP=1 cargo -Z unstable-options config get --show-origin "$key" 2>/dev/null)" || true
-  origin="${origin##*$'\n'}"
-  case "$origin" in *" # "*) where="${origin##* # }";; *) where="Cargo config";; esac
-  # A file inside the worktree is gone after exit: name it as the ref has it.
-  wt_real="$(cd "$WT" && pwd -P)"
-  case "$where" in
-    "$wt_real"/*) where="${where#"$wt_real"/} at $REF (from the ref, --inject or --patch)";;
-  esac
-  echo "build-at-ref.sh: remove $key from $where before building (compiler override$hint)" >&3
+  echo "build-at-ref.sh: remove $key from $(config_origin "$key") before building (compiler override$hint)" >&3
   exit 1
 fi
 # Refs older than the `profiling` profile get today's definition, so every
@@ -208,7 +232,7 @@ if ! ( cd "$WT" && CARGO_TARGET_DIR="$TARGET_DIR" \
 fi
 # The compiler that built it, resolved where it was resolved for the build:
 # same directory, same environment. Overrides were refused above, so this is
-# the toolchain cargo used (rustup installs it, if needed, at the config query).
+# the toolchain cargo used (rustup installs it, if needed, at the version query).
 # Written before the binary is copied out, so a caller that finds $OUT finds
 # this too.
 if [ -n "$RUSTC_OUT" ]; then

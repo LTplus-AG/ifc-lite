@@ -94,6 +94,32 @@ describe('released geometry readback for tools', () => {
     await registry.close();
   });
 
+  it('#10903 instancing lost but flat records whole: flat-only readback answers where the scene shows no instanced occurrence, and only there', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const open = await registry.begin('m'); // not complete: its instancing was lost, so it is never acknowledged
+    await open.writer.append([mesh(1, 0), mesh(2, 0.5)]);
+    await open.writer.flush(); // every flat record sealed and durable, the writer still open
+    const flat = { backing: () => open, flatComplete: () => true };
+    const state = { released: true, hit: { expressId: 1, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } };
+    const clear = host(state);
+    const feeder = new ReadbackRaycastFeeder(clear.value, () => flat, () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
+    assert.deepEqual(clear.fed.at(-1)!.map((m) => m.expressId).sort(), [1, 2], 'the same flat neighbourhood a complete backing feeds');
+    // A (lost) instanced occurrence in the region: its surface could be in front or a snap target.
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const crowded = host(state, new Map([[700, near]]));
+    const refused = new ReadbackRaycastFeeder(crowded.value, () => flat, () => 'm');
+    assert.equal(await refused.prepare(0, 0), 'unavailable', 'never answered without the lost occurrence');
+    assert.match(refused.lastError!.message, /instanced occurrences whose backing was lost/);
+    // An instanced hit itself is never answered flat-only.
+    const instancedHit = host({ released: true, hit: { expressId: 700, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, new Map([[700, near]]));
+    assert.equal(await new ReadbackRaycastFeeder(instancedHit.value, () => flat, () => 'm').prepare(0, 0), 'unavailable');
+    // Without the flat proof, the incomplete generation answers nothing.
+    assert.equal(await new ReadbackRaycastFeeder(clear.value, () => ({ backing: () => open }), () => 'm').prepare(0, 0), 'unavailable');
+    await open.writer.close();
+    await registry.close();
+  });
+
   it('a newer pointer position cancels an older prefetch', async () => {
     const { registry, backing } = await backed([mesh(1, 0)]);
     let resolvePick!: (value: { expressId: number }) => void;

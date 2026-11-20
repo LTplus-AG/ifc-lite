@@ -104,7 +104,10 @@ export class ReadbackRaycastFeeder {
       if (!hit) { this.swap([], [], { x, y }); return this.finish('no-hit'); }
       const modelId = this.owner(hit.expressId);
       const backing = modelId ? this.source()?.backing(modelId) : undefined;
-      if (!modelId || !backing?.isCurrent || !backing.isComplete) {
+      const complete = !!backing?.isCurrent && backing.isComplete;
+      // Instancing lost, flat records whole: flat-only, and only where the scene itself shows no instanced occurrence.
+      const flatOnly = !complete && !!modelId && !!backing?.isCurrent && this.source()?.flatComplete?.(modelId) === true;
+      if (!modelId || !backing || !(complete || flatOnly)) {
         throw new GeometryUnavailableError(`No complete geometry backing for entity ${hit.expressId}`);
       }
       const leases: MeshLease[] = [];
@@ -139,7 +142,10 @@ export class ReadbackRaycastFeeder {
           const within = chunks.filter((index) => (bytes += backing.directory.chunks[index].bytes) <= this.budgetBytes);
           leases.push(await backing.reader.leaseChunks(within, { signal }));
         }
-        instanced = await readInstancedOccurrences(backing, instancedIds, hit.modelIndex ?? 0, { signal });
+        if (flatOnly && (!p || instancedIds.size > 0 || scene.getInstancedEntityBounds(hit.expressId))) {
+          throw new GeometryUnavailableError(`Entity ${hit.expressId}'s neighbourhood holds instanced occurrences whose backing was lost`);
+        }
+        instanced = flatOnly ? [] : await readInstancedOccurrences(backing, instancedIds, hit.modelIndex ?? 0, { signal });
         if (own.meshes.length === 0 && !instanced.some((mesh) => mesh.expressId === hit.expressId)) {
           throw new GeometryUnavailableError(`Instanced entity ${hit.expressId} has no backed opaque occurrence`);
         }

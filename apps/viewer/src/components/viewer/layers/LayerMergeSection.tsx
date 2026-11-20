@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useLayerAutomationReview } from '@/lib/layers/automation-review';
+import { claimLayerAutomationReview, useLayerAutomationReview } from '@/lib/layers/automation-review';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, GitMerge, RefreshCw, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -178,7 +178,7 @@ export function LayerMergeSection() {
   const [busy, setBusy] = useState(false);
   const automationReview = useLayerAutomationReview(state => state.candidate);
   useEffect(() => {
-    if (!automationReview) return;
+    if (!automationReview || !claimLayerAutomationReview(automationReview, 'merge')) return;
     setCandidateId(automationReview.candidateId); setTargetKey(`registry:${automationReview.refName}`);
   }, [automationReview]);
 

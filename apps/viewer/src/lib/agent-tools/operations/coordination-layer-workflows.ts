@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { getBrowserLayerStore } from '@/lib/layers/browser-store';
 import { coordinationComposition } from '@/services/coordination-loader';
 import { coordination, idSchema } from './coordination-common';
@@ -70,7 +71,8 @@ export const coordinationLayerWorkflowOperations = [
     const [{ useLayerAutomationReview }, { LayerRegistryClient }, store] = await Promise.all([import('@/lib/layers/automation-review'), import('@/lib/layers/registry-client'), getBrowserLayerStore()]); requireLayer(store, i.candidate_id);
     if (!LayerRegistryClient.fromCollabConfig(useViewerStore.getState().collabSelfToken ?? undefined)) throw new Error('Native layer registry is not configured.');
     return c.commit(() => {
-      if (i.action === 'comment') { const entity = useViewerStore.getState().layerStackPathToId?.get(i.entity); if (entity === undefined || !i.title.trim()) throw new Error('A loaded native composition path and nonempty comment title are required.'); useViewerStore.getState().setSelectedEntityId(entity); }
+      if (i.action === 'comment') { const entity = useViewerStore.getState().layerStackPathToId?.get(i.entity); if (entity === undefined || !i.title.trim()) throw new Error('A loaded native composition path and nonempty comment title are required.'); // Both selection channels, as focusLoadReportEntity sets them, so Properties and the highlight agree.
+        const state = useViewerStore.getState(); state.setSelectedEntityIds([]); state.setSelectedEntityId(entity); state.setSelectedEntity(resolveEntityRef(entity)); }
       const candidate = { id: crypto.randomUUID(), candidateId: i.candidate_id, refName: i.ref_name, action: i.action, entity: i.entity, title: i.title, description: i.description, withViewpoint: i.with_viewpoint }; useLayerAutomationReview.setState({ candidate }); useViewerStore.getState().openWorkspacePanel('layers'); return { state: 'waiting-for-approval', candidate };
     });
   }),

@@ -355,6 +355,7 @@ export class NativeScriptRunner {
 }
 
 export function cancelNativeScriptRun(expectedEpoch: number): boolean {
-  if (useViewerStore.getState().scriptRunEpoch !== expectedEpoch) throw new Error('Native script run changed.');
+  // A finished run whose epoch a later run replaced has nothing left to cancel.
+  if (useViewerStore.getState().scriptRunEpoch !== expectedEpoch) return false;
   const runner = [...activeRunners].find(runner => runner.ownsEpoch(expectedEpoch)); if (!runner) return false; runner.cancel(); return true;
 }

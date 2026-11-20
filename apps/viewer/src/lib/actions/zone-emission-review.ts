@@ -9,7 +9,6 @@ import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { emitSpatialZones } from '@/lib/zones/emit-spatial-zones';
 import { zoneEvaluationIsCurrent, zoneEvaluationOwnerId } from '@/lib/zones/evaluation-owner';
-import { getGlobalRenderer } from '@/hooks/useBCF';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { resolveGlobalId } from './resolve-global-id';
 import { readZoneEmissionSnapshot } from './zone-emission-evidence';
@@ -43,7 +42,7 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
   };
   // What validate()'s snapshot reads first: the set by content, and the evaluation, which must be current and the
   // reviewed one. Every evaluation records a new owner id, so once assignments are rebuilt (or no owner could be
-  // recorded) no older review can apply. A missing scene (a renderer remount) is the one passing state: keep the review.
+  // recorded, or the scene was replaced) no older review can apply.
   const zoneSet = JSON.stringify(state.zoneSets.find(row => row.id === proposal.zoneSetId));
   // The native lease binds the target model's mutation view and its revision, as the Group and Structural probes do.
   const view = state.mutationViews.get(proposal.modelId), viewRevision = view?.getMutationRevision();
@@ -54,7 +53,7 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
     if (zoneEvaluationOwnerId(current) !== snapshot.evaluationId) return false;
     // Not cached: the check also reads the scene and assignment records in place, outside the store. It walks at most
     // 10000 mesh bounds, once per retained zone review per admission.
-    return !getGlobalRenderer()?.getScene() || zoneEvaluationIsCurrent(current);
+    return zoneEvaluationIsCurrent(current);
   };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');

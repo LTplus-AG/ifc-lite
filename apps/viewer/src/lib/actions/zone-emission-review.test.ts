@@ -85,16 +85,12 @@ test('#7322 stale evaluation cannot be certified from old timing after same-ID s
   assert.throws(() => geometry.commit('stale actual Scene bounds'), /evaluation|changed/);
   assert.equal(geometry.sourcesCurrent(), false, 'a scene bounds change with the same store state');
 });
-test('the admission probe keeps a review through a same-content set copy and a renderer remount', async t => {
-  const f = await seed(t); if (!f) return;
+test('#10792 the admission probe keeps a review through a same-content zone set copy, as validate() does', async t => {
+  if (!await seed(t)) return;
   const review = prepareZoneEmission(useViewerStore, proposal());
   useViewerStore.setState(s => ({ zoneSets: s.zoneSets.map(set => ({ ...set })) })); // e.g. a rehydrate: same content, new objects
-  assert.equal(review.sourcesCurrent(), true, 'compared by content, as validate() does');
-  setGlobalRendererRef({ current: null }); // the renderer remounting
-  assert.equal(review.sourcesCurrent(), true, 'a missing scene is temporary');
-  setGlobalRendererRef({ current: { getScene: () => f.scene } as unknown as Renderer });
   assert.equal(review.sourcesCurrent(), true);
-  review.commit('after remount');
+  review.commit('after a same-content set copy');
 });
 test('#7322 absent evaluation or explicit wrong set/storey refuses rather than choosing a default', async t => {
   const f = await seed(t); if (!f) return;

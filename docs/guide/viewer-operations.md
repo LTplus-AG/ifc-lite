@@ -9,6 +9,9 @@ viewport tools and toolbar exports: concrete control bindings, missing bindings,
 presentation equivalents and native browser/credential/review boundaries. A complete
 audit means every listed control is classified; it does not mean every control can
 run unattended or that arbitrary third-party UI is automated.
+Coordination, authoring, clash and appearance rows bind a group of native controls
+to their operations together and are marked `grouped`; the audit does not record
+which operation serves which control inside a group.
 The full migration acceptance criteria are in
 [the architecture plan](../architecture/viewer-automation-plan.md).
 

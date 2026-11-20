@@ -16,7 +16,9 @@ import { nativeExportRegistryInventory } from './export-native-inventory';
 
 // native-unsupported: the native viewer has no such control either, so the agent cannot lack it.
 type Classification = 'implemented' | 'presentation-only' | 'native-boundary' | 'native-unsupported' | 'unimplemented';
-interface Control { control: string; operations: readonly string[]; native_tools?: readonly string[]; classification: Classification; reason?: string }
+/** grouped: the control names several native controls whose operations are listed together; per-control mapping is not recorded. */
+interface Control { control: string; operations: readonly string[]; native_tools?: readonly string[]; classification: Classification; reason?: string; grouped?: true }
+const grouped = (row: Control): Control => ({ ...row, grouped: true });
 interface Inventory { owner: string; family: AuditFamily; controls: readonly Control[]; notes: readonly string[]; gaps: readonly string[] }
 function classify(status: string): Classification {
   if (status === 'implemented') return status;
@@ -43,17 +45,17 @@ export function operationControlInventory(): Inventory[] {
     ...analyticsControlBoundaries.map(row => ({ owner: row.panel, family: 'analytics' as const,
       controls: [control(row.control, [], classify(row.classification), row.native)], notes: [], gaps: [] })),
     ...coordinationControlInventory.map(row => ({ owner: row.owner, family: 'coordination' as const,
-      controls: [control(row.implemented.join('; '), row.operations),
+      controls: [grouped(control(row.implemented.join('; '), row.operations)),
         // The manual approvals and presentation a workflow keeps native are controls of their own.
         ...('hostBoundary' in row ? [control(String(row.hostBoundary), [], 'native-boundary', String(row.hostBoundary))] : []),
         ...('presentationOnly' in row ? [control(String(row.presentationOnly), [], 'presentation-only')] : [])],
       notes: (['equivalentControls', 'sourceWriteBack'] as const).flatMap(key => key in row ? [String((row as Record<string, unknown>)[key])] : []), gaps: row.outstanding })),
     ...authoringControlBindings.map(row => ({ owner: row.owner === 'ids' ? 'idsStudio' : row.owner, family: 'authoring' as const,
-      controls: [control(row.controls.join('; '), row.operations, classify(row.status), row.reason)], notes: [], gaps: [] })),
+      controls: [grouped(control(row.controls.join('; '), row.operations, classify(row.status), row.reason))], notes: [], gaps: [] })),
     ...clashControlBindings.map(row => ({ owner: 'clash', family: 'clash' as const,
-      controls: [control(row.controls.join('; '), row.operations, classify(row.status), 'boundary' in row ? row.boundary : undefined)], notes: [], gaps: [] })),
+      controls: [grouped(control(row.controls.join('; '), row.operations, classify(row.status), 'boundary' in row ? row.boundary : undefined))], notes: [], gaps: [] })),
     ...appearanceNativeControlBindings.map(row => ({ owner: 'appearance', family: 'appearance' as const,
-      controls: [control(row.controls.join('; '), row.operations, classify(row.status), row.boundary)], notes: [], gaps: [] })),
+      controls: [grouped(control(row.controls.join('; '), row.operations, classify(row.status), row.boundary))], notes: [], gaps: [] })),
   ];
 }
 function missingControls(controls: readonly Control[], registered: ReadonlySet<string>): string[] {
@@ -98,7 +100,7 @@ export function viewerOperationCoverage() {
   };
   const nonPanel = [
       { id: 'viewport', controls: inventory.filter(row => row.owner === 'viewport').flatMap(row => row.controls) },
-      { id: 'preferences', implemented: ids(['preferences.']), controls: inventory.filter(row => row.owner === 'preferences').flatMap(row => row.controls) },
+      { id: 'preferences', implemented: ids(['preferences.']), controls: inventory.filter(row => row.owner === 'preferences').flatMap(row => row.controls), notes: inventory.filter(row => row.owner === 'preferences').flatMap(row => row.notes) },
       { id: 'search', implemented: ids(['filters.', 'fields.']), controls: inventory.filter(row => row.owner === 'search').flatMap(row => row.controls) },
       { id: 'palette', native_tools: ['viewer_commands', 'viewer_command_run'], notes: ['Mounted native command contributions and current prerequisites remain the source of truth.'] },
       { id: 'file-export', native_tools: ['viewer_artifacts', 'viewer_artifact_read', 'viewer_artifact_download', 'viewer_artifact_delete'], implemented: ids(['exports.']), registry: exports },

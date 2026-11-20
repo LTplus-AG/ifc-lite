@@ -16,7 +16,7 @@ import {
 import { VIEWER_COMMAND_SPECS } from '@/lib/agent-tools/viewer-command-tools';
 import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
 import { BridgeClient, type BridgeClientOptions, type WebSocketLike } from './client';
-import type { AgentBridgeActivity, AgentBridgeStatus } from './state';
+import { foldActivity, type AgentBridgeActivity, type AgentBridgeStatus } from './state';
 import type { ToolOutcome } from './result-frame';
 import { mainViewerBridgeTools } from './session';
 
@@ -335,6 +335,29 @@ describe('local agent bridge client: calls (#9523)', () => {
     const logged = JSON.stringify(h.activity);
     assert.ok(!logged.includes(SECRET_ARG), 'no argument value in the log');
     assert.ok(!logged.includes(SECRET_RESULT), 'no result text in the log');
+  });
+
+  it('folds repeated searches without hiding distinct queries or recording their inputs (#9523 review)', async () => {
+    let clock = 100;
+    const h = paired({
+      now: () => clock,
+      dispatch: async () => {
+        clock += 10;
+        return { text: 'matches', structured: null, isError: false };
+      },
+    });
+    for (const [id, query] of [['c1', 'measure distance'], ['c2', 'color walls'], ['c3', 'color walls'], ['c4', 'color walls']]) {
+      call(h.socket(), id, 'viewer_operations', { query });
+      await flush();
+    }
+    const [first, second, third, fourth] = h.activity;
+    assert.ok(first && second && third && fourth);
+    const rows = foldActivity([fourth, ...foldActivity([third, second, first])]);
+    assert.deepEqual(rows.map(({ seq, startedAt, count }) => ({ seq, startedAt, count })), [
+      { seq: 4, startedAt: 130, count: 3 },
+      { seq: 1, startedAt: 100, count: undefined },
+    ]);
+    assert.doesNotMatch(JSON.stringify(rows), /measure distance|color walls/);
   });
 });
 

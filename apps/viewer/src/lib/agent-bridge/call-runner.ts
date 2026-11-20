@@ -11,6 +11,7 @@
  */
 
 import type { BridgeCallMessage } from '@ifc-lite/mcp/bridge-protocol';
+import { digest } from '@ifc-lite/flow';
 import type { AgentBridgeActivity } from './state';
 import { buildResultFrame, toCallToolResult, type ToolOutcome } from './result-frame';
 import { CallAdmission, type CallLimits } from './call-admission';
@@ -27,6 +28,7 @@ interface InFlight {
   tool: string;
   modelId: string | null;
   startedAt: number;
+  argumentDigest?: string;
 }
 
 export interface CallRunnerOptions {
@@ -127,6 +129,8 @@ export class CallRunner {
       tool: call.name,
       modelId: this.modelIdFor(call.arguments),
       startedAt: this.now(),
+      // Digest the wire representation before dispatch can change it. The log keeps no argument values.
+      argumentDigest: digest([this.opts.sessionId, JSON.stringify(call.arguments)]),
     };
     this.inFlight.set(call.id, entry);
     let timedOut = false;
@@ -201,6 +205,7 @@ export class CallRunner {
       modelId: entry.modelId,
       startedAt: entry.startedAt,
       durationMs: Math.max(0, this.now() - entry.startedAt),
+      argumentDigest: entry.argumentDigest,
       ...(this.opts.mutates?.(entry.tool) ? { mutating: true } : {}),
       ...result,
     };

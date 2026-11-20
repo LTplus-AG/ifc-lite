@@ -521,7 +521,7 @@ describe('allowing the agent to edit (#9523)', () => {
     const before = useViewerStore.getState().models;
     useViewerStore.setState({ models: new Map([['m', { id: 'm', name: 'house.ifc' }]]) as never });
     const read = (seq: number, tool = 'viewer_operations', modelId: string | null = null) =>
-      ({ seq, tool, modelId, startedAt: 0, durationMs: 1, outcome: 'ok' as const });
+      ({ seq, tool, modelId, startedAt: 0, durationMs: 1, outcome: 'ok' as const, argumentDigest: 'same-input' });
     const edit = (seq: number) => ({ ...read(seq, 'entity_set_property', 'm'), mutating: true });
     updateAgentBridgeState({
       status: { ...CONNECTED, permission: 'read-write' },

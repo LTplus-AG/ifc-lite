@@ -150,7 +150,7 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
   }, []);
 
   // Released CPU geometry (#10264) is read back first; resident geometry reads synchronously.
-  const source = useViewPdfSource(open, [models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
+  const { source, status: sourceStatus } = useViewPdfSource(open, [models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
     sectionPlane, selectedStoreys, classFilter, projectionMode, mutationVersion, mutationViews]);
 
   const camera = source?.camera ?? null;
@@ -367,7 +367,7 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
 
       <PdfViewPageNotices
         preview={preview}
-        oversize={oversize}
+        oversize={oversize} sourceStatus={sourceStatus}
         projectionMode={camera?.projectionMode ?? null}
         onSwitchToOrthographic={() => setProjectionMode('orthographic')}
         formatMm={formatMm}

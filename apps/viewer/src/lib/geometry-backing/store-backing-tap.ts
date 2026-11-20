@@ -278,6 +278,7 @@ export class StoreGeometryBackingTap {
       if (tracked.failure || tracked.instancedLost || this.missedShards(modelId) || !tracked.backing) continue;
       await this.settle(tracked, tracked.backing.acknowledge().then(() => undefined));
     }
+    notifyReleasedGeometryMetadataChanged(); // an acknowledged generation may answer now
     return this.status();
   }
 

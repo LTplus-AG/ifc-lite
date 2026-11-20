@@ -21,7 +21,7 @@ import {
   Drawing2DGenerator,
   createSectionConfig,
   currentFloorBands,
-  storeyFloorsFromMeshes,
+  StoreyFloorLevels,
   type Drawing2D,
   type DrawingLine,
   type SectionConfig,
@@ -38,8 +38,8 @@ import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
 import { saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
-import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
-import { isMeshTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
+import { buildModelViewIdFilter, modelMeshGate } from '@/lib/type-view-visibility';
+import { type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import { useRetypedClasses } from './useViewerSelectors.js';
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
 import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
@@ -50,6 +50,10 @@ import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canva
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
 import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fills';
 import { isGeometryHeld } from '@/lib/pick-gating';
+import { drawingMeshFilter } from '@/lib/drawing/drawing-mesh-filter';
+import { liveDrawingGeometry } from '@/lib/drawing/drawing-geometry-context';
+import { assertInstancedReady, DrawingGeometryPendingError, drawingHasGeometry, instancedEpoch, useInstancedDrawingRevision } from '@/lib/drawing/drawing-instanced-presence';
+import { getGlobalRenderer } from './useBCF.js';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -197,7 +201,8 @@ export function useDrawingGeneration({
   }>());
 
   const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => { if (isGeometryHeld(useViewerStore.getState())) return;
-    if (!geometryResult?.meshes || geometryResult.meshes.length === 0) {
+    // An instanced-only model has no flat meshes but still draws (#10264).
+    if (!geometryResult?.meshes || !drawingHasGeometry(geometryResult.meshes.length, useViewerStore.getState(), getGlobalRenderer())) {
       // Clear the drawing when no geometry is available (e.g., all models hidden)
       setDrawing(null);
       setDrawingStatus('idle');
@@ -205,14 +210,10 @@ export function useDrawingGeneration({
       return;
     }
 
-    // Drop type-library geometry (issue #2058). `geometryResult.meshes` holds
-    // the whole scene, including the `IfcTypeProduct` RepresentationMap copies
-    // the wasm mesh pass emits (geometryClass 1 = orphan type, 2 = instanced
-    // type). The 3D viewport routes them through the same view-mode predicate,
-    // so the Model view never shows them; the drawing filtered only on
-    // hiding/isolation, so every type template was cut and projected on top of
-    // the plan — AC20-FZK-Haus alone carries 32 of them.
-    const modelMeshes = selectModelMeshes(geometryResult.meshes);
+    // Type-library geometry is dropped (issue #2058) by `drawingMeshFilter` and,
+    // for floor scoping, by the same `modelMeshGate`: AC20-FZK-Haus alone
+    // carries 32 type templates that would otherwise cut on top of the plan.
+    const modelMesh = modelMeshGate(geometryResult.meshes);
 
     // Mirror of the same gate, keyed by express id, for construction-projection
     // profiles (issue #2070 review): they reach the drawing WITHOUT going
@@ -372,6 +373,9 @@ export function useDrawingGeneration({
       generator = new Drawing2DGenerator();
       await generator.initialize();
       if (!isCurrent()) return;
+      // Resident meshes as they are; released ones read back chunk by chunk (#10264).
+      const instancedAtStart = instancedEpoch(), geometry = await liveDrawingGeometry(geometryResult.meshes, isCurrent);
+      if (!isCurrent()) return;
 
       // Convert semantic axis to geometric
       const axis = AXIS_MAP[sectionPlane.axis];
@@ -432,8 +436,12 @@ export function useDrawingGeneration({
       if (canScopeFloor && sh) {
         const cached = storeyFloorsCacheRef.current.get(geometryResult);
         const floorsCurrent = cached?.elementToStorey === sh.elementToStorey;
-        const floors = floorsCurrent ? cached.floors : storeyFloorsFromMeshes(modelMeshes, sh.elementToStorey);
+        let floors = cached?.floors ?? [];
         if (!floorsCurrent) {
+          // Flat placed geometry only, as before; read back batch by batch when released.
+          const levels = new StoreyFloorLevels(sh.elementToStorey);
+          for await (const batch of geometry.source(modelMesh, { instanced: false }).pass('geometry')) levels.add(batch);
+          floors = levels.floors();
           storeyFloorsCacheRef.current.set(geometryResult, { floors, elementToStorey: sh.elementToStorey });
         }
         // Need ≥2 storeys to scope: with 0/1 storey there is no "other floor"
@@ -506,46 +514,13 @@ export function useDrawingGeneration({
         };
       }
 
-      // Filter meshes by visibility (respect 3D hiding/isolation)
-      let meshesToProcess = modelMeshes;
+      // Which meshes the drawing cuts: the Model-view class gate, class
+      // Visibility, hiding and both isolation channels (see `drawingMeshFilter`).
+      const keep = drawingMeshFilter({ meshes: geometryResult.meshes, typeVisibility, structuralViewMode, retypedClasses,
+        hiddenIds: combinedHiddenIds, isolatedIds: combinedIsolatedIds, computedIsolatedIds });
 
-      // Class-level Visibility toggles (issue #2060) are a GLOBAL filter, not a
-      // 3D-only one. The drawing derives its own list from `geometryResult.meshes`,
-      // so without this a hidden IfcSpace / IfcOpeningElement was still cut, in the
-      // 2D Section view and in the 3D section overlay (`useRenderUpdates.ts`). Same
-      // shared mapping as the viewport, basket and GLB export, retypes included (#10119).
-      meshesToProcess = meshesToProcess.filter((mesh) => isMeshTypeVisible(mesh, typeVisibility, structuralViewMode, retypedClasses));
-
-      // Filter out hidden entities (using combined multi-model set)
-      if (combinedHiddenIds.size > 0) {
-        meshesToProcess = meshesToProcess.filter(
-          mesh => !combinedHiddenIds.has(mesh.expressId)
-        );
-      }
-
-      // Filter by isolation (if active, using combined multi-model set)
-      if (combinedIsolatedIds !== null) {
-        meshesToProcess = meshesToProcess.filter(
-          mesh => combinedIsolatedIds.has(mesh.expressId)
-        );
-      }
-
-      // Also filter by computedIsolatedIds (storey selection). Meaningfully
-      // nullable, same convention as `combinedIsolatedIds` above and
-      // `packages/renderer/src/entity-visibility.ts`'s `isEntityVisible`:
-      // null/undefined means no isolation channel is active, while a
-      // non-null Set — EMPTY included — means one is and matches nothing. A
-      // `.size > 0` check here would read an active-but-empty isolate as "no
-      // isolation" and redraw the whole model instead of nothing.
-      if (computedIsolatedIds != null) {
-        const isolatedSet = computedIsolatedIds;
-        meshesToProcess = meshesToProcess.filter(
-          mesh => isolatedSet.has(mesh.expressId)
-        );
-      }
-
-      // If all meshes were filtered out by visibility, clear the drawing
-      if (meshesToProcess.length === 0) {
+      // If visibility filtered everything out, clear the drawing
+      if (geometry.isEmpty(keep, { instanced: true })) {
         setDrawing(null);
         setDrawingStatus('idle');
         setDrawingError(null);
@@ -566,26 +541,11 @@ export function useDrawingGeneration({
       // entities that aren't actually drawn. Class visibility rides along for
       // the same reason (#2060): a profile is another way for a hidden
       // IfcSpace to reach the drawing.
-      let projectionProfiles = profiles;
-      if (projectionOn && profiles.length > 0) {
-        // #2058's mesh-class gate, mirrored onto profiles (#2070 review):
-        // `modelMeshes` above already dropped type-library geometry from the
-        // cut by express id; without this, a profile sharing that same
-        // express id would still be free to project it back in.
-        projectionProfiles = projectionProfiles.filter((p) => isModelViewExpressId(p.expressId));
-        projectionProfiles = projectionProfiles.filter((p) => isMeshTypeVisible(p, typeVisibility, structuralViewMode, retypedClasses));
-        if (combinedHiddenIds.size > 0) {
-          projectionProfiles = projectionProfiles.filter((p) => !combinedHiddenIds.has(p.expressId));
-        }
-        if (combinedIsolatedIds !== null) {
-          projectionProfiles = projectionProfiles.filter((p) => combinedIsolatedIds.has(p.expressId));
-        }
-        // Meaningfully nullable, same convention as the mesh filter above.
-        if (computedIsolatedIds != null) {
-          const isolatedSet = computedIsolatedIds;
-          projectionProfiles = projectionProfiles.filter((p) => isolatedSet.has(p.expressId));
-        }
-      }
+      // #2058's mesh-class gate, mirrored onto profiles (#2070 review), then the
+      // same class Visibility, hiding and isolation predicate as the meshes: a
+      // profile is another way for a hidden or type-library element to project.
+      const projectionProfiles = projectionOn
+        ? profiles.filter((p) => isModelViewExpressId(p.expressId) && keep(p)) : profiles;
 
       // Winding-robust outline provider for non-extruded geometry (roofs,
       // stairs, site). Calls the Rust meshOutline2d binding per mesh; each call
@@ -597,8 +557,10 @@ export function useDrawingGeneration({
           ? createMeshOutlineProvider(meshOutline2dFn)
           : undefined;
 
-      const result = drawingWithMaterialLayerFills(await generator.generate(
-        meshesToProcess,
+      // GPU-instanced occurrences are cut like flat geometry, one entity (or
+      // one bounded read-back group) at a time; they were missing before.
+      const result = drawingWithMaterialLayerFills(await generator.generateFromSource(
+        geometry.source(keep, { instanced: true }),
         config,
         {
           // Always classify projection occlusion. Hidden Lines controls whether
@@ -614,6 +576,7 @@ export function useDrawingGeneration({
         projectionOn ? projectionProfiles : undefined,
       )); // layers of one element fill per material (#9296)
       if (!isCurrent()) return;
+      assertInstancedReady(useViewerStore.getState(), getGlobalRenderer(), instancedAtStart); // a shard during the cut: wait for its drain
 
       let completedDrawing = result;
       // If we have symbolic representations, create a hybrid drawing
@@ -882,6 +845,12 @@ export function useDrawingGeneration({
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');
     } catch (error) {
+      // Instanced shards still queued for the scene: the drain bumps
+      // `instancedRevision`, which requests this drawing again with them.
+      if (error instanceof DrawingGeometryPendingError) {
+        if (isCurrent()) setDrawingProgress(0, 'Waiting for instanced geometry...');
+        return;
+      }
       console.error('Drawing generation failed:', error);
       if (isCurrent()) setDrawingError(error instanceof Error ? error.message : 'Generation failed');
     } finally {
@@ -980,6 +949,7 @@ export function useDrawingGeneration({
   // Match useRenderUpdates: a saved overlay preference needs the section tool.
   // Compare actual inputs, not callback identities or the drawing we publish.
   const drawingActive = panelVisible || (activeTool === 'section' && displayOptions.show3DOverlay);
+  const instancedRevision = useInstancedDrawingRevision();
   const previousInputs = useRef<unknown[]>([]);
   const wasActive = useRef(false);
   const wasPanelVisible = useRef(false);
@@ -994,7 +964,7 @@ export function useDrawingGeneration({
       sectionPlane.custom]);
     const inputs = [geometryResult, geometryResult?.meshes.length, ifcDataStore,
       displayOptions, typeVisibility, structuralViewMode, retypedClasses, combinedHiddenIds, combinedIsolatedIds,
-      computedIsolatedIds, models, drawingRtcContextKey, isGeometryHeld(useViewerStore.getState())];
+      computedIsolatedIds, models, drawingRtcContextKey, isGeometryHeld(useViewerStore.getState()), instancedRevision];
     const changed = inputs.some((value, index) => value !== previousInputs.current[index]);
     const planeChanged = plane !== previousPlane.current;
     const activated = drawingActive && !wasActive.current;
@@ -1004,7 +974,7 @@ export function useDrawingGeneration({
     previousPlane.current = plane;
     wasActive.current = drawingActive; wasPanelVisible.current = panelVisible;
     if (!drawingActive || isGeometryHeld(useViewerStore.getState())) { if (deactivated || isGeometryHeld(useViewerStore.getState())) queue.cancel(); return; }
-    if (!geometryResult?.meshes.length) {
+    if (!geometryResult?.meshes || !drawingHasGeometry(geometryResult.meshes.length, useViewerStore.getState(), getGlobalRenderer())) {
       queue.cancel();
       if (drawing) { setDrawing(null); setDrawingStatus('idle'); }
       return;

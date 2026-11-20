@@ -27,6 +27,11 @@ export function hasInstancedShards(modelId: string): boolean {
   return models.has(modelId);
 }
 
+/** Whether any model ever handed shards over (legacy single-model wiring registers no model to ask by id). */
+export function anyInstancedShards(): boolean {
+  return models.size > 0;
+}
+
 /** Monotonic across placement-hook remounts; a drained queue keeps no bytes. */
 export function instancedShardRevision(modelId: string): number {
   return revisions.get(modelId) ?? 0;

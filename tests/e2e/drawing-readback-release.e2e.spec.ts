@@ -33,7 +33,8 @@ type Probe = typeof globalThis & {
 };
 interface Canonical { lines: string[]; polygons: string[]; stats: Record<string, number> }
 type Plane = { axis: 'down' | 'front' | 'side'; position: number; projection: boolean };
-interface Scenario { name: string; files: string[]; planes: Plane[] }
+/** `instanced`: the fixture must exercise the instanced route (occurrences exist and are drawn). */
+interface Scenario { name: string; files: string[]; planes: Plane[]; instanced?: boolean }
 
 const HOOK = '/src/lib/geometry-backing/backing-debug-hook.ts';
 const SCENARIOS: Scenario[] = [
@@ -41,7 +42,7 @@ const SCENARIOS: Scenario[] = [
     planes: [{ axis: 'down', position: 30, projection: false }, { axis: 'front', position: 45, projection: true }] },
   { name: 'duplex', files: ['tests/models/ara3d/duplex.ifc'],
     planes: [{ axis: 'down', position: 25, projection: false }, { axis: 'side', position: 50, projection: true }] },
-  { name: 'georeferenced-minibim', files: ['tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc'],
+  { name: 'georeferenced-minibim', instanced: true, files: ['tests/models/georeferencer/MiniBIM-3.1-DO_01_VORM.ifc'],
     planes: [{ axis: 'down', position: 40, projection: false }, { axis: 'front', position: 50, projection: true }] },
   { name: 'federated', files: ['tests/models/ara3d/AC20-FZK-Haus.ifc', 'tests/models/ara3d/duplex.ifc'],
     planes: [{ axis: 'down', position: 30, projection: false }, { axis: 'front', position: 50, projection: true }] },
@@ -191,6 +192,7 @@ for (const scenario of SCENARIOS) {
       occurrencesSeen += oracle.occurrences;
       resident.push({ viewer, oracle: { occurrences: oracle.occurrences, outline: oracle.outline } });
     }
+    if (scenario.instanced) expect(occurrencesSeen, 'this fixture must load GPU-instanced occurrences').toBeGreaterThan(0);
     if (occurrencesSeen > 0) expect(instancedDrawn, 'instanced occurrences appear in the resident drawings').toBeGreaterThan(0);
     const released = await page.evaluate(async () => {
       const g = globalThis as Probe;

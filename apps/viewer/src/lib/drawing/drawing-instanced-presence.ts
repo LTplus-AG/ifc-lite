@@ -48,11 +48,28 @@ export function drawingHasGeometry(flatCount: number, state: PresenceState, rend
   return flatCount > 0 || presence(state, renderer).present;
 }
 
-/** Throws when the drawing cannot yet see every instanced occurrence. */
-export function assertInstancedReady(state: PresenceState, renderer: Pick<Renderer, 'getScene'> | null): void {
+/**
+ * Throws when the drawing cannot see every instanced occurrence: no renderer
+ * yet, shards still queued, or (with `modelOf`) a visible model that streamed
+ * shards but has no occurrence in the scene, e.g. a replaced, empty scene or
+ * shards dropped on upload. Its flat meshes alone are not its drawing.
+ */
+export function assertInstancedReady(state: PresenceState, renderer: Pick<Renderer, 'getScene'> | null,
+  modelOf?: (globalId: number) => string | undefined): void {
   const { queued, present } = presence(state, renderer);
   if (!renderer && present) throw new GeometryUnavailableError('Instanced geometry cannot be drawn before the viewport renderer exists');
   if (queued) throw new DrawingGeometryPendingError();
+  if (!renderer || !modelOf) return;
+  const recorded = [...state.models].filter(([id, model]) => model.visible && hasInstancedShards(id)).map(([id]) => id);
+  if (recorded.length === 0) return;
+  const inScene = new Set<string>();
+  for (const id of renderer.getScene().getInstancedEntityIds()) {
+    const owner = modelOf(id);
+    if (owner !== undefined) inScene.add(owner);
+    if (inScene.size === recorded.length) break;
+  }
+  const missing = recorded.filter((id) => !inScene.has(id));
+  if (missing.length > 0) throw new GeometryUnavailableError(`Instanced geometry of ${missing.join(', ')} is not in the scene; it cannot be drawn`);
 }
 
 /** Bumps whenever instanced shards reach (or leave) the scene, or the renderer changes: a drawing input. */

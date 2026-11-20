@@ -52,7 +52,7 @@ import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fill
 import { isGeometryHeld } from '@/lib/pick-gating';
 import { drawingMeshFilter } from '@/lib/drawing/drawing-mesh-filter';
 import { liveDrawingGeometry } from '@/lib/drawing/drawing-geometry-context';
-import { DrawingGeometryPendingError, drawingHasGeometry, useInstancedDrawingRevision } from '@/lib/drawing/drawing-instanced-presence';
+import { assertInstancedReady, DrawingGeometryPendingError, drawingHasGeometry, useInstancedDrawingRevision } from '@/lib/drawing/drawing-instanced-presence';
 import { getGlobalRenderer } from './useBCF.js';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -373,8 +373,7 @@ export function useDrawingGeneration({
       generator = new Drawing2DGenerator();
       await generator.initialize();
       if (!isCurrent()) return;
-      // Resident meshes as they are; released ones read back from their
-      // backing, chunk by chunk, in at most two passes (#10264).
+      // Resident meshes as they are; released ones read back chunk by chunk (#10264).
       const geometry = await liveDrawingGeometry(geometryResult.meshes, isCurrent);
       if (!isCurrent()) return;
 
@@ -577,6 +576,7 @@ export function useDrawingGeneration({
         projectionOn ? projectionProfiles : undefined,
       )); // layers of one element fill per material (#9296)
       if (!isCurrent()) return;
+      assertInstancedReady(useViewerStore.getState(), getGlobalRenderer()); // a shard queued during the cut: wait for its drain
 
       let completedDrawing = result;
       // If we have symbolic representations, create a hybrid drawing

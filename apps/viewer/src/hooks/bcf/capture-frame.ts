@@ -10,6 +10,7 @@ import { captureViewportFrame } from '@/lib/viewport-capture';
 export function captureBcfFrame(
   renderer: Renderer | null, canvas: HTMLCanvasElement | null,
   readCamera: () => ViewerCameraState | null,
+  signal?: AbortSignal,
 ): Promise<{ snapshot: string; camera: ViewerCameraState | null } | null> {
   if (!renderer || !canvas) {
     console.warn('[useBCF] No viewport available for snapshot capture');
@@ -23,5 +24,6 @@ export function captureBcfFrame(
       camera = state ? { ...state, position: { ...state.position }, target: { ...state.target }, up: { ...state.up } } : null;
     },
     read: ownedCanvas => ({ snapshot: ownedCanvas.toDataURL('image/png'), camera }),
+    signal,
   });
 }

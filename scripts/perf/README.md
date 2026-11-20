@@ -8,6 +8,30 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Hierarchy rows survive a loaded-tower edit (#10535, part)
+
+**Partial lever; the F5 edit target is still open.** A fiber census of one
+loaded-column Move on F5 showed the hierarchy panel committing its whole
+visible subtree (about 3,500 component fibers: rows with tooltips, poppers
+and menus) five times per edit: on the mutation, a follow-up commit, the mesh
+swap and the idle structure build. Each panel render also re-resolved every
+storey row's membership up to three times, and once the session has edits
+each resolution re-reads the relationship overlay. The worker meshes the
+column almost at once; its reply waits behind this main-thread work.
+
+Rows are now memoized with one stable handler object, unchanged tree rows
+keep their objects across rebuilds and projections, and row membership is
+resolved once per input generation and view revision. Paired local
+diagnostics improved the edit and undo medians; unmounting the hierarchy
+entirely bounds what this lever can reach. The figures and the run protocol
+are in the PR; none of them is admission-qualified.
+
+Lesson: narrowing panel subscriptions (#9978) cost more synchronous
+publication than it saved. Cutting what each render does inside the panel
+leaves the subscriptions and the store's publication unchanged. Check a
+"hidden" panel experiment against a fiber census: collapsing the left panel
+keeps the hierarchy mounted and rendering, so it bounds nothing.
+
 ## Post-cut sliver bisection removed (#10511)
 
 The native mesh census found one changed wall across the capped fixture

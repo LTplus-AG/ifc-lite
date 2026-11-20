@@ -66,14 +66,15 @@ export function HierarchyRowActions({ name, actions, open, onOpenChange, onActio
 }
 
 /** Layer subgroups offer the same bounded actions as their layer (#9272). */
-export function hierarchyRowActions(node: TreeNode, hasElements: boolean): HierarchyRowAction[] {
-  if (node.type === 'model-header' || node.type === 'model-tag-group') return [];
-  if (node.type === 'unified-storey' || node.type === 'IfcBuildingStorey') {
-    return ['solo', 'filter'];
-  }
-  const actions: HierarchyRowAction[] = [];
-  if (hasElements) actions.push('isolate');
-  if ((node.type === 'type-group' && !isLayerSubgroup(node)) || node.type === 'ifc-type' ||
-      node.type === 'material-group' || node.type === 'group') actions.push('filter');
-  return actions;
+// Shared arrays: a row's actions compare by identity, so a memoized row does not re-render for an equal list (#10535).
+const STOREY_ACTIONS: readonly HierarchyRowAction[] = ['solo', 'filter'];
+/** Indexed by (has elements ? 1 : 0) + (filterable ? 2 : 0). */
+const ROW_ACTIONS: readonly (readonly HierarchyRowAction[])[] = [[], ['isolate'], ['filter'], ['isolate', 'filter']];
+
+export function hierarchyRowActions(node: TreeNode, hasElements: boolean): readonly HierarchyRowAction[] {
+  if (node.type === 'model-header' || node.type === 'model-tag-group') return ROW_ACTIONS[0];
+  if (node.type === 'unified-storey' || node.type === 'IfcBuildingStorey') return STOREY_ACTIONS;
+  const filter = (node.type === 'type-group' && !isLayerSubgroup(node)) || node.type === 'ifc-type' ||
+    node.type === 'material-group' || node.type === 'group';
+  return ROW_ACTIONS[(hasElements ? 1 : 0) + (filter ? 2 : 0)];
 }

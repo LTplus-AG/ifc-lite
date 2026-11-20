@@ -1,12 +1,12 @@
 diff --git a/apps/viewer/src/hooks/ingest/geometryDensity.ts b/apps/viewer/src/hooks/ingest/geometryDensity.ts
 --- a/apps/viewer/src/hooks/ingest/geometryDensity.ts
 +++ b/apps/viewer/src/hooks/ingest/geometryDensity.ts
-@@ -53,7 +53,7 @@ export function denseRecordBytes(text: string): { dense: number; total: number }
+@@ -57,7 +57,7 @@ export function denseRecordBytes(text: string): { dense: number; total: number;
      denseRecord = DENSE_TYPES.has(match[1]!);
    }
    close(text.length);
--  return { dense: 0, total };
-+  return { dense, total };
+-  return { dense: 0, total, records };
++  return { dense, total, records };
  }
  
  /**

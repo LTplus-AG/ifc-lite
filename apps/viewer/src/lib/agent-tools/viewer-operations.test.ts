@@ -8,6 +8,7 @@ import { beforeEach, describe, it } from 'node:test';
 import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import type { Renderer } from '@ifc-lite/renderer';
+import { coordinationDashboard } from '@/lib/charts/presets';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configuredView } from '@/test/agent-tools-fixture';
@@ -177,6 +178,16 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal(diagnostics.stats.modelCount, 2); assert.deepEqual(diagnostics.skipped, []);
     const mergedText = Buffer.from(data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: merged.result.artifact.artifact_id })).data, 'base64').toString('utf8');
     for (const id of ['A', 'B']) assert.equal(mergedText.split(`Merged marker ${id}`).length - 1, 1, id);
+  });
+  it('evaluates a native BCF dashboard before any IFC model is loaded', async () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, bcfProject: null });
+    assert.equal((await execute('bcf.createProject', { value: 'Native coordination' })).isError, false);
+    for (const status of ['Open', 'Closed']) assert.equal((await execute('bcf.createTopic', { title: status, description: '', status })).isError, false);
+    const dashboard = coordinationDashboard();
+    assert.equal(useViewerStore.getState().upsertDashboard(dashboard), true);
+    const chart = dashboard.charts.find(row => row.source === 'bcf'); assert.ok(chart);
+    const result = data<{ result: { total: number; categories: unknown[] } }>(await inspect('charts.evaluate', { dashboard_id: dashboard.id, chart_id: chart.id }));
+    assert.equal(result.result.total, 2); assert.equal(result.result.categories.length, 2);
   });
   it('runs native Rules filters, rejects stale configuration, and pages the published result', async () => {
     const state = data<{ result: { native_json: string } }>(await inspect('filters.state'));

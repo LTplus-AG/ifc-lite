@@ -11,7 +11,7 @@
  * types, preselected and shown before anything is sent.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
@@ -21,7 +21,7 @@ import type { DraftBatch } from '@/lib/bcf-drafts/draft-types';
 import { sameTarget, type DispatchReport, type PublicationConnection } from '@/lib/bcf-publication/outbox-dispatch';
 import { draftPublicationId, planDraftPublication } from '@/lib/bcf-publication/outbox-plan';
 import { preflightPublication, type PreflightReport } from '@/lib/bcf-publication/outbox-preflight';
-import { publishDraftBatch } from '@/lib/bcf-publication/outbox-publish';
+import { useBcfPublicationReview, publishNativeBcfReview, noteBcfPublicationUserChoice, bcfPublicationCandidateCurrent } from '@/lib/bcf-publication/review-candidate';
 import { preselectTopicTypes, publicationRules, unknownTopicTypes, type TopicTypeChoice } from '@/lib/bcf-publication/outbox-server-rules';
 import { publicationCounts } from '@/lib/bcf-publication/outbox-state';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
@@ -46,8 +46,12 @@ export interface BCFPublicationPanelProps {
   onRecordId: (id: string | null) => void;
 }
 
+const reviewKey = (batch: Pick<DraftBatch, 'id' | 'modifiedAt'>, serverUrl: string, userId: string, project: string) =>
+  JSON.stringify([batch.id, batch.modifiedAt, serverUrl, userId, project]);
+
 export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicationPanelProps) {
   const { t } = useTranslation();
+  const candidate = useBcfPublicationReview(state => state.candidate);
   const { config, connect } = useBcfConnection();
   const [projects, setProjects] = useState<BcfProjectDto[] | null>(null);
   const [projectId, setProjectId] = useState('');
@@ -60,12 +64,36 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const [report, setReport] = useState<DispatchReport | null>(null);
   const [connection, setConnection] = useState<PublicationConnection | null>(null);
   const [topicTypes, setTopicTypes] = useState<TopicTypeChoice>({});
-  // A type choice and a preflight result belong to one server project.
+  // A type choice and a preflight result belong to one batch revision and server project.
   // Whatever moves the target (the project picker, or a reconnect to another
   // server) drops both, so neither is applied to or shown for a project the
   // user has not checked.
-  const targetKey = `${config?.serverUrl ?? ''}\u0000${projectId}`;
-  useEffect(() => { setTopicTypes({}); setPreflight(null); setReport(null); }, [targetKey]);
+  // The account is part of the target: switching it drops the previous account's review too.
+  const targetKey = reviewKey(batch, config?.serverUrl ?? '', config?.userId ?? '', projectId);
+  const reviewEpoch = useRef(0);
+  const adopted = useRef<{ id: string; targetKey: string } | null>(null);
+  useLayoutEffect(() => {
+    reviewEpoch.current++;
+    // Adopting a staged review can itself select its project.
+    if (adopted.current?.targetKey === targetKey) return;
+    adopted.current = null;
+    setTopicTypes({}); setPreflight(null); setReport(null);
+  }, [targetKey]);
+  useEffect(() => {
+    // Wait for the connection to load before comparing the candidate's account with it.
+    if (!candidate || !config) return;
+    // Moving to another batch or account is a user choice: the candidate never comes back for it.
+    if (candidate.batchId !== batch.id || candidate.target.serverUrl !== config?.serverUrl || candidate.target.userId !== config?.userId) { useBcfPublicationReview.setState({ candidate: null }); return; }
+    // A batch edited after staging makes the candidate's preflight, adopted or not, out of date.
+    if (candidate.modifiedAt !== batch.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); setTopicTypes({}); setPreflight(null); setReport(null); return; }
+    // A choice the user made while the agent prepared outranks the candidate and keeps the user's own state.
+    if (!bcfPublicationCandidateCurrent(candidate)) { useBcfPublicationReview.setState({ candidate: null }); return; }
+    if (adopted.current?.id === candidate.id) return;
+    adopted.current = { id: candidate.id, targetKey: reviewKey(batch, candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId) };
+    setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
+    // As the native Check does, so the dialog can offer the server's assignees.
+    onUsers(candidate.preflight.extensions.user_id_type ?? []);
+  }, [candidate, batch.id, batch.modifiedAt, config?.serverUrl, config?.userId, targetKey, onUsers]);
 
   useEffect(() => {
     setProjects(null); setConnection(null);
@@ -90,28 +118,34 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const live = record && connection && sameTarget(record, connection) ? connection : null;
   const counts = record ? publicationCounts(record) : null;
 
-  const act = (work: () => Promise<void>) => flight.start(async () => {
+  const act = (work: (isCurrent: () => boolean) => Promise<void>) => flight.start(async run => {
+    const epoch = reviewEpoch.current;
+    const isCurrent = () => run.isCurrent() && reviewEpoch.current === epoch;
     setError(null);
-    try { await work(); }
+    try { await work(isCurrent); }
     catch (cause) {
       console.warn('[BCF publication] Action failed', cause);
-      setError(cause instanceof Error ? cause.message : String(cause));
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));
     }
   });
   const adopt = (result: PreflightReport) => {
     setPreflight(result);
     setTopicTypes(current => preselectTopicTypes(result, current));
   };
-  const check = () => act(async () => {
+  const check = () => act(async isCurrent => {
     if (!target || !connection) return;
+    // The user's own Check supersedes an agent-staged candidate, as editing a choice does.
+    noteBcfPublicationUserChoice();
     const plan = await planDraftPublication(batch, record, target, undefined, { rules: publicationRules(connection), topicTypes });
     const result = await preflightPublication(connection.client, plan.record);
+    if (!isCurrent()) return;
     adopt(result);
     onUsers(result.extensions.user_id_type ?? []);
   });
-  const publish = () => act(async () => {
+  const publish = () => act(async isCurrent => {
     if (!target || !connection) return;
-    const published = await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000, topicTypes });
+    const published = await publishNativeBcfReview(batch, target, connection, topicTypes);
+    if (!isCurrent()) return;
     if (!published) { setError(t('bcfDrafts.publish.storageRefused')); return; }
     setReport(published.report);
     if (published.report.preflight) adopt(published.report.preflight);
@@ -127,7 +161,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       <label className="flex items-center gap-2">
         {t('bcfDrafts.publish.project')}
         <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={projectId}
-          disabled={!projects?.length || busy} onChange={event => { setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
+          disabled={!projects?.length || busy} onChange={event => { noteBcfPublicationUserChoice(); setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
           {(projects ?? []).map(project => <option key={project.project_id} value={project.project_id}>{project.name ?? project.project_id}</option>)}
         </select>
       </label>
@@ -153,7 +187,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
         <label key={type} className="flex flex-wrap items-center gap-2 rounded bg-warn-surface px-2 py-1">
           {t('bcfDrafts.publish.topicType', { type })}
           <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={topicTypes[type] ?? ''} disabled={busy}
-            onChange={event => setTopicTypes(current => ({ ...current, [type]: event.target.value }))}>
+            onChange={event => { noteBcfPublicationUserChoice(); setTopicTypes(current => ({ ...current, [type]: event.target.value })); }}>
             {allowed.map(option => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>

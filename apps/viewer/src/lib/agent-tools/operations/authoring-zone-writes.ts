@@ -8,7 +8,6 @@ import { operation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
-import { zoneAssignmentSignature } from '@/lib/zones/assignment-signature';
 import type { ZoneSet } from '@/lib/zones/types';
 import { evictOldest } from './host-handles';
 import { boundedPage } from './result-limit';
@@ -19,9 +18,7 @@ const meta = (id: string, description: string, effect: 'read' | 'model' | 'artif
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema,
   policy: effect === 'model' ? { model: 'native-reviewed' as const } : effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
-interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ViewerState['models']; revision: number; geometry: ViewerState['geometryResult']; content: number; inputs: string;
-  /** The set's assignments when reviewed: a removal walks the assignments, which the set digest does not cover. */
-  assignments: string; result?: unknown }
+interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ViewerState['models']; revision: number; geometry: ViewerState['geometryResult']; content: number; inputs: string; result?: unknown }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) { let value = hosts.get(c.host); if (!value) { value = new Map(); hosts.set(c.host, value); } return value; }
 function zoneSet(id: string) { const set = useViewerStore.getState().zoneSets.find(row => row.id === id); if (!set) throw new Error('Unknown zone set.'); return set; }
@@ -61,7 +58,6 @@ function validate(candidate: Candidate) {
   // one (realignFederation) bumps only geometryContentVersion.
   if (!sameModels(state.models, candidate.models) || state.mutationVersion !== candidate.revision || !sameGeometry(state.geometryResult, candidate.geometry)
     || state.geometryContentVersion !== candidate.content) throw new Error('Zone/model inputs changed after review.');
-  if (zoneAssignmentSignature(state.zoneAssignments, candidate.setId) !== candidate.assignments) throw new Error('Zone assignments changed after review. Prepare again.');
   // Equal but for colour: track the current objects, so the next check is an identity check, not another walk.
   candidate.models = state.models; candidate.geometry = state.geometryResult;
   const permission = mutationPermissionForModels(state, candidate.modelIds); if (!permission.allowed) throw new Error(`Native write refused: ${permission.reason}`);
@@ -82,7 +78,7 @@ export const zoneWriteOperations = [
     if (JSON.stringify([...i.model_ids].sort()) !== JSON.stringify(current) || !i.model_ids.includes(c.model.id)) throw new Error('model_ids must explicitly name every currently loaded IFC target.');
     const set = zoneSet(i.set_id), rows = buildZoneTable(set, i.basis);
     const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult, content: state.geometryContentVersion,
-      inputs: writebackInputs(i.action, set, rows), assignments: zoneAssignmentSignature(state.zoneAssignments, i.set_id) };
+      inputs: writebackInputs(i.action, set, rows) };
     validate(candidate); evictOldest(owned(c), 32); const token = crypto.randomUUID(); owned(c).set(token, candidate);
     // The token covers every row; the preview carries as many as fit the result limit (#10794).
     const rest = { token, action: i.action, model_ids: i.model_ids, row_count: rows.length, truncated: true, undo: 'explicit-native-remove; not history Undo', partial_outcomes: true };

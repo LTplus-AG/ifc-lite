@@ -560,7 +560,7 @@ END-ISO-10303-21;
     useViewerStore.setState({ zoneAssignments: new Map([[WALL_ID, { 'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: true, touchedZoneIds: ['z-a'] } }]]) as never });
     const applied = await invoke('zones.writeback.apply', { token: changed }, true);
     assert.equal(applied.isError, true);
-    assert.match(applied.text, /assignments changed/);
+    assert.match(applied.text, /changed after review/); // main's writeback digest covers the rows the assignments produce
   });
 
   const tableExport = { set_id: 'set-1', basis: 'mesh', format: 'parquet' } as const;

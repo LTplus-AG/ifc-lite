@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { firstAttemptSeconds, planSelectedRetry, runSelectedTests, verdict, withTapReporter } from './viewer-select-run.mjs';
+import { REPORT_RESERVE_MS, childSeconds, firstAttemptSeconds, planSelectedRetry, runSelectedTests, verdict, withTapReporter } from './viewer-select-run.mjs';
 
 const TMP = mkdtempSync(join(tmpdir(), 'viewer-select-run-'));
 
@@ -132,12 +132,66 @@ test('runSelectedTests: `off` does not retry; `shadow` retries but keeps the fai
   assert.equal(readFileSync(shadow.counter, 'utf8'), '2');
 });
 
-test('firstAttemptSeconds leaves five minutes of the job for the retry and the status step', () => {
-  const now = 1_000_000_000_000;
-  const at = (minAgo) => String((now - minAgo * 60_000) / 1000);
-  assert.equal(firstAttemptSeconds({ JOB_STARTED_AT: at(2), JOB_TIMEOUT_MINUTES: '20' }, now), 13 * 60, '20 - 2 - 5');
-  assert.equal(firstAttemptSeconds({ JOB_STARTED_AT: at(19), JOB_TIMEOUT_MINUTES: '20' }, now), 60, 'at least a minute');
-  assert.equal(firstAttemptSeconds({}, now), 12 * 60, 'unknown start: a fixed cap');
+const NOW = 1_000_000_000_000;
+const startedMinAgo = (min) => ({ JOB_STARTED_AT: String((NOW - min * 60_000) / 1000), JOB_TIMEOUT_MINUTES: '20' });
+
+test('firstAttemptSeconds leaves five minutes for the retry and the reporting reserve, and never reaches the reserve', () => {
+  assert.equal(firstAttemptSeconds(startedMinAgo(2), NOW), 13 * 60, '20 - 2 - 5');
+  assert.equal(firstAttemptSeconds(startedMinAgo(14), NOW), 60, 'the last full minute of retry room');
+  // Less than that: no retry room is kept; whatever ends before the 3-minute reserve with its 30 s kill-after.
+  assert.equal(firstAttemptSeconds(startedMinAgo(14.5), NOW), 120, '20 - 14.5 - 3 min - 30 s');
+  assert.equal(firstAttemptSeconds(startedMinAgo(16.4), NOW), 6);
+  assert.equal(firstAttemptSeconds(startedMinAgo(16.5), NOW), 0, 'the reserve is all that is left: do not start (was "at least a minute")');
+  assert.equal(firstAttemptSeconds(startedMinAgo(19), NOW), 0);
+  assert.equal(firstAttemptSeconds({}, NOW), 12 * 60, 'unknown start: a fixed cap');
+});
+
+test('childSeconds: any child, kill-after included, ends before the reporting reserve', () => {
+  assert.equal(REPORT_RESERVE_MS, 3 * 60_000);
+  assert.equal(childSeconds(startedMinAgo(2), 8 * 60_000, NOW), 8 * 60, 'its own cap when the reserve is far');
+  assert.equal(childSeconds(startedMinAgo(10), 8 * 60_000, NOW), 390, '20 - 10 - 3 min - 30 s, below the 8-minute cap');
+  assert.equal(childSeconds(startedMinAgo(17), 8 * 60_000, NOW), 0);
+  assert.equal(childSeconds({}, 90_000, NOW), 90, 'unknown end: the cap alone');
+  for (let min = 0; min <= 20; min += 0.25) {
+    const s = childSeconds(startedMinAgo(min), Infinity, NOW);
+    if (s > 0) assert.ok(NOW + (s + 30) * 1000 <= NOW - min * 60_000 + 20 * 60_000 - REPORT_RESERVE_MS, `at ${min} min`);
+  }
+});
+
+/** Swap the fixture's `timeout` for one that records its limit and runs the child. */
+function recordTimeouts(f) {
+  const bin = f.env.PATH.split(':')[0];
+  const log = join(bin, 'timeouts');
+  writeFileSync(join(bin, 'timeout'), `#!/bin/sh\necho "$2" >> ${JSON.stringify(log)}\nshift 2\nexec "$@"\n`, { mode: 0o755 });
+  return () => readFileSync(log, 'utf8').split('\n').filter(Boolean).map((x) => Number(x.replace(/s$/, '')));
+}
+
+test('runSelectedTests: a retry that may hang is capped so the reporting reserve remains (thread 865ioYL)', () => {
+  const f = fixture(1);
+  // 10 minutes in: the shards' retry budget is min(8 min, 20 - 10 - 3) = 7 min; a hang there,
+  // killed 30 s after its limit, used to end at 7.5 min, inside the reserve.
+  const started = Math.floor(Date.now() / 1000) - 10 * 60;
+  f.env.JOB_STARTED_AT = String(started);
+  const limits = recordTimeouts(f);
+  const { result } = runIt(f, 'on');
+  assert.equal(result.passed, true, 'the retry ran');
+  const [first, retry] = limits();
+  assert.ok(first <= 5 * 60, `first attempt ${first} s: 20 - 10 - 5 min`);
+  const reserveStarts = (started + 20 * 60) * 1000 - REPORT_RESERVE_MS;
+  assert.ok(Date.now() + (retry + 30) * 1000 <= reserveStarts, `retry limit ${retry} s + 30 s kill-after ends before the reserve`);
+  assert.ok(retry >= 380, `and still uses the room it has (${retry} s)`);
+});
+
+test('runSelectedTests: no attempt starts once only the reporting reserve is left; a timeout failure is recorded (thread 865iyj4)', () => {
+  const f = fixture(0);
+  f.env.JOB_STARTED_AT = String(Math.floor(Date.now() / 1000) - 17 * 60);
+  const { code, result } = runIt(f, 'on');
+  assert.equal(code, 0);
+  assert.equal(readFileSync(f.counter, 'utf8'), '0', 'pnpm was never started');
+  assert.equal(result.notStarted, true);
+  assert.equal(result.timedOut, true);
+  assert.equal(result.passed, false);
+  assert.equal(result.retry, null);
 });
 
 test('runSelectedTests: a first attempt that `timeout` stopped is recorded as timed out', () => {

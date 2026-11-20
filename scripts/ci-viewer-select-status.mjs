@@ -115,7 +115,7 @@ export function gateApplies({ mode, lane, frontend, rust }) {
  *   event?: string, lane?: string, batch?: string, noop?: string, frontend?: string, rust?: string,
  *   shardsResult?: string, jobStatus?: string, selectOutcome?: string, run?: string,
  *   downloadOutcome?: string, runOutcome?: string,
- *   result?: { files: number, passed: boolean, failedFiles?: string[], passedOnRetry?: string[], timedOut?: boolean } | null }} input
+ *   result?: { files: number, passed: boolean, failedFiles?: string[], passedOnRetry?: string[], timedOut?: boolean, notStarted?: boolean } | null }} input
  * @returns {{ post: false, reason: string } | { post: true, state: 'pending'|'success'|'failure', description: string }}
  */
 export function decideStatus(input) {
@@ -149,6 +149,7 @@ export function decideStatus(input) {
     const retried = result.passedOnRetry?.length ?? 0;
     return post('success', `${plural(result.files, 'selected file')} passed${retried > 0 ? ` (${retried} after a retry)` : ''}`);
   }
+  if (result.notStarted) return post('failure', `No job time left to run the selected tests; ${RERUN}`);
   if (result.timedOut) return post('failure', `The selected tests timed out (${plural(result.files, 'file')}); ${RERUN}`);
   const failed = result.failedFiles ?? [];
   if (failed.length === 0) return post('failure', `${plural(result.files, 'selected file')} ran; a failure no file could be tied to`);

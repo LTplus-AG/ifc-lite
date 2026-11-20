@@ -39,23 +39,50 @@ import {
 /** Shorter retries than this are not worth starting (as ci-shard-retry.mjs). */
 const MIN_RETRY_MS = 60_000;
 /**
- * Job time the first attempt leaves unused: room for a retry and, above all,
- * for the status step, so a hung test ends as a posted failure rather than a
- * job killed by its own timeout with the pending status left behind.
+ * THE REPORTING RESERVE: the last part of the job that no test child may
+ * reach, so result.json, the `PR viewer selection` verdict and the artifact
+ * upload always run. Without it a hung test (first attempt or retry) ends with
+ * the job killed by its own timeout and the pending status left behind.
+ */
+export const REPORT_RESERVE_MS = 3 * 60_000;
+/** coreutils `timeout --kill-after`: a child may outlive its limit by this. */
+const KILL_AFTER_S = 30;
+/**
+ * Job time the first attempt leaves unused beyond the reserve's share: room
+ * for a retry. Dropped when the job is too far gone to keep it.
  */
 const FIRST_RESERVE_MS = 5 * 60_000;
 /** The first attempt's cap when the job start or limit is unknown. */
 const FIRST_FALLBACK_S = 12 * 60;
 
-/**
- * Seconds the first attempt may run: what is left of the job minus
- * FIRST_RESERVE_MS, at least a minute; FIRST_FALLBACK_S when unknown.
- */
-export function firstAttemptSeconds(env, now = Date.now()) {
+function jobEndMs(env) {
   const started = Number(env.JOB_STARTED_AT) * 1000;
   const limit = Number(env.JOB_TIMEOUT_MINUTES) * 60_000;
-  if (!(started > 0) || !(limit > 0)) return FIRST_FALLBACK_S;
-  return Math.max(60, Math.floor((started + limit - FIRST_RESERVE_MS - now) / 1000));
+  return started > 0 && limit > 0 ? started + limit : null;
+}
+
+/**
+ * Whole seconds a test child may be given: at most `capMs`, and, when the
+ * job's end is known, ending (kill-after included) before the reporting
+ * reserve. 0 means "do not start it".
+ */
+export function childSeconds(env, capMs, now = Date.now()) {
+  const end = jobEndMs(env);
+  const room = end === null ? capMs : Math.min(capMs, end - REPORT_RESERVE_MS - KILL_AFTER_S * 1000 - now);
+  return room >= 1000 ? Math.floor(room / 1000) : 0;
+}
+
+/**
+ * Seconds the first attempt may run: what is left of the job minus
+ * FIRST_RESERVE_MS while at least a minute of that remains, else whatever
+ * fits before the reporting reserve (0: not started); FIRST_FALLBACK_S when
+ * the job's end is unknown.
+ */
+export function firstAttemptSeconds(env, now = Date.now()) {
+  const end = jobEndMs(env);
+  if (end === null) return FIRST_FALLBACK_S;
+  const withRetryRoom = end - FIRST_RESERVE_MS - now;
+  return childSeconds(env, withRetryRoom >= 60_000 ? withRetryRoom : Infinity, now);
 }
 
 /** coreutils `timeout`: 124 when it fired, 137 when --kill-after had to SIGKILL. */
@@ -132,15 +159,23 @@ export function runSelectedTests({ root, viewer, dir: given, env, runner }) {
 
   const firstTap = join(dir, 'attempt1.tap');
   // Under `timeout` (process group, as the retry), so a hung test cannot eat the job.
-  const r = spawnSync('timeout', ['--kill-after=30s', `${firstAttemptSeconds(env)}s`, 'pnpm', 'exec', bin, ...args, ...files], {
-    cwd, stdio: 'inherit', env: { ...env, NODE_OPTIONS: withTapReporter(env.NODE_OPTIONS, firstTap) },
-  });
-  if (r.error) throw r.error;
+  const firstSeconds = firstAttemptSeconds(env);
+  const notStarted = firstSeconds === 0;
+  let r = { status: 124, signal: null };
+  if (notStarted) {
+    // The reporting reserve is all that is left: report, do not test.
+    console.log('::warning title=Selected viewer tests::no job time left before the reporting reserve; the tests were not started');
+  } else {
+    r = spawnSync('timeout', [`--kill-after=${KILL_AFTER_S}s`, `${firstSeconds}s`, 'pnpm', 'exec', bin, ...args, ...files], {
+      cwd, stdio: 'inherit', env: { ...env, NODE_OPTIONS: withTapReporter(env.NODE_OPTIONS, firstTap) },
+    });
+    if (r.error) throw r.error;
+  }
   const exitCode = r.status ?? 1;
 
   let retry = null;
   // Parsed in every mode, so the status can name the failing files; `off` never retries.
-  if (exitCode !== 0) {
+  if (exitCode !== 0 && !notStarted) {
     const budgetMs = retryBudgetMs(env);
     let viewerRoot = cwd;
     try {
@@ -151,7 +186,8 @@ export function runSelectedTests({ root, viewer, dir: given, env, runner }) {
       const deadline = Date.now() + budgetMs;
       const results = [];
       for (const [i, file] of retry.files.entries()) {
-        const left = Math.floor((deadline - Date.now()) / 1000);
+        // Within the shared retry budget AND before the reporting reserve.
+        const left = childSeconds(env, deadline - Date.now());
         if (left < 1) {
           results.push({ file, passed: false, reason: 'the shared retry budget ran out before this file' });
           break;
@@ -159,7 +195,7 @@ export function runSelectedTests({ root, viewer, dir: given, env, runner }) {
         const tap = join(dir, `retry-${i}.tap`);
         console.log(`[ci-viewer-select] rerunning ${file}`);
         // coreutils `timeout` signals the whole process group (see ci-shard-retry.mjs).
-        const again = spawnSync('timeout', ['--kill-after=30s', `${left}s`, 'pnpm', 'exec', bin, ...args, file], {
+        const again = spawnSync('timeout', [`--kill-after=${KILL_AFTER_S}s`, `${left}s`, 'pnpm', 'exec', bin, ...args, file], {
           cwd, stdio: 'inherit', env: { ...env, NODE_OPTIONS: withTapReporter(env.NODE_OPTIONS, tap) },
         });
         const text = readOptional(tap);
@@ -179,7 +215,7 @@ export function runSelectedTests({ root, viewer, dir: given, env, runner }) {
 
   const v = verdict({ exitCode, mode, retry });
   const timedOut = !v.passed && timedOutExit(exitCode);
-  writeFileSync(join(dir, 'result.json'), `${JSON.stringify({ files: files.length, exitCode, signal: r.signal ?? null, timedOut, retry, ...v })}\n`);
+  writeFileSync(join(dir, 'result.json'), `${JSON.stringify({ files: files.length, exitCode, signal: r.signal ?? null, timedOut, notStarted, retry, ...v })}\n`);
   const summary = (lines) => env.GITHUB_STEP_SUMMARY && appendFileSync(env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
   if (!v.passed) {
     const msg = `${files.length} selected viewer test file(s) ran and at least one failed (exit ${exitCode}). The \`PR viewer selection\` status blocks queue entry; see the log above.`;

@@ -63,6 +63,8 @@ test('final: a missing verdict names the remedy; expired build artifacts say so'
   assert.equal(final({ runOutcome: 'skipped', result: null }).description, 'The selected tests did not report (step skipped); re-run all jobs or push');
   assert.equal(final({ selectOutcome: 'failure' }).description, 'The selection step ended failure; re-run all jobs or push');
   assert.equal(final({ result: { files: 3, passed: false, timedOut: true } }).description, 'The selected tests timed out (3 files); re-run all jobs or push');
+  assert.deepEqual(final({ result: { files: 3, passed: false, timedOut: true, notStarted: true } }),
+    { post: true, state: 'failure', description: 'No job time left to run the selected tests; re-run all jobs or push' });
   assert.equal(final({ downloadOutcome: 'success', result: { files: 1, passed: true } }).state, 'success');
 });
 

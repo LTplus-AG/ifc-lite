@@ -12,7 +12,8 @@ import { useViewerStore } from '@/store';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { activeGeometryBackingTap, geometryBackingCommand } from './backing-debug-hook';
 import type { TapState } from './store-backing-tap';
-import { noteSceneGeometry } from './released-scene-replay';
+import { noteSceneGeometry, releasedReplaysIdle, splitReleasedForReplay } from './released-scene-replay';
+import { notifyReleasedGeometryMetadataChanged } from './released-geometry-metadata';
 import { rebuildReleasedScene } from './released-device-recovery';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { drainInstancedShards, enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
@@ -201,6 +202,20 @@ describe('released device recovery rebuild (viewer)', () => {
       }
     });
   }
+
+  it('#10937 a viewer replay parked before the loss never resumes after the recovery rebuild', async () => {
+    const meshes = [mesh(1, 0), mesh(2, 4)];
+    releaseCpuMeshBuffers([meshes[1]]);
+    let attempts = 0;
+    splitReleasedForReplay({} as never, meshes, undefined, async () => { attempts++; throw new Error('backing unavailable'); });
+    await releasedReplaysIdle(); // three bounded attempts, then parked on the old scene
+    const parkedAttempts = attempts;
+    const { context } = recordingScene();
+    await rebuildReleasedScene(context); // the renderer reset the scene and runs the rebuild
+    notifyReleasedGeometryMetadataChanged(); // the backing changes after the recovery
+    await releasedReplaysIdle();
+    assert.equal(attempts, parkedAttempts, 'the pre-loss replay was superseded by the recovery: it never runs into the rebuilt scene');
+  });
 
   it('#10937 a model whose instanced templates were not in the scene before the loss is not restaged', async () => {
     const meshes = [mesh(1, 0)];

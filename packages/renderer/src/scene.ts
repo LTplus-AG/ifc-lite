@@ -156,7 +156,7 @@ export class Scene {
   private authoredGeneration = 0;
   // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
   private pickGeometryRevision = 0;
-  private clearEpoch = 0; // moved by every flat clear (clear(), reshapes): a replay begun before owns nothing after (#10264)
+  private clearEpoch = 0; private replayEpoch = 0; // clear() moves clearEpoch (new content); every flat clear (reshape, recovery reset) moves replayEpoch (#10264)
   private triangleCounts = new SceneTriangleCounts();
   private geometryChanges = new GeometryChangeSignal();
   private bumpPickGeometryRevision(): void { this.pickGeometryRevision++; this.geometryChanges.changed(); }
@@ -3612,7 +3612,7 @@ export class Scene {
   resetReleasedForRebuild(): void { this.destroyAllInstancedTemplates(); this.clearFlatGeometry(); this.setEphemeralStreamingMode(false); }
 
   clear(): void {
-    this.modelTranslations.clear(); // clearFlatGeometry() below moves clearEpoch
+    this.clearEpoch++; this.modelTranslations.clear(); // clearFlatGeometry() below moves replayEpoch
     // GPU-instancing templates own their vertex/index/instance buffers. (Freed slots are holes whose
     // buffers are already destroyed — skip them so a per-model removal then clear() can't double-destroy.)
     this.destroyAllInstancedTemplates();
@@ -3629,7 +3629,7 @@ export class Scene {
    */
   clearFlatGeometry(): void {
     this.snapshots.onFlatCleared();
-    this.clearEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.replayEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
     this.clearFlatBuffers();
@@ -3639,7 +3639,7 @@ export class Scene {
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
     this.snapshots.onFlatCleared();
-    this.clearEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.replayEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.

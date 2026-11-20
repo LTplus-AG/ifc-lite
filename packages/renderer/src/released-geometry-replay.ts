@@ -20,7 +20,8 @@
  * it completes. One that errors, is cancelled, is superseded or fails to
  * finalize destroys its own fragments still in the scene and drops its staged
  * bounds, so no surviving box ever holds its extent and nothing has to be
- * recomputed. A `clear()` (the scene's epoch) since it began voids it.
+ * recomputed. A `clear()` or a device-recovery reset since it was called (the
+ * scene's replay epoch) voids it.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
@@ -32,7 +33,7 @@ import type { BoundingBox } from './scene-raycaster.js';
 type BatchedFragment = Parameters<typeof destroyGpuResources>[0];
 /** The scene's own fragment lists and bounds (friend access, as device recovery uses). */
 interface FragmentHost {
-  streamingFragments: BatchedFragment[]; batchedMeshes: BatchedFragment[]; readonly clearEpoch: number;
+  streamingFragments: BatchedFragment[]; batchedMeshes: BatchedFragment[]; readonly replayEpoch: number;
   boundingBoxes: Map<number, BoundingBox>; modelTranslations: { releasedEntities: Map<number, Map<number, BoundingBox>> };
 }
 
@@ -58,10 +59,10 @@ class ReplayTransaction {
     }
   }
 
-  /** Complete: union the staged bounds into the scene's (nothing after a clear()). */
+  /** Complete: union the staged bounds into the scene's (nothing after a clear() or recovery reset). */
   commit(): void {
     const { host } = this;
-    if (host.clearEpoch === this.epoch) {
+    if (host.replayEpoch === this.epoch) {
       for (const [id, box] of this.boxes) { const prior = host.boundingBoxes.get(id); host.boundingBoxes.set(id, prior ? unionBox(prior, box) : box); }
       for (const [id, staged] of this.groups) {
         const current = host.modelTranslations.releasedEntities.get(id) ?? new Map<number, BoundingBox>();
@@ -110,8 +111,8 @@ export async function replayReleasedGeometry(
   const pipeline = renderer.getPipeline();
   if (!pipeline) return { status: 'unavailable', reason: 'no-pipeline' };
   const scene = renderer.getScene();
-  // The scene's epoch when this replay was CALLED: a clear() while it waits for the pass voids it.
-  const calledAt = (scene as unknown as FragmentHost).clearEpoch;
+  // The scene's replay epoch when this replay was CALLED: a clear() or recovery reset since voids it.
+  const calledAt = (scene as unknown as FragmentHost).replayEpoch;
   // One pass at a time per scene: wait for the previous replay to close its own pass.
   const prior = passes.get(scene) ?? Promise.resolve();
   let release!: () => void;
@@ -138,7 +139,7 @@ async function replayOwnPass(
   const host = scene as unknown as FragmentHost;
   const tx = new ReplayTransaction(host, calledAt);
   const reason = (): 'cancelled' | 'superseded' | undefined =>
-    options.signal?.aborted ? 'cancelled' : !current() || host.clearEpoch !== tx.epoch ? 'superseded' : undefined;
+    options.signal?.aborted ? 'cancelled' : !current() || host.replayEpoch !== tx.epoch ? 'superseded' : undefined;
   // Superseded (or the scene cleared) while waiting for the pass: never open one.
   let stopped = reason();
   if (stopped) return { status: stopped, batches: 0, meshes: 0 };
@@ -158,13 +159,13 @@ async function replayOwnPass(
     ok = !stopped;
   } finally {
     // All or nothing: a replay that does not complete removes what it owns, so a retry never
-    // draws a batch twice. Its own pass is always closed (unless a clear() already did).
+    // draws a batch twice. Its own pass is always closed (unless a clear() or reset already did).
     if (!ok) tx.rollBack();
     try {
-      if (host.clearEpoch === tx.epoch && scene.isEphemeralStreaming()) await scene.finalizeStreamingAsync(device, pipeline);
+      if (host.replayEpoch === tx.epoch && scene.isEphemeralStreaming()) await scene.finalizeStreamingAsync(device, pipeline);
     } catch (error) {
       tx.rollBack(); // a replay whose finalize failed is not complete either
-      if (host.clearEpoch === tx.epoch) scene.setEphemeralStreamingMode(false);
+      if (host.replayEpoch === tx.epoch) scene.setEphemeralStreamingMode(false);
       renderer.requestRender();
       throw error;
     }

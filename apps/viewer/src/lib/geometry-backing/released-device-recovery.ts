@@ -30,7 +30,7 @@ import { modelIndices } from '@/lib/model-placement/model-indices';
 import { getViewerState } from '@/store/viewerStoreHandle';
 import { hasInstancedShards } from '@/store/instancedShardModels';
 import { activeGeometryBackingTap } from './backing-debug-hook';
-import { currentSceneGeometry, releasedBatches, releasedReplayEpoch } from './released-scene-replay';
+import { currentSceneGeometry, releasedBatches, releasedReplayEpoch, supersedeReleasedReplays } from './released-scene-replay';
 
 /** A private copy: the lift moves transforms, and the reader may hand the same decode out again. */
 function liftedCopy(shard: DecodedInstancedShard, lift: ReadonlyMap<number, number>): DecodedInstancedShard {
@@ -49,6 +49,9 @@ function viewerSource(state: ReturnType<typeof getViewerState>): unknown[] {
 }
 
 export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipeline, scene, instancedModelIndices, isCurrent: deviceCurrent, requestRender }) => {
+  // The renderer reset the scene: every released replay queued, running or parked before the loss
+  // belongs to the old scene and must never resume into the rebuilt one (#10264).
+  supersedeReleasedReplays();
   const tap = activeGeometryBackingTap();
   if (!tap) return false;
   const state = getViewerState();

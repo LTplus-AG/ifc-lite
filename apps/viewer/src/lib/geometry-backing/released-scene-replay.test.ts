@@ -76,7 +76,7 @@ describe('released scene replay (content reload)', () => {
   it('#10903 a released-only reload is not triangle-count complete while its replay is deferred or parked; only once it completes', async () => {
     const list = releasedList();
     let available = false;
-    const resident = splitReleasedForReplay(renderer, [list[1]], async () => { if (!available) throw new Error('backing unavailable'); return true; });
+    const resident = splitReleasedForReplay(renderer, [list[1]], undefined, async () => { if (!available) throw new Error('backing unavailable'); return true; });
     assert.deepEqual(resident, [], 'released-only: the normal upload has nothing to do');
     let complete = false;
     completeAfterReleasedReplays(() => { complete = true; }); // the pass's own upload succeeded

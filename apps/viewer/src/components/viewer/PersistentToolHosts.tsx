@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createContext, lazy, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -11,10 +12,10 @@ import { ClassVisibilityControls } from './toolbar/ClassVisibilityMenu';
 import { useSectionPaletteHost } from './section-palette-host';
 import type { SurfaceCommandContext } from './surface-command-types';
 
-const BulkPropertyEditor = lazy(() => import('./BulkPropertyEditor').then(module => ({ default: module.BulkPropertyEditor })));
-const DataConnector = lazy(() => import('./DataConnector').then(module => ({ default: module.DataConnector })));
+const BulkPropertyEditor = lazyChunk(() => import('./BulkPropertyEditor').then(module => ({ default: module.BulkPropertyEditor })));
+const DataConnector = lazyChunk(() => import('./DataConnector').then(module => ({ default: module.DataConnector })));
 // The derivation and its structural write path load only when the command is used (#9668).
-const StructuralDerivationDialog = lazy(() => import('./assistant/StructuralDerivationReview').then(module => ({ default: module.StructuralDerivationDialog })));
+const StructuralDerivationDialog = lazyChunk(() => import('./assistant/StructuralDerivationReview').then(module => ({ default: module.StructuralDerivationDialog })));
 
 type ToolContext = Pick<SurfaceCommandContext, 'openBulkProperties' | 'openImportData' | 'openClassFilter' | 'openStructuralDerivation' | 'toolHostIsCurrent' | 'addSectionPlane' | 'sectionAddUnavailable'>;
 const ToolHosts = createContext<ToolContext>({});

@@ -143,7 +143,10 @@ export const validationPanelIt = {
   "contentStorage.checkUsage": "Verifica l'uso dell'archiviazione",
   "contentStorage.unknown": "sconosciuto",
   "contentStorage.estimate": "Dati della libreria in questa scheda: circa {library} MiB. Archiviazione dell'origine: {usage} MiB su circa {quota} MiB, incluse le cache dei modelli e altri dati del sito.",
-  "contentStorage.protected": "L'archiviazione persistente è attiva. Conserva i backup esportati: la cancellazione dei dati del sito elimina comunque i contenuti del browser.",
-  "contentStorage.notProtected": "Il browser non ha concesso l'archiviazione persistente. Il salvataggio funziona comunque; usa i backup esportati per il lavoro importante.",
+  "contentStorage.persistence.persisted": "L'archiviazione persistente è attiva.",
+  "contentStorage.persistence.bestEffort": "Archiviazione non garantita. Il browser può rimuovere il lavoro salvato quando ha bisogno di spazio. Scarica un backup della libreria per conservarne una copia.",
+  "contentStorage.persistence.unsupported": "L'archiviazione persistente non è disponibile qui. Scarica un backup della libreria per conservarne una copia.",
+  "contentStorage.originUsage": "Questo sito usa circa {usage} MiB, incluse le cache dei modelli.",
+  "contentStorage.originQuota": "La quota di archiviazione stimata del browser è di {quota} MiB.",
   "contentStorage.failed": "Operazione di archiviazione non riuscita: {message}",
 } satisfies Catalogue;

@@ -17,7 +17,8 @@ interface ShardTarget { readonly backing?: ModelGeometryBacking; shards: number;
 
 export async function carryBackedShards(source: ShardSource, next: ShardTarget, withheld?: ReadonlySet<PendingInstancedShard>): Promise<void> {
   let ordinal = -1, found = 0;
-  for await (const shard of source.backing!.reader.instancedShards()) {
+  // The source is superseded (not current for consumers) but durable: the tap's own reader carries it.
+  for await (const shard of source.backing!.carryReader.instancedShards()) {
     const from = source.sources[++ordinal] ?? null;
     if (from && withheld?.has(from)) { found++; continue; }
     next.shards++; next.occurrences += shard.instances.length; next.sources.push(source.sources[ordinal] ?? null);

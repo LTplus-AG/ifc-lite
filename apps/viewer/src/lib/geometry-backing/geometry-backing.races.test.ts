@@ -111,9 +111,10 @@ it('#10868 a large single append waits between chunks instead of copying the ent
     unblock();
     await append;
     await backing.writer.close();
-    let count = 0;
-    for await (const meshes of backing.reader.meshes()) count += meshes.length;
-    assert.equal(count, batch.length);
+    // Which meshes survived, with multiplicity: a duplicate plus a drop would keep the count.
+    const ids: number[] = [];
+    for await (const meshes of backing.reader.meshes()) ids.push(...meshes.map((mesh) => mesh.expressId));
+    assert.deepEqual(ids.sort((x, y) => x - y), batch.map((mesh) => mesh.expressId));
   } finally {
     unblock();
     await append;
@@ -200,9 +201,11 @@ it('#10868 concurrent producers share one copy budget and close waits for accept
     await Promise.all(appends);
     await closed;
     assert.equal(backing.isComplete, true);
-    let count = 0;
-    for await (const batch of backing.reader.meshes()) count += batch.length;
-    assert.equal(count, 200, 'close must not acknowledge a prefix of concurrent appends');
+    // Exactly entities 1..200, each once: a duplicate plus a drop would keep the count at 200.
+    const ids: number[] = [];
+    for await (const batch of backing.reader.meshes()) ids.push(...batch.map((mesh) => mesh.expressId));
+    assert.deepEqual(ids.sort((x, y) => x - y), Array.from({ length: 200 }, (_, i) => i + 1),
+      'close must not acknowledge a prefix of concurrent appends');
   } finally {
     unblock();
     await Promise.allSettled([...appends, closed]);

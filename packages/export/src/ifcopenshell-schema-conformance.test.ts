@@ -586,3 +586,26 @@ describe.skipIf(!ifcopenshellAvailable())('records renamed or replaced in place 
     runValidateOrThrow(files);
   }, IFCOPENSHELL_TEST_TIMEOUT_MS);
 });
+
+/** #10778: IfcMonetaryUnit.Currency, an enum in IFC2X3 and a label in IFC4, in both directions. */
+const currencyFile = (schema: string, unit: string): string => [
+  'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+  "FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'t','t','');", `FILE_SCHEMA(('${schema}'));`,
+  'ENDSEC;', 'DATA;', unit, 'ENDSEC;', 'END-ISO-10303-21;',
+].join('\n');
+
+describe.skipIf(!ifcopenshellAvailable())('a retyped currency converts schema-conformant (#10778)', () => {
+  it('validates both sources as controls and both StepExporter conversions', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ifc-lite-10778-'));
+    const files: string[] = [];
+    for (const [from, to, unit] of [['IFC2X3', 'IFC4', '#1=IFCMONETARYUNIT(.EUR.);'], ['IFC4', 'IFC2X3', "#1=IFCMONETARYUNIT('CHF');"]] as const) {
+      const source = join(directory, `${from}.ifc`);
+      writeFileSync(source, currencyFile(from, unit));
+      const store = await new IfcParser().parseColumnar(toArrayBuffer(readFileSync(source)), { disableWorkerScan: true });
+      const output = join(directory, `${from}-to-${to}.ifc`);
+      writeFileSync(output, new TextDecoder().decode(new StepExporter(store).export({ schema: to }).content));
+      files.push(source, output);
+    }
+    runValidateOrThrow(files);
+  }, IFCOPENSHELL_TEST_TIMEOUT_MS);
+});

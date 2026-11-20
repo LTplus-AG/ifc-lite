@@ -956,7 +956,10 @@ describe('RaycastEngine readback meshes (#10264)', () => {
     const hit = engine.raycastScene(400, 300, { snapOptions: { snapToVertices: true, snapToEdges: true } });
     assert.equal(hit?.intersection.expressId, 1);
     assert.deepEqual(hit?.intersection.point, residentHit?.intersection.point, 'the same surface point as over resident pieces');
-    assert.equal(hit?.snap?.type, residentHit?.snap?.type);
+    assert.ok(residentHit?.snap, 'the resident pick snaps: two missing snaps would compare equal and prove nothing');
+    assert.ok(hit?.snap, 'and the readback pick snaps too');
+    assert.equal(hit.snap.type, residentHit.snap.type, 'the same snap kind');
+    assert.deepEqual(hit.snap.position, residentHit.snap.position, 'at the same position');
     assert.equal(engine.raycastScene(400, 300, { hiddenIds: new Set([1]) }), null, 'hidden readback pieces are not hit');
     assert.equal(engine.raycastScene(400, 300, { isolatedIds: new Set([2]) }), null, 'non-isolated readback pieces are not hit');
     engine.setReadbackMeshes(null);

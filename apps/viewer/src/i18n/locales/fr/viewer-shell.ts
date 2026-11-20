@@ -19,6 +19,8 @@ export const viewerShellFr = {
   "viewerShell.chunkError.crashedDetail": "Une erreur inattendue a interrompu l'affichage.",
   "viewerShell.chunkError.reload": "Recharger",
   "viewerShell.staleDeployment.notice": "Une nouvelle version de la visionneuse est disponible : rechargez pour continuer.",
+  "viewerShell.staleDeployment.offline": "Vous êtes hors ligne. Reconnectez-vous pour continuer.",
+  "viewerShell.staleDeployment.reconnected": "Connexion rétablie. Rechargez la page pour continuer.",
   "viewerShell.staleDeployment.reopenPrompt": "La visionneuse a été mise à jour vers une nouvelle version et rechargée. Ouvrez à nouveau {files} pour continuer.",
   "viewerShell.staleDeployment.reopenAction": "Ouvrir un fichier…",
   "viewerShell.hostConfig.errorTitle": "La visionneuse n'a pas pu démarrer",

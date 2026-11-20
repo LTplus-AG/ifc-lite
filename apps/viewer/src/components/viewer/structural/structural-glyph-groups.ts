@@ -20,7 +20,7 @@ import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { ViewerState } from '@/store';
 import type { FederatedModel } from '@/store/types';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 import type { TranslationKey } from '@/i18n';
 import { directrixDisplayPoint, type FederationPointMap } from '@/lib/analytic/directrix-frame';
 import { modelFrameMap } from '@/lib/analytic/selected-centreline-lines';
@@ -133,7 +133,7 @@ export async function structuralGlyphGroups(state: ViewerState, t: Translate, is
     ? [{ modelId, store: model.ifcDataStore, geometry: model.geometryResult, model, view: state.mutationViews.get(modelId) }]
     : []));
   if (state.models.size === 0 && state.ifcDataStore) {
-    const view = state.mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? state.mutationViews.get(LEGACY_MODEL_ID);
+    const view = getLegacyMutationView(state.mutationViews);
     entries.push({ modelId: 'legacy', store: state.ifcDataStore, geometry: state.geometryResult, view });
   }
   // One model's bad data or frame skips that model, not the others.

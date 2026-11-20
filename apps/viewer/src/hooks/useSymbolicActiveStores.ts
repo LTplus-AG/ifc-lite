@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 import { useLoadWindowHold } from './loadWindow.js';
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -67,7 +68,7 @@ export function useSymbolicActiveStores(): SymbolicActiveStore[] {
         store: ifcDataStore,
         modelId: 'legacy',
         idOffset: 0,
-        mutationView: mutationViews.get('__legacy__'),
+        mutationView: getLegacyMutationView(mutationViews),
         translation: [0, 0, 0],
       });
     }

@@ -3,71 +3,132 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * On-demand readback for measure entry points that have no hover in front of
- * them (a touch tap, a click after the view moved, a drag, a second click) on a
- * scene whose CPU geometry was released (#10264). The renderer answers readback
- * pieces only for the exact ray they were prepared for, so an uncovered entry
- * point prepares readback at its own coordinates and re-runs once it is ready.
- * Resident scenes run synchronously, exactly as before.
+ * Readback for measure actions over released CPU geometry (#10264). A released
+ * scene answers a raycast only from pieces read back for that exact point, so a
+ * drag, polyline, radius or angle point that no hover prepared reads its own
+ * point back first, then acts. Resident scenes act synchronously, as before.
  *
- * - Coverage also requires the pieces to have been prepared under the current
- *   hide/isolate state: hiding or unhiding a surface needs a new read.
- * - Gated reads run one after another, so one gesture never cancels another's.
- *   A read a hover cancelled is retried once; an action never runs as if fed.
- * - Every deferred action is fenced: Esc/reset and leaving the tool
- *   (`invalidatePendingMeasureReadbacks`) and the caller's own `stillValid`.
+ * - Reads run one after another, so actions land in the order they were asked.
+ * - Two lifetimes. A preview (hover, drag) is fenced by `invalidatePendingMeasureReadbacks`
+ *   (any press, release or cancel of the preview frame). A placement (a polyline, radius or angle
+ *   point) is a user action: a later press never drops it; only its own `stillValid` (a gesture
+ *   reset: Esc, a mode or tool switch, a model reposition) does.
+ * - An action runs only on `fed` or `no-hit`. A `cancelled` read (a newer read
+ *   took the feeder) is retried (a placement up to 8 times); an `unavailable` one (an unbacked front
+ *   surface, an instanced occurrence) never acts: a raycast past it could
+ *   measure or snap to whatever is behind, a point cloud included.
+ * - A read answers the hide/isolate state it was made under. If that state changed before the
+ *   action runs (a surface unhidden mid-read), the read is redone first, like a `cancelled` one:
+ *   the raycast would otherwise test the now-visible surface against pieces chosen without it.
  */
 
 import type { Renderer } from '@ifc-lite/renderer';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
-import { fedUnderVisibility, type ReadbackVisibility } from '@/lib/geometry-backing/readback-coverage';
+import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import type { ReadbackKind } from './measureReadback.js';
 
+type Visibility = { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null };
+/** The hide/isolate state now: a fixed value, or the handler's refs read at each step. */
+type VisibilityNow = Visibility | (() => Visibility);
+const visibilityOf = (v: VisibilityNow): (() => Visibility) => (typeof v === 'function' ? v : () => v);
+/** The store replaces these sets on every change, so identity tells whether a read still answers. */
+const sameVisibility = (a: Visibility, b: Visibility): boolean => a.hiddenIds === b.hiddenIds && (a.isolatedIds ?? null) === (b.isolatedIds ?? null);
+type Feed = (renderer: Renderer, x: number, y: number, visibility: Visibility) => Promise<string>;
+const realFeed: Feed = async (...args) => (await import('@/lib/geometry-backing/readback-measure')).feedReadbackAt(...args);
+let feed: Feed = realFeed;
+/** TEST ONLY: drive the gate's read step; `null` restores the real feeder. */
+export function setMeasureReadbackFeedForTest(next: Feed | null): void { feed = next ?? realFeed; }
+
+const PLACEMENT_RETRIES = 8;
 let epoch = 0;
 let chain: Promise<void> = Promise.resolve();
-let queued = 0;
+/** The newest hover read: an older one that resolves later, or one a press cancelled, never acts. */
+let hoverRead = 0;
 
-/** A reset gesture or a tool change: no readback queued before it may act. */
-export function invalidatePendingMeasureReadbacks(): void { epoch++; }
+/** A press, release or preview cancel: no PREVIEW queued or in flight before it may act, hover included. */
+export function invalidatePendingMeasureReadbacks(): void { epoch++; hoverRead++; }
 
-/** Whether (x, y) can be raycast now without a new readback. */
-export function readbackCovers(renderer: Renderer, x: number, y: number, visibility: ReadbackVisibility): boolean {
-  return !sceneGeometryReleased(renderer) || (renderer.readbackRaycastCovers(x, y) && fedUnderVisibility(renderer, visibility));
-}
+/** Whether a read outcome may be acted on as a real answer for that point. */
+export const answered = (outcome: string): boolean => outcome === 'fed' || outcome === 'no-hit' || outcome === 'resident';
 
-/** Run `action` now, or after readback at (x, y) when it is needed and missing. Returns true if deferred. */
-type Feed = (renderer: Renderer, x: number, y: number, visibility: ReadbackVisibility) => Promise<string>;
-const realFeed: Feed = async (...args) => (await import('@/lib/geometry-backing/readback-measure')).feedReadbackAt(...args);
-let defaultFeed: Feed = realFeed;
-/** TEST ONLY: drive the gate's read step from a handler-level test; `null` restores the real feeder. */
-export function setMeasureReadbackFeedForTest(feed: Feed | null): void { defaultFeed = feed ?? realFeed; }
-
-export function runWithReadback(renderer: Renderer, x: number, y: number, visibility: ReadbackVisibility, action: () => void,
-  stillValid: () => boolean = () => true, feed: Feed = defaultFeed): boolean {
-  if (readbackCovers(renderer, x, y, visibility)) { action(); return false; }
+/** Run `action` now (resident), or after reading (x, y) back. Returns true if deferred. */
+export function runWithReadback(renderer: Renderer, x: number, y: number, visibility: VisibilityNow, action: () => void,
+  stillValid: () => boolean = () => true, kind: 'preview' | 'placement' = 'preview'): boolean {
+  if (!sceneGeometryReleased(renderer)) { action(); return false; }
   const mine = epoch;
-  const valid = () => mine === epoch && stillValid();
-  queued++;
+  const valid = () => (kind === 'placement' || mine === epoch) && stillValid();
+  const now = visibilityOf(visibility);
   chain = chain.then(async () => {
     if (!valid()) return;
-    let outcome = await feed(renderer, x, y, visibility);
-    if (outcome === 'cancelled' && valid()) outcome = await feed(renderer, x, y, visibility); // a hover overtook it
-    if (outcome === 'cancelled' || !valid()) return;
-    action(); // fed, or answered (no hit / unavailable): the raycast then misses rather than measuring stale pieces
-  }).catch((error: unknown) => console.error('[Measure] Geometry readback failed', error)).finally(() => { queued--; });
+    // A newer read (a moving hover) took the feeder, or the hide/isolate state changed under it: read again.
+    // A preview retries once; a placement keeps retrying while it is valid (bounded), so a click is never
+    // dropped because the pointer kept moving.
+    let under = now();
+    let outcome = await feed(renderer, x, y, under);
+    const stale = () => outcome === 'cancelled' || !sameVisibility(under, now());
+    for (let tries = kind === 'placement' ? PLACEMENT_RETRIES : 1; stale() && valid() && tries > 0; tries--) {
+      under = now();
+      outcome = await feed(renderer, x, y, under);
+    }
+    if (stale() && kind === 'placement' && valid()) console.warn('[Measure] Point not placed: geometry readback kept being superseded');
+    if (valid() && !stale() && answered(outcome)) action();
+  }).catch((error: unknown) => console.error('[Measure] Geometry readback failed', error));
   return true;
 }
 
 /**
- * Run `action` after every gated readback queued so far (a double-click finish after its own deferred
- * clicks), or now when none is pending. Fenced like them. Returns true if deferred.
+ * A hover preview: `run` now (resident), else after its own read, latest wins. It acts only on an answered
+ * read; an `unavailable` one (never raycast past an unbacked front: it could snap to a point cloud behind)
+ * clears the preview via `clear`. A `cancelled` one was superseded by a newer read, which acts instead.
  */
-export function runAfterMeasureReadbacks(action: () => void, stillValid: () => boolean = () => true): boolean {
-  if (queued === 0) { action(); return false; }
-  const mine = epoch;
-  queued++;
-  chain = chain.then(() => { if (mine === epoch && stillValid()) action(); }).finally(() => { queued--; });
-  return true;
+export function hoverWithReadback(renderer: Renderer, x: number, y: number, visibility: VisibilityNow, run: () => void,
+  stillValid: () => boolean, clear: () => void): void {
+  if (!sceneGeometryReleased(renderer)) { run(); return; }
+  const mine = ++hoverRead;
+  const now = visibilityOf(visibility);
+  const under = now();
+  void feed(renderer, x, y, under).then((outcome) => {
+    // A hide/isolate change mid-read: this preview answers the old state, and the next hover reads the new one.
+    if (mine !== hoverRead || !stillValid() || !sameVisibility(under, now())) return;
+    if (answered(outcome)) run(); else if (outcome === 'unavailable') clear();
+  }, (error: unknown) => console.error('[Measure] Geometry readback failed', error));
 }
 
-/** Settles once every queued gated readback has run (tests). */
+/**
+ * Run `action` after every placement already queued (resident: now), still fenced by `stillValid`. A
+ * double-click finish must see the points of the clicks before it, which a released scene places later.
+ */
+export function afterPlacements(renderer: Renderer, action: () => void, stillValid: () => boolean): void {
+  if (!sceneGeometryReleased(renderer)) { action(); return; }
+  chain = chain.then(() => { if (stillValid()) action(); }).catch((error: unknown) => console.error('[Measure] Finish failed', error));
+}
+
+/** Settles once every queued read has run (tests). */
 export function measureReadbacksIdle(): Promise<void> { return chain; }
+
+// The handlers' readback paths, loaded only for a released scene (`measureReadback.ts` is the eager half).
+
+/** What a click captured when it happened: the reset that drops its placement is any change of these. */
+export interface PlacementScope { tool: string; gesture: number }
+
+/** One entry for every handler: a hover or drag preview, a placement, or a double-click finish. */
+/** The store state the readback paths read, handed in by the eager half. */
+export type GateStore = () => { measureGestureEpoch: number; setMeasurePointLive: (point: null) => void };
+
+// `actNow` and the store come from the eager half, never by static import: that cycle would merge this module
+// into the entry chunk, and a store import lists its whole graph as this chunk's preload dependencies.
+export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => void, x: number, y: number, scope: PlacementScope,
+  actNow: (act: () => void) => void, store: GateStore): void {
+  const visibility = (): Visibility => ({ hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current });
+  const measuring = () => ctx.activeToolRef.current === 'measure';
+  const inScope = () => ctx.activeToolRef.current === scope.tool && store().measureGestureEpoch === scope.gesture;
+  if (kind === 'hover') {
+    // A refused hover (unavailable) leaves no preview residue.
+    hoverWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), measuring, () => {
+      ctx.setSnapTarget(null); ctx.setSnapVisualization(null); ctx.clearEdgeLock(); store().setMeasurePointLive(null);
+    });
+  } else if (kind === 'drag') runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), measuring);
+  else if (kind === 'place') runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), inScope, 'placement');
+  // A double-click finish runs after every placement already queued in its gesture.
+  else afterPlacements(ctx.renderer, () => actNow(act), () => scope.tool === 'measure' && inScope());
+}

@@ -8234,6 +8234,7 @@
     "iterateEffectiveEntityIds: function",
     "matchRowAgainstContext: function",
     "parseValue: function",
+    "prepareMutationViewMerge: function",
     "propertyKey: function",
     "quantityKey: function",
     "recordCompoundMutation: function",

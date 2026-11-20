@@ -41,6 +41,7 @@ function host(state: { released: boolean; hit: { expressId: number; modelIndex?:
     getInstancedEntityBounds: (id: number) => instanced.get(id) ?? null,
     // A model translated by +100 in x, as the scene's own placement would.
     placeAppearanceSource: (m: MeshData) => ({ ...m, origin: [100 + (m.origin?.[0] ?? 0), m.origin?.[1] ?? 0, m.origin?.[2] ?? 0] as [number, number, number] }),
+    getModelRotation: () => null,
   };
   const value: ReadbackRaycastHost = {
     pick: async () => state.hit,
@@ -243,5 +244,36 @@ describe('released geometry readback for tools', () => {
     assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
     await registry.close();
   });
-});
 
+  it('#10884 an instanced hit without a model index is refused, never materialized as model 0', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard());
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const h = host({ released: true, hit: { expressId: 501, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, new Map([[501, near]]));
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'unavailable', 'its occurrences would be placed in the wrong frame');
+    assert.match(feeder.lastError!.message, /no model index/);
+    assert.equal(h.fed.at(-1), null);
+    await registry.close();
+  });
+
+  it('#10884 hidden instanced neighbours neither count toward the cap nor are fed', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard());
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const crowd = new Map<number, Box>([[501, near]]);
+    const hidden = new Set<number>();
+    for (let id = 1000; id < 1300; id++) { crowd.set(id, near); hidden.add(id); } // 300 hidden neighbours inside the box
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, crowd);
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0, { hiddenIds: hidden }), 'fed', feeder.lastError?.message ?? 'not fed');
+    assert.equal(await feeder.prepare(0, 0, { isolatedIds: new Set([501]) }), 'fed', 'isolation leaves the others out too');
+    await registry.close();
+  });
+});

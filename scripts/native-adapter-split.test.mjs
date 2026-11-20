@@ -191,6 +191,12 @@ test('m11-n compares by mesh invariants: SMLib order and quad diagonals do not c
   const halfGone = m11n({ edit: (p) => { p.indices.splice(3, 3, 0, 1, 2); } });
   assert.equal(same(halfGone), false, 'half a face replaced by a duplicate triangle');
   assert.equal(sameReference('temp/m11-n-native.json', halfGone, halfGone), false, 'a duplicate triangle fails even against itself');
+  // The third review counter-example: two triangles of one face trading surfaces ([7,8] -> [8,7]), or corner normals.
+  const twoSurfaces = (surfaces) => m11n({ edit: (p) => { p.surfaceIndices = [...surfaces, 8]; } });
+  assert.equal(sameReference('temp/m11-n-native.json', twoSurfaces([7, 8]), twoSurfaces([8, 7])), false, 'triangles swap source surfaces');
+  const swappedNormals = m11n({ edit: (p) => { p.normals.splice(0, 3, 0, 1, 0); p.normals.splice(9, 3, 0, 1, 0); } });
+  const sameNormalsElsewhere = m11n({ edit: (p) => { p.normals.splice(3, 3, 0, 1, 0); p.normals.splice(12, 3, 0, 1, 0); } });
+  assert.equal(sameReference('temp/m11-n-native.json', swappedNormals, sameNormalsElsewhere), false, 'a corner normal moves to another position');
   // Each face carries the set of positions its triangles use (here the square's four corners, then face 1's three).
   const faces = m11nInvariants(JSON.parse(m11n().toString())).exact[0].rows[0].parts[0].faces;
   assert.deepEqual(faces.map(([id, , , , used]) => [id, used]), [[0, ['[0,0,0]', '[0,1,0]', '[1,0,0]', '[1,1,0]']], [1, ['[0,0,1]', '[0,1,1]', '[1,0,1]']]]);

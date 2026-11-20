@@ -370,6 +370,26 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  it('#10888 an empty statement, then a scoped discard of an EMPTY queue, then seal: the old instanced copy stays', async () => {
+    const store = storeWith({ ed: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('ed', [shardBytes(77)], instancedShardSupplyToken('ed'));
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    await tap.seal();
+    const acknowledged = tap.backing('ed')!;
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // instancing lost
+    discardInstancedShards();
+    completeInstancedShardSupply('ed', 0, instancedShardSupplyToken('ed')); // "this model has no shards": accepted
+    discardInstancedShards('ed'); // nothing queued, no event: only the model's epoch moves
+    const [status] = await tap.seal();
+    assert.equal(status.complete, false, 'the cancelled empty statement must not retire the instanced copy');
+    assert.equal(acknowledged.isCurrent, true, 'the last instanced backing stays durable');
+    const ids: number[] = [];
+    for await (const shard of acknowledged.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    assert.deepEqual(ids, [77]);
+    await tap.stop();
+  });
+
   it('#10888 a full discard after the statement voids it even when it dropped nothing (generation fence)', async () => {
     const store = storeWith({ dg: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });

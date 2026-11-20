@@ -348,7 +348,7 @@ export class StoreGeometryBackingTap {
   /** Close every model's writer and acknowledge complete generations. */
   async seal(): Promise<ModelBackingStatus[]> {
     // A statement holds only while its queue generation does: a full discard since (even of nothing) voids it.
-    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, instancedShardGeneration())) this.abandon(modelId, { generation: tracked.supplied!.generation, epoch: Infinity });
+    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, supplyPoint(modelId))) this.abandon(modelId, { generation: tracked.supplied!.generation, epoch: tracked.supplied!.epoch });
     await this.whenIdle();
     let acknowledged = false;
     for (const [modelId, tracked] of this.tracked) {

@@ -61,7 +61,10 @@ export function acceptStatement(state: ResupplyState, supply: InstancedShardSupp
   state.supplied = { generation: supply.generation, epoch: supply.epoch };
 }
 
-/** A statement whose queue generation has moved on (a full reset, even one that dropped nothing) proves nothing. */
-export function statementVoided(state: ResupplyState, generation: number): boolean {
-  return state.supplied !== undefined && state.supplied.generation !== generation;
+/**
+ * A statement whose supply point has moved on proves nothing: a full reset (even one that dropped
+ * nothing) moves the generation, a discard of the model (even of an empty queue) moves its epoch.
+ */
+export function statementVoided(state: ResupplyState, now: SupplyPoint): boolean {
+  return state.supplied !== undefined && (state.supplied.generation !== now.generation || state.supplied.epoch !== now.epoch);
 }

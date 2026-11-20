@@ -82,6 +82,8 @@ interface CaptureRequest<T> {
   afterRender?: () => void;
   /** Copy/serialize pixels synchronously: WebGPU discards the canvas after presentation. */
   read: (canvas: HTMLCanvasElement) => T;
+  /** The caller's cancellation: a capture still queued when it aborts never takes the viewport. */
+  signal?: AbortSignal;
 }
 
 type Thenable = { then: (...args: never[]) => unknown };
@@ -148,7 +150,7 @@ export function captureViewportFrame<T>(renderer: Renderer, request: Synchronous
   };
   const execute = async (): Promise<T | null> => {
     const signal = session.controller.signal;
-    if (signal.aborted || sessions.get(renderer) !== session) return null;
+    if (signal.aborted || request.signal?.aborted || sessions.get(renderer) !== session) return null;
     session.owned = true;
     awaitingLiveFrame.set(renderer, ++captures);
     let restore: void | (() => void) = undefined;

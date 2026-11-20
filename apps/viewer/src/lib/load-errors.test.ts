@@ -1097,3 +1097,45 @@ describe('#7955 retained host errors classify by their typed code', () => {
   });
 });
 
+describe('WebAssembly SIMD unsupported (#10784)', () => {
+  // The exact message from the PostHog report (V8, a CompileError from compileStreaming).
+  const V8 = 'WebAssembly.compileStreaming(): Compiling function #74 failed: Wasm SIMD unsupported @+117554';
+  const compileError = (message: string) => Object.assign(new Error(message), { name: 'CompileError' });
+
+  it('classifies the engine wordings, bare and worker-wrapped', () => {
+    assert.equal(classifyLoadError(compileError(V8)), 'wasm_simd_unsupported');
+    assert.equal(classifyLoadError(compileError('at offset 117554: SIMD support is not enabled')), 'wasm_simd_unsupported');
+    // A worker-reported compile failure must not read as a crash that a lower tier could fix.
+    assert.equal(classifyLoadError(new Error(`Geometry worker error: CompileError: ${V8}`)), 'wasm_simd_unsupported');
+  });
+
+  it('leaves a message that merely mentions SIMD in its own bucket', () => {
+    assert.equal(classifyLoadError(new Error('SIMD scan finished')), 'unknown');
+    // File names are user-controlled; one with "simd" in it must not claim the benign kind.
+    assert.equal(classifyLoadError(new Error('Failed to load "simd-bench.ifc": format not supported')), 'unknown');
+    assert.equal(classifyLoadError(new Error('Geometry worker error: simd-test.ifc unsupported entity')), 'geometry_worker_crash');
+    assert.equal(classifyLoadError(new Error('Geometry worker error: "Wasm SIMD unsupported.ifc" crashed')), 'geometry_worker_crash');
+    assert.equal(classifyLoadError(new Error('Geometry worker error: "SIMD support is not enabled.ifc" crashed')), 'geometry_worker_crash');
+    assert.equal(classifyLoadError(new Error('Geometry worker error: "x failed: Wasm SIMD unsupported.ifc" crashed')), 'geometry_worker_crash');
+  });
+
+  it('tells the user what is missing instead of the raw compile text', () => {
+    const message = formatLoadError(compileError(V8), 'model.ifc', 'geometry_processing');
+    assert.match(message, /WebAssembly SIMD/);
+    assert.doesNotMatch(message, /Compiling function/);
+  });
+
+  it('groups the analytics event and downgrades it to a warning', () => {
+    const event = scrubEvent<{ event: string; properties: Record<string, unknown> }>({ event: '$exception', properties: {
+      $exception_list: [{ type: 'CompileError', value: V8 }],
+      $exception_level: 'error',
+    } });
+    assert.equal(event?.properties.error_kind, 'wasm_simd_unsupported');
+    assert.equal(event?.properties.$exception_fingerprint, 'ifc-lite:wasm_simd_unsupported');
+    assert.equal(event?.properties.$exception_level, 'warning');
+  });
+
+  it("recognises the viewer's own refusal from its text alone, as the analytics path sees it", () => {
+    assert.equal(classifyLoadError('Wasm SIMD unsupported: this browser cannot compile the geometry engine'), 'wasm_simd_unsupported');
+  });
+});

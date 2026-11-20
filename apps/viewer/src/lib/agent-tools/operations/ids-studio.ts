@@ -49,7 +49,9 @@ function remember(c: ViewerOperationContext, candidate: Candidate) {
   const revision = useViewerStore.getState().idsStudioRevision, stillApplies = candidateStillApplies();
   admitCandidate(candidates(c), { cap: 64, refusal: 'IDS candidate capacity reached; apply or discard a pending candidate.',
     pending: entry => entry.result === undefined, canApply: entry => stillApplies(entry.result !== undefined, () => entry.revision === revision) });
-  const token = crypto.randomUUID(); candidates(c).set(token, candidate); return token;
+  const token = crypto.randomUUID(); candidates(c).set(token, candidate);
+  c.retain(() => { if (candidates(c).get(token)?.result === undefined) candidates(c).delete(token); });
+  return token;
 }
 const tokenSchema: JSONSchemaType<{ token: string }> = { type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false };
 const jsonSchema: JSONSchemaType<{ ops_json: string; document_revision: number }> = { type: 'object', properties: {

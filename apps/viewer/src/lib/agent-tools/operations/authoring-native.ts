@@ -40,6 +40,7 @@ function rememberAll<T extends object>(c: OperationContext, inputs: ReadonlyArra
   return inputs.map(({ input, preview }) => {
     const token = crypto.randomUUID();
     entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
+    c.retain(() => { if (!entries.get(token)?.receipt) entries.delete(token); });
     return { token, revision, preview_json: JSON.stringify(preview) };
   });
 }

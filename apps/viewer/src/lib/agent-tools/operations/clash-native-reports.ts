@@ -166,6 +166,7 @@ export const clashReportOperations = [
       evictOldest(owned(c.host), 32);
       const token = crypto.randomUUID();
       owned(c.host).set(token, { report, signature: preview.signature, action: s.deleteSavedClashReport });
+      c.retain(() => { owned(c.host).delete(token); });
       return out({ token, preview });
     },
   ),

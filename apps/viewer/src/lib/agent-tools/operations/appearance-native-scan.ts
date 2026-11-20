@@ -87,6 +87,7 @@ export const appearanceScanOperations = [
       if (nativeScanStates(c).size >= 8) throw new Error('Native scan session capacity reached.');
       const token = crypto.randomUUID();
       nativeScanStates(c).set(token, { session, pairs: [], version: 0 });
+      c.retain(() => { const state = nativeScanStates(c).get(token); if (state) { releaseNativeScanTransfer(state); nativeScanStates(c).delete(token); } });
       return out({
         token,
         version: 0,

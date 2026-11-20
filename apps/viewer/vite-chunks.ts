@@ -78,13 +78,14 @@ export const preloadHelperChunkGroup = {
 /**
  * The merged STEP export, which runs only when the user exports a federation. The viewer loads it through a dynamic
  * import of `@ifc-lite/export/merged-exporter`; left to the recursive `exporters` group it would sit in that eager
- * chunk. `merged-guid` and `merged-remap` stay there: schema conversion and renumbering use them eagerly.
+ * chunk. `merged-guid` and `merged-remap` stay there: schema conversion and renumbering use them eagerly. So does
+ * `merged-bake`, whose `mergeWarningLabel` the package root exports to the eager export dialog.
  */
 export const mergedExportChunkGroup = {
   name: 'merged-export',
   priority: 50,
   includeDependenciesRecursively: false,
-  test: /\/packages\/export\/src\/merged-(?!guid\.|remap\.)[^/]*\.(ts|js)$/,
+  test: /\/packages\/export\/src\/merged-(?!guid\.|remap\.|bake\.)[^/]*\.(ts|js)$/,
 };
 
 /** A non-recursive group that claims exactly these `apps/viewer/src` modules (`.ts`, no query). */

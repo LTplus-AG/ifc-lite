@@ -101,3 +101,15 @@ test('the installed QuickJS core still splits where the runtime group expects', 
   assert.notEqual(largest, 'index.mjs', 'the runtime lives outside the index, in a file the group claims');
 });
 
+test('the merged-export group claims no merged-* module the eager package root re-exports a value from', () => {
+  // The viewer imports the `@ifc-lite/export` root eagerly; a module it uses through the root and the lazy group both
+  // claim would pull the whole merged-export chunk into the first load (#10798). The exporter itself is imported lazily.
+  const root = readFileSync(resolve(dirname(new URL(import.meta.url).pathname), '../../../../packages/export/src/index.ts'), 'utf8');
+  const eager = [...root.matchAll(/^export \{(?!\s*type\b)[^}]*\} from '\.\/(merged-[\w-]+)\.js';$/gm)]
+    .map(match => match[1]).filter(name => name !== 'merged-exporter');
+  assert.ok(eager.includes('merged-bake'), `expected the root to re-export merged-bake, found ${eager.join(', ')}`);
+  for (const name of [...eager, 'merged-guid', 'merged-remap']) {
+    assert.equal(chunks.mergedExportChunkGroup.test.test(`/repo/packages/export/src/${name}.ts`), false, name);
+  }
+  assert.equal(chunks.mergedExportChunkGroup.test.test('/repo/packages/export/src/merged-exporter.ts'), true);
+});

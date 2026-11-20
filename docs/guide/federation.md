@@ -152,6 +152,11 @@ not.
 
 In the viewer, drop multiple IFC files or load them sequentially. Each model appears as a collapsible group in the hierarchy panel.
 
+When a model reopens with edits to source entities, its new federation
+reservation leaves room for the existing allocator when the global ID limit
+permits. New entities receive fresh IDs even if the replacement file has
+fewer source entities.
+
 ### Programmatic Usage
 
 ```typescript

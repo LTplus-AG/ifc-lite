@@ -7,7 +7,8 @@ import { createSnapshotCapture } from './snapshots';
 export async function exportPreparedChartReport(input: ReportPdfInput, options: { seams?: ReportPdfSeams; signal?: AbortSignal } = {}) {
   options.signal?.throwIfAborted();
   const needed = input.snapshots && input.charts.some(chart => chart.snapshot && (chart.aggregation?.categories.length ?? 0) > 0);
-  const snapshot = options.seams || !needed ? null : createSnapshotCapture();
+  // The signal reaches the capture gate: a cancelled report takes no further viewport frames.
+  const snapshot = options.seams || !needed ? null : createSnapshotCapture(options.signal);
   try {
     const seams = options.seams ?? await browserReportSeams(snapshot?.capture ?? null);
     options.signal?.throwIfAborted(); const result = await generateReportPdf(input, seams);

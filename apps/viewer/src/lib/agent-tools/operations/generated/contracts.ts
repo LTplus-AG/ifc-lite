@@ -7308,6 +7308,573 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "analyticsDisplayOperations"
   },
   {
+    "id": "drawing.state",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Read native generation completion/error/progress, drawing plane, display options, graphic overrides and numerical markups.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "progress": {
+          "type": "number"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plane": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "display": {
+          "type": "object"
+        },
+        "hasDrawing": {
+          "type": "boolean"
+        },
+        "hasSvg": {
+          "type": "boolean"
+        },
+        "preset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overrides": {
+          "type": "array"
+        },
+        "overridesEnabled": {
+          "type": "boolean"
+        },
+        "measurements": {
+          "type": "array"
+        },
+        "polygons": {
+          "type": "array"
+        },
+        "text": {
+          "type": "array"
+        },
+        "clouds": {
+          "type": "array"
+        },
+        "tags": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "progress",
+        "phase",
+        "error",
+        "plane",
+        "display",
+        "hasDrawing",
+        "hasSvg",
+        "preset",
+        "overrides",
+        "overridesEnabled",
+        "measurements",
+        "polygons",
+        "text",
+        "clouds",
+        "tags"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-appearance",
+    "exportName": "analyticsDrawingAppearanceOperations"
+  },
+  {
+    "id": "drawing.generate",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Await the native drawing request queue for the current numerical section plane. The admitted native cut is non-cancellable; terminal ready/error state is verified before reporting completion.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "regenerate": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "regenerate"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "progress": {
+          "type": "number"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plane": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "display": {
+          "type": "object"
+        },
+        "hasDrawing": {
+          "type": "boolean"
+        },
+        "hasSvg": {
+          "type": "boolean"
+        },
+        "preset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overrides": {
+          "type": "array"
+        },
+        "overridesEnabled": {
+          "type": "boolean"
+        },
+        "measurements": {
+          "type": "array"
+        },
+        "polygons": {
+          "type": "array"
+        },
+        "text": {
+          "type": "array"
+        },
+        "clouds": {
+          "type": "array"
+        },
+        "tags": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "progress",
+        "phase",
+        "error",
+        "plane",
+        "display",
+        "hasDrawing",
+        "hasSvg",
+        "preset",
+        "overrides",
+        "overridesEnabled",
+        "measurements",
+        "polygons",
+        "text",
+        "clouds",
+        "tags"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-appearance",
+    "exportName": "analyticsDrawingAppearanceOperations"
+  },
+  {
+    "id": "drawing.configureDisplay",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Configure native drawing visibility, scale and IFC/symbolic annotation settings used by the drawing runtime.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "hidden_lines": {
+          "type": "boolean"
+        },
+        "hatching": {
+          "type": "boolean"
+        },
+        "annotations": {
+          "type": "boolean"
+        },
+        "overlay_3d": {
+          "type": "boolean"
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "symbolic": {
+          "type": "boolean"
+        },
+        "ifc_annotations": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "hidden_lines",
+        "hatching",
+        "annotations",
+        "overlay_3d",
+        "scale",
+        "symbolic",
+        "ifc_annotations"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "progress": {
+          "type": "number"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plane": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "display": {
+          "type": "object"
+        },
+        "hasDrawing": {
+          "type": "boolean"
+        },
+        "hasSvg": {
+          "type": "boolean"
+        },
+        "preset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overrides": {
+          "type": "array"
+        },
+        "overridesEnabled": {
+          "type": "boolean"
+        },
+        "measurements": {
+          "type": "array"
+        },
+        "polygons": {
+          "type": "array"
+        },
+        "text": {
+          "type": "array"
+        },
+        "clouds": {
+          "type": "array"
+        },
+        "tags": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "progress",
+        "phase",
+        "error",
+        "plane",
+        "display",
+        "hasDrawing",
+        "hasSvg",
+        "preset",
+        "overrides",
+        "overridesEnabled",
+        "measurements",
+        "polygons",
+        "text",
+        "clouds",
+        "tags"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-appearance",
+    "exportName": "analyticsDrawingAppearanceOperations"
+  },
+  {
+    "id": "drawing.measure",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Complete a numerical 2D distance with native calculation in current drawing metres.",
+    "needs": "viewer",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "end": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "start": {
+          "type": "object"
+        },
+        "end": {
+          "type": "object"
+        },
+        "distance": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "start",
+        "end",
+        "distance"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-appearance",
+    "exportName": "analyticsDrawingAppearanceOperations"
+  },
+  {
+    "id": "drawing.exportGeneratedSvg",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Return the current native generated SVG cache as a real artifact. This cache does not include panel-composed sheets, references or live markup overlays.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "analytics-drawing-appearance",
+    "exportName": "analyticsDrawingAppearanceOperations"
+  },
+  {
+    "id": "appearance.state",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Read native appearance sources, saved draft and committed assignment recipe; omit host-owned thumbnail URLs.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array"
+        },
+        "draft": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "assignments": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sources",
+        "draft",
+        "assignments"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-appearance",
+    "exportName": "analyticsDrawingAppearanceOperations"
+  },
+  {
+    "id": "appearance.removeSource",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Remove one registered native appearance source and release its asset ownership.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-appearance",
+    "exportName": "analyticsDrawingAppearanceOperations"
+  },
+  {
     "id": "authoring.describe",
     "version": 1,
     "owner": "model",
@@ -8933,7 +9500,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.box.write",
     "version": 1,
     "owner": "zones",
-    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians. Returns set_id, zone_id and the next configuration_revision.",
+    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians. A footprint prism keeps its plan centre, plan size and heading; only name, vertical centre and height may change. Returns set_id, zone_id and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -10237,7 +10804,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "storeys.prepare",
     "version": 1,
     "owner": "model",
-    "description": "Use the authoritative native Storey planner for add, elevation/floor-height edit or delete. params_json uses AddStoreyParams, StoreyLevelEdit or StoreyDeleteMode; delete modes explicitly move contents or deleteContents. Returns the actual immutable native impact plan.",
+    "description": "Use the authoritative native Storey planner for add, elevation/floor-height edit or delete. params_json uses AddStoreyParams, StoreyLevelEdit or StoreyDeleteMode; edit and delete name the storey in express_id, and an edit params storeyId must equal it; delete modes explicitly move contents or deleteContents. Returns the actual immutable native impact plan.",
     "needs": "model",
     "effects": [
       "read"
@@ -11237,6 +11804,276 @@ export const operationContracts: readonly OperationContract[] = [
     },
     "module": "analytics-schedule-edit",
     "exportName": "analyticsScheduleEditOperations"
+  },
+  {
+    "id": "appearance.preview",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare and stage an immutable native Rust texture mapping candidate on explicit model-qualified products, using registered image/PDF sources and the panel planner. Refuses partial exclusions; previews require native edit mode/role and a renderer.",
+    "needs": "model",
+    "effects": [
+      "read",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "express_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "representationPolicy": {
+              "type": "string",
+              "enum": [
+                "preserve",
+                "evaluatedOccurrence"
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "existingUv",
+                "planar",
+                "box"
+              ]
+            },
+            "plane": {
+              "type": "string",
+              "enum": [
+                "xy",
+                "xz",
+                "yz"
+              ]
+            },
+            "repeatU": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10000
+            },
+            "repeatV": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10000
+            },
+            "tileWidth": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "tileHeight": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "tileDepth": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "rotationDegrees": {
+              "type": "number",
+              "minimum": -360,
+              "maximum": 360
+            },
+            "offsetU": {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            "offsetV": {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            "offsetW": {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            "repeatS": {
+              "type": "boolean"
+            },
+            "repeatT": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "representationPolicy",
+            "kind",
+            "plane",
+            "repeatU",
+            "repeatV",
+            "tileWidth",
+            "tileHeight",
+            "tileDepth",
+            "rotationDegrees",
+            "offsetU",
+            "offsetV",
+            "offsetW",
+            "repeatS",
+            "repeatT"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "source_id",
+        "express_ids",
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "preview_token": {
+          "type": "string"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "affected_products": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "geometry_items": {
+          "type": "integer"
+        },
+        "created_entities": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "preview_token",
+        "model_id",
+        "revision",
+        "affected_products",
+        "geometry_items",
+        "created_entities"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-appearance",
+    "exportName": "analyticsAppearanceOperations"
+  },
+  {
+    "id": "appearance.applyPreview",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Apply exactly one immutable, revision-bound native appearance candidate as one native IFC/history transaction. Native edit mode/role, source validation and collaboration gates remain authoritative.",
+    "needs": "model",
+    "effects": [
+      "model",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "model_id": {
+          "type": "string"
+        },
+        "committed": {
+          "type": "boolean"
+        },
+        "affected_products": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "model_id",
+        "committed",
+        "affected_products"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "analytics-appearance",
+    "exportName": "analyticsAppearanceOperations"
+  },
+  {
+    "id": "appearance.cancelPreview",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Discard a host-owned appearance preview and restore its native original render resources.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-appearance",
+    "exportName": "analyticsAppearanceOperations"
   },
   {
     "id": "model.inspect",
@@ -14780,6 +15617,997 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "analyticsScheduleGenerateOperations"
   },
   {
+    "id": "drawing.markups",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Read exact native drawing-metre markup coordinates, dimensions, plane stamps and dimension undo/redo sizes.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "measures": {
+          "type": "array"
+        },
+        "polygons": {
+          "type": "array"
+        },
+        "text": {
+          "type": "array"
+        },
+        "clouds": {
+          "type": "array"
+        },
+        "tags": {
+          "type": "array"
+        },
+        "dimensions": {
+          "type": "array"
+        },
+        "undo": {
+          "type": "integer"
+        },
+        "redo": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "measures",
+        "polygons",
+        "text",
+        "clouds",
+        "tags",
+        "dimensions",
+        "undo",
+        "redo"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.addPolygon",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Complete a native polygon area/perimeter from drawing-metre points using the same geometry and completion as the pointer tool.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "number",
+                "minimum": -1000000000,
+                "maximum": 1000000000
+              },
+              {
+                "type": "number",
+                "minimum": -1000000000,
+                "maximum": 1000000000
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "minItems": 3,
+          "maxItems": 1000
+        }
+      },
+      "required": [
+        "points"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.addCloud",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Complete a native revision cloud from two drawing-metre bounding corners and its label.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "end": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.addText",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Add a native text annotation at drawing-metre coordinates with explicit pixel typography and colors.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 50000
+        },
+        "font_size": {
+          "type": "number",
+          "minimum": 6,
+          "maximum": 96
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "background": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "border": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      },
+      "required": [
+        "position",
+        "text",
+        "font_size",
+        "color",
+        "background",
+        "border"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.editText",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Edit native annotation text after verifying the exact previously inspected text.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_text": {
+          "type": "string",
+          "maxLength": 50000
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 50000
+        }
+      },
+      "required": [
+        "id",
+        "expected_text",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.addTag",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Add a native live IFC element tag using an exact model-qualified product and drawing-metre anchor/offset.",
+    "needs": "model",
+    "effects": [
+      "read",
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "anchor": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "offset": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "express_id",
+        "anchor",
+        "offset"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.addDimension",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Place a native dimension from two drawing-metre points with numerical line offset, orientation and optional <> text override; uses native plane stamps and undo.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "b": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "offset": {
+          "type": "number",
+          "minimum": -1000000000,
+          "maximum": 1000000000
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "aligned",
+            "horizontal",
+            "vertical"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "a",
+        "b",
+        "offset",
+        "orientation",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.moveMarkup",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Move an existing native markup using its same drag-origin handler in drawing metres.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "measure",
+            "polygon",
+            "text",
+            "cloud",
+            "tag",
+            "dimension"
+          ]
+        },
+        "position": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "position"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.deleteMarkup",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Delete an existing native markup through the same selected-annotation handler as the UI.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "measure",
+            "polygon",
+            "text",
+            "cloud",
+            "tag",
+            "dimension"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.dimensionHistory",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Undo or redo one native dimension create/edit/move/delete transaction.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "undo",
+            "redo"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "undo": {
+          "type": "integer"
+        },
+        "redo": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "undo",
+        "redo"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-markup",
+    "exportName": "analyticsDrawingMarkupOperations"
+  },
+  {
+    "id": "drawing.sheets",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Read native paper/frame/title-block/revision/scale-bar/north-arrow settings and saved template library.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "templates": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "active",
+        "enabled",
+        "templates"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-sheets",
+    "exportName": "analyticsDrawingSheetOperations"
+  },
+  {
+    "id": "drawing.createSheet",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Create and enable the same default native drawing sheet used by the Sheet Setup control. Refuses replacing an existing sheet implicitly.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "templates": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "active",
+        "enabled",
+        "templates"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-sheets",
+    "exportName": "analyticsDrawingSheetOperations"
+  },
+  {
+    "id": "drawing.replaceSheet",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Edit the full structured native paper/frame/title-block/fields/revisions/scale/north-arrow sheet using the same native decoder as saved templates. Invalid subfields normalize to native defaults; inspect the returned candidate. expected_json prevents stale replacement.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 500000
+        },
+        "content_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 500000
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "expected_json",
+        "content_json",
+        "enabled"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "templates": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "active",
+        "enabled",
+        "templates"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-sheets",
+    "exportName": "analyticsDrawingSheetOperations"
+  },
+  {
+    "id": "drawing.clearSheet",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Clear the active sheet through native reset behavior after verifying its identity; saved templates remain native library entries.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "expected_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "templates": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "active",
+        "enabled",
+        "templates"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-sheets",
+    "exportName": "analyticsDrawingSheetOperations"
+  },
+  {
+    "id": "drawing.saveSheetTemplate",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Save the active sheet as a native template; returns the actual native session template library.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "templates": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "active",
+        "enabled",
+        "templates"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-sheets",
+    "exportName": "analyticsDrawingSheetOperations"
+  },
+  {
+    "id": "drawing.sheetTemplate",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Load or delete one exact native saved-sheet template through its existing handler.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "load",
+            "delete"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "templates": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "active",
+        "enabled",
+        "templates"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-sheets",
+    "exportName": "analyticsDrawingSheetOperations"
+  },
+  {
     "id": "authoring.defaults.read",
     "version": 1,
     "owner": "model",
@@ -16915,6 +18743,98 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "modelExportOperations"
   },
   {
+    "id": "drawing.export",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Await the real native composed drawing SVG/DXF/PDF producers shared with the toolbar, including native sheet/raw behavior, references, dimensions, markups, scan outlines, style and DXF CRS/encoding. Works with the panel closed; returns actual artifact bytes and explicit format limitations/warnings.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "svg",
+            "dxf",
+            "pdf"
+          ]
+        },
+        "use_display_scale": {
+          "type": "boolean"
+        },
+        "scale": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "format",
+        "use_display_scale",
+        "scale"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "artifact_id",
+            "filename",
+            "mime_type",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "omitted_other_cut_dimensions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "artifact",
+        "warnings",
+        "omitted_other_cut_dimensions"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "analytics-drawing-export",
+    "exportName": "analyticsDrawingExportOperations"
+  },
+  {
     "id": "charts.exportReport",
     "version": 1,
     "owner": "charts",
@@ -18319,6 +20239,600 @@ export const operationContracts: readonly OperationContract[] = [
     "implementation": "native-store",
     "module": "analytics-measurement-settings",
     "exportName": "analyticsMeasurementSettingOperations"
+  },
+  {
+    "id": "appearance.configureDraft",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Configure the native source/model/selection/class/type/Rules-filter scope and every UV/planar/box mapping setting in the same saved draft consumed by the panel. preview_enabled requests native auto-preview; use appearance.preview to await an immutable candidate.",
+    "needs": "model",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "scope_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200000
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "representationPolicy": {
+              "type": "string",
+              "enum": [
+                "preserve",
+                "evaluatedOccurrence"
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "existingUv",
+                "planar",
+                "box"
+              ]
+            },
+            "plane": {
+              "type": "string",
+              "enum": [
+                "xy",
+                "xz",
+                "yz"
+              ]
+            },
+            "repeatU": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10000
+            },
+            "repeatV": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10000
+            },
+            "tileWidth": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "tileHeight": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "tileDepth": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "rotationDegrees": {
+              "type": "number",
+              "minimum": -360,
+              "maximum": 360
+            },
+            "offsetU": {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            "offsetV": {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            "offsetW": {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            "repeatS": {
+              "type": "boolean"
+            },
+            "repeatT": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "representationPolicy",
+            "kind",
+            "plane",
+            "repeatU",
+            "repeatV",
+            "tileWidth",
+            "tileHeight",
+            "tileDepth",
+            "rotationDegrees",
+            "offsetU",
+            "offsetV",
+            "offsetW",
+            "repeatS",
+            "repeatT"
+          ],
+          "additionalProperties": false
+        },
+        "preview_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_id",
+        "scope_json",
+        "settings",
+        "preview_enabled"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "model_id": {
+          "type": "string"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "object"
+        },
+        "settings": {
+          "type": "object"
+        },
+        "preview_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model_id",
+        "source_id",
+        "scope",
+        "settings",
+        "preview_enabled"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-appearance-settings",
+    "exportName": "analyticsAppearanceSettingOperations"
+  },
+  {
+    "id": "drawing.overrideLibrary",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Read native graphic presets/custom rules and active override settings.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "presets": {
+          "type": "array"
+        },
+        "rules": {
+          "type": "array"
+        },
+        "active_preset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "presets",
+        "rules",
+        "active_preset",
+        "enabled"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-settings",
+    "exportName": "analyticsDrawingSettingOperations"
+  },
+  {
+    "id": "drawing.configureOverrides",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Set the actual native graphic preset and override-enable controls; the empty picker value clears the preset.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "preset_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "preset_id",
+        "enabled"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-settings",
+    "exportName": "analyticsDrawingSettingOperations"
+  },
+  {
+    "id": "drawing.upsertOverrideRule",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Add/edit a complete native graphic criterion/style rule with closed runtime validation, bounded compound criteria and an expected rule snapshot conflict check.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200000
+        },
+        "rule_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200000
+        }
+      },
+      "required": [
+        "expected_json",
+        "rule_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-settings",
+    "exportName": "analyticsDrawingSettingOperations"
+  },
+  {
+    "id": "drawing.deleteOverrideRule",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Delete one exact native custom graphic rule.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-settings",
+    "exportName": "analyticsDrawingSettingOperations"
+  },
+  {
+    "id": "drawing.configureProjection",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Configure every native construction-projection/depth, scan band/export/outline and print-preview setting used by the drawing runtime and exporters.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "automatic_projection": {
+          "type": "boolean"
+        },
+        "projection_enabled": {
+          "type": "boolean"
+        },
+        "automatic_depth": {
+          "type": "boolean"
+        },
+        "depth_metres": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "scan_enabled": {
+          "type": "boolean"
+        },
+        "scan_thickness_metres": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "scan_opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "scan_export": {
+          "type": "boolean"
+        },
+        "outline_enabled": {
+          "type": "boolean"
+        },
+        "outline_gap_metres": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000
+        },
+        "print_preview": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "automatic_projection",
+        "projection_enabled",
+        "automatic_depth",
+        "depth_metres",
+        "scan_enabled",
+        "scan_thickness_metres",
+        "scan_opacity",
+        "scan_export",
+        "outline_enabled",
+        "outline_gap_metres",
+        "print_preview"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-settings",
+    "exportName": "analyticsDrawingSettingOperations"
+  },
+  {
+    "id": "drawing.configureDxfUnderlay",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Configure native reference visibility/3D visibility/opacity/map-coordinate mode, drawing-metre placement/rotation/scale and exact known layer visibility. Validate every layer before applying native actions.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "visible_3d": {
+          "type": "boolean"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "map_coordinates": {
+          "type": "boolean"
+        },
+        "placement": {
+          "type": "object",
+          "properties": {
+            "offsetX": {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            "offsetY": {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            "rotationDeg": {
+              "type": "number",
+              "minimum": -360,
+              "maximum": 360
+            },
+            "scale": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "required": [
+            "offsetX",
+            "offsetY",
+            "rotationDeg",
+            "scale"
+          ],
+          "additionalProperties": false
+        },
+        "layers": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000
+              },
+              "visible": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "visible"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "id",
+        "visible",
+        "visible_3d",
+        "opacity",
+        "map_coordinates",
+        "placement",
+        "layers"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-settings",
+    "exportName": "analyticsDrawingSettingOperations"
+  },
+  {
+    "id": "drawing.deleteDxfUnderlay",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Remove one exact native DXF reference through the existing handler.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-settings",
+    "exportName": "analyticsDrawingSettingOperations"
   },
   {
     "id": "clash.state",
@@ -22556,6 +25070,181 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "analyticsScheduleControlOperations"
   },
   {
+    "id": "drawing.centerDxf",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Center a DXF on the actual generated model drawing using the native underlay/georeference/reference-plane transforms. Refuse unusable bounds, edge-on references or nonfinite coordinates.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-controls",
+    "exportName": "analyticsDrawingControlOperations"
+  },
+  {
+    "id": "drawing.importDxf",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Import DXF text through the exact native ingest service with explicit source units and optional frozen current drawing-plane registration. Await actual newly registered underlay; native parsing/empty/reference-unit failure returns an error.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 200,
+          "pattern": "\\.dxf$"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000000
+        },
+        "units": {
+          "type": "string",
+          "enum": [
+            "m",
+            "mm",
+            "cm",
+            "ft",
+            "in"
+          ]
+        },
+        "register_to_drawing_plane": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "filename",
+        "content",
+        "units",
+        "register_to_drawing_plane"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-controls",
+    "exportName": "analyticsDrawingControlOperations"
+  },
+  {
+    "id": "drawing.styleText",
+    "version": 1,
+    "owner": "drawing",
+    "description": "Edit existing native text typography through the same annotation setter as the editor; preserve content/position and check the complete previous annotation.",
+    "needs": "viewer",
+    "effects": [
+      "view",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100000
+        },
+        "font_size": {
+          "type": "number",
+          "minimum": 6,
+          "maximum": 96
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "background": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "border": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        }
+      },
+      "required": [
+        "id",
+        "expected_json",
+        "font_size",
+        "color",
+        "background",
+        "border"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "analytics-drawing-controls",
+    "exportName": "analyticsDrawingControlOperations"
+  },
+  {
     "id": "exports.landXmlIfc",
     "version": 1,
     "owner": "exports",
@@ -24342,6 +27031,1729 @@ export const operationContracts: readonly OperationContract[] = [
     },
     "module": "export-native-anonymized",
     "exportName": "exportNativeAnonymizedOperations"
+  },
+  {
+    "id": "appearance.source.inspect",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect an existing registered source, native PDF recipe/page count and calibration frame. Browser file selection and encrypted-PDF password entry remain explicit native input boundaries.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "source_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-sources",
+    "exportName": "appearanceSourceOperations"
+  },
+  {
+    "id": "appearance.pdf.raster",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Rasterize a registered retained PDF with explicit page/quarter-turn/crop/DPI through the exact native PDF document service. Empty crop_points selects the complete rotated page. Publishes only if source and handle remain current; native worker bounds, PDF errors and ownership cleanup are preserved.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_source": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "rotation": {
+          "type": "integer",
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ]
+        },
+        "crop_points": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "number",
+            "minimum": -1000000000,
+            "maximum": 1000000000
+          }
+        },
+        "dpi": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 2400
+        }
+      },
+      "required": [
+        "source_id",
+        "expected_source",
+        "page",
+        "rotation",
+        "crop_points",
+        "dpi"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-sources",
+    "exportName": "appearanceSourceOperations"
+  },
+  {
+    "id": "appearance.source.calibrate",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Set a complete two-landmark metric calibration on a registered image/PDF using the same native raster-coordinate conversion and complete-edit reducer as AppearanceCalibrationFields. Fractions refer to the current raster image; source coordinates remain stable across PDF crop/rotation.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_source": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "fractions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              ]
+            },
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              ]
+            }
+          ]
+        },
+        "distance_metres": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000
+        }
+      },
+      "required": [
+        "source_id",
+        "expected_source",
+        "fractions",
+        "distance_metres"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-sources",
+    "exportName": "appearanceSourceOperations"
+  },
+  {
+    "id": "appearance.plan",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Read the exact native Rust appearance plan support/exclusion/conversion report before staging. Supports the UI supported-only narrowing workflow: use the returned explicit supported_product_ids for a fresh preview, without committing or silently dropping exclusions.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "express_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "settings_json": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "source_id",
+        "express_ids",
+        "settings_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-faces",
+    "exportName": "appearanceFaceOperations"
+  },
+  {
+    "id": "appearance.faces.inspect",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect exact native candidate converted products, source-surface fingerprints and triangle ordinals before authoring face masks. Source/renderer/revision/applying guards remain authoritative.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "candidate_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-faces",
+    "exportName": "appearanceFaceOperations"
+  },
+  {
+    "id": "appearance.compare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Show original or staged appearance using the shared native Compare handler while preserving the same immutable plan/assets/face masks. Does not cancel/discard the candidate; applying or stale candidates are refused.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "original": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "original"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-faces",
+    "exportName": "appearanceFaceOperations"
+  },
+  {
+    "id": "appearance.faces.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Create a new immutable native preview with explicit reviewed triangle masks on the prior candidate’s evaluated occurrence surfaces. Uses the exact shared UI mask reducer, native faceMaskRequests/reconcileFaceMasks and canonical preview planner. Full/empty surface selections retain native unmasked semantics; stale fingerprints/ordinals refuse.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "express_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "settings_json": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "masks": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "product_id": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "surface_fingerprint": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              },
+              "triangles": {
+                "type": "array",
+                "maxItems": 200000,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000000
+                }
+              }
+            },
+            "required": [
+              "product_id",
+              "surface_fingerprint",
+              "triangles"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "candidate_id",
+        "source_id",
+        "express_ids",
+        "settings_json",
+        "masks"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-faces",
+    "exportName": "appearanceFaceOperations"
+  },
+  {
+    "id": "appearance.references.read",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect native registered reference images, exact reference/history revision and immutable calibration/PDF lineage. This workspace has its own native Undo/Redo.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.restoreSource",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Restore the exact native source/calibration settings of an existing registered reference for explicit editing. Uses immutable image digest and PDF lineage; never silently substitutes the current PDF raster.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "reference_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "reference_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare and render a transient native calibrated reference candidate; does not register/history-commit it. Uses exact native calibration, immutable asset/PDF lineage, workspace frame and edit-identity checks. edit_reference_id empty creates a new reference.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_source": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "settings_json": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "edit_reference_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "source_id",
+        "expected_source",
+        "settings_json",
+        "edit_reference_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.place",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Place/replace the exact prepared native reference as one native reference-history transaction. Rendering precedes a final live-authorized synchronous record commit; source/frame/edit changes or cancellation refuse without a new registered reference.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.discard",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Discard only the host-owned transient native reference preview, releasing its renderer/asset leases; leaves registered history intact.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.action",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Update native reference visibility/lock/opacity, select/remove, Undo/Redo or import exact native exported reference definitions. Native workspace frame, locked-record and history/asset ownership rules stay authoritative. Image relink uses the browser file picker.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "update",
+            "remove",
+            "select",
+            "undo",
+            "redo",
+            "import"
+          ]
+        },
+        "reference_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "reference_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 10000000
+        }
+      },
+      "required": [
+        "action",
+        "reference_id",
+        "reference_revision",
+        "visible",
+        "locked",
+        "opacity",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.references.export",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Export native registered reference definitions/calibration lineage as a host-owned artifact.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "appearance-native-references",
+    "exportName": "appearanceReferenceOperations"
+  },
+  {
+    "id": "appearance.capture.sources",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect native loaded textured capture surfaces using stable model-qualified mesh ordinals and native source assets. Loading scan/image bundles remains the canonical source loader/browser file-picker workflow.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.capture.destination",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Create the Capture panel’s blank Captured Surfaces destination through the mounted canonical federation addModel/loadFile service. Preserves native admission/RTC and viewer cancellation boundaries.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.capture.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare the exact reviewed textured region using native captureRegistration/captureRegion/image ownership. Pins placement, source mesh and encoded texture identity; returns the immutable region counts before native IFC creation.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "mesh_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "triangles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 200000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000000
+          }
+        },
+        "container_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "Name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "source_model_id",
+        "mesh_ordinal",
+        "triangles",
+        "container_id",
+        "Name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.capture.create",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Create the exact prepared captured surface through native createIfcFromCapturedMesh/commitTexturedProduct with native role/IFC4-container/placement/source/transaction and Undo guards. Only a reviewed region token is accepted.",
+    "needs": "model",
+    "effects": [
+      "model",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.capture.discard",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Discard the host-owned immutable captured-region candidate without creating IFC.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-capture",
+    "exportName": "appearanceCaptureOperations"
+  },
+  {
+    "id": "appearance.scan.sources",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect the same native textured-GLB/retained RGB point-cloud sources and IFC destination models as Appearance Scan. Source models still load through the canonical Sources workflow.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare the actual immutable native scan/IFC registration session, including source/target hashes, materialized pending edits, stable workspace frame, concrete geometry/point-sample and session staleness guards. Chooses native source kind explicitly; no alternate ingest or registration implementation.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "mesh",
+            "points"
+          ]
+        },
+        "mesh_ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        }
+      },
+      "required": [
+        "source_model_id",
+        "source_kind",
+        "mesh_ordinal"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.inspect",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Inspect exact native landmark correspondences, fit/check partitions, registration residuals and recovery state. Stale diagnostics remain visible without inventing a successful registration.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.sourceLandmark",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Choose an exact native source landmark: a retained point index or mesh triangle ordinal plus barycentric weights [A,B,C]. Uses pointLandmark/sourceLandmark and their stable native observation identities; the next target pick consumes this pending source.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partition": {
+          "type": "string",
+          "enum": [
+            "fit",
+            "check"
+          ]
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000
+        },
+        "weights": {
+          "type": "array",
+          "items": [
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            },
+            {
+              "type": "number",
+              "minimum": -1000000000,
+              "maximum": 1000000000
+            }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "partition",
+        "index",
+        "weights"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.targetLandmark",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Pick a visible concrete IFC target surface at native viewport CSS coordinates, consuming the exact pending source landmark. Uses native raycaster/feature IDs, clipping/capture guards, duplicate-point limits and target-mesh retention; no fabricated free-space correspondences.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "viewport_x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "viewport_y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "viewport_x",
+        "viewport_y"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.calculate",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Run the same native Rust registerScan service over current fit/check correspondences and immutable frames. Returns actual fit/held-out residuals and degeneracy diagnostics; forwards worker cancellation and revalidates native session after completion.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.edit",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Remove an exact native pair, clear landmarks/registration, or discard the host-owned scan session and transfer preview. Explicit scan preparation restarts from a new native binding.",
+    "needs": "model",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "removePair",
+            "clearPairs",
+            "discard",
+            "changePartition",
+            "cancelPending"
+          ]
+        },
+        "pair_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "partition": {
+          "type": "string",
+          "enum": [
+            "fit",
+            "check"
+          ]
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "action",
+        "pair_id",
+        "partition"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-scan",
+    "exportName": "appearanceScanOperations"
+  },
+  {
+    "id": "appearance.scan.transfer.prepare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Prepare/stage the actual native mesh or RGB-point appearance transfer on explicit IFC products. Uses prepareMeshTransfer’s fit/check/project-tolerance/review/coverage/point-support gates, image leases and exact shared native preview binding. Native inapplicable/excluded outcomes stay explicit; no fabricated texture coverage.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "express_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "toleranceMetres": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "reviewed": {
+              "type": "boolean"
+            },
+            "texelsPerMetre": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1000000
+            },
+            "maxDistanceMetres": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "minNormalDot": {
+              "type": "number",
+              "minimum": -1,
+              "maximum": 1
+            },
+            "ambiguityDistanceMetres": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "maxBehindMetres": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "neighborhoodRadiusMetres": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 0.5
+            },
+            "minNeighbors": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 1000000
+            },
+            "maxNeighbors": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 1000000
+            },
+            "surfaceBandMetres": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 0.5
+            }
+          },
+          "required": [
+            "toleranceMetres",
+            "reviewed",
+            "texelsPerMetre",
+            "maxDistanceMetres",
+            "minNormalDot",
+            "ambiguityDistanceMetres",
+            "maxBehindMetres",
+            "neighborhoodRadiusMetres",
+            "minNeighbors",
+            "maxNeighbors",
+            "surfaceBandMetres"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "express_ids",
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "appearance.scan.transfer.compare",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Compare the exact native scan-transfer candidate with original appearance while retaining its immutable plan/images/coverage and calibration. Uses the same shared native Compare reducer as both Appearance panels.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "original": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "token",
+        "version",
+        "original"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "appearance.scan.transfer.apply",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Apply the exact reviewed native scan transfer using commitAppearance’s native IFC/GPU/history transaction and role/source guards. Rebind/recompute registration using native unchanged-surface proof afterward; a completed edit with failed/cancelled revalidation explicitly reports recovery required.",
+    "needs": "model",
+    "effects": [
+      "model",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "appearance.scan.revalidate",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Run the native retained-surface proof and registration refresh after a completed/cancelled appearance transaction. Refuses changed sources/frames/paired IFC geometry and preserves recovery state for a later explicit retry.",
+    "needs": "model",
+    "effects": [
+      "model",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
+  },
+  {
+    "id": "appearance.scan.transfer.discard",
+    "version": 1,
+    "owner": "appearance",
+    "description": "Discard the host-owned native scan-transfer preview and its image/renderer leases; retain registration/landmark evidence for explicit further work.",
+    "needs": "model",
+    "effects": [
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "token",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "native_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "native_json"
+      ],
+      "additionalProperties": false
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "appearance-native-transfer",
+    "exportName": "appearanceTransferOperations"
   },
   {
     "id": "viewport.pick",

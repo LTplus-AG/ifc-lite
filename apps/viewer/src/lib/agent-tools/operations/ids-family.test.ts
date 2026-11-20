@@ -65,10 +65,15 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     const written = await call<{ content: string }>('ids.document.xml'); assert.match(written.content, /Model-free IDS/);
     const lint = await call<{ diagnostics: object }>('ids.lint'); assert.ok(lint.diagnostics);
   });
-  it('uses the same native writer for XML and host-owned artifact bytes, and runs real model validation', async () => {
+  it('uses the same native writer for XML and host-owned artifact bytes, and runs real model validation (#10796)', async () => {
     const written = await call<{ content: string }>('ids.document.xml'); assert.match(written.content, /FireRating/);
     const artifact = await call<{ artifact_id: string; bytes: number; mime_type: string }>('ids.document.export', { format: 'ids' }, true);
-    assert.ok(artifact.artifact_id); assert.equal(artifact.bytes, new TextEncoder().encode(written.content).byteLength); assert.equal(artifact.mime_type, 'application/xml');
+    assert.equal(artifact.mime_type, 'application/xml');
+    const read = await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: artifact.artifact_id, length: 65536 });
+    assert.equal(read.isError, false, read.text);
+    const chunk = read.structured as { data: string; next_offset: number | null };
+    assert.equal(chunk.next_offset, null);
+    assert.equal(Buffer.from(chunk.data, 'base64').toString('utf8'), written.content);
     const validation = await call<{ report: { summary: object } }>('ids.document.validate'); assert.ok(validation.report.summary);
     const lint = await call<{ diagnostics: object }>('ids.lint'); assert.ok(lint.diagnostics);
   });

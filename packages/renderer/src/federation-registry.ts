@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { retainedCreationEnd, ModelRangeExtensionRefusedError } from './retained-creation-range.js';
+import {
+  MAX_SAFE_OFFSET, OVERLAY_ID_HEADROOM, retainedCreationEnd, reserveRetainedRange, ModelRangeExtensionRefusedError,
+} from './retained-creation-range.js';
 export { ModelRangeExtensionRefusedError } from './retained-creation-range.js';
 import { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
 import { RangeListeners } from './range-listeners.js';
@@ -27,13 +29,6 @@ export interface GlobalIdLookup {
   modelId: string;
   expressId: number;
 }
-
-// Safety limit - warn before approaching 32-bit limit
-// WebGPU picking uses r32uint (max 4,294,967,295)
-const MAX_SAFE_OFFSET = 2_000_000_000;
-
-// Overlay headroom prevents later model reservations from aliasing authored IDs.
-const OVERLAY_ID_HEADROOM = 1_000_000;
 
 /**
  * Central registry for multi-model federation
@@ -64,9 +59,11 @@ export class FederationRegistry {
    *
    * @param modelId Unique identifier for this model
    * @param maxExpressId Highest expressId in this model (scan meshes first)
+   * @param firstRetainedExpressId First retained creation, or zero if none.
+   * @param nextRetainedExpressId Next ID for a retained view without creations, or zero for a fresh view.
    * @returns The offset to add to all expressIds for this model
    */
-  registerModel(modelId: string, maxExpressId: number, firstRetainedExpressId = 0): number {
+  registerModel(modelId: string, maxExpressId: number, firstRetainedExpressId = 0, nextRetainedExpressId = 0): number {
     const retained = firstRetainedExpressId > 0 && firstRetainedExpressId <= maxExpressId ? 0 : firstRetainedExpressId;
     const existing = this.modelRanges.get(modelId);
     if (existing) {
@@ -77,15 +74,18 @@ export class FederationRegistry {
       }
       return existing.offset;
     }
-    return this.createRange(modelId, maxExpressId, retained, true);
+    return this.createRange(modelId, maxExpressId, retained, true, nextRetainedExpressId);
   }
 
   /** Reserve a fixed local-ID envelope before progressive publication. */
-  reserveModel(modelId: string, reservedMaxExpressId: number): number {
-    return this.createRange(modelId, reservedMaxExpressId, 0, false);
+  reserveModel(modelId: string, reservedMaxExpressId: number, firstRetainedExpressId = 0, nextRetainedExpressId = 0): number {
+    const retained = firstRetainedExpressId > 0 && firstRetainedExpressId <= reservedMaxExpressId ? 0 : firstRetainedExpressId;
+    return this.createRange(modelId, reservedMaxExpressId, retained, false, nextRetainedExpressId);
   }
 
-  private createRange(modelId: string, reservedMaxExpressId: number, firstRetainedExpressId: number, publish: boolean): number {
+  private createRange(
+    modelId: string, reservedMaxExpressId: number, firstRetainedExpressId: number, publish: boolean, nextRetainedExpressId: number,
+  ): number {
     // Validate inputs
     if (!modelId || typeof modelId !== 'string') {
       throw new Error(`[FederationRegistry] Invalid modelId: ${modelId}`);
@@ -101,22 +101,10 @@ export class FederationRegistry {
       return existing.offset;
     }
 
-    // Check for overflow
-    if (this.nextOffset + reservedMaxExpressId > MAX_SAFE_OFFSET) {
-      throw new Error(
-        `[FederationRegistry] Cannot register model: would exceed safe ID limit. ` +
-        `Current offset: ${this.nextOffset}, reserved model max ID: ${reservedMaxExpressId}. ` +
-        `Please unload some models first.`
-      );
-    }
-
     const offset = this.nextOffset;
-    const overlayMaxExpressId = reservedMaxExpressId + OVERLAY_ID_HEADROOM;
-    // registerModel already dropped a retained ID inside the source; the viewer
-    // discards those edits, so loading never fails on them.
-    const ownedEnd = retainedCreationEnd(reservedMaxExpressId, reservedMaxExpressId,
-      Math.min(overlayMaxExpressId, MAX_SAFE_OFFSET - offset),
-      firstRetainedExpressId);
+    const { ownedEnd, overlayMaxExpressId } = reserveRetainedRange(
+      offset, reservedMaxExpressId, firstRetainedExpressId, nextRetainedExpressId,
+    );
     const range: RegisteredRange = { modelId, offset, maxExpressId: publish ? ownedEnd : -1,
       reservedMaxExpressId, overlayMaxExpressId, ownedEnd, publishedStart: publish ? 0 : null };
 
@@ -148,7 +136,8 @@ export class FederationRegistry {
     }
     const sourceEnd = Math.max(maxExpressId, range.reservedMaxExpressId);
     const newest = this.nextOffset === range.offset + range.overlayMaxExpressId + 1;
-    const overlayEnd = Math.min(newest ? sourceEnd + OVERLAY_ID_HEADROOM : range.overlayMaxExpressId, MAX_SAFE_OFFSET - range.offset);
+    const expandedOverlayMax = Math.max(range.overlayMaxExpressId, sourceEnd + OVERLAY_ID_HEADROOM);
+    const overlayEnd = Math.min(newest ? expandedOverlayMax : range.overlayMaxExpressId, MAX_SAFE_OFFSET - range.offset);
     const boundedSourceEnd = Math.min(sourceEnd, overlayEnd);
     const gapEnd = retainedCreationEnd(sourceEnd, boundedSourceEnd, overlayEnd, firstRetainedExpressId);
     const previous = { ...range };
@@ -157,7 +146,7 @@ export class FederationRegistry {
       if (range.offset + maxExpressId > MAX_SAFE_OFFSET) {
         throw new ModelRangeExtensionRefusedError(`[FederationRegistry] Cannot extend ${modelId} to ${maxExpressId}: would exceed safe ID limit`);
       }
-      range.overlayMaxExpressId = end + OVERLAY_ID_HEADROOM;
+      range.overlayMaxExpressId = expandedOverlayMax;
       this.nextOffset = range.offset + range.overlayMaxExpressId + 1;
     } else {
       end = Math.min(end, range.overlayMaxExpressId);

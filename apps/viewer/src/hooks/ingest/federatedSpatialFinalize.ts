@@ -11,7 +11,6 @@ import type { FederatedModel, PreAlignmentSnapshot } from '@/store';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import type { LandXmlTinDocument } from './landXmlSemantics';
-import { reframeLandXmlGeometry } from './landXmlLoad';
 import { alignGeometryToReference, alignmentReferenceRecord, extractModelSpatialPlacement, findReferenceSpatialModel, type ModelSpatialPlacement } from './federationAlign';
 import { capturePreAlignment } from './federationRealign';
 import { applyLandXmlRenderedLineUpdates, buildLandXmlRenderedLineUpdates } from './landXmlSpatialLines';
@@ -213,6 +212,9 @@ export async function finalizeFederatedSpatialPlacement(options: {
     // already-published render frame still has to be shared so absolute survey
     // coordinates retain their separation without exceeding the GPU frame.
     // This is a render-origin operation only: it never claims CRS equivalence.
+    // Load the reframer first so the frame below is read after the await.
+    const { reframeLandXmlGeometry } = await import('./landXmlLoad.js');
+    if (!options.isCurrent()) return null;
     const renderFrame = reference?.coordinateInfo
       ?? sharedRenderFrame(useViewerStore.getState().models.values());
     if (renderFrame) {

@@ -320,6 +320,12 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     const again = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'write' }, 'A'));
     const written = await run('zones.writeback.apply', { token: again.token }, 'A');
     assert.equal(written.isError, false, written.text);
+    // An edit to the zone set itself between prepare and apply refuses both a write and a removal.
+    for (const action of ['write', 'remove'] as const) {
+      const pending = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action }, 'A'));
+      useViewerStore.getState().renameZoneSet(setId, `Renamed for ${action}`);
+      assert.match((await run('zones.writeback.apply', { token: pending.token }, 'A')).text, /changed after review/, action);
+    }
     // A removal reads only the zone set, so a recompute of the assignments does not block it.
     const removal = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'remove' }, 'A'));
     useViewerStore.setState({ zoneAssignments: assigned(walls.slice(0, 5)) });

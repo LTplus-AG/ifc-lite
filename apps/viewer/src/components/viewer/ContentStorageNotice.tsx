@@ -187,7 +187,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       void estimateBrowserStorage().then(setEstimate);
     }}>
       <DisclosureSummary className="font-medium">{t('contentStorage.controls')}</DisclosureSummary>
-      {persistence && <p role="status">{t(`contentStorage.persistence.${persistence.state}`)}</p>}
+      {persistence && <output className="block">{t(`contentStorage.persistence.${persistence.state}`)}</output>}
       {estimate?.usage !== undefined && <p>{t('contentStorage.originUsage', { usage: mib(estimate.usage) })}</p>}
       {estimate?.quota !== undefined && <p>{t('contentStorage.originQuota', { quota: mib(estimate.quota) })}</p>}
       <div className="flex flex-wrap gap-1 py-1">

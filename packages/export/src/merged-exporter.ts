@@ -745,7 +745,7 @@ export class MergedExporter {
   ): { byModel: Map<string, Set<number>>; count: number } | null {
     if (!options.dropEmptyContainers) return null;
     const claims = new InverseClaims(options.schema || 'IFC4', isStructureRelation);
-    const guids = new PlannerGuids(scale => this.unitsCompatible(scale, setup.primaryScale), isSpatialContainerType);
+    const guids = new PlannerGuids(scale => unitScalesEqual(scale, setup.primaryScale), isSpatialContainerType);
     const views: EmptyContainerModelView[] = models.map((model, index) => {
       const source = model.dataStore.source;
       if (!source || source.length === 0) return EMPTY_MODEL_VIEW;
@@ -875,7 +875,7 @@ export class MergedExporter {
    */
   private resolveModelMode(model: MergeModelInput, isFirstModel: boolean, setup: MergeSetup): ModelMode {
     const modelScale = this.resolveUnitScale(model);
-    if (isFirstModel || setup.assumeShared || this.unitsCompatible(modelScale, setup.primaryScale)) {
+    if (isFirstModel || setup.assumeShared || unitScalesEqual(modelScale, setup.primaryScale)) {
       return { compatible: true, lengthFactor: 1, areaFactor: 1, volumeFactor: 1, effectiveScale: modelScale, normalized: false };
     }
     if (setup.normalize) {
@@ -977,11 +977,6 @@ export class MergedExporter {
     const fromStore = model.dataStore.lengthUnitScale;
     if (typeof fromStore === 'number' && fromStore > 0) return fromStore;
     return 1.0;
-  }
-
-  /** True when two length unit scales are equal within relative tolerance. */
-  private unitsCompatible(a: number, b: number): boolean {
-    return unitScalesEqual(a, b);
   }
 
   /**
@@ -1095,7 +1090,7 @@ export class MergedExporter {
         //     (a federated model), so unifying would reinterpret coordinates —
         //     the very mis-scale this fix prevents, reached transitively.
         const type = (completeIndex.get(id)?.type ?? '').toUpperCase();
-        const emitterIsPrimaryUnit = this.unitsCompatible(prior.scale, setup.primaryScale);
+        const emitterIsPrimaryUnit = unitScalesEqual(prior.scale, setup.primaryScale);
         const canUnify = compatible && emitterIsPrimaryUnit && !isRelationshipType(type);
         if (canUnify) {
           sharedRemap.set(id, prior.finalId);

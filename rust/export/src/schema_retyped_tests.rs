@@ -64,6 +64,30 @@ fn a_non_ascii_letter_or_space_names_no_currency_10778() {
     }
 }
 
+/// CodeRabbit on #10806 (discussion_r4641460956), the twin of the TypeScript
+/// case: a label is decoded before it is trimmed, and the trim is ASCII only.
+#[test]
+fn a_label_is_decoded_before_it_is_trimmed_10778() {
+    // An encoded space at either end is trimmed once decoded. Trimmed first,
+    // nothing is trimmed (the raw literal has no ASCII space), and the decoded
+    // space stays, so no member. Nothing is dropped and no slot is left `$`.
+    let mut kept = Ifc2x3SlotFill::new(None);
+    for encoded in ["\\X2\\0020\\X0\\EUR", "EUR\\X2\\0020\\X0\\"] {
+        let line = format!("#5=IFCMONETARYUNIT('{encoded}');");
+        assert_eq!(convert(&line, "IFC4", "IFC2X3"), ("#5=IFCMONETARYUNIT(.EUR.);".to_owned(), 0), "{encoded}");
+        convert_step_line(&line, "IFC4", "IFC2X3", 5, &mut kept, None).unwrap();
+    }
+    assert_eq!(kept.required_slots_unfilled(), 0);
+    // The trim set: `\S\` and the space decode to U+00A0, which the
+    // ASCII-only trim keeps, so no member; the value is dropped and the
+    // required slot is left `$`.
+    let operand = "#5=IFCMONETARYUNIT('EUR\\S\\ ');";
+    assert_eq!(convert(operand, "IFC4", "IFC2X3"), ("#5=IFCMONETARYUNIT($);".to_owned(), 1));
+    let mut slots = Ifc2x3SlotFill::new(None);
+    convert_step_line(operand, "IFC4", "IFC2X3", 5, &mut slots, None).unwrap();
+    assert_eq!(slots.required_slots_unfilled(), 1);
+}
+
 /// A label IFC2X3 has no member for is dropped and counted, and the required
 /// slot left `$` is reported by the slot fill.
 #[test]

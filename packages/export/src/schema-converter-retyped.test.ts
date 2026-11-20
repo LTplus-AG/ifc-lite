@@ -68,6 +68,21 @@ describe('retyped slots (#10778)', () => {
     expect(slots.warnings()).toContainEqual(expect.stringMatching(/^2 slot\(s\) keep \$ where IFC2X3 requires/));
   });
 
+  // CodeRabbit on #10806 (discussion_r4641460956): a label is decoded before it is trimmed.
+  it('decodes a label before trimming it, and trims ASCII whitespace only', () => {
+    // An encoded space at either end is trimmed once decoded. Trimmed first, nothing is trimmed (the raw literal has
+    // no ASCII space), and the decoded space stays, so no member.
+    const kept = new Ifc2x3SlotFill();
+    for (const encoded of ['\\X2\\0020\\X0\\EUR', 'EUR\\X2\\0020\\X0\\']) {
+      expect(convertStepLine(`#5=IFCMONETARYUNIT('${encoded}');`, 'IFC4', 'IFC2X3', undefined, kept), encoded).toBe('#5=IFCMONETARYUNIT(.EUR.);');
+    }
+    expect(kept.warnings(), 'no slot is left $').toEqual([]);
+    // The trim set: `\S\` and the space decode to U+00A0, which the ASCII-only trim keeps, so no member.
+    const operand = new Ifc2x3SlotFill();
+    expect(convertStepLine("#5=IFCMONETARYUNIT('EUR\\S\\ ');", 'IFC4', 'IFC2X3', undefined, operand)).toBe('#5=IFCMONETARYUNIT($);');
+    expect(operand.warnings()).toContainEqual(expect.stringMatching(/^1 slot\(s\) keep \$ where IFC2X3 requires/));
+  });
+
   it('reads the currency past comments beside it, as Rust does', () => {
     expect(convertStepLine('#5=IFCMONETARYUNIT(/* c */.EUR. /* d */);', 'IFC2X3', 'IFC4')).toBe("#5=IFCMONETARYUNIT('EUR');");
     expect(convertStepLine("#5=IFCMONETARYUNIT(/* c */'EUR'/* d */);", 'IFC4', 'IFC2X3')).toBe('#5=IFCMONETARYUNIT(.EUR.);');

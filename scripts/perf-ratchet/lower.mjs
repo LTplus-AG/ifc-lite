@@ -5,11 +5,11 @@
 /**
  * Lowering, the only automatic way a ceiling moves (#6959). Given a family's
  * ceilings and a measurement of `main`, return the ceilings with every entry
- * that `shouldLower` admits rewritten DOWN to the measured value and its
+ * that `loweringTarget` admits rewritten DOWN to the computed target and its
  * provenance re-stamped with the measured commit.
  *
  * It never raises. That is structural rather than a convention: an entry is
- * only rewritten when `shouldLower` says the value is strictly below the
+ * only rewritten when `loweringTarget` finds a target strictly below the
  * ceiling, and the result is re-checked before it is returned, so a bug in
  * either rule throws instead of writing a higher ceiling. Raising a ceiling is
  * a human PR with a justification (docs/guide/performance.md), never this job.
@@ -18,7 +18,7 @@
  * ceiling with no measurement, is left exactly as it was for `check` to fail.
  */
 
-import { shouldLower, relativeDelta } from './compare.mjs';
+import { loweringTarget, relativeDelta } from './compare.mjs';
 
 /**
  * @param {{ family: string, entries: Array<object> }} ceilings validated ceiling file
@@ -33,9 +33,11 @@ export function lowerFamily(ceilings, measured) {
   const changes = [];
   const entries = ceilings.entries.map((entry) => {
     const value = values.get(entry.id);
-    if (value === undefined || !shouldLower(entry, value)) return entry;
-    changes.push({ id: entry.id, unit: entry.unit, from: entry.ceiling, to: value, delta: relativeDelta(value, entry.ceiling) });
-    return { ...entry, ceiling: value, provenance: { commit: measured.commit, measuredAt: measured.measuredAt } };
+    if (value === undefined) return entry;
+    const target = loweringTarget(entry, value);
+    if (target === null) return entry;
+    changes.push({ id: entry.id, unit: entry.unit, from: entry.ceiling, to: target, delta: relativeDelta(target, entry.ceiling) });
+    return { ...entry, ceiling: target, provenance: { commit: measured.commit, measuredAt: measured.measuredAt } };
   });
   ceilings.entries.forEach((before, i) => {
     if (entries[i].ceiling > before.ceiling) {
@@ -64,6 +66,6 @@ export function formatChangelog(families, source) {
       lines.push(`- \`${family}/${c.id}\`: ${fmt(c.from)} -> ${fmt(c.to)}${c.unit ? ` ${c.unit}` : ''} (${pct}%)`);
     }
   }
-  if (lines.length === 0) return `No ceiling lowered: nothing measured at \`${source.commit}\` cleared its band.\n`;
-  return `Ceilings lowered to the values measured on \`main\` at \`${source.commit}\`:\n\n${lines.join('\n')}\n`;
+  if (lines.length === 0) return `No ceiling lowered using measurements from \`main\` at \`${source.commit}\`.\n`;
+  return `Ceilings lowered using measurements from \`main\` at \`${source.commit}\`:\n\n${lines.join('\n')}\n`;
 }

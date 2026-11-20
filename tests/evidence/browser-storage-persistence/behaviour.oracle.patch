@@ -1,0 +1,12 @@
+diff --git b/apps/viewer/src/lib/storage/browser-storage.ts a/apps/viewer/src/lib/storage/browser-storage.ts
+index 75cbee34c4..02cd7bdea7 100644
+--- b/apps/viewer/src/lib/storage/browser-storage.ts
++++ a/apps/viewer/src/lib/storage/browser-storage.ts
+@@ -53,6 +53,7 @@ export function createStoragePersistence() {
+     try {
+       const storage = storageManager();
+       if (typeof storage?.persist !== 'function' || typeof storage.persisted !== 'function') return unsupported;
++      if (alreadyRequested()) return read();
+       attempted = true;
+       // Record the attempt before invoking the browser so a reload or another tab
+       // opened while permission is pending cannot immediately prompt again.

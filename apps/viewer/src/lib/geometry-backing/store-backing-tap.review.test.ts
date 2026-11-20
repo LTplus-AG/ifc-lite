@@ -19,6 +19,7 @@ import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instan
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
+import type { ReleaseState } from './backing-debug-hook';
 
 let names = 0;
 const database = () => ({ name: `tap-review-${process.pid}-${names++}`, locks: null });
@@ -282,4 +283,86 @@ it('#10876 release-for-test refuses while the tap tracks a model whose shards ar
     assert.equal(released, 0, 'the scene was not released');
     assert.equal(meshes[0].positions.length, 9, 'and the store arrays stay resident');
   } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+});
+
+const sceneStub = () => {
+  let released = 0;
+  return { get released() { return released; },
+    renderer: { getScene: () => ({ releaseGeometryData: () => { released++; }, isGeometryDataReleased: () => released > 0 }) } as never };
+};
+
+it('#10876 a shard enqueued after release-for-test builds no successor from the released arrays; the verified generation stays', async () => {
+  const { geometryBackingCommand, activeGeometryBackingTap } = await import('./backing-debug-hook');
+  const meshes = [mesh(1), mesh(2)];
+  const store = storeWith({ rel: meshes });
+  await geometryBackingCommand(store, undefined, { action: 'start', options: { database: database() } as never });
+  const scene = sceneStub();
+  try {
+    const [released] = await geometryBackingCommand(store, scene.renderer, { action: 'release-for-test' });
+    assert.equal(scene.released, 1, 'the verified model was released');
+    const tap = activeGeometryBackingTap()!;
+    enqueueInstancedShards('rel', [shardBytes(80)], instancedShardGeneration()); // after its arrays were released
+    const [after] = await tap.seal();
+    assert.equal(after.generation, released.generation, 'no successor generation was built from the released arrays');
+    assert.equal(after.complete, false, 'and nothing reports the model complete without the new shard');
+    assert.match(after.error ?? '', /released/, 'the refusal is reported');
+    // The sync path too: an in-place append to the released list builds nothing from it.
+    meshes.push(mesh(3));
+    store.setState({ geometryContentVersion: 0 });
+    const [appended] = await tap.seal();
+    assert.equal(appended.generation, released.generation, 'an append after release builds no successor either');
+  } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+});
+
+it('#10876 a root geometryResult with no model entries is never released unverified', async () => {
+  const { geometryBackingCommand } = await import('./backing-debug-hook');
+  const meshes = [mesh(1)];
+  const store = createStore<ReleaseState>(() => ({ models: new Map(), geometryContentVersion: 0, geometryResult: { meshes } }));
+  await geometryBackingCommand(store, undefined, { action: 'start', options: { database: database() } as never });
+  const scene = sceneStub();
+  try {
+    await assert.rejects(geometryBackingCommand(store, scene.renderer, { action: 'release-for-test' }), /nothing was released/);
+    assert.equal(scene.released, 0, 'the scene was not released');
+    assert.equal(meshes[0].positions.length, 9, 'and the root arrays stay resident');
+  } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+});
+
+it('#10876 property: a scene with any unverified geometry source never releases; a fully verified one does', async () => {
+  const { geometryBackingCommand } = await import('./backing-debug-hook');
+  let seed = 10876;
+  const next = (n: number) => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed % n; };
+  const KINDS = ['root-not-owned', 'removed-stash', 'unregistered-shards', 'no-geometry-yet', 'released-at-start'] as const;
+  for (let trial = 0; trial < 16; trial++) {
+    const control = trial === 0;
+    const kinds = control ? [] : KINDS.filter(() => next(2) === 1);
+    if (!control && kinds.length === 0) kinds.push(KINDS[next(KINDS.length)]);
+    const verifiedCount = control ? 1 + next(3) : next(3);
+    const models = new Map<string, { geometryResult: { meshes: MeshData[] } | null }>();
+    const lists: MeshData[][] = [];
+    for (let i = 0; i < verifiedCount; i++) { const list = many(1 + next(3), 100 * i + 1); lists.push(list); models.set(`p${trial}v${i}`, { geometryResult: { meshes: list } }); }
+    const state: ReleaseState = { models, geometryContentVersion: 0, geometryResult: lists[0] ? { meshes: lists[0] } : null };
+    const unverified: MeshData[][] = [];
+    if (kinds.includes('root-not-owned')) { const list = [mesh(900)]; unverified.push(list); state.geometryResult = { meshes: list }; }
+    if (kinds.includes('removed-stash')) { const list = [mesh(901)]; unverified.push(list); state.removedMeshes = new Map([[1, { meshes: list }]]); }
+    if (kinds.includes('no-geometry-yet')) models.set(`p${trial}null`, { geometryResult: null });
+    if (kinds.includes('released-at-start')) {
+      const list = [mesh(902)]; releaseCpuMeshBuffers(list);
+      models.set(`p${trial}rel`, { geometryResult: { meshes: list } });
+    }
+    const store = createStore<ReleaseState>(() => state);
+    await geometryBackingCommand(store, undefined, { action: 'start', options: { database: database() } as never });
+    if (kinds.includes('unregistered-shards')) enqueueInstancedShards(`p${trial}shard`, [shardBytes(903)], instancedShardGeneration());
+    const scene = sceneStub();
+    try {
+      if (control) {
+        await geometryBackingCommand(store, scene.renderer, { action: 'release-for-test' });
+        assert.equal(scene.released, 1, `trial ${trial}: a fully verified scene releases`);
+      } else {
+        await assert.rejects(geometryBackingCommand(store, scene.renderer, { action: 'release-for-test' }), /nothing was released/,
+          `trial ${trial} (${kinds.join(', ')}, ${verifiedCount} verified)`);
+        assert.equal(scene.released, 0, `trial ${trial} (${kinds.join(', ')}): the scene was not released`);
+        for (const list of [...lists, ...unverified]) assert.equal(list[0].positions.length, 9, `trial ${trial}: arrays stay resident`);
+      }
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  }
 });

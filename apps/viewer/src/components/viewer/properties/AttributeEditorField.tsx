@@ -82,10 +82,9 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
     // mutationVersion itself; an unchanged value records nothing.
     // `$` is the existing named-attribute null marker. An explicit empty
     // string would export as STEP `''`, which is present rather than absent.
-    // Undo restores a prior session edit exactly (even ''); with none, it
-    // drops the overlay and restores the source token. The panel lists only
-    // slots the source writes, so an empty value here is a written '', and
-    // the room's undo restores it as that (#10810).
+    // Undo restores a prior session edit exactly (even ''); with none, the
+    // shown value. The panel lists only slots the source writes, so an empty
+    // value here is a written '', and the room's undo restores it as that (#10810).
     const prior = useViewerStore.getState().mutationViews.get(storeModelId)?.getAttributeMutationsForEntity(entityId).find((m) => m.name === attrName);
     if (verdict.kind === 'commit') setAttribute(storeModelId, entityId, attrName, verdict.value, prior ? prior.value : currentValue);
     setEditing(false);

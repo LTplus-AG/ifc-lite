@@ -13,7 +13,7 @@ import { seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { setSpecTextOp } from '@/lib/ids-studio/ops';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 import { idsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
-import { startIdsDraftAutosave } from '@/lib/ids-studio/draft-viewer';
+import { startIdsDraftAutosave, useIdsDraftFeedback } from '@/lib/ids-studio/draft-viewer';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
 
@@ -35,8 +35,10 @@ test('#10585 an agent document candidate does not replace an open draft whose sa
   const { token } = (prepared.structured as { result: { token: string } }).result;
 
   const applied = await dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'ids.candidate.apply', input: { token } }, { canEdit: () => true });
-  assert.equal(applied.isError, true, 'the failed save refuses the replacement');
-  assert.ok(put.mock.callCount() > 0, 'the open draft was saved before replacing it');
+  const detail = `${applied.text} / feedback ${JSON.stringify(useIdsDraftFeedback.getState())}`;
+  assert.equal(applied.isError, true, detail);
+  assert.match(applied.text, /open IDS draft could not be saved/, detail);
+  assert.equal(put.mock.callCount(), 1, `the open draft was saved before replacing it: ${detail}`);
   const live = useViewerStore.getState();
   assert.equal(live.idsStudioDraftId, 'draft-unsaved');
   assert.equal(live.idsStudioState!.doc.ids.specifications[0].name, 'Unsaved edit');

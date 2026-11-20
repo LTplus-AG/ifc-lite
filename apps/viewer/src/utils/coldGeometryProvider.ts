@@ -22,6 +22,24 @@ import { decodeGeometryChunk, type GeometryChunkInfo } from '@ifc-lite/cache';
 type ByteSource = Blob | ArrayBuffer;
 
 const DECODED_LRU_MAX = 4;
+const DECODED_LRU_BYTES = 32 * 1024 * 1024;
+
+/** Count backing allocations, including shared arenas and appearance topology.
+ * A small view still pins its entire buffer. Identity deduplication also covers
+ * source-index pools shared by meshes in different chunks. */
+function heldBytes(lists: Iterable<readonly MeshData[]>): number {
+  const buffers = new Set<ArrayBufferLike>();
+  for (const meshes of lists) for (const mesh of meshes) {
+    const source = mesh.appearanceSource;
+    for (const view of [mesh.positions, mesh.normals, mesh.indices, mesh.entityIds,
+      mesh.uvs, mesh.texture?.rgba, source?.indices, source?.sourceIndices, source?.cornerIndices]) {
+      if (view) buffers.add(view.buffer);
+    }
+  }
+  let bytes = 0;
+  for (const buffer of buffers) bytes += buffer.byteLength;
+  return bytes;
+}
 
 async function readRange(source: ByteSource, start: number, end: number): Promise<Uint8Array> {
   if (source instanceof Blob) {
@@ -49,8 +67,15 @@ export function makeColdGeometryProvider(input: {
   /** Chunk directory parsed at load time (small; retained instead of re-read). */
   chunks: GeometryChunkInfo[];
   version: number;
+  /** Retained decoded buffers only; excludes in-flight reads and caller-owned
+   * results. Oversized chunks are returned without entering the LRU. */
+  decodedCacheBytes?: number;
 }): ColdGeometryProvider {
   const { source, geometrySectionOffset, chunks, version } = input;
+  const budget = input.decodedCacheBytes ?? DECODED_LRU_BYTES;
+  if (!Number.isSafeInteger(budget) || budget < 0) {
+    throw new RangeError('Decoded geometry cache byte budget must be a non-negative safe integer');
+  }
   // Tiny decoded-chunk LRU keyed by chunk index.
   const lru = new Map<number, MeshData[]>();
 
@@ -66,8 +91,10 @@ export function makeColdGeometryProvider(input: {
     const start = geometrySectionOffset + info.byteOffset;
     const stored = await readRange(source, start, start + info.byteLength);
     const meshes = await decodeGeometryChunk(stored, info, version, { sharedArena: true });
+    // Do not evict useful neighbours for a chunk that cannot itself be retained.
+    if (budget === 0 || heldBytes([meshes]) > budget) return meshes;
     lru.set(index, meshes);
-    while (lru.size > DECODED_LRU_MAX) {
+    while (lru.size > DECODED_LRU_MAX || heldBytes(lru.values()) > budget) {
       const oldest = lru.keys().next().value as number;
       lru.delete(oldest);
     }

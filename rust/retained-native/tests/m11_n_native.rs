@@ -65,12 +65,24 @@ fn reference_rows(root: &Path, model: &str, worker: &std::ffi::OsStr) -> Vec<ser
 /// surfaces, triangle indices, revisionLocalFaces, surfaceIndices), except the
 /// SDK's coordinates and the normals derived from them, which may differ by a
 /// few ULP between worker address layouts: positions within 4 ULP of the
-/// larger magnitude, normal components within 1e-9 absolute.
+/// larger of their magnitudes and the array's bounding-box extent (so that a
+/// coordinate of 0 against +/-1e-17 passes), normal components within 1e-9
+/// absolute.
 fn same_row(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> Result<(), String> {
     use serde_json::Value;
-    let within = |x: f64, y: f64, key: &str| match key {
-        "positions" => (x - y).abs() <= 4. * f64::EPSILON * x.abs().max(y.abs()),
+    let within = |x: f64, y: f64, key: &str, extent: f64| match key {
+        "positions" => (x - y).abs() <= 4. * f64::EPSILON * x.abs().max(y.abs()).max(extent),
         _ => (x - y).abs() <= 1e-9,
+    };
+    // Largest side of the bounding box of an xyz position array.
+    let extent = |values: &[Value]| -> f64 {
+        let (mut low, mut high) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for (i, v) in values.iter().enumerate() {
+            let v = v.as_f64().unwrap_or(0.);
+            low[i % 3] = low[i % 3].min(v);
+            high[i % 3] = high[i % 3].max(v);
+        }
+        (0..3).map(|a| high[a] - low[a]).filter(|d| d.is_finite()).fold(0., f64::max)
     };
     match (a, b) {
         (Value::Object(x), Value::Object(y)) => {
@@ -80,9 +92,10 @@ fn same_row(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> Result<
                 if (key == "positions" || key == "normals") && value.is_array() {
                     let (p, q) = (value.as_array().unwrap(), y[key].as_array().ok_or_else(|| format!("{here}: not an array"))?);
                     if p.len() != q.len() { return Err(format!("{here}: length {} vs {}", p.len(), q.len())); }
+                    let scale = extent(p).max(extent(q));
                     for (i, (u, v)) in p.iter().zip(q).enumerate() {
                         let (u, v) = (u.as_f64().unwrap(), v.as_f64().unwrap());
-                        if !within(u, v, key) { return Err(format!("{here}[{i}]: {u:e} vs {v:e}")); }
+                        if !within(u, v, key, scale) { return Err(format!("{here}[{i}]: {u:e} vs {v:e}")); }
                     }
                 } else {
                     same_row(value, &y[key], &here)?;
@@ -115,6 +128,20 @@ fn same_row(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> Result<
 /// test flakes, the failing row and field name the case: extend
 /// mesh_canonical.cpp to cover it, or make the consumer compare it
 /// order-insensitively. Never retry until green.
+#[test]
+fn m11_n_row_comparison_tolerance() {
+    let row = |positions: serde_json::Value, indices: serde_json::Value|
+        json!({"id": 1, "parts": [{"positions": positions, "normals": [0., 0., 1.], "indices": indices}]});
+    let base = row(json!([0., 0., 0., 4.195, 0.3, 2.01]), json!([0, 1, 0]));
+    // A coordinate of 0 against +/-1e-17: inside the extent-scaled floor.
+    assert!(same_row(&base, &row(json!([1e-17, -1e-17, 0., 4.195, 0.3, 2.01]), json!([0, 1, 0])), "rows").is_ok());
+    // One ULP on 4.195 (the #21966 corner).
+    assert!(same_row(&base, &row(json!([0., 0., 0., 4.195000000000001, 0.3, 2.01]), json!([0, 1, 0])), "rows").is_ok());
+    // A real displacement and any topology change still fail.
+    assert!(same_row(&base, &row(json!([0., 0., 0., 4.1950001, 0.3, 2.01]), json!([0, 1, 0])), "rows").is_err());
+    assert!(same_row(&base, &row(json!([0., 0., 0., 4.195, 0.3, 2.01]), json!([1, 0, 0])), "rows").is_err());
+}
+
 #[test]
 fn m11_n_reference_is_independent_of_worker_address_layout() {
     let Some(worker) = support::worker_path() else {return;};

@@ -66,12 +66,14 @@ double canonical_grid(const AdapterMesh& mesh) {
     // The SDK's coordinates differ between runs by about one ULP of their own
     // magnitude, so the step must be far above ULP(M) = M * 2^-52 for the
     // largest |coordinate| M: at least 2^16 ULP(M) here, which makes a 1-ULP
-    // change cross a grid boundary for about 1 in 2^15 noisy coordinates. It
-    // also stays at or below 2^-29 of the bounding-box extent where the
-    // offset is small (sub-nanometre for building parts), so ties only join
-    // points that are practically coincident; with a large georeferenced
-    // offset it is about 2^-36 M (38 um at 2.6e6 m). A power of two keeps the
-    // step itself stable under the same noise.
+    // change cross a grid boundary for about 1 in 2^15 noisy coordinates.
+    // Where the offset is small the step is between 2^-30 and 2^-29 of the
+    // bounding-box extent (sub-nanometre for building parts), so ties only
+    // join points that are practically coincident; with a large
+    // georeferenced offset it is between 2^-36 M and 2^-35 M (2^-14 m, about
+    // 61 um, at 2.6e6 m). A power of two keeps the step itself stable under
+    // the same noise, except when the base value lies within noise of a power
+    // of two, where ilogb can flip it (and with it every key).
     double low[3]={0,0,0},high[3]={0,0,0},largest=0;
     for (size_t i=0;i<mesh.positions.size();i+=3) for (unsigned axis=0;axis<3;++axis) {
         const double x=mesh.positions[i+axis];
@@ -209,18 +211,28 @@ struct Plane2 {
         return sign*orient2(at(mesh,a),at(mesh,b),at(mesh,c));
     }
 };
-// A vertex within one grid step of the open segment a-b (3D). A diagonal that
-// passes this close to a vertex is never taken: whether it would pass inside
-// or outside a nearly collinear vertex is decided by the SDK's last bits.
-// This only rejects candidates; accepted ones are still validated exactly.
+// Distance below which a vertex counts as on a diagonal: 2^-8 of the grid
+// step, so at least 2^8 ULP of the largest |coordinate|. That is far above the
+// SDK's noise of about one ULP, which is what the rule is for, and far below
+// the width of any real face (a thin face of width w is still split by its
+// best diagonal while w > this threshold, and by the last resort below it).
+// Tying it to the step itself instead rejected both diagonals of every face
+// thinner than one step and left such faces to the SDK's split.
+double near_threshold(double h) { return std::ldexp(h,-8); }
+// A vertex within near_threshold of the open segment a-b (3D). A diagonal that
+// passes this close to a vertex is not taken while another valid one exists:
+// whether it would pass inside or outside a nearly collinear vertex is
+// decided by the SDK's last bits. This only ranks candidates; every accepted
+// one is still validated exactly.
 bool near(const Point& a,const Point& b,const Point& c,double h) {
+    const double limit=near_threshold(h);
     const Point ab{b[0]-a[0],b[1]-a[1],b[2]-a[2]},ac{c[0]-a[0],c[1]-a[1],c[2]-a[2]};
     const double length=dot(ab,ab);
     if (!(length>0)) return true;
     const double t=dot(ac,ab)/length;
     if (!(t>0 && t<1)) return false;
     const Point d{ac[0]-t*ab[0],ac[1]-t*ab[1],ac[2]-t*ab[2]};
-    return dot(d,d)<=h*h;
+    return dot(d,d)<=limit*limit;
 }
 // Diagonal length on the canonical grid: equal lengths (a rectangle's
 // diagonals) stay equal under the SDK's ULP noise and fall to the vertex IDs.
@@ -245,10 +257,17 @@ bool projection(const AdapterMesh& mesh,const std::vector<std::pair<uint32_t,uin
     plane=Plane2{(axis+1)%3,(axis+2)%3,n[axis]>0 ? 1 : -1};
     return true;
 }
-// A two-triangle face in closed form, by the same rule as retriangulate: the
-// diagonal first in (squared length, lower, upper) order that is not foreign
-// and leaves both triangles strictly positive; otherwise the other one.
-// Empty when neither qualifies (the SDK's split stays).
+// A two-triangle face in closed form: the diagonal first in (grid length,
+// lower, upper) order among those that are not foreign, leave both triangles
+// strictly positive (exact orientation) and pass no vertex within
+// near_threshold; if near-rejection leaves none, the first such diagonal
+// regardless of nearness whose two flat normals follow the face. Empty when neither diagonal is valid (the SDK's
+// split stays). This is the greedy's ranking, not the same rule in closed
+// form: requad skips retriangulate's area, normal and edge-use checks, so for
+// a near-collinear quad at a large offset it can return a split where
+// retriangulate would decline. Its own result depends only on exact
+// orientations and grid keys, whereas retriangulate's 1e-9 relative area
+// check on such a sliver can itself flip with the SDK's noise.
 std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Triangle& b,
     const std::vector<Edge>& foreign,double h) {
     for (unsigned i=0;i<3;++i) for (unsigned j=0;j<3;++j) {
@@ -260,20 +279,37 @@ std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Tri
         auto rank=[&](uint32_t x,uint32_t y) { return std::make_tuple(grid_length(point(mesh,x),point(mesh,y),h),std::min(x,y),std::max(x,y)); };
         const auto U=point(mesh,u),V=point(mesh,v),P=point(mesh,p),Q=point(mesh,q);
         const bool kept=plane.orient(mesh,u,v,p)>0 && plane.orient(mesh,v,u,q)>0 &&
-            !near(U,V,P,h) && !near(U,V,Q,h) && !std::binary_search(foreign.begin(),foreign.end(),edge(u,v));
+            !std::binary_search(foreign.begin(),foreign.end(),edge(u,v));
         const bool flipped=plane.orient(mesh,p,u,q)>0 && plane.orient(mesh,q,v,p)>0 &&
-            !near(P,Q,U,h) && !near(P,Q,V,h) && !std::binary_search(foreign.begin(),foreign.end(),edge(p,q));
-        if (flipped && (!kept || rank(p,q)<rank(u,v))) return {Triangle{p,u,q},Triangle{q,v,p}};
-        if (kept) return {a,b};
+            !std::binary_search(foreign.begin(),foreign.end(),edge(p,q));
+        const bool kept_clear=kept && !near(U,V,P,h) && !near(U,V,Q,h);
+        const bool flipped_clear=flipped && !near(P,Q,U,h) && !near(P,Q,V,h);
+        // Prefer diagonals clear of every vertex. The last resort ignores
+        // nearness, but its triangles can be slivers: it also needs both flat
+        // normals along the face's, or order_mesh would refuse a degenerate
+        // triangle (or emit an inverted one).
+        auto sound=[&](const Triangle& x,const Triangle& y) {
+            Point unit;
+            for (const auto& t:{x,y})
+                if (!flat_normal(point(mesh,t[0]),point(mesh,t[1]),point(mesh,t[2]),unit) || !(dot(unit,n)>0)) return false;
+            return true;
+        };
+        const bool clear=kept_clear || flipped_clear;
+        const bool use_kept=clear ? kept_clear : kept && sound(a,b);
+        const bool use_flipped=clear ? flipped_clear : flipped && sound({p,u,q},{q,v,p});
+        if (use_flipped && (!use_kept || rank(p,q)<rank(u,v))) return {Triangle{p,u,q},Triangle{q,v,p}};
+        if (use_kept) return {a,b};
         return {};
     }
     return {};
 }
 // Greedy constrained triangulation of one planar face from its vertex set and
 // boundary alone. Empty on any doubt; the caller then keeps the SDK's split.
-// `foreign` holds edges this face must not create (other faces' edges).
-std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Triangle>& face,
-    const std::vector<Edge>& foreign,double h) {
+// `foreign` holds edges this face must not create (other faces' edges). With
+// `avoid_near`, diagonals passing within near_threshold of a vertex are
+// skipped; retriangulate retries without that rule as a last resort.
+std::vector<Triangle> greedy(const AdapterMesh& mesh,const std::vector<Triangle>& face,
+    const std::vector<Edge>& foreign,double h,bool avoid_near) {
     std::set<std::pair<uint32_t,uint32_t>> directed;
     std::map<Edge,unsigned> uses;
     std::vector<uint32_t> vertices;
@@ -291,6 +327,14 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
     }
     Plane2 plane; Point n;
     if (!projection(mesh,boundary,plane,n)) return {};
+    // Two vertices with one projected point (a non-planar face tagged planar)
+    // would make the angular order below not a strict weak order: decline.
+    {
+        std::vector<P2> projected;
+        for (uint32_t v:vertices) projected.push_back(plane.at(mesh,v));
+        std::sort(projected.begin(),projected.end());
+        if (std::adjacent_find(projected.begin(),projected.end())!=projected.end()) return {};
+    }
     // Exact angular order around a vertex: half-plane, then orientation.
     auto ccw=[&](uint32_t a) {
         const auto o=plane.at(mesh,a);
@@ -346,7 +390,7 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
         for (uint32_t c:vertices) {
             if (c==a || c==b) continue;
             const auto r=plane.at(mesh,c);
-            if ((orient2(p,q,r)==0 && within(p,q,r)) || near(A,B,point(mesh,c),h)) { ok=false; break; }
+            if ((orient2(p,q,r)==0 && within(p,q,r)) || (avoid_near && near(A,B,point(mesh,c),h))) { ok=false; break; }
         }
         for (auto it=edges.begin();ok && it!=edges.end();++it) {
             const auto [c,d]=*it;
@@ -392,6 +436,14 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
     for (const auto& d:outline) if (!after.count(d)) return {};
     if (!(std::abs(after_area-before_area)<=1e-9*before_area)) return {};
     return {found.begin(),found.end()};
+}
+// The greedy, and if nearness left it without a valid triangulation, the
+// greedy without the near rule (exact predicates and grid ranking only).
+std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Triangle>& face,
+    const std::vector<Edge>& foreign,double h) {
+    auto result=greedy(mesh,face,foreign,h,true);
+    if (result.empty()) result=greedy(mesh,face,foreign,h,false);
+    return result;
 }
 }
 

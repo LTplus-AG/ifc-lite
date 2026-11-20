@@ -137,8 +137,10 @@ fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
         }
     }
     // A planar, strictly convex two-triangle face takes the diagonal first in
-    // (grid length, lower vertex, upper vertex) order, unless another face
-    // already has that edge (canonical_planar_faces' existing-edge exception).
+    // (grid length, lower vertex, upper vertex) order among those that no
+    // other face already has (canonical_planar_faces' existing-edge exception)
+    // and that pass no vertex within the near threshold; if nearness leaves
+    // none, the first one that no other face has (requad's last resort).
     let mut faces: BTreeMap<u32, Vec<[u32; 3]>> = BTreeMap::new();
     for (face, t) in &triangles { faces.entry(*face).or_default().push(*t); }
     let edges_of = |face: u32| -> std::collections::BTreeSet<(u32, u32)> {
@@ -154,7 +156,12 @@ fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
         };
         let (current, other) = (rank(u, v), rank(p, q));
         let (first, second) = if current < other { (current, other) } else { (other, current) };
-        let expected = if edges_of(*face).contains(&(first.1, first.2)) { second } else { first };
+        let foreign = edges_of(*face);
+        let free: Vec<_> = [first, second].into_iter().filter(|d| !foreign.contains(&(d.1, d.2))).collect();
+        // The diagonal's two other quad vertices.
+        let clear = |d: &(i64, u32, u32)| [u, q, v, p].iter().filter(|&&w| w != d.1 && w != d.2)
+            .all(|&w| !near(point(part, d.1), point(part, d.2), point(part, w), h));
+        let Some(&expected) = free.iter().find(|d| clear(d)).or(free.first()) else { continue; };
         if current != expected {
             return Err(format!("{model}#{id}: quad face {face} uses diagonal {:?}, canonical is {:?}", (current.1, current.2), (expected.1, expected.2)));
         }
@@ -175,6 +182,17 @@ fn quad_loop(pair: &[[u32; 3]]) -> Option<[u32; 4]> {
         }
     }
     None
+}
+/// mesh_canonical.cpp near(): c within 2^-8 grid steps of the open segment a-b.
+fn near(a: Point, b: Point, c: Point, h: f64) -> bool {
+    let limit = h / 256.;
+    let (ab, ac) = (sub(b, a), sub(c, a));
+    let length = dot(ab, ab);
+    if !(length > 0.) { return true; }
+    let t = dot(ac, ab) / length;
+    if !(t > 0. && t < 1.) { return false; }
+    let d = [ac[0] - t * ab[0], ac[1] - t * ab[1], ac[2] - t * ab[2]];
+    dot(d, d) <= limit * limit
 }
 fn sub(a: Point, b: Point) -> Point { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
 fn cross(a: Point, b: Point) -> Point { [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] }

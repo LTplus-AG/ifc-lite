@@ -451,4 +451,113 @@ void run_mesh_canonical_tests() {
             same_topology(mesh,base,"rotated grid with a hole and +/-1 ULP noise keeps its topology");
         }
     }
+    // Thin planar faces: a 10 m x w rectangle, with w from 1e-9 m to 1e-4 m,
+    // near the origin and at a 2.6e6 m offset, split by the SDK either way.
+    // Every split gives one topology: the near rule's threshold is tied to the
+    // noise, not to the grid step (when it was the step, both diagonals of a
+    // face thinner than one step were rejected and the SDK split stayed), and
+    // a face thinner than the threshold still gets its best valid diagonal.
+    {
+        for (double offset:{0.,2.6e6}) for (double w:{1e-9,5e-9,2e-8,1e-6,2e-5,5e-5,1e-4}) {
+            // Face 0 is the thin rectangle; face 1, a triangle, gives the mesh a 10 m extent.
+            const std::vector<Point> points{{offset,offset,0},{offset+10,offset,0},{offset+10,offset+w,0},{offset,offset+w,0},
+                {offset,offset,5},{offset+10,offset,5},{offset,offset+10,5}};
+            std::vector<uint32_t> first;
+            for (unsigned run=0;run<32;++run) {
+                std::vector<std::pair<uint32_t,Tri>> triangles{{1,{4,5,6}}};
+                if (run%2) { triangles.push_back({0,{0,1,2}}); triangles.push_back({0,{0,2,3}}); }
+                else { triangles.push_back({0,{0,1,3}}); triangles.push_back({0,{1,2,3}}); }
+                std::vector<uint32_t> ids(points.size()); std::iota(ids.begin(),ids.end(),0u); std::shuffle(ids.begin(),ids.end(),random);
+                std::shuffle(triangles.begin(),triangles.end(),random);
+                AdapterMesh mesh; mesh.positions.resize(3*points.size());
+                for (size_t v=0;v<points.size();++v) for (unsigned axis=0;axis<3;++axis) mesh.positions[3*ids[v]+axis]=points[v][axis];
+                for (auto [face,t]:triangles) {
+                    std::rotate(t.begin(),t.begin()+random()%3,t.end());
+                    mesh.indices.insert(mesh.indices.end(),{ids[t[0]],ids[t[1]],ids[t[2]]}); mesh.faces.push_back(face);
+                }
+                mesh.normals.assign(mesh.indices.size()*3,0.);
+                canonicalize(mesh,{true,false});
+                if (run==0) first=mesh.indices;
+                require(mesh.indices==first,"thin rectangle has one canonical diagonal whatever the SDK split");
+            }
+        }
+    }
+    // The near rule, greedy path: a 1 x 4 rectangle with a T-vertex on a short
+    // side, rotated, in a random plane, offset up to 1e6 m, under +/-1 ULP noise.
+    // Without the rule the diagonal along the short side (through the T-vertex,
+    // off it only by the SDK's last bits) is valid or not run to run.
+    {
+        std::uniform_real_distribution<double> unit(0,1);
+        for (unsigned trial=0;trial<200;++trial) {
+            const double t=0.2+0.6*unit(random),angle=6.283185307179586*unit(random),c=std::cos(angle),s=std::sin(angle);
+            const double offset=trial%2 ? std::pow(10.,1+5*unit(random)) : 0;
+            const unsigned plane=random()%3;
+            std::vector<Point> points;
+            for (const auto& [x,y]:std::vector<std::pair<double,double>>{{0,0},{t,0},{1,0},{1,4},{0,4}}) {
+                const double u=offset+c*x-s*y,v=offset/3+s*x+c*y;
+                points.push_back(plane==0 ? Point{u,v,3} : plane==1 ? Point{u,3,v} : Point{3,u,v});
+            }
+            const std::vector<Tri> triangles{{0,1,4},{1,2,3},{1,3,4}};
+            AdapterMesh base=variant(points,triangles,0,random); canonicalize(base,{true});
+            for (unsigned run=0;run<24;++run) {
+                AdapterMesh mesh=variant(points,triangles,0,random); nudge(mesh,random); canonicalize(mesh,{true});
+                same_topology(mesh,base,"T-vertex on a short side with +/-1 ULP noise keeps its topology");
+            }
+        }
+    }
+    // The near rule, two-triangle path: a quad (u, q, v, p) whose vertex p is
+    // the rounded midpoint of u-v. The diagonal u-v (length 2) outranks p-q
+    // (length 3), but whether it passes inside p is the SDK's last bits.
+    {
+        std::uniform_real_distribution<double> unit(0,1);
+        for (unsigned trial=0;trial<200;++trial) {
+            const double angle=6.283185307179586*unit(random),c=std::cos(angle),s=std::sin(angle);
+            const double offset=trial%2 ? std::pow(10.,1+5*unit(random)) : 0,scale=0.1+3*unit(random);
+            const unsigned plane=random()%3;
+            auto place=[&](double x,double y) {
+                const double u=offset+scale*(c*x-s*y),v=offset/3+scale*(s*x+c*y);
+                return plane==0 ? Point{u,v,3} : plane==1 ? Point{u,3,v} : Point{3,u,v};
+            };
+            const Point U=place(0,0),Q=place(1,-3),V=place(2,0);
+            const Point P{(U[0]+V[0])/2,(U[1]+V[1])/2,(U[2]+V[2])/2};
+            const std::vector<Point> points{U,Q,V,P};
+            // The SDK's split is the valid one, p-q (u-v would leave a sliver).
+            const std::vector<Tri> split{{3,0,1},{1,2,3}};
+            AdapterMesh base=variant(points,split,0,random); canonicalize(base,{true});
+            for (unsigned run=0;run<24;++run) {
+                AdapterMesh mesh=variant(points,split,0,random); nudge(mesh,random); canonicalize(mesh,{true});
+                same_topology(mesh,base,"quad with a vertex on a diagonal under +/-1 ULP noise keeps its topology");
+            }
+            require(has_edge(base,P,Q),"the diagonal clear of every vertex is taken");
+        }
+    }
+    // The near rule is about noise only: a vertex 1/16 of a grid step from
+    // the shorter diagonal (far above the threshold, 2^-8 of a step) does not
+    // block it.
+    {
+        AdapterMesh probe; probe.positions={0,0,0, 2,0,0, 1,-3,0}; probe.indices={0,2,1}; probe.faces={0};
+        const double h=canonical_grid(probe);
+        const Point U{0,0,0},Q{1,-3,0},V{2,0,0},P{1,h/16,0};
+        AdapterMesh mesh=variant({U,Q,V,P},{{3,0,1},{1,2,3}},0,random); canonicalize(mesh,{true});
+        require(has_edge(mesh,U,V),"a vertex well above the near threshold does not block the shorter diagonal");
+    }
+    // The exact orientation: on this rotated grid (found by search) the naive
+    // double sign of a near-collinear triple is wrong, the greedy then sees a
+    // crossing that is not there and declines, and the SDK's split leaks.
+    // cos and sin of 2.4909232096394676 rad as literals, so no libm differs.
+    {
+        const double c=-0x1.97632b8311177p-1,s=0x1.3620d3d3c9c54p-1,spacing=0x1.2c15891c9a2c8p+3;
+        std::vector<Point> points,flat; std::vector<Tri> triangles;
+        grid(6,6,{},[&](double i,double j) {
+            const double x=i*spacing,y=j*spacing; return Point{c*x-s*y,s*x+c*y,1.5}; },random,points,flat,triangles);
+        planar_face_is_canonical(points,triangles,random,"rotated grid with near-collinear vertices is canonical",&flat,24);
+    }
+    // A face tagged planar whose two interior vertices share one projected
+    // point (it is folded): the angular order would not be a strict weak
+    // order there, so the face is declined.
+    {
+        AdapterMesh folded; folded.positions={0,0,0, 1,0,0, 1,1,0, 0,1,0, .5,.5,.2, .5,.5,-.2};
+        folded.indices={0,1,4, 1,5,4, 1,2,5, 2,3,5, 3,4,5, 3,0,4}; folded.faces.assign(6,0); folded.normals.assign(54,0.);
+        declined(folded,{true},"face with two vertices on one projected point is left as split");
+    }
 }

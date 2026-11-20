@@ -104,6 +104,9 @@ void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees,double chor
         const auto U=point(mesh,u),V=point(mesh,v),P=point(mesh,p),Q=point(mesh,q);
         const double old_length=U.DistanceBetweenSquared(V),new_length=P.DistanceBetweenSquared(Q);
         if (!std::isfinite(new_length) || !(new_length>0 && new_length<old_length)) continue;
+        // Strictly shorter on the canonical grid, so ULP noise cannot flip a
+        // near tie. A pair whose diagonals tie on the grid keeps the SDK's
+        // split (documented in mesh_canonical.hpp).
         if (grid>0 && !(std::llround(std::sqrt(new_length)/grid)<std::llround(std::sqrt(old_length)/grid))) continue;
         const auto na=normal(mesh,a),nb=normal(mesh,b),n=na+nb;
         // A coplanar pair has identical volume for either diagonal. Preserve

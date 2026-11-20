@@ -35,3 +35,13 @@ it('a move recorded against a copy of the committed mutation still mirrors its u
   useViewerStore.getState().undo('hello');
   assert.deepEqual(mirrored, [['hello', WALL_ID, [-2, -0, -0]]]);
 });
+
+it('a peer edit of the moved element clears the move, whose mutation is another entity\'s (#10810)', () => {
+  // A move's mutation belongs to its placement point, not the element; this stands in for one with another entity.
+  const STOREY_ID = 42;
+  const committed = useViewerStore.getState().setPositionalAttribute('hello', STOREY_ID, 2, 'Moved')!;
+  publishMove(useViewerStore.getState(), 'hello', committed, WALL_ID, [2, 0, 0]);
+  useViewerStore.getState().invalidateHistoryForEntity('hello', WALL_ID);
+  const undo = useViewerStore.getState().undoStacks.get('hello') ?? [];
+  assert.equal(undo.some(mutation => mutation.id === committed.id), false);
+});

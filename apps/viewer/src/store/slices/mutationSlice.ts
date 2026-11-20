@@ -63,7 +63,7 @@ export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
-import { mirroredSession, propertyBefore, rememberPublishedEdit, publishMove } from './mutation-room-history.js';
+import { mirroredSession, movedEntityOf, propertyBefore, rememberPublishedEdit, publishMove } from './mutation-room-history.js';
 import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
 import { hasPendingScheduleEdits } from './pending-outside-view.js';
@@ -1856,7 +1856,9 @@ export const createMutationSlice: StateCreator<
   },
 
   invalidateHistoryForEntity: (modelId, entityId) => set((s) => {
-    const patch = invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId, entityId);
+    // A move's mutation is its placement point's, so a recorded move of this entity goes too (#10810).
+    const patch = invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId,
+      (m) => m.entityId === entityId || movedEntityOf(m) === entityId);
     // Whatever the patch removed from this model's undo stack also leaves its change sets.
     if (!patch.undoStacks) return patch;
     const kept = new Set((patch.undoStacks.get(modelId) ?? []).map((m) => m.id));

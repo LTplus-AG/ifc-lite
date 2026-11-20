@@ -16,6 +16,7 @@
 
 import { PropertyValueType } from '@ifc-lite/data';
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
+import { findPropertyInSets } from '@ifc-lite/query';
 import type { ViewerState } from '../index.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 
@@ -52,8 +53,13 @@ export function mirroredSession(state: ViewerState, modelId: string): Session | 
 /** The effective property row before an edit, for the types its undo must restore. */
 export function propertyBefore(view: MutablePropertyView, entityId: number, psetName: string, propName: string): ValueTypes | undefined {
   // Several sets can share a name; the property sits in whichever of them holds it.
-  const row = view.getForEntity(entityId).flatMap(set => set.name === psetName ? set.properties : []).find(property => property.name === propName);
+  const row = findPropertyInSets(view.getForEntity(entityId), psetName, propName);
   return row && { type: row.type, dataType: row.dataType };
+}
+
+/** The element a recorded move moved, whose mutation is its placement point's: a peer edit of it must clear the move. */
+export function movedEntityOf(mutation: Mutation): number | undefined {
+  return published.get(mutation)?.placement?.entityId;
 }
 
 /** Record that `mutation` was mirrored into `session`, so its undo and redo are too. */

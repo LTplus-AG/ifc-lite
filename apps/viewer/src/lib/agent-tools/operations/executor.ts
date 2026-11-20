@@ -162,13 +162,11 @@ export async function executeOperation(
       try { undo(); } catch (error) { console.warn('[viewer operation] discarding a refused result failed', error); }
     }
   };
-  /** The result after the final check, bounded and validated. A result refused here is never delivered, so what the
-   * handler stored for it is discarded; a committed write is not, since it already happened. */
   const accepted = (result: unknown, finalCheck: () => void): unknown => {
-    try { finalCheck(); const bounded = boundedResult(result); entry.validateResult(bounded); return bounded; } catch (error) {
-      if (!committed) discardResult();
-      throw error;
-    }
+    finalCheck();
+    const bounded = boundedResult(result);
+    entry.validateResult(bounded);
+    return bounded;
   };
   check();
   if (!args.background) {
@@ -183,7 +181,7 @@ export async function executeOperation(
         if (committed) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR,
           message: error instanceof Error ? error.message : 'Operation failed after committing changes.',
           details: { committed: true, revision: activeRevision, operation_id: entry.id, model_id: model?.id ?? null } });
-        discardResult(); // a handler that stored a candidate and then threw
+        discardResult();
         throw error;
       }
     };
@@ -203,9 +201,10 @@ export async function executeOperation(
   const uncollected = (job: LiveJob) => job.snapshot.state === 'succeeded' && !job.delivered;
   for (const evictUncollected of [false, true]) {
     for (const [id, job] of owned) {
-      if (owned.size < MAX_JOBS || job.snapshot.state === 'running' || uncollected(job) !== evictUncollected) continue;
-      if (evictUncollected) job.discard(); // its result will never be collected
+      if (owned.size < MAX_JOBS) break;
+      if (job.snapshot.state === 'running' || uncollected(job) !== evictUncollected) continue;
       owned.delete(id);
+      if (evictUncollected) job.discard(); // its result will never be collected
     }
   }
   if (owned.size >= MAX_JOBS) invalid('This host already has 32 running operation jobs.');
@@ -246,8 +245,8 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
       const aborted = host.lifetimeSignal?.aborted === true || (error instanceof DOMException && error.name === 'AbortError')
         || (error instanceof ToolExecutionError && error.code === ToolErrorCode.CANCELLED);
       if (!job.delivered && (aborted || (error instanceof ToolExecutionError && error.code === ToolErrorCode.STATE_CHANGED))) {
-        job.discard();
         Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+        job.discard();
       }
       throw error;
     }

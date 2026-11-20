@@ -95,7 +95,7 @@ function clashRefusal(error: string, kind: ClashErrorKind | null, namedTarget: b
   if (kind === 'stale') return stale(error);
   return internal(error);
 }
-function clashFocusRefusal(fallback: string) {
+export function clashFocusRefusal(fallback: string) {
   const { clashError, clashErrorKind } = useViewerStore.getState();
   return clashError ? clashRefusal(clashError, clashErrorKind, true) : invalidInput('refused', fallback);
 }

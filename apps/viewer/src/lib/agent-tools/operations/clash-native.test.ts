@@ -101,6 +101,11 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       const result = await call('clash.focus', { clash_ids, run_seq, element: 'pair', mode: 'highlight' }, true);
       assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION', result.text);
       assert.equal((result.structured as { reason: string }).reason, 'unavailable');
+      const topic = await call('clash.topic.create', {
+        kind: clash_ids.length === 1 ? 'pair' : 'group', clash_ids, run_seq, group_name: 'Group', mode: 'highlight',
+      }, true);
+      assert.equal(topic.errorCode, 'UNSUPPORTED_OPERATION', topic.text);
+      assert.equal((topic.structured as { reason: string }).reason, 'unavailable');
     }
   });
 

@@ -4,7 +4,7 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
-import { clashRuntime, currentClashes } from './clash-native';
+import { clashFocusRefusal, clashRuntime, currentClashes } from './clash-native';
 import { internal, invalidInput, stale, unavailable } from './refusals';
 export const clashTopicOperations = [
   viewerOperation<{
@@ -73,8 +73,14 @@ export const clashTopicOperations = [
           total: result.clashes.length,
           ...(i.kind === 'group' ? { groupName: i.group_name } : {}),
           mode: i.mode,
-          focusClash: runtime.focusClash,
-          focusClashes: runtime.focusClashes,
+          focusClash: (pair, mode) => {
+            if (!runtime.focusClash(pair, mode)) throw clashFocusRefusal('Native clash focus refused.');
+          },
+          focusClashes: (group, mode, signal) => {
+            const focused = runtime.focusClashes(group, mode, signal);
+            if (!focused) throw clashFocusRefusal('None of this group’s objects are available in the loaded models.');
+            return focused;
+          },
           isCurrent,
           signal: c.signal,
           commit: (write) => c.commit(write),

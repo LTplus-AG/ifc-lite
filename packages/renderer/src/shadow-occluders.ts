@@ -27,6 +27,7 @@ import type { BatchedMesh, Mesh } from './types.js';
 import type { InstancedTemplateGPU, TexturedMesh } from './scene.js';
 import type { ShadowOccluderDraw } from './shadow-pass.js';
 import { isEntityVisible } from './entity-visibility.js';
+import { batchEntities } from './batch-entities.js';
 
 /** The draw lists a `Scene` exposes, as the collector needs them. */
 export interface ShadowOccluderSources {
@@ -145,13 +146,17 @@ export function collectShadowOccluders(
     if (batch.gpuResident === false) continue;
     if (!batch.vertexBuffer || !batch.indexBuffer || batch.indexCount <= 0) continue;
     if (batch.color[3] < minCastAlpha) continue; // transparent (glass) → light through
-    const visible = visibleCount(batch.expressIds, visibility);
+    const entities = batchEntities(batch); // with secondary lane ids, as the colour pass classifies (#10653)
+    const visible = visibleCount(entities, visibility);
     if (visible === 0) continue;
+    const anchor = batchEntityIdAnchor(batch), filtered = visible < entities.length;
+    // A partly hidden batch with no lane anchor cannot be tested per fragment: left out, never cast whole (#10653).
+    if (filtered && anchor === null) continue;
     const q = batch.quantized;
     draws.push({
       kind: q ? 'quantized' : 'flat',
-      entityIdAnchor: batchEntityIdAnchor(batch) ?? 0xFFFFFFFF,
-      ...(visible < batch.expressIds.length ? { visibilityFiltered: true } : {}),
+      entityIdAnchor: anchor ?? 0xFFFFFFFF,
+      ...(filtered ? { visibilityFiltered: true } : {}),
       vertexBuffer: batch.vertexBuffer,
       indexBuffer: batch.indexBuffer,
       indexCount: batch.indexCount,

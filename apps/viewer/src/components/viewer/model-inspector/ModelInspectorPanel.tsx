@@ -13,7 +13,8 @@
  * Hosting (doors and windows). Every edit is one undo step.
  */
 
-import { lazy, Suspense, useId, useMemo, useState } from 'react';
+import { Suspense, useId, useMemo, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { ChevronRight, X } from 'lucide-react';
 import { EditElement } from '@/icons';
 import { Button } from '@/components/ui/button';
@@ -36,11 +37,11 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { Spinner } from '@/components/ui/spinner';
 
 // The storey manager (#9013) and its write path load when it is first opened, not at boot.
-const StoreyManager = lazy(() => import('../model/storeys/StoreyManager').then((m) => ({ default: m.StoreyManager })));
+const StoreyManager = lazyChunk(() => import('../model/storeys/StoreyManager').then((m) => ({ default: m.StoreyManager })));
 // The layer editor loads with its first use, off the eager bundle (#9296).
-const LayersSection = lazy(() => import('./LayersSection').then((m) => ({ default: m.LayersSection })));
+const LayersSection = lazyChunk(() => import('./LayersSection').then((m) => ({ default: m.LayersSection })));
 
-const MaterialSection = lazy(() => import('./MaterialSection').then(m => ({ default: m.MaterialSection })));
+const MaterialSection = lazyChunk(() => import('./MaterialSection').then(m => ({ default: m.MaterialSection })));
 
 const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 

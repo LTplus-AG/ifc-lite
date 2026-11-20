@@ -956,11 +956,31 @@ describe('RaycastEngine readback meshes (#10264)', () => {
     const hit = engine.raycastScene(400, 300, { snapOptions: { snapToVertices: true, snapToEdges: true } });
     assert.equal(hit?.intersection.expressId, 1);
     assert.deepEqual(hit?.intersection.point, residentHit?.intersection.point, 'the same surface point as over resident pieces');
-    assert.equal(hit?.snap?.type, residentHit?.snap?.type);
+    assert.ok(residentHit?.snap, 'the resident pick snaps: two missing snaps would compare equal and prove nothing');
+    assert.ok(hit?.snap, 'and the readback pick snaps too');
+    assert.equal(hit.snap.type, residentHit.snap.type, 'the same snap kind');
+    assert.deepEqual(hit.snap.position, residentHit.snap.position, 'at the same position');
     assert.equal(engine.raycastScene(400, 300, { hiddenIds: new Set([1]) }), null, 'hidden readback pieces are not hit');
     assert.equal(engine.raycastScene(400, 300, { isolatedIds: new Set([2]) }), null, 'non-isolated readback pieces are not hit');
     engine.setReadbackMeshes(null);
     assert.equal(engine.raycastScene(400, 300), null, 'cleared readback leaves nothing behind');
+  });
+
+  it('#10884 coverage is a 1.5 CSS px radius (not a square) and is bound to the viewport size the ray was unprojected in', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });
+    addRegularQuad(scene, quad);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    let size = { width: 800, height: 600 };
+    const canvas = { width: 800, height: 600, getBoundingClientRect: () => size } as unknown as HTMLCanvasElement;
+    const engine = engineFor(scene, camera, canvas);
+    scene.releaseGeometryData();
+    engine.setReadbackMeshes([{ ...quad }], { x: 400, y: 300 });
+    assert.equal(engine.readbackCovers(401, 301), true, '1.41 px away: inside the radius');
+    assert.equal(engine.readbackCovers(401.5, 301.5), false, '2.12 px away: outside the stated 1.5 px, though within 1.5 on each axis');
+    size = { width: 1600, height: 1200 }; // same aspect, same camera matrix: a different ray through (400, 300)
+    assert.equal(engine.readbackCovers(400, 300), false, 'a resized viewport invalidates the prepared ray');
+    assert.equal(engine.raycastScene(400, 300), null, 'and its pieces never answer the new ray');
   });
 
   it('prepared for one ray, readback pieces never answer another ray or view', () => {

@@ -138,7 +138,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
-  it('never re-backs a released list: keeps the acknowledged generation durable and stops answering', async () => {
+  it('never re-backs a released list: keeps the acknowledged bytes durable and stops answering, retained handles included', async () => {
     const list = [mesh(1, 0), mesh(2, 1)];
     const store = storeWith({ rel: list });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
@@ -151,10 +151,13 @@ describe('store geometry backing tap (test/debug only)', () => {
     assert.equal(status.complete, false, 'no generation of emptied records is ever complete');
     assert.match(status.error ?? '', /after a CPU release/);
     assert.equal(tap.backing('rel'), undefined, 'readers get nothing rather than the pre-edit colours');
-    assert.equal(acknowledged.isCurrent, true, 'the sole durable copy is kept');
-    const lease = await acknowledged.reader.leaseEntity(1);
-    assert.equal(lease.meshes[0].positions.length, 9, 'with its real arrays');
-    lease.release();
+    // #10876: a retained handle must not answer the pre-recolour geometry either: not current, its reader refuses,
+    // and its acknowledgement no longer verifies. The bytes stay durable for the tap alone.
+    assert.equal(acknowledged.isCurrent, false, 'the retained handle reports the recoloured geometry as replaced');
+    await assert.rejects(acknowledged.reader.leaseEntity(1), /replaced/i, 'and refuses to read the old colours');
+    const internal = await acknowledged.carryReader.leaseEntity(1);
+    assert.equal(internal.meshes[0].positions.length, 9, 'the sole durable copy keeps its real arrays (internal read)');
+    internal.release();
     await tap.stop();
   });
 
@@ -167,6 +170,18 @@ describe('store geometry backing tap (test/debug only)', () => {
     const backing = tap.backing('fed')!;
     assert.deepEqual(backing.directory.shardsOf(1005), [0], 'global id');
     assert.deepEqual(backing.directory.shardsOf(5), [], 'not the model-local id');
+    await tap.stop();
+  });
+
+  it('#10884 a registered model without an id offset keeps its shards, in model 0\'s id space', async () => {
+    const store = storeWith({ plain: [mesh(1)] });
+    store.setState({ models: new Map([['plain', { geometryResult: { meshes: [mesh(1)] } }]]) }); // no idOffset field
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('plain', [shardBytes(5)], instancedShardGeneration());
+    await tap.seal();
+    const backing = tap.backing('plain')!;
+    assert.equal(backing.isComplete, true, 'its instancing is backed, not lost');
+    assert.deepEqual(backing.directory.shardsOf(5), [0]);
     await tap.stop();
   });
 });

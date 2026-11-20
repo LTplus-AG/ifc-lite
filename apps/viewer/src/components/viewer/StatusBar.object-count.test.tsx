@@ -225,8 +225,8 @@ describe('StatusBar — "N elements" counts physical elements that have a shape 
     assert.equal(elementsText(container), '4 elements', 'no "/ N" fraction without a storey selection');
   });
 
-  it('updates whole-model and selected-storey counts for live deletes, retypes and creations (#5249)', () => {
-    const view = new MutablePropertyView(store.properties, '__legacy__');
+  it('updates whole-model and selected-storey counts for live edits under a historical legacy key (#10676)', () => {
+    const view = new MutablePropertyView(store.properties, 'legacy');
     view.setExpressIdWatermark(100);
     const editor = new StoreEditor(store, view);
     const container = render();
@@ -234,7 +234,7 @@ describe('StatusBar — "N elements" counts physical elements that have a shape 
 
     editor.removeEntity(50);
     act(() => useViewerStore.setState({
-      mutationViews: new Map([['__legacy__', view]]), mutationVersion: 1,
+      mutationViews: new Map([['legacy', view]]), mutationVersion: 1,
     }));
     assert.equal(elementsText(container), '3 elements');
 

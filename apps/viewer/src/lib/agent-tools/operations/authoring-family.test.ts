@@ -32,6 +32,7 @@ function answer<T>(result: AgentToolResult): T {
   const value = (result.structured as { result: { native_json?: string } }).result;
   return (value?.native_json === undefined || Object.keys(value).length > 1 ? value : JSON.parse(value.native_json)) as T;
 }
+const zoneRevision = async () => answer<{ configuration_revision: string }>(await invoke('zones.read')).configuration_revision;
 const proposal = () => JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Numerical annex', units: 'm', frame: 'storey-local', operations: [
   { op: 'element.create', ref: 'wall-a', ifcClass: 'IfcWall', storey: { globalId: GROUND_STOREY, modelId: SAMPLE_MODEL }, name: 'Numerical wall', params: { start: [10, 10, 0], end: [14, 10, 0], thickness: 0.2, height: 3 } },
 ] });
@@ -101,25 +102,42 @@ describe('native reviewed authoring operations (full automation follow-up #10525
     assert.equal(read.Name, 'Operation group'); assert.ok(read.memberships.length > 0);
     const bytes = editedModelBytes(store, useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!); assert.equal(danglingReferences(new TextDecoder().decode(bytes)).length, 0);
   });
-  it('keeps change-set import staging distinct from applying model edits', async () => {
+  it('keeps change-set import staging distinct from applying model edits (#10796)', async () => {
     const made = answer<{ id: string }>(await invoke('changeSets.create', { name: 'Native staging' }, true));
-    const exported = await invoke('changeSets.export', { id: made.id }, true); assert.equal(exported.isError, false, exported.text);
-    const source = useViewerStore.getState().exportChangeSet(made.id)!;
+    const store = useViewerStore.getState().models.get(SAMPLE_MODEL)!.ifcDataStore!;
+    const expressId = store.entities.getExpressIdByGlobalId(BACK_WALL);
+    const edit = useViewerStore.getState().setAttribute(SAMPLE_MODEL, expressId, 'Name', 'Staged wall', BACK_WALL_NAME);
+    assert.ok(edit);
+
+    const { artifact_id } = answer<{ artifact_id: string }>(await invoke('changeSets.export', { id: made.id }, true));
+    const read = await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id });
+    assert.equal(read.isError, false, read.text);
+    const chunk = read.structured as { data: string; next_offset: number | null };
+    assert.equal(chunk.next_offset, null);
+    const json = Buffer.from(chunk.data, 'base64').toString('utf8');
+
+    assert.equal(answer<{ changed: boolean }>(await invoke('changes.history', { direction: 'undo' }, true)).changed, true);
+    answer(await invoke('changeSets.discard', { id: made.id }, true));
+    assert.equal(useViewerStore.getState().changeSets.has(made.id), false);
     const before = useViewerStore.getState().mutationVersion;
-    const imported = answer<{ applied: boolean }>(await invoke('changeSets.import', { json: source }, true));
-    assert.equal(imported.applied, false); assert.equal(useViewerStore.getState().mutationVersion, before);
-    answer(await invoke('changeSets.discard', { id: made.id }, true)); assert.equal(useViewerStore.getState().changeSets.has(made.id), false);
+    const imported = answer<{ id: string; applied: boolean }>(await invoke('changeSets.import', { json }, true));
+    assert.equal(imported.applied, false);
+    const state = useViewerStore.getState();
+    assert.deepEqual(state.changeSets.get(imported.id)?.mutations, [edit]);
+    assert.equal(state.mutationVersion, before);
+    const name = state.getMutationView(SAMPLE_MODEL)?.getAttributeMutationsForEntity(expressId).find(row => row.name === 'Name')?.value;
+    assert.equal(name ?? store.entities.getName(expressId), BACK_WALL_NAME);
   });
   it('configures zones and stages change sets with no IFC model loaded', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });
-    const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Planning boxes', expected_configuration: '[]' }, true));
+    const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Planning boxes', expected_configuration: await zoneRevision() }, true));
     assert.ok(made.set_id);
     const changeSet = answer<{ id: string }>(await invoke('changeSets.create', { name: 'Future changes' }, true));
     assert.equal(useViewerStore.getState().activeChangeSetId, changeSet.id);
   });
   it('uses native zone configuration validation and refuses stale configuration writes', async () => {
-    const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Sections', expected_configuration: '[]' }, true));
-    const snapshot = JSON.stringify(useViewerStore.getState().zoneSets);
+    const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Sections', expected_configuration: await zoneRevision() }, true));
+    const snapshot = await zoneRevision();
     answer(await invoke('zones.box.write', { set_id: made.set_id, zone_id: '', name: 'A', center: [0, 1, 0], size: [3, 2, 3], rotationY: 0, expected_configuration: snapshot }, true));
     assert.equal(useViewerStore.getState().zoneSets[0].zones.length, 1);
     assert.equal((await invoke('zones.set.edit', { set_id: made.set_id, action: 'rename', name: 'Changed', visible: true, expected_configuration: snapshot }, true)).isError, true);

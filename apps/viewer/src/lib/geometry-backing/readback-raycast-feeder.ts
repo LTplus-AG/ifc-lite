@@ -57,6 +57,15 @@ function place(scene: Pick<SceneContents, 'placeAppearanceSource'>, mesh: MeshDa
   return scene.placeAppearanceSource(mesh);
 }
 
+/**
+ * Only a model's translation is inverted below (scene hit to model-local source). A rotated model, or a scene
+ * that cannot say, fails closed: subtracting the offset alone would search the wrong neighbourhood (#10880).
+ */
+function placementRotated(scene: object, modelIndex: number | undefined): boolean {
+  if (!('getModelRotation' in scene) || typeof scene.getModelRotation !== 'function') return true;
+  return scene.getModelRotation(modelIndex ?? 0) !== null;
+}
+
 /** The model's current placement offset, measured through the scene's own placement. */
 function modelOffset(scene: Pick<SceneContents, 'placeAppearanceSource'>, modelIndex: number | undefined): [number, number, number] {
   const probe: MeshData = { expressId: 0, positions: new Float32Array(0), normals: new Float32Array(0),
@@ -104,8 +113,14 @@ export class ReadbackRaycastFeeder {
       if (!hit) { this.swap([], [], { x, y }); return this.finish('no-hit'); }
       const modelId = this.owner(hit.expressId);
       const backing = modelId ? this.source()?.backing(modelId) : undefined;
-      if (!modelId || !backing?.isCurrent || !backing.isComplete) {
+      const complete = !!backing?.isCurrent && backing.isComplete;
+      // Instancing lost, flat records whole: flat-only, and only where the scene itself shows no instanced occurrence.
+      const flatOnly = !complete && !!modelId && !!backing?.isCurrent && this.source()?.flatComplete?.(modelId) === true;
+      if (!modelId || !backing || !(complete || flatOnly)) {
         throw new GeometryUnavailableError(`No complete geometry backing for entity ${hit.expressId}`);
+      }
+      if (placementRotated(scene, hit.modelIndex)) {
+        throw new GeometryUnavailableError(`Model ${modelId} is rotated; readback of rotated placements is not available yet`);
       }
       const leases: MeshLease[] = [];
       let instanced: MeshData[] = [];
@@ -124,21 +139,40 @@ export class ReadbackRaycastFeeder {
           const r = NEIGHBOURHOOD_METRES;
           // Instanced neighbours: the scene keeps occurrence bounds (placed frame) after release.
           for (const id of scene.getInstancedEntityIds()) {
-            if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) break;
             const b = scene.getInstancedEntityBounds(id);
             if (!b || b.min.x > p.x + r || b.max.x < p.x - r || b.min.y > p.y + r || b.max.y < p.y - r
-              || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId) continue;
+              || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId || instancedIds.has(id)) continue;
+            // The resident raycast never tests a hidden (or non-isolated) occurrence: it neither counts nor is fed.
+            if (visibility.hiddenIds?.has(id) || (visibility.isolatedIds && !visibility.isolatedIds.has(id))) continue;
+            // Nor an overlay it never tests (an instanced annotation or grid), which the re-pick saw through.
+            if (skipped.has(id) || !this.raycastable(id)) continue;
+            // A truncated neighbourhood could snap differently from the resident scene: refuse, never omit.
+            if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) throw new GeometryUnavailableError(`More than ${MAX_INSTANCED_NEIGHBOURS} instanced neighbours`);
             instancedIds.add(id);
           }
           // The hit is in the placed scene frame; directory bounds are model-local sources.
           const [dx, dy, dz] = modelOffset(scene, hit.modelIndex);
           const lx = p.x - dx, ly = p.y - dy, lz = p.z - dz;
           const chunks = backing.directory.chunksIntersecting([lx - r, ly - r, lz - r], [lx + r, ly + r, lz + r]);
+          // Greedy within the budget: a chunk that does not fit is skipped, never charged.
           let bytes = 0;
-          const within = chunks.filter((index) => (bytes += backing.directory.chunks[index].bytes) <= this.budgetBytes);
+          const within = chunks.filter((index) => {
+            const size = backing.directory.chunks[index].bytes;
+            if (bytes + size > this.budgetBytes) return false;
+            bytes += size;
+            return true;
+          });
           leases.push(await backing.reader.leaseChunks(within, { signal }));
         }
-        instanced = await readInstancedOccurrences(backing, instancedIds, hit.modelIndex ?? 0, { signal });
+        if (flatOnly && (!p || instancedIds.size > 0 || scene.getInstancedEntityBounds(hit.expressId))) {
+          throw new GeometryUnavailableError(`Entity ${hit.expressId}'s neighbourhood holds instanced occurrences whose backing was lost`);
+        }
+        // Occurrences are materialized in their model's frame: a hit that does not say which model is refused,
+        // never placed as model 0's.
+        if (instancedIds.size > 0 && hit.modelIndex === undefined) {
+          throw new GeometryUnavailableError(`Instanced hit ${hit.expressId} carries no model index`);
+        }
+        instanced = flatOnly || instancedIds.size === 0 ? [] : await readInstancedOccurrences(backing, instancedIds, hit.modelIndex!, { signal });
         if (own.meshes.length === 0 && !instanced.some((mesh) => mesh.expressId === hit.expressId)) {
           throw new GeometryUnavailableError(`Instanced entity ${hit.expressId} has no backed opaque occurrence`);
         }
@@ -149,16 +183,22 @@ export class ReadbackRaycastFeeder {
       }
       const seen = new Set<MeshData>();
       const meshes: MeshData[] = [];
-      for (const lease of leases) for (const mesh of lease.meshes) {
-        if (seen.has(mesh)) continue;
-        seen.add(mesh);
-        // Only what the scene draws: the store also holds type-filtered meshes
-        // (spaces, openings) and class-2 type templates the scene never had.
-        if ((mesh.geometryClass ?? 0) === 2 || scene.getEntityBoundingBox(mesh.expressId) === null) continue;
-        meshes.push(place(scene, mesh));
+      try {
+        for (const lease of leases) for (const mesh of lease.meshes) {
+          if (seen.has(mesh)) continue;
+          seen.add(mesh);
+          // Only what the scene draws: the store also holds type-filtered meshes
+          // (spaces, openings) and class-2 type templates the scene never had.
+          if ((mesh.geometryClass ?? 0) === 2 || scene.getEntityBoundingBox(mesh.expressId) === null) continue;
+          meshes.push(place(scene, mesh));
+        }
+        // Occurrences are model-local like flat sources; the same placement applies.
+        for (const mesh of instanced) meshes.push(place(scene, mesh));
+      } catch (error) {
+        // These leases were never handed to `swap`: release them here, or a failed placement pins them.
+        for (const lease of leases) lease.release();
+        throw error;
       }
-      // Occurrences are model-local like flat sources; the same placement applies.
-      for (const mesh of instanced) meshes.push(place(scene, mesh));
       this.swap(leases, meshes, { x, y });
       return this.finish('fed');
     } catch (error) {

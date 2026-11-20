@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useDialogs } from '@/components/ui/confirm-dialog';
-import { lazy, Suspense, useState } from 'react';
+import { Suspense, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,7 @@ import { ContentStorageNotice } from '../ContentStorageNotice';
 import { toast } from '@/components/ui/toast';
 import { artifactLink } from '@/lib/deep-links/artifact-link';
 
-const WorkflowFlowSave = lazy(() => import('./WorkflowFlowSave').then(module => ({ default: module.WorkflowFlowSave })));
+const WorkflowFlowSave = lazyChunk(() => import('./WorkflowFlowSave').then(module => ({ default: module.WorkflowFlowSave })));
 
 export function ConversationLibrary() {
   const { t } = useTranslation();

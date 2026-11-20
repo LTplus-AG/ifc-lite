@@ -664,15 +664,10 @@ export class Ifc5Exporter {
     const isolated = options.isolatedEntityIds ?? null;
     const visible = new Set<number>();
 
+    // Hidden wins inside an isolation too, as in the STEP export (#10695).
     for (const row of rows) {
       const id = row.expressId;
-      if (isolated) {
-        // When isolation is active, only isolated entities are visible
-        if (isolated.has(id)) visible.add(id);
-      } else {
-        // Otherwise, everything except hidden is visible
-        if (!hidden.has(id)) visible.add(id);
-      }
+      if (!hidden.has(id) && (!isolated || isolated.has(id))) visible.add(id);
     }
 
     return visible;

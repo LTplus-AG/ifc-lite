@@ -40,8 +40,10 @@ export function useModelUrlAutoload(): void {
   // probe is pending. Preserve the source requested on this mount.
   const sourceRef = useRef<{ modelUrl: string | null; baseUrl: string } | null>(null);
   if (sourceRef.current === null) {
+    const params = new URLSearchParams(window.location.search);
     sourceRef.current = {
-      modelUrl: new URLSearchParams(window.location.search).get('model'),
+      // The processed entry owns this page request, including its malformed-link error.
+      modelUrl: params.has('processed') ? null : params.get('model'),
       baseUrl: window.location.href,
     };
   }

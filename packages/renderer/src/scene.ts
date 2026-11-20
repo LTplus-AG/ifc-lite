@@ -47,7 +47,8 @@ import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
-import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
+import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
+import { writeInstanceLane } from './instance-lane-write.js';
 import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
@@ -1352,7 +1353,7 @@ export class Scene {
       this.instancedHidden.add(expressId);
       this.writeInstanceFlags(device, expressId);
     }
-    // After the GPU write: if it throws, the entity stays registered and its CPU records stay unmarked.
+    // Also with no device, where no flag write ran: the CPU record must carry the tombstone (#10639).
     tombstoneInstanceRecords(this.instancedTemplateCpu, occurrences);
     for (const o of occurrences) this.tombstonedTemplates.add(o.templateIndex);
     // Release the contribution-cull exemption BEFORE forgetting the occurrence
@@ -2498,7 +2499,7 @@ export class Scene {
    * The caller must fall back to drawing the batch whole when this is false.
    */
   canPartitionBatch(batch: BatchedMesh): boolean {
-    if (this.geometryReleased || this.snapshots.hydrating) return false;
+    if (this.geometryReleased || this.snapshots.hydrating || batch.laneIds) return false; // laneIds: colour-merged (#10653)
     const bucket = this.buckets.get(batch.colorKey);
     const live = bucket !== undefined && bucket.batchedMesh === batch;
     if (live && bucket.meshData.length === 0) return false;
@@ -3401,8 +3402,7 @@ export class Scene {
       const selectedBit = itemRestricted
         ? (loc.itemId === this.instancedSelectedItemId ? INSTANCE_FLAG_SELECTED : 0)
         : (eidSelected ? INSTANCE_FLAG_SELECTED : 0);
-      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit | (loc.finishBits ?? 0)) >>> 0]));
+      this.writeInstanceSlot(device, loc, INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit | (loc.finishBits ?? 0)) >>> 0]));
     }
   }
 
@@ -3414,22 +3414,23 @@ export class Scene {
     const locs = this.instancedEntityMap.get(eid);
     if (!locs) return;
     const data = new Float32Array([rgba[0], rgba[1], rgba[2], rgba[3]]);
-    for (const loc of locs) {
-      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, data);
-    }
+    for (const loc of locs) this.writeInstanceSlot(device, loc, INSTANCE_COLOR_OFFSET, data);
   }
 
   private restoreInstanceColor(device: GPUDevice, eid: number): void {
     const locs = this.instancedEntityMap.get(eid);
     if (!locs) return;
-    for (const loc of locs) {
-      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, new Float32Array(loc.originalColor));
-    }
+    for (const loc of locs) this.writeInstanceSlot(device, loc, INSTANCE_COLOR_OFFSET, originalColorWithAlpha(loc.originalColor, loc.originalColor[3]));
   }
 
-  private writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void { writeOriginalInstancedColors(device, this.instancedEntityMap.get(eid) ?? [], this.instancedTemplates, INSTANCE_COLOR_OFFSET, alpha); }
+  private writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void {
+    for (const loc of this.instancedEntityMap.get(eid) ?? []) this.writeInstanceSlot(device, loc, INSTANCE_COLOR_OFFSET, originalColorWithAlpha(loc.originalColor, alpha));
+  }
+
+  /** GPU and CPU record together, so a whole-buffer re-upload keeps the state (#10767). */
+  private writeInstanceSlot(device: GPUDevice, loc: InstancedOccurrence, lane: number, data: Uint32Array | Float32Array): void {
+    writeInstanceLane(device, this.instancedTemplates[loc.templateIndex]?.instanceBuffer, this.instancedTemplateCpu[loc.templateIndex]?.instanceData, loc.byteOffset + lane, data);
+  }
 
   /**
    * Build a textured mesh (#961): interleave position+normal+entityId+uv into one

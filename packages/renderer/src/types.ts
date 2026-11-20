@@ -97,9 +97,9 @@ export interface BatchedMesh {
    *  so two federated models sharing an expressId AND colour can land in the
    *  SAME batch as distinct entries. Picking must scope each entry by its own
    *  modelIndex here rather than treating the batch as single-model. Absent
-   *  entries (or `undefined` values) mean "unscoped" for that entry — legacy
-   *  batches built before this field existed, or single-model scenes. */
+   *  entries (or `undefined` values) mean "unscoped": legacy or single-model. */
   modelIndices?: (number | undefined)[];
+  laneIds?: number[]; // sorted vertex-lane ids pieces carry besides their own primary; see batch-entities.ts (#10653)
   bindGroup?: GPUBindGroup;
   /** This batch's mesh uniform block in the shared arena (mesh-uniform-arena.ts). */
   uniformSlot?: MeshUniformSlot;

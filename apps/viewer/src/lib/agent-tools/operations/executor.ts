@@ -8,7 +8,7 @@ import { assertToolActive } from '../cancellation';
 import type { ReadyModel, ToolCallContext, ToolHost } from '../types';
 import { operationArtifacts } from './artifacts';
 import { contractFingerprint } from './metadata';
-import { MAX_RESULT_BYTES } from './result-limit';
+import { MAX_RESULT_BYTES, utf8Bytes } from './result-limit';
 import type { Operation } from './contract';
 import { viewerOperation, operationUnavailable } from './registry';
 
@@ -22,7 +22,7 @@ export interface OperationJob {
   result?: unknown;
   error?: string;
 }
-interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void }
+interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; delivered?: boolean }
 const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
 const MAX_JOBS = 32;
 interface AppliedRequest { signature: string; store: ReadyModel['store'] | undefined; result: Promise<unknown> }
@@ -42,8 +42,16 @@ function boundedResult(result: unknown): unknown {
     return value;
   });
   // UTF-8 is at most 3 bytes per UTF-16 unit, so only a long text needs encoding to measure.
-  if (text.length * 3 > MAX_RESULT_BYTES && new TextEncoder().encode(text).byteLength > MAX_RESULT_BYTES) throw new Error('Result exceeds the 1 MB operation result limit. Narrow the query.');
+  if (text.length * 3 > MAX_RESULT_BYTES && utf8Bytes(text) > MAX_RESULT_BYTES) throw new Error('Result exceeds the 1 MB operation result limit. Narrow the query.');
   return JSON.parse(text) as unknown;
+}
+
+/** A model entry a remesh replaced: the same entry apart from its geometry and the pre-alignment tail it carries. */
+const GEOMETRY_FIELDS = new Set(['geometryResult', 'preAlignment']);
+function geometryOnly<T extends object>(before: T, after: T): boolean {
+  for (const key in before) if (!GEOMETRY_FIELDS.has(key) && before[key] !== after[key]) return false;
+  for (const key in after) if (!GEOMETRY_FIELDS.has(key) && !(key in before)) return false;
+  return true;
 }
 
 /** Native services perform writes synchronously after this final live grant check. */
@@ -134,16 +142,37 @@ export async function executeOperation(
     if (!entry.effects.includes('artifact')) throw new Error('The operation did not declare artifact creation.');
     return commit(write);
   });
-  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, artifacts };
+  const ownGeometry = async <T>(work: () => Promise<T>, release: (value: T) => void): Promise<T> => {
+    checkpoint();
+    const value = await work();
+    const state = useViewerStore.getState(), now = model ? state.models.get(model.id) : undefined;
+    if (nativeModel && now && state.mutationVersion === activeRevision && geometryOnly(nativeModel, now)) nativeModel = now;
+    try { checkpoint(); } catch (error) {
+      try { release(value); } catch (releaseError) { console.warn('[viewer operation] releasing a refused result failed', releaseError); }
+      throw error;
+    }
+    return value;
+  };
+  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, ownGeometry, artifacts };
+  const discardResult = (result: unknown) => {
+    try { entry.discard?.(result, operationContext); } catch (error) { console.warn('[viewer operation] discarding a refused result failed', error); }
+  };
+  /** The result after the final check, bounded and validated. A result refused here is never delivered, so what the
+   * handler stored for it is discarded; a committed write is not, since it already happened. */
+  const accepted = (result: unknown, finalCheck: () => void): unknown => {
+    try { finalCheck(); const bounded = boundedResult(result); entry.validateResult(bounded); return bounded; } catch (error) {
+      if (!committed) discardResult(result);
+      throw error;
+    }
+  };
   check();
   if (!args.background) {
-    const run = async () => {
-      check();
+    const run = async (forget = () => {}) => {
+      // Nothing native has run yet, so a keyed retry of this failure may run again (#10669).
+      try { await entry.load?.(); check(); } catch (error) { forget(); throw error; }
       try {
         const result = await entry.execute(input, operationContext);
-        if (!committed) check();
-        const value = boundedResult(result);
-        entry.validateResult(value);
+        const value = accepted(result, () => { if (!committed) check(); });
         return { operation_id: entry.id, model_id: model?.id ?? null, revision: activeRevision, state: entry.completion ?? 'succeeded', committed, result: value };
       } catch (error) {
         if (committed) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR,
@@ -153,13 +182,15 @@ export async function executeOperation(
       }
     };
     if (typeof args.idempotency_key !== 'string') return run();
-    let prior = applied.get(host);
-    if (!prior) { prior = new Map(); applied.set(host, prior); }
-    // Keep failed outcomes too: retrying a partially dispatched UI action must not duplicate it.
+    const prior = applied.get(host) ?? new Map<string, AppliedRequest>();
+    applied.set(host, prior);
+    // Keep failed outcomes once the native handler ran: retrying a partially dispatched UI action must not duplicate it.
     if (prior.size >= 100) invalid('Host idempotency capacity reached (100 requests). Reconnect before creating further keyed requests.');
-    const result = run();
-    prior.set(args.idempotency_key, { signature, store: model?.store, result });
-    return result;
+    const key = args.idempotency_key, request: AppliedRequest = { signature, store: model?.store, result: Promise.resolve() };
+    // Registered before run() starts, so even an immediate pre-dispatch failure can remove it.
+    prior.set(key, request);
+    request.result = run(() => { if (prior.get(key) === request) prior.delete(key); });
+    return request.result;
   }
   const owned = jobs(host);
   for (const [id, job] of owned) if (owned.size >= MAX_JOBS && job.snapshot.state !== 'running') owned.delete(id);
@@ -172,12 +203,12 @@ export async function executeOperation(
   const snapshot: OperationJob = { id: crypto.randomUUID(), operation_id: entry.id, model_id: model?.id ?? null, revision, state: 'running' };
   const active = () => { controller.signal.throwIfAborted(); check(); };
   checkpoint = active;
-  owned.set(snapshot.id, { snapshot, abort: controller, current: check });
+  owned.set(snapshot.id, { snapshot, abort: controller, current: check, discard: () => discardResult(snapshot.result) });
   // Retain and settle the actual service promise. Cancellation never claims rollback.
   void Promise.resolve().then(() => { active(); return entry.execute(input, { ...operationContext, signal: controller.signal, checkpoint: active, progress: detail => {
       active(); snapshot.progress = detail;
     } }); })
-    .then(result => { active(); snapshot.result = boundedResult(result); entry.validateResult(snapshot.result); snapshot.state = 'succeeded'; })
+    .then(result => { snapshot.result = accepted(result, active); snapshot.state = 'succeeded'; })
     .catch((error: unknown) => {
       snapshot.state = controller.signal.aborted ? 'cancelled' : 'failed';
       snapshot.error = error instanceof Error ? error.message : 'Operation failed.';
@@ -192,7 +223,21 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
   const job = jobs(host).get(id);
   if (!job) invalid('Unknown job for this viewer host.');
   if (cancel && job.snapshot.state === 'running') job.abort.abort();
-  if (job.snapshot.state === 'succeeded') job.current();
+  if (job.snapshot.state === 'succeeded') {
+    try { job.current(); } catch (error) {
+      // A result never delivered and refused for good (the model changed, the host closed) never will be: discard
+      // what its handler stored, once. A delivered result is the caller's; a passing refusal (a disabled feature)
+      // keeps the job as it is, holding its candidate until the job is evicted or the host closes.
+      const aborted = host.lifetimeSignal?.aborted === true || (error instanceof DOMException && error.name === 'AbortError')
+        || (error instanceof ToolExecutionError && error.code === ToolErrorCode.CANCELLED);
+      if (!job.delivered && (aborted || (error instanceof ToolExecutionError && error.code === ToolErrorCode.STATE_CHANGED))) {
+        job.discard();
+        Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+      }
+      throw error;
+    }
+    job.delivered = true;
+  }
   // A cancellation request is observable, but terminal cancellation awaits runner settlement.
   return { ...job.snapshot, ...(cancel && job.snapshot.state === 'running' ? { cancellationRequested: true } : {}) };
 }

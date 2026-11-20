@@ -11,7 +11,8 @@
  * one undo step.
  */
 
-import { lazy, Suspense, useRef, useState } from 'react';
+import { Suspense, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { effectiveStoreyElevation, type StoreyDeletePlan } from '@ifc-lite/create';
 import { ChevronLeft, Layers, Plus } from 'lucide-react';
 import { useViewerStore } from '@/store';
@@ -35,8 +36,8 @@ import type { StoreyInsertion } from './insert-storey';
 import { useStoreyEditDenial, useStoreyLevelEditing, useStoreyRename, useStoreyRows } from './useStoreyManager';
 
 const loadInsertionPanel = () => import('./StoreyInsertionPanel');
-const StoreyInsertionPanel = lazy(() => loadInsertionPanel().then(module => ({ default: module.StoreyInsertionPanel })));
-const StoreyImpact = lazy(() => import('./StoreyImpact').then(module => ({ default: module.StoreyImpact })));
+const StoreyInsertionPanel = lazyChunk(() => loadInsertionPanel().then(module => ({ default: module.StoreyInsertionPanel })));
+const StoreyImpact = lazyChunk(() => import('./StoreyImpact').then(module => ({ default: module.StoreyImpact })));
 
 export function StoreyManager({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation();

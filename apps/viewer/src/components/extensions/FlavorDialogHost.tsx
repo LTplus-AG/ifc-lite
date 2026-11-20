@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { useViewerStore } from '@/store';
 import { isFeatureEnabled } from '@/lib/features';
 
 // The dialog (and the flavor storage, import and diff code under it) loads on
 // first open, not with the page (#9296 eager-JS headroom).
-const FlavorDialog = lazy(() => import('./FlavorDialog').then(m => ({ default: m.FlavorDialog })));
+const FlavorDialog = lazyChunk(() => import('./FlavorDialog').then(m => ({ default: m.FlavorDialog })));
 
 /** One persistent destination, independent of desktop status-bar visibility (#8947). */
 export function FlavorDialogHost() {

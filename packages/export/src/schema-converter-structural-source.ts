@@ -55,6 +55,7 @@ export function isSubtype(schema: 'IFC2X3' | 'IFC4', keyword: string | undefined
 
 /** Source records read by id, each decoded once. Lives only for one prepass. */
 export class SourceRecords {
+  private readonly keptIdsByType = new Map<string, readonly number[]>();
   private readonly cache = new Map<number, readonly string[] | undefined>();
   constructor(private readonly store: SourceStore) {}
 
@@ -88,9 +89,17 @@ export class SourceRecords {
     }
   }
 
+  /** A repeated id belongs to its last record, at that record's position. */
   ids(type: string): readonly number[] {
+    const cached = this.keptIdsByType.get(type);
+    if (cached) return cached;
     // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export (step-pass-builder.ts)
-    return this.store.entityIndex.byType.get(type) ?? [];
+    const ids = this.store.entityIndex.byType.get(type) ?? [];
+    const last = new Map<number, number>();
+    ids.forEach((id, i) => last.set(id, i));
+    const kept = ids.filter((id, i) => last.get(id) === i && this.type(id) === type);
+    this.keptIdsByType.set(type, kept);
+    return kept;
   }
 
   type(id: number | null): string | undefined {

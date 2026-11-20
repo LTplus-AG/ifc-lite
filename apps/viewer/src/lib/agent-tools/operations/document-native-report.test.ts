@@ -97,6 +97,22 @@ it('checked native report save refuses contradicted claims until canonical revie
   const saved = await invoke<{ saved: boolean }>('assistant.saveReportDraft', { token: prepared.token, reviewed_document_json: revised.document_json }); assert.equal(saved.saved, true);
 });
 
+it('a checked native report save in flight refuses claim revisions and a second save', async () => {
+  discussion(); const state = useAssistant.getState();
+  const prepared = await invoke<{ token: string; document_json: string }>('assistant.prepareReportDraft', { name: 'Saving report', language: 'en', expected_evidence_id: state.snapshot!.id, expected_answer: state.messages.at(-1)!.content });
+  const save = { token: prepared.token, reviewed_document_json: prepared.document_json };
+  const during: Array<Promise<string>> = [], outcome = (run: Promise<unknown>) => run.then(() => 'resolved', (error: unknown) => String(error));
+  // write() runs synchronously up to saveReportDraft's first await, so the save is in flight here.
+  const inFlight: ViewerOperationContext = { ...context, commitAsync: async (write, didCommit) => {
+    const pending = write();
+    during.push(outcome(invoke('assistant.reviseReportDraftClaim', { token: prepared.token, expected_document_json: prepared.document_json, claim_id: 'C1', action: 'remove', text: '' })), outcome(invoke('assistant.saveReportDraft', save)));
+    const result = await pending; persisted.push(didCommit ? didCommit(result) : result !== false); return result;
+  } };
+  const result = await invoke<{ saved: boolean }>('assistant.saveReportDraft', save, inFlight); assert.equal(result.saved, true);
+  const [revise, second] = await Promise.all(during);
+  assert.match(revise, /being saved; revise/); assert.match(second, /already being saved/);
+});
+
 it('refreshes an image-heavy native report using compact revision guards and preserves its media', async () => {
   const { document } = await savedHumanReport(), dataUrl = largePng();
   document.blocks.push({ kind: 'image', id: 'human-image', dataUrl, height: 60, align: 'left' });

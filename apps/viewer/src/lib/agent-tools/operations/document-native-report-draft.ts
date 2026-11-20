@@ -33,6 +33,7 @@ export const documentNativeReportDraftOperations = [
     const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'draft' || candidate.draft.documentJson !== i.reviewed_document_json) throw new Error('Unknown or changed native checked report draft.');
     c.checkpoint?.(); if (!await useViewerStore.getState().initializeDocuments()) throw new Error('Native document storage could not initialize.'); c.checkpoint?.();
     return c.commitAsync(async () => {
+      if (candidate.saving) throw new Error('This native report draft is already being saved.');
       if (!isReportDraftCurrent(candidate.draft)) throw new Error('The native report discussion or evidence changed.');
       const existing = useViewerStore.getState().documents.find(document => document.id === candidate.draft.document.id);
       // Only a document this candidate's own refused save staged may be overwritten.
@@ -40,9 +41,10 @@ export const documentNativeReportDraftOperations = [
       // A save in flight is never evicted; a refused save stays revisable and records what it staged.
       c.checkpoint?.(); candidate.saving = true;
       let saved: boolean;
-      try { saved = await saveReportDraft(candidate.draft, i.reviewed_document_json); } finally { candidate.saving = false; }
-      candidate.staged = candidate.draft.documentJson;
-      if (saved) discardReportCandidate(c.host, i.token); return { document_id: candidate.draft.document.id, saved, storage: useViewerStore.getState().documentsStorage };
+      const draft = candidate.draft;
+      try { saved = await saveReportDraft(draft, i.reviewed_document_json); } finally { candidate.saving = false; }
+      candidate.staged = draft.documentJson;
+      if (saved) discardReportCandidate(c.host, i.token); return { document_id: draft.document.id, saved, storage: useViewerStore.getState().documentsStorage };
     }, result => result.saved);
   }),
   viewerOperation<{ token: string }>(meta('assistant.discardReportDraft', 'Discard this host-owned checked native report preview. Preserves any staged native document evidence from an earlier refused persistence attempt.', { discarded: { type: 'boolean' } }), {

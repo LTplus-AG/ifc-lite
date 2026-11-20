@@ -34,6 +34,8 @@ interface SnapshotHostData extends SnapshotCameraFit {
 export interface AdoptedSceneSnapshot {
   adoption: object;
   shards: ArrayBuffer[];
+  /** The model's shard supply when adoption BEGAN (before any await): a reset or discard since supersedes these shards. */
+  supply: ReturnType<typeof instancedShardSupplyToken>;
   fit: SnapshotCameraFit;
   firstVisible: Promise<void>;
 }
@@ -91,6 +93,7 @@ export async function adoptCachedSceneSnapshot(
   isStale: (() => boolean) | undefined,
   trace: LoadTrace,
 ): Promise<AdoptedSceneSnapshot | null> {
+  const supply = instancedShardSupplyToken(modelId); // before the first await, as the ordinary cache path does
   const { sceneSnapshot, sceneSnapshotKey, buffer: entry } = cacheResult;
   if (!snapshotsEnabled() || !sceneSnapshot || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return null;
   const renderer = await rendererReady(isStale);
@@ -117,7 +120,7 @@ export async function adoptCachedSceneSnapshot(
   fitCameraToSnapshot(renderer, host);
   renderer.clearCaches();
   renderer.requestRender();
-  return { adoption, shards, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+  return { adoption, shards, supply, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
 }
 
 /** Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives. */
@@ -131,7 +134,7 @@ export async function publishAdoptedSceneMeshes(
   trace: LoadTrace,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
 ): Promise<MeshData[]> {
-  const shardGeneration = instancedShardSupplyToken(modelId); // a later reset or discard of this model supersedes the requeue below
+  const shardGeneration = adopted.supply; // captured when adoption began: a reset or discard since supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
   if (isStale?.()) return [];
   const meshes = chunks.flat();

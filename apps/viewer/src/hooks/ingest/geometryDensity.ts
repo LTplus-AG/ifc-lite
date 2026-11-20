@@ -28,12 +28,14 @@ const SAMPLE_WINDOWS = 4;
 const SAMPLE_WINDOW_BYTES = 256 * 1024;
 const RECORD_START = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
 
-/** Mesh payload: coordinate and index tuples, nothing else. */
-const NUMERIC_TUPLES = /[^0-9.,()eE+\-\s]/g;
+/** Mesh payload: coordinate and index tuples, or a face set's `#n` reference list, nothing else. */
+const NUMERIC_TUPLES = /[^0-9.,()eE+\-\s#]/g;
 
 /**
- * Dense and total record bytes in `text`. The bytes before the first record
- * start belong to a record cut by the window edge; a large mesh can be one
+ * Dense and total record bytes in `text`. Unless `cut` is false (a window at
+ * the start of the file, which opens with the STEP header and no cut record),
+ * the bytes before the first record start belong to a record cut by the window
+ * edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
  * numeric tuples alone (98 %+), and as sparse otherwise: it always counts
  * toward the total, so a window inside a long text record weighs as much as
@@ -42,10 +44,10 @@ const NUMERIC_TUPLES = /[^0-9.,()eE+\-\s]/g;
  * the point-list overcount it errs toward refusal. The last record runs to the
  * end of the window.
  */
-export function denseRecordBytes(text: string): { dense: number; total: number; records: number } {
+export function denseRecordBytes(text: string, cut = true): { dense: number; total: number; records: number } {
   RECORD_START.lastIndex = 0;
   const first = RECORD_START.exec(text);
-  const lead = first ? first.index : text.length;
+  const lead = !cut ? 0 : first ? first.index : text.length;
   const other = lead > 0 ? (text.slice(0, lead).match(NUMERIC_TUPLES)?.length ?? 0) : lead;
   let dense = lead > 0 && other <= lead * 0.02 ? lead : 0, total = lead, records = 0, start = -1, denseRecord = false;
   const close = (end: number) => { if (start >= 0) { total += end - start; if (denseRecord) dense += end - start; } };
@@ -76,9 +78,10 @@ export async function sampleDenseGeometryShare(file: Blob): Promise<number | und
     });
   let dense = 0, total = 0, records = 0;
   for (const [start, end] of windows) {
-    const counted = denseRecordBytes(decoder.decode(await file.slice(start, end).arrayBuffer()));
+    const counted = denseRecordBytes(decoder.decode(await file.slice(start, end).arrayBuffer()), start > 0);
     dense += counted.dense; total += counted.total; records += counted.records;
   }
-  // No record start in any window: not a STEP file this sample can describe.
-  return records > 0 ? dense / total : undefined;
+  // Nothing recognised, neither a record start nor mesh payload: not a STEP file this sample can
+  // describe. Windows inside mesh records with no record start still count, so this never fails open.
+  return records > 0 || dense > 0 ? dense / total : undefined;
 }

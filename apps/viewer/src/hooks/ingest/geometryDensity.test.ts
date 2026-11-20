@@ -54,6 +54,21 @@ describe('dense geometry share (#10264)', () => {
     assert.ok(share > 0.1 && share < 0.4, `one of four windows is mesh, the share follows: ${share}`);
   });
 
+  it('counts a cut polygonal face list (#n references) as mesh, and skips the STEP header (review on #10814)', () => {
+    const faceList = Array.from({ length: 20_000 }, (_, i) => `#${100_000 + i}`).join(',');
+    assert.deepEqual(denseRecordBytes(faceList.slice(3, 100_000)), { dense: 99_997, total: 99_997, records: 0 }, 'a face reference list is mesh payload');
+    const mesh = `#10=IFCCARTESIANPOINTLIST3D((${points(50)}));\n`;
+    const counted = denseRecordBytes(HEADER + mesh, false);
+    assert.deepEqual(counted, { dense: mesh.length, total: mesh.length, records: 1 }, 'the header at the start of the file is not a cut record');
+  });
+
+  it('never fails open: windows all inside mesh records with no record start still read as dense', async () => {
+    const fill = '(1.5,2.5,3.5),'.repeat(100_000); // 1.4 MB of one point list, no record start after the first
+    const file = `#1=IFCCARTESIANPOINTLIST3D((${fill}));\n`;
+    const share = await sampleDenseGeometryShare(new Blob([file.slice(40)])); // even with the record start cut off
+    assert.equal(share, 1);
+  });
+
   it('measures a file of a few giant mesh records as dense', async () => {
     const giant = `${HEADER}#10=IFCCARTESIANPOINTLIST3D((${points(150_000)}));\n#11=IFCTRIANGULATEDFACESET(#10,$,.T.,((1,2,3)),$);\n`;
     assert.ok(giant.length > 4 * 256 * 1024, 'every window lands inside the point list');

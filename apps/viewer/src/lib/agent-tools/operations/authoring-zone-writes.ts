@@ -15,8 +15,9 @@ import { stateRevision } from './state-revision';
 import { invalidInput, stale } from './refusals';
 import { mutationRefusal } from './mutation-refusal';
 import { findZoneSet } from './authoring-zone-set';
-const WRITEBACK_STALE = 'Zone/model inputs changed after review.';
 import { captureZoneExportInputs, sameGeometry, sameModels } from './zone-operation-inputs';
+
+const WRITEBACK_STALE = 'Zone/model inputs changed after review.';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, effect: 'read' | 'model' | 'artifact' = 'read') => ({ id, owner: 'zones', description, effects: [effect],
@@ -91,12 +92,14 @@ export const zoneWriteOperations = [
   }, async (i, c) => {
     const { exportZoneGeometry } = await import('@/hooks/useZoneGeometrySplit'); assertToolActive(c);
     const set = zoneSet(i.set_id), index = set.zones.findIndex(zone => zone.id === i.zone_id); if (index < 0) throw invalidInput('unknown-target', 'Unknown native zone.');
-    const current = captureZoneExportInputs(set);
-    let captured: { bytes: Uint8Array; filename: string } | undefined;
-    const result = await exportZoneGeometry(set, index, { emit: (bytes, filename) => { captured = { bytes, filename }; } });
-    assertToolActive(c);
-    if (!current()) throw stale('Geometry or zones changed during native export. Discarded result.');
-    if (!result.ok || !captured) return out({ result, artifact: null });
-    const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: 'model/gltf-binary', data: captured.bytes }); return out({ result, artifact });
+    const { current, release } = captureZoneExportInputs(set);
+    try {
+      let captured: { bytes: Uint8Array; filename: string } | undefined;
+      const result = await exportZoneGeometry(set, index, { emit: (bytes, filename) => { captured = { bytes, filename }; } });
+      assertToolActive(c);
+      if (!current()) throw stale('Geometry or zones changed during native export. Discarded result.');
+      if (!result.ok || !captured) return out({ result, artifact: null });
+      const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: 'model/gltf-binary', data: captured.bytes }); return out({ result, artifact });
+    } finally { release(); }
   }),
 ];

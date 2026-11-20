@@ -57,7 +57,6 @@ async function setup(t: TestContext) {
     state.updateZone(fixture.zoneSet.id, 'whole', { color: [0.25, 0.5, 0.75] });
     state.updateMeshColors(new Map([[fixture.wall.expressId, color]]));
     useViewerStore.setState(now => ({
-      geometryUpdateTick: now.geometryUpdateTick + 1,
       zoneAssignments: new Map(now.zoneAssignments),
     }));
   }
@@ -116,3 +115,19 @@ test('zones.table.export discards a new apportionment and publishes after a reco
   assert.match(recomputed.text, /changed during export/);
   assert.deepEqual(listArtifacts(fixture.host).map(row => row.artifact_id), [artifact]);
 });
+
+for (const kind of ['geometry', 'table'] as const) {
+  test(`zones.${kind}.export discards a tick-only invalidation after recolouring (#10969)`, async t => {
+    const fixture = await setup(t);
+    if (!fixture) return;
+    const set_id = fixture.zoneSet.id;
+    const input = kind === 'geometry' ? { set_id, zone_id: 'whole' } : { set_id, basis: 'mesh', format: 'csv' };
+    const invalidated = await fixture.duringExport(`zones.${kind}.export`, input, () => {
+      fixture.recolour();
+      useViewerStore.setState(now => ({ geometryUpdateTick: now.geometryUpdateTick + 1 }));
+    });
+    assert.equal(invalidated.isError, true, invalidated.text);
+    assert.match(invalidated.text, /changed during/);
+    assert.deepEqual(listArtifacts(fixture.host), []);
+  });
+}

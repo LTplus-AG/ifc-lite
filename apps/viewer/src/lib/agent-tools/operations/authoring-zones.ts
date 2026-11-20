@@ -172,14 +172,16 @@ export const zoneOperations = [
       import('@/hooks/useZoneTableExport'), import('@/hooks/zoneFacts'),
     ]);
     assertToolActive(c);
-    const zoneSet = set(i.set_id), current = captureZoneExportInputs(zoneSet);
-    // The table normally fills a cold cache itself. Capture the exact entry it will read.
-    const apportionment = ensureZoneApportionment(zoneSet);
-    let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
-    const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });
-    assertToolActive(c);
-    if (!current() || validEntry(useViewerStore.getState().zoneApportionment, zoneSet) !== apportionment)
-      throw stale('Zone inputs changed during export. Discarded result.');
-    if (!captured) return out({ result, artifact: null }); const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: captured.mime, data: captured.bytes }); return out({ result, artifact });
+    const zoneSet = set(i.set_id), { current, release } = captureZoneExportInputs(zoneSet);
+    try {
+      // The table normally fills a cold cache itself. Capture the exact entry it will read.
+      const apportionment = ensureZoneApportionment(zoneSet);
+      let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
+      const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });
+      assertToolActive(c);
+      if (!current() || validEntry(useViewerStore.getState().zoneApportionment, zoneSet) !== apportionment)
+        throw stale('Zone inputs changed during export. Discarded result.');
+      if (!captured) return out({ result, artifact: null }); const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: captured.mime, data: captured.bytes }); return out({ result, artifact });
+    } finally { release(); }
   }),
 ];

@@ -23,7 +23,9 @@ export type GeometryBackingCommand =
   /** TEST ONLY: magnetic snap at canvas CSS points, through readback when released. */
   | { action: 'snap-probe-for-test'; points: Array<[number, number]> }
   /** TEST ONLY: read the camera pose, or pin it first, so screen probes compare like for like. */
-  | { action: 'camera-for-test'; pose?: CameraPose };
+  | { action: 'camera-for-test'; pose?: CameraPose }
+  /** TEST ONLY: the scene's own instanced occurrence bounds (placed frame), independent of any backing. */
+  | { action: 'instanced-bounds-for-test' };
 
 type Xyz = { x: number; y: number; z: number };
 export interface CameraPose { position: Xyz; target: Xyz; up: Xyz }
@@ -53,6 +55,11 @@ export async function geometryBackingCommand(store: StoreApi<TapState>, renderer
     const { pose } = command;
     if (pose) { camera.setPosition(pose.position.x, pose.position.y, pose.position.z); camera.setTarget(pose.target.x, pose.target.y, pose.target.z); camera.setUp(pose.up.x, pose.up.y, pose.up.z); }
     return [{ position: { ...camera.getPosition() }, target: { ...camera.getTarget() }, up: { ...camera.getUp() } }];
+  }
+  if (command.action === 'instanced-bounds-for-test') {
+    if (!renderer) throw new Error('Instanced bounds need the viewport renderer');
+    const scene = renderer.getScene();
+    return [...scene.getInstancedEntityIds()].map((id) => ({ id, bounds: scene.getInstancedEntityBounds(id) }));
   }
   if (command.action === 'snap-probe-for-test') {
     if (!renderer) throw new Error('Snap probes need the viewport renderer');

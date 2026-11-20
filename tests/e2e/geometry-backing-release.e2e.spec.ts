@@ -267,7 +267,9 @@ for (const fixture of FIXTURES) {
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const snaps = await g.__ifc_lite_geometry_backing__!({ action: 'snap-probe-for-test', points });
       const gpuAfter = await gpuGrid();
-      return { sealed, held, snaps, gpuBefore, gpuAfter };
+      // Independent of readback: where the scene itself draws instanced occurrences after the reload.
+      const instancedBounds = await g.__ifc_lite_geometry_backing__!({ action: 'instanced-bounds-for-test' });
+      return { sealed, held, snaps, gpuBefore, gpuAfter, instancedBounds };
     }, [phase1.points] as const);
     await page.screenshot({ path: info.outputPath('after-reload.png') });
     await writeFile(info.outputPath('reload.json'), JSON.stringify({ sealed: reload.sealed, held: reload.held }, null, 2));
@@ -283,19 +285,35 @@ for (const fixture of FIXTURES) {
     const differing = reload.gpuBefore.filter((id, i) => id !== reload.gpuAfter[i]).length;
     expect(drawn, 'the released scene draws entities before the reload').toBeGreaterThan(100);
     expect(differing, `GPU picks after the reload (${differing} of ${reload.gpuBefore.length} texels differ)`).toBe(0);
-    let unavailable = 0;
+    // Expected-unavailable only where a LOST instanced occurrence could matter, identified independently of
+    // readback: the resident hit was instanced, or the scene draws an instanced occurrence within the
+    // readback neighbourhood (1 m, placed frame) of the resident hit point. Every other hit is flat and
+    // must answer exactly: entity, point and snap. (Final all-probe parity needs instanced restaging.)
+    const R = 1;
+    const occurrences = reload.instancedBounds as Array<{ id: number; bounds: { min: Record<'x' | 'y' | 'z', number>; max: Record<'x' | 'y' | 'z', number> } | null }>;
+    const nearInstanced = (a: SnapRow) => a.instanced || occurrences.some(({ bounds: o }) => !!o && !!a.point
+      && o.min.x <= a.point[0] + R && o.max.x >= a.point[0] - R && o.min.y <= a.point[1] + R && o.max.y >= a.point[1] - R
+      && o.min.z <= a.point[2] + R && o.max.z >= a.point[2] - R);
+    let unavailable = 0, expectedUnavailable = 0, flatHits = 0;
     for (let i = 0; i < before.length; i++) {
       const a = before[i], b = reloaded[i];
-      // Only a model whose instancing was lost may fail closed, and only where it drew something;
-      // the GPU grid above already proved the rebuilt scene itself.
-      if (lost && b.outcome === 'unavailable' && a.expressId !== null) { unavailable++; continue; }
+      const mayFail = lost && a.expressId !== null && nearInstanced(a);
+      if (mayFail) expectedUnavailable++;
+      if (b.outcome === 'unavailable') {
+        unavailable++;
+        expect(mayFail, `reload probe ${i} is a flat hit away from any instanced occurrence: it must answer (${JSON.stringify({ a, b })})`).toBe(true);
+        continue;
+      }
       expect(b.expressId, `reload probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
       if (a.expressId === null) continue;
+      if (!mayFail) flatHits++;
       for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `reload probe ${i} hit`).toBeLessThan(1e-6);
       expect(b.snap?.type, `reload probe ${i} snap kind`).toBe(a.snap?.type);
+      if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `reload probe ${i} snap`).toBeLessThan(1e-6);
     }
-    await writeFile(info.outputPath('reload-probes.json'), JSON.stringify({ lost, unavailable, probes: before.length,
+    await writeFile(info.outputPath('reload-probes.json'), JSON.stringify({ lost, unavailable, expectedUnavailable, flatHits, probes: before.length,
       gpuTexels: reload.gpuBefore.length, gpuDrawn: drawn, gpuDiffering: differing }));
+    expect(flatHits, 'flat hits away from instancing answered with full parity').toBeGreaterThan(0);
     if (!lost) expect(unavailable, 'a complete reseal answers every probe').toBe(0);
     await page.evaluate(() => (globalThis as Probe).__ifc_lite_geometry_backing__!({ action: 'stop' }));
   });

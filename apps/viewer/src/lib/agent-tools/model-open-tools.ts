@@ -97,11 +97,13 @@ function fileNameOf(url: URL): string {
   return name.split(/[\\/]/).pop() ?? '';
 }
 
+const isGltfName = (name: string) => /\.gltf$/i.test(name);
+
 /**
  * Whether a URL may name this file: what the viewer opens from one file (the shared format list, so a build
  * without splats refuses them), except `.gltf`, whose external buffers and textures do not come along.
  */
-const isUrlModelName = (name: string) => !/\.gltf$/i.test(name) && isSupportedModelFile(new File([], name));
+const isUrlModelName = (name: string) => !isGltfName(name) && isSupportedModelFile(new File([], name));
 /** The extensions a URL may name, for messages. */
 const URL_MODEL_EXTENSIONS = () => PICKER_FILE_EXTENSIONS.filter((ext) => isUrlModelName(`model${ext}`)).join(', ');
 
@@ -170,6 +172,9 @@ async function download(url: URL, signal?: AbortSignal): Promise<File> {
     return fail(code, message);
   };
   if (!res.ok) refuse(`Fetching ${shown(source)} returned HTTP ${res.status}.`);
+  if (isGltfName(redirectedName)) {
+    refuse(`${shown(source)} names a .gltf document, whose external buffers and textures cannot come along. Use a .glb URL instead.`, ToolErrorCode.INVALID_INPUT);
+  }
   if (Number(res.headers.get('content-length')) > OPEN_MODEL_MAX_BYTES) refuse(tooLarge(source), ToolErrorCode.INVALID_INPUT);
   const file = await readLimited(res, source, name);
   if (file.size === 0) refuse(`${shown(source)} returned an empty body (HTTP ${res.status}). Nothing was loaded.`);

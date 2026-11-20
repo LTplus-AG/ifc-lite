@@ -408,6 +408,19 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     await run({ url: 'https://example.com/latest.ifc', mode: 'add' });
     assert.equal(calls.at(-1)!.names[0], 'rev42.ifcx', 'the bytes are routed by what was actually served');
   });
+  it('refuses a redirect to a .gltf document before replacing an open model (#9523 code review)', async () => {
+    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
+    respond = () => {
+      const res = new Response('{"asset":{"version":"2.0"},"buffers":[{"uri":"mesh.bin","byteLength":4}]}');
+      Object.defineProperty(res, 'url', { value: 'https://cdn.example/scene.GLTF?sig=1' });
+      return res;
+    };
+    await assert.rejects(run({ url: 'https://example.com/model.glb', mode: 'replace' }), {
+      code: 'INVALID_INPUT', message: /^https:\/\/cdn\.example\/scene\.GLTF names a \.gltf document/,
+    });
+    assert.deepEqual(calls, [], 'nothing was loaded');
+  });
+
   it('refuses error bodies with the URL that served them, before anything changes (#9523 code review)', async () => {
     useViewerStore.setState({
       models: new Map([['old', model('old', 'a.ifc')]]) as never,

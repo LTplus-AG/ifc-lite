@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { BsddNamespace } from '@ifc-lite/sdk';
 import { isFeatureEnabled } from '@/lib/features';
-import { DEFAULT_MAPPING, DEFAULT_PROFILE, assertProfile, dictionaryToProfile, generateArtifacts, asJsonLd, profileFromBsdd, type BindingMapping, type ProfileDefinition } from '@ifc-lite/semantic';
+import { DEFAULT_MAPPING, DEFAULT_PROFILE, assertProfile, assertResourceUriIdentityConfig, dictionaryToProfile, generateArtifacts, asJsonLd, profileFromBsdd, type BindingMapping, type ProfileDefinition } from '@ifc-lite/semantic';
 import { useSemanticSession } from '@/lib/semantic/session';
 import { useSemanticEndpointGrant } from '@/lib/semantic/assist/endpoint-grant';
 import { loadSemanticSource } from '@/lib/semantic/load-source';
@@ -30,8 +30,11 @@ export const coordinationSemanticNativeOperations = [
     const guard = () => { c.checkpoint?.(); if (useViewerStore.getState().models !== models || remote && useSemanticEndpointGrant.getState().generation !== authority.generation) throw new Error('Native model binding or endpoint authority changed.'); };
     let committed = false;
     guard(); const outcome = await loadSemanticSource(input, c.signal ?? new AbortController().signal, undefined, undefined, write => { guard(); const value = c.commit(write); committed = true; return value; });
-    // A load cancelled before any write left the dataset as it was; report that, not an empty success.
-    if (c.signal?.aborted && !committed) throw c.signal.reason ?? new DOMException('The semantic load was cancelled.', 'AbortError');
+    // A cancelled load never reports success: before any write the dataset is unchanged; after one,
+    // records were stored but validation did not finish.
+    if (c.signal?.aborted) throw committed
+      ? new DOMException('The semantic load was cancelled after its records were stored; validation did not finish. Load again to validate.', 'AbortError')
+      : c.signal.reason ?? new DOMException('The semantic load was cancelled.', 'AbortError');
     return outcome;
   }),
   coordination('semantic.endpoint', 'Inspect only the identity/generation of the already exercised native endpoint grant; credentials and relay secrets remain private.', ['read'], emptySchema, () => { const state = useSemanticEndpointGrant.getState(); return { endpoint: state.grant?.endpoint ?? null, generation: state.generation, configured: !!state.grant }; }),
@@ -47,7 +50,10 @@ export const coordinationSemanticNativeOperations = [
     type: 'object', properties: { strategy: { type: 'string', enum: ['ifc-global-id', 'resource-links', 'profile-fields', 'resource-uri'] }, GlobalId: { type: 'string', minLength: 1, maxLength: 500 }, modelRevision: { type: 'string', maxLength: 500 }, uri_mode: { type: 'string', enum: ['template', 'last-path-segment'] }, uri_template: { type: 'string', maxLength: 10000 } }, required: ['strategy', 'GlobalId', 'modelRevision', 'uri_mode', 'uri_template'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
     const s = useSemanticSession.getState(); if (i.strategy === 'profile-fields' && (s.profile.fields[i.GlobalId]?.kind !== 'string' || i.modelRevision && !['string', 'iri'].includes(s.profile.fields[i.modelRevision]?.kind))) throw new Error('Native identity fields are not compatible with this profile.');
-    s.setUriConfig(i.uri_mode === 'template' ? { mode: i.uri_mode, template: i.uri_template } : { mode: i.uri_mode }); s.setIdentityFields({ GlobalId: i.GlobalId, ...(i.modelRevision ? { modelRevision: i.modelRevision } : {}) }); s.setStrategy(i.strategy); return { strategy: i.strategy, identity_fields: useSemanticSession.getState().identityFields, uri_config: useSemanticSession.getState().uriConfig };
+    // The same validation the identity controls run before applying a URI rule.
+    const uriConfig = i.uri_mode === 'template' ? { mode: i.uri_mode, template: i.uri_template } as const : { mode: i.uri_mode } as const;
+    assertResourceUriIdentityConfig(uriConfig);
+    s.setUriConfig(uriConfig); s.setIdentityFields({ GlobalId: i.GlobalId, ...(i.modelRevision ? { modelRevision: i.modelRevision } : {}) }); s.setStrategy(i.strategy); return { strategy: i.strategy, identity_fields: useSemanticSession.getState().identityFields, uri_config: useSemanticSession.getState().uriConfig };
   })),
   coordination('semantic.export', 'Export the same native linked-records evidence bundle as the panel, including generated artifacts and original reference-profile disclaimer.', ['artifact'], emptySchema, async (_, c) => { const s = useSemanticSession.getState(), assets = await generateArtifacts(s.profile), { PILOT_QUERY } = await import('@/lib/semantic/demo'); return c.artifacts.create({ filename: 'semantic-records.json', mimeType: 'application/json', data: JSON.stringify({ document: s.document, ...assets, jsonLd: s.document ? asJsonLd(s.document, s.profile) : undefined, graph: s.graph, graphFormat: s.graphFormat, nquads: s.graphFormat === 'application/n-quads' ? s.graph : undefined, sparqlResults: s.results, selectQuery: PILOT_QUERY, note: 'Original reference profile; no standards conformity claim.' }, null, 2) }); }),
 ];

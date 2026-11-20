@@ -54,19 +54,21 @@ export function viaReadback(ctx: MouseHandlerContext, kind: ReadbackKind, act: (
 
 /**
  * What a pixel names a surface under: the view-projection matrix (a copy) plus the renderer's pick-geometry
- * revision, which a renderer-side model move (setModelTranslation/Rotation) bumps with no store change.
- * Undefined when the renderer has no camera to ask.
+ * revision (a renderer-side model move, setModelTranslation/Rotation, bumps it with no store change) and its
+ * pick-clip revision (a section cut that changes exposes other surfaces at the same pixel). Undefined when the
+ * renderer has no camera to ask.
  */
 export function viewOf(ctx: MouseHandlerContext): readonly number[] | undefined {
   const renderer = ctx.renderer as {
     getCamera?: () => { getViewProjMatrix?: () => { m: ArrayLike<number> } };
     getPickGeometryRevision?: () => number;
+    getPickClipRevision?: () => number;
   };
   const m = renderer.getCamera?.()?.getViewProjMatrix?.().m;
   if (!m) return undefined;
-  const view = Array.from(m);
-  const revision = renderer.getPickGeometryRevision?.();
-  return revision === undefined ? view : [...view, revision];
+  const revisions = [renderer.getPickGeometryRevision?.(), renderer.getPickClipRevision?.()]
+    .filter((revision): revision is number => revision !== undefined);
+  return [...Array.from(m), ...revisions];
 }
 
 /**

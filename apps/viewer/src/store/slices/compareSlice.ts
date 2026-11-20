@@ -238,9 +238,9 @@ export interface CompareSlice {
   setCompareRunning: (running: boolean) => void;
   setCompareError: (error: string | null) => void;
   setCompareSelectedKey: (key: string | null) => void;
-  /** Clear the run result + selection; keeps the A/B + scope choices. */
   /** Bumped by every Clear, so a run in flight can tell a dismissal happened even with no result yet. */
   compareClearEpoch: number;
+  /** Clear the run result + selection; keeps the A/B + scope choices. */
   clearCompare: () => void;
   /** Accept identity entries for a model pair; returns the ones refused for
    *  colliding with a pair already accepted (identity is 1:1). */

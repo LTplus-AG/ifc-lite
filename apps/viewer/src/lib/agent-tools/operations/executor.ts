@@ -162,6 +162,8 @@ export async function executeOperation(
       try { undo(); } catch (error) { console.warn('[viewer operation] discarding a refused result failed', error); }
     }
   };
+  // The dispatch may answer a cancellation after this call accepted its result: it discards through this hook then.
+  if (context.commitState) context.commitState.discard = () => { if (!committed) discardResult(); };
   /** The result after the final check, bounded and validated. A result refused here is never delivered, so what the
    * handler stored for it is discarded; a committed write is not, since it already happened. */
   const accepted = (result: unknown, finalCheck: () => void): unknown => {

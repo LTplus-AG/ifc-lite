@@ -87,7 +87,7 @@ export const nativeValidationOperations = [
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'ids'))) throw new Error('Models changed during IDS validation.');
     if (c.host.models().find(model => model.id === c.model.id)?.store !== c.model.store) throw new Error('Models changed during IDS validation.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); 
+    evictOldest(runs(c), 32); const id = crypto.randomUUID();
     retainCandidate(c, runs(c), id, { ...result, kind: 'ids', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
@@ -116,7 +116,7 @@ export const nativeValidationOperations = [
     const result = await runInformationCheck({ ruleSet: parsed.file, models, definedModelTagIds: definedModelTagIdsOf(s), reportModels: s.models, signal: c.signal });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'rules'))) throw new Error('Models changed during validation. Discarded result.');
     if (c.host.models().find(model => model.id === c.model.id)?.store !== c.model.store) throw new Error('Models changed during validation. Discarded result.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); 
+    evictOldest(runs(c), 32); const id = crypto.randomUUID();
     retainCandidate(c, runs(c), id, { ...result, kind: 'rules', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),

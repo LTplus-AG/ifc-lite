@@ -134,7 +134,10 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     let succeeded = 0;
     mock.method(entry, 'validateResult', (value: unknown) => { validate(value); succeeded++; });
     // 32 jobs fill both the job map and the graph cap; none is polled, so none delivers its token.
-    for (let i = 0; i < 32; i++) (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured;
+    for (let i = 0; i < 32; i++) {
+      const started = await invoke('authoring.group.prepare', { proposal_json }, false, { background: true });
+      assert.equal(started.isError, false, started.text);
+    }
     for (let tick = 0; succeeded < 32 && tick < 2000; tick++) await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(succeeded, 32);
     // A 33rd job evicts finished ones; their results will never be collected, so their candidates go too.

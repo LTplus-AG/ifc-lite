@@ -10,7 +10,12 @@ import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { createBcfSlice } from './bcfSlice.js';
 import { requestValue, transactionDone } from '../../lib/storage/content-database.js';
 
-const makeStore = () => createStore(createBcfSlice).getState;
+function makeStore() {
+  const { getState } = createStore(createBcfSlice);
+  assert.equal(typeof getState().initializeBcfAutosave, 'function', 'the BCF slice can start recovery');
+  assert.equal(typeof getState().flushBcfAutosave, 'function', 'the BCF slice can flush a pending edit');
+  return getState;
+}
 const project = (name: string) => createBCFProject({ name });
 
 async function database(): Promise<IDBDatabase> {

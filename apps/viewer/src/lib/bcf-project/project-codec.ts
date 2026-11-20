@@ -25,8 +25,10 @@ const number = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
 const boolean = (v: unknown) => typeof v === 'boolean';
 const optional = (check: Check): Check => v => v === undefined || check(v);
 const list = (check: Check): Check => v => Array.isArray(v) && v.every(check);
-const shape = <T>(fields: { [K in keyof T]-?: Check }) => (v: unknown): v is T =>
-  record(v) && Object.entries<Check>(fields).every(([key, check]) => check(Object.hasOwn(v, key) ? v[key] : undefined));
+function shape<T>(fields: { [K in keyof T]-?: Check }) {
+  const checks = Object.entries<Check>(fields);
+  return (v: unknown): v is T => record(v) && checks.every(([key, check]) => check(Object.hasOwn(v, key) ? v[key] : undefined));
+}
 
 const optionalText = optional(text);
 const optionalTexts = optional(list(text));

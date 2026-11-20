@@ -10,8 +10,9 @@
  *   and its offsets are in that CRS's unit (MapUnit, or HeightUnit for a geographic CRS), so they are left as written.
  * - A CRS with no unit there is read as metres, as the viewer reads it (`@ifc-lite/geo` `map-unit.ts`), and is
  *   given the merge's one {@link MetreUnit} so every reader agrees.
- * - A map conversion's Scale carries project-unit distances into map units, so it is divided by the length factor,
- *   unless keeping it as written is what keeps the scale the viewer gives the model ({@link viewerAxisScales}).
+ * - A context-to-CRS map conversion's Scale carries project-unit distances into map units. Divide it by the
+ *   length factor unless keeping it as written preserves the viewer's scale (see {@link viewerAxisScales}).
+ *   A CRS-to-CRS conversion keeps its Scale because its source unit is unchanged.
  */
 
 import { extractGeoreferenceCandidatesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
@@ -67,6 +68,9 @@ export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit, m
   const lengthFactor = computeNormalizeFactor(modelScale, primaryScale);
   const conversions = idsOf(dataStore, MAP_CONVERSION_STEP_TYPES).length ? extractGeoreferenceCandidatesOnDemand(dataStore)?.mapConversions : [];
   for (const { conversion, targetCRS } of conversions ?? []) {
+    // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot
+    const source = dataStore.entityIndex.byId.get(conversion.sourceCRS);
+    if (source?.type !== 'IFCGEOMETRICREPRESENTATIONCONTEXT') continue;
     const alone = viewerAxisScales(conversion, targetCRS?.mapUnitScale, modelScale);
     const keeps = (scale: number | undefined) => viewerAxisScales({ ...conversion, scale }, targetCRS?.mapUnitScale, primaryScale)
       .every((value, axis) => Math.abs(value - alone[axis]) <= 1e-9 * Math.abs(alone[axis])); // relative: scales can be tiny

@@ -219,6 +219,26 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
     expect(crsUnits(merged)).toEqual(['#2', `#${metre}`]);
   });
 
+  it('normalizes the context-to-CRS scale and preserves the chained CRS-to-CRS conversion', async () => {
+    const primary: Spec = { unit: 'm', mapUnit: 'm', easting: 2600000, schema: 'IFC4X3' };
+    const operation = `#21=IFCMAPCONVERSION(#14,#20,2600100.,1200000.,500.,1.,0.,0.0009996);
+#23=IFCPROJECTEDCRS('EPSG:21781',$,$,$,$,$,#2);
+#24=IFCMAPCONVERSION(#20,#23,10.,20.,30.,1.,0.,0.9996);`;
+    const merged = await merge([primary, { ...primary, unit: 'mm', operation }]);
+    const conversions = extractGeoreferenceCandidatesOnDemand(await parse(merged))?.mapConversions ?? [];
+    expect(conversions).toHaveLength(3);
+    const context = conversions.find(({ conversion }) => conversion.eastings === 2600100)?.conversion;
+    const chain = conversions.find(({ conversion }) => conversion.eastings === 10)?.conversion;
+    expect(context?.scale).toBe(0.9996);
+    expect(chain).toMatchObject({
+      sourceCRS: context?.targetCRS,
+      eastings: 10,
+      northings: 20,
+      orthogonalHeight: 30,
+      scale: 0.9996,
+    });
+  });
+
   it('leaves a rigid operation into a CRS as written', async () => {
     const operation = '#21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(2600100.),IFCLENGTHMEASURE(1200000.),500.);';
     const merged = await merge([{ unit: 'm', mapUnit: 'm', easting: 2600000, schema: 'IFC4X3' },

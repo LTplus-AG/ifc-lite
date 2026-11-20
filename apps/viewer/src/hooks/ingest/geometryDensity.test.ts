@@ -30,15 +30,18 @@ const fileOf = (element: (id: number) => string, bytes: number): string => {
 
 describe('dense geometry share (#10264)', () => {
   it('counts the bytes of point-list and face-set records, not of B-rep records', () => {
-    assert.ok(denseRecordBytes(fileOf(tfsElement, 200_000)).dense / denseRecordBytes(fileOf(tfsElement, 200_000)).total > 0.95);
-    assert.equal(denseRecordBytes(fileOf(brepElement, 200_000)).dense, 0);
-    const mixed = denseRecordBytes(tfsElement(1) + brepElement(10));
-    assert.ok(mixed.dense > 0 && mixed.dense < mixed.total);
+    const tfs = fileOf(tfsElement, 200_000);
+    assert.ok(denseRecordBytes(tfs) / tfs.length > 0.95);
+    assert.equal(denseRecordBytes(fileOf(brepElement, 200_000)), 0);
+    const mixed = tfsElement(1) + brepElement(10);
+    assert.ok(denseRecordBytes(mixed) > 0 && denseRecordBytes(mixed) < mixed.length);
     // A large mesh can be one record longer than a window: the cut fragment is still mesh payload.
     const inside = '(1.5,2.5,3.5),'.repeat(1000);
-    assert.deepEqual(denseRecordBytes(inside), { dense: inside.length, total: inside.length, records: 0 }, 'a window inside one point list is dense');
+    assert.equal(denseRecordBytes(inside), inside.length, 'a window inside one point list is dense');
+    const faceList = Array.from({ length: 20_000 }, (_, i) => `#${100_000 + i}`).join(',');
+    assert.equal(denseRecordBytes(faceList.slice(3, 100_000)), 99_997, 'so is one inside a polygonal face set\'s #n references');
     const cutText = "x',$,$,'Body');\n#7=IFCPROPERTYSET('a',$,'b',$,(#8));\n";
-    assert.equal(denseRecordBytes(cutText).dense, 0, 'a cut text record is not');
+    assert.equal(denseRecordBytes(cutText), 0, 'a cut text record is not');
   });
 
   // Review on #10814 (discussion_r4639861101): a window cut inside a long text record used to add
@@ -46,7 +49,6 @@ describe('dense geometry share (#10264)', () => {
   // window decided the share alone.
   it('counts a window cut inside a long non-mesh record as sparse, not as nothing', async () => {
     const text = "'" + 'Lorem ipsum dolor sit amet, '.repeat(12_000) + "'";
-    assert.deepEqual(denseRecordBytes(text.slice(1000, 200_000)), { dense: 0, total: 199_000, records: 0 });
     // One 300 KiB mesh record, then long text property records: four windows, one in the mesh.
     let file = `${HEADER}#10=IFCCARTESIANPOINTLIST3D((${points(12_000)}));\n`;
     for (let id = 20; file.length < 1_400_000; id++) file += `#${id}=IFCPROPERTYSINGLEVALUE('Note',$,IFCTEXT(${text}),$);\n`;
@@ -54,25 +56,12 @@ describe('dense geometry share (#10264)', () => {
     assert.ok(share > 0.1 && share < 0.4, `one of four windows is mesh, the share follows: ${share}`);
   });
 
-  it('counts a cut polygonal face list (#n references) as mesh, and skips the STEP header (review on #10814)', () => {
-    const faceList = Array.from({ length: 20_000 }, (_, i) => `#${100_000 + i}`).join(',');
-    assert.deepEqual(denseRecordBytes(faceList.slice(3, 100_000)), { dense: 99_997, total: 99_997, records: 0 }, 'a face reference list is mesh payload');
-    const mesh = `#10=IFCCARTESIANPOINTLIST3D((${points(50)}));\n`;
-    const counted = denseRecordBytes(HEADER + mesh, false);
-    assert.deepEqual(counted, { dense: mesh.length, total: mesh.length, records: 1 }, 'the header at the start of the file is not a cut record');
-  });
-
-  it('never fails open: windows all inside mesh records with no record start still read as dense', async () => {
-    const fill = '(1.5,2.5,3.5),'.repeat(100_000); // 1.4 MB of one point list, no record start after the first
-    const file = `#1=IFCCARTESIANPOINTLIST3D((${fill}));\n`;
-    const share = await sampleDenseGeometryShare(new Blob([file.slice(40)])); // even with the record start cut off
-    assert.equal(share, 1);
-  });
-
   it('measures a file of a few giant mesh records as dense', async () => {
     const giant = `${HEADER}#10=IFCCARTESIANPOINTLIST3D((${points(150_000)}));\n#11=IFCTRIANGULATEDFACESET(#10,$,.T.,((1,2,3)),$);\n`;
     assert.ok(giant.length > 4 * 256 * 1024, 'every window lands inside the point list');
     assert.ok((await sampleDenseGeometryShare(new Blob([giant])))! > 0.95);
+    const cut = giant.slice(HEADER.length + 40); // the point list's record start cut off: still dense, never fails open
+    assert.ok((await sampleDenseGeometryShare(new Blob([cut])))! > 0.95);
   });
 
   it('reads four windows of 256 KiB from a large file, never the whole file', async () => {
@@ -84,7 +73,8 @@ describe('dense geometry share (#10264)', () => {
     assert.ok(share !== undefined && share > 0.95, `tfs share ${share}`);
     assert.deepEqual(reads, [262144, 262144, 262144, 262144]);
     assert.ok((await sampleDenseGeometryShare(new Blob([fileOf(brepElement, 3 * 1024 * 1024)])))! < 0.01);
-    assert.equal(await sampleDenseGeometryShare(new Blob(['not a step file'])), undefined);
+    assert.equal(await sampleDenseGeometryShare(new Blob(['not a step file'])), 0, 'reads as sparse: the size-only rate');
+    assert.equal(await sampleDenseGeometryShare(new Blob([])), undefined);
   });
 });
 

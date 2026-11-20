@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
+import { bcfConnectionIdentity } from './coordination-bcf-server';
 import { coordination } from './coordination-common';
 import { guardedDraftBatch, saveGuardedDraftBatch } from './coordination-bcf-drafts';
 const key = { type: 'string' as const, minLength: 1, maxLength: 200 };
@@ -36,7 +37,7 @@ export const coordinationBcfRecoveryOperations = [
   coordination<{ mode: 'password' | 'token' | 'client-credentials'; server_url: string; username: string; password: string; token: string; client_id: string; client_secret: string; expected_account_json: string }>('bcf.connect', 'Use the existing native password/token/client-credentials connector and session token lifecycle. Secret inputs are not returned. Interactive OAuth stays with its native browser popup.', ['configuration', 'network'], {
     type: 'object', properties: { mode: { type: 'string', enum: ['password', 'token', 'client-credentials'] }, server_url: { type: 'string', minLength: 1, maxLength: 10000 }, username: { type: 'string', maxLength: 500 }, password: { type: 'string', maxLength: 10000 }, token: { type: 'string', maxLength: 10000 }, client_id: { type: 'string', maxLength: 1000 }, client_secret: { type: 'string', maxLength: 10000 }, expected_account_json: { type: 'string', maxLength: 20000 } }, required: ['mode', 'server_url', 'username', 'password', 'token', 'client_id', 'client_secret', 'expected_account_json'], additionalProperties: false,
   }, async (i, c) => { const native = await import('@/services/bcf-server'); const error = native.validateBcfServerUrl(i.server_url); if (error) throw new Error(error); return c.commitAsync(async () => {
-    const before = native.loadBcfServerConfig(); if (JSON.stringify(before ? { server_url: before.serverUrl, user_id: before.userId, project_id: before.projectId } : null) !== i.expected_account_json) throw new Error('Native BCF account changed.');
+    const before = native.loadBcfServerConfig(); if (JSON.stringify(bcfConnectionIdentity(before)) !== i.expected_account_json) throw new Error('Native BCF account changed.');
     const config = i.mode === 'password' ? await native.signInToBcfServer(i.server_url, i.username, i.password, c.signal) : i.mode === 'token' ? await native.signInWithToken(i.server_url, i.token, c.signal) : await native.signInWithClientCredentials(i.server_url, i.client_id, i.client_secret, c.signal); const persisted = native.loadBcfServerConfig(); return { saved: persisted?.serverUrl === config.serverUrl && persisted.userId === config.userId, connection: { server_url: config.serverUrl, user_id: config.userId, project_id: config.projectId } }; }, result => result.saved); }),
   coordination<{ expected_server_url: string; expected_user_id: string }>('bcf.disconnect', 'Clear one exact native BCF account through its existing credential teardown/change notification. Does not delete any server data.', ['configuration'], {
     type: 'object', properties: { expected_server_url: { type: 'string', minLength: 1, maxLength: 10000 }, expected_user_id: { type: 'string', maxLength: 500 } }, required: ['expected_server_url', 'expected_user_id'], additionalProperties: false,

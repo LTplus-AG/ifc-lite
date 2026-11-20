@@ -4,6 +4,7 @@
 import { useViewerStore } from '@/store';
 import { coordination, idSchema, textSchema } from './coordination-common';
 import { emptySchema } from './contract';
+import { isUncachedCompareResult } from '@/lib/compare/publish-comparison';
 function result() { const state = useViewerStore.getState(); if (!state.compareResult) throw new Error('Run a native model comparison first.'); return { state, result: state.compareResult }; }
 export const coordinationCompareWorkspaceOperations = [
   coordination('compare.exportReport', 'Build CSV from the native comparison report serializer, including IFC fields, change classification and safe CSV escaping.', ['artifact'], emptySchema, async (_, c) => {
@@ -40,6 +41,8 @@ export const coordinationCompareWorkspaceOperations = [
     const pair = { baseModelId: i.base_model_id, headModelId: i.head_model_id, keyProperty: current.keyProperty };
     const refused = i.action === 'accept' ? state.acceptCompareIdentity(pair, [{ base: i.base, here: i.here, reason: i.reason }]) : [];
     if (i.action === 'reject') state.rejectCompareClaim(pair, i.base, i.here); if (i.action === 'remove') state.removeCompareIdentity(pair, i.base, i.here);
+    // An agent-published result has no cached pair to re-diff, so it cannot carry the decision: drop it.
+    if (isUncachedCompareResult(current)) useViewerStore.getState().setCompareResult(null);
     return { action: i.action, refused, accepted: useViewerStore.getState().compareAcceptedIdentity, rejected: useViewerStore.getState().compareRejectedClaims };
   })),
   coordination<{ kind: 'clash' | 'validation' }>('compare.captureRun', 'Hold the current native clash or validation run for cross-revision reconciliation; never reruns or fabricates a check.', ['configuration'], {

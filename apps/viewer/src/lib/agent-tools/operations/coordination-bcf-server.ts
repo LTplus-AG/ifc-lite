@@ -5,10 +5,14 @@ import { useViewerStore } from '@/store';
 import { bcfProjectMetadata } from './coordination-bcf-metadata';
 import { coordination, idSchema } from './coordination-common';
 import { emptySchema } from './contract';
+/** The connection identity bcf.server reports; bcf.connect compares against the same shape. */
+export function bcfConnectionIdentity(config: { serverUrl: string; userId: string; projectId?: string; projectName?: string } | null) {
+  return config ? { server_url: config.serverUrl, user_id: config.userId, project_id: config.projectId, project_name: config.projectName } : null;
+}
 export const coordinationBcfServerOperations = [
   coordination('bcf.server', 'Read native BCF server connection identity and selected project without exposing access/refresh tokens or app credentials.', ['read'], emptySchema, async () => {
     const { loadBcfServerConfig } = await import('@/services/bcf-server-config'); const config = loadBcfServerConfig();
-    return { connection: config ? { server_url: config.serverUrl, user_id: config.userId, project_id: config.projectId, project_name: config.projectName } : null };
+    return { connection: bcfConnectionIdentity(config) };
   }),
   coordination('bcf.serverProjects', 'List BCF projects using the existing native connected provider and token lifecycle.', ['network', 'read'], emptySchema, async (_, c) => {
     const { createConnectedClient } = await import('@/services/bcf-server'); const client = await createConnectedClient(c.signal); const projects = await client.getProjects(); c.checkpoint?.(); return { projects };

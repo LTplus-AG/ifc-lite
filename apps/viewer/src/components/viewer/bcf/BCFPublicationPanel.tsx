@@ -72,7 +72,9 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     // A batch edited after staging would show the old preflight as current.
     if (candidate.modifiedAt !== batch.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); return; }
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
-  }, [candidate, batch.id, batch.modifiedAt, config?.serverUrl, config?.userId, targetKey]);
+    // As the native Check does, so the dialog can offer the server's assignees.
+    onUsers(candidate.preflight.extensions.user_id_type ?? []);
+  }, [candidate, batch.id, batch.modifiedAt, config?.serverUrl, config?.userId, targetKey, onUsers]);
 
   useEffect(() => {
     setProjects(null); setConnection(null);

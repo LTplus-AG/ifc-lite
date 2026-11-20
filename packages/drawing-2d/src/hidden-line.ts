@@ -63,9 +63,10 @@ const DEFAULT_OPTIONS: HiddenLineOptions = {
 
 /**
  * Halvings used to locate where a line's visibility flips between two
- * neighbouring samples. 7 narrows the gap to 2^-7 of a sample spacing, under
- * a millimetre on a 3 m edge at the default 10 samples, for 7 extra depth
- * lookups per flip.
+ * neighbouring samples. 7 narrows the gap to 2^-7 of a sample spacing (about
+ * 2.3 mm on a 3 m edge at the default 10 samples, so the midpoint is within
+ * about 1.2 mm), for 7 extra depth lookups per flip. The depth raster pixel
+ * still bounds the final precision.
  */
 const TRANSITION_BISECTION_STEPS = 7;
 

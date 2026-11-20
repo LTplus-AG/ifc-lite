@@ -95,6 +95,9 @@ export async function recoverReleasedScene(
     host.requestRender();
     return { ok: true, omissions };
   } catch (error) {
+    // A rejection that lands after a newer init/destroy belongs to a superseded recovery: it must
+    // not mark the newer lifecycle lost or tear it down as a failure of its own.
+    if (superseded()) return invalidated();
     console.error('[Renderer] Released scene recovery failed:', error);
     return failed(error);
   }

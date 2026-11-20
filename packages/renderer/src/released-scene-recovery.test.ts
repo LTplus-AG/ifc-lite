@@ -105,6 +105,25 @@ describe('released scene device recovery (#10264)', () => {
     assert.equal(renderer.isReady(), false);
   });
 
+  for (const by of ['init', 'destroy'] as const) {
+    it(`a rebuild that REJECTS after a newer ${by} is superseded, not a failure of the newer lifecycle`, async () => {
+      const { renderer } = lostReleasedRenderer();
+      let teardownsAfterSupersede = 0;
+      renderer.setReleasedSceneRebuild(async () => {
+        await Promise.resolve();
+        if (by === 'init') renderer['initGeneration']++; else renderer['destroyed'] = true;
+        const teardown = renderer['teardown'];
+        renderer['teardown'] = (clear?: boolean) => { if (!clear) teardownsAfterSupersede++; teardown(clear); };
+        throw new Error('backing read failed after the recovery was superseded');
+      });
+      const result = await renderer.recoverDevice();
+      assert.equal(result.ok, false);
+      assert.equal(!result.ok && result.reason, 'renderer-destroyed', 'superseded, never scene-restore-failed');
+      if (by === 'init') assert.equal(!result.ok && result.superseded, true);
+      assert.equal(teardownsAfterSupersede, 0, 'no failure teardown of the newer lifecycle');
+    });
+  }
+
   it('clearing the rebuild refuses again', async () => {
     const { renderer } = lostReleasedRenderer();
     renderer.setReleasedSceneRebuild(async () => true);

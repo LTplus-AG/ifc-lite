@@ -11,7 +11,7 @@
  * types, preselected and shown before anything is sent.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
@@ -46,6 +46,9 @@ export interface BCFPublicationPanelProps {
   onRecordId: (id: string | null) => void;
 }
 
+const reviewKey = (batchId: string, serverUrl: string, userId: string, project: string) =>
+  JSON.stringify([batchId, serverUrl, userId, project]);
+
 export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicationPanelProps) {
   const { t } = useTranslation();
   const candidate = useBcfPublicationReview(state => state.candidate);
@@ -61,13 +64,19 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const [report, setReport] = useState<DispatchReport | null>(null);
   const [connection, setConnection] = useState<PublicationConnection | null>(null);
   const [topicTypes, setTopicTypes] = useState<TopicTypeChoice>({});
-  // A type choice and a preflight result belong to one server project.
+  // A type choice and a preflight result belong to one batch and server project.
   // Whatever moves the target (the project picker, or a reconnect to another
   // server) drops both, so neither is applied to or shown for a project the
   // user has not checked.
   // The account is part of the target: switching it drops the previous account's review too.
-  const targetKey = `${config?.serverUrl ?? ''}\u0000${config?.userId ?? ''}\u0000${projectId}`;
-  useEffect(() => { setTopicTypes({}); setPreflight(null); setReport(null); }, [targetKey]);
+  const targetKey = reviewKey(batch.id, config?.serverUrl ?? '', config?.userId ?? '', projectId);
+  const adopted = useRef<{ id: string; targetKey: string } | null>(null);
+  useEffect(() => {
+    // Adopting a staged review can itself select its project.
+    if (adopted.current?.targetKey === targetKey) return;
+    adopted.current = null;
+    setTopicTypes({}); setPreflight(null); setReport(null);
+  }, [targetKey]);
   useEffect(() => {
     // Wait for the connection to load before comparing the candidate's account with it.
     if (!candidate || !config) return;
@@ -77,6 +86,8 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     if (candidate.modifiedAt !== batch.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); setTopicTypes({}); setPreflight(null); setReport(null); return; }
     // A choice the user made while the agent prepared outranks the candidate and keeps the user's own state.
     if (!bcfPublicationCandidateCurrent(candidate)) { useBcfPublicationReview.setState({ candidate: null }); return; }
+    if (adopted.current?.id === candidate.id) return;
+    adopted.current = { id: candidate.id, targetKey: reviewKey(batch.id, candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId) };
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
     // As the native Check does, so the dialog can offer the server's assignees.
     onUsers(candidate.preflight.extensions.user_id_type ?? []);

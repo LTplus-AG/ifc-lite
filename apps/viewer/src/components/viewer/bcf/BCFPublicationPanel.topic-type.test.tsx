@@ -10,14 +10,49 @@
 import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { render, cleanup, click, waitFor } from '@/test/render.js';
 import { connectPeer, reviewedBatch } from '@/test/bcf-publication-fixture';
 import { bcfDraftLibrary, saveDraftBatch, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import { initializeBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import { BCFDraftsDialog } from './BCFDraftsDialog';
+import { BCFPublicationPanel } from './BCFPublicationPanel';
+import { stageBcfPublicationReview, useBcfPublicationReview } from '@/lib/bcf-publication/review-candidate';
+import { planDraftPublication } from '@/lib/bcf-publication/outbox-plan';
+import { preflightPublication } from '@/lib/bcf-publication/outbox-preflight';
 
 afterEach(cleanup);
+
+test('#10589 adopts a staged review once and clears its display on a batch switch', async t => {
+  const peer = await connectPeer(t, { topicTypes: SERVER_TYPES });
+  const batch = await reviewedBatch();
+  const plan = await planDraftPublication(batch, undefined, peer.target);
+  const report = await preflightPublication(peer.connection.client, plan.record);
+  t.after(() => useBcfPublicationReview.setState({ candidate: null }));
+  let notifications = 0;
+  const onRecordId = () => undefined;
+  function Panel() {
+    const [current, setCurrent] = useState(batch);
+    const [, setUsers] = useState<string[]>([]);
+    return <>
+      <button onClick={() => setCurrent({ ...batch, id: 'another-batch' })}>Switch batch</button>
+      <BCFPublicationPanel batch={current} onRecordId={onRecordId}
+        onUsers={users => { if (++notifications <= 2) setUsers(users); }} />
+    </>;
+  }
+  const ui = render(<Panel />);
+  await waitFor(() => ui.querySelector('select option') !== null, 'publication project loaded');
+  act(() => {
+    stageBcfPublicationReview(batch, peer.target, {}, plan, {
+      ...report, extensions: { ...report.extensions, user_id_type: undefined },
+    });
+  });
+  assert.equal(notifications, 1);
+  assert.ok(ui.querySelector('output'));
+  click(button(/^Switch batch$/));
+  assert.equal(ui.querySelector('output'), null);
+  assert.equal(useBcfPublicationReview.getState().candidate, null);
+});
 
 const SERVER_TYPES = ['Task', 'Model Issue', 'Documentation Log', 'Incident Log', 'Deficiency Log', 'Topic', 'Information', 'Decision'];
 const text = () => document.body.textContent ?? '';

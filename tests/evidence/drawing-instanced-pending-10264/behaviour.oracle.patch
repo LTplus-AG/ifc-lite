@@ -1,13 +1,13 @@
 diff --git a/apps/viewer/src/hooks/useDrawingGeneration.ts b/apps/viewer/src/hooks/useDrawingGeneration.ts
-index 3e95c8c16e..eae6dc1dce 100644
+index d175a0d102..50abca6d82 100644
 --- a/apps/viewer/src/hooks/useDrawingGeneration.ts
 +++ b/apps/viewer/src/hooks/useDrawingGeneration.ts
 @@ -576,7 +576,7 @@ export function useDrawingGeneration({
          projectionOn ? projectionProfiles : undefined,
        )); // layers of one element fill per material (#9296)
        if (!isCurrent()) return;
--      void assertInstancedReady; // a shard queued during the cut: wait for its drain
-+      assertInstancedReady(useViewerStore.getState(), getGlobalRenderer()); // a shard queued during the cut: wait for its drain
+-      void assertInstancedReady; void instancedAtStart; // a shard during the cut: wait for its drain
++      assertInstancedReady(useViewerStore.getState(), getGlobalRenderer(), instancedAtStart); // a shard during the cut: wait for its drain
  
        let completedDrawing = result;
        // If we have symbolic representations, create a hybrid drawing

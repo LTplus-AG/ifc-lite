@@ -687,7 +687,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
 
     if (isDegenerateArea(area)) { set({ polygonArea2DPoints: [], annotation2DCursorPos: null }); return; } // near-zero-area guard (#4197)
     const result: PolygonArea2DResult = {
-      id: `poly-area-${Date.now()}`,
+      id: `poly-area-${crypto.randomUUID()}`,
       points: [...state.polygonArea2DPoints],
       area,
       perimeter,
@@ -748,7 +748,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
 
     if (isDegenerateCloud(state.cloudAnnotation2DPoints)) { set({ cloudAnnotation2DPoints: [], annotation2DCursorPos: null }); return; } // near-zero-size guard (#4197)
     const result: CloudAnnotation2D = {
-      id: `cloud-${Date.now()}`,
+      id: `cloud-${crypto.randomUUID()}`,
       points: [...state.cloudAnnotation2DPoints],
       color: '#E53935',
       label,

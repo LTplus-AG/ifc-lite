@@ -6,20 +6,17 @@ import { create } from 'zustand';
 import { useViewerStore } from '@/store';
 import type { IdsStudioDraft } from './draft-codec.js';
 import { idsStudioDraftLibrary, useIdsStudioDraftLibrary } from './draft-library.js';
-import { createIdsDraftAutosave, restoreIdsDraft, restoreInitialIdsDraft } from './draft-session.js';
+import { createIdsDraftAutosave, restoreIdsDraft, restoreInitialIdsDraft, type IdsDraftFeedback } from './draft-session.js';
 
-type DraftError = 'tooLarge' | 'serialize' | 'unreadable' | 'conflict';
-export const useIdsDraftErrors = create<Record<string, DraftError | undefined>>(() => Object.create(null));
-const report = (id: string, error?: DraftError) => useIdsDraftErrors.setState(errors => ({ ...errors, [id]: error }));
+type DraftFeedback = IdsDraftFeedback | 'unreadable';
+export const useIdsDraftFeedback = create<Record<string, DraftFeedback | undefined>>(() => Object.create(null));
+const report = (id: string, feedback?: DraftFeedback) => useIdsDraftFeedback.setState(state => ({ ...state, [id]: feedback }));
 const baselines = new Map<string, string>();
 const autosave = createIdsDraftAutosave(async draft => {
   const known = baselines.get(draft.id);
   const visible = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draft.id);
   // Refreshes can advance the library revision while the editor still owns an older snapshot.
-  if (known !== undefined && visible?.document !== known) {
-    report(draft.id, 'conflict');
-    return false;
-  }
+  if (known !== undefined && visible?.document !== known) return 'conflict';
   baselines.set(draft.id, draft.document);
   return idsStudioDraftLibrary.put(draft.id, draft);
 }, (id, reason) => report(id, reason ?? undefined));

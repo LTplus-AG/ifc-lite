@@ -8,6 +8,8 @@ import { readIdsDraftDocument } from './draft-document.js';
 
 export const IDS_DRAFT_DEBOUNCE_MS = 400;
 
+export type IdsDraftFeedback = 'pending' | 'tooLarge' | 'serialize' | 'conflict';
+
 interface DraftWrite {
   timer?: ReturnType<typeof setTimeout>;
   promise?: Promise<boolean>;
@@ -15,8 +17,8 @@ interface DraftWrite {
 }
 
 export function createIdsDraftAutosave(
-  put: (draft: IdsStudioDraft) => Promise<boolean>,
-  report: (id: string, reason: 'tooLarge' | 'serialize' | null) => void,
+  put: (draft: IdsStudioDraft) => Promise<boolean | 'conflict'>,
+  report: (id: string, feedback: IdsDraftFeedback | null) => void,
 ) {
   const jobs = new Map<string, DraftWrite>();
   const flush = (id: string): Promise<boolean> => {
@@ -29,11 +31,13 @@ export function createIdsDraftAutosave(
       report(id, encoded.reason);
       return Promise.resolve(false);
     }
-    report(id, null);
-    job.promise = put(encoded.draft).then(saved => {
-      if (jobs.get(id) === job && saved) jobs.delete(id);
+    job.promise = put(encoded.draft).then(result => {
+      if (jobs.get(id) === job) {
+        if (result === true) jobs.delete(id);
+        report(id, result === 'conflict' ? result : null);
+      }
       job.promise = undefined;
-      return saved;
+      return result === true;
     });
     return job.promise;
   };
@@ -41,6 +45,7 @@ export function createIdsDraftAutosave(
     schedule(id: string, doc: StudioDocument): void {
       clearTimeout(jobs.get(id)?.timer);
       jobs.set(id, { doc, timer: setTimeout(() => { void flush(id); }, IDS_DRAFT_DEBOUNCE_MS) });
+      report(id, 'pending');
     },
     flush,
     async flushAll(): Promise<boolean> { return (await Promise.all([...jobs.keys()].map(flush))).every(Boolean); },

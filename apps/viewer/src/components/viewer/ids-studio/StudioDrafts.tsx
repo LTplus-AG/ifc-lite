@@ -7,7 +7,7 @@ import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useTranslation } from '@/i18n';
 import { IDS_DRAFT_MAX_MIB } from '@/lib/ids-studio/draft-codec';
 import { useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
-import { discardClosedIdsDraft, switchIdsDraft, useIdsDraftErrors } from '@/lib/ids-studio/draft-viewer';
+import { discardClosedIdsDraft, switchIdsDraft, useIdsDraftFeedback } from '@/lib/ids-studio/draft-viewer';
 import { useViewerStore } from '@/store';
 
 export function StudioDrafts() {
@@ -15,19 +15,21 @@ export function StudioDrafts() {
   const { confirmDialog } = useDialogs();
   const active = useViewerStore(state => state.idsStudioDraftId);
   const { entries, status } = useIdsStudioDraftLibrary();
-  const errors = useIdsDraftErrors();
+  const feedback = useIdsDraftFeedback();
   const others = entries.filter(entry => entry.id !== active).sort((left, right) => right.savedAt - left.savedAt);
-  const activeError = active ? errors[active] : undefined;
+  const activeFeedback = active ? feedback[active] : undefined;
   const activeStatus = active ? status.items[active] : undefined;
-  const message = activeError === 'tooLarge' ? t('idsStudio.drafts.tooLarge', { max: IDS_DRAFT_MAX_MIB })
+  const pending = activeFeedback === 'pending';
+  const message = pending ? null : activeFeedback === 'tooLarge' ? t('idsStudio.drafts.tooLarge', { max: IDS_DRAFT_MAX_MIB })
     : status.phase === 'unavailable' ? t('idsStudio.drafts.unavailable')
-      : activeError === 'conflict' || activeStatus === 'conflict' ? t('idsStudio.drafts.conflict')
-        : activeError || activeStatus === 'quota' || activeStatus === 'invalid' || activeStatus === 'unavailable'
+      : activeFeedback === 'conflict' || activeStatus === 'conflict' ? t('idsStudio.drafts.conflict')
+        : activeFeedback || activeStatus === 'quota' || activeStatus === 'invalid' || activeStatus === 'unavailable'
           ? t('idsStudio.drafts.unsaved') : null;
-  if (!message && !others.length && activeStatus !== 'saved') return null;
+  if (!pending && !message && !others.length && activeStatus !== 'saved') return null;
   return <div className="border-b border-border px-2 py-1 text-2xs">
     {message ? <p role="alert" className="text-destructive">{message}</p>
-      : activeStatus === 'saved' ? <p className="text-muted-foreground">{t('idsStudio.drafts.saved')}</p> : null}
+      : pending || activeStatus === 'saved' ? <p role="status" className="text-muted-foreground">
+        {t(pending ? 'idsStudio.drafts.saving' : 'idsStudio.drafts.saved')}</p> : null}
     {others.length > 0 && <details>
       <summary className="cursor-pointer font-medium">{t('idsStudio.drafts.heading')}</summary>
       {active && <p className="text-muted-foreground">{t('idsStudio.drafts.switch')}</p>}
@@ -39,7 +41,7 @@ export function StudioDrafts() {
             if (await confirmDialog({ description: t('idsStudio.drafts.discardConfirm'), destructive: true,
               confirmLabel: t('idsStudio.drafts.discard') })) await discardClosedIdsDraft(draft);
           })()}>{t('idsStudio.drafts.discard')}</Button>
-          {errors[draft.id] === 'unreadable' && <p role="alert" className="basis-full text-destructive">{t('idsStudio.drafts.unreadable')}</p>}
+          {feedback[draft.id] === 'unreadable' && <p role="alert" className="basis-full text-destructive">{t('idsStudio.drafts.unreadable')}</p>}
           {status.items[draft.id] === 'conflict' && <p role="alert" className="basis-full text-destructive">{t('idsStudio.drafts.conflict')}</p>}
         </li>)}
       </ul>

@@ -123,6 +123,10 @@ describe('IdsStudioPanel (IDS-030 … IDS-032)', () => {
     assert.ok(savedDraft);
     click(byText(savedDraft, 'button', 'Restore draft') as HTMLElement);
     assert.deepEqual(doc(), exported);
+    assert.ok(byText(ui, '[role="status"]', 'Draft saved in this browser'));
+    click(byText(ui, 'button', 'Add specification') as HTMLElement);
+    assert.ok(byText(ui, '[role="status"]', 'Saving IDS draft…'));
+    assert.equal(byText(ui, '[role="status"]', 'Draft saved in this browser'), undefined);
   });
 
   it('undoes and redoes with the panel keyboard shortcuts', async () => {

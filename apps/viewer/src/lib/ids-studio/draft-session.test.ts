@@ -39,6 +39,7 @@ test('#10585 autosave debounces consecutive changes and refuses oversized UTF-8 
   const errors: Array<string | null> = [];
   const save = createIdsDraftAutosave(async draft => { stored.push(draft.title); return true; }, (_id, error) => errors.push(error));
   save.schedule('size-test', doc);
+  assert.equal(errors.at(-1), 'pending');
   context.mock.timers.tick(IDS_DRAFT_DEBOUNCE_MS - 1);
   save.schedule('size-test', { ...doc, ids: { ...doc.ids, info: { title: 'Latest' } } });
   context.mock.timers.tick(IDS_DRAFT_DEBOUNCE_MS - 1);
@@ -46,6 +47,7 @@ test('#10585 autosave debounces consecutive changes and refuses oversized UTF-8 
   context.mock.timers.tick(1);
   await save.flush('size-test');
   assert.deepEqual(stored, ['Latest']);
+  assert.equal(errors.at(-1), null);
   const oversized = { ...doc, ids: { ...doc.ids, info: { title: 'Oversized', description: '漢'.repeat(IDS_DRAFT_MAX_MIB * 1024 * 512) } } };
   save.schedule('size-test', oversized);
   assert.equal(await save.flush('size-test'), false);

@@ -7,6 +7,7 @@ import type { StudioDocument, StudioOp } from '@ifc-lite/ids-authoring';
 import { useViewerStore } from '@/store';
 import { viewerOperation as nativeOperation, operation as modelOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
+import { admitCandidate, candidateStillApplies } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 function operation<T>(...args: Parameters<typeof nativeOperation<T>>) {
@@ -43,7 +44,11 @@ function candidates(c: ViewerOperationContext) {
   let entries = hosts.get(c.host); if (!entries) { entries = new Map(); hosts.set(c.host, entries); const captured = entries; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return entries;
 }
 function remember(c: ViewerOperationContext, candidate: Candidate) {
-  if (candidates(c).size >= 64) throw new Error('IDS candidate capacity reached; apply or discard a pending candidate.');
+  assertToolActive(c); // a prepare cancelled during its imports must not evict another candidate
+  // IDS candidates are bound to the document revision, as apply's revision() checks, not to a model.
+  const revision = useViewerStore.getState().idsStudioRevision, stillApplies = candidateStillApplies();
+  admitCandidate(candidates(c), { cap: 64, refusal: 'IDS candidate capacity reached; apply or discard a pending candidate.',
+    pending: entry => entry.result === undefined, canApply: entry => stillApplies(entry.result !== undefined, () => entry.revision === revision) });
   const token = crypto.randomUUID(); candidates(c).set(token, candidate); return token;
 }
 const tokenSchema: JSONSchemaType<{ token: string }> = { type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false };
@@ -92,8 +97,12 @@ export const idsOperations = [
     if (!candidate) throw new Error('Unknown IDS candidate for this model session.');
     if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
     revision(candidate.revision);
-    const contexts = await dependencies(c); revision(candidate.revision); writeGuard(c);
+    const contexts = await dependencies(c);
+    // Another apply of this token finished during the await: it dispatched once, so answer as a replay.
+    if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
+    revision(candidate.revision); writeGuard(c);
     candidate.result = c.commit(() => {
+      if (candidates(c).get(i.token) !== candidate) throw new Error('The IDS candidate was discarded. Prepare it again.');
       const state = useViewerStore.getState(); state.idsStudioSetContexts(contexts);
       if (candidate.document) state.idsStudioOpen(structuredClone(candidate.document));
       else {

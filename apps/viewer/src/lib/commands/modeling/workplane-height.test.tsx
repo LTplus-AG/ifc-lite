@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, press, render } from '@/test/render.js';
+import { cleanup, press, render, settle } from '@/test/render.js';
 import { CommandBarContent } from '@/components/viewer/tools/command/CommandHud';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { resolveSlabEditChain } from '@/lib/slab-edit';
@@ -69,6 +69,7 @@ beforeEach(async () => {
   state().setAuthoringDims('slab', { Thickness: 0.3 });
   state().setAuthoringDims('roof', { Thickness: 0.3 });
   restoreRemesh = setRequestRemesh(() => {});
+  await settle();
 });
 afterEach(() => {
   restoreRemesh();

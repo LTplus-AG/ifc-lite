@@ -19,7 +19,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { blur, cleanup, click, render, type } from '@/test/render.js';
+import { blur, cleanup, click, render, settle, type, waitFor } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh, type RemeshRequest } from '@/lib/commands/modeling/transaction';
 import { ModelInspectorPanel } from './ModelInspectorPanel.js';
@@ -52,6 +52,7 @@ beforeEach(async () => {
   window = placed.expressId;
   assert.equal(s().enterModelWorkspace(), true);
   s().setSelectedEntityId(toGlobalIdFromModels(s().models, MODEL_ID, window));
+  await settle();
 });
 afterEach(() => {
   cleanup();
@@ -81,6 +82,7 @@ describe('Hosting section (#6232 A1)', () => {
     }
     useViewerStore.setState({ models });
     s().setSelectedEntityId(toGlobalIdFromModels(models, MODEL_ID, window));
+    await settle();
     const root = render(<ModelInspectorPanel />);
     const originalDepth = s().undoStacks.get(MODEL_ID)?.length ?? 0;
     const decoyDepth = s().undoStacks.get('decoy')?.length ?? 0;
@@ -116,7 +118,7 @@ describe('Hosting section (#6232 A1)', () => {
     assert.equal(s().selectedEntityId, toGlobalIdFromModels(s().models, MODEL_ID, wall));
   });
 
-  it('edits width and height through actual inputs, recuts the host and undoes the entire shape in one step (#6232)', () => {
+  it('edits width and height through actual inputs, recuts the host and undoes the entire shape in one step (#6232)', async () => {
     const root = render(<ModelInspectorPanel />);
     const dataStore = s().models.get(MODEL_ID)!.ifcDataStore!;
     const view = s().mutationViews.get(MODEL_ID)!;
@@ -134,6 +136,7 @@ describe('Hosting section (#6232 A1)', () => {
       assert.ok(Math.abs(cut.max[axis] - cut.min[axis] - expected) < 1e-6, 'the IFC cut matches the requested physical size');
       assert.ok(remeshed.at(-1)?.expressIds.includes(window) && remeshed.at(-1)?.expressIds.includes(wall));
       act(() => s().undo(MODEL_ID));
+      await settle();
       assert.deepEqual(placedBodyExtent(dataStore, read.openingId, view), original);
       assert.equal(s().undoStacks.get(MODEL_ID)?.length ?? 0, depth, 'one undo removes the full mapping/attribute transaction');
       assert.deepEqual(readHostedElementSize(dataStore, window, view), { OverallWidth: 1.2, OverallHeight: 1.5 });
@@ -158,7 +161,7 @@ describe('Hosting section (#6232 A1)', () => {
     assert.equal(remeshed.length, 0);
   });
 
-  it('a new offset moves the window along its wall, one undo step, and re-cuts the host', () => {
+  it('a new offset moves the window along its wall, one undo step, and re-cuts the host', async () => {
     const root = render(<ModelInspectorPanel />);
     const depth = s().undoStacks.get(MODEL_ID)?.length ?? 0;
     const offset = input(root, 'Offset');
@@ -167,7 +170,10 @@ describe('Hosting section (#6232 A1)', () => {
     assert.deepEqual(hosted(window), { host: wall, offset: 3.5, sill: 0.9 });
     const [request] = remeshed;
     assert.ok(request && [window, wall].every((id) => request.expressIds.includes(id)), 'the window and its host are re-meshed');
+    // A user's Ctrl+Z publishes the held edit first (#10535); this direct undo waits for it.
+    await waitFor(() => input(root, 'Offset').value === '3.50', 'the field shows the committed offset');
     act(() => s().undo(MODEL_ID));
+    await waitFor(() => input(root, 'Offset').value === '2.00', 'the undo reaches the field');
     assert.deepEqual(hosted(window), { host: wall, offset: 2, sill: 0.9 });
     assert.equal(s().undoStacks.get(MODEL_ID)?.length ?? 0, depth, 'one Ctrl+Z');
     assert.equal(input(root, 'Offset').value, '2.00', 'the field shows the old offset again');

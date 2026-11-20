@@ -8,7 +8,7 @@ import { afterEach, test, type TestContext } from 'node:test';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { render, click, cleanup, waitFor } from '@/test/render';
+import { render, click, cleanup, settle, waitFor } from '@/test/render';
 import { skip, secondHook, blankFile } from '@/test/blank-ifc-loader-harness';
 import { editedRegistryModel } from '@/test/registry-model-fixture';
 import { fixtureModel } from '@/test/store-fixture';
@@ -65,6 +65,7 @@ async function fixture(context: TestContext) {
     releases: [{ tag: 'issued', title: 'Model', digest }], tags: ['issued'], version: 'revision-2' });
   let ui!: HTMLElement;
   await act(async () => { ui = render(<><ConfirmDialogHost /><RegistrySource expanded navigationDisabled={false} onToggle={() => {}} onBusyChange={() => {}} /></>); });
+  await settle(); // the edited model is an edit: the panel offers Publish once it settles (#10535)
   return { ...model, ui, transport, requests, blobs, manifests, digest, metadataReads: () => metadataReads, failRevoke: (value: boolean) => { failRevoke = value; } };
 }
 

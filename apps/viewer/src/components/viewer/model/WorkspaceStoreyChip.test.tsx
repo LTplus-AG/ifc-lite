@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { advance, cleanup, click, render, waitFor } from '@/test/render.js';
+import { advance, cleanup, click, render, settle, waitFor } from '@/test/render.js';
 import { requiredModule } from '@/i18n/__tests__/required-module';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -51,6 +51,7 @@ beforeEach(async () => {
   await seedModelingSession();
   useViewerStore.setState({ editEnabled: false, selectedEntityId: null, levelDisplayMode: 'stacked', selectedStoreys: new Set() });
   render(<><ViewportHud /><WorkspaceStoreyControl /></>);
+  await settle();
 });
 afterEach(() => {
   cleanup();
@@ -367,13 +368,15 @@ it('#9389 changing selection dismisses the open copy picker', async () => {
   await waitFor(() => !document.querySelector('[data-copy-to-storeys]'), 'selection change closes copy');
 });
 
-it('#9389 the chip and status bar share a live storey name through rename and undo', () => {
+it('#9389 the chip and status bar share a live storey name through rename and undo', async () => {
   act(() => useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }));
   const ui = render(<StatusBarWorkspaceChip />);
   act(() => { commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'rename', storeyId: STOREY, Name: 'Lobby' }); });
+  await settle();
   assert.match(chipButton()?.textContent ?? '', /Lobby/);
   assert.match(ui.textContent ?? '', /Lobby/);
   act(() => useViewerStore.getState().undo(MODEL_ID));
+  await settle();
   assert.match(chipButton()?.textContent ?? '', /L0/);
   assert.match(ui.textContent ?? '', /L0/);
 });

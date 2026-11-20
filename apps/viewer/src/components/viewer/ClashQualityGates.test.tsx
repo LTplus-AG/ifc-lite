@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
-import { cleanup, click, render, type, waitFor } from '@/test/render';
+import { cleanup, click, render, settle, type, waitFor } from '@/test/render';
 import { mountClashPanel, detectCoincidentWalls, saveCurrentResultAs } from '@/test/clash-report-fixture';
 import { useViewerStore } from '@/store';
 import { defaultQualityGateConfig } from '@/lib/clash/quality-gate';
@@ -112,6 +112,7 @@ describe('Quality gate interaction (#9259)', () => {
     assert.match(ui.querySelector('[data-quality-rule]')?.textContent ?? '', /100.0%/);
     assert.match(ui.querySelector('[data-quality-rule]')?.textContent ?? '', /Passed/);
     act(() => useViewerStore.setState(state => ({ mutationVersion: state.mutationVersion + 1 })));
+    await settle();
     const card = ui.querySelector('[data-quality-rule]');
     assert.ok(card);
     assert.match(card.textContent ?? '', /Outdated run/);

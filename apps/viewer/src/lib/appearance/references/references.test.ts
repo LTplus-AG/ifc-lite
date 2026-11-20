@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import { createElement } from 'react';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, settle } from '@/test/render.js';
 import { AuthorTab } from '@/components/viewer/ribbon/tabs/AuthorTab.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -154,6 +154,7 @@ DATA;#1=IFCCOLOURRGB($,1.,0.,0.);ENDSEC;END-ISO-10303-21;`);
 test('the actual Author toolbar enables reference-only Undo/Redo without an active IFC model (#4308)', async () => {
   const record = await reference();
   useViewerStore.getState().addAppearanceReference(record);
+  await settle();
   const ui = render(createElement(AuthorTab));
   function button(label: string): HTMLButtonElement {
     const result = [...ui.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.trim() === label);
@@ -162,6 +163,7 @@ test('the actual Author toolbar enables reference-only Undo/Redo without an acti
   assert.equal(button('Undo').disabled, false);
   click(button('Undo'));
   assert.equal(useViewerStore.getState().appearanceReferences.size, 0);
+  await settle();
   assert.equal(button('Redo').disabled, false);
   click(button('Redo'));
   assert.equal(useViewerStore.getState().appearanceReferences.get(record.id)!.assetId, record.assetId);

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the new store backing tap loadable while reintroducing its fail-closed defects: a late tap that missed enqueued shards reports complete, and a flat-list regeneration silently drops committed instanced shards.",
+  "key": "apps/viewer/src/lib/geometry-backing/store-backing-tap.ts",
+  "mutation": "tests/evidence/geometry-backing-tap-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/geometry-backing/store-backing-tap.test.ts"
+}

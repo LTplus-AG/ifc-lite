@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { advance, click as clickEl, cleanup, render, type, blur } from '@/test/render.js';
+import { advance, click as clickEl, cleanup, render, settle, type, blur } from '@/test/render.js';
 import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
 import { authoredBodies } from '@/test/authored-body';
 import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
@@ -43,6 +43,7 @@ beforeEach(async () => {
     profiles: { beam: { type: 'Rectangle', dims: {} }, member: { type: 'Rectangle', dims: {} }, column: { type: 'Rectangle', dims: {} } },
   });
   restoreRemesh = setRequestRemesh(() => {});
+  await settle();
 });
 afterEach(() => {
   restoreRemesh();

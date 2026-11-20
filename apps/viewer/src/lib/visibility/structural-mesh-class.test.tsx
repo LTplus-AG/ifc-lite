@@ -22,7 +22,8 @@ import type { FederatedModel } from '@/store';
 import { useViewerStore } from '@/store';
 import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants';
 import { getVisibleBasketEntityRefsFromStore, invalidateVisibleBasketCache } from '@/store/basketVisibleSet';
-import { cleanup, render } from '@/test/render';
+import { cleanup } from '@/test/render';
+import { renderInViewport } from '@/test/viewport-scope';
 import { fixtureModel } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useFilteredGeometry } from '@/components/viewer/useFilteredGeometry';
@@ -103,7 +104,7 @@ for (const federated of [false, true]) {
       seen = ids(typeVisibleMeshes(useFilteredGeometry(merged, 0, useViewerStore.getState().typeVisibility, 'model', mode, retyped)));
       return null;
     }
-    render(<Probe />);
+    renderInViewport(<Probe />);
     for (const mode of modes) {
       act(() => setMode(mode));
       assert.deepEqual(seen, keep[mode], mode);
@@ -119,7 +120,7 @@ for (const federated of [false, true]) {
       seen = ids(typeVisibleMeshes(useFilteredGeometry(merged, 0, useViewerStore.getState().typeVisibility, 'model', 'analytical', retyped)));
       return null;
     }
-    render(<Probe />);
+    renderInViewport(<Probe />);
     assert.ok(seen.includes(beam));
     const localBeam = federated ? BEAM : beam;
     act(() => {
@@ -156,7 +157,7 @@ for (const federated of [false, true]) {
     const localBeam = federated ? BEAM : beam;
     let hidden = new Set<number>();
     function Probe() { hidden = useVisibilityState().hiddenEntities; return null; }
-    render(<Probe />);
+    renderInViewport(<Probe />);
     assert.equal(hidden.has(beam), false);
     act(() => {
       new StoreEditor(federated ? useViewerStore.getState().models.get('b')!.ifcDataStore! : useViewerStore.getState().ifcDataStore!, view).setEntityType(localBeam, 'IfcSpace');

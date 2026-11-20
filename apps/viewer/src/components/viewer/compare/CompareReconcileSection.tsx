@@ -13,7 +13,8 @@
  * can be saved and reopened in a later session (#7370).
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -32,7 +33,7 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 
 // Lazy (#7370): the saved-run list and the save/reopen binding load only once this section is shown,
 // keeping them out of the first-paint bundle.
-const CompareSavedRuns = lazy(() => import('./CompareSavedRuns').then(m => ({ default: m.CompareSavedRuns })));
+const CompareSavedRuns = lazyChunk(() => import('./CompareSavedRuns').then(m => ({ default: m.CompareSavedRuns })));
 const loadBinding = () => import('@/lib/compare/saved-analysis-run-binding');
 
 const SAVE_MESSAGES = {

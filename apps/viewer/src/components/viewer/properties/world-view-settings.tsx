@@ -8,7 +8,8 @@
  * switch, and the lazy-loaded globe placement control.
  */
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { Mountain } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
@@ -16,7 +17,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 
-const GlobePlacementControl = lazy(() => import('./GlobePlacementControl'));
+const GlobePlacementControl = lazyChunk(() => import('./GlobePlacementControl'));
 
 export function WorldViewSettings({ onSetOrthogonalHeight }: {
   /** Snap OrthogonalHeight to the sampled terrain; omitted when the georeference is not editable. */

@@ -29,6 +29,8 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { reloadKeepingOpenModels } from '@/lib/reload-resume';
 import { isStaleDeploymentError } from '@/lib/stale-deployment';
+import { captureUnavailableChunk, ChunkBoundaryContext } from '@/lib/lazy-chunk';
+import { isChunkLoadError } from '@/lib/chunk-load-error';
 
 /**
  * Which surface the fallback paints on.
@@ -120,6 +122,10 @@ export class ChunkErrorBoundary extends Component<
     // error-level exception. When a skew reload is in flight the before_send
     // gate in lib/chunk-version-skew.ts drops this as collateral; when no reload
     // is coming, it is a real dead end and worth hearing about.
+    if (isChunkLoadError(error)) {
+      captureUnavailableChunk(error, this.props.label);
+      return;
+    }
     const captured = posthog.captureException(error, {
       context: chunk ? 'lazy_chunk_boundary' : 'lazy_subtree_boundary',
       // `lazy_chunk`, not `chunk_label`: the analytics scrub deletes any key
@@ -134,7 +140,9 @@ export class ChunkErrorBoundary extends Component<
 
   render(): ReactNode {
     const { error } = this.state;
-    if (!error) return this.props.children;
+    if (!error) {
+      return <ChunkBoundaryContext.Provider value>{this.props.children}</ChunkBoundaryContext.Provider>;
+    }
     const fallback = (
       <ChunkErrorFallback
         label={this.props.label}

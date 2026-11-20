@@ -11,13 +11,14 @@
  */
 
 import { structuralGlyphsVisible } from '@/lib/visibility/structural-view';
-import { lazy, Suspense, useMemo } from 'react';
+import { Suspense, useMemo } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { selectPickedGlobalId } from '../viewport-selection';
 
-const StructuralGlyphOverlay = lazy(() => import('./StructuralGlyphOverlay'));
+const StructuralGlyphOverlay = lazyChunk(() => import('./StructuralGlyphOverlay'));
 
 /** A glyph click selects its connection or activity, as a viewport click selects an element. */
 const selectGlyphSource = (modelId: string, expressId: number) =>

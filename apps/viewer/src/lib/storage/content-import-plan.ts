@@ -106,6 +106,7 @@ export function planContentImport(prepared: PreparedContentImport, existing: Con
   for (const entry of libraries.assistant ?? []) add('assistant', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   const workspaceIds = new Map((libraries.clashGroups ?? []).map(entry =>
     [entry.id, add('clashGroups', entry, () => ({ ...entry, id: crypto.randomUUID() }))] as const));
+  for (const entry of libraries.idsStudioDrafts ?? []) add('idsStudioDrafts', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   for (const entry of libraries.bcfDrafts ?? []) add('bcfDrafts', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   for (const entry of libraries.modelChanges ?? []) add('modelChanges', entry, () => ({ ...entry, id: crypto.randomUUID() }));
   // A receipt follows its workspace: when the import gives the workspace a new id, the receipt (and its undo) names the copy.

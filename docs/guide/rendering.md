@@ -538,7 +538,8 @@ and can be dropped as soon as the generator resumes. The scene keeps per-entity
 bounds, so picking and framing still work, and it ends in the released state it
 started from. A replay is all or nothing: one that errors, is cancelled, is
 superseded by a newer one or is interrupted by a device loss removes what it
-uploaded before returning, so replaying again never draws a batch twice.
+uploaded (fragments and the bounds it unioned) before returning, so replaying
+again never draws a batch twice.
 
 ### Magnetic Snap Configuration
 

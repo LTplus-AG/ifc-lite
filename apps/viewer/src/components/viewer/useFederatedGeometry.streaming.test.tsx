@@ -45,7 +45,7 @@ function Probe() {
   const indices = useMemo(() => modelIndices(s.models), [s.models]);
   const merged = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
   const filtered = useFilteredGeometry(merged, s.geometryContentVersion, s.typeVisibility, s.typeViewMode);
-  seen = { merged: merged?.meshes ?? [], filtered: filtered.filteredGeometry ?? [],
+  seen = { merged: merged?.meshes ?? [], filtered: filtered.sceneGeometry ?? [],
     replacement: filtered.geometryReplacementVersion, indices };
   return null;
 }

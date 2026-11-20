@@ -129,8 +129,17 @@ async function oracleDrawing(page: Page, plane: Plane) {
     const { resolveEntityRef } = await import('/src/store/resolveEntityRef.ts') as typeof import('../../apps/viewer/src/store/resolveEntityRef');
     const { getGlobalRenderer } = await import('/src/hooks/useBCF.ts') as typeof import('../../apps/viewer/src/hooks/useBCF');
     // The SAME wasm module instance the viewer initialised (same URL).
-    const wasmUrl = performance.getEntriesByType('resource').map((e) => e.name).find((n) => /ifc-lite(_bg)?\.js(\?|$)/.test(n) || /@ifc-lite_wasm\.js/.test(n));
-    const wasm = (wasmUrl ? await import(wasmUrl) : {}) as { meshOutline2d?: Parameters<typeof createMeshOutlineProvider>[0] };
+    // The SAME wasm module instance the viewer initialised: the loaded module URL
+    // that exports `meshOutline2d`. A fresh instance would be uninitialised.
+    type OutlineFn = Parameters<typeof createMeshOutlineProvider>[0];
+    const candidates = [...new Set([...performance.getEntriesByType('resource').map((e) => e.name)
+      .filter((n) => /\/wasm\/pkg\/ifc-lite\.js(\?|$)/.test(n)), `/@fs${p.root}/packages/wasm/pkg/ifc-lite.js`])];
+    let wasm: { meshOutline2d?: OutlineFn } = {};
+    let wasmUrl: string | null = null;
+    for (const url of candidates) {
+      const module = await import(url) as { meshOutline2d?: OutlineFn };
+      if (typeof module.meshOutline2d === 'function') { wasm = module; wasmUrl = url; break; }
+    }
     const indices = modelIndices(state.models);
     const flat: MeshData[] = [];
     for (const [id, model] of state.models) {
@@ -159,8 +168,9 @@ async function oracleDrawing(page: Page, plane: Plane) {
     const canonical = (0, eval)(canonicalSource) as (d: Drawing) => Canonical;
     // Independent of the filter under test: with no hiding, isolation or class toggles, every occurrence is model geometry.
     const keptOccurrences = occurrences.filter(keep).length;
-    return { canonical: canonical(drawing), occurrences: occurrences.length, keptOccurrences, outline: typeof wasm.meshOutline2d === 'function' };
-  }, [plane, CANONICAL] as const);
+    return { canonical: canonical(drawing), occurrences: occurrences.length, keptOccurrences, outline: typeof wasm.meshOutline2d === 'function',
+      wasmUrl, candidates: candidates.length };
+  }, [{ ...plane, root: process.cwd() }, CANONICAL] as const);
 }
 
 for (const scenario of SCENARIOS) {
@@ -173,6 +183,8 @@ for (const scenario of SCENARIOS) {
       const viewer = await viewerDrawing(page, plane);
       const oracle = await oracleDrawing(page, plane);
       expect(viewer.canonical.lines.length, `${plane.axis}: the drawing draws`).toBeGreaterThan(0);
+      // The viewer projects through the Rust outline binding; an oracle without it is not the same drawing.
+      if (plane.projection) expect(oracle.outline, `${plane.axis}: oracle found the viewer's meshOutline2d (${oracle.candidates} wasm modules)`).toBe(true);
       expect(viewer.canonical, `${plane.axis}: resident drawing equals the complete-model array oracle`).toEqual(oracle.canonical);
       expect(oracle.keptOccurrences, `${plane.axis}: the drawing filter keeps every instanced occurrence`).toBe(oracle.occurrences);
       instancedDrawn += viewer.instancedEntities;

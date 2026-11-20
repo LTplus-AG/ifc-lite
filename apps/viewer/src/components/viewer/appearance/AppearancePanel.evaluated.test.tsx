@@ -13,7 +13,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData, GeometryResult } from '@ifc-lite/geometry';
 import { AppearancePreviewController } from '../../../../../../packages/renderer/src/appearance-preview.js';
-import { render, cleanup, advance } from '@/test/render.js';
+import { render, cleanup, advance, settle } from '@/test/render.js';
 import { AppearanceStreamingHarness } from '@/test/appearance-streaming-harness.js';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -204,21 +204,27 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     const output = await new StepExporter(data,serialized.view).exportAsync({ schema: 'IFC4',applyMutations: true,includeGeometry: true });
     const text = typeof output.content === 'string' ? output.content : new TextDecoder().decode(output.content);
     assert.match(text,/#33=IFCSHAPEREPRESENTATION\(#2,'Body','MappedRepresentation',\(#22\)\)/);
+    await settle();
     await act(async () => { const undo = ui.querySelector<HTMLButtonElement>('button[aria-label="Undo"]'); assert.ok(undo && !undo.disabled); undo.click(); });
     assert.equal(view.getNewEntities().length,0);
     if (instanced) { assert.equal(instanceScene!.scene.getMeshDataPieces(selection), undefined); assert.equal(useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.length, 0); }
     assert.equal(readParts(selection)![0].geometryItemId,globalId(11));
+    await settle();
     await act(async () => { const redo = ui.querySelector<HTMLButtonElement>('button[aria-label="Redo"]'); assert.ok(redo && !redo.disabled); redo.click(); });
     assert.equal(readParts(selection)![0].geometryItemId,globalId(plan.conversions![0].geometryItemId));
     if (instanced) {
       await act(async () => useViewerStore.getState().setModelVisibility('evaluated', false));
+      await settle();
       assert.equal(instanceScene!.scene.getMeshDataPieces(selection), undefined);
       assert.equal(instanceScene!.scene.getInstancedMeshDataPieces(selection), undefined, 'hidden converted owner cannot expose the original instance');
       await act(async () => useViewerStore.getState().setModelVisibility('evaluated', true));
+      await settle();
       assert.equal(readParts(selection)!.length, 1);
+      await settle();
       await act(async () => { const undo = ui.querySelector<HTMLButtonElement>('button[aria-label="Undo"]'); assert.ok(undo && !undo.disabled); undo.click(); });
       assert.equal(instanceScene!.scene.getMeshDataPieces(selection), undefined);
       assert.ok(instanceScene!.scene.getInstancedMeshDataPieces(selection), 'history survives hide/show and restores the original instance');
+      await settle();
       await act(async () => { const redo = ui.querySelector<HTMLButtonElement>('button[aria-label="Redo"]'); assert.ok(redo && !redo.disabled); redo.click(); });
       assert.equal(readParts(selection)![0].geometryItemId, globalId(plan.conversions![0].geometryItemId));
     }

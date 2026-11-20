@@ -19,7 +19,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { cleanup, render } from '@/test/render';
+import { cleanup, render, settle } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useHierarchyTree } from './useHierarchyTree';
@@ -114,14 +114,17 @@ describe('hierarchy rows across edits (#10535)', () => {
     // A placement edit publishes a new mutationVersion, then its re-mesh swaps the column's mesh:
     // the tree rebuilds from the same data both times.
     act(() => useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 })));
+    await settle(); // the panel rebuilds once the edit settles (#10535)
     assert.equal(tree().treeData, before, 'an unchanged rebuild returns the same rows');
     act(() => useViewerStore.getState().replaceEntityMeshes(MODEL, new Map([[globalOf(50), [meshFor(globalOf(50), 0.5)]]])));
+    await settle();
     assert.equal(tree().treeData, before, 'a mesh swap of an existing element keeps the rows');
 
     act(() => {
       const added = useViewerStore.getState().addColumn(MODEL, STOREY, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
       assert.ok('expressId' in added, `addColumn failed: ${'error' in added ? added.error : ''}`);
     });
+    await settle();
     const after = storeyRow(tree().treeData);
     assert.notEqual(after, storey, 'a storey that gained an element is a new row');
     assert.equal(tree().getNodeElements(after).length, 3, 'the new row resolves the current membership');
@@ -183,6 +186,7 @@ describe('hierarchy rows across edits (#10535)', () => {
 
     // An edit starts a new input generation, which resolves again too.
     act(() => useViewerStore.setState((st) => ({ mutationVersion: st.mutationVersion + 1 })));
+    await settle();
     const nextGeneration = tree().getNodeElements(storey);
     assert.notEqual(nextGeneration, again, 'a new generation resolves again');
     assert.deepEqual(nextGeneration, members);

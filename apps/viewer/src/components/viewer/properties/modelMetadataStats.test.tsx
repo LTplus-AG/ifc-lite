@@ -24,6 +24,7 @@ import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
 import { ModelMetadataPanel } from './ModelMetadataPanel.js';
 import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
+import { settle } from '@/test/render.js';
 
 const TYPES = new Map<number, string>([
   [1, 'IFCWALL'],
@@ -114,13 +115,14 @@ function unmountAll(): void {
   }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   setLocale('en');
   unmountAll();
   federationRegistry.clear();
   federationRegistry.registerModel('other-model', 100);
   federationRegistry.registerModel('stats-model', 100);
   useViewerStore.setState({ models: new Map(), mutationViews: new Map(), mutationVersion: 0 });
+  await settle();
 });
 
 after(() => {
@@ -157,6 +159,7 @@ END-ISO-10303-21;`;
       view.deleteEntity(10);
       useViewerStore.setState({ mutationVersion: 2 });
     });
+    await settle();
     assert.equal(statistic(container, 'Building Storeys'), '1');
 
     act(() => {
@@ -164,6 +167,7 @@ END-ISO-10303-21;`;
         ['0Storey0000000000000031', null, 'Level 3', null, null, null, null, null, '.ELEMENT.', 6]);
       useViewerStore.setState({ mutationVersion: 3 });
     });
+    await settle();
     assert.equal(statistic(container, 'Building Storeys'), '2');
   });
 
@@ -218,7 +222,7 @@ END-ISO-10303-21;`;
     assert.equal(statistic(container, 'Elements with Geometry'), '7');
   });
 
-  it('counts a meshed live creation and excludes a tombstoned source element (#5249)', () => {
+  it('counts a meshed live creation and excludes a tombstoned source element (#5249)', async () => {
     const offset = federationRegistry.getOffset('stats-model') ?? 0;
     const view = new MutablePropertyView(null, 'stats-model');
     view.setExpressIdWatermark(8);
@@ -233,10 +237,11 @@ END-ISO-10303-21;`;
 
     view.deleteEntity(2);
     act(() => useViewerStore.setState({ mutationVersion: 2 }));
+    await settle();
     assert.equal(statistic(container, 'Elements with Geometry'), '6');
   });
 
-  it('#5477 reuses physical membership across geometry-only updates and refreshes it after an overlay edit', () => {
+  it('#5477 reuses physical membership across geometry-only updates and refreshes it after an overlay edit', async () => {
     const store = dataStore();
     const view = new MutablePropertyView(null, 'stats-model');
     const originalIsDeleted = view.isDeleted.bind(view);
@@ -262,6 +267,7 @@ END-ISO-10303-21;`;
       view.deleteEntity(2);
       useViewerStore.setState({ mutationVersion: 2 });
     });
+    await settle();
     assert.equal(statistic(container, 'Elements with Geometry'), '1');
     assert.ok(membershipVisits > firstVisits, 'an overlay edit recomputes membership');
   });

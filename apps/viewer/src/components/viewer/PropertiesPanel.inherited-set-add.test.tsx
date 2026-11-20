@@ -17,7 +17,7 @@ import '@/test/setup-dom.js';
 
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { advance, cleanup, click, press, render, type } from '@/test/render.js';
+import { advance, cleanup, click, press, render, settle, type } from '@/test/render.js';
 import { useViewerStore, type ViewerState } from '@/store';
 import { extractPropertiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -121,6 +121,7 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     await advance(0);
     click(buttonByText('Add Property'));
     await advance(0);
+    await settle();
 
     assert.deepEqual(panelRows(container), [
       '72:Custom_A:A1', '72:Custom_A:A2', '72:Custom_B:B1',
@@ -140,6 +141,7 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     // One Ctrl+Z removes the whole override.
     replayWorkspaceHistory(useViewerStore.getState(), 'undo');
     await advance(0);
+    await settle();
     assert.deepEqual(panelRows(container), ['72:Custom_A:A1', '72:Custom_A:A2', '72:Custom_B:B1', ...TYPE_ROWS]);
   });
 
@@ -155,6 +157,7 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     ]);
     useViewerStore.getState().bumpMutationVersion();
     await advance(0);
+    await settle();
     const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
     const set = view.getForEntity(WALL).find((p) => p.name === 'Custom_T');
     assert.deepEqual(set?.properties.map((p) => `${p.name}=${String(p.value)}`).sort(), ['T1=t1', 'T2=mine', 'T4=t4', 'TW=0.2']);
@@ -193,6 +196,7 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     seedModel(MODEL_ID, ID_OFFSET, store, 10);
     const container = render(<PropertiesPanel />);
     await advance(0);
+    await settle();
     assert.deepEqual(panelRows(container), ['20:Custom_S:S1']);
     addToPropertySet(useViewerStore.getState(), {
       modelId: MODEL_ID, entityId: 10, existingPsets: ['Custom_S'],
@@ -207,6 +211,7 @@ describe('Adding to a type-inherited set overrides it with every property (#5966
     seedModel(MODEL_ID, ID_OFFSET, full, WALL);
     const container = render(<PropertiesPanel />);
     await advance(0);
+    await settle();
     const messages: string[] = [];
     const original = toast.error;
     toast.error = (message: string) => { messages.push(message); };

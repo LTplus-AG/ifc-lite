@@ -54,6 +54,11 @@ async function authorBuilding(modelId: string) {
 async function exportGlbThroughDialog(options: { visibleOnly?: boolean } = {}): Promise<{ bytes: Uint8Array | null; text: string }> {
   let saved: Blob | null = null;
   mock.method(URL, 'createObjectURL', (blob: Blob) => { saved = blob; return 'blob:ifc-lite-test-glb'; });
+  // No viewport drains the edit's meshes here, so panels see it only at the settle cap (#10535).
+  let panelVersion = -1;
+  const PanelVersion = () => { panelVersion = useViewerStore((state) => state.mutationVersion); return null; };
+  render(<PanelVersion />);
+  await waitFor(() => panelVersion === useViewerStore.getState().mutationVersion, 'panels see the session as edited');
   render(<GLBExportDialog surface="ribbon" />);
   const button = (label: string) => {
     const found = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === label);

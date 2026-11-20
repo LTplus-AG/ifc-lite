@@ -235,6 +235,12 @@ export class StoreGeometryBackingTap {
       this.regenerate(modelId, undefined, 'none');
       tracked = this.tracked.get(modelId)!;
     }
+    // A sealed generation's writer is closed and its acknowledgement must stop verifying NOW, not when the
+    // deferred append runs: supersede it and stage a successor (its shards carried) for this one.
+    if (tracked.sealed) {
+      this.regenerate(modelId, tracked.meshes, 'carry');
+      tracked = this.tracked.get(modelId)!;
+    }
     const target = tracked;
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.

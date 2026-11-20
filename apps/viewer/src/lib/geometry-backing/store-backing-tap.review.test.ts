@@ -234,7 +234,7 @@ it('#10876 stop() drains a removal whose retirement is still pending, so its rec
   const original = BackingDatabase.prototype.deleteBacking;
   let release!: () => void;
   const gate = new Promise<void>((done) => { release = done; });
-  BackingDatabase.prototype.deleteBacking = async function (this: InstanceType<typeof BackingDatabase>, id: string) { await gate; return original.call(this, id); };
+  BackingDatabase.prototype.deleteBacking = async function (this: unknown, id: string) { await gate; return original.call(this as never, id); };
   try {
     setList(store, 'gone', null); // removed: its retirement (and delete) is deferred
     let stopped = false;
@@ -248,4 +248,38 @@ it('#10876 stop() drains a removal whose retirement is still pending, so its rec
   try {
     assert.equal(await probe.count(CHUNKS, removed.backingId), 0, 'no orphan records of the removed model (same session)');
   } finally { probe.close(); }
+});
+
+it('#10876 a shard enqueued after a seal: the sealed acknowledgement stops verifying at once, and the next seal holds both shards', async () => {
+  const store = storeWith({ ls: [mesh(1)] });
+  const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+  enqueueInstancedShards('ls', [shardBytes(70)], instancedShardGeneration());
+  await tap.seal();
+  const sealed = tap.backing('ls')!;
+  const ack = await sealed.acknowledge();
+  enqueueInstancedShards('ls', [shardBytes(71)], instancedShardGeneration()); // after the seal
+  // The window: before the deferred append runs, nothing may still verify without shard 71.
+  assert.equal(sealed.isCurrent, false, 'the sealed generation is superseded at enqueue time');
+  assert.equal(tap.registryHandle.verify(ack), false, 'and its acknowledgement no longer verifies');
+  const [status] = await tap.seal();
+  assert.equal(status.complete, true, status.error ?? 'incomplete');
+  const ids: number[] = [];
+  for await (const shard of tap.backing('ls')!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+  assert.deepEqual(ids.sort(), [70, 71], 'the carried shard and the new one');
+  await tap.stop();
+});
+
+it('#10876 release-for-test refuses while the tap tracks a model whose shards arrived before it registered', async () => {
+  const { geometryBackingCommand } = await import('./backing-debug-hook');
+  const meshes = [mesh(1)];
+  const store = storeWith({ ok: meshes });
+  await geometryBackingCommand(store, undefined, { action: 'start', options: { database: database() } as never });
+  let released = 0;
+  const renderer = { getScene: () => ({ releaseGeometryData: () => { released++; }, isGeometryDataReleased: () => released > 0 }) } as never;
+  try {
+    enqueueInstancedShards('pending', [shardBytes(77)], instancedShardGeneration()); // its model is not registered yet
+    await assert.rejects(geometryBackingCommand(store, renderer, { action: 'release-for-test' }), /nothing was released/);
+    assert.equal(released, 0, 'the scene was not released');
+    assert.equal(meshes[0].positions.length, 9, 'and the store arrays stay resident');
+  } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
 });

@@ -76,7 +76,9 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<TapS
   // the release, that exactly the verified models and generations are current and still complete.
   const models = store.getState().models;
   const now = new Map(tap.status().map((row) => [row.modelId, row]));
-  for (const modelId of new Set([...models.keys(), ...verified.keys()])) {
+  // Every model the tap tracks too: one whose shards arrived before it was registered is not in the store's
+  // model set, so the loop above never verified it; it blocks the release (fail closed).
+  for (const modelId of new Set([...models.keys(), ...verified.keys(), ...now.keys()])) {
     const backing = verified.get(modelId);
     if (!backing || !models.has(modelId) || tap.backing(modelId) !== backing || !now.get(modelId)?.complete
       || now.get(modelId)?.generation !== backing.generation) {

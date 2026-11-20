@@ -27,6 +27,8 @@ export const coordinationSemanticNativeOperations = [
       const [{ queryForSelection }, { createSelectionAdapter }, { liveEntities }] = await Promise.all([import('@/lib/semantic/related-query'), import('@/sdk/adapters/selection-adapter'), import('@/lib/semantic/viewer')]);
       input.query = queryForSelection({ selection: createSelectionAdapter(useViewerStore).get(), entities: liveEntities(), revisions: session.revisions, profile: session.profile, mapping: session.resultMapping ?? input.mapping, document: session.document, results: session.results, settings: session }); input.mode = 'sparql'; input.mapping = { ...DEFAULT_MAPPING, id: 'subject' };
     }
+    // The awaits above (related-query imports) can see the dataset change; refuse a stale request.
+    if (useSemanticSession.getState().dataVersion !== i.expected_data_version) throw new Error('Native semantic dataset changed.');
     const guard = () => { c.checkpoint?.(); if (useViewerStore.getState().models !== models || remote && useSemanticEndpointGrant.getState().generation !== authority.generation) throw new Error('Native model binding or endpoint authority changed.'); };
     let committed = false;
     guard(); const outcome = await loadSemanticSource(input, c.signal ?? new AbortController().signal, undefined, undefined, write => { guard(); const value = c.commit(write); committed = true; return value; });

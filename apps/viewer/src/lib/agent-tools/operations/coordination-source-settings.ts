@@ -17,7 +17,8 @@ export const coordinationSourceSettingsOperations = [
       if (declaration.type === 'dropdown' && !declaration.options?.some(option => option.value === item.value)) throw new Error('Preference is not one of the native dropdown options.');
       prefs[item.name] = item.value;
     }
-    return c.commit(() => ({ provider: i.provider, saved: saveSourcePrefs(i.provider, prefs), configured: isPrefsConfigured(source.manifest, prefs) }));
+    // configured describes what was stored: unsaved values are not what the next browse reads.
+    return c.commit(() => { const saved = saveSourcePrefs(i.provider, prefs); return { provider: i.provider, saved, configured: isPrefsConfigured(source.manifest, saved ? prefs : loadResolvedSourcePrefs(source.manifest)) }; });
   }),
   coordination('sources.forgetPreferences', 'Clear saved provider preferences and credentials through the native forget control. Does not delete remote files.', ['configuration'], idSchema, (i, c) => {
     provider(i.id); return c.commit(() => ({ provider: i.id, cleared: clearSourcePrefs(i.id) }));

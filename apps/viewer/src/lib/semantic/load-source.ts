@@ -62,7 +62,11 @@ export async function loadSemanticSource(input: SourceInput, signal: AbortSignal
         // Generic results are committed independently; a narrower projection may fail visibly.
         setResults(response.value); session.setResultMapping(input.mapping); setDocument(undefined); setGraph(''); setFindings([]);
         inputVersion = useSemanticSession.getState().dataVersion;
-        try { await accept({ results: response.value, source: response.source, mapping: input.mapping }, signal, response.value, guard); }
+        try {
+          // accept() declines when the profile or dataset changed during validation; say so, never a clean outcome.
+          if (!await accept({ results: response.value, source: response.source, mapping: input.mapping }, signal, response.value, guard) && !signal.aborted)
+            setDiagnostic('The semantic profile or dataset changed during validation; load the records again.');
+        }
         catch (failure) { if (failure === writeFailure) throw failure; if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
       } else if (response.kind === 'construct') {
         setGraph(response.value); session.setGraphFormat('text/turtle'); setDocument(undefined); setResults(undefined); setFindings([]);

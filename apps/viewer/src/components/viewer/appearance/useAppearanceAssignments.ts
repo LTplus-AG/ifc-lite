@@ -18,14 +18,15 @@ import { reviewRestoredAssignment } from '@/lib/appearance/assignments/restore.j
 import { parseAppearanceAssignments, serializeAppearanceAssignments } from '@/lib/appearance/assignments/persistence.js';
 import type { AppearanceAssignment } from '@/lib/appearance/assignments/types.js';
 import { commitAppearanceAssignments } from '@/lib/appearance/coordinated-command.js';
-import { AppearancePreviewSession } from '@/lib/appearance/preview.js';
+import { compareNativeAppearancePreview } from '@/lib/appearance/appearance-native-preview';
 import type { AppearanceAssetOwner } from '@/lib/appearance/assets.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { rawMessage, translatedMessage, type LocalizedMessage } from './localized-message.js';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
 
 type Prepared = Awaited<ReturnType<typeof prepareAppearanceAssignments>>;
-type Preview = ReturnType<typeof stageAppearanceAssignments>;
+type Staged = ReturnType<typeof stageAppearanceAssignments>;
+type Preview = Omit<Staged, 'session'> & { session: Staged['session'] | null };
 type Review = Awaited<ReturnType<typeof reviewRestoredAssignment>>;
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 class AssignmentValidationError extends Error {
@@ -55,7 +56,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   const busy = applyRun.busy;
   const releasePreview = useCallback(() => {
     const current = draft.current; draft.current = null;
-    if (current) try { current.preview.session.cancel(); } finally { appearanceAssets.releaseOwner(current.owner); }
+    if (current) try { current.preview.session?.cancel(); } finally { appearanceAssets.releaseOwner(current.owner); }
     setOriginal(false);
   }, []);
   function cancel() {
@@ -73,7 +74,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     worker.current = createAppearancePlanner();
     return () => { worker.current?.dispose(); worker.current = null;
       const current = draft.current; draft.current = null;
-      if (current) try { current.preview.session.cancel(); } finally { appearanceAssets.releaseOwner(current.owner); }
+      if (current) try { current.preview.session?.cancel(); } finally { appearanceAssets.releaseOwner(current.owner); }
     };
   }, []);
   useEffect(() => {
@@ -178,17 +179,19 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     const current = draft.current, renderer = getGlobalRenderer(); if (!current || !renderer) return;
     try {
       current.preparation.validate();
-      if (showOriginal) current.preview.session.cancel();
-      else { const session = new AppearancePreviewSession(renderer); session.stage([...current.preview.groups.values()].flat()); current.preview.session = session; }
+      current.preview.session = compareNativeAppearancePreview(
+        renderer, [...current.preview.groups.values()].flat(), current.preview.session, showOriginal,
+      );
       setOriginal(showOriginal);
     } catch (error) { releasePreview(); setStatus('stale'); setNotice(rawMessage(error)); }
   }
   async function apply() {
     const current = draft.current, renderer = getGlobalRenderer();
-    if (!current || !renderer || original || status !== 'ready') return;
+    const session = current?.preview.session;
+    if (!current || !renderer || !session || status !== 'ready') return;
     await applyRun.start(async ({ signal, isCurrent }) => {
       setStatus('applying');
-      const result = await commitAppearanceAssignments(current.preparation, renderer, current.preview.session, current.preview.groups,
+      const result = await commitAppearanceAssignments(current.preparation, renderer, session, current.preview.groups,
         { signal, onProgress: phase => { if (isCurrent()) setNotice(translatedMessage(phase === 'preparing'
           ? 'appearance.assignments.status.preparingChanges' : 'appearance.assignments.status.saving')); } });
       if (!isCurrent()) return;

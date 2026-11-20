@@ -23,6 +23,10 @@
  * (#10853). The cost is that IfcAnnotation/IfcGrid meshes are not uploaded,
  * so no scenario here exercises them as hidden or visible batchmates.
  *
+ * #10767 (last test) uses its own oracle: after a model move, the frame with
+ * instanced state carried through the move must equal the frame with the same
+ * state written again at the moved position.
+ *
  * Opt-in: GPU_PICK_PARITY=1 on a real WebGPU adapter (gpu-batch-pick.config.ts).
  */
 
@@ -35,6 +39,7 @@ const FIXTURES = {
   institute: 'tests/models/ara3d/C20-Institute-Var-2.ifc',
   duplex: 'tests/models/ara3d/duplex.ifc',
   georef: 'tests/models/ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC',
+  tower: 'tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc',
 };
 const LOAD_TIMEOUT = 300_000;
 
@@ -149,6 +154,7 @@ async function diff(page: Page, a: string, b: string): Promise<Diff> {
       return context.getImageData(0, 0, bitmap.width, bitmap.height);
     };
     const [p, q] = await Promise.all([pixels(x), pixels(y)]);
+    if (p.width !== q.width || p.height !== q.height) throw new Error(`frames differ in size: ${p.width}x${p.height} vs ${q.width}x${q.height}`);
     const out = new ImageData(p.width, p.height);
     let differing = 0;
     let strong = 0;
@@ -483,4 +489,93 @@ test('deleted instanced occurrences stay off the frame and the picks with nothin
   const again = await diffWithin(page, a3, b, only, none);
   expect(again.differing, 'still absent after a visibility change').toBeLessThanOrEqual(Math.floor(shown.differing * 0.05));
   expect((await diff(page, a3, b)).strong, 'and nothing else in the frame moves').toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
+});
+
+type StoreCall = [method: string, ...args: unknown[]];
+/** Store calls in the page. Map and Set do not cross page.evaluate, so they travel tagged and are rebuilt there. */
+async function storeCalls(page: Page, calls: StoreCall[]): Promise<void> {
+  const tag = (value: unknown): unknown => value instanceof Map ? { __map: [...value].map(([k, v]) => [k, tag(v)]) }
+    : value instanceof Set ? { __set: [...value] }
+    : Array.isArray(value) ? value.map(tag)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, tag(v)])) : value;
+  await page.evaluate((list) => {
+    const untag = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(untag);
+      if (!value || typeof value !== 'object') return value;
+      const o = value as Record<string, unknown>;
+      if ('__map' in o) return new Map((o.__map as [unknown, unknown][]).map(([k, v]) => [k, untag(v)]));
+      if ('__set' in o) return new Set(o.__set as unknown[]);
+      return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, untag(v)]));
+    };
+    const st = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState() as unknown as Record<string, (...a: unknown[]) => void>;
+    for (const [method, ...args] of list as StoreCall[]) st[method]!(...args.map(untag));
+  }, calls.map(([method, ...args]) => [method, ...args.map(tag)]));
+}
+
+/**
+ * #10767 oracle: a model move re-uploads whole instance buffers, which used to
+ * drop state written to the GPU only. At the MOVED position, the frame with the
+ * state carried through the move (M) must equal the frame after the same state
+ * is cleared and written again (R). The state must be visible before the move,
+ * and the move must change the frame, so neither comparison is vacuous.
+ */
+test('a model move and rotation keep instanced hide, selection, colour override and X-Ray (#10767)', async ({ page }, info) => {
+  await open(page);
+  await load(page, FIXTURES.tower, 1);
+  await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
+  // Every instanced-only entity (no flat pieces): only the instance path draws them, and on the
+  // tower they are the facade members, so each state moves thousands of pixels.
+  const ids = await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    const scene = getGlobalRenderer()!.getScene();
+    return [...scene.getInstancedEntityIds()].filter((id) => !scene.getMeshDataPieces(id)?.length);
+  });
+  expect(ids.length, 'the fixture has instanced-only entities').toBeGreaterThan(100);
+  const modelId = await page.evaluate(() => [...(globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().models.keys()][0]!);
+  const states: Array<{ name: string; set: StoreCall[]; clear: StoreCall[] }> = [
+    { name: 'hide', set: [['hideEntities', ids]], clear: [['showAll']] },
+    { name: 'select', set: [['setSelectedEntityIds', ids]], clear: [['setSelectedEntityIds', []]] },
+    // The overlay compositor is the shared colour-override path (lens, animation, compare). Single model, idOffset 0.
+    { name: 'colour', set: [['registerOverlayLayer', { id: 'e2e-10767', priority: 50, hiddenIds: null, colorOverrides: new Map(ids.map((id) => [id, [1, 0, 0, 1]])) }]],
+      clear: [['removeOverlayLayer', 'e2e-10767']] },
+    { name: 'xray', set: [['setGhostExceptEntities', new Set<number>()]], clear: [['setGhostExceptEntities', null]] },
+  ];
+  // A move draws a preview frame before it is applied, as during a drag.
+  const moves: Record<'move' | 'rotate', { preview: StoreCall[]; apply: StoreCall[] }> = {
+    move: { preview: [['openReposition', [modelId]], ['previewModelTranslation', [5, 0, 0]]], apply: [['applyModelTranslation'], ['closeReposition']] },
+    rotate: { preview: [['setModelRotation', [modelId], { angle: Math.PI / 2, pivot: [0, 0, 0] }]], apply: [] },
+  };
+  const rows: Record<string, unknown>[] = [];
+  const check = async (name: string, state: { set: StoreCall[]; clear: StoreCall[] }, kind: 'move' | 'rotate') => {
+    const plain = await stillCapture(page, info, `${name}-0-plain`);
+    await storeCalls(page, state.set);
+    try {
+      const before = await stillCapture(page, info, `${name}-1-state`);
+      const shown = await diff(page, before, plain);
+      await storeCalls(page, moves[kind].preview);
+      await settle(page);
+      await storeCalls(page, moves[kind].apply);
+      const carried = await stillCapture(page, info, `${name}-2-moved-carried`);
+      const moved = await diff(page, carried, before);
+      await storeCalls(page, state.clear);
+      const movedPlain = await stillCapture(page, info, `${name}-3-moved-cleared`);
+      await storeCalls(page, state.set);
+      const rewritten = await stillCapture(page, info, `${name}-4-moved-rewritten`);
+      const visible = await diff(page, rewritten, movedPlain);
+      const lost = await diff(page, carried, rewritten);
+      await info.attach(`${name}-carried-vs-rewritten-diff.png`, { body: Buffer.from(lost.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
+      rows.push({ name, shownDiffering: shown.differing, movedDiffering: moved.differing, visibleAfterMove: visible.differing, lostDiffering: lost.differing, lostStrong: lost.strong });
+      expect(shown.differing, `${name}: the state is on screen`).toBeGreaterThan(200);
+      expect(moved.differing, `${name}: the move changed the frame`).toBeGreaterThan(1000);
+      expect(visible.differing, `${name}: the state is still on screen after the move`).toBeGreaterThan(200);
+      // Losing the state repaints thousands of facade pixels; allow only edge noise.
+      expect(lost.differing, `${name}: the moved frame keeps the state (carried = rewritten)`).toBeLessThanOrEqual(50);
+    } finally {
+      await storeCalls(page, [...state.clear, ['undoModelTranslation']]);
+      await settle(page);
+    }
+  };
+  for (const kind of ['move', 'rotate'] as const) for (const state of states) await check(`${kind}-${state.name}`, state, kind);
+  await info.attach('move.json', { body: JSON.stringify({ instancedOnly: ids.length, rows }, null, 2), contentType: 'application/json' });
 });

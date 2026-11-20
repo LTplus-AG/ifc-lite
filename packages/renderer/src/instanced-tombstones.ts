@@ -8,8 +8,10 @@ import type { InstancedOccurrence, InstancedTemplateCpu } from './scene-instance
 /**
  * Set HIDDEN on a deleted entity's records in the CPU instance data (#10639).
  * Its slots are not reclaimed, and device recovery and model placement
- * re-upload whole instance buffers from this data, so a flag set only on the
- * GPU would be lost and the occurrences would draw again.
+ * re-upload whole instance buffers from this data. Flag writes made with a
+ * device already mirror into it (#10767); this also covers a delete made with
+ * no device, where no flag write ran. Without it the occurrences would draw
+ * again after the next re-upload.
  */
 export function tombstoneInstanceRecords(
   cpu: readonly (InstancedTemplateCpu | undefined)[],

@@ -2627,6 +2627,14 @@ jobs:
       # shell has a broken WebGPU device under software rendering.
       - name: Install Playwright video encoder
         run: pnpm exec playwright install ffmpeg
+      # The shard plan walks tests/e2e only (see scripts/ci-e2e-shards.mjs);
+      # Playwright's testDir is ./tests. Fail here, not by silently running a
+      # spec nowhere, if the two selections differ. Listing loads the specs
+      # and starts no browser or server.
+      - name: Check the shard plan covers every spec Playwright selects
+        run: |
+          pnpm exec playwright test --project=viewer-e2e-ci --list > "$RUNNER_TEMP/e2e-list.txt"
+          node scripts/ci-e2e-shards.mjs --check-list "$RUNNER_TEMP/e2e-list.txt"
       # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs): see the viewer-tests job.
       # Unset, `continue-on-error` is false, the reporter list and
       # PLAYWRIGHT_JSON_OUTPUT_FILE expand to what they were, and the retry

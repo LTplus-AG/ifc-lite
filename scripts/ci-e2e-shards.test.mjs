@@ -177,3 +177,37 @@ test('the workflow step, run for matrix shard 3, hands pnpm exactly that shard\'
   const retry = steps.find((s) => s.id === 'e2e_retry');
   assert.equal(retry.env.E2E_SHARD, '${{ matrix.shard }}/8'); // eslint-disable-line no-template-curly-in-string
 });
+
+const listOf = (files) => files.map((f, i) => `  [viewer-e2e-ci] › ${f}:${10 + i}:1 › some test title (#${i})`).join('\n') + `\nTotal: ${files.length} tests in ${files.length} files\n`;
+
+test('--check-list: Playwright\'s listed files equal the plan, or the CLI names the difference', () => {
+  const planned = plan().flatMap((s) => s.files);
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-list-'));
+  const check = (files) => {
+    writeFileSync(join(dir, 'list.txt'), listOf(files));
+    return cli('--check-list', join(dir, 'list.txt'));
+  };
+  try {
+    // A test is listed once per title: repeats of one file are one file.
+    const ok = check([...planned, planned[0], planned[0]]);
+    assert.equal(ok.status, 0, ok.stderr);
+    const missing = check([...planned, 'tests/other/stray-viewer-smoke.e2e.spec.ts']);
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /^::error::ci-e2e-shards:.*in no shard.*tests\/other\/stray-viewer-smoke\.e2e\.spec\.ts/); // @source-text-assertion-ok the CLI's stderr is its subject
+    const extra = check(planned.slice(1));
+    assert.equal(extra.status, 1);
+    assert.ok(extra.stderr.includes(`not selected by Playwright: ${planned[0]}`), extra.stderr); // @source-text-assertion-ok the CLI's output and the parsed workflow step are the subject; no source text is asserted
+    writeFileSync(join(dir, 'empty.txt'), '\nTotal: 0 tests in 0 files\n');
+    assert.equal(cli('--check-list', join(dir, 'empty.txt')).status, 1, 'an unreadable list must not pass');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the workflow runs --check-list on Playwright\'s own --list before the tests', () => {
+  const steps = parse(readFileSync(join(ROOT, '.github/workflows/test.yml'), 'utf8')).jobs['viewer-e2e'].steps;
+  const at = steps.findIndex((s) => s.run?.includes('ci-e2e-shards.mjs --check-list')); // @source-text-assertion-ok locates the step in the parsed workflow
+  assert.ok(at >= 0 && at < steps.findIndex((s) => s.id === 'e2e'), 'no check-list step ahead of the test step');
+  assert.ok(steps[at].run.includes('playwright test --project=viewer-e2e-ci --list')); // @source-text-assertion-ok the step's command is the subject
+  assert.ok(!steps[at].run.includes('--shard')); // @source-text-assertion-ok the list must not be sharded
+});

@@ -31,10 +31,18 @@
  * stale pin): the file was renamed or dropped from testMatch, and the table
  * is no longer describing the suite.
  *
- * The selected set is the one the `viewer-e2e-ci` project selects: its
- * `testMatch` regex, read from playwright.config.ts, applied to every file
- * under testDir (./tests) the way Playwright does. The test pins that this
- * equals `playwright test --project=viewer-e2e-ci --list`'s files.
+ * The planned set is what the `viewer-e2e-ci` `testMatch` regex, read from
+ * playwright.config.ts, selects among the files under tests/e2e. Only that
+ * directory is walked: the gate's trigger filters cover it, and
+ * check-ci-path-coverage rejects a gate script reading inputs outside them
+ * (the config's testDir is the wider ./tests). So a spec matching testMatch
+ * anywhere else under tests/ would be in no shard, and every shard passes
+ * explicit filters. What guarantees the plan equals Playwright's own
+ * selection is `--check-list <file>`, which the viewer-e2e job runs on every
+ * shard before the tests, on the output of
+ * `playwright test --project=viewer-e2e-ci --list`: it exits 1 naming any
+ * spec file Playwright selects that the plan lacks, or the plan holds that
+ * Playwright does not select.
  *
  * Retry: scripts/ci-shard-retry.mjs reruns `--last-failed` with the same
  * filters, so the failed test ids resolve exactly as they did the first time.
@@ -257,6 +265,42 @@ export function shardFilters(spec, root = REPO_ROOT, timings = TIMINGS_S) {
 }
 
 /**
+ * The distinct spec files named by `playwright test --list` output
+ * (`  [viewer-e2e-ci] › tests/e2e/x.e2e.spec.ts:36:1 › title`), repo-relative.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function listedFiles(text) {
+  const files = new Set();
+  for (const line of text.split('\n')) {
+    const m = /›\s+(\S+\.[cm]?[jt]sx?):\d+:\d+\s+›/.exec(line);
+    if (m) files.add(m[1].split('\\').join('/'));
+  }
+  return [...files].sort();
+}
+
+/**
+ * Refuse unless Playwright's listed files are exactly the plan's.
+ * @param {string} listOutput
+ * @param {string[]} planned the union of the 8 shards
+ */
+export function assertListMatchesPlan(listOutput, planned) {
+  const listed = listedFiles(listOutput);
+  if (listed.length === 0) fail('the --list output names no spec file; it is empty or in a format this check cannot read.');
+  const missing = listed.filter((f) => !planned.includes(f));
+  const extra = planned.filter((f) => !listed.includes(f));
+  if (missing.length > 0 || extra.length > 0) {
+    fail(
+      `the shard plan differs from \`playwright test --project=${PROJECT} --list\`. ` +
+        (missing.length > 0 ? `Selected by Playwright but in no shard (it would run nowhere): ${missing.join(', ')}. ` : '') +
+        (extra.length > 0 ? `In the plan but not selected by Playwright: ${extra.join(', ')}. ` : '') +
+        'Move the spec under tests/e2e, or fix the walk in scripts/ci-e2e-shards.mjs.',
+    );
+  }
+}
+
+/**
+ * `--check-list <file>` compares Playwright's --list output with the plan.
  * `--shard n/8` prints that shard's filters. `--plan` prints every shard's
  * files and predicted seconds as JSON. `--root <dir>` and `--timings <json
  * file>` point either at another tree or table: the tests drive the CLI with
@@ -267,6 +311,12 @@ function main(argv) {
   const root = opt('--root') ?? REPO_ROOT;
   try {
     const timings = opt('--timings') ? JSON.parse(readFileSync(opt('--timings'), 'utf8')) : TIMINGS_S;
+    if (argv.includes('--check-list')) {
+      const { shards } = packShards(selectedFiles(root), SHARD_COUNT, timings);
+      assertListMatchesPlan(readFileSync(opt('--check-list'), 'utf8'), shards.flat());
+      console.log('ci-e2e-shards: the 8 shards cover exactly the files Playwright lists');
+      return;
+    }
     if (argv.includes('--plan')) {
       const { shards, loads } = packShards(selectedFiles(root), SHARD_COUNT, timings);
       console.log(JSON.stringify(shards.map((files, i) => ({ files, seconds: loads[i] })), null, 2));

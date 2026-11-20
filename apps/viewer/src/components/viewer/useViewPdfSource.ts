@@ -42,7 +42,7 @@ export function useViewPdfSource(open: boolean, triggers: readonly unknown[]): {
     if (!open || !geometryReleased()) { setReleased({ request, source: null, status: 'none' }); return; }
     setReleased({ request, source: null, status: 'loading' });
     let cancelled = false;
-    withReleasedExportGeometry(() => readViewPdfSource(useViewerStore.getState())).then(
+    withReleasedExportGeometry((context) => readViewPdfSource(useViewerStore.getState(), context)).then(
       (prepared) => { if (!cancelled) setReleased({ request, source: prepared, status: 'ready' }); },
       (error: unknown) => {
         console.error('[PdfViewExport] released geometry could not be read back', error);

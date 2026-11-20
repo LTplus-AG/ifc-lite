@@ -17,10 +17,10 @@ export async function exportModelIfcx(input: {
 }) {
   const { withInstancedMeshes, withReleasedExportGeometry } = await import('../../utils/instancedExport.js');
   // Released CPU geometry (#10264) is read back first; resident geometry exports as before.
-  return withReleasedExportGeometry(() => {
+  return withReleasedExportGeometry((context) => {
     const geometry = input.geometryResult ? withInstancedMeshes(input.geometryResult,
       input.maxExpressId !== undefined ? { modelId: input.modelId, idOffset: input.idOffset, maxExpressId: input.maxExpressId,
-        rendererModelIndex: modelIndices(input.models).get(input.modelId) } : null,
+        rendererModelIndex: modelIndices(input.models).get(input.modelId) } : null, context,
     ) : input.geometryResult;
     return new Ifc5Exporter(input.dataStore, geometry, input.mutationView, input.idOffset).export(input.options);
   }, [input.modelId]);

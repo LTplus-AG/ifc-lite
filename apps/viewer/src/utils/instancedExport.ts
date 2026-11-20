@@ -75,19 +75,22 @@ export interface InstancedModelRange {
   rendererModelIndex?: number;
 }
 
+/**
+ * One export operation's read-back geometry (#10264, #10887), handed to its `run` by
+ * {@link withReleasedExportGeometry} and passed explicitly to the collectors that operation calls.
+ * There is no ambient context: a collector called without one sees only resident geometry, so
+ * unrelated code can never read (or be scoped by) another operation's preparation.
+ */
+export interface ReleasedExportContext { readonly prepared: ReleasedExportGeometry | null }
+
 export function withInstancedMeshes(
   geometryResult: GeometryResult,
   modelRange: InstancedModelRange | null,
+  context?: ReleasedExportContext,
 ): GeometryResult {
-  // Released CPU geometry (#10264): substitute what the export context read back;
-  // outside one, fail rather than export empty arrays and no occurrences.
-  // The read-back context belongs to the export that prepared it (#10887). Collectors are synchronous
-  // and that export may await, so a call made meanwhile by unrelated code would see it too: apply it
-  // only to calls inside its scope (the owner it prepared, or released geometry it must answer).
-  const callOwner = modelRange?.rendererModelIndex ?? (modelRange?.modelId ? modelIndices(getViewerState().models).get(modelRange.modelId) : undefined);
-  const renderer = getGlobalRenderer();
-  const prepared = releasedExport && (callOwner !== undefined ? releasedExport.scopeModelIndices.has(callOwner)
-    : !geometryResult.meshes.every(meshIsResident) || (!!renderer && sceneGeometryReleased(renderer))) ? releasedExport : null;
+  // Released CPU geometry (#10264): substitute what this operation read back; without its
+  // context, fail rather than export empty arrays and no occurrences.
+  const prepared = context?.prepared ?? null;
   if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : undefined)) {
     throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');
   }
@@ -176,10 +179,7 @@ export function resolveInstancedExportGate(
   return { instancedModelRange, canExport };
 }
 
-/** Read-back geometry for collectors running inside {@link withReleasedExportGeometry}. */
-let releasedExport: ReleasedExportGeometry | null = null;
-// Collectors are synchronous, but their enclosing exports may await. Give each
-// entry point sole ownership until it settles, including preparation and errors.
+// One preparation in memory at a time: operations run one after another (bounded readback).
 let exportTail: Promise<void> = Promise.resolve();
 
 /** Whether any loaded CPU geometry (or this result's) was released (#10264). */
@@ -203,25 +203,22 @@ export function geometryReleased(geometryResult?: GeometryResult, modelIds?: Ite
 }
 
 /**
- * Run an export (or any `withInstancedMeshes` collector) so it also works once
- * CPU geometry was released (#10264): released store meshes and instanced
- * occurrences are read back first, and the synchronous collectors substitute
- * them. Resident geometry runs `run` directly, unchanged.
+ * Run an export so it also works once CPU geometry was released (#10264): released store meshes
+ * and instanced occurrences are read back first, and `run` receives the operation's context to
+ * pass to its `withInstancedMeshes` calls. Resident geometry gets an empty context, unchanged.
  */
-export async function withReleasedExportGeometry<T>(run: () => T | Promise<T>, modelIds?: Iterable<string>): Promise<T> {
+export async function withReleasedExportGeometry<T>(run: (context: ReleasedExportContext) => T | Promise<T>, modelIds?: Iterable<string>): Promise<T> {
   const scope = modelIds === undefined ? undefined : [...modelIds];
   const previous = exportTail;
   let finish!: () => void;
   exportTail = new Promise<void>((resolve) => { finish = resolve; });
   await previous;
   try {
-    if (!geometryReleased(undefined, scope)) return await run();
+    if (!geometryReleased(undefined, scope)) return await run({ prepared: null });
     const { prepareReleasedExport } = await import('@/lib/geometry-backing/export-readback');
     const renderer = getGlobalRenderer();
-    releasedExport = await prepareReleasedExport(getViewerState(), renderer?.getScene(), scope);
-    return await run();
+    return await run({ prepared: await prepareReleasedExport(getViewerState(), renderer?.getScene(), scope) });
   } finally {
-    releasedExport = null;
     finish();
   }
 }

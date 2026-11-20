@@ -57,7 +57,7 @@ async function toolProbe(page: Page, modelId: string): Promise<Record<string, un
     const model = state.models.get(id)!;
     const gr = model.geometryResult as unknown as Parameters<typeof exportMod.withInstancedMeshes>[0];
     const range = { modelId: id, idOffset: model.idOffset, maxExpressId: model.maxExpressId };
-    const exported = await exportMod.withReleasedExportGeometry(() => exportMod.withInstancedMeshes(gr, range));
+    const exported = await exportMod.withReleasedExportGeometry((context) => exportMod.withInstancedMeshes(gr, range, context));
     const unkeyed = exported.meshes.map((m) => ({ ...m, occurrenceKey: undefined }));
     // A mid-height cap cut, as useExtraSectionCaps runs it.
     const b = model.geometryResult.coordinateInfo.shiftedBounds;

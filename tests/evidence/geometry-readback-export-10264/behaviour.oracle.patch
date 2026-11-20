@@ -1,11 +1,11 @@
 diff --git a/apps/viewer/src/utils/instancedExport.ts b/apps/viewer/src/utils/instancedExport.ts
-index 5806732..bfb6170 100644
+index 2d432ff..6f76b50 100644
 --- a/apps/viewer/src/utils/instancedExport.ts
 +++ b/apps/viewer/src/utils/instancedExport.ts
-@@ -88,7 +88,7 @@ export function withInstancedMeshes(
-   const renderer = getGlobalRenderer();
-   const prepared = releasedExport && (callOwner !== undefined ? releasedExport.scopeModelIndices.has(callOwner)
-     : !geometryResult.meshes.every(meshIsResident) || (!!renderer && sceneGeometryReleased(renderer))) ? releasedExport : null;
+@@ -91,7 +91,7 @@ export function withInstancedMeshes(
+   // Released CPU geometry (#10264): substitute what this operation read back; without its
+   // context, fail rather than export empty arrays and no occurrences.
+   const prepared = context?.prepared ?? null;
 -  if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : undefined) && prepared !== null) {
 +  if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : undefined)) {
      throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');

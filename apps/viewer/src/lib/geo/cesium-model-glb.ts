@@ -5,7 +5,7 @@
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { isEntityVisible, DEFAULT_GHOST_ALPHA, DEFAULT_MIN_CAST_ALPHA } from '@ifc-lite/renderer';
 import { getGlobalRenderer } from '../../hooks/useBCF.js';
-import { withInstancedMeshes } from '../../utils/instancedExport.js';
+import { withInstancedMeshes, type ReleasedExportContext } from '../../utils/instancedExport.js';
 import { buildMergedGLB } from './cesium-glb.js';
 import { bakeGlobeTiles } from './globe-glb.js';
 import type { GeoMapping } from './geo-warp.js';
@@ -127,11 +127,11 @@ export interface CesiumGlobeBake {
  * Each canonical visible mesh belongs to exactly one part, including instanced
  * occurrences and federated meshes; opaque window frames stay in the caster.
  */
-export function buildCesiumModelGLBParts(input: CesiumModelGLBInput, globe?: CesiumGlobeBake | null): {
+export function buildCesiumModelGLBParts(input: CesiumModelGLBInput, globe?: CesiumGlobeBake | null, context?: ReleasedExportContext): {
   parts: CesiumModelGLBPart[];
   key: string;
 } {
-  const visible = prepareVisibleMeshes(input);
+  const visible = prepareVisibleMeshes(input, context);
   const casting: MeshData[] = [];
   const receiving: MeshData[] = [];
   for (const mesh of visible) {
@@ -154,8 +154,8 @@ export function buildCesiumModelGLBParts(input: CesiumModelGLBInput, globe?: Ces
   return { parts, key: cesiumModelGLBKey(input, globe) };
 }
 
-function prepareVisibleMeshes(input: CesiumModelGLBInput): MeshData[] {
-  const complete = withInstancedMeshes(input.geometryResult, null);
+function prepareVisibleMeshes(input: CesiumModelGLBInput, context?: ReleasedExportContext): MeshData[] {
+  const complete = withInstancedMeshes(input.geometryResult, null, context);
   return filterVisibleMeshes(complete.meshes, input.hiddenIds, input.isolatedIds);
 }
 

@@ -217,8 +217,8 @@ export async function buildKmzForResolvedGeoref(
   createProcessor?: () => KmzProcessor,
 ): Promise<Uint8Array | KmzBuildError> {
   // Released CPU geometry (#10264) is read back first; resident geometry is unchanged.
-  const meshes = await withReleasedExportGeometry(() =>
-    withInstancedMeshes(input.geometryResult, input.instancedModelRange).meshes as MeshData[],
+  const meshes = await withReleasedExportGeometry((context) =>
+    withInstancedMeshes(input.geometryResult, input.instancedModelRange, context).meshes as MeshData[],
   input.instancedModelRange?.modelId ? [input.instancedModelRange.modelId] : undefined);
   if (!meshes.length) return 'no-geometry';
   const { conversion, crs, coordinateInfo, lengthUnitScale } = input;

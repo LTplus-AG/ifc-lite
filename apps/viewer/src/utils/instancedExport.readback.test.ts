@@ -77,7 +77,7 @@ describe('exports over released geometry', () => {
       releaseCpuMeshBuffers(meshes);
       assert.throws(() => withInstancedMeshes(geometryResult, range), GeometryUnavailableError,
         'never an export of emptied arrays');
-      const exported = await withReleasedExportGeometry(() => withInstancedMeshes(geometryResult, range));
+      const exported = await withReleasedExportGeometry((context) => withInstancedMeshes(geometryResult, range, context));
       assert.deepEqual(exported.meshes.slice(0, 2).map((m) => [...m.positions]), bytes, 'exact flat geometry');
       const occurrence = exported.meshes.find((m) => m.expressId === 77);
       assert.ok(occurrence, 'the instanced occurrence is exported');
@@ -94,7 +94,7 @@ describe('exports over released geometry', () => {
     const geometryResult: GeometryResult = { meshes: [mesh(1, 0)], totalTriangles: 1, totalVertices: 3,
       coordinateInfo: {} as GeometryResult['coordinateInfo'] };
     useViewerStore.setState({ models: new Map([['res', { id: 'res', idOffset: 0, maxExpressId: 10, geometryResult }]]) } as never);
-    const out = await withReleasedExportGeometry(() => withInstancedMeshes(geometryResult, null));
+    const out = await withReleasedExportGeometry((context) => withInstancedMeshes(geometryResult, null, context));
     assert.equal(out.meshes[0], geometryResult.meshes[0]);
   });
 
@@ -120,7 +120,7 @@ describe('exports over released geometry', () => {
       ]) });
       let result: GeometryResult | undefined;
       await assert.doesNotReject(async () => {
-        result = await withReleasedExportGeometry(() => withInstancedMeshes(geometry, null));
+        result = await withReleasedExportGeometry((context) => withInstancedMeshes(geometry, null, context));
       }, 'a model with no geometry must not block the current view export');
       assert.ok(result);
       assert.equal(result.meshes.length, 1);
@@ -159,20 +159,20 @@ describe('exports over released geometry', () => {
         assert.ok(statuses.every((s) => 'complete' in s && s.complete));
         releaseCpuMeshBuffers(first.meshes);
         releaseCpuMeshBuffers(second.meshes);
-        const a = withReleasedExportGeometry(async () => {
+        const a = withReleasedExportGeometry(async (context) => {
           enteredFirst();
           await held;
-          assert.equal(withInstancedMeshes(first, null).meshes[0].positions[2], 2);
+          assert.equal(withInstancedMeshes(first, null, context).meshes[0].positions[2], 2);
           if (failFirst) throw new Error('first exporter failed');
         }, ['first']);
         // Attach the rejection handler before letting either exporter finish.
         const outcomeA = a.then(() => null, (error: unknown) => error);
         await entered;
         let secondEntered = false;
-        const b = withReleasedExportGeometry(async () => {
+        const b = withReleasedExportGeometry(async (context) => {
           secondEntered = true;
           await Promise.resolve();
-          return withInstancedMeshes(second, null);
+          return withInstancedMeshes(second, null, context);
         }, ['second']);
         settledExports = Promise.allSettled([outcomeA, b]);
         await Promise.resolve();
@@ -211,7 +211,7 @@ it('#10887 unscoped legacy exports restore released flat geometry without a rend
     releaseCpuMeshBuffers(geometry.meshes);
     let result: GeometryResult | undefined;
     await assert.doesNotReject(async () => {
-      result = await withReleasedExportGeometry(() => withInstancedMeshes(geometry, null));
+      result = await withReleasedExportGeometry((context) => withInstancedMeshes(geometry, null, context));
     }, 'view PDF and KMZ-style unscoped collectors include the legacy owner');
     assert.ok(result);
     assert.deepEqual([...result.meshes[0].positions], expected);
@@ -248,17 +248,17 @@ it('#10887 resident scoped exports ignore another released model and preserve ge
     releaseCpuMeshBuffers(a.meshes);
     let output: GeometryResult | undefined;
     await assert.doesNotReject(async () => {
-      output = await withReleasedExportGeometry(() => withInstancedMeshes(b,
-        { modelId: 'B', idOffset: 1000, maxExpressId: 10, rendererModelIndex: indices.get('B') }), ['B']);
+      output = await withReleasedExportGeometry((context) => withInstancedMeshes(b,
+        { modelId: 'B', idOffset: 1000, maxExpressId: 10, rendererModelIndex: indices.get('B') }, context), ['B']);
     }, 'B is resident and has no backing; A cannot force B into readback');
     assert.equal(output?.meshes[0], b.meshes[0]);
     function* owner() { yield 'A'; }
-    const read = await withReleasedExportGeometry(() => withInstancedMeshes(a,
-      { modelId: 'A', idOffset: 0, maxExpressId: 10, rendererModelIndex: indices.get('A') }), owner());
+    const read = await withReleasedExportGeometry((context) => withInstancedMeshes(a,
+      { modelId: 'A', idOffset: 0, maxExpressId: 10, rendererModelIndex: indices.get('A') }, context), owner());
     assert.equal(read.meshes[0].positions[2], 3, 'checking release must not consume the preparation scope');
     instancedOwners = [indices.get('A')!, indices.get('B')!];
-    await assert.rejects(withReleasedExportGeometry(() => withInstancedMeshes(b,
-      { modelId: 'B', idOffset: 1000, maxExpressId: 10 }), ['B']), /Model B has no complete current backing/,
+    await assert.rejects(withReleasedExportGeometry((context) => withInstancedMeshes(b,
+      { modelId: 'B', idOffset: 1000, maxExpressId: 10 }, context), ['B']), /Model B has no complete current backing/,
     'resident flat pieces do not hide released instances owned by the same model');
   } finally {
     await geometryBackingCommand(source, undefined, { action: 'stop' });
@@ -297,7 +297,7 @@ it('#10887 unscoped mixed exports combine backed geometry with resident flat and
     const combined: GeometryResult = { ...a, meshes: [...a.meshes, ...b.meshes], totalTriangles: 2, totalVertices: 6 };
     let result: GeometryResult | undefined;
     await assert.doesNotReject(async () => {
-      result = await withReleasedExportGeometry(() => withInstancedMeshes(combined, null));
+      result = await withReleasedExportGeometry((context) => withInstancedMeshes(combined, null, context));
     }, 'resident model B needs no complete backing for the current-view export');
     assert.ok(result);
     assert.equal(result.meshes.length, 4);
@@ -307,10 +307,10 @@ it('#10887 unscoped mixed exports combine backed geometry with resident flat and
     assert.equal(occurrences.length, 2, 'one occurrence per owner, without a duplicated backed owner');
     assert.equal(occurrences.find((m) => m.modelIndex === liveB.modelIndex), liveB, 'the resident instanced owner survives');
     assert.notEqual(occurrences.find((m) => m.modelIndex === oldA.modelIndex), oldA, 'A uses the backed occurrence');
-    const scoped = await withReleasedExportGeometry(() => withInstancedMeshes(a, null), ['mixed-A']);
+    const scoped = await withReleasedExportGeometry((context) => withInstancedMeshes(a, null, context), ['mixed-A']);
     assert.equal(scoped.meshes.length, 2, 'a scoped preparation cannot splice in live instances of B');
-    const owned = await withReleasedExportGeometry(() => withInstancedMeshes(a,
-      { modelId: 'mixed-A', idOffset: 0, maxExpressId: 100 }));
+    const owned = await withReleasedExportGeometry((context) => withInstancedMeshes(a,
+      { modelId: 'mixed-A', idOffset: 0, maxExpressId: 100 }, context));
     assert.equal(owned.meshes.length, 2, 'known owner identity disambiguates overlapping ID ranges');
   } finally {
     await geometryBackingCommand(source, undefined, { action: 'stop' });
@@ -340,7 +340,7 @@ it('#10887 unscoped mixed exports combine backed geometry with resident flat and
       await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `export-ambient-${process.pid}`, locks: null } } as never });
       await geometryBackingCommand(store, undefined, { action: 'seal' });
       releaseCpuMeshBuffers(a.meshes); // A is released; B stays resident
-      wrapped = withReleasedExportGeometry(async () => { entered(); await held; return withInstancedMeshes(a, { modelId: 'A', idOffset: 0, maxExpressId: 100 }); }, ['A']);
+      wrapped = withReleasedExportGeometry(async (context) => { entered(); await held; return withInstancedMeshes(a, { modelId: 'A', idOffset: 0, maxExpressId: 100 }, context); }, ['A']);
       await inside;
       // Unrelated code exports resident B directly while A's export is in flight.
       const direct = withInstancedMeshes(b, { modelId: 'B', idOffset: 100, maxExpressId: 100 });
@@ -355,4 +355,39 @@ it('#10887 unscoped mixed exports combine backed geometry with resident flat and
       setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
     }
   });
+
+  it('#10887 an unrelated direct UNSCOPED call while another operation is prepared never reads that operation\'s context', async () => {
+    const a: GeometryResult = { meshes: [mesh(1, 2)], totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    const b: GeometryResult = { meshes: [mesh(101, 9)], totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    useViewerStore.setState({ models: new Map([
+      ['A2', { id: 'A2', idOffset: 0, maxExpressId: 100, geometryResult: a }],
+      ['B2', { id: 'B2', idOffset: 100, maxExpressId: 100, geometryResult: b }],
+    ]) } as never);
+    const store = useViewerStore as unknown as StoreApi<TapState>;
+    const scene = { isGeometryDataReleased: () => true, placeAppearanceSource: (m: MeshData) => m, getAllInstancedMeshData: () => [] as MeshData[] };
+    setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+    let allow!: () => void;
+    const held = new Promise<void>((resolve) => { allow = resolve; });
+    let entered!: () => void;
+    const inside = new Promise<void>((resolve) => { entered = resolve; });
+    let wrapped: Promise<unknown> = Promise.resolve();
+    try {
+      await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `export-unscoped-${process.pid}`, locks: null } } as never });
+      await geometryBackingCommand(store, undefined, { action: 'seal' });
+      releaseCpuMeshBuffers(a.meshes);
+      wrapped = withReleasedExportGeometry(async (context) => { entered(); await held; return withInstancedMeshes(a, null, context); }, ['A2']);
+      await inside;
+      // The scene is released globally: a direct unscoped call has no operation of its own.
+      assert.throws(() => withInstancedMeshes(b, null), GeometryUnavailableError, 'fails closed, never answered from A\'s preparation');
+      allow();
+      const out = await wrapped as GeometryResult;
+      assert.equal(out.meshes[0].positions[2], 2);
+    } finally {
+      allow();
+      await wrapped.catch(() => undefined);
+      await geometryBackingCommand(store, undefined, { action: 'stop' });
+      setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+    }
+  });
 });
+

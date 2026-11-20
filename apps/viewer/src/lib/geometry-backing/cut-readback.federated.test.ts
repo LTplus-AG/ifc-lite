@@ -69,8 +69,8 @@ describe('section caps over released federated, placed geometry', () => {
       assert.deepEqual(released, resident, 'same polygons, including the translated federated model');
       // The export collectors (Cesium, GLB, KMZ) receive the same kind of copies.
       const input = heldCopies;
-      const exported = await withReleasedExportGeometry(() => withInstancedMeshes(
-        { meshes: input, totalTriangles: 36, totalVertices: 24, coordinateInfo: {} as never }, null));
+      const exported = await withReleasedExportGeometry((context) => withInstancedMeshes(
+        { meshes: input, totalTriangles: 36, totalVertices: 24, coordinateInfo: {} as never }, null, context));
       assert.deepEqual(exported.meshes.map((m) => [m.expressId, m.modelIndex, m.origin ?? null, m.positions.length]),
         input.map((m) => [m.expressId, m.modelIndex, m.origin ?? null, 24]));
     } finally {

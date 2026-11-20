@@ -72,7 +72,7 @@ export async function loadCesiumModel({
       await new Promise((resolve) => setTimeout(resolve, 50));
       if (isSuperseded()) return;
       // Released CPU geometry (#10264) is read back first; resident geometry builds as before.
-      const built = await withReleasedExportGeometry(() => buildCesiumModelGLBParts(glbInput, globe));
+      const built = await withReleasedExportGeometry((context) => buildCesiumModelGLBParts(glbInput, globe, context));
       parts = built.parts;
       glbCacheRef.current = built;
     }

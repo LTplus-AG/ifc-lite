@@ -36,12 +36,13 @@ import { mergedExportSummary, stepExportSummary } from '@/lib/export/step-export
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
+import { hasGeorefEdits } from './step-export-source';
 import { useTranslation } from '@/i18n';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { MergedExporter, type ExportProgress } from '@ifc-lite/export';
+import type { ExportProgress } from '@ifc-lite/export';
 import { exportModelIfcx } from '@/lib/export/model-ifcx-export';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { landXmlDownloadInput, landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
@@ -53,7 +54,7 @@ import { canExportRoomAsStep } from '@/lib/collab/room-step-export';
 import { roomMergeVisibility } from '@/lib/collab/room-merged-export';
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { canWriteIfcFromStores, listExportModels, resolveExportModel, stepSkipReason } from './export-model-selection';
-import { buildMergeInputs, emptyMergeRefusal, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
+import { buildMergeInputs, emptyMergeRefusal, mergedModels, mergeSkipNotice, statedMergeSkips } from './export-merge-inputs';
 import { exportOutputInfo } from './export-output-format.js';
 import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
@@ -77,9 +78,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   const dirtyModels = useViewerStore((s) => s.dirtyModels);
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  const getModifiedEntityCount = useViewerStore((s) => s.getModifiedEntityCount);
   // Subscribed so the pending-changes count refreshes while the dialog is open
-  // (getModifiedEntityCount / getMutationView are stable action refs). Schedule
+  // (getMutationView is a stable action ref). Schedule
   // edits don't bump mutationVersion, so the schedule fields are subscribed too.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const scheduleData = useViewerStore((s) => s.scheduleData);
@@ -233,12 +233,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       let count = getMutationView(selectedModelId)?.getModifiedEntityCount() ?? 0;
       // The single-model STEP export also applies the selected model's
       // georeferencing edits, so count them (+1) when present.
-      const gm = georefMutations.get(selectedModelId);
-      const hasGeoref = !!gm && (
-        (gm.projectedCRS && Object.keys(gm.projectedCRS).length > 0) ||
-        (gm.mapConversion && Object.keys(gm.mapConversion).length > 0)
-      );
-      if (hasGeoref) count += 1;
+      if (hasGeorefEdits(georefMutations.get(selectedModelId))) count += 1;
       // ...and it splices the schedule when the selected model owns it (or it's
       // unattributed with pending tasks) — the same gate spliceScheduleIntoExport
       // uses — so count those tasks too, matching what actually gets written.
@@ -251,9 +246,12 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
       }
       return count;
     }
-    return getModifiedEntityCount();
+    // A merged export writes only the models `buildMergeInputs` keeps: their overlay edits, and their georeferencing
+    // edits unless an IFC2X3 target cannot hold them. It splices no schedule (#10669).
+    return mergedModels(models).reduce((count, model) => count + (getMutationView(model.id)?.getModifiedEntityCount() ?? 0)
+      + (schema !== 'IFC2X3' && hasGeorefEdits(georefMutations.get(model.id)) ? 1 : 0), 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
+  }, [exportScope, selectedModelId, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations, models, schema]);
 
   /**
    * Resolve local (per-model) hidden/isolated expressIds for `modelId` from
@@ -336,7 +334,10 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           model,
           dataStore: await ensureModelExportReady(model.id),
         })));
-        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, { applyMutations, getMutationView });
+        const { inputs: mergeInputs, portableByModel, skipped } = buildMergeInputs(hydratedModels, {
+          // georefMutations read at export time: this callback does not re-memoize on georef edits.
+          applyMutations, getMutationView, georefMutations: useViewerStore.getState().georefMutations,
+        });
         const refusal = emptyMergeRefusal(mergeInputs, t);
         if (refusal) { toast.error(refusal); return { success: false, message: refusal }; }
 
@@ -345,6 +346,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           : { hidden: new Map<string, Set<number>>(), isolated: new Map<string, Set<number> | null>() };
 
         const prepared = await sectionMergeInputs(mergeInputs, visibility, schema, sectionExport.options);
+        // Loaded on use: the merged export is its own lazy chunk, off the startup bundle.
+        const { MergedExporter } = await import('@ifc-lite/export/merged-exporter');
         const mergedExporter = new MergedExporter(prepared.inputs);
         // Assemble the merged download off-heap so it does not materialise as
         // one contiguous Uint8Array on the JS heap.

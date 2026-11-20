@@ -10,7 +10,7 @@ import { makeWorldPositionGetter } from '../geo/entity-world-position';
 import { zoneVolumeSiScale } from '../units/zone-volume-scale';
 import { readSceneTriangleCounts } from '@/hooks/useSceneTriangleCounts';
 import { modelTrianglesReady } from '../model-triangle-counts';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 
 export type ListProviderState = Pick<ViewerState,
   'models' | 'ifcDataStore' | 'geometryResult' | 'zoneSets' | 'zoneAssignments' |
@@ -23,7 +23,7 @@ export function prepareListProviders(state: ListProviderState, renderFrame: Rend
     ? [...state.models].flatMap(([modelId, model]) => model.ifcDataStore
       ? [{ modelId, store: model.ifcDataStore, name: model.name, geometry: model.geometryResult ?? state.geometryResult, view: state.mutationViews.get(modelId) }] : [])
     : state.ifcDataStore ? [{ modelId: 'default', store: state.ifcDataStore, name: '', geometry: state.geometryResult,
-      view: state.mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? state.mutationViews.get(LEGACY_MODEL_ID) }] : [];
+      view: getLegacyMutationView(state.mutationViews) }] : [];
   const modelUnits = new Map<string, ProjectUnits>();
   for (const { modelId, store, name, geometry, view } of entries) {
     const units = store.source.length > 0 ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty();

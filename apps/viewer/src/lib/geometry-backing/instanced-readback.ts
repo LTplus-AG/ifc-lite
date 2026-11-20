@@ -34,6 +34,8 @@ export async function readInstancedOccurrences(
   if (needed.size === 0) return [];
   const last = Math.max(...needed);
   const budget = options.budgetBytes ?? DEFAULT_INSTANCED_READ_BYTES;
+  // NaN or negative would make every comparison false and pass any size: not a bound.
+  if (!(budget >= 0)) throw new GeometryUnavailableError(`Instanced readback bound ${budget} is not a byte count`);
   const out: MeshData[] = [];
   let bytes = 0;
   let index = 0;

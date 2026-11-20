@@ -37,7 +37,7 @@ function allMeshes(): MeshData[] {
  * renderer (headless, WebGPU unavailable). Each capture restores its camera;
  * the returned `restore` requests a normal frame after the last capture.
  */
-export function createSnapshotCapture(): { capture: SnapshotCapture; restore: () => void } | null {
+export function createSnapshotCapture(signal?: AbortSignal): { capture: SnapshotCapture; restore: () => void } | null {
   const renderer = getGlobalRenderer();
   if (!renderer) return null;
   const scene = renderer.getScene();
@@ -49,7 +49,7 @@ export function createSnapshotCapture(): { capture: SnapshotCapture; restore: ()
     if (ids.length === 0) return undefined;
     const bounds = unionEntityBounds(meshes, [...ids], (id) => scene.getInstancedEntityBounds(id));
     const dataUrl = await captureEntityViewportFrame(renderer, {
-      ids: new Set(ids), mode: 'ghost', bounds: bounds ?? undefined, clearColor: SNAPSHOT_CLEAR_COLOR,
+      ids: new Set(ids), mode: 'ghost', bounds: bounds ?? undefined, clearColor: SNAPSHOT_CLEAR_COLOR, signal,
     });
     return dataUrl ? dataUrlToBytes(dataUrl) : undefined;
   };

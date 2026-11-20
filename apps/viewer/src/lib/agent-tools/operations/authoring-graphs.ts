@@ -9,6 +9,7 @@ import type { ToolHost } from '../types';
 import { operation, emptySchema, referenceSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
+import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const tokenInput = { type: 'object' as const, properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['token' as const], additionalProperties: false as const };
@@ -16,10 +17,10 @@ const previewOutput = { type: 'object', properties: { token: { type: 'string' },
 const meta = (id: string, owner: string, description: string, write = false) => ({ id, owner, description,
   effects: write ? ['model'] as const : ['read'] as const, capability: write ? 'commands-and-edits' as const : 'read' as const,
   implementation: 'native-store' as const, policy: write ? { model: 'native-reviewed' as const } : undefined, outputSchema: jsonOutput });
-interface Review { room?: import('@/lib/actions/room-review').RoomReview; preview: object; validate(): void; commit(): ModelChangeReceipt; dispose?(): void }
-interface Candidate { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt }
+interface Review { room?: import('@/lib/actions/room-review').RoomReview; preview: object; validate(): void; sourcesCurrent(): boolean; commit(): ModelChangeReceipt; dispose?(): void }
+interface Candidate extends ReceiptHolder { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
-function owned(c: OperationContext) {
+function owned(c: Pick<OperationContext, 'host'>) {
   let entries = hosts.get(c.host);
   if (!entries) {
     entries = new Map(); hosts.set(c.host, entries);
@@ -28,6 +29,8 @@ function owned(c: OperationContext) {
   }
   return entries;
 }
+/** Drop one candidate and release its native handles. */
+function release(entries: Map<string, Candidate>, token: string) { entries.get(token)?.review?.dispose?.(); entries.delete(token); }
 const output = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
 function proposalModel(value: { modelId: string }, c: OperationContext) { if (value.modelId !== c.model.id) throw new Error('The proposal must name the selected model.'); }
 async function prepare(kind: 'group' | 'structural' | 'zone' | 'room', json: string, c: OperationContext): Promise<Review> {
@@ -36,27 +39,29 @@ async function prepare(kind: 'group' | 'structural' | 'zone' | 'room', json: str
       const [{ parseGroupProposal }, { prepareGroupReview }, { commitReviewedGroup }] = await Promise.all([import('@/lib/actions/group-lifecycle-proposal'), import('@/lib/actions/group-lifecycle-review'), import('@/lib/actions/group-lifecycle-receipt')]);
       const proposal = parseGroupProposal(json); proposalModel(proposal, c);
       const review = prepareGroupReview(useViewerStore, proposal);
-      return { preview: { proposal: review.proposal, snapshot: review.snapshot, delta: review.delta }, validate: review.validate,
+      return { preview: { proposal: review.proposal, snapshot: review.snapshot, delta: review.delta }, validate: review.validate, sourcesCurrent: review.sourcesCurrent,
         commit: () => commitReviewedGroup(useViewerStore, review, 'viewer-agent') };
     }
     case 'structural': {
       const [{ parseStructuralProposal }, { prepareStructuralReview }, { commitReviewedStructural }] = await Promise.all([import('@/lib/actions/structural-graph-proposal'), import('@/lib/actions/structural-graph-review'), import('@/lib/actions/structural-graph-receipt')]);
       const proposal = parseStructuralProposal(json); proposalModel(proposal, c);
       const review = prepareStructuralReview(useViewerStore, proposal);
-      return { preview: { proposal: review.proposal, snapshot: review.snapshot, delta: review.delta }, validate: review.validate,
+      return { preview: { proposal: review.proposal, snapshot: review.snapshot, delta: review.delta }, validate: review.validate, sourcesCurrent: review.sourcesCurrent,
         commit: () => commitReviewedStructural(useViewerStore, review, 'viewer-agent') };
     }
     case 'zone': {
       const [{ parseZoneEmissionProposal }, { prepareZoneEmission }] = await Promise.all([import('@/lib/actions/zone-emission-proposal'), import('@/lib/actions/zone-emission-review')]);
       const proposal = parseZoneEmissionProposal(json); proposalModel(proposal, c);
       const review = prepareZoneEmission(useViewerStore, proposal);
-      return { preview: { proposal: review.proposal, snapshot: review.snapshot, dry: review.dry }, validate: review.validate, commit: () => review.commit('viewer-agent') };
+      return { preview: { proposal: review.proposal, snapshot: review.snapshot, dry: review.dry }, validate: review.validate, sourcesCurrent: review.sourcesCurrent, commit: () => review.commit('viewer-agent') };
     }
     case 'room': {
       const [{ parseRoomProposal }, { prepareRoomReview }, { commitReviewedRoom }] = await Promise.all([import('@/lib/actions/room-command-proposal'), import('@/lib/actions/room-review'), import('@/lib/actions/room-receipt')]);
       const proposal = parseRoomProposal(json); proposalModel(proposal, c);
-      const review = await prepareRoomReview(proposal, c.signal ?? new AbortController().signal);
-      return { room: review, preview: { proposal: review.proposal, snapshot: review.snapshot, result: review.prepared.result }, validate: review.validate,
+      // The native preparation remeshes the storey walls first; that is this operation's own write, and the review's
+      // geometry lease, checked by validate() below, binds the geometry it read.
+      const review = await c.ownGeometry(() => prepareRoomReview(proposal, c.signal ?? new AbortController().signal), refused => refused.dispose());
+      return { room: review, preview: { proposal: review.proposal, snapshot: review.snapshot, result: review.prepared.result }, validate: review.validate, sourcesCurrent: review.sourcesCurrent,
         commit: () => commitReviewedRoom(review, 'viewer-agent').receipt, dispose: review.dispose };
     }
   }
@@ -77,14 +82,31 @@ export const graphAuthoringOperations = [
       selectedEntityIds: new Set(refs.map(ref => toGlobalIdForRef(state.models, ref))) });
     return output(capture);
   }),
-  ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput }, {
+  ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput,
+    // A result the executor refuses never reaches the caller, so its candidate must not keep a place under the cap.
+    discard: (result, c) => {
+      const token = (result as { token?: unknown } | null)?.token, entries = hosts.get(c.host);
+      if (entries && typeof token === 'string' && entries.get(token)?.receipt === undefined) release(entries, token);
+    } }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
-    if (owned(c).size >= 32) throw new Error('At most 32 graph review candidates may be retained.');
+    // Unchanged by the review's own cheap probe, the permanent half of its validate(): loaded models and edit revisions
+    // for Group and Structural, plus geometry content through the review's lease probe for Room, and source owners plus
+    // zone configuration for Zone.
+    // A review that fails it is dropped and its native handles released.
+    const admit = (evict: boolean) => {
+      const stillApplies = candidateStillApplies(c.host);
+      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', evict, pending: entry => !libraryHoldsReceipt(entry),
+        canApply: entry => stillApplies(entry.receipt !== undefined, () => entry.review?.sourcesCurrent() ?? false, entry),
+        release: entry => entry.review?.dispose?.() });
+    };
+    admit(false); // check only: a prepare that then fails must not have evicted a settled review
     const review = await prepare(kind, i.proposal_json, c);
-    try { assertToolActive(c); review.validate(); } catch (error) { review.dispose?.(); throw error; }
+    // Again after the await: a concurrent prepare may have taken the last place.
+    let preview_json: string;
+    try { assertToolActive(c); review.validate(); preview_json = JSON.stringify(review.preview); admit(true); } catch (error) { review.dispose?.(); throw error; }
     const token = crypto.randomUUID(); owned(c).set(token, { modelId: c.model.id, store: c.model.store, review });
-    return { token, preview_json: JSON.stringify(review.preview) };
+    return { token, preview_json };
   })),
   operation<{ token: string }>(meta('authoring.graph.apply', 'model', 'Apply one exact prepared native graph/Room candidate through its native synchronous review commit. Preserves all native roles, source/evidence checks and native undo. A token applies once.', true), tokenInput, async (i, c) => {
     const entry = owned(c).get(i.token);
@@ -94,13 +116,12 @@ export const graphAuthoringOperations = [
       entry.receipt = c.commit(() => { review.validate(); return review.commit(); });
       review.dispose?.(); entry.review = undefined;
     }
-    const { modelChangeLibrary } = await import('@/lib/actions/receipts');
-    const persisted = await modelChangeLibrary.put(entry.receipt.id, entry.receipt); return output({ receipt: entry.receipt, persisted });
+    return output({ receipt: entry.receipt, persisted: await persistReceipt(entry, entry.receipt) });
   }),
   operation<{ token: string }>(meta('authoring.graph.discard', 'model', 'Dispose a native graph or Room preview and release its native handles.'), tokenInput, (i, c) => {
     const entry = owned(c).get(i.token);
     if (!entry || entry.modelId !== c.model.id || entry.store !== c.model.store) throw new Error('Unknown graph review.');
-    entry.review?.dispose?.(); owned(c).delete(i.token); return output({ discarded: true });
+    release(owned(c), i.token); return output({ discarded: true });
   }),
 ];
 

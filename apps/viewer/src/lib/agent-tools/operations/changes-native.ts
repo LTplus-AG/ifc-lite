@@ -7,6 +7,7 @@ import { operation, viewerOperation, emptySchema, type OperationContext } from '
 import { assertToolActive } from '../cancellation';
 import type { ChangeOperation } from '@/lib/changes/change-operations';
 import type { ToolHost } from '../types';
+import { evictOldest } from './host-handles';
 
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
@@ -15,11 +16,11 @@ const meta = (id: string, owner: string, description: string, effect: 'read' | '
   implementation: 'native-store' as const, outputSchema,
   policy: effect === 'model' ? { model: 'native-reviewed' as const } : effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
 const idInput = { type: 'object' as const, properties: { id: { type: 'string' as const, minLength: 1, maxLength: 200 } }, required: ['id' as const], additionalProperties: false as const };
-async function operations(c: OperationContext) {
+async function allOperations() {
   const [{ changeOperations }, { inverseMutationTargets }] = await Promise.all([import('@/lib/changes/change-operations'), import('@/store/slices/mutation-inverse-registry')]);
-  const state = useViewerStore.getState(); return changeOperations(state.undoStacks, state.mutationBatchTags, inverseMutationTargets(useViewerStore))
-    .filter(operation => operation.modelIds.every(id => id === c.model.id));
+  const state = useViewerStore.getState(); return changeOperations(state.undoStacks, state.mutationBatchTags, inverseMutationTargets(useViewerStore));
 }
+async function operations(c: OperationContext) { return (await allOperations()).filter(operation => operation.modelIds.every(id => id === c.model.id)); }
 const reviews = new WeakMap<ToolHost, Map<string, ChangeOperation>>();
 function owned(c: OperationContext) { let entries = reviews.get(c.host); if (!entries) { entries = new Map(); reviews.set(c.host, entries); } return entries; }
 function requireSet(id: string) {
@@ -29,8 +30,7 @@ export const changesOperations = [
   operation(meta('changes.read', 'changes', 'Read native change operations for the selected model, including stable operation IDs, exact mutation records and current top-of-history state.'), emptySchema, async (_, c) => out(await operations(c))),
   operation<{ id: string }>({ ...meta('changes.revert.prepare', 'changes', 'Capture the exact native operation to revert. Apply rechecks native conflicts and shared-session restrictions.'), outputSchema: { type: 'object', properties: { token: { type: 'string' }, native_json: { type: 'string' } }, required: ['token', 'native_json'] } }, idInput, async (i, c) => {
     const entry = (await operations(c)).find(row => row.id === i.id); if (!entry) throw new Error('Unknown current native change operation.');
-    if (owned(c).size >= 64) throw new Error('Change-revert candidate capacity reached.');
-    const token = crypto.randomUUID(); owned(c).set(token, entry); return { token, native_json: JSON.stringify(entry) };
+    assertToolActive(c); evictOldest(owned(c), 64); const token = crypto.randomUUID(); owned(c).set(token, entry); return { token, native_json: JSON.stringify(entry) };
   }),
   operation<{ token: string }>(meta('changes.revert.apply', 'changes', 'Revert the captured native operation through the existing conflict-aware Changes-panel handler. Shared rooms and stale/overwritten values remain refused.', 'model'), {
     type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false,
@@ -51,7 +51,10 @@ export const changesOperations = [
   operation<{ express_id: number }>(meta('changes.select', 'changes', 'Select and frame a changed entity through the native Changes-panel selection handler.', 'selection'), {
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 } }, required: ['express_id'], additionalProperties: false,
   }, async (i, c) => {
-    const { selectChangedEntity } = await import('@/lib/changes/select-changed-entity'); assertToolActive(c);
+    const { selectChangedEntity } = await import('@/lib/changes/select-changed-entity');
+    // Only an entity a current change touched; anything else is a plain selection (#10793).
+    // A federated batch also counts: the Changes panel lists its entities per model.
+    if (!(await allOperations()).some(row => row.entities.some(entity => entity.modelId === c.model.id && entity.entityId === i.express_id))) throw new Error('No current native change touches that entity.'); assertToolActive(c);
     return out(c.commit(() => ({ selected: selectChangedEntity(c.model.id, i.express_id) })));
   }),
   viewerOperation(meta('changeSets.read', 'changeSets', 'Read all native change sets, active collection target and exact grouped contents. Importing a set stages its records and never applies its edits.'), emptySchema, async () => {

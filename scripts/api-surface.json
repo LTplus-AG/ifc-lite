@@ -6070,7 +6070,9 @@
     "gridPlacementDependents: function",
     "guardSpreadsheetFormula: function",
     "isExpressibleMapUnit: function",
+    "isGeorefRefusal: function",
     "isParquet: function",
+    "mergeWarningLabel: function",
     "needsConversion: function",
     "parseGLB: function",
     "parseGLBToMeshData: function",
@@ -6082,6 +6084,14 @@
     "stripNodePathPrefix: function",
     "tableToCsv: function",
     "validatePropertyDataType: function"
+  ],
+  "@ifc-lite/export/merged-exporter": [
+    "ExportProgress: interface",
+    "MergeBlobExportResult: interface",
+    "MergeExportOptions: interface",
+    "MergeExportResult: interface",
+    "MergeModelInput: interface",
+    "MergedExporter: class"
   ],
   "@ifc-lite/extensions": [
     "ACTION_INTENTS: const",
@@ -8238,6 +8248,7 @@
     "iterateEffectiveEntityIds: function",
     "matchRowAgainstContext: function",
     "parseValue: function",
+    "prepareMutationViewMerge: function",
     "propertyKey: function",
     "quantityKey: function",
     "recordCompoundMutation: function",

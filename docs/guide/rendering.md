@@ -501,10 +501,19 @@ snap. It reads the pieces under the pointer back from its own storage, places
 them in the current model frame, and hands them over before the raycast:
 
 ```typescript
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const pieces: MeshData[];            // read back from the host's own storage
+declare const x: number, y: number;          // canvas CSS pixels under the pointer
+const edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
+
 const placed = pieces.map((mesh) => renderer.getScene().placeAppearanceSource!(mesh));
-renderer.setReadbackRaycastMeshes(placed);   // tested beside resident pieces
-const result = renderer.raycastSceneMagnetic(x, y, edgeLock, options);
+renderer.setReadbackRaycastMeshes(placed, { x, y }); // tested beside resident pieces, for this ray only
+const result = renderer.raycastSceneMagnetic(x, y, edgeLock, {
+  snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true },
+});
 renderer.setReadbackRaycastMeshes(null);     // clear when the tool moves on
+console.log(result.snapTarget?.type);
 ```
 
 The pieces follow the same hide/isolate and section-clip rules as resident ones.

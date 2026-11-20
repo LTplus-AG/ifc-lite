@@ -11,10 +11,11 @@
  * still shows the command from first paint.
  */
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 
-const LandXmlTerrainExportDialog = lazy(() =>
+const LandXmlTerrainExportDialog = lazyChunk(() =>
   import('./LandXmlTerrainExportDialog').then((m) => ({ default: m.LandXmlTerrainExportDialog })),
 );
 

@@ -17,7 +17,8 @@
  * before changing an import in the lazy components.
  */
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { Checkbox } from '@/components/ui/checkbox';
 import { HudItem, HudNotice } from '../viewport-ui/hud';
@@ -25,9 +26,9 @@ import { SettingsGroup, SettingsRow } from './settings/SettingsGroup';
 
 // One dynamic import for all three: one lazy chunk, one preload list in the entry.
 const load = () => import('./LandXmlGeorefAssumptionsUi');
-const Prompt = lazy(() => load().then((m) => ({ default: m.LandXmlAssumptionRefusalPrompt })));
-const SettingsBody = lazy(() => load().then((m) => ({ default: m.LandXmlGeorefSettingsGroup })));
-const Notice = lazy(() => load().then((m) => ({ default: m.LandXmlAssumptionsNotice })));
+const Prompt = lazyChunk(() => load().then((m) => ({ default: m.LandXmlAssumptionRefusalPrompt })));
+const SettingsBody = lazyChunk(() => load().then((m) => ({ default: m.LandXmlGeorefSettingsGroup })));
+const Notice = lazyChunk(() => load().then((m) => ({ default: m.LandXmlAssumptionsNotice })));
 
 /** Mounted beside `LandXmlUnitsRefusalPrompt` in the viewport HUD. */
 export function LandXmlAssumptionRefusalPromptSlot() {

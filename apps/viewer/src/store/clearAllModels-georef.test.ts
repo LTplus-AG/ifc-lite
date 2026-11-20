@@ -5,6 +5,8 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
+import { listExportModels } from '@/components/viewer/export-model-selection';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { discardOverlappingRetainedEdits } from '@/utils/model-mutation-view';
 import { useViewerStore } from './index.js';
 import type { GeorefMutationData } from './slices/mutationSlice.js';
@@ -39,6 +41,35 @@ it('clearing all models keeps a model with only georeference edits and drops unc
   } finally {
     store.setState({ mutationViews: before.mutationViews, georefMutations: before.georefMutations, dirtyModels: before.dirtyModels,
       scheduleSourceModelId: before.scheduleSourceModelId, scheduleIsEdited: before.scheduleIsEdited });
+  }
+});
+
+it('clearing a mutation view keeps schedule-only edits marked for export (#10469)', () => {
+  const store = useViewerStore;
+  const before = store.getState();
+  const modelId = 'scheduled';
+  const model = fixtureModel(modelId);
+  try {
+    store.setState({ ...fixtureModels(model), dirtyModels: new Set() });
+    store.getState().registerMutationView(modelId, new MutablePropertyView(null, modelId));
+    store.getState().setScheduleData({
+      hasSchedule: true, workCalendars: [], workSchedules: [], sequences: [],
+      tasks: [{
+        expressId: 42, globalId: 'task', name: 'Before', isMilestone: false,
+        childGlobalIds: [], productExpressIds: [], productGlobalIds: [], controllingScheduleGlobalIds: [],
+      }],
+    });
+    store.getState().updateTask('task', { name: 'After' });
+    assert.equal(store.getState().dirtyModels.has(modelId), true);
+
+    store.getState().clearMutationView(modelId);
+
+    const after = store.getState();
+    assert.equal(after.mutationViews.has(modelId), false);
+    assert.equal(after.scheduleData?.tasks[0].name, 'After');
+    assert.equal(listExportModels(after.models, after.dirtyModels, null)[0].isDirty, true);
+  } finally {
+    store.setState(before);
   }
 });
 

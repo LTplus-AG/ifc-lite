@@ -45,6 +45,11 @@ let installed = false;
 export function initializeUserContent(): void {
   if (installed) return;
   installed = true;
+  const { initializeBcfAutosave, flushBcfAutosave } = useViewerStore.getState();
+  void initializeBcfAutosave();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushBcfAutosave();
+  });
   void Promise.all(Object.values(contentHosts()).map(host => host.initialize()));
   const refresh = () => {
     void Promise.all(Object.values(contentHosts()).map(host => host.refresh()));

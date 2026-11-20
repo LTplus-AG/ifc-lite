@@ -12,6 +12,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { LandXmlTerrainExport } from '@ifc-lite/geometry';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { useViewerStore } from '@/store';
+import { LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import { fixtureDataStore, fixtureModel } from '@/test/store-fixture';
 import {
   landXmlTerrainFilename,
@@ -86,7 +89,11 @@ describe('resolveTerrainSelection (#7600)', () => {
     assert.equal(selection.kind, 'ready');
     if (selection.kind !== 'ready') return;
     assert.equal(selection.store, legacyStore);
-    assert.equal(selection.modelId, 'legacy', 'the legacy mutation view key');
+    // The key reaches the legacy model's pending edits in the viewer store (#10695).
+    const view = new MutablePropertyView(null, LEGACY_MUTATION_MODEL_ID), before = useViewerStore.getState();
+    useViewerStore.setState({ models: new Map(), mutationViews: new Map([[LEGACY_MUTATION_MODEL_ID, view]]) });
+    try { assert.equal(useViewerStore.getState().getMutationView(selection.modelId), view, 'the legacy mutation view key'); }
+    finally { useViewerStore.setState({ models: before.models, mutationViews: before.mutationViews }); }
     assert.equal(landXmlTerrainFilename(selection.modelName), 'model_terrain.xml');
   });
 

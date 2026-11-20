@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getProcessingServerUrl, setProcessingServerUrl } from './processed-model';
+import { applyProcessingConfig, getProcessingServerUrl, openProcessedModelFromUrl, pageUrlModelAllowed, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } from './processed-model';
 import { isServerReachable } from '@/hooks/ingest/serverAvailability';
 
 const initial = getProcessingServerUrl();
@@ -36,5 +36,61 @@ describe('setProcessingServerUrl', () => {
     assert.equal(getProcessingServerUrl(), '');
     setProcessingServerUrl(undefined as unknown as string); // an untyped host
     assert.equal(getProcessingServerUrl(), '');
+  });
+});
+
+describe('applyProcessingConfig', () => {
+  // How a filed request loads: useIfcLoader.processedModel.test.tsx; mountViewer's call: bootstrap.tsx.
+  it('changes nothing for a configuration without them, or none at all', () => {
+    try {
+      setProcessingServerUrl('/ifc');
+      applyProcessingConfig({});
+      applyProcessingConfig(undefined);
+      assert.equal(getProcessingServerUrl(), '/ifc');
+      assert.equal(takeProcessedModelRequest(), null);
+    } finally {
+      setProcessingServerUrl(initial);
+    }
+  });
+
+  it('names the server, then files the start model as a host request that the page URL yields to', () => {
+    const info = console.info;
+    console.info = () => {};
+    try {
+      resetProcessedModelRequestsForTests();
+      assert.equal(pageUrlModelAllowed('room'), true);
+      applyProcessingConfig({
+        server: { url: '/v1/viewing/processor' },
+        open: { processedModel: { sha256: 'b'.repeat(64), bytes: 0, name: 'host.ifc' } },
+      });
+      assert.equal(getProcessingServerUrl(), '/v1/viewing/processor');
+      assert.equal(pageUrlModelAllowed('room'), false);
+      assert.deepEqual(takeProcessedModelRequest(), { sha256: 'b'.repeat(64), bytes: 0, name: 'host.ifc' });
+    } finally {
+      console.info = info;
+      resetProcessedModelRequestsForTests();
+      setProcessingServerUrl(initial);
+    }
+  });
+});
+
+describe('processedModelRequested', () => {
+  afterEach(() => resetProcessedModelRequestsForTests());
+
+  it('turns on with any processed-model request, so the browser fast path stays off', () => {
+    resetProcessedModelRequestsForTests();
+    assert.equal(processedModelRequested(), false);
+    openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: 'page.ifc' });
+    assert.equal(processedModelRequested(), true);
+    takeProcessedModelRequest();
+    assert.equal(processedModelRequested(), true, 'stays on after the viewer took the request');
+  });
+
+  it('trims the name of every request, and falls back to model.ifc for a blank one', () => {
+    resetProcessedModelRequestsForTests();
+    openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '  Haus A.ifc  ' });
+    assert.equal(takeProcessedModelRequest()?.name, 'Haus A.ifc');
+    openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '   ' });
+    assert.equal(takeProcessedModelRequest()?.name, 'model.ifc');
   });
 });

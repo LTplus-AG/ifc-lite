@@ -35,7 +35,7 @@ function shard(): DecodedInstancedShard {
     carriesItemIds: true,
     templates: [
       { positions: Float32Array.from([-1, 0, -1, 1, 0, -1, 0, 0, 1]), normals: Float32Array.from([0, -1, 0, 0, -1, 0, 0, -1, 0]),
-        indices: Uint32Array.from([0, 1, 2]), origin: [2_600_000.25, 1_200_000.5, 431.75] },
+        indices: Uint32Array.from([0, 1, 2]), origin: [2_600_000.1, 1_200_000.3, 431.7] }, // not f32-representable: narrowing would show
       { positions: Float32Array.from([0, 0, 0, 2, 0, 0, 0, 2, 0, 2, 2, 0]), normals: Float32Array.from([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
         indices: Uint32Array.from([0, 1, 2, 1, 3, 2]), origin: [0, 0, 0] },
     ],
@@ -63,6 +63,7 @@ describe('materializeShardOccurrences', () => {
     assert.ok(backed.every((m) => m.occurrenceKey?.startsWith('readback:')), 'keys never collide with the scene cache');
     assert.equal(backed[0].geometryItemId, 911);
     assert.ok(Math.abs(backed[0].origin![0]) > 1e6, 'the f64 anchor is kept, not narrowed through the f32 matrix');
+    for (const v of backed[0].origin!.slice(0, 2)) assert.notEqual(v, Math.fround(v), 'sub-f32 precision survives (f32 spacing is 0.25 m here)');
   });
 
   it('limits work to the wanted entities', () => {

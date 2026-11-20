@@ -11,7 +11,7 @@
  */
 
 import { profileSectionExtent, type ProfileSection } from '@ifc-lite/create';
-import { authoringSection, type ProfileOwner } from '@/store/slices/authoringDefaultsSlice';
+import { authoringSection, rectangleSides, type ProfileOwner } from '@/store/slices/authoringDefaultsSlice';
 import { sectionGhostMesh, type SectionFrame } from '@/lib/profile-section/profile-outline';
 import { commandGhostId } from '../ghost.js';
 import type { CommandContext, CommandField } from '../types.js';
@@ -29,7 +29,8 @@ export const sectionOf = (ctx: Reader, owner: ProfileOwner): ProfileSection | nu
 export function sectionExtentOf(ctx: Reader, owner: ProfileOwner): [number, number] {
   const section = sectionOf(ctx, owner);
   if (section) return profileSectionExtent(section);
-  return [dimOf(ctx, owner, 'Width'), dimOf(ctx, owner, owner === 'column' ? 'Depth' : 'Height')];
+  const [across, up] = rectangleSides(owner);
+  return [dimOf(ctx, owner, across), dimOf(ctx, owner, up)];
 }
 
 /** A rectangle's own dimension field goes away once a section is picked: the picker's fields replace it. */

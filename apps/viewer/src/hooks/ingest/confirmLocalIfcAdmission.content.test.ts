@@ -50,6 +50,17 @@ it('#9523 still admits STEP (also behind leading whitespace) and ZIP sources', a
   }
 });
 
+it('#9523 refuses a large XML error response in preflight and admits a LandXML root', async () => {
+  const padding = ' '.repeat(70 * 1024);
+  const error = await preflight(new File([`<Error>${padding}</Error>`], 'terrain.xml'));
+  assert.equal(error.head, null);
+  assert.match(String(error.failures[0]), /an XML error response/);
+
+  const landXml = await preflight(new File([`<LandXML>${padding}</LandXML>`], 'terrain.xml'));
+  assert.notEqual(landXml.head, null);
+  assert.deepEqual(landXml.failures, []);
+});
+
 it('#9523 a load superseded before the content check reads no further and reports nothing', async () => {
   const file = new File([`{"error":"expired"}${' '.repeat(100_000)}`], 'house.ifc');
   let reads = 0;

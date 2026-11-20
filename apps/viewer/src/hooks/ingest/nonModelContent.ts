@@ -14,7 +14,7 @@ import { detectFormat } from '@ifc-lite/parser';
 import { detectPointCloudFormat } from './pointCloudIngest';
 import { FORMAT_HEAD_BYTES, headIsZip } from './sourceBuffers';
 
-/** Bodies up to this size are read whole to recognise a JSON or XML error response; HTML is looked for in this much of any body. */
+/** Scan complete small JSON bodies and sniff HTML or XML roots within this prefix. */
 const NON_MODEL_SCAN_BYTES = 64 * 1024;
 
 /**
@@ -61,8 +61,8 @@ const STEP_MARKER = /^ISO[- ]?10303-21/i;
 
 /**
  * Why the loaders could not open `file` (`null` when they may): an error response saved or served as a model,
- * or text the IFC path cannot read. An HTML page; for a small text body, JSON that is not an IFCX document
- * (whose `header.ifcxVersion` names IFCX) or XML whose root is an error element; under an IFC name (.ifc,
+ * or text the IFC path cannot read. An HTML page, XML whose root is an error element, or a small JSON reply
+ * without an IFCX or glTF header. Under an IFC name (.ifc,
  * .ifczip), content the format router would send to the STEP parser although it cannot read it: not STEP, or
  * any UTF-16 text (the parser reads single-byte text). UTF-16 is judged decoded by the same rules: an HTML,
  * JSON or XML error keeps its reason, STEP saved as UTF-16 gets its own, anything else is not STEP. Formats the
@@ -103,11 +103,11 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   if (HTML_DOCUMENT_START.test(body) || (qualifiedRoot && HTML_ELEMENTS.has(qualifiedRoot.toLowerCase()))) {
     return NON_MODEL_REASONS.html;
   }
-  const whole = file.size <= scan.byteLength;
-  if (whole && qualifiedRoot) {
+  if (qualifiedRoot) {
     const root = qualifiedRoot.split(':').pop() ?? '';
     if (XML_ERROR_NAMES.has(root.toLowerCase()) || XML_ERROR_SUFFIX.test(root)) return NON_MODEL_REASONS.xmlError;
   }
+  const whole = file.size <= scan.byteLength;
   if (!binary && whole && /^[{["]/.test(body)) {
     const reason = jsonReason(body, /\.ifcx$/i.test(file.name));
     if (reason) return reason;

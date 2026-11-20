@@ -82,14 +82,13 @@ rt('a family mismatch throws rather than comparing unrelated ids', () => {
   assert.throws(() => compare.compareFamily(family([entry('a', 1)]), { ...measured([{ id: 'a', value: 1 }]), family: 'copies' }), /family mismatch/);
 });
 
-rt('shouldLower: exact lowers on any drop, relative only once the drop clears the band', () => {
-  const exact = entry('c', 7, { kind: 'exact', value: 0 });
-  assert.equal(compare.shouldLower(exact, 6), true);
-  assert.equal(compare.shouldLower(exact, 7), false);
-  const rel = entry('r', 1000);
-  assert.equal(compare.shouldLower(rel, 996), false, 'inside the 0.5% band: noise, not a win');
-  assert.equal(compare.shouldLower(rel, 995), true);
-  assert.equal(compare.shouldLower(rel, 1001), false);
+rt('reports lowering eligibility after reserving headroom', () => {
+  const ceil = family([entry('inside', 1000), entry('edge', 1000)]);
+  const { rows } = compare.compareFamily(ceil, measured([{ id: 'inside', value: 992 }, { id: 'edge', value: 991 }]));
+  assert.deepEqual(rows.map((r) => [r.status, r.lowerable]), [
+    [compare.IMPROVEMENT, false], // 996 with headroom, inside the band.
+    [compare.IMPROVEMENT, true], // 995 with headroom, at the band edge.
+  ]);
 });
 
 rt('validateCeilingFile accepts a well-formed file and names every problem in a bad one', () => {
@@ -105,6 +104,16 @@ rt('validateCeilingFile accepts a well-formed file and names every problem in a 
   const text = problems.join('\n');
   for (const needle of ['`family`', '`ceiling`', 'relative', 'provenance.commit', 'provenance.measuredAt', 'exact', 'duplicate id']) {
     assert.ok(text.includes(needle), `expected a problem mentioning ${needle}; got:\n${text}`);
+  }
+});
+
+rt('validateCeilingFile accepts fractional headroom and rejects invalid overrides', () => {
+  const wasm = entry('wasm', 1000);
+  for (const headroom of [0, 0.005]) {
+    assert.deepEqual(ceilings.validateCeilingFile(family([{ ...wasm, headroom }])), []);
+  }
+  for (const headroom of [-0.001, 1, Infinity, NaN, '0.005', null]) {
+    assert.match(ceilings.validateCeilingFile(family([{ ...wasm, headroom }])).join('\n'), /`headroom` must be a fraction/);
   }
 });
 
@@ -153,7 +162,7 @@ rt('the report lists only moved metrics, flags failure, and notes improvements',
   assert.match(md, /`bundle\/down`.*improved/);
   assert.doesNotMatch(md, /`bundle\/same`/);
   assert.match(md, /1 other metric\(s\) unchanged/);
-  assert.match(md, /1 of them cleared the tolerance band/);
+  assert.match(md, /1 meet the daily lowering criteria/);
   assert.match(md, /docs\/guide\/performance\.md/);
 });
 
@@ -169,7 +178,7 @@ rt('changelog lists each lowered metric old -> new', () => {
     measured([{ id: 'wasm', value: 900 }, { id: 'chunks', value: 6 }, { id: 'noise', value: 1000 }]));
   const changelog = lower.formatChangelog([{ family: 'bundle', changes }], { commit: 'f00dfeed12345' });
   assert.deepEqual(changelog.split('\n').filter((l) => l.startsWith('- ')), [
-    '- `bundle/wasm`: 1,000 -> 900 bytes (-10.00%)',
+    '- `bundle/wasm`: 1,000 -> 904 bytes (-9.60%)',
     '- `bundle/chunks`: 7 -> 6 bytes (-14.29%)',
   ]);
   assert.match(lower.formatChangelog([{ family: 'bundle', changes: [] }], { commit: 'x' }), /No ceiling lowered/);

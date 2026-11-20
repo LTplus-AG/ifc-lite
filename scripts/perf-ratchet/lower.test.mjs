@@ -31,9 +31,9 @@ const ceilingFile = () => ({
   family: 'bundle',
   description: 'test family',
   entries: [
-    { id: 'wasm', metric: 'brotli-bytes', unit: 'bytes', ceiling: 1000, tolerance: { kind: 'relative', value: 0.005 }, provenance: OLD },
+    { id: 'wasm', metric: 'raw-bytes', unit: 'bytes', ceiling: 1000, tolerance: { kind: 'relative', value: 0.005 }, provenance: OLD },
     { id: 'chunks', metric: 'count', ceiling: 7, tolerance: { kind: 'exact', value: 0 }, provenance: OLD },
-    { id: 'noise', metric: 'brotli-bytes', ceiling: 1000, tolerance: { kind: 'relative', value: 0.005 }, provenance: OLD },
+    { id: 'instructions', metric: 'instructions', unit: 'Ir', ceiling: 1000, tolerance: { kind: 'relative', value: 0.005 }, provenance: OLD },
   ],
 });
 const measurement = (values) => ({
@@ -43,23 +43,56 @@ const measurement = (values) => ({
   metrics: Object.entries(values).map(([id, value]) => ({ id, value })),
 });
 
-rt('lowers entries that cleared their band to the measured value and re-stamps provenance', () => {
-  const { next, changes } = lower.lowerFamily(ceilingFile(), measurement({ wasm: 900, chunks: 6, noise: 998 }));
+rt('lowers bytes with rounded headroom and other metrics to their measurements', () => {
+  const measured = measurement({ wasm: 950, chunks: 6, instructions: 995 });
+  const { next, changes } = lower.lowerFamily(ceilingFile(), measured);
   const byId = Object.fromEntries(next.entries.map((e) => [e.id, e]));
-  assert.equal(byId.wasm.ceiling, 900);
+  assert.equal(byId.wasm.ceiling, 954, '950 plus 0.5% rounds down to 954 bytes');
   assert.deepEqual(byId.wasm.provenance, { commit: 'f00dfeed12345', measuredAt: '2026-10-05T00:00:00.000Z' });
   assert.equal(byId.chunks.ceiling, 6);
-  assert.equal(byId.noise.ceiling, 1000, 'a 0.2% wobble inside the band is not lowered');
-  assert.deepEqual(byId.noise.provenance, OLD);
-  assert.deepEqual(changes.map((c) => [c.id, c.from, c.to]), [['wasm', 1000, 900], ['chunks', 7, 6]]);
+  assert.equal(byId.instructions.ceiling, 995);
+  assert.deepEqual(changes.map((c) => [c.id, c.from, c.to]), [['wasm', 1000, 954], ['chunks', 7, 6], ['instructions', 1000, 995]]);
   assert.equal(next.description, 'test family', 'family-level fields survive');
+  assert.deepEqual(lower.lowerFamily(next, measured), { next, changes: [] });
 });
 
 rt('never raises: a measured rise leaves the ceiling exactly as committed', () => {
   const before = ceilingFile();
-  const { next, changes } = lower.lowerFamily(before, measurement({ wasm: 5000, chunks: 9, noise: 1000 }));
+  const { next, changes } = lower.lowerFamily(before, measurement({ wasm: 5000, chunks: 9, instructions: 1000 }));
   assert.deepEqual(next, ceilingFile());
   assert.deepEqual(changes, []);
+});
+
+// #9736 / #10852: measure the drop after reserving room for ordinary growth.
+rt('keeps the ceiling and provenance when the padded target fails to clear the band', () => {
+  const before = ceilingFile();
+  const measured = measurement({ wasm: 995 }); // 999 bytes with headroom, above the 995 band edge.
+  assert.deepEqual(lower.lowerFamily(before, measured), { next: before, changes: [] });
+
+  before.entries[0].tolerance = { kind: 'exact', value: 0 };
+  before.entries[0].headroom = 0.005;
+  for (const wasm of [996, 997]) { // Targets equal to and above 1000 bytes.
+    assert.deepEqual(lower.lowerFamily(before, measurement({ wasm })), { next: before, changes: [] });
+  }
+});
+
+// #10974: an exact byte ceiling has no default growth allowance.
+rt('lowers exact byte ceilings to the measured value by default', () => {
+  const before = ceilingFile();
+  before.entries[0].tolerance = { kind: 'exact', value: 0 };
+  const { next, changes } = lower.lowerFamily(before, measurement({ wasm: 999 }));
+  assert.equal(next.entries[0].ceiling, 999);
+  assert.equal(changes.length, 1);
+});
+
+rt('uses a per-metric headroom override, including zero', () => {
+  for (const [headroom, expected] of [[0.02, 969], [0, 950]]) {
+    const before = ceilingFile();
+    before.entries[0].headroom = headroom;
+    const { next } = lower.lowerFamily(before, measurement({ wasm: 950 }));
+    assert.equal(next.entries[0].ceiling, expected);
+    assert.equal(next.entries[0].headroom, headroom);
+  }
 });
 
 rt('a ceiling with no measurement is left alone rather than lowered to nothing', () => {
@@ -67,10 +100,10 @@ rt('a ceiling with no measurement is left alone rather than lowered to nothing',
   assert.deepEqual(next, ceilingFile());
 });
 
-function scratch(values) {
+function scratch(values, ceilings = ceilingFile()) {
   const dir = mkdtempSync(join(tmpdir(), 'perf-ratchet-cli-'));
   mkdirSync(join(dir, 'ceilings'));
-  writeFileSync(join(dir, 'ceilings', 'bundle.json'), `${JSON.stringify(ceilingFile(), null, 2)}\n`);
+  writeFileSync(join(dir, 'ceilings', 'bundle.json'), `${JSON.stringify(ceilings, null, 2)}\n`);
   writeFileSync(join(dir, 'measured.json'), JSON.stringify(measurement(values)));
   return dir;
 }
@@ -79,7 +112,7 @@ function cli(dir, ...args) {
 }
 
 rt('check exits 0 within ceilings, 1 on a breach, and writes the markdown report', () => {
-  const dir = scratch({ wasm: 1004, chunks: 7, noise: 1000 });
+  const dir = scratch({ wasm: 1004, chunks: 7, instructions: 1000 });
   try {
     const ok = cli(dir, 'check', '--measured', join(dir, 'measured.json'), '--markdown', join(dir, 'report-out'));
     assert.equal(ok.status, 0);
@@ -87,7 +120,7 @@ rt('check exits 0 within ceilings, 1 on a breach, and writes the markdown report
     // --markdown writes exactly the report it printed (console.log adds the newline).
     assert.equal(`${readFileSync(join(dir, 'report-out'), 'utf8')}\n`, ok.stdout);
 
-    writeFileSync(join(dir, 'measured.json'), JSON.stringify(measurement({ wasm: 1004, chunks: 8, noise: 1000 })));
+    writeFileSync(join(dir, 'measured.json'), JSON.stringify(measurement({ wasm: 1004, chunks: 8, instructions: 1000 })));
     const bad = cli(dir, 'check', '--measured', join(dir, 'measured.json'));
     assert.equal(bad.status, 1);
     assert.match(bad.stdout, /`bundle\/chunks`.*FAIL/);
@@ -110,23 +143,30 @@ rt('check exits 2 on a harness fault: no measurement, or no ceiling file for the
 });
 
 rt('lower rewrites the ceiling file in place; --dry-run leaves it untouched', () => {
-  const dir = scratch({ wasm: 900, chunks: 7, noise: 1000 });
+  const ceilings = ceilingFile();
+  ceilings.entries[0].headroom = 0.02;
+  const dir = scratch({ wasm: 900, chunks: 7, instructions: 1000 }, ceilings);
   const file = join(dir, 'ceilings', 'bundle.json');
   try {
     const before = readFileSync(file, 'utf8');
     const dry = cli(dir, 'lower', '--measured', join(dir, 'measured.json'), '--dry-run');
     assert.equal(dry.status, 0);
-    assert.match(dry.stdout, /`bundle\/wasm`: 1,000 -> 900/);
+    assert.match(dry.stdout, /`bundle\/wasm`: 1,000 -> 918 bytes/);
     assert.equal(readFileSync(file, 'utf8'), before);
 
     const real = cli(dir, 'lower', '--measured', join(dir, 'measured.json'), '--changelog', join(dir, 'changelog-out'));
     assert.equal(real.status, 0);
     const after = JSON.parse(readFileSync(file, 'utf8'));
-    assert.equal(after.entries.find((e) => e.id === 'wasm').ceiling, 900);
+    assert.equal(after.entries.find((e) => e.id === 'wasm').ceiling, 918);
     assert.equal(`${readFileSync(join(dir, 'changelog-out'), 'utf8')}\n`, real.stdout);
-    assert.match(real.stdout, /measured on `main` at `f00dfeed12345`/);
-    // Lowered ceilings now equal the measurement, so a re-check is clean.
-    assert.equal(cli(dir, 'check', '--measured', join(dir, 'measured.json')).status, 0);
+    assert.match(real.stdout, /measurements from `main` at `f00dfeed12345`/);
+
+    const measuredPath = join(dir, 'measured.json');
+    // The judge applies the existing 0.5% tolerance to the new ceiling.
+    writeFileSync(measuredPath, JSON.stringify(measurement({ wasm: 922, chunks: 7, instructions: 1000 })));
+    assert.equal(cli(dir, 'check', '--measured', measuredPath).status, 0);
+    writeFileSync(measuredPath, JSON.stringify(measurement({ wasm: 923, chunks: 7, instructions: 1000 })));
+    assert.equal(cli(dir, 'check', '--measured', measuredPath).status, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

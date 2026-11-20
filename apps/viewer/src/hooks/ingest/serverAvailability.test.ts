@@ -41,6 +41,13 @@ describe('isServerReachable', () => {
     }, true), true);
   });
 
+  it('treats all of 127.0.0.0/8 as loopback, as browsers do, and not look-alikes', () => {
+    assert.equal(isServerReachable('http://127.0.0.2:8080', remotePage, true), true);
+    assert.equal(isServerReachable('http://LOCALHOST:8080', remotePage, true), true);
+    assert.equal(isServerReachable('http://127.999.0.1:8080', remotePage, true), false);
+    assert.equal(isServerReachable('http://127.example.org:8080', remotePage, true), false);
+  });
+
   it('applies the same loopback rules to IPv6', () => {
     assert.equal(isServerReachable('http://[::1]:8080', remotePage), false);
     assert.equal(isServerReachable('http://[::1]:8080', remotePage, true), true);

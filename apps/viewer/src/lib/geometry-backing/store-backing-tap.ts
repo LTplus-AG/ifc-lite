@@ -69,6 +69,8 @@ interface Tracked extends ResupplyState {
   carrying?: boolean;
   /** The store has listed this model: only then can its absence mean a removal (a shard may arrive first, #10876). */
   registered?: boolean;
+  /** A seal is closing and acknowledging this generation: its writer takes no more appends (r4647508608). */
+  sealing?: boolean;
 }
 
 export interface ModelBackingStatus {
@@ -205,7 +207,8 @@ export class StoreGeometryBackingTap {
           notifyReleasedGeometryMetadataChanged();
           continue;
         }
-        if (this.acknowledged.get(modelId) === tracked) this.regenerate(modelId, meshes, 'carry'); // sealed: a successor
+        // Sealed, or being sealed (its writer is closing): the late append goes to a successor.
+        if (this.acknowledged.get(modelId) === tracked || tracked.sealing) this.regenerate(modelId, meshes, 'carry');
         else this.appendSuffix(tracked, meshes);
       }
     }
@@ -310,7 +313,7 @@ export class StoreGeometryBackingTap {
     if (this.stopped) return;
     // A sealed generation's writer is closed: stage a successor that carries it, then append there.
     if (!this.tracked.has(modelId)) this.regenerate(modelId, undefined, 'none');
-    else if (this.acknowledged.get(modelId) === this.tracked.get(modelId)) this.regenerate(modelId, this.tracked.get(modelId)!.meshes, 'carry');
+    else if (this.acknowledged.get(modelId) === this.tracked.get(modelId) || this.tracked.get(modelId)!.sealing) this.regenerate(modelId, this.tracked.get(modelId)!.meshes, 'carry');
     const target = this.tracked.get(modelId)!;
     // A stale generation answers nothing and takes nothing more (released arrays are terminal, #10876).
     if (target.stale) { this.unbacked.add(entry); return; }
@@ -420,6 +423,7 @@ export class StoreGeometryBackingTap {
       }
       if (this.missedShards(modelId) || hasPendingInstancedShards(modelId)) continue; // undrawn shards: not what the scene shows yet
       const backing = tracked.backing;
+      tracked.sealing = true; // from here its writer closes: a late append or shard stages a successor
       await this.settle(tracked, backing.acknowledge().then(async (ack) => {
         // Only a verified, complete, still-current replacement whose statement still holds may retire what it replaces.
         if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure || voided(modelId, tracked) || hasPendingInstancedShards(modelId)) return;

@@ -84,3 +84,28 @@ it('#10888 a first primary load commits its snapshot BEFORE the model is registe
     useViewerStore.setState({ models: new Map() } as never);
   }
 });
+
+it('#10888 r4647509027 a registered model WITHOUT an idOffset that commits a snapshot is attested and backed in model 0\'s space', async () => {
+  const modelId = 'snap-no-offset';
+  const meshes = [{ ...mesh, expressId: 1 }];
+  // Registered, with no idOffset field: the tap and the drain both read that as offset 0.
+  useViewerStore.setState({ models: new Map([[modelId, { id: modelId, maxExpressId: 100,
+    geometryResult: { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} } }]]) } as never);
+  const store = useViewerStore as unknown as StoreApi<TapState>;
+  const tap = await StoreGeometryBackingTap.start(store, { database: { name: `snapshot-no-offset-${process.pid}`, locks: null } });
+  try {
+    const token = instancedShardSupplyToken(modelId);
+    const shards = [shardBytes(77)];
+    const shardsUploaded = uploadSnapshotShards({ addInstancedShard: () => {} } as never, {} as GPUDevice, modelId, shards);
+    attestAdoptedShards(modelId, { shards, shardsUploaded }, token);
+    const [status] = await tap.seal();
+    assert.equal(status.instancedLost, false, 'its drawn shards are attested, not left unbacked');
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
+    const ids: number[] = [];
+    for await (const shard of tap.backing(modelId)!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    assert.deepEqual(ids, [77]);
+  } finally {
+    await tap.stop();
+    useViewerStore.setState({ models: new Map() } as never);
+  }
+});

@@ -20,9 +20,11 @@
  *
  * Grid axes, annotation text and structural glyphs are off for every test
  * (`open()`): they load in idle time after the model and raced the captures
- * (#10853). The cost is that IfcAnnotation/IfcGrid meshes are not uploaded,
- * so no scenario here exercises them as hidden or visible batchmates, or
- * carries them through a model move.
+ * (#10853). Of the three toggles only `ifcAnnotations` gates meshes
+ * (typeVisibilityFilter.ts maps it to IfcAnnotation); the grid and glyph
+ * toggles gate overlays only. The cost is that IfcAnnotation meshes are not
+ * uploaded, so no scenario here exercises them as hidden or visible
+ * batchmates, or carries them through a model move.
  *
  * #10767 (last test) uses its own oracle: after a model move, the frame with
  * instanced state carried through the move must equal the frame with the same

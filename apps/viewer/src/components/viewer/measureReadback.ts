@@ -72,11 +72,12 @@ export function viewOf(ctx: MouseHandlerContext): readonly number[] | undefined 
 }
 
 /**
- * The hide and isolate sets a pick is made under. The store replaces these sets on every change, so their
- * identities say whether what is shown at a pixel can have changed.
+ * The hide and isolate sets a pick is made under (the store replaces them on every change, so their identities
+ * say whether what is shown at a pixel can have changed), plus Snap, which changes what the pick returns.
+ * With `viewOf` this is the same staleness key Point mode uses (`sameMeasureCameraPose`).
  */
-export function shownOf(ctx: MouseHandlerContext): readonly [unknown, unknown] {
-  return [ctx.hiddenEntitiesRef.current, ctx.isolatedEntitiesRef.current];
+export function shownOf(ctx: MouseHandlerContext): readonly [unknown, unknown, unknown] {
+  return [ctx.hiddenEntitiesRef.current, ctx.isolatedEntitiesRef.current, ctx.snapEnabledRef.current];
 }
 
 /** The gate acting on a finished read: a handler re-entered from here runs its resident path. */

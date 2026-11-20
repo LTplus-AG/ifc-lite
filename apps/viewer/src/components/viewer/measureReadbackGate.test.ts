@@ -182,6 +182,19 @@ describe('#10880 drag and placement readback', () => {
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
   });
 
+  it('a placement whose Snap setting changed before its read ran is dropped', async () => {
+    const c = ctx();
+    handlePolylineClick(c, 0, 0);
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick();
+    c.snapEnabledRef.current = false; // the second point was clicked snapped; it must not land unsnapped
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after Snap changed');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+  });
+
   it('a placement whose section cut changed before its read ran is dropped', async () => {
     const c = ctx();
     handlePolylineClick(c, 0, 0);

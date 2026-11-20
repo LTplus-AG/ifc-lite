@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { TOOL_IDS } from '@/lib/viewport-ui/tool-ids';
 import { TOOL_FEATURE, toolFeatureRows } from '@/lib/features/tools';
 import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { viewerOperations } from './registry';
@@ -61,7 +62,8 @@ export function viewerOperationCoverage() {
     return { id, complete: gaps.length === 0, audit_families: audit, controls, notes: rows.flatMap(row => row.notes),
       implemented: operations.filter(row => row.owner === id).map(row => row.id), gaps };
   });
-  const toolIds = [...new Set(['select', 'cesium-placement', 'command', ...Object.keys(TOOL_FEATURE), ...Object.keys(toolFeatureRows(''))])];
+  // Every registered activeTool, so a new tool is an explicit gap until audited.
+  const toolIds = [...new Set([...TOOL_IDS.filter(id => id !== 'none'), ...Object.keys(TOOL_FEATURE), ...Object.keys(toolFeatureRows(''))])];
   const tools = toolIds.map(id => {
     const audit = toolControlAudits[id];
     const controls = audit ? [control(audit.controls, audit.operations, 'implemented', audit.notes, audit.native_tools)] : [];

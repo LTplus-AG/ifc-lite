@@ -7,7 +7,6 @@ import { mutationDenial } from '@/store/mutation-permission';
 import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { matchesJsonSnapshot, metadata, checkpoint, idSchema } from './analytics-common';
-import { requireModelSchedule } from './analytics-schedule-common';
 const rgba: JSONSchemaType<[number, number, number, number]> = { type: 'array', items: [{ type: 'number', minimum: 0, maximum: 1 }, { type: 'number', minimum: 0, maximum: 1 }, { type: 'number', minimum: 0, maximum: 1 }, { type: 'number', minimum: 0, maximum: 1 }], minItems: 4, maxItems: 4 };
 const paletteProperties = { ATTENDANCE: rgba, CONSTRUCTION: rgba, DEMOLITION: rgba, DISMANTLE: rgba, DISPOSAL: rgba, INSTALLATION: rgba, LOGISTIC: rgba, MAINTENANCE: rgba, MOVE: rgba, OPERATION: rgba, REMOVAL: rgba, RENOVATION: rgba, USERDEFINED: rgba, NOTDEFINED: rgba, PREPARATION: rgba, COMPLETED: rgba };
 const paletteRequired: (keyof typeof paletteProperties)[] = ['ATTENDANCE', 'CONSTRUCTION', 'DEMOLITION', 'DISMANTLE', 'DISPOSAL', 'INSTALLATION', 'LOGISTIC', 'MAINTENANCE', 'MOVE', 'OPERATION', 'REMOVAL', 'RENOVATION', 'USERDEFINED', 'NOTDEFINED', 'PREPARATION', 'COMPLETED'];
@@ -26,9 +25,9 @@ export const analyticsScheduleControlOperations = [
     type: 'object', properties: { id: idSchema.properties.id, new_index: { type: 'integer', minimum: 0 }, expected_order: { type: 'array', maxItems: 100000, items: { type: 'string' } } }, required: ['id', 'new_index', 'expected_order'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string; new_index: number; expected_order: string[] }>, (i, c) => {
     const s = useViewerStore.getState(); const denial = mutationDenial(s, c.model.id); if (denial) throw new Error(denial);
-    const schedule = requireModelSchedule(s, c.model.id);
+    if (!s.scheduleData || s.scheduleSourceModelId !== c.model.id) throw new Error('Initialize the exact target model timeline first.');
     if (s.scheduleTransaction.active) throw new Error('Finish the current Gantt edit before reordering tasks.');
-    const order = schedule.tasks.map(row => row.globalId);
+    const order = s.scheduleData.tasks.map(row => row.globalId);
     if (JSON.stringify(order) !== JSON.stringify(i.expected_order) || !order.includes(i.id) || i.new_index >= order.length) throw new Error('Task order changed or reorder target is invalid.');
     checkpoint(c); c.commit(() => s.moveTask(i.id, i.new_index)); return { order: useViewerStore.getState().scheduleData?.tasks.map(row => row.globalId) ?? [] };
   }),

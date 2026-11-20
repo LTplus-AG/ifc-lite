@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
-import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { useViewerStore } from '@/store';
 import { acquireScheduleRuntime, holdBoundedSchedulePlayback } from '@/lib/schedule/runtime';
 import type { ToolHost } from '../types';
 import { operation, viewerOperation } from './contract';
 import { metadata, checkpoint } from './analytics-common';
-import { requireModelSchedule } from './analytics-schedule-common';
 const runtimes = new WeakMap<ToolHost, () => void>();
 function ensureRuntime(host: ToolHost) {
   if (!host.lifetimeSignal) return acquireScheduleRuntime();
@@ -21,13 +19,8 @@ export const analyticsSchedulePlaybackOperations = [
   operation<{ until: number; max_real_seconds: number }>(metadata('schedule.play', 'gantt', 'Play the native 4D timeline and overlay through the same single clock/runtime as the panel. Await the requested simulated time, native pause, cancellation, source replacement or bounded real-time expiry; never treat starting playback as completion.', ['view', 'configuration'], resultSchema), {
     type: 'object', properties: { until: { type: 'number' }, max_real_seconds: { type: 'number', minimum: 0.1, maximum: 120 } }, required: ['until', 'max_real_seconds'], additionalProperties: false,
   } satisfies JSONSchemaType<{ until: number; max_real_seconds: number }>, async (i, c) => {
-    const initial = useViewerStore.getState();
-    const data = requireModelSchedule(initial, c.model.id);
-    if (!initial.scheduleRange) throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'The native timeline has no playable time range.',
-      details: { reason: 'unavailable' },
-    });
+    const initial = useViewerStore.getState(); const data = initial.scheduleData;
+    if (!data || !initial.scheduleRange || initial.scheduleSourceModelId !== c.model.id) throw new Error('Initialize the exact target-model native schedule first.');
     if (initial.playbackIsPlaying) throw new Error('A native schedule playback is already running.');
     if (!(i.until > initial.playbackTime && i.until >= initial.scheduleRange.start && i.until <= initial.scheduleRange.end)) throw new Error('Choose a stop time after the current time and within the native schedule range.');
     if (typeof requestAnimationFrame !== 'function') throw new Error('The native animation clock host is unavailable.');

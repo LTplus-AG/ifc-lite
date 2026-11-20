@@ -32,10 +32,33 @@ let chain: Promise<unknown> = Promise.resolve();
 /** Parked replays of the current epoch, waiting for the backing's availability to change. */
 const parked = new Set<() => void>();
 
+/** Released replays not yet complete (queued, retrying or parked), each with the epoch it belongs to. */
+const unfinished = new Set<{ readonly epoch: number }>();
+/** The latest geometry pass's completion, held until every replay of the current epoch completed. */
+let waiter: (() => void) | null = null;
+
+/**
+ * Run `done` (a pass's "triangle counts complete") once no released replay of the current epoch is
+ * still queued, retrying or parked: now if none is. Only a replay that completed, finalized in its own
+ * epoch, counts as done. The latest pass replaces any earlier waiter; `null` withdraws it.
+ */
+export function completeAfterReleasedReplays(done: (() => void) | null): void {
+  waiter = done;
+  settleWaiter();
+}
+function settleWaiter(): void {
+  if (!waiter || [...unfinished].some((replay) => replay.epoch === epoch)) return;
+  const done = waiter;
+  waiter = null;
+  done();
+}
+
 /** A flat reshape supersedes every replay in flight: it must not upload into the reshaped scene. */
 export function supersedeReleasedReplays(): void {
   epoch++;
+  waiter = null; // the reshaping pass registers its own
   for (const stop of [...parked]) stop();
+  for (const replay of [...unfinished]) if (replay.epoch !== epoch) unfinished.delete(replay);
 }
 
 /**
@@ -48,6 +71,10 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
   const released = meshes.filter(isReleasedMesh);
   const mine = epoch;
   const isCurrent = () => mine === epoch;
+  const token = { epoch: mine };
+  unfinished.add(token);
+  // Complete only when it finished in its own epoch; a superseded one just stops counting.
+  const finish = (complete: boolean) => { if (unfinished.delete(token) && complete && isCurrent()) settleWaiter(); };
   // The backing revision each attempt started from: a change during the LAST failing attempt
   // lands before `park` subscribes, so park compares against it instead of losing that wake.
   let seen = releasedGeometryMetadataVersion();
@@ -55,13 +82,13 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
     for (let attempt = 1; attempt <= RETRIES && isCurrent(); attempt++) {
       seen = releasedGeometryMetadataVersion();
       try {
-        if (await replayOnce(renderer, released, isCurrent)) return;
+        if (await replayOnce(renderer, released, isCurrent)) { finish(true); return; }
       } catch (error) {
         console.error(`[GeometryBacking] released geometry replay attempt ${attempt} failed`, error);
       }
       if (attempt < RETRIES && isCurrent()) await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
     }
-    if (isCurrent()) park();
+    if (isCurrent()) park(); else finish(false);
   };
   const attempt = async (): Promise<boolean> => {
     try {
@@ -78,14 +105,14 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
     const stop = () => { done = true; unsubscribe(); parked.delete(stop); };
     const schedule = (): void => {
       if (done) return;
-      if (!isCurrent()) { stop(); return; }
+      if (!isCurrent()) { stop(); finish(false); return; }
       if (busy) { again = true; return; }
       busy = true;
       again = false;
       chain = chain.then(async () => {
         const ok = !done && isCurrent() && await attempt();
         busy = false;
-        if (ok || !isCurrent()) stop();
+        if (ok || !isCurrent()) { stop(); finish(ok); }
         else if (again) schedule();
       });
     };

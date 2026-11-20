@@ -9,7 +9,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import type { SceneContents } from '@ifc-lite/renderer';
 import { clearSceneSupersedingReplays, reshapeSceneKeepingPresentInstanced } from '@/components/viewer/geometry-rebuild';
-import { releasedReplaysIdle, splitReleasedForReplay } from './released-scene-replay';
+import { completeAfterReleasedReplays, releasedReplaysIdle, splitReleasedForReplay } from './released-scene-replay';
 import { notifyReleasedGeometryMetadataChanged } from './released-geometry-metadata';
 
 const renderer = {} as Renderer;
@@ -71,6 +71,25 @@ describe('released scene replay (content reload)', () => {
     await releasedReplaysIdle();
     assert.equal(attempts, 4, 'parking saw the change made during attempt 3 and retried at once');
     assert.deepEqual(uploaded, [[list[1]]], 'with no further notification needed');
+  });
+
+  it('#10903 a released-only reload is not triangle-count complete while its replay is deferred or parked; only once it completes', async () => {
+    const list = releasedList();
+    let available = false;
+    const resident = splitReleasedForReplay(renderer, [list[1]], async () => { if (!available) throw new Error('backing unavailable'); return true; });
+    assert.deepEqual(resident, [], 'released-only: the normal upload has nothing to do');
+    let complete = false;
+    completeAfterReleasedReplays(() => { complete = true; }); // the pass's own upload succeeded
+    assert.equal(complete, false, 'the replay is still awaiting storage');
+    await releasedReplaysIdle();
+    assert.equal(complete, false, 'parked on an unavailable backing: the released meshes are missing');
+    available = true;
+    notifyReleasedGeometryMetadataChanged();
+    await releasedReplaysIdle();
+    assert.equal(complete, true, 'complete only after the replay finalized in its own epoch');
+    let immediate = false;
+    completeAfterReleasedReplays(() => { immediate = true; });
+    assert.equal(immediate, true, 'with nothing pending, a pass completes at once');
   });
 
   it('#10903 a notification while a parked attempt is in flight never makes a successful replay upload twice', async () => {

@@ -132,6 +132,9 @@ async function replay(renderer: Renderer, released: readonly MeshData[], isCurre
     await Promise.all([import('@ifc-lite/renderer'), import('./backing-debug-hook'), import('./generation-replay'),
       import('./store-mesh-readback'), import('./geometry-readback'), import('@/store/viewerStoreHandle')]);
   const tap = activeGeometryBackingTap();
+  // The same arrival placement as a resident upload: the current Exploded lift, fenced entry by entry.
+  const [{ captureLevelLift }, { placeNewMeshesAtCurrentLevel }] = await Promise.all([import('@/lib/level-lift-fence'), import('@/lib/level-arrival')]);
+  const level = captureLevelLift(getViewerState());
   // Each released mesh (or copy of one) by the model whose store list holds its source.
   const owner = new Map<MeshData, string>();
   for (const [modelId, model] of getViewerState().models) for (const mesh of model.geometryResult?.meshes ?? []) owner.set(mesh, modelId);
@@ -149,10 +152,10 @@ async function replay(renderer: Renderer, released: readonly MeshData[], isCurre
     for (const [modelId, meshes] of byModel) {
       const source = tap?.replaySource(modelId);
       if (!source) throw new GeometryUnavailableError(`Model ${modelId} has no acknowledged backing to replay from`);
-      yield* replayStoreList(meshes, source, SLICE);
+      for await (const batch of replayStoreList(meshes, source, SLICE)) yield placeNewMeshesAtCurrentLevel([...batch], level.lift);
     }
   }
-  const result = await replayReleasedGeometry(renderer, batches(), { isCurrent });
+  const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => isCurrent() && level.current(getViewerState()) });
   if (result.status !== 'complete') console.warn(`[GeometryBacking] released geometry replay ${result.status}; it will be retried`, result);
   return result.status === 'complete';
 }

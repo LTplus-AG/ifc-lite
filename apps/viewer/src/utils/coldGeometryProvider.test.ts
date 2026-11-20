@@ -44,6 +44,14 @@ async function makeFixture() {
   return { section, chunks: open.chunks };
 }
 
+class ReadCountingBlob extends Blob {
+  reads = 0;
+  override slice(start?: number, end?: number, contentType?: string): Blob {
+    this.reads++;
+    return super.slice(start, end, contentType);
+  }
+}
+
 describe('makeColdGeometryProvider', () => {
   it('returns only meshes from chunks intersecting the query bounds (ArrayBuffer source)', async () => {
     const { section, chunks } = await makeFixture();
@@ -77,5 +85,68 @@ describe('makeColdGeometryProvider', () => {
     // Second query hits the decoded-chunk LRU (same result, no re-read issues).
     const again = await provider.loadMeshesInBounds([0, 0, 0], [10, 10, 10]);
     assert.deepStrictEqual(again.map((m) => m.expressId).sort(), [1, 2]);
+  });
+
+  it('#10264 evicts decoded chunks by backing bytes before the four-entry limit', async () => {
+    const section = await buildGeometrySectionV13(
+      [mesh(1, [0, 0, 0]), mesh(2, [1000, 0, 0])], coordInfo, { compress: false },
+    );
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION, { sharedArena: true });
+    const [sample] = await open.readChunk(0);
+    assert.strictEqual(sample.positions.buffer, sample.normals.buffer);
+    assert.strictEqual(sample.positions.buffer, sample.indices.buffer);
+    const source = new ReadCountingBlob([section]);
+    const provider = makeColdGeometryProvider({ source, chunks: open.chunks,
+      geometrySectionOffset: 0, version: FORMAT_VERSION,
+      decodedCacheBytes: sample.positions.buffer.byteLength });
+    const first = await provider.loadMeshesInBounds([0, 0, 0], [2, 2, 2]);
+    const hit = await provider.loadMeshesInBounds([0, 0, 0], [2, 2, 2]);
+    assert.strictEqual(hit[0], first[0], 'one shared arena fits and must stay cached');
+    assert.equal(source.reads, 1);
+    const far = await provider.loadMeshesInBounds([1000, 0, 0], [1002, 2, 2]);
+    assert.deepEqual(far.map(m => m.expressId), [2]);
+    const restored = await provider.loadMeshesInBounds([0, 0, 0], [2, 2, 2]);
+    assert.equal(source.reads, 3, 'the first chunk must be read back after byte eviction');
+    assert.notStrictEqual(restored[0], first[0]);
+    assert.deepEqual(restored[0].positions, first[0].positions);
+  });
+
+  it('#10264 returns oversized chunks without evicting a useful small neighbour', async () => {
+    const large = mesh(2, [1000, 0, 0]);
+    large.positions = new Float32Array(3000);
+    large.normals = new Float32Array(3000);
+    const section = await buildGeometrySectionV13([mesh(1, [0, 0, 0]), large], coordInfo);
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
+    const source = new ReadCountingBlob([section]);
+    const provider = makeColdGeometryProvider({ source, chunks: open.chunks,
+      geometrySectionOffset: 0, version: FORMAT_VERSION, decodedCacheBytes: 1024 });
+    const small = await provider.loadMeshesInBounds([0, 0, 0], [2, 2, 2]);
+    const firstLarge = await provider.loadMeshesInBounds([1000, 0, 0], [1002, 2, 2]);
+    const nextLarge = await provider.loadMeshesInBounds([1000, 0, 0], [1002, 2, 2]);
+    assert.equal(firstLarge[0].positions.length, 3000);
+    assert.notStrictEqual(firstLarge[0], nextLarge[0], 'oversized chunks cannot stay in the LRU');
+    const againSmall = await provider.loadMeshesInBounds([0, 0, 0], [2, 2, 2]);
+    assert.strictEqual(againSmall[0], small[0]);
+    assert.equal(source.reads, 3);
+  });
+
+  it('#10264 a zero budget disables decoded retention while preserving readback', async () => {
+    const { section, chunks } = await makeFixture();
+    const source = new ReadCountingBlob([section]);
+    const provider = makeColdGeometryProvider({ source, chunks, geometrySectionOffset: 0,
+      version: FORMAT_VERSION, decodedCacheBytes: 0 });
+    const first = await provider.loadMeshesInBounds([0, 0, 0], [10, 10, 10]);
+    const next = await provider.loadMeshesInBounds([0, 0, 0], [10, 10, 10]);
+    assert.equal(source.reads, 2);
+    assert.notStrictEqual(first[0], next[0]);
+    assert.deepEqual(first, next);
+  });
+
+  it('#10264 rejects invalid cache budgets instead of silently losing the byte bound', async () => {
+    const { section, chunks } = await makeFixture();
+    for (const decodedCacheBytes of [-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+      assert.throws(() => makeColdGeometryProvider({ source: section, chunks,
+        geometrySectionOffset: 0, version: FORMAT_VERSION, decodedCacheBytes }), RangeError);
+    }
   });
 });

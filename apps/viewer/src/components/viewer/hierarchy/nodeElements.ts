@@ -6,6 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store';
 import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
+import { getLegacySourceMutationView } from '@/sdk/adapters/model-compat';
 import type { TreeNode, UnifiedStorey } from './types';
 
 /** Rows whose elements come from spatial membership; the rest carry theirs on the node. */
@@ -29,6 +30,7 @@ export function createNodeElementsResolver(
   toGlobalIdsForModel: (modelId: string, expressIds: number[]) => number[],
   mutationViews: ReadonlyMap<string, MutablePropertyView>,
 ): (node: TreeNode) => number[] {
+  const legacyView = getLegacySourceMutationView({ models, ifcDataStore: ifcDataStore ?? null, mutationViews });
   const resolve = (node: TreeNode): number[] => {
     if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
         node.type === 'group' || node.type === 'presentation-layer' || node.type === 'group-member') {
@@ -56,8 +58,8 @@ export function createNodeElementsResolver(
       const storeyId = node.expressIds[0];
       const modelId = node.modelIds[0];
 
-      if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = effectiveSpatialMembers(ifcDataStore, mutationViews.get('legacy'), storeyId);
+      if (modelId === 'legacy' && !models.has(modelId) && ifcDataStore?.spatialHierarchy) {
+        const elements = effectiveSpatialMembers(ifcDataStore, legacyView, storeyId);
         if (elements.length) return elements;
       }
 
@@ -70,8 +72,8 @@ export function createNodeElementsResolver(
       const spaceId = node.expressIds[0];
       const modelId = node.modelIds[0];
 
-      if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = effectiveSpatialMembers(ifcDataStore, mutationViews.get('legacy'), spaceId);
+      if (modelId === 'legacy' && !models.has(modelId) && ifcDataStore?.spatialHierarchy) {
+        const elements = effectiveSpatialMembers(ifcDataStore, legacyView, spaceId);
         return [spaceId, ...elements];
       }
 
@@ -97,10 +99,12 @@ export function createNodeElementsResolver(
     if (!MEMBERSHIP_ROWS.has(node.type) && !node.id.startsWith('contrib-')) return resolve(node);
     // SDK raw, skip-history and remote writes advance the views' revisions without a viewer mutationVersion.
     const revision = node.modelIds.map((id) => mutationViews.get(id)?.getMutationRevision()).join();
+    const legacyRevision = node.modelIds.includes('legacy') ? legacyView?.getMutationRevision() : undefined;
+    const cacheKey = legacyRevision === undefined ? revision : `${revision}:${legacyRevision}`;
     const cached = resolved.get(node.id);
-    if (cached?.[0] === revision) return cached[1];
+    if (cached?.[0] === cacheKey) return cached[1];
     const elements = resolve(node);
-    resolved.set(node.id, [revision, elements]);
+    resolved.set(node.id, [cacheKey, elements]);
     return elements;
   };
 }

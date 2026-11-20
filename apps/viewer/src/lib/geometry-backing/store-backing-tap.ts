@@ -142,6 +142,9 @@ export class StoreGeometryBackingTap {
         this.tracked.get(modelId)!.registered = true;
         continue;
       }
+      // A content change loses committed instancing until re-supply is proved, on EVERY path, including the
+      // stale and released-list exits below that build no successor now: a later carry must not revive it.
+      if (versionChanged && (tracked.shards > 0 || tracked.carrying)) tracked.instancedLost = true;
       // First geometry of a model whose shards arrived earlier: an append.
       if (!versionChanged && tracked.meshes === undefined && tracked.consumed === 0 && meshes) tracked.meshes = meshes;
       // A stale (released) generation answers nothing; only a fresh resident list may replace it.
@@ -186,8 +189,21 @@ export class StoreGeometryBackingTap {
     if (tracked.backing) tracked.backing.supersede(); else tracked.replaced = true;
   }
 
-  private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost'): void {
+  /**
+   * The only place a successor generation is built. Released arrays are terminal: a successor built from
+   * them would persist zero-length meshes and replace the backing that holds the real geometry. Refuse,
+   * leave the acknowledged generation durable (it stops answering: it lacks what arrived), and report false.
+   */
+  private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost'): boolean {
     const previous = this.tracked.get(modelId);
+    if (meshes?.some(isReleasedMesh)) {
+      if (previous) {
+        previous.stale ??= new Error('Geometry arrived for a model whose CPU geometry was released; a fresh load must register it again');
+        this.supersede(previous);
+        console.error(`[GeometryBacking] ${modelId}: ${previous.stale.message}`);
+      }
+      return false;
+    }
     this.supersede(previous);
     const next: Tracked = { meshes, consumed: 0, chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0, carrying: shards === 'carry',
       registered: previous?.registered };
@@ -209,6 +225,7 @@ export class StoreGeometryBackingTap {
     next.chain = this.settle(next, begun);
     this.tracked.set(modelId, next);
     if (meshes && meshes.length > 0) this.appendSuffix(next, meshes);
+    return true;
   }
 
   private writer(tracked: Tracked): ModelGeometryBacking['writer'] {
@@ -235,10 +252,23 @@ export class StoreGeometryBackingTap {
       this.regenerate(modelId, undefined, 'none');
       tracked = this.tracked.get(modelId)!;
     }
+    // A stale generation answers nothing and takes nothing more (released arrays are terminal).
+    if (tracked.stale) return;
+    // A sealed generation's writer is closed and its acknowledgement must stop verifying NOW, not when the
+    // deferred append runs: supersede it and stage a successor (its shards carried) for this one.
+    if (tracked.sealed) {
+      if (!this.regenerate(modelId, tracked.meshes, 'carry')) return;
+      tracked = this.tracked.get(modelId)!;
+    }
     const target = tracked;
     target.shards++;
-    // Decode a private copy: the drain may transfer or reuse the queued bytes.
-    const shard = decodeInstancedShard(bytes.slice(0));
+    // Decode a private copy: the drain may transfer or reuse the queued bytes. A shard that does not decode
+    // is a failure of this generation (never acknowledged), not an exception that skips it unrecorded.
+    let shard: DecodedInstancedShard;
+    try { shard = decodeInstancedShard(bytes.slice(0)); } catch (error) {
+      void this.settle(target, Promise.reject(error));
+      return;
+    }
     this.enqueue(target, () => this.writer(target).appendInstancedShard(shard));
   }
 
@@ -290,6 +320,20 @@ export class StoreGeometryBackingTap {
       await this.settle(tracked, tracked.backing.acknowledge().then(() => undefined));
     }
     return this.status();
+  }
+
+  /**
+   * The release allowlist (#10876): the model's current generation and the exact list it verified, only
+   * when it is registered, sealed, idle-complete (every listed mesh consumed, no shard pending, carried
+   * or missed), current, not stale or failed, and backs resident arrays. Anything else: undefined.
+   */
+  releaseCandidate(modelId: string): { backing: ModelGeometryBacking; meshes: MeshData[] } | undefined {
+    const tracked = this.tracked.get(modelId);
+    const backing = tracked?.backing, meshes = tracked?.meshes;
+    if (!tracked || !backing || !meshes || !tracked.registered || !tracked.sealed || tracked.stale || tracked.failure
+      || tracked.instancedLost || tracked.carrying || tracked.replaced || this.missedShards(modelId)) return undefined;
+    if (!backing.isCurrent || !backing.isComplete || tracked.consumed !== meshes.length || meshes.some(isReleasedMesh)) return undefined;
+    return { backing, meshes };
   }
 
   /** Shards were enqueued for this model that the tap never saw. */

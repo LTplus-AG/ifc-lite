@@ -91,11 +91,25 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },
     // IFC4 deleted both subtypes for IfcTask: an upgrade writes them as IfcTask
-    // (`map_2x3_to_4`), losing MoveFrom, MoveTo, PunchList and ActionID (#10902).
+    // (`deleted_subtype`), losing MoveFrom, MoveTo, PunchList and ActionID (#10902).
     AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCMOVE", "IFCTASK") },
     AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCORDERACTION", "IFCTASK") },
     same("IFCPROPERTYDEPENDENCYRELATIONSHIP"),
 ];
+
+/// An IFC2X3 subtype IFC4 deleted, written as its IFC4 supertype on an upgrade
+/// to IFC4 or IFC4X3 (#10902): IfcMove and IfcOrderAction through their map,
+/// the relationships by the prefix trim. Not `IfcRelOverridesProperties`, which
+/// would attach the values it overrides, nor IFC5, which has no registry to
+/// reconcile the attributes in. Twin of the TypeScript `DELETED_SUBTYPES`.
+pub(crate) fn deleted_subtype(t: &str) -> Option<&'static str> {
+    Some(match t {
+        "IFCMOVE" | "IFCORDERACTION" => "IFCTASK",
+        "IFCRELOCCUPIESSPACES" => "IFCRELASSIGNSTOACTOR",
+        "IFCRELASSIGNSTASKS" | "IFCRELASSIGNSTOPROJECTORDER" | "IFCRELSCHEDULESCOSTITEMS" => "IFCRELASSIGNSTOCONTROL",
+        _ => return None,
+    })
+}
 
 /// The map for writing `entity_type` as `new_type` from `cfrom` to `cto`, and
 /// whether it runs upward (IFC2X3 source).

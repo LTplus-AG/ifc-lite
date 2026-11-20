@@ -68,9 +68,9 @@ pub(crate) enum Route {
     /// A proxy if rooted, refused if not ([`resolve_unrepresented_entity`]).
     Unrepresented,
     /// Converted by another pass, so the warnings do not name it here: an
-    /// IFC2X3 varying action by the structural pass, which reports it (#9668),
-    /// an `IfcPresentationStyleAssignment` on an IFC4X3 target by style
-    /// flattening (D57).
+    /// IFC2X3 varying action on an IFC4 target by the structural pass, which
+    /// reports it (#9668), and an `IfcPresentationStyleAssignment` on an
+    /// IFC4X3 target by style flattening (D57).
     Handled,
     /// A type the source declares and the target does not, written as it is
     /// and named in the warnings: [`VERBATIM_UPGRADE`], or any type on an
@@ -91,7 +91,8 @@ pub(crate) fn missing_type_route(entity_type: &str, new_type: &str, from: &str, 
     match (from, to) {
         (_, "IFC2X3") => Route::Unrepresented,
         _ if !declared_in_source => Route::Written,
-        ("IFC2X3", _) if crate::schema_structural_varying::StructuralVarying::is_varying(entity_type) => Route::Handled,
+        // The structural pass converts and reports IFC2X3 <-> IFC4 only.
+        ("IFC2X3", "IFC4") if crate::schema_structural_varying::StructuralVarying::is_varying(entity_type) => Route::Handled,
         _ if entity_type == crate::schema_style_flatten::ASSIGNMENT && crate::schema_style_flatten::StyleFlatten::applies(from, to) => Route::Handled,
         ("IFC4X3", "IFC4") => Route::Unrepresented,
         ("IFC2X3", "IFC4") if !VERBATIM_UPGRADE.contains(&entity_type) => Route::Unrepresented,
@@ -263,7 +264,7 @@ mod tests {
         assert_eq!(route("IFCCURVESEGMENT", "IFC4X3", "IFC4", false), Route::Written);
         assert_eq!(route("IFCTRIANGULATEDFACESET", "IFC4X3", "IFC4", true), Route::Written);
         // IFC2X3-only: rooted is proxied, a listed one is kept (D59, #10902), a varying action is the structural pass's (#9668).
-        assert_eq!(route("IFCRELOCCUPIESSPACES", "IFC2X3", "IFC4", true), Route::Unrepresented);
+        assert_eq!(route("IFCSERVICELIFE", "IFC2X3", "IFC4", true), Route::Unrepresented);
         assert_eq!(route("IFCCALENDARDATE", "IFC2X3", "IFC4", true), Route::Verbatim);
         assert_eq!(route("IFCSTRUCTURALLINEARACTIONVARYING", "IFC2X3", "IFC4", true), Route::Handled);
         // IFC5 has no registry.
@@ -322,32 +323,34 @@ mod tests {
     }
 
     /// As the TypeScript twin's end-to-end case: an IFC2X3 -> IFC4 upgrade
-    /// maps, proxies or keeps each record, and the warnings name the last two.
+    /// maps, renames, proxies or keeps each record, and the warnings name the
+    /// proxied and kept ones.
     #[test]
     fn an_upgrade_writes_each_route_and_names_it_10902() {
-        let data = "#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n#2=IFCSPACE('0AvctVUKr0kugbFTf53O9L',$,'Room',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);\n#3=IFCACTOR('0BvctVUKr0kugbFTf53O9L',$,'Tenant',$,$,$);\n#4=IFCRELOCCUPIESSPACES('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);\n#5=IFCMOVE('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1','planned',$,.F.,1,$,$,('pack'));\n#6=IFCCALENDARDATE(1,2,2020);";
+        let data = "#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n#2=IFCSPACE('0AvctVUKr0kugbFTf53O9L',$,'Room',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);\n#3=IFCACTOR('0BvctVUKr0kugbFTf53O9L',$,'Tenant',$,$,$);\n#4=IFCRELOCCUPIESSPACES('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);\n#5=IFCMOVE('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1','planned',$,.F.,1,$,$,('pack'));\n#6=IFCCALENDARDATE(1,2,2020);\n#7=IFCSERVICELIFE('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,.ACTUALSERVICELIFE.,10.);";
         let src = format!("ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n{data}\nENDSEC;\nEND-ISO-10303-21;\n");
         let opts = crate::step::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
         let (out, _, warnings) = crate::step::export_step_with_diagnostics(src.as_bytes(), &opts).unwrap();
         let line = |id: &str| out.lines().find(|l| l.starts_with(id)).unwrap_or_default().to_owned();
-        assert!(line("#4=").starts_with("#4=IFCPROXY(") && line("#4=").ends_with(",$,'IFCRELOCCUPIESSPACES',$,$,$,$,.NOTDEFINED.,$);"), "{out}");
+        assert_eq!(line("#4="), "#4=IFCRELASSIGNSTOACTOR('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);");
+        assert!(line("#7=").starts_with("#7=IFCPROXY(") && line("#7=").ends_with(",$,'IFCSERVICELIFE',$,$,$,$,.NOTDEFINED.,$);"), "{out}");
         assert_eq!(line("#5="), "#5=IFCTASK('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1',$,'planned',$,.F.,1,$,$);");
         assert_eq!(line("#6="), "#6=IFCCALENDARDATE(1,2,2020);");
         let named = warnings.join("\n");
-        assert!(named.contains("were written as IFCPROXY: IFCRELOCCUPIESSPACES (1)."), "{named}");
+        assert!(named.contains("were written as IFCPROXY: IFCSERVICELIFE (1)."), "{named}");
         assert!(named.contains("which readers may reject: IFCCALENDARDATE (1)."), "{named}");
     }
 
     #[test]
     fn the_warnings_name_each_type_by_route_10902() {
         let mut plans = crate::schema_plan::PlanCache::default();
-        for ty in ["IFCRELOCCUPIESSPACES", "IFCRELOCCUPIESSPACES", "IFCCALENDARDATE", "IFCWALL", "IFCSTRUCTURALLINEARACTIONVARYING"] {
+        for ty in ["IFCSERVICELIFE", "IFCSERVICELIFE", "IFCCALENDARDATE", "IFCWALL", "IFCSTRUCTURALLINEARACTIONVARYING"] {
             plans.get(ty, "IFC2X3", "IFC4");
         }
         plans.get("IFCCURVESEGMENT", "IFC4X3", "IFC4");
         // Not the refused IfcCurveSegment, nor the varying action the structural pass names (#9668).
         assert_eq!(plans.warnings(), [
-            "2 record(s) of a type the target schema does not declare were written as IFCPROXY: IFCRELOCCUPIESSPACES (2).",
+            "2 record(s) of a type the target schema does not declare were written as IFCPROXY: IFCSERVICELIFE (2).",
             "1 record(s) of a type the target schema does not declare were written as they are, which readers may reject: IFCCALENDARDATE (1).",
         ]);
     }

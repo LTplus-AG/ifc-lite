@@ -28,7 +28,6 @@ fn map_2x3_to_4(t: &str) -> Option<&'static str> {
         "IFCGASTERMINALTYPE" => "IFCBURNERTYPE",
         "IFCEQUIPMENTELEMENT" => "IFCBUILDINGELEMENTPROXY",
         "IFCRELCONNECTSSTRUCTURALELEMENT" => "IFCRELASSIGNSTOPRODUCT",
-        "IFCMOVE" | "IFCORDERACTION" => "IFCTASK", // IFC4 deleted both for IfcTask (#10902)
         _ => return None,
     })
 }
@@ -195,7 +194,9 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
     }
     match (from, to) {
         // 2X3 → 4 (then 4 → 4X3 is a no-op rename-wise)
-        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") | ("IFC2X3", "IFC5") => map_2x3_to_4(u),
+        // ...and the subtypes IFC4 deleted, where a registry reconciles their attributes (#10902).
+        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::deleted_subtype(u)),
+        ("IFC2X3", "IFC5") => map_2x3_to_4(u),
         ("IFC4", "IFC2X3") => map_4_to_2x3(u),
         ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(u),
         ("IFC4X3", "IFC2X3") | ("IFC5", "IFC2X3") => match map_4x3_to_4(u) {

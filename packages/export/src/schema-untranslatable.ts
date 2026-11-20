@@ -78,8 +78,8 @@ export const VERBATIM_UPGRADE: ReadonlySet<string> = new Set([
  *  - `written`: the target declares it, or the source does not know the name;
  *  - `unrepresented`: proxied if rooted, refused if not (`resolveUnrepresentedEntity`);
  *  - `handled`: converted by another pass, so neither the loss report nor the
- *    warnings name it here: an IFC2X3 varying action by the structural pass,
- *    which reports it (#9668), an IfcPresentationStyleAssignment on an IFC4X3
+ *    warnings name it here: an IFC2X3 varying action on an IFC4 target by the
+ *    structural pass, which reports it (#9668), an IfcPresentationStyleAssignment on an IFC4X3
  *    target by style flattening (D57);
  *  - `verbatim`: written as it is under a name the target lacks, and reported
  *    lossy ({@link VERBATIM_UPGRADE}, or an IFC4X3 target, #10971).
@@ -90,7 +90,8 @@ export function missingTypeRoute(entityType: string, fromSchema: IfcSchemaVersio
   if (toSchema === 'IFC2X3') return 'unrepresented';
   if (!inSource) return 'written';
   const type = entityType.toUpperCase();
-  if (fromSchema === 'IFC2X3' && varyingTarget(type)) return 'handled';
+  // The structural pass converts and reports IFC2X3 <-> IFC4 only.
+  if (fromSchema === 'IFC2X3' && toSchema === 'IFC4' && varyingTarget(type)) return 'handled';
   // `StyleFlatten.applies`, as Rust asks it; inline, as that module imports schema-converter.
   if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4') && type === 'IFCPRESENTATIONSTYLEASSIGNMENT') return 'handled';
   if (toSchema !== 'IFC4') return 'verbatim';

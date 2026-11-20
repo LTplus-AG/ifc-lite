@@ -121,13 +121,6 @@
    "expect": "#5=IFCCARTESIANPOINT((0.,0.,0.));"
   },
   {
-   "why": "IFCRELOCCUPIESSPACES is a rooted IFC2X3-only relationship IFC4 deleted: an IFCPROXY, not its IFC2X3 name in an IFC4 file (#10902)",
-   "from": "IFC2X3",
-   "to": "IFC4",
-   "line": "#5=IFCRELOCCUPIESSPACES('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);",
-   "expect": "#5=IFCPROXY(<MINTED>,$,'IFCRELOCCUPIESSPACES',$,$,$,$,.NOTDEFINED.,$);"
-  },
-  {
    "why": "IFCCALENDARDATE is a non-rooted IFC2X3-only type on the D59 list: written as it is (#10879 converts dates)",
    "from": "IFC2X3",
    "to": "IFC4",
@@ -140,6 +133,76 @@
    "to": "IFC4",
    "line": "#5=IFCMOVE('0YvctVUKr0kugbFTf53O9L',$,'M',$,$,'T1','s',$,.F.,1,#7,#8,('a'));",
    "expect": "#5=IFCTASK('0YvctVUKr0kugbFTf53O9L',$,'M',$,$,'T1',$,'s',$,.F.,1,$,$);"
+  },
+  {
+   "why": "IFCSERVICELIFE is a rooted IFC2X3-only control IFC4 deleted with no successor: an IFCPROXY, not its IFC2X3 name in an IFC4 file (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCSERVICELIFE('0YvctVUKr0kugbFTf53O9L',$,'Life',$,$,.ACTUALSERVICELIFE.,10.);",
+   "expect": "#5=IFCPROXY(<MINTED>,$,'IFCSERVICELIFE',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "IFCRELASSIGNSTASKS, a subtype IFC4 deleted, is written as its supertype IfcRelAssignsToControl, TimeForTask trimmed (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELASSIGNSTASKS('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,#4);",
+   "expect": "#5=IFCRELASSIGNSTOCONTROL('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3);"
+  },
+  {
+   "why": "IFCMOVE is not renamed to IfcTask for IFC5, which has no table to map its attributes into (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC5",
+   "line": "#5=IFCMOVE('0YvctVUKr0kugbFTf53O9L',$,'M',$,$,'T1','s',$,.F.,1,#7,#8,('a'));",
+   "expect": "#5=IFCMOVE('0YvctVUKr0kugbFTf53O9L',$,'M',$,$,'T1','s',$,.F.,1,#7,#8,('a'));"
+  },
+  {
+   "why": "IFCORDERACTION, which IFC4 deleted for IfcTask, is written as IfcTask, ActionID lost (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCORDERACTION('0YvctVUKr0kugbFTf53O9L',$,'O',$,$,'T2',$,$,.T.,2,'PO-77');",
+   "expect": "#5=IFCTASK('0YvctVUKr0kugbFTf53O9L',$,'O',$,$,'T2',$,$,$,.T.,2,$,$);"
+  },
+  {
+   "why": "IFCRELOCCUPIESSPACES is written as its supertype IfcRelAssignsToActor, same attribute list (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELOCCUPIESSPACES('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);",
+   "expect": "#5=IFCRELASSIGNSTOACTOR('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);"
+  },
+  {
+   "why": "IFCRELASSIGNSTOPROJECTORDER is written as its supertype IfcRelAssignsToControl (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELASSIGNSTOPROJECTORDER('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3);",
+   "expect": "#5=IFCRELASSIGNSTOCONTROL('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3);"
+  },
+  {
+   "why": "IFCRELSCHEDULESCOSTITEMS is written as its supertype IfcRelAssignsToControl (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELSCHEDULESCOSTITEMS('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3);",
+   "expect": "#5=IFCRELASSIGNSTOCONTROL('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3);"
+  },
+  {
+   "why": "IFCRELOVERRIDESPROPERTIES stays a proxy: as IfcRelDefinesByProperties it would attach the values it overrides (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELOVERRIDESPROPERTIES('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),#3,(#4));",
+   "expect": "#5=IFCPROXY(<MINTED>,$,'IFCRELOVERRIDESPROPERTIES',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "IFCRELASSIGNSTASKS on an IFC4X3 target is written as IfcRelAssignsToControl too, TimeForTask trimmed (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#5=IFCRELASSIGNSTASKS('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,#4);",
+   "expect": "#5=IFCRELASSIGNSTOCONTROL('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3);"
+  },
+  {
+   "why": "IFCRELOCCUPIESSPACES on an IFC4X3 target is written as IfcRelAssignsToActor (#10902)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#5=IFCRELOCCUPIESSPACES('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);",
+   "expect": "#5=IFCRELASSIGNSTOACTOR('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);"
   }
  ],
  "routes": {
@@ -236,14 +299,10 @@
     "IFCFLUIDFLOWPROPERTIES",
     "IFCFURNITURESTANDARD",
     "IFCPROJECTORDERRECORD",
-    "IFCRELASSIGNSTASKS",
-    "IFCRELASSIGNSTOPROJECTORDER",
     "IFCRELASSOCIATESAPPLIEDVALUE",
     "IFCRELASSOCIATESPROFILEPROPERTIES",
     "IFCRELINTERACTIONREQUIREMENTS",
-    "IFCRELOCCUPIESSPACES",
     "IFCRELOVERRIDESPROPERTIES",
-    "IFCRELSCHEDULESCOSTITEMS",
     "IFCROUNDEDEDGEFEATURE",
     "IFCSCHEDULETIMECONTROL",
     "IFCSERVICELIFE",
@@ -341,15 +400,11 @@
     "IFCRADIUSDIMENSION",
     "IFCRATIONALBEZIERCURVE",
     "IFCREFERENCESVALUEDOCUMENT",
-    "IFCRELASSIGNSTASKS",
-    "IFCRELASSIGNSTOPROJECTORDER",
     "IFCRELASSOCIATESAPPLIEDVALUE",
     "IFCRELASSOCIATESPROFILEPROPERTIES",
     "IFCRELAXATION",
     "IFCRELINTERACTIONREQUIREMENTS",
-    "IFCRELOCCUPIESSPACES",
     "IFCRELOVERRIDESPROPERTIES",
-    "IFCRELSCHEDULESCOSTITEMS",
     "IFCRIBPLATEPROFILEPROPERTIES",
     "IFCROUNDEDEDGEFEATURE",
     "IFCSCHEDULETIMECONTROL",
@@ -359,6 +414,8 @@
     "IFCSOUNDVALUE",
     "IFCSPACEPROGRAM",
     "IFCSPACETHERMALLOADPROPERTIES",
+    "IFCSTRUCTURALLINEARACTIONVARYING",
+    "IFCSTRUCTURALPLANARACTIONVARYING",
     "IFCSTRUCTURALPROFILEPROPERTIES",
     "IFCSTRUCTURALSTEELPROFILEPROPERTIES",
     "IFCSTRUCTUREDDIMENSIONCALLOUT",
@@ -374,9 +431,7 @@
     "IFCWINDOWSTYLE"
    ],
    "handled": [
-    "IFCPRESENTATIONSTYLEASSIGNMENT",
-    "IFCSTRUCTURALLINEARACTIONVARYING",
-    "IFCSTRUCTURALPLANARACTIONVARYING"
+    "IFCPRESENTATIONSTYLEASSIGNMENT"
    ]
   },
   "IFC4>IFC4X3": {

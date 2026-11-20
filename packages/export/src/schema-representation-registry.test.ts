@@ -14,6 +14,7 @@ import { attrNameTable, convertEntityType, shouldSkipEntity, type IfcSchemaVersi
 import { isRootedEntityType, missingTypeRoute, VERBATIM_UPGRADE } from './schema-untranslatable.js';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
+import { DELETED_SUBTYPES } from './schema-converter-attr-maps.js';
 import { analyzeConversionLoss, classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 
 type Routes = { verbatim?: string[]; proxied?: string[]; handled?: string[] };
@@ -60,10 +61,11 @@ describe('every source-only type has a route (#10902)', () => {
     const { verbatim, proxied, refused } = partition('IFC2X3', 'IFC4');
     expect(verbatim).toEqual([...VERBATIM_UPGRADE].sort());
     expect(refused).toEqual([]);
-    expect(proxied).toContain('IFCRELOCCUPIESSPACES');
-    // Renamed to IfcTask, so neither needs a route.
-    expect([...verbatim, ...proxied]).not.toContain('IFCMOVE');
-    expect([...verbatim, ...proxied]).not.toContain('IFCORDERACTION');
+    expect(proxied).toContain('IFCSERVICELIFE');
+    // Written as their IFC4 supertype, so none needs a route.
+    for (const type of DELETED_SUBTYPES.keys()) expect([...verbatim, ...proxied], type).not.toContain(type);
+    // Its overrides would be lost silently as IfcRelDefinesByProperties, so it stays a proxy.
+    expect(proxied).toContain('IFCRELOVERRIDESPROPERTIES');
   });
 });
 
@@ -75,17 +77,25 @@ describe('an IFC2X3 -> IFC4 upgrade writes each route, and the loss report names
 #4=IFCRELOCCUPIESSPACES('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);
 #5=IFCMOVE('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1','planned',$,.F.,1,$,$,('pack'));
 #6=IFCCALENDARDATE(1,2,2020);
+#7=IFCSERVICELIFE('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,.ACTUALSERVICELIFE.,10.);
+#8=IFCRELASSIGNSTASKS('0FvctVUKr0kugbFTf53O9L',$,$,$,(#5),$,#9,$);
+#9=IFCWORKPLAN('0GvctVUKr0kugbFTf53O9L',$,'Plan',$,$,'WP1',#6,$,$,$,$,#6,$,$,$);
 `;
-  it('maps, proxies or keeps each record, and reports all three', async () => {
+  it('maps, renames, proxies or keeps each record, and reports them', async () => {
     const store = await parse('IFC2X3', text);
     const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4' }).content).split('\n');
     const line = (id: number) => out.find((l) => l.startsWith(`#${id}=`));
-    expect(line(4)).toMatch(/^#4=IFCPROXY\('[^']+',\$,'IFCRELOCCUPIESSPACES',\$,\$,\$,\$,\.NOTDEFINED\.,\$\);$/);
+    expect(line(4)).toBe("#4=IFCRELASSIGNSTOACTOR('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);");
+    expect(line(7)).toMatch(/^#7=IFCPROXY\('[^']+',\$,'IFCSERVICELIFE',\$,\$,\$,\$,\.NOTDEFINED\.,\$\);$/);
     expect(line(5)).toBe("#5=IFCTASK('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1',$,'planned',$,.F.,1,$,$);");
     expect(line(6)).toBe('#6=IFCCALENDARDATE(1,2,2020);');
     const entries = analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries;
     const entry = (type: string) => entries.find((e) => e.sourceType === type);
-    expect(entry('IFCRELOCCUPIESSPACES')).toMatchObject({ kind: 'proxied', targetType: 'IFCPROXY', expressIds: [4] });
+    // Its supertype holds every attribute, so nothing is lost to report.
+    expect(entry('IFCRELOCCUPIESSPACES')).toBeUndefined();
+    expect(entry('IFCSERVICELIFE')).toMatchObject({ kind: 'proxied', targetType: 'IFCPROXY', expressIds: [7] });
+    expect(line(8)).toBe("#8=IFCRELASSIGNSTOCONTROL('0FvctVUKr0kugbFTf53O9L',$,$,$,(#5),$,#9);");
+    expect(entry('IFCRELASSIGNSTASKS')).toMatchObject({ kind: 'lossy', targetType: 'IFCRELASSIGNSTOCONTROL', droppedAttributes: ['TimeForTask'], expressIds: [8] });
     expect(entry('IFCMOVE')).toMatchObject({ kind: 'lossy', targetType: 'IFCTASK', droppedAttributes: ['MoveFrom', 'MoveTo', 'PunchList'], expressIds: [5] });
     expect(entry('IFCCALENDARDATE')).toMatchObject({ kind: 'lossy', targetType: 'IFCCALENDARDATE', expressIds: [6] });
   });

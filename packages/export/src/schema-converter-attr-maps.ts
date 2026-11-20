@@ -89,7 +89,7 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCPERFORMANCEHISTORY'),
     same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     // IFC4 deleted both subtypes for IfcTask: an upgrade writes them as IfcTask
-    // (`IFC2X3_TO_IFC4`), losing MoveFrom, MoveTo, PunchList and ActionID (#10902).
+    // (`DELETED_SUBTYPES`), losing MoveFrom, MoveTo, PunchList and ActionID (#10902).
     map('IFCMOVE', 'IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     map('IFCORDERACTION', 'IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
@@ -105,6 +105,22 @@ function getAttrMapIndex(): AttrMapIndex {
 export function getAttrMaps(): readonly AttrMap[] {
   return getAttrMapIndex().maps;
 }
+
+/**
+ * IFC2X3 subtypes IFC4 deleted, written as their IFC4 supertype on an upgrade
+ * to IFC4 or IFC4X3 (#10902): IfcMove and IfcOrderAction through their map
+ * above, the relationships by the prefix trim (identical lists, or TimeForTask
+ * lost and reported). Not IfcRelOverridesProperties, which as
+ * IfcRelDefinesByProperties would attach the values it overrides, nor IFC5,
+ * which has no table to reconcile the attributes in. Twin of Rust
+ * `schema_attr_maps::deleted_subtype`.
+ */
+export const DELETED_SUBTYPES: ReadonlyMap<string, string> = new Map([
+  ['IFCMOVE', 'IFCTASK'], ['IFCORDERACTION', 'IFCTASK'],
+  ['IFCRELOCCUPIESSPACES', 'IFCRELASSIGNSTOACTOR'],
+  ['IFCRELASSIGNSTASKS', 'IFCRELASSIGNSTOCONTROL'], ['IFCRELASSIGNSTOPROJECTORDER', 'IFCRELASSIGNSTOCONTROL'],
+  ['IFCRELSCHEDULESCOSTITEMS', 'IFCRELASSIGNSTOCONTROL'],
+]);
 
 /** True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
  *  counted: a structural record, or one a map wrote, which can leave a

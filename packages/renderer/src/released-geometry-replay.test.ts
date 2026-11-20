@@ -250,4 +250,21 @@ describe('replayReleasedGeometry', () => {
     assert.deepEqual([group?.min.x, group?.max.x], [-10, -9], "and the placement group is B's alone");
     assert.deepEqual(drawnIds(scene), [1], "only B's fragment is drawn");
   });
+  it('#10903 a replay queued behind another, then scene.clear() while it waits: it never uploads its pre-clear meshes', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    let resumeA!: () => void;
+    const gateA = new Promise<void>((done) => { resumeA = done; });
+    async function* a(): AsyncGenerator<readonly MeshData[]> { yield [tri(1, 0, 0)]; await gateA; }
+    const first = replayReleasedGeometry(host(scene, gpu).renderer, a()); // no isCurrent: only the scene fences it
+    await new Promise((done) => setTimeout(done, 0));
+    const second = replayReleasedGeometry(host(scene, gpu).renderer, batches([tri(2, 5, 0)])); // queued behind A
+    scene.clear(); // the content both were taken from is gone
+    resumeA();
+    assert.equal((await first).status, 'superseded');
+    assert.deepEqual(await second, { status: 'superseded', batches: 0, meshes: 0 }, 'B captured the epoch it was called in, not the one after its wait');
+    assert.deepEqual(drawnIds(scene), [], 'no pre-clear mesh is resurrected');
+    assert.equal(scene.getEntityBoundingBox(2), null);
+    assert.equal(scene.isEphemeralStreaming(), false);
+  });
 });

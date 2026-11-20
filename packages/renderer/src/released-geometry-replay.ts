@@ -45,7 +45,7 @@ class ReplayTransaction {
   private readonly boxes = new Map<number, BoundingBox>();
   private readonly groups = new Map<number, Map<number, BoundingBox>>();
   readonly epoch: number;
-  constructor(private readonly host: FragmentHost) { this.epoch = host.clearEpoch; }
+  constructor(private readonly host: FragmentHost, epoch: number) { this.epoch = epoch; }
 
   /** Run one synchronous append: its fragments become this replay's, its bounds land in the staging. */
   record(append: () => void): void {
@@ -110,6 +110,8 @@ export async function replayReleasedGeometry(
   const pipeline = renderer.getPipeline();
   if (!pipeline) return { status: 'unavailable', reason: 'no-pipeline' };
   const scene = renderer.getScene();
+  // The scene's epoch when this replay was CALLED: a clear() while it waits for the pass voids it.
+  const calledAt = (scene as unknown as FragmentHost).clearEpoch;
   // One pass at a time per scene: wait for the previous replay to close its own pass.
   const prior = passes.get(scene) ?? Promise.resolve();
   let release!: () => void;
@@ -118,7 +120,7 @@ export async function replayReleasedGeometry(
   passes.set(scene, tail);
   await prior;
   try {
-    return await replayOwnPass(renderer, scene, device, pipeline, batches, options);
+    return await replayOwnPass(renderer, scene, device, pipeline, batches, options, calledAt);
   } finally {
     release();
     if (passes.get(scene) === tail) passes.delete(scene);
@@ -128,15 +130,16 @@ export async function replayReleasedGeometry(
 async function replayOwnPass(
   renderer: Pick<Renderer, 'getGPUDevice' | 'requestRender'>, scene: ReturnType<Renderer['getScene']>, device: GPUDevice,
   pipeline: NonNullable<ReturnType<Renderer['getPipeline']>>, batches: AsyncIterable<readonly MeshData[]>, options: ReleasedGeometryReplayOptions,
+  calledAt: number,
 ): Promise<ReleasedGeometryReplayResult> {
   const startDevice = device;
   const current = () => (options.isCurrent?.() ?? true) && renderer.getGPUDevice() === startDevice;
   let count = 0, meshes = 0;
   const host = scene as unknown as FragmentHost;
-  const tx = new ReplayTransaction(host);
+  const tx = new ReplayTransaction(host, calledAt);
   const reason = (): 'cancelled' | 'superseded' | undefined =>
     options.signal?.aborted ? 'cancelled' : !current() || host.clearEpoch !== tx.epoch ? 'superseded' : undefined;
-  // Superseded while waiting for the pass: never open one.
+  // Superseded (or the scene cleared) while waiting for the pass: never open one.
   let stopped = reason();
   if (stopped) return { status: stopped, batches: 0, meshes: 0 };
   let ok = false;

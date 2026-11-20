@@ -157,7 +157,9 @@ async function oracleDrawing(page: Page, plane: Plane) {
     }));
     generator.dispose();
     const canonical = (0, eval)(canonicalSource) as (d: Drawing) => Canonical;
-    return { canonical: canonical(drawing), occurrences: occurrences.length, outline: typeof wasm.meshOutline2d === 'function' };
+    // Independent of the filter under test: with no hiding, isolation or class toggles, every occurrence is model geometry.
+    const keptOccurrences = occurrences.filter(keep).length;
+    return { canonical: canonical(drawing), occurrences: occurrences.length, keptOccurrences, outline: typeof wasm.meshOutline2d === 'function' };
   }, [plane, CANONICAL] as const);
 }
 
@@ -165,14 +167,19 @@ for (const scenario of SCENARIOS) {
   test(`viewer drawing of ${scenario.name} is unchanged by the test-only release`, async ({ page }, info) => {
     for (const file of scenario.files) test.skip(!existsSync(join(process.cwd(), file)), `${file} missing; run \`pnpm fixtures\``);
     await open(page, scenario.files);
+    let instancedDrawn = 0, occurrencesSeen = 0;
     const resident: Array<{ viewer: Awaited<ReturnType<typeof viewerDrawing>>; oracle: { occurrences: number; outline: boolean } }> = [];
     for (const plane of scenario.planes) {
       const viewer = await viewerDrawing(page, plane);
       const oracle = await oracleDrawing(page, plane);
       expect(viewer.canonical.lines.length, `${plane.axis}: the drawing draws`).toBeGreaterThan(0);
       expect(viewer.canonical, `${plane.axis}: resident drawing equals the complete-model array oracle`).toEqual(oracle.canonical);
+      expect(oracle.keptOccurrences, `${plane.axis}: the drawing filter keeps every instanced occurrence`).toBe(oracle.occurrences);
+      instancedDrawn += viewer.instancedEntities;
+      occurrencesSeen += oracle.occurrences;
       resident.push({ viewer, oracle: { occurrences: oracle.occurrences, outline: oracle.outline } });
     }
+    if (occurrencesSeen > 0) expect(instancedDrawn, 'instanced occurrences appear in the resident drawings').toBeGreaterThan(0);
     const released = await page.evaluate(async () => {
       const g = globalThis as Probe;
       const heldBefore = (await g.__ifc_lite_cpu_geometry_held__()).totalBytes;

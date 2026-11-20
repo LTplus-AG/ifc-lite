@@ -303,6 +303,9 @@ describe('drawing geometry source over released geometry', () => {
     release(w);
     assert.throws(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true })),
       /streamed instanced geometry its backing does not hold/);
+    // A model that never had instancing needs no shards.
+    assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true,
+      hasInstanced: (id) => id !== 'a' })));
     // A backing holding some shards but not every listed entity is refused too.
     const partial = await w.registry.begin('a', { chunkBytes: 512 });
     await partial.writer.append(flatModel('a').map(({ modelIndex: _index, ...mesh }) => mesh));
@@ -312,10 +315,6 @@ describe('drawing geometry source over released geometry', () => {
     assert.throws(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: [101, 102, 105] })),
       /Instanced entity 105 of model a is in no backed shard/);
     assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: [101, 102] })));
-    w.backings.set('a', flatOnly);
-    // A model that never had instancing needs no shards.
-    assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true,
-      hasInstanced: (id) => id !== 'a' })));
     await w.registry.close();
   });
 });

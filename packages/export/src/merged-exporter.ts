@@ -1208,13 +1208,10 @@ export class MergedExporter {
     }
 
     if (needsConversion(sourceSchema, targetSchema)) {
-      // No `withheldRefIds` passed (6th arg omitted), so `resolveUnrepresentedEntity`
-      // never takes its `allowOmit` branch here — this call cannot return `null`
-      // (#4206). The federated pipeline does not yet compute that set in its own
-      // offset/remapped id space, so it keeps this function's older, unconditional
-      // "proxy or throw" contract rather than risk a wrong omission in the wrong
-      // id space; the same LoadConfiguration/AppliedLoad case that would omit in
-      // `StepExporter` still throws here, unchanged from before this fix.
+      // No `withheldRefIds` (6th arg), so `resolveUnrepresentedEntity` never omits here (#4206): the federated
+      // pipeline has no such set in its offset id space, and keeps "proxy or throw" rather than omit in the
+      // wrong space. The only `null` is a material record the referent check left out (#10763); any other
+      // still throws, as the LoadConfiguration/AppliedLoad case `StepExporter` would omit does.
       const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums);
       if (converted === null) {
         if (enums.materials.leftOut(localId + offset)) return null; // a material record not written (#10763)

@@ -221,6 +221,35 @@ describe('parseParquetStream hash probe', () => {
     expect(timeout).toBeGreaterThan(5_000);
   });
 
+  it('aborts the fetch waiting on the hash probe without uploading (#10469)', async () => {
+    const controller = new AbortController();
+    let probeSignal: AbortSignal | null | undefined;
+    let finishProbe!: (response: Response) => void;
+    let onSent!: () => void;
+    const sent = new Promise<void>(resolve => { onSent = resolve; });
+    const fetchMock = vi.fn().mockResolvedValue(streamResponse()).mockImplementationOnce((_url: string, { signal }: RequestInit) => {
+      probeSignal = signal;
+      return new Promise<Response>((resolve, reject) => {
+        finishProbe = resolve;
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+        onSent();
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const pending = client().parseParquetStream(file(), () => {}, { signal: controller.signal });
+    const cancelled = expect(pending).rejects.toBeInstanceOf(DOMException);
+
+    await sent;
+    controller.abort();
+    const abortedWhileWaiting = probeSignal?.aborted;
+    // Release the mock even if cancellation failed to reach fetch.
+    finishProbe(new Response(null, { status: 404 }));
+    await cancelled;
+
+    expect(abortedWhileWaiting).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('sends the layout signal on the probe, since it selects the cache entry', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 404 }));
     vi.stubGlobal('fetch', fetchMock);

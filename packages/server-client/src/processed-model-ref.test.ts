@@ -104,6 +104,33 @@ describe('parseParquet with a processed-model reference', () => {
   });
 });
 
+for (const kind of ['stream', 'batch'] as const) {
+  it(`aborting a processed ${kind} cancels a pending response body (#10469)`, async () => {
+    const caller = new AbortController();
+    let finishBody: () => void = () => {};
+    fetchMock.mockImplementationOnce((_url: string, options: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(stream) {
+          finishBody = () => stream.error(new Error('Response was left running'));
+          options.signal?.addEventListener('abort', () => stream.error(options.signal?.reason), { once: true });
+        },
+      });
+      return new Response(body, { headers: { 'X-IFC-Metadata': '{}' } });
+    });
+    const options = { signal: caller.signal, dataModelEntities: 'all' as const };
+    const server = client();
+    const pending = kind === 'stream'
+      ? server.parseParquetStream(ref, () => {}, options)
+      : server.parseParquet(ref, options);
+    const outcome = pending.catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    caller.abort();
+    if (!calls()[0][1].signal?.aborted) finishBody();
+    expect(await outcome).toBe(caller.signal.reason);
+    expect(calls()).toHaveLength(1);
+  });
+}
+
 describe('normalizeProcessedModelHash', () => {
   it('lowercases a SHA-256 and refuses anything else', () => {
     expect(normalizeProcessedModelHash(sha256)).toBe(sha256);

@@ -50,7 +50,7 @@ test('#10975 BCF edits survive reload and explicit close clears the working copy
   const live = makeStore();
   await live().initializeBcfAutosave();
   live().setBcfProject(project('Coordination'));
-  const topic = createBCFTopic({ title: 'Clash at grid A', creationAuthor: 'reviewer@example.com' });
+  const topic = createBCFTopic({ title: 'Clash at grid A', author: 'reviewer@example.com' });
   live().addTopic(topic);
   live().addComment(topic.guid, { guid: 'comment', comment: 'Please check the sleeve', viewpointGuid: 'view' });
   live().addViewpoint(topic.guid, { guid: 'view', snapshot: 'data:image/png;base64,AAEC', snapshotData: new Uint8Array([0, 1, 2]),
@@ -122,7 +122,7 @@ test('#10975 coalesces a burst of edits and skips selection-only changes', async
   live().setBcfProject(project('Working'));
   await live().flushBcfAutosave();
   const first = await slot();
-  const topic = createBCFTopic({ title: 'First', creationAuthor: 'reviewer@example.com' });
+  const topic = createBCFTopic({ title: 'First', author: 'reviewer@example.com' });
   mock.timers.enable({ apis: ['setTimeout'] });
   live().addTopic(topic);
   mock.timers.tick(400);
@@ -167,7 +167,7 @@ test('#10975 quota and image limit refusals preserve the previous commit', async
   assert.equal(await live().flushBcfAutosave(), true);
   const before = await slot();
 
-  const put = mock.method(IDBObjectStore.prototype, 'put', function (this: IDBObjectStore, value: unknown, key: IDBValidKey) {
+  const put = mock.method(IDBObjectStore.prototype, 'put', function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
     // Adding at the existing key produces a real asynchronous request failure and rollback.
     const request = this.add(value, key);
     request.addEventListener('error', () => {
@@ -183,7 +183,7 @@ test('#10975 quota and image limit refusals preserve the previous commit', async
     assert.deepEqual(await slot(), before);
   } finally { put.mock.restore(); }
 
-  const topic = createBCFTopic({ title: 'Large capture', creationAuthor: 'reviewer@example.com' });
+  const topic = createBCFTopic({ title: 'Large capture', author: 'reviewer@example.com' });
   live().addTopic(topic);
   live().addViewpoint(topic.guid, { guid: 'large', snapshotData: new Uint8Array(25 * 1024 * 1024) });
   assert.equal(await live().flushBcfAutosave(), false);

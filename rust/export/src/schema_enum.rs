@@ -87,7 +87,7 @@ impl EnumReconciliation {
             let total: usize = self.unlabelled.values().sum();
             let names: Vec<&str> = self.unlabelled.keys().map(String::as_str).collect();
             format!(
-                "{total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
+                "{total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
                 names.join(", ")
             )
         });

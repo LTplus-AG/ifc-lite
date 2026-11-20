@@ -14,6 +14,7 @@ import { geometryBackingCommand } from './backing-debug-hook';
 import type { TapState } from './store-backing-tap';
 import { noteSceneGeometry } from './released-scene-replay';
 import { rebuildReleasedScene } from './released-device-recovery';
+import { enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
 
 function mesh(expressId: number, z: number): MeshData {
   return { expressId, ifcType: 'IfcWall', positions: Float32Array.from([0, 0, z, 1, 0, z, 0, 1, z]),
@@ -25,6 +26,7 @@ function recordingScene(onAppend?: () => void) {
   const uploaded: number[][] = [];
   let ephemeral = false;
   const scene = {
+    streamingFragments: [] as unknown[], batchedMeshes: [] as unknown[], // the fragment lists the replay owns
     setEphemeralStreamingMode: (on: boolean) => { ephemeral = on; },
     isEphemeralStreaming: () => ephemeral,
     appendToBatches: (batch: MeshData[]) => { uploaded.push(...batch.map((m) => [...m.positions])); onAppend?.(); onAppend = undefined; },
@@ -83,7 +85,7 @@ describe('released device recovery rebuild (viewer)', () => {
   it('#10937 an unrecorded drawn list (a snapshot hydration never noted) fails closed instead of rebuilding an empty scene', async () => {
     const { store } = await releasedModel(`recovery-unrecorded-${process.pid}`);
     try {
-      noteSceneGeometry([]);
+      noteSceneGeometry(undefined);
       const { context, uploaded } = recordingScene();
       assert.equal(await rebuildReleasedScene(context), false, 'never a "recovered" scene with its flat geometry missing');
       assert.deepEqual(uploaded, []);
@@ -101,4 +103,44 @@ describe('released device recovery rebuild (viewer)', () => {
       assert.equal(await rebuildReleasedScene(context), false, 'never "whole" without the appended mesh');
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
+
+  it('#10937 every flat type hidden (a RECORDED empty list) still recovers the instanced occurrences', async () => {
+    const meshes = [mesh(1, 0)];
+    const geometryResult: GeometryResult = { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    useViewerStore.setState({ models: new Map([['ih', { id: 'ih', idOffset: 0, maxExpressId: 100, geometryResult }]]) } as never);
+    const store = useViewerStore as unknown as StoreApi<TapState>;
+    await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `recovery-hidden-${process.pid}`, locks: null } } as never });
+    try {
+      enqueueInstancedShards('ih', [shardBytes(77)], instancedShardSupplyToken('ih'));
+      const [status] = await geometryBackingCommand(store, undefined, { action: 'seal' }) as Array<{ complete: boolean }>;
+      assert.equal(status.complete, true);
+      releaseCpuMeshBuffers(meshes);
+      noteSceneGeometry([]); // the scene draws no flat mesh: all of them are type-hidden
+      const { context, uploaded } = recordingScene();
+      const shards: number[] = [];
+      (context.scene as unknown as { addInstancedShard: (d: unknown, shard: { instances: Array<{ entityId: number }> }) => void })
+        .addInstancedShard = (_d, shard) => { shards.push(...shard.instances.map((i) => i.entityId)); };
+      assert.equal(await rebuildReleasedScene(context), true, 'a recorded empty flat list is not an unrecorded one');
+      assert.deepEqual(uploaded, [], 'no flat geometry is drawn');
+      assert.deepEqual(shards, [77], 'the instanced occurrence is restaged');
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  });
 });
+
+/** IFNS v1: one template triangle, one occurrence of `entityId`. */
+function shardBytes(entityId: number): ArrayBuffer {
+  const positions = [0, 0, 0, 1, 0, 0, 0, 1, 0], normals = [0, 0, 1, 0, 0, 1, 0, 0, 1], indices = [0, 1, 2];
+  const dataOffset = 32 + 48 + 88;
+  const buffer = new ArrayBuffer(dataOffset + (positions.length + normals.length + indices.length) * 4);
+  const view = new DataView(buffer);
+  [0x4946_4e53, 1, 1, 1, positions.length, normals.length, indices.length, 0].forEach((w, i) => view.setUint32(i * 4, w, true));
+  [0, 9, 0, 9, 0, 3].forEach((w, i) => view.setUint32(32 + i * 4, w, true));
+  view.setUint32(84, entityId, true);
+  [0.5, 0.5, 0.5, 1].forEach((c, i) => view.setFloat32(88 + i * 4, c, true));
+  [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 3, 4, 5, 1].forEach((m, i) => view.setFloat32(104 + i * 4, m, true));
+  let cursor = dataOffset;
+  for (const v of positions) { view.setFloat32(cursor, v, true); cursor += 4; }
+  for (const v of normals) { view.setFloat32(cursor, v, true); cursor += 4; }
+  for (const v of indices) { view.setUint32(cursor, v, true); cursor += 4; }
+  return buffer;
+}

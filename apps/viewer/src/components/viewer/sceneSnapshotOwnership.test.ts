@@ -73,10 +73,10 @@ describe('takeSceneSnapshotGeometry', () => {
 
   it('a refused hydration records nothing: the ordinary upload that follows does', () => {
     hydrates = false;
-    noteSceneGeometry([]);
+    noteSceneGeometry(undefined);
     setPendingSceneSnapshot(adoption);
     assert.equal(take([mesh()]), false);
-    assert.deepEqual(currentSceneGeometry(), []);
+    assert.equal(currentSceneGeometry(), undefined);
   });
 
   it('falls through to the ordinary path when the scene refuses the geometry', () => {

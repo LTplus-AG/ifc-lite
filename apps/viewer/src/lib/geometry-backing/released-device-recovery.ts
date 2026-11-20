@@ -43,7 +43,7 @@ function liftedCopy(shard: DecodedInstancedShard, lift: ReadonlyMap<number, numb
 function viewerSource(state: ReturnType<typeof getViewerState>): unknown[] {
   // Lengths too: a list grown in place keeps its identity but not its membership.
   const drawn = currentSceneGeometry();
-  return [releasedReplayEpoch(), state.geometryContentVersion, drawn, drawn.length,
+  return [releasedReplayEpoch(), state.geometryContentVersion, drawn, drawn?.length,
     ...[...state.models].flatMap(([id, model]) => [id, model.geometryResult, model.geometryResult?.meshes, model.geometryResult?.meshes.length, model.idOffset])];
 }
 
@@ -67,14 +67,15 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
       return false;
     }
   }
-  // An unrecorded drawn list would rebuild an empty scene and call it whole: fail closed instead.
+  // An UNRECORDED drawn list would rebuild an empty scene and call it whole: fail closed. A recorded
+  // empty list (every flat type hidden, instancing only) is a real answer and recovers.
   const drawn = currentSceneGeometry();
-  if (drawn.length === 0 && [...state.models.values()].some((model) => model.visible !== false && (model.geometryResult?.meshes.length ?? 0) > 0)) {
+  if (drawn === undefined && [...state.models.values()].some((model) => model.visible !== false && (model.geometryResult?.meshes.length ?? 0) > 0)) {
     console.warn('[GeometryBacking] no drawn list was recorded for a scene with flat geometry; refusing a released device recovery');
     return false;
   }
   const { replayReleasedGeometry } = await import('@ifc-lite/renderer');
-  const flat = await releasedBatches(currentSceneGeometry().slice());
+  const flat = await releasedBatches((drawn ?? []).slice());
   async function* placed(): AsyncGenerator<MeshData[]> {
     for await (const batch of flat) yield placeNewMeshesAtCurrentLevel(batch, lift);
   }

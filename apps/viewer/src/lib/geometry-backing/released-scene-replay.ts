@@ -176,7 +176,11 @@ export async function releasedBatches(meshes: readonly MeshData[]): Promise<Asyn
   })();
 }
 
-/** What the scene draws: the geometry of its latest flat reshape (later appends grow it in place). */
-let sceneGeometry: readonly MeshData[] = [];
-export function noteSceneGeometry(geometry: readonly MeshData[]): void { sceneGeometry = geometry; }
-export function currentSceneGeometry(): readonly MeshData[] { return sceneGeometry; }
+/**
+ * What the scene draws: the list of its latest flat reshape, hydration or upload pass (later appends
+ * grow it in place). `undefined` until one is recorded: an EMPTY recorded list (every flat type
+ * hidden, instancing only) is a real answer, not a missing one.
+ */
+let sceneGeometry: readonly MeshData[] | undefined;
+export function noteSceneGeometry(geometry: readonly MeshData[] | undefined): void { sceneGeometry = geometry; }
+export function currentSceneGeometry(): readonly MeshData[] | undefined { return sceneGeometry; }

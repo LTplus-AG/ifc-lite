@@ -79,3 +79,36 @@ fn a_repeated_reference_is_listed_once_at_its_last_place_10846() {
     let walled = export(&model("IFC4", &[doc, a, b, a, wall].join("\n")), &to("IFC2X3")).0;
     assert_eq!(record(&walled, "#5="), "#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
 }
+
+/// Claude review on #10872, the twin of the TypeScript case: IFC4 WR1 is
+/// `EXISTS(Name) XOR EXISTS(ReferencedDocument)`, so a named reference that
+/// gains its document drops the Name, counted and reported; an unlisted one
+/// keeps it.
+#[test]
+fn a_reference_that_gains_its_document_drops_its_name_for_wr1_10846() {
+    let named = format!("{}\n#8=IFCDOCUMENTREFERENCE('c.pdf','C1','Loose');", IFC2X3.replace("('a.pdf','A1',$)", "('a.pdf','A1','Title')"));
+    for schema in ["IFC4", "IFC4X3"] {
+        let (out, stats, warnings) = export_step_with_diagnostics(model("IFC2X3", &named).as_bytes(), &to(schema)).unwrap();
+        assert_eq!(record(&out, "#6="), "#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);", "{schema}");
+        assert_eq!(record(&out, "#8="), "#8=IFCDOCUMENTREFERENCE('c.pdf','C1','Loose',$,$);", "{schema}");
+        assert_eq!(stats.attribute_values_dropped, 1, "{schema}");
+        assert!(warnings.iter().any(|w| w.starts_with("1 IfcDocumentReference Name(s) were dropped (the source breaks IFC2X3 WR1 too)")), "{schema}: {warnings:?}");
+    }
+    let (_, _, warnings) = export_step_with_diagnostics(model("IFC2X3", IFC2X3).as_bytes(), &to("IFC4")).unwrap();
+    assert!(!warnings.iter().any(|w| w.contains("Name(s) were dropped")), "{warnings:?}");
+}
+
+/// /code-review, the twin of the TypeScript case: IfcExternalReference.WR1
+/// needs Location, Identification or Name, so a reference a Name alone
+/// identifies keeps it and stays unlinked; its document's listing is counted
+/// lost, as for an unlisted member.
+#[test]
+fn a_reference_only_its_name_identifies_keeps_it_unlinked_10846() {
+    let source = model("IFC2X3", &IFC2X3.replace("('a.pdf','A1',$)", "($,$,'Title')"));
+    let (out, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &to("IFC4")).unwrap();
+    assert_eq!(record(&out, "#6="), "#6=IFCDOCUMENTREFERENCE($,$,'Title',$,$);");
+    assert_eq!(record(&out, "#7="), "#7=IFCDOCUMENTREFERENCE('b.pdf','B1',$,$,#5);");
+    assert_eq!(stats.attribute_values_dropped, 1);
+    assert!(warnings.iter().any(|w| w.starts_with("1 IfcDocumentReference(s) identified only by Name keep it and lose")), "{warnings:?}");
+    assert!(!warnings.iter().any(|w| w.contains("Name(s) were dropped")), "{warnings:?}");
+}

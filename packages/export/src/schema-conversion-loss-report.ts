@@ -332,6 +332,11 @@ export function analyzeConversionLoss(
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);
     }
+    // #10846: the classifier sees no IfcDocumentReference loss on an upgrade, but linking one drops its Name for WR1.
+    if (links.unnamed.size > 0) {
+      const expressIds = [...links.unnamed].sort((a, b) => a - b);
+      entries.push({ targetType: 'IFCDOCUMENTREFERENCE', kind: 'lossy', droppedAttributes: ['Name'], sourceType: 'IFCDOCUMENTREFERENCE', count: expressIds.length, expressIds });
+    }
     for (const [sourceType, ids] of varying) {
       const byTarget = new Map<string, number[]>();
       for (const id of ids) {

@@ -62,7 +62,8 @@ it('refuses a revoked native BCF commit and duplicate project replacement (#1052
   assert.equal(useViewerStore.getState().bcfProject?.name, 'Preserve');
 });
 it('rejects undeclared parameters for every coordination operation (#10525)', () => {
-  for (const op of coordinationOperations) assert.throws(() => op.validate({ __unexpected: true }), /Invalid/);
+  // Missing required fields would also throw, so check the closed schema itself.
+  for (const op of coordinationOperations) assert.equal((op.inputSchema as { additionalProperties?: unknown }).additionalProperties, false, op.id);
 });
 
 

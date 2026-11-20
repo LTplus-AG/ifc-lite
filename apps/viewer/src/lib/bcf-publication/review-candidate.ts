@@ -33,16 +33,18 @@ export async function publishNativeBcfReview(batch: DraftBatch, target: Publicat
   const release = () => { if (candidate && useBcfPublicationReview.getState().candidate === candidate) useBcfPublicationReview.setState({ candidate: null }); };
   const stale = (message: string): never => { release(); throw new Error(message); };
   const choices = (value: TopicTypeChoice) => JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
-  if (candidate?.batchId === batch.id) {
-    if ((candidate.target.serverUrl !== target.serverUrl || candidate.target.projectId !== target.projectId || candidate.target.userId !== target.userId) || choices(candidate.topicTypes) !== choices(topicTypes) || candidate.modifiedAt !== batch.modifiedAt) stale('The staged BCF publication changed. Check the current candidate before publishing.');
-    const existing = (await readPublication(draftPublicationId(batch.id, target)))?.record;
-    const current = await planDraftPublication(batch, existing, target, undefined, { rules: publicationRules(connection), topicTypes });
-    // Entry ids of a not-yet-persisted plan are random. Bind wire digests and source batch, not those fresh ids.
-    const wire = (plan: PublicationPlan) => plan.record.entries.map(entry => `${entry.digest}:${entry.state}:${entry.receipt?.remoteGuid ?? ''}`).sort();
-    if (JSON.stringify(wire(current)) !== JSON.stringify(wire(candidate.plan))) stale('The durable publication outbox changed. Prepare and review the candidate again.');
-  }
-  try { return await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000, topicTypes }); }
-  finally { if (candidate?.batchId === batch.id) release(); }
+  // The candidate is spent by this attempt however it ends, including a failed check or replan.
+  try {
+    if (candidate?.batchId === batch.id) {
+      if ((candidate.target.serverUrl !== target.serverUrl || candidate.target.projectId !== target.projectId || candidate.target.userId !== target.userId) || choices(candidate.topicTypes) !== choices(topicTypes) || candidate.modifiedAt !== batch.modifiedAt) stale('The staged BCF publication changed. Check the current candidate before publishing.');
+      const existing = (await readPublication(draftPublicationId(batch.id, target)))?.record;
+      const current = await planDraftPublication(batch, existing, target, undefined, { rules: publicationRules(connection), topicTypes });
+      // Entry ids of a not-yet-persisted plan are random. Bind wire digests and source batch, not those fresh ids.
+      const wire = (plan: PublicationPlan) => plan.record.entries.map(entry => `${entry.digest}:${entry.state}:${entry.receipt?.remoteGuid ?? ''}`).sort();
+      if (JSON.stringify(wire(current)) !== JSON.stringify(wire(candidate.plan))) stale('The durable publication outbox changed. Prepare and review the candidate again.');
+    }
+    return await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000, topicTypes });
+  } finally { if (candidate?.batchId === batch.id) release(); }
 }
 
 let lastUserChoiceAt = 0;

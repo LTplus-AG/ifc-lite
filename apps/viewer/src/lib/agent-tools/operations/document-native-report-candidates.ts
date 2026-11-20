@@ -20,6 +20,7 @@ function owned(host: ViewerOperationContext['host']) {
 }
 export function addReportCandidate(host: ViewerOperationContext['host'], candidate: NativeReportCandidate) {
   const entries = owned(host); evictOldest(entries, 30, (entry) => !entry.submitted); // a failed save keeps its token for exact retry
+  if (entries.size >= 30) throw new Error('Too many native report candidates await a retry; apply or discard one first.');
   const token = crypto.randomUUID(); entries.set(token, candidate); return token;
 }
 export function reportCandidate(host: ViewerOperationContext['host'], token: string): NativeReportCandidate {

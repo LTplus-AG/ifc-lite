@@ -7168,6 +7168,10 @@ export const operationContracts: readonly OperationContract[] = [
     "inputSchema": {
       "type": "object",
       "properties": {
+        "key_property": {
+          "type": "string",
+          "maxLength": 500
+        },
         "action": {
           "type": "string",
           "enum": [
@@ -7207,7 +7211,8 @@ export const operationContracts: readonly OperationContract[] = [
         "head_model_id",
         "base",
         "here",
-        "reason"
+        "reason",
+        "key_property"
       ],
       "additionalProperties": false
     },

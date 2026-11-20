@@ -286,12 +286,16 @@ export function useCompare() {
     // suggestion is a review decision recorded on its own, not a control change.
     const optionChanged = previous.scope !== scope || previous.excludedTypes !== excludedTypes
       || previous.matchByContent !== matchByContent;
+    const previousAccepted = lastAcceptedRef.current;
+    // Advance the accepted-identity baseline on every path, so a decision is compared once,
+    // not again against the next result (which already carries it).
+    lastAcceptedRef.current = acceptedIdentity;
     if (!result) return;
     const sameScope = result.scope === scope;
     const sameExcluded =
       excludedSignature(result.diff.excludedTypes) === excludedSignature(excludedTypes);
     const sameMatching = contentMatchingRan(result.diff.contentMatches) === matchByContent;
-    const sameAccepted = lastAcceptedRef.current === acceptedIdentity;
+    const sameAccepted = previousAccepted === acceptedIdentity;
     if (sameScope && sameExcluded && sameMatching && sameAccepted) return;
     if (!built || !isCurrentFor(built, result.baseModelId, result.headModelId, geometryContentVersion, result.keyProperty)) {
       // An agent compare.run publishes from its own extraction, so no cached
@@ -303,7 +307,6 @@ export function useCompare() {
       return;
     }
 
-    lastAcceptedRef.current = acceptedIdentity;
     publishCompareResult(built);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, excludedTypes, matchByContent, acceptedIdentity]);

@@ -40,6 +40,7 @@ void order_mesh(AdapterMesh& mesh);
 // than 256 vertices, or when its edges are not manifold. Interior diagonals of
 // other retriangulated faces are not avoided: they can only coincide in
 // overlapping (degenerate) faces, which then share one canonical split.
-// Cost is O(V^3) per face in the worst case: about 10 ms for 256 vertices.
+// A two-triangle face uses the same rule in closed form. Cost is O(V^3) per
+// face in the worst case (about 11 ms for 256 vertices, 1 us for a quad).
 // Requires order_mesh first (canonical vertex IDs, faces contiguous).
 void canonical_planar_faces(AdapterMesh& mesh, const std::vector<bool>& planar_faces);

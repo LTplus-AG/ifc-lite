@@ -4,6 +4,7 @@
 #include "mesh.hpp"
 #include <algorithm>
 #include <array>
+#include <iterator>
 #include <cmath>
 #include <map>
 #include <numeric>
@@ -186,11 +187,45 @@ struct Plane2 {
 double squared(const Point& a,const Point& b) {
     const double x=a[0]-b[0],y=a[1]-b[1],z=a[2]-b[2]; return x*x+y*y+z*z;
 }
+// The face's projection from its directed boundary (Newell normal).
+bool projection(const AdapterMesh& mesh,const std::vector<std::pair<uint32_t,uint32_t>>& boundary,Plane2& plane,Point& n) {
+    n={};
+    for (const auto& [a,b]:boundary) {
+        const auto p=point(mesh,a),q=point(mesh,b);
+        n[0]+=(p[1]-q[1])*(p[2]+q[2]); n[1]+=(p[2]-q[2])*(p[0]+q[0]); n[2]+=(p[0]-q[0])*(p[1]+q[1]);
+    }
+    unsigned axis=0;
+    for (unsigned k=1;k<3;++k) if (std::abs(n[k])>std::abs(n[axis])) axis=k;
+    if (!(std::abs(n[axis])>0)) return false;
+    plane=Plane2{(axis+1)%3,(axis+2)%3,n[axis]>0 ? 1 : -1};
+    return true;
+}
+// A two-triangle face in closed form, by the same rule as retriangulate: the
+// diagonal first in (squared length, lower, upper) order that is not foreign
+// and leaves both triangles strictly positive; otherwise the other one.
+// Empty when neither qualifies (the SDK's split stays).
+std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Triangle& b,
+    const std::vector<Edge>& foreign) {
+    for (unsigned i=0;i<3;++i) for (unsigned j=0;j<3;++j) {
+        if (!(b[j]==a[(i+1)%3] && b[(j+1)%3]==a[i])) continue;
+        const uint32_t u=a[i],v=a[(i+1)%3],p=a[(i+2)%3],q=b[(j+2)%3];
+        if (p==q) return {};
+        Plane2 plane; Point n;
+        if (!projection(mesh,{{u,q},{q,v},{v,p},{p,u}},plane,n)) return {};
+        auto rank=[&](uint32_t x,uint32_t y) { return std::make_tuple(squared(point(mesh,x),point(mesh,y)),std::min(x,y),std::max(x,y)); };
+        const bool kept=plane.orient(mesh,u,v,p)>0 && plane.orient(mesh,v,u,q)>0 && !std::binary_search(foreign.begin(),foreign.end(),edge(u,v));
+        const bool flipped=plane.orient(mesh,p,u,q)>0 && plane.orient(mesh,q,v,p)>0 && !std::binary_search(foreign.begin(),foreign.end(),edge(p,q));
+        if (flipped && (!kept || rank(p,q)<rank(u,v))) return {Triangle{p,u,q},Triangle{q,v,p}};
+        if (kept) return {a,b};
+        return {};
+    }
+    return {};
+}
 // Greedy constrained triangulation of one planar face from its vertex set and
 // boundary alone. Empty on any doubt; the caller then keeps the SDK's split.
 // `foreign` holds edges this face must not create (other faces' edges).
 std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Triangle>& face,
-    const std::map<Edge,unsigned>& foreign) {
+    const std::vector<Edge>& foreign) {
     std::set<std::pair<uint32_t,uint32_t>> directed;
     std::map<Edge,unsigned> uses;
     std::vector<uint32_t> vertices;
@@ -206,15 +241,8 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
         if (uses[edge(a,b)]>2) return {};
         if (!directed.count({b,a})) boundary.emplace_back(a,b);
     }
-    Point n{};
-    for (const auto& [a,b]:boundary) {
-        const auto p=point(mesh,a),q=point(mesh,b);
-        n[0]+=(p[1]-q[1])*(p[2]+q[2]); n[1]+=(p[2]-q[2])*(p[0]+q[0]); n[2]+=(p[0]-q[0])*(p[1]+q[1]);
-    }
-    unsigned axis=0;
-    for (unsigned k=1;k<3;++k) if (std::abs(n[k])>std::abs(n[axis])) axis=k;
-    if (!(std::abs(n[axis])>0)) return {};
-    const Plane2 plane{(axis+1)%3,(axis+2)%3,n[axis]>0 ? 1 : -1};
+    Plane2 plane; Point n;
+    if (!projection(mesh,boundary,plane,n)) return {};
     // Exact angular order around a vertex: half-plane, then orientation.
     auto ccw=[&](uint32_t a) {
         const auto o=plane.at(mesh,a);
@@ -254,7 +282,7 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
     std::vector<std::tuple<double,uint32_t,uint32_t>> candidates;
     for (size_t i=0;i<vertices.size();++i) for (size_t j=i+1;j<vertices.size();++j) {
         const Edge e{vertices[i],vertices[j]};
-        if (edges.count(e) || foreign.count(e)) continue;
+        if (edges.count(e) || std::binary_search(foreign.begin(),foreign.end(),e)) continue;
         candidates.emplace_back(squared(point(mesh,e.first),point(mesh,e.second)),e.first,e.second);
     }
     std::sort(candidates.begin(),candidates.end());
@@ -337,24 +365,25 @@ void canonical_planar_faces(AdapterMesh& mesh,const std::vector<bool>& planar_fa
     // and two faces' diagonals can only coincide when the faces overlap
     // (degenerate geometry), where both then get the same canonical split. So
     // the set depends on no face's split and on no visiting order.
-    std::map<Edge,unsigned> foreign;
-    auto interior=[&](const Span& s) {
-        std::map<Edge,unsigned> uses;
-        for (size_t t=s.begin;t<s.end;++t) for (unsigned k=0;k<3;++k)
-            ++uses[edge(mesh.indices[3*t+k],mesh.indices[3*t+(k+1)%3])];
-        std::vector<Edge> result;
-        for (const auto& [e,count]:uses) if (count==2) result.push_back(e);
-        return result;
-    };
-    std::vector<std::vector<Edge>> pending(spans.size());
-    // (A declined face keeps its SDK diagonals; leaving them out too keeps the
-    // set independent of which faces decline.)
+    // Every triangle edge use, minus both uses of each eligible face's
+    // interior edges; sorted, so lookups are binary searches.
+    std::vector<Edge> uses, interior;
+    uses.reserve(3*triangles);
     for (size_t t=0;t<triangles;++t) for (unsigned k=0;k<3;++k)
-        ++foreign[edge(mesh.indices[3*t+k],mesh.indices[3*t+(k+1)%3])];
-    for (size_t i=0;i<spans.size();++i) if (spans[i].eligible) {
-        pending[i]=interior(spans[i]);
-        for (const auto& e:pending[i]) { auto it=foreign.find(e); if (!(it->second-=2)) foreign.erase(it); }
+        uses.push_back(edge(mesh.indices[3*t+k],mesh.indices[3*t+(k+1)%3]));
+    std::vector<Edge> own;
+    for (const auto& span:spans) if (span.eligible) {
+        own.assign(uses.begin()+3*span.begin,uses.begin()+3*span.end);
+        std::sort(own.begin(),own.end());
+        for (size_t k=0;k+1<own.size();++k)
+            if (own[k]==own[k+1] && (k+2>=own.size() || own[k+2]!=own[k]) && (k==0 || own[k-1]!=own[k])) {
+                interior.push_back(own[k]); interior.push_back(own[k]);
+            }
     }
+    std::sort(uses.begin(),uses.end()); std::sort(interior.begin(),interior.end());
+    std::vector<Edge> foreign;
+    std::set_difference(uses.begin(),uses.end(),interior.begin(),interior.end(),std::back_inserter(foreign));
+    foreign.erase(std::unique(foreign.begin(),foreign.end()),foreign.end());
     for (size_t i=0;i<spans.size();++i) {
         const auto& s=spans[i];
         if (!s.eligible) continue;
@@ -362,7 +391,7 @@ void canonical_planar_faces(AdapterMesh& mesh,const std::vector<bool>& planar_fa
         for (size_t t=s.begin;t<s.end;++t) face.push_back(triangle(mesh,t));
         // This face's own boundary edges are in `foreign` too; they are never
         // candidates, so only other faces' edges can block a diagonal.
-        const auto result=retriangulate(mesh,face,foreign);
+        const auto result=face.size()==2 ? requad(mesh,face[0],face[1],foreign) : retriangulate(mesh,face,foreign);
         if (!result.empty())
             for (size_t t=s.begin;t<s.end;++t) for (unsigned k=0;k<3;++k) mesh.indices[3*t+k]=result[t-s.begin][k];
     }

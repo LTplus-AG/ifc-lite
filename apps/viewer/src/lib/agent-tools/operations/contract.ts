@@ -46,6 +46,9 @@ export interface Operation {
   execute(input: unknown, context: OperationExecutionContext): Promise<unknown>;
   /** Loads the native implementation without running it. A failure here precedes every native effect. */
   load?(): Promise<unknown>;
+  /** Undo what the handler stored for its caller (a prepared candidate) when the executor refuses the result the
+   * handler returned, after a later state change or an invalid result: the caller never receives it. */
+  discard?(result: unknown, context: OperationExecutionContext): void;
 }
 type Metadata = Omit<Operation, 'version' | 'inputSchema' | 'validate' | 'execute' | 'result' | 'validateResult' | 'needs'>;
 

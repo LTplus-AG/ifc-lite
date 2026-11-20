@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
-import { shouldSkipPrewarm } from './wasm-prewarm.js';
+import { scheduleFastPath, scheduleWasmPrewarm, shouldSkipPrewarm } from './wasm-prewarm.js';
 
 /**
  * The prewarm speculatively downloads the ~1.3 MB engine binary for a user who
@@ -34,5 +34,28 @@ describe('shouldSkipPrewarm', () => {
   it('treats a partial NetworkInformation as affordable rather than guessing', () => {
     assert.equal(shouldSkipPrewarm({}), false);
     assert.equal(shouldSkipPrewarm({ effectiveType: undefined }), false);
+  });
+});
+
+describe('prewarm without WebAssembly SIMD (#10784)', () => {
+  // The schedulers latch at module level; node:test runs each file in its own
+  // process, so this file's only scheduling test starts from fresh latches.
+  it('downloads nothing the browser cannot compile, and stays eligible', () => {
+    const idle = mock.fn((_run: () => void, _opts?: unknown) => 0);
+    Object.defineProperty(globalThis, 'window', { value: { requestIdleCallback: idle }, configurable: true });
+    const validate = mock.method(WebAssembly, 'validate', () => false);
+    try {
+      scheduleWasmPrewarm();
+      scheduleFastPath();
+      assert.equal(idle.mock.callCount(), 0, 'neither the binary prewarm nor the spare workers may be scheduled');
+      // The probe is the only thing that stopped them: with SIMD both schedule.
+      validate.mock.restore();
+      scheduleWasmPrewarm();
+      scheduleFastPath();
+      assert.equal(idle.mock.callCount(), 2);
+    } finally {
+      validate.mock.restore();
+      Reflect.deleteProperty(globalThis, 'window');
+    }
   });
 });

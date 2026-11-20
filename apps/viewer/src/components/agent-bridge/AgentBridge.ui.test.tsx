@@ -17,6 +17,7 @@ import { buildPairingUrl } from '@ifc-lite/mcp/bridge-protocol';
 import { createBimContext } from '@ifc-lite/sdk';
 import { advance as advanceMs, cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { resetFeaturesForTest } from '@/lib/features';
 import { LocalBackend } from '@/sdk/local-backend';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { installPairingFragmentStrip } from '@/lib/agent-bridge/pairing-fragment';
@@ -461,6 +462,30 @@ describe('allowing the agent to edit (#9523)', () => {
     assert.match(ui.textContent ?? '', /Local agent connected · commands and edits allowed/);
     click(toggle());
     assert.deepEqual(asked, ['read-write', 'read-only']);
+  });
+
+  it('offers a command grant without advertising model edits when the host disables editing (#10469)', async () => {
+    const { AgentBridgeConnectionPanel } = await import('./AgentBridgeConnectionPanel');
+    const asked: AgentBridgePermission[] = [];
+    resetFeaturesForTest({ default: 'all', disable: ['edit.model'] });
+    try {
+      registerAgentBridgeControls({ disconnect: () => {}, dismiss: () => {}, setPermission: p => { asked.push(p); } });
+      updateAgentBridgeState({ status: CONNECTED });
+      const ui = render(<AgentBridgeConnectionPanel />);
+      const toggle = ui.querySelector<HTMLButtonElement>('[role="switch"]');
+      assert.ok(toggle);
+      const label = ui.querySelector('label')?.textContent;
+      assert.equal(label, 'Allow the agent to run palette commands in this tab');
+      assert.match(ui.textContent ?? '', /Model editing is disabled by the viewer host/);
+      click(toggle);
+      assert.deepEqual(asked, ['read-write']);
+      updateAgentBridgeState({ status: { ...CONNECTED, permission: 'read-write' } });
+      await waitFor(() => toggle.getAttribute('aria-checked') === 'true', 'the switch follows the grant');
+      assert.match(ui.textContent ?? '', /Local agent connected · commands allowed/);
+      assert.doesNotMatch(ui.textContent ?? '', /commands and edits allowed/);
+    } finally {
+      resetFeaturesForTest();
+    }
   });
 
   it('is disabled, with the reason, when the bridge runs --read-only', async () => {

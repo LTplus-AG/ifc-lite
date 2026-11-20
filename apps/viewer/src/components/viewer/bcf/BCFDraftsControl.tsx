@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, useRef, type ReactNode } from 'react';
+import { Suspense, useRef, type ReactNode } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { ListChecks } from 'lucide-react';
 import type { PanelHeaderAction } from '@/components/ui/panel-header';
 import { useTranslation } from '@/i18n';
@@ -11,7 +12,7 @@ import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 
 // Opened on demand: the dialog (editor, reconcile, publication, outbox) stays
 // off the boot path until first opened (eager-bundle ratchet, #6959).
-const BCFDraftsDialog = lazy(() => import('./BCFDraftsDialog').then(module => ({ default: module.BCFDraftsDialog })));
+const BCFDraftsDialog = lazyChunk(() => import('./BCFDraftsDialog').then(module => ({ default: module.BCFDraftsDialog })));
 
 /** Header action for BCF drafts & publication; names how many outbox entries wait for a decision. */
 export function useBcfDraftsAction(): { action: PanelHeaderAction; dialog: ReactNode } {

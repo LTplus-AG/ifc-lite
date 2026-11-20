@@ -20,7 +20,8 @@
  * soon as the screen appears must not queue behind that.
  */
 
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { ViewportWelcomeCard, type ViewportWelcomeCardProps } from '../ViewportWelcomeCard';
 import { WelcomeFooterChips } from '../WelcomeFooterChips';
 import { msSinceLoadIntent, subscribeLoadIntent } from '@/lib/load-intent';
@@ -32,7 +33,7 @@ const SCENE_MIN_WIDTH = 720;
 // A chunk that fails to load (offline, a stale deploy) must cost the mark,
 // never the start screen: resolve to an empty component instead of throwing
 // into the nearest error boundary.
-const WelcomeLayerScene = lazy(() =>
+const WelcomeLayerScene = lazyChunk(() =>
   import('./WelcomeLayerScene').catch((err: unknown) => {
     console.warn('[welcome] 3D mark chunk failed to load; showing the start screen without it', err);
     return { default: () => null };

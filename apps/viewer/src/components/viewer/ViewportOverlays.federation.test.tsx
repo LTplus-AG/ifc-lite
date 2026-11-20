@@ -35,6 +35,7 @@ import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { settle } from '@/test/render.js';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -164,7 +165,7 @@ describe('StatusBar — federation-space storey name lookup (#5504)', () => {
     );
   });
 
-  it('updates the active-model hidden badge for live deletes and creations (#5249)', () => {
+  it('updates the active-model hidden badge for live deletes and creations (#5249)', async () => {
     act(() => useViewerStore.setState({ hiddenEntities: new Set([6]), selectedStoreys: new Set() }));
     const container = render();
     assert.match(container.textContent ?? '', /1 hidden/);
@@ -178,12 +179,14 @@ describe('StatusBar — federation-space storey name lookup (#5504)', () => {
     act(() => useViewerStore.setState({
       mutationViews: new Map([['m1', view]]), mutationVersion: 1,
     }));
+    await settle();
     assert.doesNotMatch(container.textContent ?? '', /1 hidden/);
 
     const created = editor.addEntity('IfcWall', []);
     act(() => useViewerStore.setState({
       hiddenEntities: new Set([created.expressId]), mutationVersion: 2,
     }));
+    await settle();
     assert.match(container.textContent ?? '', /1 hidden/);
   });
 });

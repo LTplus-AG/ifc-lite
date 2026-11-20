@@ -31,7 +31,7 @@ import '@/test/setup-dom.js';
 
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { advance, cleanup, render, type } from '@/test/render.js';
+import { advance, cleanup, render, settle, type } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { extractPropertiesOnDemand, extractTypeEntityOwnProperties, type IfcDataStore } from '@ifc-lite/parser';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
@@ -127,14 +127,17 @@ describe('Add property keeps every existing property set and property (#5672)', 
 
       // (a) a property in a NEW custom set: the file's sets stay.
       await addPropertyThroughDialog(container, 'Custom_New', 'N1', 'n1');
+      await settle();
       assert.deepEqual(panelRows(container), ['72:Custom_A:A1', '72:Custom_A:A2', '72:Custom_B:B1', '72:Custom_New:N1', ...TYPE_ROWS]);
 
       // (b) a property in an EXISTING custom set from the file: its siblings stay.
       await addPropertyThroughDialog(container, 'Custom_A', 'A3', 'a3');
+      await settle();
       assert.deepEqual(panelRows(container), ['72:Custom_A:A1', '72:Custom_A:A2', '72:Custom_A:A3', '72:Custom_B:B1', '72:Custom_New:N1', ...TYPE_ROWS]);
 
       // ...and the same for a custom set created earlier in this session.
       await addPropertyThroughDialog(container, 'Custom_New', 'N2', 'n2');
+      await settle();
       assert.deepEqual(panelRows(container), ['72:Custom_A:A1', '72:Custom_A:A2', '72:Custom_A:A3', '72:Custom_B:B1', '72:Custom_New:N1', '72:Custom_New:N2', ...TYPE_ROWS]);
 
       // The exported file carries every set and every property.
@@ -163,6 +166,7 @@ describe('Add property keeps every existing property set and property (#5672)', 
 
     const a2 = await openInlineEditor(container, '72:Custom_A:A2');
     await clickRowAction(a2, 'lucide-trash-2');
+    await settle();
 
     assert.deepEqual(panelRows(container), ['72:Custom_A:A1', '72:Custom_B:B1', ...TYPE_ROWS]);
     const reparsed = await exportAndReparse(full);
@@ -175,11 +179,13 @@ describe('Add property keeps every existing property set and property (#5672)', 
     // No store swap here: this isolates the SDK adapter's own configuration,
     // which used to install the occurrence extractor for a type entity too.
     assert.ok(getOrCreateMutationView(useViewerStore, MODEL_ID));
+    await settle();
     const container = render(<PropertiesPanel />);
     await advance(0);
     assert.deepEqual(panelRows(container), ['90:Custom_T:T1', '90:Custom_T:T2']);
 
     await addPropertyThroughDialog(container, 'Custom_TNew', 'X1', 'x1');
+    await settle();
     assert.deepEqual(panelRows(container), ['90:Custom_T:T1', '90:Custom_T:T2', '90:Custom_TNew:X1']);
   });
 
@@ -196,9 +202,11 @@ describe('Add property keeps every existing property set and property (#5672)', 
     assert.deepEqual(panelRows(container), ['90:Custom_T:T1', '90:Custom_T:T2']);
 
     await addPropertyThroughDialog(container, 'Custom_TNew', 'X1', 'x1');
+    await settle();
     assert.deepEqual(panelRows(container), ['90:Custom_T:T1', '90:Custom_T:T2', '90:Custom_TNew:X1']);
 
     await addPropertyThroughDialog(container, 'Custom_T', 'T3', 't3');
+    await settle();
     assert.deepEqual(panelRows(container), ['90:Custom_T:T1', '90:Custom_T:T2', '90:Custom_T:T3', '90:Custom_TNew:X1']);
 
     const reparsed = await exportAndReparse(full);

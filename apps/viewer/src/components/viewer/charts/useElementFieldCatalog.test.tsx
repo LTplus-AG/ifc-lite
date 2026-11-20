@@ -11,7 +11,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, settle } from '@/test/render.js';
 import { useElementFieldCatalog, type ElementFieldCatalogState } from './useElementFieldCatalog.js';
 
 const model = (nominal: string) => `ISO-10303-21;
@@ -93,6 +93,7 @@ describe('IFC field catalog across a federation (#4833)', () => {
       models: new Map([[source.id, source]]), activeModelId: source.id,
       mutationViews: new Map([[source.id, view]]), mutationVersion: 1,
     });
+    await settle();
 
     let latest: ElementFieldCatalogState | null = null;
     render(<CatalogProbe onState={(state) => { latest = state; }} />);

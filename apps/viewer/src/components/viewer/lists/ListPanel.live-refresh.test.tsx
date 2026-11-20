@@ -21,7 +21,7 @@ import { IfcTypeEnum } from '@ifc-lite/data';
 import { StepExporter } from '@ifc-lite/export';
 import { IfcParser, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import type { ListDefinition } from '@ifc-lite/lists';
-import { blur, cleanup, click, render, type, press, waitFor } from '@/test/render.js';
+import { blur, cleanup, click, render, settle, type, press, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -100,6 +100,7 @@ afterEach(() => {
 });
 
 async function openSchedule(): Promise<HTMLElement> {
+  await settle();
   const ui = render(<><ListPanel /><ModelInspectorPanel /></>);
   const run = ui.querySelector<HTMLButtonElement>('button[aria-label="Run list Wall lengths"]');
   assert.ok(run, 'the library offers the list');
@@ -135,6 +136,7 @@ describe('an open wall schedule follows a length typed in the Model inspector (#
     const ends = s().readWallEndpoints(MODEL_ID, wall)!;
     assert.deepEqual(ends.start.map((v) => +v.toFixed(6)), [0, 0, 0], 'the start stays');
     assert.deepEqual(ends.end.map((v) => +v.toFixed(6)), [6, 0, 0], 'the end moves along the axis');
+    await settle();
     assert.equal(input(ui, 'Length in metres').value, '6.00');
     const steps = new Set((s().undoStacks.get(MODEL_ID) ?? []).slice(depth).map((m) => s().mutationBatchTags.get(m.id)));
     assert.equal(steps.size, 1, 'one undo step');
@@ -144,6 +146,7 @@ describe('an open wall schedule follows a length typed in the Model inspector (#
     assert.equal(useActivityJournal.getState().jobs.length, 1, 'a refresh adds no Activity row of its own');
 
     act(() => s().undo(MODEL_ID));
+    await settle();
     assert.equal(input(ui, 'Length in metres').value, '5.00');
     await waitFor(() => footerLength(ui) === 10, 'and follows the undo back');
   });

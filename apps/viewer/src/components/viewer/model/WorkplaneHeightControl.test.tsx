@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
-import { cleanup, click, press, render, type } from '@/test/render.js';
+import { cleanup, click, press, render, settle, type } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import type { CommandContext } from '@/lib/commands/modeling/types';
@@ -47,6 +47,7 @@ const open = (trigger: HTMLElement) => act(() => {
 beforeEach(async () => {
   await seedModelingSession();
   state().enterModelWorkspace();
+  await settle();
 });
 afterEach(() => {
   state().exitModelWorkspace();

@@ -8,7 +8,7 @@ import { act } from 'react';
 import { GeometryProcessor, type MeshData, type CoordinateInfo, type StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { loadTracer } from '@/lib/perf/loadTrace';
-import { advance, waitFor } from '@/test/render.js';
+import { advance, settle, waitFor } from '@/test/render.js';
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
 import { subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { hook, skip, blankFile } from '@/test/blank-ifc-loader-harness.js';
@@ -51,6 +51,7 @@ for (const flat of [false, true]) {
     await act(async () => useViewerStore.setState({
       appendGeometryBatch: (...args: Parameters<typeof append>) => { calls.push(`append:${args[1].length}`);return append(...args); },
     }));
+    await settle();
     const id = crypto.randomUUID(), pending = hook.loadFile(blankFile('METRE'), { kind: 'primary', modelId: id });
     try {
       await waitFor(() => delivered, 'loader consumed the batch and is waiting for completion');

@@ -24,7 +24,7 @@ import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { jsPDF } from 'jspdf';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, click, cleanup, waitFor, type as typeInput } from '@/test/render.js';
+import { render, click, cleanup, advance, waitFor, type as typeInput } from '@/test/render.js';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
 import { browserReportSeams, type ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js';
 import { DOCUMENT_VERSION, type DocumentSpec, type ListTableSource, type TableBlock } from '@/lib/document/types.js';
@@ -361,6 +361,7 @@ describe('useDocumentData bindings (#5249)', () => {
     view.deleteEntity(42);
     view.setAttribute(41, 'Name', 'Edited wall');
     act(() => useViewerStore.setState({ mutationVersion: 1 }));
+    await waitFor(() => ui.querySelector('[data-binding]')?.textContent === 'Walls 1: Edited wall', 'the edit reaches the mounted probe');
     assert.equal(ui.querySelector('[data-binding]')?.textContent, 'Walls 1: Edited wall');
   });
 });
@@ -369,6 +370,9 @@ describe('useDocumentTables (#5142)', () => {
   beforeEach(async () => {
     const model = await parsedModel();
     useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, mutationVersion: 0 });
+    // A changed mutationVersion holds panels for two frames and a task (#10535);
+    // frames are captured here, so register, run them and the task before each test mounts.
+    await flushEffects(); await runLists(); await advance(0);
   });
   afterEach(() => cleanup());
 
@@ -381,6 +385,7 @@ describe('useDocumentTables (#5142)', () => {
     await runLists();
     assert.equal(statusOf(ui, 'a'), 'ok');
     act(() => useViewerStore.setState({ mutationVersion: 1 }));
+    await waitFor(() => statusOf(ui, 'a') === 'resolving', 'the edit reaches the mounted probe');
     assert.equal(statusOf(ui, 'a'), 'resolving', 'the old run is unreachable under the new data key');
     await runLists();
     assert.equal(statusOf(ui, 'a'), 'ok');
@@ -422,6 +427,9 @@ describe('useDocumentTables — what re-runs a list and what does not (review fi
   beforeEach(async () => {
     const model = await parsedModel();
     useViewerStore.setState({ models: new Map([[model.id, model]]), activeModelId: model.id, mutationVersion: 0 });
+    // A changed mutationVersion holds panels for two frames and a task (#10535);
+    // frames are captured here, so register, run them and the task before each test mounts.
+    await flushEffects(); await runLists(); await advance(0);
   });
   afterEach(() => cleanup());
 

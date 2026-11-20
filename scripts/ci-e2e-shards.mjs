@@ -54,9 +54,8 @@ export const PROJECT = 'viewer-e2e-ci';
  * › file:line › title (12.3s)`). Source runs: 44794742144, 44787623046,
  * 44781819131, 44781800198 (all 8 shards each, every job `success`). Run
  * 44788022622 is left out: its shards 2 and 8 were killed, so their files'
- * logs are partial. geometry-backing-idb (#10868) is also left out: it appeared
- * in those logs only because queued branches carried it, and it is not on main
- * yet; it starts as unmeasured. Setup around the tests (fixtures, server) is the same on
+ * logs are partial. geometry-backing-idb (#10868) is the sum of its five tests
+ * in shard 2 of run 44788022622 (all passed before the kill). Setup around the tests (fixtures, server) is the same on
  * every shard and is not in these numbers.
  */
 export const TIMINGS_S = Object.freeze(Object.fromEntries([
@@ -72,6 +71,7 @@ export const TIMINGS_S = Object.freeze(Object.fromEntries([
   ["tests/e2e/cold-load-scene-snapshot.e2e.spec.ts", 66],
   ["tests/e2e/ortho-axis-views-9501.e2e.spec.ts", 64],
   ["tests/e2e/small-file-fast-path.e2e.spec.ts", 61],
+  ["tests/e2e/geometry-backing-idb.e2e.spec.ts", 58],
   ["tests/e2e/content-storage.e2e.spec.ts", 59],
   ["tests/e2e/assistant-check-authoring.e2e.spec.ts", 54],
   ["tests/e2e/ids-bcf-export.e2e.spec.ts", 54],

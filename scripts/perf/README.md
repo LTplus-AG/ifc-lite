@@ -136,10 +136,12 @@ inside a container with `--memory=3g --memory-swap=3g`. Neither was verified fro
 
 ## Streaming native `.ifclite` writer (#9584 slice 3, `ifc-build-cache`)
 
-**Measured locally, acceptance pending: `build_cache_to_path` runs the pipeline with `retain_meshes` off and spools each chunk as it closes; its output is byte-identical to the in-memory `build_cache`, and on a shared host it drops the retained mesh set from the peak. These figures are diagnostic. The verdict is the fleet-admitted paired run on this PR's merge base `ee77162e0` and head, recorded here when it is attached.**
+**Accepted: streaming lowers peak RSS on Holter.** The admitted Pop run compared the release builds at `ee77162e0` and `48a4873a0` over five interleaved rounds at eight threads. All three writers produced byte-identical caches on all three fixtures. Streaming lowered Holter's peak by 35.8% versus the base and 29.2% versus the branch's in-memory writer. O-S1 and AC20-FZK-Haus stayed within measurement noise. [Paired run and provenance](https://github.com/LTplus-AG/ifc-lite/pull/10361#issuecomment-7042221543)
+
+The shared-host measurements below are diagnostic.
 - The base below is slice 2 before the rebase (`5093d52f3`), not the merge base `ee77162e0`; the fleet run measures against the latter.
 - Byte identity: base (slice 2, `5093d52f3`) in-memory, branch in-memory and branch streamed caches compared with `cmp` on every model below: all identical. Tests: `rust/cache/tests/streamed_matches_in_memory.rs`, `src/stream_tests.rs` (1-, 7- and 1024-job batches).
-- Peak RSS (`/usr/bin/time -l`, MiB, mean of 2 runs, release, Apple M2 Pro 10-core 16 GB, macOS 26.5.2, shared host with load 4-6). Floor is `examples/pipeline_floor.rs` (the same geometry pass, meshes dropped, nothing written); "data model" is `ifc-build-cache --no-geometry`; cells x 8 MiB bounds the open chunks, "open" is the measured peak of them:
+- Peak RSS (`/usr/bin/time -l`, MiB, mean of 2 runs, release, Apple M2 Pro 10-core 16 GB, macOS 26.5.2, shared host with load 4-6). Floor is `examples/pipeline_floor.rs` (the same geometry pass, meshes dropped, nothing written); "data model" is `ifc-build-cache --no-geometry`; the open chunks can hold up to 8 MiB plus one mesh per cell, and "open" is their measured peak:
 
 | Model (source MB) | Meshes | Cells / open | Floor | Data model | Base in-memory | Branch in-memory | Streamed |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -156,7 +158,7 @@ inside a container with `--memory=3g --memory-swap=3g`. Neither was verified fro
 - The streamed peak stays at or about the data-model peak plus the pipeline floor (under their sum on eight models, a few MiB over on advanced_model), so the writer adds no mesh-proportional memory beyond its open chunks; on the larger models it sits well under the in-memory one; the gap is the retained mesh set and grows with it. Streamed peak is not flat in model size: the data model (entity index, strings, relationship tables) and the pipeline's own floor both grow with the source, and on Holter the data-model phase alone is the larger part. Wall time moved within the host's noise; no timing claim.
 - Tried and dropped: running the geometry pass before the data model. It did not lower the peak (one Holter run read slightly higher), because the allocator keeps the first phase's pages for the second.
 
-Lesson: once meshes stream, the native cache's peak is the data model, not the geometry. A further RSS lever has to shrink `extract_data_model_with`'s working set or the pipeline floor; reordering phases does not help, and memory-mapping the source bounds nothing by itself.
+Lesson: streaming removes the retained mesh set, while the data model and the geometry pipeline's own working set still contribute to peak RSS. Source file size alone does not predict the saving. Further reductions depend on which phase sets the peak on the model being measured.
 
 ## Reopen interactive mark with a geometry-restore gate (#10218, merged)
 

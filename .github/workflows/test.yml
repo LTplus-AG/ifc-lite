@@ -2078,6 +2078,8 @@ jobs:
       # IFC4X3/IFC5, generated from the EXPRESS-derived IFC4 registry.
       - name: Check IFC4 required-slot table freshness
         run: node scripts/generate-ifc4-required-slots.mjs --check
+      - name: Check IFC2X3 typed-property upgrade tables
+        run: node --import tsx scripts/generate-ifc2x3-typed-properties.mjs --check
       # The ledger of enum members a schema conversion can meet that the target
       # lacks, and what the converter writes for each (#5365). A schema
       # regeneration that adds one fails here until its rows are reviewed.

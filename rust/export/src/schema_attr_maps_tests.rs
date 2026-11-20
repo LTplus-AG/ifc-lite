@@ -182,3 +182,28 @@ fn ifc2x3_property_subtypes_upgrade_to_the_ifc4_supertype_10777() {
     let ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
     assert_eq!(convert_step_line(ifc5, "IFC2X3", "IFC5", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap(), ifc5);
 }
+
+#[test]
+fn keeps_typed_ifc2x3_measures_as_property_single_values_10797() {
+    let source = include_bytes!("../tests/fixtures/schema_typed_properties_upgrade.ifc");
+    for schema in ["IFC4", "IFC4X3"] {
+        let opts = crate::StepOptions { schema: Some(schema.to_owned()), ..Default::default() };
+        let (output, stats, _) = crate::export_step_with_diagnostics(source, &opts).unwrap();
+        let (logged, log_stats) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+        let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema.clone(), ..Default::default() });
+        for output in [&output, &logged, &merged] {
+            for text in [
+                "#2=IFCMATERIALPROPERTIES('Pset_MaterialConcrete',$,(",
+                "IFCMATERIALPROPERTIES('Pset_MaterialMechanical',$,(",
+                "#4=IFCPROFILEPROPERTIES('Pset_ProfileMechanical',$,(",
+                "IFCPROPERTYSINGLEVALUE('YoungModulus',$,IFCMODULUSOFELASTICITYMEASURE(25000000000.),$);",
+                "IFCPROPERTYSINGLEVALUE('CompressiveStrength',$,IFCPRESSUREMEASURE(30000000.),$);",
+                "IFCPROPERTYSINGLEVALUE('MassPerLength',$,IFCMASSPERLENGTHMEASURE(4.5),$);",
+            ] {
+                assert!(output.contains(text), "{schema}: {text}\n{output}");
+            }
+        }
+        assert_eq!(log_stats.step.attribute_values_dropped, 0);
+        assert_eq!(stats.attribute_values_dropped, 0);
+    }
+}

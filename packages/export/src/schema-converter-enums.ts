@@ -19,6 +19,7 @@
  * required-slot passes use (position `i` need not be attribute `i`).
  */
 
+import { TypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { ValueForms } from './schema-converter-value-forms.js';
@@ -69,6 +70,12 @@ const LOSS_TEXT: Record<Loss, string> = {
 
 /** Enum reconciliation for one export: rewrites, and counts what it lost. */
 export class EnumReconciliation {
+  readonly typedProperties: TypedPropertyUpgrade;
+
+  constructor(upgradeTypedProperties = false) {
+    this.typedProperties = new TypedPropertyUpgrade(upgradeTypedProperties);
+  }
+
   /** Reuses this per-export collector so both STEP writers forward structural losses. */
   readonly structural = new StructuralDiagnostics();
   /** The IfcDocumentInformation <-> IfcDocumentReference link (#10846). */
@@ -142,7 +149,7 @@ export class EnumReconciliation {
       const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
       out.push(`${total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
-    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.structural.warnings()];
+    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.structural.warnings(), ...this.typedProperties.warnings()];
   }
 
   private record(loss: Loss, where: string): void {

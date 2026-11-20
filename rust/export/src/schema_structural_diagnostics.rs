@@ -54,6 +54,17 @@ impl StructuralDiagnostics {
         }
     }
 
+    /// Clear one omission once the writer has emitted a replacement property.
+    pub(crate) fn restore_omitted_value(&mut self, entity: &str, attribute: &str, to: &str) {
+        let message = format!("{entity}.{attribute} has no slot in {to}; its value is omitted");
+        if let Some(count) = self.losses.get_mut(&message) {
+            *count -= 1;
+            if *count == 0 {
+                self.losses.remove(&message);
+            }
+        }
+    }
+
     fn record(&mut self, message: String) { *self.losses.entry(message).or_default() += 1; }
 
     /// A record written as another entity from source-derived facts

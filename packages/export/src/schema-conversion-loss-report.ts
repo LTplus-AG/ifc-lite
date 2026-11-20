@@ -36,6 +36,7 @@ import {
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
+import { convertedTypedPropertyNames } from './schema-converter-typed-properties.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
 import { isRootedEntityType } from './schema-untranslatable.js';
 
@@ -290,7 +291,14 @@ export function analyzeConversionLoss(
     // @raw-entity-enumeration-ok this report describes the parsed file's schema-conversion losses
     for (const [sourceType, ids] of entityIndex.byType) {
       if (ids.length === 0) continue;
-      const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
+      let info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
+      if (info.kind === 'lossy' && fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3')) {
+        const retained = convertedTypedPropertyNames(sourceType.toUpperCase());
+        if (retained.size > 0) {
+          const droppedAttributes = info.droppedAttributes.filter((name) => !retained.has(name));
+          info = { ...info, droppedAttributes, kind: droppedAttributes.length ? 'lossy' : 'renamed' };
+        }
+      }
       const isLoss = info.kind !== 'identity' && info.kind !== 'renamed';
       if (!isLoss && !(fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase()))) continue;
       let expressIds: readonly number[] = ids;

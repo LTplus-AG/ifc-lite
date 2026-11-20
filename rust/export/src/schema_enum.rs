@@ -190,6 +190,7 @@ pub(crate) struct ConversionChecks {
     pub(crate) documents: crate::schema_document_links::DocumentLinks,
     /// Values a target slot's type cannot hold (#10847).
     pub(crate) forms: crate::schema_value_forms::ValueForms,
+    pub(crate) typed_properties: crate::schema_typed_properties::TypedPropertyUpgrade,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     /// Non-`$` source values the converted record has no slot for (#7683):
@@ -243,6 +244,7 @@ impl ConversionChecks {
         &mut self,
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+        ids: crate::step_ids::IdAllocator,
     ) -> std::io::Result<isize> {
         use std::io::Write as _;
         let mut added = self.structural.added();
@@ -256,7 +258,11 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish()?)
+        Ok(count + body.finish_with(|text| self.finish_typed_properties(text, ids))?)
+    }
+
+    pub(crate) fn finish_typed_properties(&mut self, text: &str, ids: crate::step_ids::IdAllocator) -> Option<(String, usize)> {
+        self.typed_properties.finish(text, ids, &mut self.ifc4_slots, &mut self.attribute_values_dropped, &mut self.structural)
     }
 
     /// Both checks' warnings, IFC4 slots first.
@@ -266,6 +272,7 @@ impl ConversionChecks {
         out.extend(self.documents.warnings());
         out.extend(self.forms.warnings());
         out.extend(self.structural.warnings());
+        out.extend(self.typed_properties.warning());
         out
     }
 }

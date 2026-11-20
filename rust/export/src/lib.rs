@@ -91,6 +91,7 @@ mod schema_userdefined;
 mod schema_userdefined_label;
 mod schema_style_flatten;
 mod schema_unrepresented;
+mod schema_typed_properties;
 mod shades;
 pub mod source_header;
 mod step;

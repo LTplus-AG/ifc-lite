@@ -21,6 +21,7 @@
  * engine they didn't ask for. They pay it on first load instead, as today.
  */
 
+import { processedModelRequested } from './processed-model.js';
 import { onFieldTelemetry } from './perf/fieldTelemetryLoader.js';
 import { supportsWasmSimd } from './wasm-simd-support.js';
 
@@ -60,10 +61,14 @@ export function scheduleWasmPrewarm(): void {
   // Gate BEFORE latching: a session that was on a metered/2g link at mount can
   // become eligible later, and latching first would lock it out for good.
   // Without SIMD the binary cannot compile, so downloading it is waste (#10784).
-  if (!supportsWasmSimd() || shouldSkipPrewarm(connection())) return;
+  if (processedModelRequested() || !supportsWasmSimd() || shouldSkipPrewarm(connection())) return;
   scheduled = true;
 
   const run = () => {
+    if (processedModelRequested()) {
+      scheduled = false;
+      return;
+    }
     // Imported dynamically so this module has no load-order dependency on the
     // geometry package. (It does NOT keep it out of the entry chunk —
     // useIfcLoader value-imports GeometryProcessor, so @ifc-lite/geometry is

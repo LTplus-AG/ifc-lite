@@ -55,7 +55,9 @@ async function prepare(kind: 'group' | 'structural' | 'zone' | 'room', json: str
     case 'room': {
       const [{ parseRoomProposal }, { prepareRoomReview }, { commitReviewedRoom }] = await Promise.all([import('@/lib/actions/room-command-proposal'), import('@/lib/actions/room-review'), import('@/lib/actions/room-receipt')]);
       const proposal = parseRoomProposal(json); proposalModel(proposal, c);
-      const review = await prepareRoomReview(proposal, c.signal ?? new AbortController().signal);
+      // The native preparation remeshes the storey walls first; that is this operation's own write, and the review's
+      // geometry lease, checked by validate() below, binds the geometry it read.
+      const review = await c.ownGeometry(() => prepareRoomReview(proposal, c.signal ?? new AbortController().signal), refused => refused.dispose());
       return { room: review, preview: { proposal: review.proposal, snapshot: review.snapshot, result: review.prepared.result }, validate: review.validate,
         commit: () => commitReviewedRoom(review, 'viewer-agent').receipt, dispose: review.dispose };
     }

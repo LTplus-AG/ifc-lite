@@ -51,6 +51,8 @@ export function storeyMutationTracking(store: StoreApi): StoreyMethods {
     listStoreyLevels: (...args) => live('listStoreyLevels').listStoreyLevels(...args),
     suggestStorey: (...args) => live('suggestStorey').suggestStorey(...args),
     addStorey: (...args) => live('addStorey').addStorey(...args),
+    planAddStorey: (...args) => live('planAddStorey').planAddStorey(...args),
+    setTopConstraint: (...args) => live('setTopConstraint').setTopConstraint(...args),
     renameStorey: (...args) => live('renameStorey').renameStorey(...args),
     planStoreyEdit: (...args) => live('planStoreyEdit').planStoreyEdit(...args),
     editStorey: (...args) => live('editStorey').editStorey(...args),

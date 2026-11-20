@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { assertWasmSourceSize } from '@ifc-lite/parser';
+import { assertWasmSimdSupported } from '@/lib/wasm-simd-support';
 
 const GiB = 1024 ** 3;
 export interface LocalIfcMemoryWarning { estimatedGiB: number; budgetGiB: number }
@@ -11,8 +12,10 @@ export interface LocalIfcMemoryWarning { estimatedGiB: number; budgetGiB: number
  * Browser memory reports cap at 8 GiB: that value (or an absent report) may
  * describe a much larger workstation, so it requires consent rather than a
  * hard refusal. Below 8, refuse an over-budget load. Never infer RAM from CPU
- * cores. Smaller complex models can still exhaust memory after this check. */
+ * cores. Smaller complex models can still exhaust memory after this check.
+ * A browser without WebAssembly SIMD is refused outright (#10784). */
 export function inspectLocalIfcAdmission(byteLength: number, deviceMemoryGB?: number): LocalIfcMemoryWarning | null {
+  assertWasmSimdSupported();
   assertWasmSourceSize(byteLength);
   const reported = deviceMemoryGB ?? (typeof navigator === 'undefined'
     ? undefined : (navigator as Navigator & { deviceMemory?: number }).deviceMemory);

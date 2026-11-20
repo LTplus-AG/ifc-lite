@@ -141,6 +141,24 @@ fn evaluate_bspline_surface(
     result
 }
 
+/// Whether the expanded knot vectors cover the control net: at least
+/// (num_control_points + degree + 1) entries per direction, so the parameter
+/// domain `[degree]..[len - degree - 1]` can be indexed safely. The evaluator
+/// and the flat-face decision (#10590) share this check, so a surface the
+/// evaluator would not draw is never drawn by its bounds instead.
+pub(super) fn knots_cover_net(
+    u_degree: usize,
+    v_degree: usize,
+    control_points: &[Vec<Point3<f64>>],
+    u_knots: &[f64],
+    v_knots: &[f64],
+) -> bool {
+    let n_u = control_points.len();
+    let n_v = control_points.first().map_or(0, |r| r.len());
+    // `len > n + degree` also gives `degree < len`, the index bound.
+    u_knots.len() > n_u + u_degree && v_knots.len() > n_v + v_degree
+}
+
 /// Tessellate a B-spline surface into triangles.
 /// Returns `None` if the knot data is inconsistent (prevents index panics).
 pub(super) fn tessellate_bspline_surface(
@@ -156,25 +174,10 @@ pub(super) fn tessellate_bspline_surface(
     let mut positions = Vec::new();
     let mut indices = Vec::new();
 
-    // Validate knot vector lengths: expanded knot vector must have at least
-    // (num_control_points + degree + 1) entries. At minimum we need to be
-    // able to index [degree] and [len - degree - 1] safely.
+    if !knots_cover_net(u_degree, v_degree, control_points, u_knots, v_knots) {
+        return None;
+    }
     let n_u = control_points.len();
-    let n_v = control_points.first().map_or(0, |r| r.len());
-    let min_u_knots = n_u + u_degree + 1;
-    let min_v_knots = n_v + v_degree + 1;
-
-    if u_knots.len() < min_u_knots || v_knots.len() < min_v_knots {
-        return None;
-    }
-    if u_degree >= u_knots.len() || v_degree >= v_knots.len() {
-        return None;
-    }
-    if u_knots.len() - u_degree > u_knots.len()
-        || v_knots.len() - v_degree > v_knots.len()
-    {
-        return None;
-    }
 
     // Get parameter domain
     let u_min = u_knots[u_degree];
@@ -229,14 +232,17 @@ pub(super) fn tessellate_bspline_surface(
                 let base = (i * (v_segments + 1) + j) as u32;
                 let next_u = base + (v_segments + 1) as u32;
 
-                // Two triangles per quad
+                // Two triangles per quad, wound so their normal is Su x Sv,
+                // the surface's own normal, as the cylinder and revolution
+                // grids are. `FacePlan` reverses it for SameSense=.F.; the old
+                // order (v first) faced every such face into its solid.
                 indices.push(base);
-                indices.push(base + 1);
+                indices.push(next_u);
                 indices.push(next_u + 1);
 
                 indices.push(base);
                 indices.push(next_u + 1);
-                indices.push(next_u);
+                indices.push(base + 1);
             }
         }
     }

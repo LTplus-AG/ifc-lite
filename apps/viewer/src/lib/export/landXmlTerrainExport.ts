@@ -22,6 +22,7 @@ import { GeometryProcessor, terrainRefusalReason, type LandXmlTerrainExport, typ
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef } from '@/store/types';
 import { modelExportFilename } from './download';
+import { LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 /** The IFC classes the producer accepts as a terrain carrier. */
 const TERRAIN_TYPES = new Set(['IFCGEOGRAPHICELEMENT', 'IFCSITE']);
@@ -44,7 +45,7 @@ export type TerrainSelection =
   | {
       kind: 'ready';
       skipped: number;
-      /** Mutation-view key: the federated model id, or `legacy`. */
+      /** Mutation-view key: the federated model id, or the legacy model's `__legacy__`. */
       modelId: string;
       modelName: string;
       store: IfcDataStore;
@@ -66,7 +67,8 @@ function resolveRefModel(input: TerrainSelectionInput, modelId: string): Resolve
   // A `legacy` ref is a single-model session's id. With no federated model it
   // is the legacy store; with exactly one it can only mean that model.
   if (input.models.size === 0) {
-    return input.legacyStore ? { modelId: LEGACY_MODEL_ID, name: '', store: input.legacyStore } : null;
+    // Keyed as the store keeps the legacy model's edits, so its pending edits reach the export (#10695).
+    return input.legacyStore ? { modelId: LEGACY_MUTATION_MODEL_ID, name: '', store: input.legacyStore } : null;
   }
   if (input.models.size === 1) {
     const [soleId, sole] = [...input.models][0];

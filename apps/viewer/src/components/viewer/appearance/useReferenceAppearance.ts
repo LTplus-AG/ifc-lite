@@ -1,35 +1,24 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { prepareNativeAppearanceReference, placeNativeAppearanceReference, ReferenceAppearanceError } from '@/lib/appearance/appearance-native-reference';
+
 import { useAsyncRun } from '@/hooks/useAsyncRun';
-import { captureReferencePdfLineage } from '@/lib/appearance/references/pdf-lineage';
 import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import { placementFrameKey } from '@/lib/model-placement/persistence.js';
-import { referenceRenderCorners } from '@/lib/appearance/reference-runtime/frame.js';
-import { calibrateAppearancePlane, type PlaneCalibrationRequest } from '@/lib/appearance/plane-calibration.js';
-import { pdfCalibrationFrame } from '@/lib/appearance/pdf/calibration.js';
-import { imageCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
-import { appearanceMapping } from '@/lib/appearance/settings.js';
 import type { RegisteredAppearanceReference } from '@/lib/appearance/references/types.js';
 import type { AppearanceSourceOption } from '@/lib/appearance/draft-types.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { rawMessage, translatedMessage, type LocalizedMessage } from './localized-message.js';
-import type { TranslationKey } from '@/i18n';
 
 import { referenceEditSettings, restoreReferenceSource } from '@/lib/appearance/references/edit.js';
 
 type Preview = { record: RegisteredAppearanceReference; source: AppearanceSourceOption; bitmap: ImageBitmap; signal: AbortSignal };
-class ReferenceAppearanceError extends Error {
-  constructor(readonly translationKey: TranslationKey) {
-    super(translationKey);
-  }
-}
 const referenceErrorMessage = (error: unknown): LocalizedMessage => error instanceof ReferenceAppearanceError
   ? translatedMessage(error.translationKey) : rawMessage(error);
-const normals = { xy: [0, 0, 1], xz: [0, -1, 0], yz: [1, 0, 0] } satisfies Record<string, [number, number, number]>;
 
 /** One transient reference uses the same source and calibration controls as IFC
  * appearance. Only Place publishes a registration and a workspace history entry. */
@@ -67,22 +56,7 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
     let inFlight = false;
     const timer = setTimeout(() => { inFlight = true; void (async () => {
       try {
-        const mapping = appearanceMapping({ ...settings, kind: 'planar' });
-        if (mapping.kind !== 'planar') throw new ReferenceAppearanceError('appearance.reference.planarPlacementRequired');
-        const calibration: PlaneCalibrationRequest = { ...(source.calibrationFrame ?? (source.pdf ? pdfCalibrationFrame(source.pdf.recipe)
-          : imageCalibrationFrame(source.width, source.height))), ...source.calibration!,
-          worldAnchor: mapping.origin, worldDirection: mapping.axisU, planeNormal: normals[settings.plane] };
-        const result = await calibrateAppearancePlane(calibration);
-        controller.signal.throwIfAborted();
-        if (result.rasterCorners.length !== 4) throw new ReferenceAppearanceError('appearance.reference.incompleteCorners');
-        const [a, b, c, d] = result.rasterCorners;
-        const record: RegisteredAppearanceReference = { id: editing?.id ?? crypto.randomUUID(), sourceId: source.id,
-          assetId: source.assetId ?? source.id, cornersIfcWorld: [a, b, c, d], frameKey,
-          visible: editing?.visible ?? true, locked: false, opacity: editing?.opacity ?? 1, calibration, pdf: captureReferencePdfLineage(source, calibration) };
-        const corners = referenceRenderCorners(record, useViewerStore.getState());
-        if (!corners) throw new ReferenceAppearanceError('appearance.reference.workspaceFrameChanged');
-        appearanceAssets.retain(record.assetId, owner);
-        const bitmap = await appearanceAssets.decode(record.assetId, owner, controller.signal);
+        const {record,bitmap,corners} = await prepareNativeAppearanceReference(source,settings,frameKey,editing,owner,controller.signal);
         await renderer.getReferenceImages().set({ ...record, id: draftId, corners, bitmap }, controller.signal);
         controller.signal.throwIfAborted();
         draft.current = { record, source, bitmap, signal: controller.signal };
@@ -109,34 +83,17 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
     const prepared = draft.current, renderer = getGlobalRenderer();
     if (!prepared || !renderer) return;
     await placeRun.start(async ({ signal: runSignal }) => {
-      const { record, bitmap } = prepared;
+      const { record } = prepared;
       const signal = AbortSignal.any([prepared.signal, runSignal]);
       setMessage(translatedMessage('appearance.reference.placing'));
-      const placementOwner = { kind: 'draft' as const, id: `reference-place:${crypto.randomUUID()}` };
       try {
-        appearanceAssets.retain(record.assetId, placementOwner);
-        signal.throwIfAborted();
-        const corners = referenceRenderCorners(record, useViewerStore.getState());
-        if (!corners) throw new ReferenceAppearanceError('appearance.reference.workspaceFrameChanged');
-        // Replacement is published through the committed-record bridge, so the
-        // old registered image stays valid until the transaction is accepted.
-        if (!editing) await renderer.getReferenceImages().set({ ...record, corners, bitmap }, signal);
-        signal.throwIfAborted();
-        const state = useViewerStore.getState();
-        if (placementFrameKey(state) !== record.frameKey || state.appearanceSources.find(item => item.id === record.sourceId) !== prepared.source) {
-          throw new ReferenceAppearanceError('appearance.reference.sourceChanged');
-        }
-        if (editing) {
-          if (state.appearanceReferences.get(editing.id) !== editing) throw new ReferenceAppearanceError('appearance.reference.drawingChanged');
-          state.replaceAppearanceReference(editing.id, record);
-        } else state.addAppearanceReference(record);
-        state.selectAppearanceReference(record.id);
+        await placeNativeAppearanceReference(prepared,renderer,signal,editing);
         setActive(false); setEditing(null); setStatus('idle'); setMessage(translatedMessage(editing
           ? 'appearance.reference.saved' : 'appearance.reference.placed'));
       } catch (error) {
         if (!useViewerStore.getState().appearanceReferences.has(record.id)) renderer.getReferenceImages().remove(record.id);
         if (!signal.aborted) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
-      } finally { appearanceAssets.releaseOwner(placementOwner); }
+      }
     });
   }
   function edit(id: string): void {

@@ -37,8 +37,9 @@ const NOT_NUMERIC_TUPLES = /[^0-9.,()eE+\-\s]/g;
  * start belong to a record cut by the window edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
  * numeric tuples alone (98 %+). A long numeric record that is not a mesh
- * (B-spline knots, curve points) also passes that test; like the point-list overcount it errs toward refusal.
- * The last record runs to the end of the window.
+ * (B-spline knots, curve points) also passes that test; like the point-list
+ * overcount it errs toward refusal. The last record runs to the end of the
+ * window.
  */
 export function denseRecordBytes(text: string): number {
   RECORD_START.lastIndex = 0;
@@ -58,8 +59,8 @@ export function denseRecordBytes(text: string): number {
  * Share (0..1) of sampled bytes in dense geometry records, or undefined for an
  * empty file. Every sampled byte counts toward the total, so a window inside a
  * long text record weighs as much as one inside a mesh record (review on
- * #10814); the STEP header, a few KB of the first window, counts as sparse. Reads at most {@link SAMPLE_WINDOWS} windows of
- * {@link SAMPLE_WINDOW_BYTES}.
+ * #10814); the STEP header, a few KB of the first window, counts as sparse.
+ * Reads at most {@link SAMPLE_WINDOWS} windows of {@link SAMPLE_WINDOW_BYTES}.
  */
 export async function sampleDenseGeometryShare(file: Blob): Promise<number | undefined> {
   const decoder = new TextDecoder('latin1');

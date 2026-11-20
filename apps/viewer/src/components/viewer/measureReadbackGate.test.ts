@@ -166,7 +166,7 @@ describe('#10880 drag and placement readback', () => {
     reads[1].settle('fed');
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0]], 'the moved click is never raycast under the new view');
-    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own view');
+    assert.equal(useViewerStore.getState().activePolyline, null, 'and the measurement in progress was discarded, not left with a point missing');
   });
 
   it('a placement whose model moved (renderer-side) before its read ran is dropped', async () => {
@@ -179,7 +179,7 @@ describe('#10880 drag and placement readback', () => {
     reads[1].settle('fed');
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after its model moved');
-    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+    assert.equal(useViewerStore.getState().activePolyline, null, 'and the measurement in progress was discarded');
   });
 
   it('a placement whose Snap setting changed before its read ran is dropped', async () => {
@@ -192,7 +192,7 @@ describe('#10880 drag and placement readback', () => {
     reads[1].settle('fed');
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after Snap changed');
-    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+    assert.equal(useViewerStore.getState().activePolyline, null, 'and the measurement in progress was discarded');
   });
 
   it('a placement whose canvas resized before its read ran is dropped, even when the matrix is unchanged', async () => {
@@ -208,7 +208,7 @@ describe('#10880 drag and placement readback', () => {
     reads[1].settle('fed');
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after the canvas resized');
-    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+    assert.equal(useViewerStore.getState().activePolyline, null, 'and the measurement in progress was discarded');
   });
 
   it('a placement whose section cut changed before its read ran is dropped', async () => {
@@ -221,7 +221,7 @@ describe('#10880 drag and placement readback', () => {
     reads[1].settle('fed');
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after the cut changed');
-    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+    assert.equal(useViewerStore.getState().activePolyline, null, 'and the measurement in progress was discarded');
   });
 
   it('a placement whose hide or isolate changed before its read ran is dropped, not placed on what is now shown', async () => {
@@ -234,7 +234,7 @@ describe('#10880 drag and placement readback', () => {
     reads[1].settle('fed');
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast under the new visibility');
-    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own visibility');
+    assert.equal(useViewerStore.getState().activePolyline, null, 'and the measurement in progress was discarded, not left with a point missing');
   });
 
   it('a gesture reset (Esc, a mode or tool switch) drops a pending placement', async () => {
@@ -273,6 +273,22 @@ it('#10880 a gate chunk that fails to load is retried by the next action, not ca
     console.error = originalError;
     setMeasureReadbackGateLoaderForTest(null);
   }
+});
+
+it('#10880 a polyline point that is refused discards the measurement; the finish records nothing', async () => {
+  const c = ctx();
+  handlePolylineClick(c, 0, 0);
+  handlePolylineClick(c, 40, 0);
+  handlePolylineClick(c, 40, 40);
+  await tick();
+  reads[0].settle('fed'); await tick();
+  reads[1].settle('unavailable'); await tick(); // an instanced front: this point cannot be read back
+  handleMeasureDoubleClick(c, { preventDefault: () => {} } as unknown as MouseEvent);
+  if (reads[2]) reads[2].settle('fed');
+  await measureReadbacksIdle();
+  const state = useViewerStore.getState();
+  assert.equal(state.polylineMeasurements.length, 0, 'no polyline is recorded with a point missing');
+  assert.equal(state.activePolyline, null, 'the measurement in progress was discarded');
 });
 
 it('#10880 a refused Point-mode hover clears the live point an earlier hover showed', async () => {

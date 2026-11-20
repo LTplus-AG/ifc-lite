@@ -139,3 +139,14 @@ fn comments_around_a_set_are_dropped_when_it_is_rebuilt_10763() {
 fn a_comment_beside_no_value_is_carried_as_no_value_10779() {
     assert_eq!(up("#5=IFCAPPROVAL(/* none */$,#9,$,$,$,'Name','Id');"), "#5=IFCAPPROVAL('Id','Name',$,$,$,$,$,$,$);");
 }
+
+#[test]
+fn unused_approval_datetime_counts_only_a_present_value_10779() {
+    for (slot, dropped) in [("/* none */$", 0), ("#9", 1)] {
+        let source = format!("#5=IFCAPPROVAL('desc',{slot},$,$,$,'Name','Id');");
+        let mut checks = ConversionChecks::default();
+        let out = convert_step_line(&source, "IFC2X3", "IFC4", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        assert_eq!(out, "#5=IFCAPPROVAL('Id','Name','desc',$,$,$,$,$,$);");
+        assert_eq!(checks.attribute_values_dropped, dropped, "{slot}");
+    }
+}

@@ -52,4 +52,17 @@ describe('authoring.room.prepare needs the edit grant, since it remeshes walls (
     assert.equal(receipt.kind, 'room.command');
     assert.ok(receipt.applied.length > 0, 'the room was created');
   });
+
+  it('cannot run as a background job, and leaves the geometry alone', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await seedReviewedRoom();
+    const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    const geometry = useViewerStore.getState().models.get(MODEL)?.geometryResult;
+    const result = await dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      model_id: MODEL, operation_id: 'authoring.room.prepare', input: { proposal_json: JSON.stringify(roomEnvelope()) }, background: true,
+    }, { canEdit: () => true });
+    assert.equal(result.isError, true);
+    assert.match(result.text, /background is only supported for reads/);
+    assert.equal(useViewerStore.getState().models.get(MODEL)?.geometryResult, geometry);
+  });
 });

@@ -85,7 +85,8 @@ pub(crate) fn is_step_value(value: &str) -> bool {
 
 /// `value` with each `/* ... */` comment read as a space, trimmed. Literals
 /// and comments end by the shared rules (`ref_spans`' scanner: a `''` or `\S\'` stays in
-/// the literal); an unclosed one runs to the end.
+/// the literal); an unclosed one runs to the end. Twin of the TypeScript
+/// `withoutComments` (`step-comment-skip.ts`).
 pub(crate) fn without_comments(value: &str) -> String {
     let bytes = value.as_bytes();
     let (mut out, mut kept, mut i) = (String::with_capacity(value.len()), 0, 0);

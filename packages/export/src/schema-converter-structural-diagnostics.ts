@@ -112,7 +112,8 @@ export class StructuralDiagnostics {
       if (attr.name === 'DestabilizingLoad' && rec.slots[i]?.trim() === '$' && to === 'IFC2X3')
         this.record(destabilizingUnknown(rec.type));
       if (carried?.has(attr.name)) return;
-      if (!tgt.includes(attr.name) && rec.slots[i] && !['$', '*', ''].includes(rec.slots[i].trim())) {
+      // The dropped count's own test (#10779): a comment-only slot is no value.
+      if (!tgt.includes(attr.name) && holdsValue(rec.slots[i] ?? '')) {
         const effect = attr.name === 'ConditionCoordinateSystem' ? '; restraint directions in that coordinate system are not preserved' : '';
         this.record(`${rec.type}.${attr.name} has no slot in ${to}; its value is omitted${effect}`);
       }

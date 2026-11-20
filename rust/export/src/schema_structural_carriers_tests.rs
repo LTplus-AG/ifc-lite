@@ -115,6 +115,18 @@ fn writes_no_causes_for_a_caused_by_that_names_no_reaction_9668() {
     assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
 }
 
+/// /code-review on the #10789 restack: the warning uses the dropped count's
+/// comment-aware test, so a CausedBy holding only a comment and `$` is no
+/// omitted value (#10779).
+#[test]
+fn a_comment_only_caused_by_is_not_warned_as_omitted_10779() {
+    let (_, warnings) = convert(&model("IFC2X3", &CAUSED.replace(",.F.,#20,", ",.F.,/* none */$,")), "IFC4");
+    assert!(!warnings.contains("CausedBy has no slot"), "{warnings}");
+    // A comment beside a real value still holds it, so it is still reported.
+    let (_, warnings) = convert(&model("IFC2X3", &CAUSED.replace(",.F.,#20,", ",.F.,/* c */#9,")), "IFC4");
+    assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
+}
+
 // A varying action that stays unconverted is no IFC4 product, so no 'Causes' relationship may name it.
 const GEOMETRY: &str = "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
 #14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));

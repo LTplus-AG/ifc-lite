@@ -69,6 +69,16 @@ describe('structural conversion reports unrepresentable data #9668', () => {
     expect(out).not.toContain('#77');
     expect(diagnostics.warnings().join('\n')).toContain('IFCSTRUCTURALPOINTACTION.CausedBy has no slot in IFC4; its value is omitted');
   });
+  // /code-review on the #10789 restack: the warning uses the count's comment-aware test (#10779).
+  it('reports nothing for a CausedBy holding only a comment and $', () => {
+    const diagnostics = new EnumReconciliation();
+    convertStepLine("#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,/* none */$);", 'IFC2X3', 'IFC4', undefined, undefined, undefined, undefined, diagnostics);
+    expect(diagnostics.warnings().join('\n')).not.toContain('CausedBy has no slot');
+    // A comment beside a real value still holds it, so it is still reported.
+    const valued = new EnumReconciliation();
+    convertStepLine("#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,/* c */#77);", 'IFC2X3', 'IFC4', undefined, undefined, undefined, undefined, valued);
+    expect(valued.warnings().join('\n')).toContain('IFCSTRUCTURALPOINTACTION.CausedBy has no slot in IFC4; its value is omitted');
+  });
   it('reports IFC4 point-connection support coordinates lost on downgrade', () => {
     const diagnostics = new EnumReconciliation();
     const source = "#50=IFCSTRUCTURALPOINTCONNECTION('id',#1,$,$,$,$,$,#22,#77);";

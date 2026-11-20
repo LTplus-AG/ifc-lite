@@ -35,7 +35,9 @@ const startsAfterFinish = new WeakSet<MouseState>();
  * A press whose start is still reading back over released geometry (#10264): its own landing decides
  * whether it starts or finishes, so its release must not finish anything meanwhile.
  */
-const deferredStarts = new WeakMap<MouseState, object>();
+const deferredStarts = new WeakMap<MouseState, DeferredPress>();
+/** `release`: its release was seen and queued behind it. `second`: it landed as a second click. */
+interface DeferredPress { release?: boolean; second?: boolean }
 /** The store's measure gesture epoch when each press (a mouse state, a touch state) began (#8786). */
 const pressEpochs = new WeakMap<object, number>();
 
@@ -158,16 +160,23 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
   // Calculate canvas-relative coordinates
   const rect = canvas.getBoundingClientRect();
   const at = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  const press = {};
+  const press: DeferredPress = {};
   const begin = () => {
+    const held = deferredStarts.get(mouseState) === press && mouseState.isDragging;
     if (deferredStarts.get(mouseState) === press) deferredStarts.delete(mouseState);
-    const measurePoint = pickMeasurePoint(ctx, at.x, at.y);
-    if (!measurePoint) return;
-    // Released only: an earlier press's start landed after this press began, so this press is its second click.
+    // Released only: an earlier press's start landed after this press began, so this press is its second
+    // click, and a second click finishes where it is RELEASED (#8771). A release seen meanwhile is queued
+    // behind this and finishes there; a press still held finishes on its own release; a click released
+    // unseen finishes here (inside the click slop); a drag released unseen keeps the start pending.
     if (ctx.activeMeasurementRef.current) {
-      if (finishDistance(ctx, measurePoint, at)) finishingPresses.add(mouseState);
+      if (press.release) { press.second = true; return; }
+      if (held || mouseState.didDrag) return;
+      const end = pickMeasurePoint(ctx, at.x, at.y);
+      if (end && finishDistance(ctx, end, at)) finishingPresses.add(mouseState);
       return;
     }
+    const measurePoint = pickMeasurePoint(ctx, at.x, at.y);
+    if (!measurePoint) return;
     beginDistance(ctx, measurePoint, at);
     startingPresses.add(mouseState);
     if (afterFinish) startsAfterFinish.add(mouseState);
@@ -201,7 +210,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   // Captured now: the press state is reset below, before a deferred readback can run.
   const finishing = !startingPresses.has(mouseState) || mouseState.didDrag;
   const shift = e.shiftKey;
-  const release = () => {
+  const release = (finish: boolean) => {
     const useOrthogonalConstraint = shift && ctx.measurementConstraintEdgeRef.current;
     const currentLock = ctx.edgeLockStateRef.current;
 
@@ -250,12 +259,18 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
     // A release on background or back on the start keeps the start pending; a first click leaves it so.
     // On the Shift axis an end projected onto the start is the constrained answer, not a stray snap.
     const at = useOrthogonalConstraint ? undefined : { x: mx, y: my };
-    if (finishing && end && finishDistance(ctx, end, at)) finishingPresses.add(mouseState);
+    if (finish && end && finishDistance(ctx, end, at)) finishingPresses.add(mouseState);
   };
   // Released geometry (#10264): a finishing release reads its own point back first and is dropped by a
-  // gesture reset meanwhile. A press whose start is still reading back decides itself when it lands.
-  if (deferredStarts.has(mouseState)) { /* its start lands later and starts or finishes there */ }
-  else if (!finishing || !viaReadback(ctx, 'place', release, mx, my)) release();
+  // gesture reset meanwhile. A press whose start is still reading back is queued behind it: it finishes
+  // here if that start landed as a second click, or (as any press past the slop) if it was dragged.
+  const deferred = deferredStarts.get(mouseState);
+  if (deferred) {
+    deferred.release = true;
+    const dragged = mouseState.didDrag;
+    const late = () => release(!!deferred.second || dragged);
+    if (!viaReadback(ctx, 'place', late, mx, my)) late();
+  } else if (!finishing || !viaReadback(ctx, 'place', () => release(true), mx, my)) release(finishing);
   startingPresses.delete(mouseState);
   mouseState.isDragging = false;
   mouseState.didDrag = false;

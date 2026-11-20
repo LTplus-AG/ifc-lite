@@ -508,7 +508,7 @@ declare const x: number, y: number;          // canvas CSS pixels under the poin
 const edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
 
 const placed = pieces.map((mesh) => renderer.getScene().placeAppearanceSource!(mesh));
-renderer.setReadbackRaycastMeshes(placed);   // tested beside resident pieces
+renderer.setReadbackRaycastMeshes(placed, { x, y }); // tested beside resident pieces, for this ray only
 const result = renderer.raycastSceneMagnetic(x, y, edgeLock, {
   snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true },
 });

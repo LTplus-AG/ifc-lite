@@ -15,7 +15,7 @@
  * discarded meanwhile.
  */
 
-import { generateChangeSetId, type ChangeSet, type Mutation } from '@ifc-lite/mutations';
+import { generateChangeSetId, type ChangeSet, type Mutation, type MutationType } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 
 export const UNSAVED_CHANGE_SET_NAME = 'Unsaved changes';
@@ -124,6 +124,105 @@ export function moveChangeSetEntries(s: ChangeSetState, moved: readonly Mutation
   return { changeSets: state.changeSets, activeChangeSetId: state.activeChangeSetId };
 }
 
+const mutationTypes = {
+  CREATE_PROPERTY: true, UPDATE_PROPERTY: true, DELETE_PROPERTY: true,
+  CREATE_PROPERTY_SET: true, DELETE_PROPERTY_SET: true,
+  CREATE_QUANTITY: true, UPDATE_QUANTITY: true, DELETE_QUANTITY: true, DELETE_QUANTITY_SET: true,
+  UPDATE_ATTRIBUTE: true, UPDATE_POSITIONAL_ATTRIBUTE: true, UPDATE_ENTITY_TYPE: true,
+  CREATE_ENTITY: true, DELETE_ENTITY: true, SESSION_EDIT: true,
+} satisfies Record<MutationType, true>;
+
+function hasName(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+// Set and member names may be empty: the property writers accept them, and an
+// exported set must import again.
+function isSetOrMemberName(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+// JSON writes a NaN or Infinity quantity as null.
+function isQuantityValue(value: unknown): boolean {
+  return value === null || isFiniteNumber(value);
+}
+
+function isPropertyValue(value: unknown): boolean {
+  const pending = [value];
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (Array.isArray(entry)) {
+      for (const member of entry) pending.push(member);
+    } else if (entry !== null && typeof entry !== 'string' && typeof entry !== 'boolean' && !isFiniteNumber(entry)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function hasSetMembers(value: unknown, isValue: (value: unknown) => boolean): boolean {
+  return Array.isArray(value) && value.every((member: unknown) => {
+    if (!member || typeof member !== 'object' || Array.isArray(member)) return false;
+    const { name, value: memberValue } = member as Record<string, unknown>;
+    return isSetOrMemberName(name) && isValue(memberValue);
+  });
+}
+
+function hasMutationFields(type: MutationType, row: Record<string, unknown>): boolean {
+  const hasSet = isSetOrMemberName(row.psetName);
+  const hasMember = hasSet && isSetOrMemberName(row.propName);
+  switch (type) {
+    case 'CREATE_PROPERTY':
+    case 'UPDATE_PROPERTY':
+      return hasMember && isPropertyValue(row.newValue);
+    case 'DELETE_PROPERTY':
+    case 'DELETE_QUANTITY':
+      return hasMember;
+    case 'CREATE_PROPERTY_SET':
+      return hasSet && hasSetMembers(row.newValue, isPropertyValue);
+    case 'DELETE_PROPERTY_SET':
+    case 'DELETE_QUANTITY_SET':
+      return hasSet;
+    case 'CREATE_QUANTITY':
+      // Whole-set creation and single-member creation share this history type.
+      return row.propName === undefined
+        ? hasSet && hasSetMembers(row.newValue, isQuantityValue)
+        : hasMember && isQuantityValue(row.newValue);
+    case 'UPDATE_QUANTITY':
+      return hasMember && isQuantityValue(row.newValue);
+    case 'UPDATE_ATTRIBUTE':
+      return hasName(row.attributeName) && isPropertyValue(row.newValue);
+    case 'UPDATE_POSITIONAL_ATTRIBUTE':
+      // STEP positional values also carry typed, literal and real markers.
+      return typeof row.attributeName === 'string' && /^@\d+$/.test(row.attributeName) && Object.hasOwn(row, 'newValue');
+    case 'UPDATE_ENTITY_TYPE':
+      return hasName(row.entityType);
+    case 'CREATE_ENTITY':
+      // Created-entity records can carry their IFC class in either field.
+      return hasName(row.attributeName) || hasName(row.entityType);
+    case 'DELETE_ENTITY':
+      return true;
+    case 'SESSION_EDIT':
+      return hasName(row.sessionKind);
+  }
+}
+
+function isChangeSetMutation(value: unknown): value is Mutation {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.id === 'string'
+    && typeof row.type === 'string' && Object.hasOwn(mutationTypes, row.type)
+    && isFiniteNumber(row.timestamp)
+    && typeof row.modelId === 'string'
+    && typeof row.entityId === 'number' && Number.isSafeInteger(row.entityId) && row.entityId >= 0
+    && [row.psetName, row.propName, row.attributeName, row.sessionKind].every(field => field === undefined || typeof field === 'string')
+    && hasMutationFields(row.type as MutationType, row);
+}
+
 /**
  * Read an exported change set file (`exportChangeSet`'s format). A new id
  * avoids clashing with the set it was exported from. Null when the text is
@@ -137,8 +236,9 @@ export function parseChangeSetFile(json: string): ChangeSet | null {
     console.warn('Change set file is not JSON:', error);
     return null;
   }
-  const changeSet = (data as { changeSet?: Partial<ChangeSet> } | null)?.changeSet;
-  if (!changeSet || typeof changeSet.name !== 'string' || !Array.isArray(changeSet.mutations)) return null;
+  const changeSet = (data as { changeSet?: { name?: unknown; createdAt?: unknown; mutations?: unknown } } | null)?.changeSet;
+  if (!changeSet || typeof changeSet.name !== 'string' || !Array.isArray(changeSet.mutations)
+    || !changeSet.mutations.every(isChangeSetMutation)) return null;
   return {
     id: generateChangeSetId(),
     name: changeSet.name,

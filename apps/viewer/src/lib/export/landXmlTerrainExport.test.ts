@@ -55,6 +55,28 @@ describe('resolveTerrainSelection (#7600)', () => {
     assert.equal(selection.modelName, 'site.ifc');
   });
 
+  it('keeps large terrain selection preflight within a linear scan budget (#10795 item 46)', (t) => {
+    const refs = Array.from({ length: 10000 }, (_, i) => ({ modelId: 'terrain', expressId: i + 1 }));
+    const model = fixtureModel('terrain');
+    const store = model.ifcDataStore!;
+    t.mock.method(store.entities, 'getTypeName', () => 'IfcGeographicElement');
+
+    const original = Array.prototype.includes;
+    let scanned = 0;
+    try {
+      Array.prototype.includes = function (this: unknown[], value: unknown, from?: number) {
+        if (typeof value === 'number' && this.length >= 100 && this[0] === 1) scanned += this.length;
+        return original.call(this, value, from);
+      };
+      const result = resolveTerrainSelection({ refs, models: new Map([[model.id, model]]), legacyStore: null });
+      assert.equal(result.kind, 'ready');
+      if (result.kind === 'ready') assert.equal(result.productIds.length, refs.length);
+    } finally {
+      Array.prototype.includes = original;
+    }
+    assert.ok(scanned <= refs.length * 2, `Scanned ${scanned} list entries for ${refs.length} terrain IDs`);
+  });
+
   it('reports no candidate when nothing selected is a terrain', () => {
     assert.deepEqual(
       resolveTerrainSelection({ refs: [], models: models('a'), legacyStore: null }),

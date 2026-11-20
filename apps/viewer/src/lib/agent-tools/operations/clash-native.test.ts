@@ -123,6 +123,78 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(page.clashes[0].review.status, 'accepted');
     assert.equal(page.clashes[0].review.comment, 'Designed overlap');
   });
+  it('releases clash-owned isolation when highlighting all findings (#10795 item 8)', async () => {
+    await seedCoincidentWalls(1);
+    value(await call('clash.run', runInput(), true));
+    const ids = new Set([1]);
+    useViewerStore.setState({ isolatedEntities: ids, clashVisibilityOwned: { channel: 'isolate', ids } });
+    value(await call('clash.action', { action: 'highlightAll' }, true));
+    assert.equal(useViewerStore.getState().isolatedEntities, null);
+    assert.equal(useViewerStore.getState().clashVisibilityOwned, null);
+    assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
+  });
+  it('selects the resolved side before framing it (#10795 item 11)', async (t) => {
+    await seedCoincidentWalls(1);
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const [pair] = useViewerStore.getState().clashResult!.clashes;
+    const ref = useViewerStore.getState().resolveGlobalIdInModel(pair.a.model, pair.a.ref);
+    assert.ok(ref);
+    const frame = t.mock.fn(() => {
+      const state = useViewerStore.getState();
+      assert.equal(state.selectedEntityId, pair.a.ref);
+      assert.deepEqual(state.selectedEntityIds, new Set([pair.a.ref]));
+      assert.deepEqual(state.selectedEntity, ref);
+    });
+    const callbacks = useViewerStore.getState().cameraCallbacks;
+    let scheduled: FrameRequestCallback | undefined;
+    t.mock.method(globalThis, 'requestAnimationFrame', (callback: FrameRequestCallback) => {
+      scheduled = callback;
+      return 1;
+    });
+    useViewerStore.setState({ cameraCallbacks: { ...callbacks, frameSelection: frame } });
+    t.after(() => useViewerStore.setState({ cameraCallbacks: callbacks }));
+
+    const result = value<{ dispatched: boolean }>(await call('clash.focus', {
+      clash_ids: [pair.id], run_seq, mode: 'highlight', element: 'a',
+    }, true));
+    assert.equal(result.dispatched, true);
+    assert.ok(scheduled);
+    scheduled(0);
+    assert.equal(frame.mock.callCount(), 1);
+  });
+  it('reports a single-side focus refusal for a missing element (#10795 item 11)', async () => {
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const current = useViewerStore.getState().clashResult!;
+    const [pair] = current.clashes;
+    useViewerStore.setState({ clashResult: { ...current, clashes: [{ ...pair, a: { ...pair.a, ref: 987654 } }] } });
+    const result = await call('clash.focus', { clash_ids: [pair.id], run_seq, mode: 'highlight', element: 'a' }, true);
+    assert.equal(result.isError, true);
+    assert.match(result.text, /reference elements that are no longer in the model/);
+  });
+  it('guards view settings against a concurrent change to the review filter (#10795 item 14)', async () => {
+    const filter = new Set(['open'] as const);
+    useViewerStore.setState({ clashStatusFilter: filter });
+    const inspect = async () => value<{ expected_view_settings: string }>(await call('clash.state')).expected_view_settings;
+    const input = { sortBy: 'severity', hideTouching: true, focusMode: 'highlight', showRegionBox: false,
+      statusFilter: ['open'], expected_view_settings: await inspect() };
+    assert.equal(typeof input.expected_view_settings, 'string');
+    value(await call('clash.viewSettings', input, true));
+    const expected_view_settings = await inspect();
+    useViewerStore.getState().toggleClashStatusFilter('accepted');
+    const stale = await call('clash.viewSettings', { ...input, expected_view_settings }, true);
+    assert.equal(stale.isError, true);
+    assert.match(stale.text, /Clash settings changed/);
+    assert.ok(useViewerStore.getState().clashStatusFilter.has('accepted'));
+  });
+  it('canonicalizes known type-any tags and refuses unknown classes (#10795 item 17)', async () => {
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const input = { action: 'typeAny', clash_id: '', run_seq, id: '', enabled: true, expected_exclusions: '[]' };
+    const unknown = await call('clash.exclusions.write', { ...input, tag: 'IfcUnknownClass' }, true);
+    assert.equal(unknown.isError, true);
+    assert.match(unknown.text, /known IFC class/);
+    value(await call('clash.exclusions.write', { ...input, tag: ' IFCWALL ' }, true));
+    assert.equal(useViewerStore.getState().clashResult?.clashes.length, 0);
+  });
   it('exports actual native CSV/BCF artifacts and refuses topic publication without a viewport', async () => {
     const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
     const csv = value<{ bytes: number; mime_type: string }>(

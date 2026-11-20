@@ -24,7 +24,7 @@ import type { Clash, ClashResult, ClashRule, ClashRuleCoverage, ClashSeverity, C
  * cannot report buckets that disagree with `clashes`.
  */
 export function summarizeClashes(clashes: readonly Clash[]): ClashSummary {
-  const byRule: Record<string, number> = {};
+  const byRule: Record<string, number> = Object.create(null);
   const byTypePair: Record<string, number> = {};
   const bySeverity: Record<ClashSeverity, number> = { critical: 0, major: 0, minor: 0, info: 0 };
   for (const c of clashes) {

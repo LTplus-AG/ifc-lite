@@ -529,7 +529,7 @@ const CALL_SITE_FLOOR = {
   const CALL_RE = /(?:get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(|publishMove\(\s*get\(\)\s*,)\s*([A-Za-z0-9_.()!]*)/g;
   for (const file of [mutation, mutationWallResize, remeshService, mutationRotateEntity]) {
     for (const m of file.clean.matchAll(CALL_RE)) {
-      const name = m[1] ?? 'mirrorPlacementEdit', firstArg = m[2];
+      const [, name = 'mirrorPlacementEdit', firstArg] = m;
       if (!entityActionNames.has(name)) continue;
       seen.set(name, (seen.get(name) ?? 0) + 1);
       if (firstArg !== 'modelId') {

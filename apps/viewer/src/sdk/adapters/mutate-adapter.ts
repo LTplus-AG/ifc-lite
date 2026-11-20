@@ -9,7 +9,7 @@ import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-vi
 import { newMutationBatchId } from '../../store/slices/mutation-batch-tags.js';
 import { openBackendWriteCapture, trackBackendWrite, type BackendWriteCapture } from './backend-write-capture.js';
 import { mutationDenial } from '../../store/mutation-permission.js';
-import { attributeUndoPrior, modelReader } from '@/lib/actions/model-change-values';
+import { attributeUndoPrior, modelReader, sessionAttributeEdit } from '@/lib/actions/model-change-values';
 
 export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
   const assertCanEdit = (operation: string, modelId: string): void => {
@@ -48,8 +48,7 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       // The value before the edit, so its undo restores it here and in a collab room. A store with no `models` entry
       // (the legacy one) has no reader, but its view still holds the session edit this one replaces.
       const reader = modelReader(state, normalizedModelId);
-      const prior = reader ? attributeUndoPrior(reader, ref.expressId, attrName)
-        : view.getAttributeMutationsForEntity(ref.expressId).find(mutation => mutation.name === attrName)?.value;
+      const prior = reader ? attributeUndoPrior(reader, ref.expressId, attrName) : sessionAttributeEdit(view, ref.expressId, attrName)?.value;
       state.setAttribute?.(normalizedModelId, ref.expressId, attrName, value, prior);
       return undefined;
     },

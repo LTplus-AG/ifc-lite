@@ -11,10 +11,10 @@
  * 0, so the tests never depend on a fixed port.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it } from 'vitest';
 import type { CallToolResult, JsonRpcMessage, JsonRpcResponse, ToolDefinition } from '../protocol/index.js';
 import { startBridgeServer, type RunningBridge } from './run.js';
-import { BridgeCloseCode, BRIDGE_STATUS_TOOL, parsePairingFragment } from './bridge-protocol.js';
+import { BridgeCloseCode, BRIDGE_STATUS_TOOL, parsePairingFragment, parseServerMessage, type BridgeServerMessage } from './bridge-protocol.js';
 import {
   MUTATING_TOOL,
   READ_TOOL,
@@ -90,6 +90,16 @@ async function pair(agent: Agent, extra: Partial<Parameters<typeof pairTab>[0]> 
   tabs.push(paired.tab);
   return paired;
 }
+
+it('#11029: the legacy parser and union require explicit opt-in for acknowledgement frames', () => {
+  expectTypeOf<BridgeServerMessage['type']>().toEqualTypeOf<'welcome' | 'call' | 'cancel' | 'error'>();
+  const frame = JSON.stringify({ type: 'result-ack', sessionId: 'session', id: 'c1', accepted: true });
+  expectTypeOf<ReturnType<typeof parseServerMessage>>().toEqualTypeOf<import('./bridge-protocol.js').ParseResult<BridgeServerMessage>>();
+  expect(parseServerMessage(frame).ok).toBe(false);
+  expect(parseServerMessage(frame, { resultAck: true })).toEqual({
+    ok: true, value: { type: 'result-ack', sessionId: 'session', id: 'c1', accepted: true },
+  });
+});
 
 it('#11029: acknowledges only accepted intact results for the negotiated session', async () => {
   const agent = await startAgent();

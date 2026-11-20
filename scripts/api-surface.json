@@ -8013,6 +8013,7 @@
     "BridgeErrorMessage: interface",
     "BridgeHelloMessage: interface",
     "BridgePermission: type",
+    "BridgeResultAckMessage: interface",
     "BridgeResultMessage: interface",
     "BridgeServerMessage: type",
     "BridgeTabMessage: type",

@@ -78,5 +78,12 @@ export type BridgeServerMessage =
   | BridgeWelcomeMessage
   | BridgeCallMessage
   | BridgeCancelMessage
-  | { type: 'result-ack'; sessionId: string; id: string; accepted: boolean }
   | BridgeErrorMessage;
+
+/** A negotiated acknowledgement for a result the tab marked for confirmation. */
+export interface BridgeResultAckMessage {
+  type: 'result-ack';
+  sessionId: string;
+  id: string;
+  accepted: boolean;
+}

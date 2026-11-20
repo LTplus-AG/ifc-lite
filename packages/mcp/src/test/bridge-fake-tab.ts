@@ -16,10 +16,13 @@ import {
   type BridgeCallMessage,
   type BridgeCallResult,
   type BridgePermission,
+  type BridgeResultAckMessage,
   type BridgeServerMessage,
   type BridgeToolDescriptor,
   type BridgeWelcomeMessage,
 } from '../bridge/bridge-protocol.js';
+
+type ServerFrame = BridgeServerMessage | BridgeResultAckMessage;
 
 export const TEST_ORIGIN = 'https://ifclite.com';
 
@@ -52,15 +55,15 @@ export interface FakeTabOptions {
 
 /** Messages a socket received, with a way to wait for the next matching one. */
 export class FakeTab {
-  readonly received: BridgeServerMessage[] = [];
+  readonly received: ServerFrame[] = [];
   closeCode: number | null = null;
-  private waiters: Array<{ match: (m: BridgeServerMessage) => boolean; resolve: (m: BridgeServerMessage) => void }> = [];
+  private waiters: Array<{ match: (m: ServerFrame) => boolean; resolve: (m: ServerFrame) => void }> = [];
   private closedWaiters: Array<(code: number) => void> = [];
-  private consumed = new Set<BridgeServerMessage>();
+  private consumed = new Set<ServerFrame>();
 
   constructor(readonly ws: WebSocket) {
     ws.on('message', (data) => {
-      const parsed = parseServerMessage(data.toString());
+      const parsed = parseServerMessage(data.toString(), { resultAck: true });
       if (!parsed.ok) throw new Error(`fake tab got a malformed frame: ${parsed.error}`);
       this.received.push(parsed.value);
       // A copy: a matched waiter is spliced out while this loop runs.
@@ -77,11 +80,11 @@ export class FakeTab {
     });
   }
 
-  next<T extends BridgeServerMessage['type']>(type: T, timeoutMs = 2000): Promise<Extract<BridgeServerMessage, { type: T }>> {
+  next<T extends ServerFrame['type']>(type: T, timeoutMs = 2000): Promise<Extract<ServerFrame, { type: T }>> {
     const seen = this.received.find((m) => m.type === type && !this.consumed.has(m));
     if (seen) {
       this.consumed.add(seen);
-      return Promise.resolve(seen as Extract<BridgeServerMessage, { type: T }>);
+      return Promise.resolve(seen as Extract<ServerFrame, { type: T }>);
     }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`no ${type} frame within ${timeoutMs} ms`)), timeoutMs);
@@ -90,7 +93,7 @@ export class FakeTab {
         resolve: (m) => {
           clearTimeout(timer);
           this.consumed.add(m);
-          resolve(m as Extract<BridgeServerMessage, { type: T }>);
+          resolve(m as Extract<ServerFrame, { type: T }>);
         },
       });
     });

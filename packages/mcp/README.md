@@ -461,7 +461,7 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 | tab → bridge | `update` | `sessionId`, `permission?`, `tools?` |
 | bridge → tab | `error` | `code`, `message`; fatal codes end the channel; on the WebSocket transport, a close with code (4400 invalid, 4401 pairing failed, 4408 handshake timeout, 4409 replaced, 4426 protocol mismatch, 4503 shutting down) |
 
-Both peers opt in to result acknowledgements by sending `resultAck: true` in `hello` and `welcome`. An intact result marked `resultAck: true` receives a `result-ack` after the bridge checks the result against its pending calls. A result that settled the pending call has `accepted: true`. Pending acknowledgements occupy call slots. If confirmation never arrives, the viewer closes the pairing. Older peers continue using protocol version 1 with the original delivery behavior.
+Consumers can parse acknowledgements with `parseServerMessage(text, { resultAck: true })`. Both peers opt in to result acknowledgements by sending `resultAck: true` in `hello` and `welcome`. An intact result marked `resultAck: true` receives a `result-ack` after the bridge checks the result against its pending calls. A result that settled the pending call has `accepted: true`. Pending acknowledgements occupy call slots. If confirmation never arrives, the viewer closes the pairing. Older peers continue using protocol version 1 with the original delivery behavior.
 
 **The tab's obligation:** while `welcome.readOnlyCeiling` is true or the
 effective `permission` is `read-only`, the tab must refuse every call that

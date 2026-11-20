@@ -17,6 +17,7 @@ import { BRIDGE_LIMITS } from './protocol.js';
 import type {
   BridgeCallResult,
   BridgePermission,
+  BridgeResultAckMessage,
   BridgeServerMessage,
   BridgeToolDescriptor,
   BridgeErrorCode,
@@ -64,7 +65,7 @@ export class BridgeSession {
     readonly resultAck = false,
   ) {}
 
-  send(msg: BridgeServerMessage): void {
+  send(msg: BridgeServerMessage | BridgeResultAckMessage): void {
     this.sendText(JSON.stringify(msg));
   }
 

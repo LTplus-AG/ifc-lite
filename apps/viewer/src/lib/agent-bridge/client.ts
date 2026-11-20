@@ -243,7 +243,7 @@ export class BridgeClient {
       warn('ignored a binary frame from the bridge');
       return;
     }
-    const parsed = parseServerMessage(data);
+    const parsed = parseServerMessage(data, { resultAck: true });
     if (!parsed.ok) {
       warn(`ignored an invalid frame from the bridge: ${parsed.error}`);
       return;

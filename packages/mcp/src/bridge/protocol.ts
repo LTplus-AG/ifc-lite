@@ -50,7 +50,7 @@
 import type { BridgeHelloMessage, BridgeTabMessage, BridgeUpdateMessage } from './message-types.js';
 export type {
   BridgeHelloMessage, BridgeResultMessage, BridgeUpdateMessage, BridgeTabMessage,
-  BridgeWelcomeMessage, BridgeCallMessage, BridgeCancelMessage, BridgeErrorMessage, BridgeServerMessage,
+  BridgeWelcomeMessage, BridgeCallMessage, BridgeCancelMessage, BridgeErrorMessage, BridgeServerMessage, BridgeResultAckMessage,
 } from './message-types.js';
 import { checkJsonBounds, checkSchemaShape, utf8Length } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';

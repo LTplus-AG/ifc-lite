@@ -4,7 +4,7 @@
 
 import { useViewerStore } from '@/store';
 import type { ZoneSet } from '@/lib/zones/types';
-import { validEntry, zoneSetRevision } from '@/lib/zones/apportionment-cache';
+import { zoneSetRevision } from '@/lib/zones/apportionment-cache';
 import { zoneAssignmentSignature } from '@/lib/zones/assignment-signature';
 
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
@@ -37,10 +37,9 @@ export function sameModels(a: ViewerState['models'], b: ViewerState['models']) {
  * model handles so a colour-only replacement can finish, and check the content
  * version for in-place federation realignment.
  */
-export function captureZoneExportInputs(set: ZoneSet, { checkApportionment = false } = {}) {
-  const { models, geometryResult, geometryUpdateTick, geometryContentVersion, mutationVersion, zoneAssignments, zoneApportionment } = useViewerStore.getState();
+export function captureZoneExportInputs(set: ZoneSet) {
+  const { models, geometryResult, geometryUpdateTick, geometryContentVersion, mutationVersion, zoneAssignments } = useViewerStore.getState();
   const signature = zoneSetRevision(set), assignments = zoneAssignmentSignature(zoneAssignments, set.id);
-  const apportionment = checkApportionment ? validEntry(zoneApportionment, set) : null;
 
   return () => {
     const now = useViewerStore.getState();
@@ -50,7 +49,6 @@ export function captureZoneExportInputs(set: ZoneSet, { checkApportionment = fal
     if (!sameModels(now.models, models) || !sameGeometry(now.geometryResult, geometryResult)) return false;
     const current = now.zoneSets.find(zoneSet => zoneSet.id === set.id);
     return current !== undefined && current.name === set.name && zoneSetRevision(current) === signature
-      && zoneAssignmentSignature(now.zoneAssignments, set.id) === assignments
-      && (!checkApportionment || validEntry(now.zoneApportionment, current) === apportionment);
+      && zoneAssignmentSignature(now.zoneAssignments, set.id) === assignments;
   };
 }

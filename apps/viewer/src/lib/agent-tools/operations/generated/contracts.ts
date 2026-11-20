@@ -10699,7 +10699,7 @@ export const operationContracts: readonly OperationContract[] = [
     "version": 1,
     "owner": "zones",
     "description": "Build a native GLB geometric section using the same proved-solid exact split service as the panel. Cancellation suppresses artifact publication; an already dispatched native worker may finish.",
-    "needs": "model",
+    "needs": "viewer",
     "effects": [
       "artifact"
     ],

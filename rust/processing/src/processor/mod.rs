@@ -39,6 +39,7 @@ use job::{normalize_optional_string, EntityJob};
 mod jobs;
 mod opening_filter;
 mod pass;
+mod pass_finishes;
 mod pass_metadata;
 mod phase_marks;
 use phase_marks::{mark, Clock, Mark};

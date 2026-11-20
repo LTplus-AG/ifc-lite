@@ -245,6 +245,20 @@ impl<'c> ModelFinishes<'c> {
         finish_of_source(source, &self.finishes)
     }
 
+    /// The styled item `geometry_item_id`'s colour comes from once every
+    /// style is resolved (itself, or the first styled item the bounded
+    /// mapped chase below it reaches): step 1 of the module's rule, with no
+    /// colour compared. `None` when the file authors no finish, since then
+    /// no source has one. For a native `fast_first` chunk meshed before the
+    /// attached styles were resolved.
+    pub(crate) fn item_style_source(&mut self, geometry_item_id: u32) -> Option<u32> {
+        if self.finishes.is_empty() {
+            return None;
+        }
+        let styles = &self.geometry_styles;
+        crate::element::find_geometry_item_style_source(geometry_item_id, &|id| styles.contains_key(&id), &mut self.decoder)
+    }
+
     /// The finish `mesh` carries, by the module's rule.
     pub fn finish_for_mesh(&mut self, mesh: &MeshData) -> Option<SpecularMaterial> {
         let styles = &self.geometry_styles;

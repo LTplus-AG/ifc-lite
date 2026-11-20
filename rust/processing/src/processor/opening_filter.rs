@@ -102,8 +102,12 @@ pub(super) fn apply_opening_filter(
 ///   containing "glas"
 /// - An item without a style has a transparent associated material colour
 ///   (#407 chain) to render with
-/// - No item is styled, there is no material colour, and the type default is
-///   transparent (the colour the element then renders with)
+/// - There is no material colour, an item has no style of its own, and the
+///   element colour it then renders with is glass (alpha < 1.0, or a style
+///   name containing "glas"): the element's first style in product-shape
+///   order (which may sit on a representation that is not meshed, such as a
+///   `Box`), else the type default. An opaque one there suppresses the
+///   opening even though the type default is transparent.
 /// - No geometry item is reachable (nothing renders) and its type default or
 ///   any material colour is transparent
 fn is_opaque_opening(
@@ -130,7 +134,8 @@ fn is_opaque_opening(
     //    render with, in `resolve_submesh_color`'s order: the item's own style,
     //    else the #407 material colours, else the element colour. Only the
     //    representations the router meshes count (#4699).
-    let reprs: Vec<_> = product_shape_id(&entity)
+    let shape_id = product_shape_id(&entity);
+    let reprs: Vec<_> = shape_id
         .and_then(|shape_id| decoder.decode_by_id(shape_id).ok())
         .map(|shape| pds_representation_ids(&shape).collect::<Vec<_>>())
         .unwrap_or_default()
@@ -158,15 +163,37 @@ fn is_opaque_opening(
     if scan.unstyled_leaf && materials.iter().any(|c| c[3] < 1.0) {
         return false;
     }
-    !(materials.is_empty() && !scan.styled && job.element_color[3] < 1.0)
+    // Without material colours an item with no style of its own renders with
+    // the element colour, whatever occurrence styles sit above it.
+    !(materials.is_empty() && scan.bare_leaf && element_color_is_glass(job, shape_id, styles, decoder))
+}
+
+/// Whether the element colour an unstyled item falls back to is glass: the
+/// product-shape walk's first style (`AppearanceResolver::resolve`, over every
+/// representation, meshed or not), else the type default `job.element_color`
+/// still holds while the filter runs.
+fn element_color_is_glass(
+    job: &EntityJob,
+    shape_id: Option<u32>,
+    styles: &FxHashMap<u32, GeometryStyleInfo>,
+    decoder: &mut EntityDecoder,
+) -> bool {
+    let source = shape_id.and_then(|shape| {
+        crate::element::product_shape_style_source(shape, &|id| styles.contains_key(&id), decoder)
+    });
+    match source.and_then(|source| styles.get(&source)) {
+        Some(style) => has_glass_style(style),
+        None => job.element_color[3] < 1.0,
+    }
 }
 
 #[derive(Default)]
 struct ItemStyles {
     /// Some item, or an item under it, has a glass style.
     glass: bool,
-    /// Some item carries a style.
-    styled: bool,
+    /// Some geometry (non-mapped) item has no style of its own. Without
+    /// material colours such an item renders with the element colour.
+    bare_leaf: bool,
     /// Some geometry (non-mapped) item was reached.
     leaf: bool,
     /// Some geometry (non-mapped) item has no style of its own and no styled
@@ -207,7 +234,6 @@ fn scan_item_styles(
                 scan.glass = true;
                 return scan;
             }
-            scan.styled = true;
         }
         if depth > MAX_MAPPED_ITEM_DEPTH || visited.get(&(id, nearest)).is_some_and(|&seen| seen <= depth) {
             continue;
@@ -224,6 +250,7 @@ fn scan_item_styles(
                 return scan;
             }
             scan.unstyled_leaf |= own_style.is_none() && nearest.is_none();
+            scan.bare_leaf |= own_style.is_none();
             continue;
         }
         // A leaf under exactly `MAX_MAPPED_ITEM_DEPTH` mapped items still

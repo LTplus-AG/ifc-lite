@@ -449,3 +449,76 @@ fn ignore_opaque_keeps_the_opening_of_a_geometryless_transparent_window() {
         );
     }
 }
+
+/// An `IfcWindow` (#200) with no material, whose product shape lists a `Box`
+/// first, its bounding box styled with the transparent pane (#100), then a
+/// `Body` whose face set (#290) is unstyled and sits under `depth` nested
+/// `IfcMappedItem`s, the outermost (#300) styled opaque (#17). With no
+/// material colour the occurrence step does not run, so the face set takes
+/// the element colour, the product shape's first style: the Box's
+/// transparent pane, although the Box itself is not meshed.
+fn box_fallback_window(depth: u32) -> String {
+    let mut data = String::from(
+        "#200=IFCWINDOW('1BoxFallbackWindow00',$,'B',$,$,#141,#201,$,$,$,$,$,$);
+#201=IFCPRODUCTDEFINITIONSHAPE($,$,(#202,#205));
+#202=IFCSHAPEREPRESENTATION(#2,'Box','BoundingBox',(#203));
+#203=IFCBOUNDINGBOX(#4,1.,1.,1.);
+#204=IFCSTYLEDITEM(#203,(#100),$);
+#205=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#300));
+#290=IFCTRIANGULATEDFACESET(#291,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#291=IFCCARTESIANPOINTLIST3D(((30.,0.,0.),(31.,0.,0.),(30.,1.,0.),(30.,0.,1.)));
+#299=IFCSTYLEDITEM(#300,(#17),$);
+",
+    );
+    // Level k: mapped item #(300+3k) → map #(301+3k) → representation #(302+3k).
+    for k in 0..depth {
+        let (item, map, repr) = (300 + 3 * k, 301 + 3 * k, 302 + 3 * k);
+        let (kind, inner) = if k + 1 == depth { ("Tessellation", 290) } else { ("MappedRepresentation", item + 3) };
+        data.push_str(&format!(
+            "#{item}=IFCMAPPEDITEM(#{map},#89);\n#{map}=IFCREPRESENTATIONMAP(#5,#{repr});\n#{repr}=IFCSHAPEREPRESENTATION(#2,'Body','{kind}',(#{inner}));\n"
+        ));
+    }
+    let ifc = OPENINGS_IFC.replace("ENDSEC;\nEND-ISO", &format!("{data}ENDSEC;\nEND-ISO"));
+    assert_ne!(ifc, OPENINGS_IFC, "window #200 splice applied");
+    ifc
+}
+
+/// `IgnoreOpaque` judges window #200 by the colour its face set renders
+/// with, the element colour from the Box, not by the opaque occurrence
+/// style above it, which only colours a leaf when the element has material
+/// colours. At the mapped-item depth limit (32) as one mapping down (#10698
+/// review). The shallow case was already misjudged before #10698.
+#[test]
+fn ignore_opaque_judges_an_unstyled_leaf_by_the_element_colour_without_materials() {
+    let pane_alpha = |ifc: &str| {
+        let meshes = process_filtered(ifc, OpeningFilterMode::Default).meshes;
+        meshes.iter().filter(|m| m.express_id == 200).map(|m| m.color[3]).collect::<Vec<_>>()
+    };
+    for depth in [ifc_lite_core::MAX_MAPPED_ITEM_DEPTH, 1] {
+        let ifc = box_fallback_window(depth);
+        assert!(
+            matches!(pane_alpha(&ifc)[..], [a] if a < 1.0),
+            "fixture premise (depth {depth}): window #200 meshes its face set once, transparent from the Box's style"
+        );
+        let filtered = process_filtered(&ifc, OpeningFilterMode::IgnoreOpaque).meshes;
+        assert!(
+            has_mesh(&filtered, 200),
+            "window #200 (depth {depth}) renders transparent, so IgnoreOpaque must keep it"
+        );
+    }
+}
+
+/// Window #200 at one mapping with its Box styled opaque (#17) instead:
+/// the face set renders in that opaque element colour, so `IgnoreOpaque`
+/// suppresses it, although the `IfcWindow` type default it judged before
+/// #10698 is transparent.
+#[test]
+fn ignore_opaque_suppresses_an_unstyled_leaf_whose_element_colour_is_opaque() {
+    let ifc = box_fallback_window(1).replace("#204=IFCSTYLEDITEM(#203,(#100),$);", "#204=IFCSTYLEDITEM(#203,(#17),$);");
+    assert_ne!(ifc, box_fallback_window(1), "opaque Box splice applied");
+    let unfiltered = process_filtered(&ifc, OpeningFilterMode::Default).meshes;
+    let alphas: Vec<_> = unfiltered.iter().filter(|m| m.express_id == 200).map(|m| m.color[3]).collect();
+    assert!(matches!(alphas[..], [a] if a >= 1.0), "fixture premise: window #200 renders opaque from the Box's style: {alphas:?}");
+    let filtered = process_filtered(&ifc, OpeningFilterMode::IgnoreOpaque).meshes;
+    assert!(!has_mesh(&filtered, 200), "window #200 renders opaque, so IgnoreOpaque must suppress it");
+}

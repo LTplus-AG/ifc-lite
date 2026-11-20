@@ -12,7 +12,6 @@
 //! `on_batch`, mesh retention and the one-time replay of deferred styles as
 //! `on_color_update`.
 
-use crate::element::StyleSource;
 use super::diagnostics::DiagnosticCollectors;
 use super::entity_index::ProcessingIndex;
 use super::job::{AppearanceResolver, EntityJob};
@@ -236,15 +235,6 @@ fn finish_join<'c>(
     })
 }
 
-/// `on_finishes` for the batch about to be emitted, one entry per mesh, when
-/// the request asked for finishes: each mesh's finish from the source its
-/// colour came from (#10698), never from its colour.
-fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&ModelFinishes<'_>>, styles: &[StyleSource]) {
-    let Some(finishes) = finishes else { return };
-    let batch: Vec<_> = styles.iter().map(|&style| finishes.finish_for_source(style)).collect();
-    sink.on_finishes(&batch);
-}
-
 pub(super) fn run<'c>(
     content: &'c [u8],
     req: &ProcessingRequest,
@@ -295,7 +285,7 @@ pub(super) fn run<'c>(
         },
         sink,
     );
-    let finishes = finish_join(content, req, &facts, &ctx);
+    let mut finishes = finish_join(content, req, &facts, &ctx);
     let mut appearance = AppearanceResolver::new(
         element_material_color,
         presentation_layer_by_assigned_id,
@@ -346,7 +336,7 @@ pub(super) fn run<'c>(
             total_meshes += chunk_meshes.len();
             let emit_mesh_chunk_size = current_chunk_size.max(1);
             for (emitted_meshes, emitted_styles) in chunk_meshes.chunks(emit_mesh_chunk_size).zip(chunk_styles.chunks(emit_mesh_chunk_size)) {
-                emit_finishes(sink, finishes.as_ref(), emitted_styles);
+                super::pass_finishes::emit_finishes(sink, finishes.as_mut(), emitted_meshes, emitted_styles, !deferred_styles_applied);
                 sink.on_batch(emitted_meshes, processed_jobs, total_jobs);
             }
             if req.retain_meshes {

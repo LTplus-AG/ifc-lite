@@ -74,7 +74,8 @@ export const coordinationFlowOperations = [
   }),
   coordination('flow.delete', 'Delete one known saved workflow through native persistence and cancellation handling.', ['configuration'], idSchema, (i, c) => c.commit(() => {
     saved(i.id); useViewerStore.getState().deleteFlow(i.id); const state = useViewerStore.getState();
-    if (state.savedFlows.some(flow => flow.doc.id === i.id)) throw new Error(state.flowStorageError ?? 'Native workflow deletion refused.');
+    // deleteFlow clears flowStorageError on a persisted delete and sets it when storage refused, so the flow would return on reload.
+    if (state.savedFlows.some(flow => flow.doc.id === i.id) || state.flowStorageError) throw new Error(state.flowStorageError ?? 'Native workflow deletion refused.');
     return { deleted: i.id };
   })),
   coordination('flow.cancel', 'Request cancellation of the active native workflow. Returns a cancellation request, never a fabricated terminal result.', ['configuration'], emptySchema, async (_, c) => {

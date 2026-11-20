@@ -14,7 +14,7 @@
 import { useEffect, useState } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { ViewerState } from '@/store';
-import { hasInstancedShards } from '@/store/instancedShardModels';
+import { anyInstancedShards, hasInstancedShards } from '@/store/instancedShardModels';
 import { hasPendingInstancedShards, subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { subscribeGlobalRenderer } from '@/hooks/useBCF';
 import { GeometryUnavailableError } from '@/lib/geometry-backing/geometry-readback';
@@ -57,7 +57,10 @@ export function drawingHasGeometry(flatCount: number, state: PresenceState, rend
  */
 export function assertInstancedReady(state: PresenceState, renderer: Pick<Renderer, 'getScene'> | null, sinceEpoch?: number): void {
   const { queued, present } = presence(state, renderer);
-  if (!renderer && present) throw new GeometryUnavailableError('Instanced geometry cannot be drawn before the viewport renderer exists');
+  // Legacy single-model wiring cannot ask by model id: shards that already drained leave no queue entry, so without
+  // a renderer to list them any shard ever handed over refuses (fail closed) rather than drawing flat meshes only.
+  const legacyHadShards = state.models.size === 0 && anyInstancedShards();
+  if (!renderer && (present || legacyHadShards)) throw new GeometryUnavailableError('Instanced geometry cannot be drawn before the viewport renderer exists');
   // Queued, or enqueued AND drained since the cut began (`sinceEpoch`): the cut may have missed it.
   if (queued || (sinceEpoch !== undefined && instancedEpoch() !== sinceEpoch)) throw new DrawingGeometryPendingError();
 }

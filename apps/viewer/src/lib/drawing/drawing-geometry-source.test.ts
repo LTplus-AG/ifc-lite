@@ -335,6 +335,18 @@ describe('drawing geometry source over released geometry', () => {
     await w.registry.close();
   });
 
+  it('r4645106680 a released drawing reads back only the occurrences the scene lists, as its resident drawing cuts', async () => {
+    const w = await world();
+    release(w);
+    // The backings hold 101/102 and 201/202, but the scene lists only 101 and 201 (102/202 never reached it).
+    const released = new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: () => [101, 201] }));
+    const columns = (mesh: { expressId: number }) => mesh.expressId % 100 > 0 && mesh.expressId % 100 < 5 && mesh.expressId > 100; // instanced ids only
+    const ids = new Set<number>();
+    for await (const batch of released.source(columns, { instanced: true }).pass('geometry')) for (const mesh of batch) ids.add(mesh.expressId);
+    assert.deepEqual([...ids].sort(), [101, 201], 'never an occurrence the resident drawing does not cut');
+    await w.registry.close();
+  });
+
   it('released emptiness counts only occurrences a route draws, like the resident scene list', async () => {
     const w = await world();
     release(w);

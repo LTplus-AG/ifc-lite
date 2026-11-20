@@ -264,11 +264,13 @@ export class DrawingGeometry {
       }
       return;
     }
+    const listed = deps.listedInstanced ? new Set(this.instancedIds()) : undefined;
     for (const modelId of deps.visibleModels) {
       const backing = this.pinned.get(modelId);
       if (!backing) continue;
       const translation = deps.translationFor(modelId);
-      const wanted = (id: number) => keep(this.occurrenceMeta(id));
+      // Only what the scene lists, as emptiness and the resident drawing see it: a backed occurrence the scene never drew is not drawn.
+      const wanted = (id: number) => (listed === undefined || listed.has(id)) && keep(this.occurrenceMeta(id));
       for await (const group of materializeBackedOccurrences(usableBacking(backing, modelId), deps.modelIndexOf(modelId), wanted,
         { signal: this.fence() })) {
         this.fence();

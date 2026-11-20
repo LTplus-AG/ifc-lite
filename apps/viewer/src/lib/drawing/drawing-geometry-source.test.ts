@@ -317,4 +317,21 @@ describe('drawing geometry source over released geometry', () => {
     assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: [101, 102] })));
     await w.registry.close();
   });
+
+  it('refuses a backing whose meshes are not the store list, even at equal count and ownership', async () => {
+    const w = await world();
+    // Same count, every id model a's, but the second mesh is another entity (#5, not #2).
+    const swapped = flatModel('a').map(({ modelIndex: _index, ...mesh }) => mesh);
+    swapped[1] = { ...swapped[1], expressId: 5 };
+    const other = await w.registry.begin('a', { chunkBytes: 512 });
+    await other.writer.append(swapped);
+    await other.writer.appendInstancedShard(w.shards.a);
+    await other.writer.close();
+    w.backings.set('a', other);
+    release(w);
+    const geometry = new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true }));
+    await assert.rejects(new Drawing2DGenerator().generateFromSource(geometry.source(keepAll, { instanced: true }), CONFIGS[0][1], OPTIONS),
+      /backed mesh 1 \(#5\) is not its current mesh #2/);
+    await w.registry.close();
+  });
 });

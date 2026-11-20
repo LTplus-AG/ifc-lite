@@ -29,6 +29,7 @@ import type { DrawingMeshFilter } from './drawing-mesh-filter';
 import { placedMesh } from '@/lib/model-placement/placed-geometry';
 import type { Translation } from '@/lib/model-placement/translation';
 import { GeometryUnavailableError, meshIsResident } from '@/lib/geometry-backing/geometry-readback';
+import { meshGeometryCounts } from '@/lib/released-mesh-provenance';
 import type { ModelGeometryBacking } from '@/lib/geometry-backing/geometry-backing-registry';
 import { materializeBackedOccurrences } from './drawing-instanced-readback';
 
@@ -75,6 +76,12 @@ function usableBacking(backing: ModelGeometryBacking | undefined, modelId: strin
   return backing;
 }
 
+/** What makes a backed mesh the store's mesh at the same position: entity, item, class, material and size. */
+function meshIdentity(mesh: MeshData): string {
+  const { vertices, triangles } = meshGeometryCounts(mesh);
+  return `${mesh.expressId}|${mesh.geometryItemId ?? '-'}|${mesh.geometryClass ?? 0}|${mesh.materialId ?? '-'}|${vertices}|${triangles}`;
+}
+
 const withIndex = (mesh: MeshData, modelIndex: number): MeshData =>
   mesh.modelIndex === modelIndex ? mesh : { ...mesh, modelIndex };
 
@@ -82,7 +89,8 @@ export class DrawingGeometry {
   /** Contiguous same-model runs of the merged list, in its order. */
   private readonly runs: Run[] = [];
   private readonly pinned = new Map<string, ModelGeometryBacking>();
-  private readonly flatCounts = new Map<string, number>();
+  /** Each model's flat meshes in list order, which its backing must reproduce one for one. */
+  private readonly modelMeshes = new Map<string, MeshData[]>();
   private readonly abort = new AbortController();
   /** Whether any geometry must be read back rather than taken from memory. */
   readonly released: boolean;
@@ -96,7 +104,10 @@ export class DrawingGeometry {
         this.runs.push(run);
       }
       run.meshes.push(mesh);
-      if (modelId !== undefined) this.flatCounts.set(modelId, (this.flatCounts.get(modelId) ?? 0) + 1);
+      if (modelId !== undefined) {
+        const own = this.modelMeshes.get(modelId);
+        if (own) own.push(mesh); else this.modelMeshes.set(modelId, [mesh]);
+      }
     }
     const releasedModels = new Set<string>();
     for (const run of this.runs) {
@@ -204,23 +215,29 @@ export class DrawingGeometry {
   private async *backedFlat(modelId: string, modelIndex: number, keep: DrawingMeshFilter): AsyncGenerator<readonly MeshData[]> {
     const backing = usableBacking(this.pinned.get(modelId), modelId);
     const translation = this.deps.translationFor(modelId);
+    const expected = this.modelMeshes.get(modelId) ?? [];
     let read = 0;
     for await (const chunk of backing.reader.meshes({ signal: this.fence() })) {
       this.fence();
-      read += chunk.length;
       const kept: MeshData[] = [];
       for (const mesh of chunk) {
         // Backed meshes carry global ids, as the store list does (federation
         // re-homes them at ingest); one that resolves elsewhere is not this model's.
         this.owned(mesh.expressId, modelId);
+        // The backing mirrors the store list in order: the mesh at each position
+        // must be that list's mesh, not merely one of the model's.
+        const current = expected[read++];
+        if (!current || meshIdentity(current) !== meshIdentity(mesh)) {
+          throw new GeometryUnavailableError(`Model ${modelId}'s backed mesh ${read - 1} (#${mesh.expressId}) is not its current mesh${current ? ` #${current.expressId}` : ''}`);
+        }
         if (!keep(mesh)) continue;
         kept.push(placedMesh(withIndex(mesh, modelIndex), translation));
       }
       if (kept.length > 0) yield kept;
     }
     // A backing that does not hold exactly the model's meshes is not its geometry.
-    if (read !== this.flatCounts.get(modelId)) {
-      throw new GeometryUnavailableError(`Model ${modelId}'s backing holds ${read} meshes, the model ${this.flatCounts.get(modelId)}`);
+    if (read !== expected.length) {
+      throw new GeometryUnavailableError(`Model ${modelId}'s backing holds ${read} meshes, the model ${expected.length}`);
     }
   }
 

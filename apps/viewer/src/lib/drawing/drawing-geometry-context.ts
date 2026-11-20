@@ -19,7 +19,8 @@ import { modelIndices } from '@/lib/model-placement/model-indices';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
 import { hasInstancedShards } from '@/store/instancedShardModels';
-import { GeometryUnavailableError, meshIsResident } from '@/lib/geometry-backing/geometry-readback';
+import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
+import { assertInstancedReady } from './drawing-instanced-presence';
 import type { ModelGeometryBacking } from '@/lib/geometry-backing/geometry-backing-registry';
 import { DrawingGeometry } from './drawing-geometry-source';
 
@@ -33,10 +34,8 @@ export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent
     const tap = activeGeometryBackingTap();
     backing = (modelId) => tap?.backing(modelId);
   }
-  // Without a renderer no instanced occurrence can be materialized: refuse rather than draw without them.
-  if (!renderer && [...state.models].some(([id, model]) => model.visible && hasInstancedShards(id))) {
-    throw new GeometryUnavailableError('Instanced geometry cannot be drawn before the viewport renderer exists');
-  }
+  // Every instanced occurrence must be visible to the drawing, or it does not draw.
+  assertInstancedReady(state, renderer);
   const indices = modelIndices(state.models);
   // Legacy single-model mode keeps no `models` entry: everything is one model.
   const legacy = state.models.size === 0;

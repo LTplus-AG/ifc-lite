@@ -265,7 +265,7 @@ export class BridgeClient {
           now: this.now,
           dispatch: this.opts.dispatch,
           ...(msg.resultAck === true ? { onAckTimeout: () =>
-            this.end({ kind: 'disconnected', reason: 'connection-lost' }, 1011, 'result acknowledgement timeout') } : {}),
+            this.end({ kind: 'disconnected', reason: 'connection-lost' }, 1000, 'result acknowledgement timeout') } : {}),
           modelIdFor: this.opts.modelIdFor,
           mutates: (name) => this.mutating.has(name),
           onActivity: this.opts.onActivity,

@@ -30,6 +30,7 @@ class FakeSocket implements WebSocketLike {
   onerror: WebSocketLike['onerror'] = null;
   readonly sent: string[] = [];
   failSend = false;
+  enforceBrowserCloseCodes = false;
   closedWith: { code?: number; reason?: string } | null = null;
   constructor(readonly url: string) {
     FakeSocket.last = this;
@@ -40,6 +41,9 @@ class FakeSocket implements WebSocketLike {
     this.sent.push(data);
   }
   close(code?: number, reason?: string): void {
+    if (this.enforceBrowserCloseCodes && code !== undefined && code !== 1000 && (code < 3000 || code > 4999)) {
+      throw new DOMException('Invalid WebSocket close code', 'InvalidAccessError');
+    }
     this.closedWith = { code, reason };
     this.readyState = 3;
   }
@@ -200,6 +204,7 @@ describe('bridge result acknowledgement (#11029)', () => {
   it('closes a pairing with an unconfirmed result and releases its claim', async () => {
     const tracked = trackedDispatch();
     const h = paired({ dispatch: tracked.dispatch, limits: { callTimeoutMs: 20 } }, true);
+    h.socket().enforceBrowserCloseCodes = true;
     try {
       call(h.socket(), 'unconfirmed');
       await new Promise(resolve => setTimeout(resolve, 60));

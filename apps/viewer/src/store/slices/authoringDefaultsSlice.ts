@@ -188,8 +188,14 @@ export const authoringDefaultsTeardown = defineSliceTeardown('authoringDefaultsS
     : {}),
 });
 
+/** The kind dimensions a plain rectangle is built from: Width x Height, a column's Width x Depth. */
+export function rectangleSides(owner: ProfileOwner): readonly ['Width', 'Height' | 'Depth'] {
+  return ['Width', owner === 'column' ? 'Depth' : 'Height'];
+}
+
 /** {@link authoringSection}, with the plain rectangle (Width x Height, a column's Width x Depth) drawn as a section too: what a preview shows. */
 export function authoringShownSection(defaults: AuthoringDefaults, owner: ProfileOwner): ProfileSection {
+  const [across, up] = rectangleSides(owner);
   return authoringSection(defaults, owner)
-    ?? { Type: 'Rectangle', XDim: authoringDim(defaults, owner, 'Width'), YDim: authoringDim(defaults, owner, owner === 'column' ? 'Depth' : 'Height') };
+    ?? { Type: 'Rectangle', XDim: authoringDim(defaults, owner, across), YDim: authoringDim(defaults, owner, up) };
 }

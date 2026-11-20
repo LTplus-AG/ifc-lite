@@ -31,7 +31,8 @@ function control(control: string, operations: readonly string[], classification:
  * Notes describe existing native limits; only actual missing bindings enter gaps. */
 export function operationControlInventory(): Inventory[] {
   return [
-    ...coreControlInventory.map(row => ({ owner: row.owner, family: 'core' as const, controls: row.controls.map(item => control(item.control, item.operations)), notes: row.notes, gaps: [] })),
+    ...coreControlInventory.map(row => ({ owner: row.owner, family: 'core' as const, controls: row.controls.map(item => control(item.control, item.operations,
+      'classification' in item ? classify(item.classification) : 'implemented', 'reason' in item ? item.reason : undefined)), notes: row.notes, gaps: [] })),
     // Presentation-only and unsupported controls are classified controls, not notes, so callers can find their boundaries.
     ...analyticsControlInventory.map(row => ({ owner: row.panel, family: 'analytics' as const, controls: [
       ...row.controls.map(item => control(item.control, item.operations)),

@@ -8,6 +8,6 @@ index 6d7f991702..36db8169ea 100644
  // ToolExecutionError, which the refusal helpers build, is not one.
 -const BUILTIN_ERRORS = new Set(['TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError']);
 +const BUILTIN_ERRORS = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError']);
- 
+
  /** The 1-based line of every plain Error called or constructed in `text`, wherever it is thrown or rejected from. */
  export function plainErrorLines(file, text) {

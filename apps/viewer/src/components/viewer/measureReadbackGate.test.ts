@@ -28,9 +28,12 @@ const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 const released = { isGeometryDataReleased: () => true };
 const raycasts: Array<[number, number]> = [];
+/** The fake camera's view-projection matrix; an orbit, pan or zoom changes it. */
+let view: number[] = [];
 function ctx(): MouseHandlerContext {
   const renderer = {
     getScene: () => released,
+    getCamera: () => ({ getViewProjMatrix: () => ({ m: Float32Array.from(view) }) }),
     raycastSceneMagnetic: (x: number, y: number) => {
       raycasts.push([x, y]);
       return { intersection: { point: { x, y, z: 0 } }, snapTarget: null,
@@ -67,6 +70,7 @@ const original = globalThis.requestAnimationFrame;
 const originalCancel = globalThis.cancelAnimationFrame;
 beforeEach(() => {
   reads = []; frames = []; snapTargets = []; residue = []; raycasts.length = 0;
+  view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
   globalThis.requestAnimationFrame = ((cb: () => void) => { frames.push(cb); return frames.length; }) as typeof requestAnimationFrame;
   globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
   setMeasureReadbackFeedForTest((_r, x, y) => new Promise((settle) => { reads.push({ x, y, settle }); }));
@@ -143,6 +147,19 @@ describe('#10880 drag and placement readback', () => {
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0], [40, 0]], 'both points, in click order');
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 2);
+  });
+
+  it('a placement whose view moved before its read ran is dropped, not placed on what is now under the pixel', async () => {
+    const c = ctx();
+    handlePolylineClick(c, 0, 0); // clicked on surface A under this view
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick(); // the first lands under the same view
+    view = view.map((v, i) => (i === 12 ? v + 5 : v)); // then the user orbits/pans before the second read runs
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the moved click is never raycast under the new view');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own view');
   });
 
   it('a gesture reset (Esc, a mode or tool switch) drops a pending placement', async () => {

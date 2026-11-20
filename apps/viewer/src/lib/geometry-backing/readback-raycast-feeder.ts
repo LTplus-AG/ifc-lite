@@ -57,6 +57,15 @@ function place(scene: Pick<SceneContents, 'placeAppearanceSource'>, mesh: MeshDa
   return scene.placeAppearanceSource(mesh);
 }
 
+/**
+ * Only a model's translation is inverted below (scene hit to model-local source). A rotated model, or a scene
+ * that cannot say, fails closed: subtracting the offset alone would search the wrong neighbourhood (#10880).
+ */
+function placementRotated(scene: object, modelIndex: number | undefined): boolean {
+  if (!('getModelRotation' in scene) || typeof scene.getModelRotation !== 'function') return true;
+  return scene.getModelRotation(modelIndex ?? 0) !== null;
+}
+
 /** The model's current placement offset, measured through the scene's own placement. */
 function modelOffset(scene: Pick<SceneContents, 'placeAppearanceSource'>, modelIndex: number | undefined): [number, number, number] {
   const probe: MeshData = { expressId: 0, positions: new Float32Array(0), normals: new Float32Array(0),
@@ -110,6 +119,9 @@ export class ReadbackRaycastFeeder {
       if (!modelId || !backing || !(complete || flatOnly)) {
         throw new GeometryUnavailableError(`No complete geometry backing for entity ${hit.expressId}`);
       }
+      if (placementRotated(scene, hit.modelIndex)) {
+        throw new GeometryUnavailableError(`Model ${modelId} is rotated; readback of rotated placements is not available yet`);
+      }
       const leases: MeshLease[] = [];
       let instanced: MeshData[] = [];
       try {
@@ -130,6 +142,8 @@ export class ReadbackRaycastFeeder {
             const b = scene.getInstancedEntityBounds(id);
             if (!b || b.min.x > p.x + r || b.max.x < p.x - r || b.min.y > p.y + r || b.max.y < p.y - r
               || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId || instancedIds.has(id)) continue;
+            // The resident raycast never tests a hidden (or non-isolated) occurrence: it neither counts nor is fed.
+            if (visibility.hiddenIds?.has(id) || (visibility.isolatedIds && !visibility.isolatedIds.has(id))) continue;
             // A truncated neighbourhood could snap differently from the resident scene: refuse, never omit.
             if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) throw new GeometryUnavailableError(`More than ${MAX_INSTANCED_NEIGHBOURS} instanced neighbours`);
             instancedIds.add(id);
@@ -138,14 +152,25 @@ export class ReadbackRaycastFeeder {
           const [dx, dy, dz] = modelOffset(scene, hit.modelIndex);
           const lx = p.x - dx, ly = p.y - dy, lz = p.z - dz;
           const chunks = backing.directory.chunksIntersecting([lx - r, ly - r, lz - r], [lx + r, ly + r, lz + r]);
+          // Greedy within the budget: a chunk that does not fit is skipped, never charged.
           let bytes = 0;
-          const within = chunks.filter((index) => (bytes += backing.directory.chunks[index].bytes) <= this.budgetBytes);
+          const within = chunks.filter((index) => {
+            const size = backing.directory.chunks[index].bytes;
+            if (bytes + size > this.budgetBytes) return false;
+            bytes += size;
+            return true;
+          });
           leases.push(await backing.reader.leaseChunks(within, { signal }));
         }
         if (flatOnly && (!p || instancedIds.size > 0 || scene.getInstancedEntityBounds(hit.expressId))) {
           throw new GeometryUnavailableError(`Entity ${hit.expressId}'s neighbourhood holds instanced occurrences whose backing was lost`);
         }
-        instanced = flatOnly ? [] : await readInstancedOccurrences(backing, instancedIds, hit.modelIndex ?? 0, { signal });
+        // Occurrences are materialized in their model's frame: a hit that does not say which model is refused,
+        // never placed as model 0's.
+        if (instancedIds.size > 0 && hit.modelIndex === undefined) {
+          throw new GeometryUnavailableError(`Instanced hit ${hit.expressId} carries no model index`);
+        }
+        instanced = flatOnly || instancedIds.size === 0 ? [] : await readInstancedOccurrences(backing, instancedIds, hit.modelIndex!, { signal });
         if (own.meshes.length === 0 && !instanced.some((mesh) => mesh.expressId === hit.expressId)) {
           throw new GeometryUnavailableError(`Instanced entity ${hit.expressId} has no backed opaque occurrence`);
         }

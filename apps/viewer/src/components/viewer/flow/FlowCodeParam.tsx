@@ -19,7 +19,8 @@
  * lose and nothing to sync when the dialog closes.
  */
 
-import { lazy, Suspense, useState } from 'react';
+import { Suspense, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { Maximize2 } from 'lucide-react';
 import type { ParamDef } from '@ifc-lite/flow';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -27,7 +28,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 
 // CodeMirror and its language/autocomplete extensions are ~200 kB that a
 // graph without a Script node never needs.
-const CodeEditor = lazy(() => import('../CodeEditor').then((m) => ({ default: m.CodeEditor })));
+const CodeEditor = lazyChunk(() => import('../CodeEditor').then((m) => ({ default: m.CodeEditor })));
 
 export interface FlowCodeParamProps {
   readonly def: ParamDef;

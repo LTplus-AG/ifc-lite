@@ -83,6 +83,8 @@ mod schema_owner_history;
 mod schema_grid_frames;
 mod schema_plan;
 mod schema_renames;
+mod schema_retyped;
+mod schema_userdefined;
 mod schema_style_flatten;
 mod schema_unrepresented;
 mod shades;

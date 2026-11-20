@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import '@/i18n/catalogues/semantic-assist.register';
 import { History, Key, ListChecks, RefreshCw, Send, SlidersHorizontal, Sparkles, Square } from 'lucide-react';
 import { ConversationLibrary } from './ConversationLibrary';
@@ -38,18 +39,18 @@ import { TransientSurface } from './TransientSurface';
 import { setAssistantDraft, useAssistantDraft } from '@/lib/assistant/composer-draft';
 import type { ArtifactPreset } from '@/lib/assistant/artifacts/artifact-preset';
 
-const FlowProposalReview = lazy(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
-const ReportDraftReview = lazy(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
-const ModelChangeProposal = lazy(() => import('./ModelChangeProposal').then(m => ({ default: m.ModelChangeProposal })));
-const SceneActionReview = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneActionReview })));
-const SceneRestoreBar = lazy(() => import('./SceneActionReview').then(m => ({ default: m.SceneRestoreBar })));
-const ClashGroupReview = lazy(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
-const CheckAuthoringProposal = lazy(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
-const IdsAgentReview = lazy(() => import('./IdsAgentReview').then(m => ({ default: m.IdsAgentReview })));
-const ArtifactProposalReview = lazy(() => import('./ArtifactProposalReview').then(m => ({ default: m.ArtifactProposalReview })));
-const SemanticProposalReview = lazy(() => import('./SemanticProposalReview').then(m => ({ default: m.SemanticProposalReview })));
-const RecipeLibrary = lazy(() => import('./RecipeLibrary').then(m => ({ default: m.RecipeLibrary })));
-const ProjectPreferences = lazy(() => import('./ProjectPreferences').then(m => ({ default: m.ProjectPreferences })));
+const FlowProposalReview = lazyChunk(() => import('./FlowProposalReview').then(m => ({ default: m.FlowProposalReview })));
+const ReportDraftReview = lazyChunk(() => import('./ReportDraftReview').then(m => ({ default: m.ReportDraftReview })));
+const ModelChangeProposal = lazyChunk(() => import('./ModelChangeProposal').then(m => ({ default: m.ModelChangeProposal })));
+const SceneActionReview = lazyChunk(() => import('./SceneActionReview').then(m => ({ default: m.SceneActionReview })));
+const SceneRestoreBar = lazyChunk(() => import('./SceneActionReview').then(m => ({ default: m.SceneRestoreBar })));
+const ClashGroupReview = lazyChunk(() => import('./ClashGroupReview').then(m => ({ default: m.ClashGroupReview })));
+const CheckAuthoringProposal = lazyChunk(() => import('./CheckAuthoringProposal').then(m => ({ default: m.CheckAuthoringProposal })));
+const IdsAgentReview = lazyChunk(() => import('./IdsAgentReview').then(m => ({ default: m.IdsAgentReview })));
+const ArtifactProposalReview = lazyChunk(() => import('./ArtifactProposalReview').then(m => ({ default: m.ArtifactProposalReview })));
+const SemanticProposalReview = lazyChunk(() => import('./SemanticProposalReview').then(m => ({ default: m.SemanticProposalReview })));
+const RecipeLibrary = lazyChunk(() => import('./RecipeLibrary').then(m => ({ default: m.RecipeLibrary })));
+const ProjectPreferences = lazyChunk(() => import('./ProjectPreferences').then(m => ({ default: m.ProjectPreferences })));
 
 export function AssistantPanel() {
   const { t } = useTranslation();

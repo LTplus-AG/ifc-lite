@@ -6079,6 +6079,14 @@
     "tableToCsv: function",
     "validatePropertyDataType: function"
   ],
+  "@ifc-lite/export/merged-exporter": [
+    "ExportProgress: interface",
+    "MergeBlobExportResult: interface",
+    "MergeExportOptions: interface",
+    "MergeExportResult: interface",
+    "MergeModelInput: interface",
+    "MergedExporter: class"
+  ],
   "@ifc-lite/extensions": [
     "ACTION_INTENTS: const",
     "AUTHORITY_HEADER_KEY: const",
@@ -8234,6 +8242,7 @@
     "iterateEffectiveEntityIds: function",
     "matchRowAgainstContext: function",
     "parseValue: function",
+    "prepareMutationViewMerge: function",
     "propertyKey: function",
     "quantityKey: function",
     "recordCompoundMutation: function",

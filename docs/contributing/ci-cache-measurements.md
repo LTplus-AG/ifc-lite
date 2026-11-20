@@ -64,6 +64,8 @@ artifact hit. These observations are documented in the issue's
 
 The retained and CSG jobs now invoke `scripts/ci-rust-metrics.mjs` and publish
 `rust-ci-metrics-JOB-ATTEMPT` JSONL artifacts for 14 days, plus job summaries.
+The CSG matrix includes the gate in each artifact name
+(`rust-ci-metrics-csg-accept-gates-GATE-ATTEMPT`).
 Each row records source SHA, run, attempt, job, full command, phase, elapsed
 seconds, exit status and exact archive hit (`true`/`false`), `warm-target` or
 `unknown`. Cargo compilation and Clippy rows also count `compiler-artifact`

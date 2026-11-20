@@ -256,6 +256,8 @@ export class BackingReader {
       this.fence(options.signal);
       if (!record) throw new GeometryNotBackedError(`Backed instanced shard ${shard.index} is missing from storage`);
       yield record;
+      // As `meshes()` does: an abort or a stale generation after the last yield is not completion.
+      this.fence(options.signal);
     }
   }
 

@@ -19,7 +19,8 @@
  * rail scrolls then).
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import {
   SlidersHorizontal,
   PanelRightClose,
@@ -54,7 +55,7 @@ import { ActivityBarItem } from './ActivityBarItem';
 import { ActivityBarOverflow } from './ActivityBarOverflow';
 import { layoutRail } from './rail-overflow';
 import { useEmptyStartFoldsSidebarPane } from '../welcome/useEmptyStartFold';
-const CustomizeSidebar = lazy(() => import('./CustomizeSidebar').then(module => ({ default: module.CustomizeSidebar })));
+const CustomizeSidebar = lazyChunk(() => import('./CustomizeSidebar').then(module => ({ default: module.CustomizeSidebar })));
 
 /** Alt+N shortcut KEY per panel, by registry index (frozen since #1200): 1-9,
  *  then 0. Only the first ten registry entries get a shortcut; later

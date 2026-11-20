@@ -23,6 +23,7 @@
 
 import { withCutGeometry } from '@/lib/geometry-backing/cut-readback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useReleasedGeometryRevision } from '@/lib/geometry-backing/use-released-geometry-revision';
 import { Drawing2DGenerator, createSectionConfig, type Drawing2D } from '@ifc-lite/drawing-2d';
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
@@ -103,7 +104,7 @@ export interface PlanCutRequest {
 const EMPTY: PlanCutResult = { polygons: [], lines: [], loading: false, simplified: false, ms: null, settled: true, failed: false, retry: () => {} };
 
 /** A result plus the request key it answers. */
-type KeyedResult = Omit<PlanCutResult, 'settled' | 'retry'> & { key: string | null; scope?: string };
+type KeyedResult = Omit<PlanCutResult, 'settled' | 'retry'> & { key: string | null; scope?: string; failedAt?: string };
 const EMPTY_KEYED: KeyedResult = { polygons: [], lines: [], loading: false, simplified: false, ms: null, failed: false, key: null };
 
 const identities = new WeakMap<object, number>();
@@ -148,6 +149,13 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
   const key = request?.key ?? null;
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  // Released geometry (#10264): a cut that failed because its backing could not answer yet (released before
+  // the seal) runs again once the backing state moves, as the section caps and the PDF source do. Only a
+  // failed cut re-runs, and only for a revision newer than the one it failed under.
+  const revision = useReleasedGeometryRevision();
+  const revisionRef = useRef(revision);
+  revisionRef.current = revision;
+  const recheck = result.failed && result.key === key && result.failedAt !== revision ? revision : null;
 
   useEffect(() => {
     const req = requestRef.current;
@@ -160,6 +168,7 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
       return;
     }
     let cancelled = false;
+    const runRevision = revisionRef.current;
     setResult((prev) => ({ ...prev, loading: true, simplified: false, failed: false }));
     const timer = setTimeout(() => {
       void (async () => {
@@ -185,7 +194,7 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
           // An empty cut reads exactly like a storey with nothing at the cut,
           // so a failure is its own state (the plan says "Cut failed").
           console.warn('[plan-cut] generation failed', err);
-          if (!cancelled) setResult({ ...EMPTY_KEYED, failed: true, key: req.key, scope: req.scope });
+          if (!cancelled) setResult({ ...EMPTY_KEYED, failed: true, key: req.key, scope: req.scope, failedAt: runRevision });
         }
       })();
     }, PLAN_CUT_DEBOUNCE_MS);
@@ -193,10 +202,10 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [key, attempt]);
+  }, [key, attempt, recheck]);
 
   if (!request) return EMPTY;
-  const { key: answered, scope, ...rest } = result;
+  const { key: answered, scope, failedAt: _failedAt, ...rest } = result;
   const settled = answered === request.key;
   // Another storey's (or model's) cut is never drawn or picked in this frame.
   if (!settled && scope !== request.scope) return { ...rest, polygons: EMPTY.polygons, lines: EMPTY.lines, failed: false, settled, retry };

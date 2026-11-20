@@ -157,6 +157,16 @@ fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
         let (current, other) = (rank(u, v), rank(p, q));
         let (first, second) = if current < other { (current, other) } else { (other, current) };
         let foreign = edges_of(*face);
+        // An edge interior to another face (used twice there) may be that
+        // face's own diagonal, which the adapter leaves out of the foreign set
+        // when that face is retriangulated too (back-to-back coplanar faces
+        // share one split). The witness cannot tell which faces were
+        // retriangulated, so it skips such quads instead of guessing.
+        let interior_elsewhere = |d: &(i64, u32, u32)| faces.iter().filter(|(f, _)| *f != face).any(|(_, ts)| {
+            ts.iter().flat_map(|t| (0..3).map(move |k| (t[k].min(t[(k + 1) % 3]), t[k].max(t[(k + 1) % 3]))))
+                .filter(|e| *e == (d.1, d.2)).count() == 2
+        });
+        if interior_elsewhere(&first) || interior_elsewhere(&second) { continue; }
         let free: Vec<_> = [first, second].into_iter().filter(|d| !foreign.contains(&(d.1, d.2))).collect();
         // The diagonal's two other quad vertices.
         let clear = |d: &(i64, u32, u32)| [u, q, v, p].iter().filter(|&&w| w != d.1 && w != d.2)

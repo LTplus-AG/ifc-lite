@@ -17,6 +17,7 @@ import type { TranslationKey } from '@/i18n';
 import { isNetworkUnavailableError } from '@/lib/cancelled-and-network-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { messageOf } from '@/lib/load-errors';
+import { reportLoadFailure } from './loadFailureReport.js';
 
 /** `ref` with its hash lowercased, so the model record holds one spelling; a hash that is not a SHA-256 is kept for the client to refuse. A size that is not a positive integer becomes 0, unknown. */
 export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedModelRecord {
@@ -25,7 +26,7 @@ export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedMo
 
 /** A cause found in the viewer, before or instead of a server answer. */
 export class ProcessedModelUnavailable extends Error {
-  constructor(readonly reason: 'not-primary' | 'no-server' | 'unreachable' | 'parquet-init') {
+  constructor(readonly reason: 'no-server' | 'unreachable' | 'parquet-init') {
     super(`Processed model unavailable: ${reason}`);
     this.name = 'ProcessedModelUnavailable';
   }
@@ -43,11 +44,16 @@ const failure = (key: TranslationKey, code: string, retryable: boolean, values?:
   ({ message: translate(key, values), code: `processed_model_${code}`, retryable });
 
 const VIEWER_CAUSES: Record<ProcessedModelUnavailable['reason'], () => ProcessedModelFailure> = {
-  'not-primary': () => failure('viewportLighting.container.processedModel.notPrimary', 'not_primary', false),
   'no-server': () => failure('viewportLighting.container.processedModel.noServer', 'no_server', false),
   unreachable: () => failure('viewportLighting.container.processedModel.unreachable', 'server_unreachable', false),
   'parquet-init': () => failure('viewportLighting.container.processedModel.unsupported', 'unsupported', true),
 };
+
+/** Report an unsupported target without entering the model-load lifecycle. */
+export function refuseFederatedProcessedModel(onLoadError?: (message: string) => void): void {
+  const message = translate('viewportLighting.container.processedModel.notPrimary');
+  reportLoadFailure(message, 'processed_model_not_primary', null, onLoadError);
+}
 
 /** `error` is what the load threw; `null` when it ended without saying why. */
 export function describeProcessedModelFailure(error: unknown): ProcessedModelFailure {

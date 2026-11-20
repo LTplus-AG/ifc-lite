@@ -260,6 +260,7 @@ describe('summarizeClashes', () => {
       clashOf('b', 'constructor', 'IfcWall', 'IfcBeam', 'major'),
       clashOf('c', '__proto__', 'IfcWall', 'IfcBeam', 'major'),
     ]);
+    expect(Object.getPrototypeOf(summary.byRule)).toBe(Object.prototype);
     expect(Object.entries(summary.byRule)).toEqual([['constructor', 2], ['__proto__', 1]]);
   });
 

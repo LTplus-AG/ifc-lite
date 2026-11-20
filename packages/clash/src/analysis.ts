@@ -24,16 +24,16 @@ import type { Clash, ClashResult, ClashRule, ClashRuleCoverage, ClashSeverity, C
  * cannot report buckets that disagree with `clashes`.
  */
 export function summarizeClashes(clashes: readonly Clash[]): ClashSummary {
-  const byRule: Record<string, number> = Object.create(null);
+  const byRule = new Map<string, number>();
   const byTypePair: Record<string, number> = {};
   const bySeverity: Record<ClashSeverity, number> = { critical: 0, major: 0, minor: 0, info: 0 };
   for (const c of clashes) {
-    byRule[c.rule] = (byRule[c.rule] ?? 0) + 1;
+    byRule.set(c.rule, (byRule.get(c.rule) ?? 0) + 1);
     const pair = [c.a.tag, c.b.tag].sort().join(' vs ');
     byTypePair[pair] = (byTypePair[pair] ?? 0) + 1;
     bySeverity[c.severity] += 1;
   }
-  return { total: clashes.length, byRule, byTypePair, bySeverity };
+  return { total: clashes.length, byRule: Object.fromEntries(byRule), byTypePair, bySeverity };
 }
 
 /** Severity ordering, most-severe first (lower rank = more severe). */

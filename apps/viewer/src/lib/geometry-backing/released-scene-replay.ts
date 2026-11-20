@@ -68,14 +68,24 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
     }
   };
   const park = () => {
-    let queued = false;
-    const stop = () => { unsubscribe(); parked.delete(stop); };
-    const unsubscribe = subscribeReleasedGeometryMetadata(() => {
+    // One attempt at a time: `busy` covers queued AND in flight. A notification meanwhile is
+    // remembered and retried only if that attempt fails; success or disposal ends it all.
+    let done = false, busy = false, again = false;
+    const stop = () => { done = true; unsubscribe(); parked.delete(stop); };
+    const schedule = (): void => {
+      if (done) return;
       if (!isCurrent()) { stop(); return; }
-      if (queued) return;
-      queued = true;
-      chain = chain.then(async () => { queued = false; if (await attempt()) stop(); });
-    });
+      if (busy) { again = true; return; }
+      busy = true;
+      again = false;
+      chain = chain.then(async () => {
+        const ok = !done && isCurrent() && await attempt();
+        busy = false;
+        if (ok || !isCurrent()) stop();
+        else if (again) schedule();
+      });
+    };
+    const unsubscribe = subscribeReleasedGeometryMetadata(schedule);
     parked.add(stop);
   };
   chain = chain.then(run, run);

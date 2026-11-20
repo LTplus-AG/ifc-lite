@@ -56,6 +56,34 @@ describe('released scene replay (content reload)', () => {
     assert.equal(attempts, 4, 'and stopped listening once complete');
   });
 
+  it('#10903 a notification while a parked attempt is in flight never makes a successful replay upload twice', async () => {
+    const list = releasedList();
+    let attempts = 0, available = false;
+    const reads: Array<() => void> = [];
+    const releaseReads = () => { for (const resolve of reads.splice(0)) resolve(); };
+    const uploads: number[] = [];
+    splitReleasedForReplay(renderer, list, async () => {
+      attempts++;
+      if (!available) throw new Error('backing unavailable');
+      await new Promise<void>((resolve) => { reads.push(resolve); }); // the awaited backing read
+      uploads.push(attempts);
+      return true;
+    });
+    await releasedReplaysIdle();
+    available = true;
+    notifyReleasedGeometryMetadataChanged(); // starts the parked attempt
+    await new Promise((r) => setTimeout(r, 0));
+    notifyReleasedGeometryMetadataChanged(); // arrives while that attempt awaits the backing
+    releaseReads();
+    await new Promise((r) => setTimeout(r, 10));
+    releaseReads(); // a second, wrongly scheduled attempt would be reading now
+    await releasedReplaysIdle();
+    assert.deepEqual(uploads, [4], 'exactly one upload');
+    notifyReleasedGeometryMetadataChanged();
+    await releasedReplaysIdle();
+    assert.equal(attempts, 4, 'no retry is pending after the success');
+  });
+
   it('a parked replay is dropped by the next reshape and never uploads into it', async () => {
     const list = releasedList();
     let attempts = 0;

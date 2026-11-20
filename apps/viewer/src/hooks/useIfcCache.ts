@@ -31,7 +31,7 @@ import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
-import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { publishMetadataAtMark } from '../lib/geometry-restore-gate.js';
@@ -126,7 +126,7 @@ export function useIfcCache() {
     trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
     // Before any await: a reset during the IndexedDB reads supersedes this hit's shards.
-    const shardGeneration = instancedShardGeneration();
+    const shardGeneration = instancedShardSupplyToken(modelId);
     let adopted: AdoptedSceneSnapshot | null = null;
     // Compressed geometry chunks inflate on workers, which boot while the metadata decodes (only when there are any).
     const inflater = createCacheChunkInflater();

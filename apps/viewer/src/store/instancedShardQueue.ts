@@ -89,9 +89,9 @@ function modelIdsOf(shards: readonly PendingInstancedShard[]): Set<string> {
  * a reset or full clear has since superseded are refused here, so they cannot
  * sit in the queue holding their buffers. Required, so no producer can skip it.
  */
-export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBuffer[], fromGeneration: number): void {
+export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBuffer[], fromGeneration: number | InstancedShardSupplyToken): void {
   if (shards.length === 0) return;
-  if (fromGeneration !== generation) {
+  if (!supplyCurrent(modelId, fromGeneration)) {
     noteDroppedInstancedShards('superseded', shards.length, [modelId]);
     return;
   }
@@ -144,9 +144,12 @@ export function drainInstancedShards(
  */
 export function discardInstancedShards(modelId?: string): void {
   if (modelId === undefined) generation++;
+  // A model-scoped discard ends that model's supply even when nothing was queued: a load
+  // still running for it must not feed the next supply (`instancedShardSupplyToken`).
+  else bumpModelEpoch(modelId);
   const dropped = modelId === undefined ? pending : pending.filter((shard) => shard.modelId === modelId);
   if (dropped.length === 0) return;
-  if (modelId !== undefined) bumpModelEpoch(modelId);
+
   pending = modelId === undefined ? [] : pending.filter((shard) => shard.modelId !== modelId);
   emit({ kind: 'discarded', modelIds: modelIdsOf(dropped), full: modelId === undefined });
 }
@@ -162,6 +165,16 @@ export interface InstancedShardSupply { readonly modelId: string; readonly gener
 const modelEpochs = new Map<string, number>();
 function bumpModelEpoch(modelId: string): void { modelEpochs.set(modelId, (modelEpochs.get(modelId) ?? 0) + 1); }
 export function instancedShardModelEpoch(modelId: string): number { return modelEpochs.get(modelId) ?? 0; }
+
+/** Captured by a producer when its load begins: the queue generation and the model's epoch. */
+export interface InstancedShardSupplyToken { readonly generation: number; readonly epoch: number }
+export function instancedShardSupplyToken(modelId: string): InstancedShardSupplyToken {
+  return { generation, epoch: instancedShardModelEpoch(modelId) };
+}
+/** A bare generation number fences only full resets; a token also fences the model's own discards. */
+function supplyCurrent(modelId: string, from: number | InstancedShardSupplyToken): boolean {
+  return typeof from === 'number' ? from === generation : from.generation === generation && from.epoch === instancedShardModelEpoch(modelId);
+}
 const supplyListeners = new Set<(supply: InstancedShardSupply) => void>();
 
 /**
@@ -171,8 +184,8 @@ const supplyListeners = new Set<(supply: InstancedShardSupply) => void>();
  * superseded load's statement is ignored. A path that never states it simply
  * never proves completeness.
  */
-export function completeInstancedShardSupply(modelId: string, count: number, fromGeneration: number): void {
-  if (fromGeneration !== generation) return;
+export function completeInstancedShardSupply(modelId: string, count: number, fromGeneration: number | InstancedShardSupplyToken): void {
+  if (!supplyCurrent(modelId, fromGeneration)) return;
   const supply = { modelId, generation, epoch: instancedShardModelEpoch(modelId), count };
   for (const listener of supplyListeners) {
     try { listener(supply); } catch (error) { console.error('[instancedShardQueue] supply listener failed:', error); }

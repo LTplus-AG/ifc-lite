@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
-import { completeInstancedShardSupply, discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { completeInstancedShardSupply, discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration, instancedShardSupplyToken } from '@/store/instancedShardQueue';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
@@ -341,6 +341,32 @@ describe('store geometry backing tap (test/debug only)', () => {
     const ids: number[] = [];
     for await (const shard of tap.backing('ms')!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
     assert.deepEqual(ids.sort(), [90, 91]);
+    await tap.stop();
+  });
+
+  it('#10888 a load still running when its model is discarded cannot supply the next set; a fresh load can', async () => {
+    const store = storeWith({ op: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('op', [shardBytes(77)], instancedShardSupplyToken('op'));
+    await tap.seal();
+    const acknowledged = tap.backing('op')!;
+    const oldLoad = instancedShardSupplyToken('op'); // captured when the old load began
+    enqueueInstancedShards('op', [shardBytes(78)], oldLoad);
+    discardInstancedShards('op'); // the model's queued shards go; the global generation stays
+    // The old producer finishes late: its ENTIRE set and its completion statement.
+    enqueueInstancedShards('op', [shardBytes(80), shardBytes(81)], oldLoad);
+    completeInstancedShardSupply('op', 2, oldLoad);
+    let [status] = await tap.seal();
+    assert.equal(status.complete, false, 'a superseded load never completes the new supply');
+    assert.equal(acknowledged.isCurrent, true);
+    const fresh = instancedShardSupplyToken('op');
+    enqueueInstancedShards('op', [shardBytes(90)], fresh);
+    completeInstancedShardSupply('op', 1, fresh);
+    [status] = await tap.seal();
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
+    const ids: number[] = [];
+    for await (const shard of tap.backing('op')!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    assert.deepEqual(ids, [90], 'only the fresh load');
     await tap.stop();
   });
 

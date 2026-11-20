@@ -15,7 +15,7 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
@@ -131,7 +131,7 @@ export async function publishAdoptedSceneMeshes(
   trace: LoadTrace,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
 ): Promise<MeshData[]> {
-  const shardGeneration = instancedShardGeneration(); // a later reset supersedes the requeue below
+  const shardGeneration = instancedShardSupplyToken(modelId); // a later reset or discard of this model supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
   if (isStale?.()) return [];
   const meshes = chunks.flat();

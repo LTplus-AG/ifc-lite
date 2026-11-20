@@ -110,7 +110,7 @@ export function judge(needs) {
 }
 
 const GROUP = (id) => `geometry-platform-${id}-\${{ !inputs.batch && github.event.pull_request.number || github.run_id }}`;
-const CANCEL = "${{ github.event_name == 'pull_request' && !inputs.batch }}";
+const CANCEL = `\${{ github.event_name == 'pull_request' && !inputs.batch }}`;
 const steps = (block) => block.split(/^ {6}- /m).slice(1);
 const has = (block, line) => block.split('\n').some((l) => l.trim() === line);
 /** The setup-wasm-build inputs that pick the restored cache; shared-key defaults to main in the action. */
@@ -154,7 +154,7 @@ export function splitProblems(text) {
     const budget = block.match(/^ {4}timeout-minutes: (\d+)\s*$/m);
     if (!budget || Number(budget[1]) > 90) out.push(`${WORKFLOW}: split job ${id} needs a literal timeout-minutes of at most 90`);
     const own = steps(block).filter((s) => /\buses: actions\/checkout@/.test(s) && !/^\s*repository:/m.test(s));
-    if (own.length === 0 || own.some((s) => !has(s, 'ref: ${{ inputs.bisect_sha }}'))) out.push(`${WORKFLOW}: every checkout of this repository in split job ${id} must use ref: \${{ inputs.bisect_sha }} (a bisect probe tests that commit)`);
+    if (own.length === 0 || own.some((s) => !has(s, `ref: \${{ inputs.bisect_sha }}`))) out.push(`${WORKFLOW}: every checkout of this repository in split job ${id} must use ref: \${{ inputs.bisect_sha }} (a bisect probe tests that commit)`);
     for (const s of steps(block).filter((t) => /\buses: actions\/upload-artifact@/.test(t))) {
       const name = s.match(/^\s*name: (\S+)\s*$/m)?.[1] ?? '';
       if (!name.startsWith('na-') || !has(s, 'overwrite: true')) out.push(`${WORKFLOW}: split job ${id} uploads '${name}'; split artifacts are named na-* (test.yml shares the run's artifact namespace) and set overwrite: true (a re-run replaces them)`);
@@ -170,7 +170,7 @@ export function splitProblems(text) {
         if (!s || !has(s, 'continue-on-error: true')) out.push(`${WORKFLOW}: split job ${id} must run lane step ${step} with continue-on-error (it is judged, not fatal)`);
       }
       const verdict = steps(block).find((t) => has(t, 'id: verdict'));
-      if (!verdict || !has(verdict, 'if: always()') || !verdict.includes(`node scripts/native-adapter-split.mjs verdict --job ${id}`) || !has(block, 'verdict: ${{ steps.verdict.outputs.verdict }}')) {
+      if (!verdict || !has(verdict, 'if: always()') || !verdict.includes(`node scripts/native-adapter-split.mjs verdict --job ${id}`) || !has(block, `verdict: \${{ steps.verdict.outputs.verdict }}`)) {
         out.push(`${WORKFLOW}: split job ${id} must end with an if: always() step id verdict running scripts/native-adapter-split.mjs verdict --job ${id}, published as the job output verdict`);
       }
     }

@@ -525,7 +525,7 @@ test('a split lane job sharing the single job\'s concurrency group, or cancellin
 
 test('a split job that checks out the event commit on a bisect probe is reported', (context) => {
   const root = copyTree(context);
-  inJob(root, 'na-cli-parity', '          ref: ${{ inputs.bisect_sha }}\n', '');
+  inJob(root, 'na-cli-parity', `          ref: \${{ inputs.bisect_sha }}\n`, '');
   assert.ok(audit(root).some((f) => f.includes('every checkout of this repository in split job na-cli-parity must use ref')));
 });
 
@@ -552,7 +552,7 @@ test('a partial split, a judge that misses a lane job or a lane step that is fat
   inJob(fatal, 'na-native', '        id: finish-join\n        continue-on-error: true\n', '        id: finish-join\n');
   assert.ok(audit(fatal).some((f) => f.includes('must run lane step finish-join with continue-on-error')));
   const noVerdict = copyTree(context);
-  inJob(noVerdict, 'na-emscripten', '      verdict: ${{ steps.verdict.outputs.verdict }}\n', '');
+  inJob(noVerdict, 'na-emscripten', `      verdict: \${{ steps.verdict.outputs.verdict }}\n`, '');
   assert.ok(audit(noVerdict).some((f) => f.includes('split job na-emscripten must end with an if: always() step id verdict')));
 });
 

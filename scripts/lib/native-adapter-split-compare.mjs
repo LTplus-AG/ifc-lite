@@ -83,16 +83,24 @@ export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : t
  *   - the frame and every non-mesh field;
  *   - the multiset of vertex positions and the triangle count;
  *   - per face (revisionLocalFaces): its triangle count, its set of corner
- *     normals and how many of its triangles map to each source surface
+ *     normals, how many of its triangles map to each source surface
  *     (surfaceIndices: a count per surface, not a set, so moving one triangle
- *     to another surface still differs);
- * and, as a coverage check, each face's total triangle area within 1e-9
- * relative. The producer is unchanged here; its fix is tracked separately.
+ *     to another surface still differs), and the set of vertex POSITIONS its
+ *     triangles use;
+ * as a coverage check, each face's total triangle area within 1e-9 relative;
+ * and, in each copy on its own, no face may hold two triangles with the same
+ * three positions and no triangle may have zero area. Without those two, a face
+ * [0,1,2],[0,2,3] rewritten as [0,1,2],[0,1,2] kept every invariant above (#10858
+ * review): half the face went missing and still compared equal. Any such defect
+ * fails the comparison. None of this depends on triangle order or diagonals.
+ * The producer is unchanged here. Keep this until #10916 (canonical meshes)
+ * proves byte determinism; then compare m11-n by its bytes again.
  */
 export const M11N_AREA_RELATIVE = 1e-9;
 
 export function m11nInvariants(reference) {
   const areas = [];
+  const defects = [];
   const part = (p) => {
     if (!Array.isArray(p?.indices) || !Array.isArray(p?.positions)) return p;
     const { positions, indices, normals, revisionLocalFaces, surfaceIndices, ...rest } = p;
@@ -102,25 +110,32 @@ export function m11nInvariants(reference) {
     const faces = new Map();
     for (let t = 0; t * 3 < indices.length; t += 1) {
       const id = revisionLocalFaces?.[t] ?? null;
-      const face = faces.get(id) ?? { triangles: 0, normals: new Set(), surfaces: new Map(), area: 0 };
+      const face = faces.get(id) ?? { triangles: 0, normals: new Set(), surfaces: new Map(), area: 0, used: new Set(), seen: new Set() };
       face.triangles += 1;
       for (let k = 0; k < 3; k += 1) if (Array.isArray(normals)) face.normals.add(JSON.stringify(xyz(normals, t * 3 + k)));
       const surface = JSON.stringify(surfaceIndices?.[t] ?? null);
       face.surfaces.set(surface, (face.surfaces.get(surface) ?? 0) + 1);
       const [a, b, c] = [0, 1, 2].map((k) => xyz(positions, indices[t * 3 + k]));
       const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-      face.area += Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2;
+      const area = Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2;
+      face.area += area;
+      const corners = [a, b, c].map((q) => JSON.stringify(q));
+      for (const q of corners) face.used.add(q);
+      const key = [...corners].sort().join('|');
+      if (face.seen.has(key)) defects.push(`face ${id}: two triangles on the same three positions ${key}`);
+      face.seen.add(key);
+      if (!(area > 0)) defects.push(`face ${id}: zero-area triangle ${corners.join(' ')}`);
       faces.set(id, face);
     }
     const ids = [...faces.keys()].sort((x, y) => String(x).localeCompare(String(y), 'en', { numeric: true }));
     for (const id of ids) areas.push(faces.get(id).area);
     return {
       ...rest, vertices: vertices.sort(), triangleCount: indices.length / 3,
-      faces: ids.map((id) => [id, faces.get(id).triangles, [...faces.get(id).normals].sort(), [...faces.get(id).surfaces].sort(([a], [b]) => a.localeCompare(b))]),
+      faces: ids.map((id) => [id, faces.get(id).triangles, [...faces.get(id).normals].sort(), [...faces.get(id).surfaces].sort(([a], [b]) => a.localeCompare(b)), [...faces.get(id).used].sort()]),
     };
   };
   const exact = reference.map((model) => ({ ...model, rows: model.rows?.map((row) => (Array.isArray(row.parts) ? { ...row, parts: row.parts.map(part) } : row)) }));
-  return { exact, areas };
+  return { exact, areas, defects };
 }
 
 /** References compared by invariants instead of bytes, named one by one (see m11nInvariants). */
@@ -131,6 +146,7 @@ export function sameReference(rel, aBytes, bBytes) {
   const invariants = BY_INVARIANTS[rel.split('/').at(-1)];
   if (!invariants) return timingFreeHash(rel, aBytes) === timingFreeHash(rel, bBytes);
   const [a, b] = [aBytes, bBytes].map((x) => invariants(JSON.parse(x.toString('utf8'))));
+  if (a.defects.length || b.defects.length) return false;
   if (JSON.stringify(stripVolatile(a.exact)) !== JSON.stringify(stripVolatile(b.exact)) || a.areas.length !== b.areas.length) return false;
   return a.areas.every((x, i) => Math.abs(x - b.areas[i]) <= M11N_AREA_RELATIVE * Math.max(Math.abs(x), Math.abs(b.areas[i])));
 }
@@ -222,7 +238,7 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
   const j = judge(needs);
   lines.push(`Verdict: single job **${needs?.['native-adapter']?.result ?? 'absent'}**, split judge **${j.ok ? 'success' : 'failure'}**`);
   if (monoGreen !== j.ok) problems.push(`verdicts differ: single ${monoGreen ? 'green' : 'red'}, split ${j.ok ? 'green' : 'red'} (${j.problems.join('; ')})`);
-  for (const id of [...new Set(SPLIT_LANE_JOBS.map((job) => split[job].meta.head).filter(Boolean))]) if (mono.meta.head && id !== mono.meta.head) problems.push(`split job commit ${id} is not the single job's ${mono.meta.head}`);
+  for (const id of new Set(SPLIT_LANE_JOBS.map((job) => split[job].meta.head).filter(Boolean))) if (mono.meta.head && id !== mono.meta.head) problems.push(`split job commit ${id} is not the single job's ${mono.meta.head}`);
 
   lines.push('', '| lane | single job | split |', '|---|---|---|');
   const stepsByJob = Object.fromEntries(SPLIT_LANE_JOBS.map((job) => [job, split[job].steps]));

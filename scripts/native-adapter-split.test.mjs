@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { collect, pack, unpack, verdict } from './native-adapter-split.mjs';
 import { jobLaneSteps, judge, LANES, SPLIT_LANE_JOBS } from './lib/native-adapter-split.mjs';
-import { compareLayouts, markers, sameReference, timingFreeHash } from './lib/native-adapter-split-compare.mjs';
+import { compareLayouts, m11nInvariants, markers, sameReference, timingFreeHash } from './lib/native-adapter-split-compare.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 
@@ -186,6 +186,19 @@ test('m11-n compares by mesh invariants: SMLib order and quad diagonals do not c
   assert.equal(sameReference('temp/m11-n-native.json', three([7, 7, 8]), three([7, 7, 8])), true);
   // Same vertices, counts, normals and surfaces, but the square only half covered (a degenerate triangle): the area check.
   assert.equal(same(m11n({ edit: (p) => { p.indices.splice(3, 3, 0, 2, 2); } })), false, 'face area');
+  // The #10858 review counter-example: [0,1,2],[0,2,3] -> two copies of [0,1,2] keeps the vertex multiset,
+  // the counts, the normals, the surface counts and (two halves of a unit square) the summed area.
+  const halfGone = m11n({ edit: (p) => { p.indices.splice(3, 3, 0, 1, 2); } });
+  assert.equal(same(halfGone), false, 'half a face replaced by a duplicate triangle');
+  assert.equal(sameReference('temp/m11-n-native.json', halfGone, halfGone), false, 'a duplicate triangle fails even against itself');
+  // Each face carries the set of positions its triangles use (here the square's four corners, then face 1's three).
+  const faces = m11nInvariants(JSON.parse(m11n().toString())).exact[0].rows[0].parts[0].faces;
+  assert.deepEqual(faces.map(([id, , , , used]) => [id, used]), [[0, ['[0,0,0]', '[0,1,0]', '[1,0,0]', '[1,1,0]']], [1, ['[0,0,1]', '[0,1,1]', '[1,0,1]']]]);
+  // Moving face 1's triangle onto the square's positions changes that set (and the area).
+  assert.equal(same(m11n({ edit: (p) => { p.indices.splice(6, 3, 0, 1, 2); } })), false, 'face 1 uses other positions');
+  // A zero-area triangle fails on its own.
+  const flat = m11n({ edit: (p) => { p.indices.push(0, 1, 1); p.normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1); p.revisionLocalFaces.push(0); p.surfaceIndices.push(7); } });
+  assert.equal(sameReference('temp/m11-n-native.json', flat, flat), false, 'zero-area triangle');
   // A non-mesh field still compares exactly.
   assert.equal(sameReference('temp/m11-n-native.json', m11n(), Buffer.from(m11n().toString().replace('"refused"', '"published"'))), false, 'row status');
   // Only m11-n is compared this way: the same reorder elsewhere still differs.

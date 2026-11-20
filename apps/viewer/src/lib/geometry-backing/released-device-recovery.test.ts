@@ -123,6 +123,19 @@ describe('released device recovery rebuild (viewer)', () => {
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
 
+  it('#10937 an Exploded offset changed IN PLACE (set on the existing Map, same identity) during the read fences the rebuild', async () => {
+    const { store } = await releasedModel(`recovery-lift-inplace-${process.pid}`);
+    const offsets = new Map([[2, 1]]);
+    useViewerStore.setState({ appliedEntityLevelOffsets: new Map([['rm', { store: undefined, offsets }]]) } as never);
+    try {
+      const { context } = recordingScene(() => { offsets.set(2, 5); }); // the same Maps, a new lift for entity 2
+      assert.equal(await rebuildReleasedScene(context), false, 'never "whole" at the superseded lift');
+    } finally {
+      useViewerStore.setState({ appliedEntityLevelOffsets: new Map() } as never);
+      await geometryBackingCommand(store, undefined, { action: 'stop' });
+    }
+  });
+
   it('#10937 every flat type hidden (a RECORDED empty list) still recovers the instanced occurrences', async () => {
     const meshes = [mesh(1, 0)];
     const geometryResult: GeometryResult = { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
@@ -254,10 +267,13 @@ describe('released device recovery rebuild (viewer)', () => {
     const { store } = await releasedModel(`recovery-lift-${process.pid}`);
     try {
       const { context } = recordingScene(() => {
-        useViewerStore.setState({ appliedEntityLevelOffsets: new Map([[1, 2.5]]) } as never); // Exploded applied meanwhile
+        useViewerStore.setState({ appliedEntityLevelOffsets: new Map([['rm', { store: undefined, offsets: new Map([[1, 2.5]]) }]]) } as never); // Exploded applied meanwhile
       });
       assert.equal(await rebuildReleasedScene(context), false, 'never publish pieces placed at the old lift');
-    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+    } finally {
+      useViewerStore.setState({ appliedEntityLevelOffsets: new Map() } as never);
+      await geometryBackingCommand(store, undefined, { action: 'stop' });
+    }
   });
 });
 

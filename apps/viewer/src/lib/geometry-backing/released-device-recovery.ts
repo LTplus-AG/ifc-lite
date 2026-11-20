@@ -25,7 +25,8 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import type { ReleasedSceneRebuild } from '@ifc-lite/renderer';
-import { currentLevelYForModels, liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
+import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
+import { captureLevelLift } from '@/lib/level-lift-fence';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { getViewerState } from '@/store/viewerStoreHandle';
 import { hasInstancedShards } from '@/store/instancedShardModels';
@@ -74,10 +75,13 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
     if (!deviceCurrent()) return false;
     for (const [modelId, revision] of attested) if (tap.drawnShardRevision(modelId) !== revision || !tap.holdsDrawnShards(modelId)) return false;
     const live = getViewerState(), now = viewerSource(live);
+    if (!level.current(live)) return false;
     if (now.length !== source.length || !now.every((value, i) => value === source[i]) || !sameMembers(currentSceneGeometry(), drawnAt)) return false;
     return [...live.models].every(([id, model]) => sameMembers(model.geometryResult?.meshes, membersAt.get(id)));
   };
-  const lift = currentLevelYForModels(state.models, state.appliedEntityLevelOffsets);
+  // Captured once for every replayed and restaged piece; the offset Maps may be mutated in place, so the
+  // fence compares the recomputed lift entry by entry, never their identity.
+  const level = captureLevelLift(state), lift = level.lift;
   const statuses = new Map(tap.status().map((row) => [row.modelId, row]));
   for (const modelId of state.models.keys()) {
     if (statuses.get(modelId)?.instancedLost) {

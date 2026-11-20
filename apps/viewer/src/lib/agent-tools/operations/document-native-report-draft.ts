@@ -6,7 +6,7 @@ import { useAssistant } from '@/lib/assistant/conversation';
 import { prepareReportDraft, reviseReportClaim, saveReportDraft, isReportDraftCurrent, contradictedClaims } from '@/lib/assistant/report-draft';
 import { REPORT_LANGUAGES, type ReportLanguage } from '@/lib/assistant/report-language';
 import { viewerOperation } from './contract';
-import { addReportCandidate, reportCandidate, discardReportCandidate } from './document-native-report-candidates';
+import { addReportCandidate, reportCandidate, discardReportCandidate, discardIdleReportCandidate } from './document-native-report-candidates';
 const string = { type: 'string' as const }, tokenProperty = { ...string, minLength: 1, maxLength: 200 }, documentProperty = { ...string, minLength: 2, maxLength: 2000000 };
 const previewFields = { token: string, document_id: string, document_json: string, claims: { type: 'array' }, contradicted_claim_ids: { type: 'array', items: string }, historical: { type: 'boolean' }, language: string, declared_language: { type: ['string', 'null'] } };
 const meta = (id: string, description: string, properties: Record<string, unknown>) => ({ id, owner: 'assistant', description, effects: ['configuration'] as const, capability: 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema: { type: 'object', properties, required: Object.keys(properties), additionalProperties: false } });
@@ -49,5 +49,5 @@ export const documentNativeReportDraftOperations = [
   }),
   viewerOperation<{ token: string }>(meta('assistant.discardReportDraft', 'Discard this host-owned checked native report preview. Preserves any staged native document evidence from an earlier refused persistence attempt.', { discarded: { type: 'boolean' } }), {
     type: 'object', properties: { token: tokenProperty }, required: ['token'], additionalProperties: false,
-  }, (i, c) => { const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'draft') throw new Error('This token is not a native checked report draft.'); return c.commit(() => ({ discarded: discardReportCandidate(c.host, i.token) })); }),
+  }, (i, c) => { const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'draft') throw new Error('This token is not a native checked report draft.'); return c.commit(() => ({ discarded: discardIdleReportCandidate(c.host, i.token) })); }),
 ];

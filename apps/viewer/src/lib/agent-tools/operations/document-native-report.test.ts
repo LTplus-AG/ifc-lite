@@ -97,7 +97,7 @@ it('checked native report save refuses contradicted claims until canonical revie
   const saved = await invoke<{ saved: boolean }>('assistant.saveReportDraft', { token: prepared.token, reviewed_document_json: revised.document_json }); assert.equal(saved.saved, true);
 });
 
-it('a checked native report save in flight refuses claim revisions and a second save', async () => {
+it('a checked native report save in flight refuses claim revisions, a second save and a discard', async () => {
   discussion(); const state = useAssistant.getState();
   const prepared = await invoke<{ token: string; document_json: string }>('assistant.prepareReportDraft', { name: 'Saving report', language: 'en', expected_evidence_id: state.snapshot!.id, expected_answer: state.messages.at(-1)!.content });
   const save = { token: prepared.token, reviewed_document_json: prepared.document_json };
@@ -105,12 +105,12 @@ it('a checked native report save in flight refuses claim revisions and a second 
   // write() runs synchronously up to saveReportDraft's first await, so the save is in flight here.
   const inFlight: ViewerOperationContext = { ...context, commitAsync: async (write, didCommit) => {
     const pending = write();
-    during.push(outcome(invoke('assistant.reviseReportDraftClaim', { token: prepared.token, expected_document_json: prepared.document_json, claim_id: 'C1', action: 'remove', text: '' })), outcome(invoke('assistant.saveReportDraft', save)));
+    during.push(outcome(invoke('assistant.reviseReportDraftClaim', { token: prepared.token, expected_document_json: prepared.document_json, claim_id: 'C1', action: 'remove', text: '' })), outcome(invoke('assistant.saveReportDraft', save)), outcome(invoke('assistant.discardReportDraft', { token: prepared.token })));
     const result = await pending; persisted.push(didCommit ? didCommit(result) : result !== false); return result;
   } };
   const result = await invoke<{ saved: boolean }>('assistant.saveReportDraft', save, inFlight); assert.equal(result.saved, true);
-  const [revise, second] = await Promise.all(during);
-  assert.match(revise, /being saved; revise/); assert.match(second, /already being saved/);
+  const [revise, second, discard] = await Promise.all(during);
+  assert.match(revise, /being saved; revise/); assert.match(second, /already being saved/); assert.match(discard, /being saved; discard/);
 });
 
 it('refreshes an image-heavy native report using compact revision guards and preserves its media', async () => {

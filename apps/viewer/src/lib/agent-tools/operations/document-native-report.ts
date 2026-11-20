@@ -7,7 +7,7 @@ import { captureEvidence, evidenceIsCurrent } from '@/lib/assistant/evidence';
 import { isAssistantSource } from '@/lib/assistant/sources';
 import { applyReportRefresh, planReportRefresh } from '@/lib/assistant/report-refresh';
 import { viewerOperation } from './contract';
-import { addReportCandidate, reportCandidate, discardReportCandidate, nativeReportDocument } from './document-native-report-candidates';
+import { addReportCandidate, reportCandidate, discardReportCandidate, discardIdleReportCandidate, nativeReportDocument } from './document-native-report-candidates';
 const tokenInput = { type: 'object' as const, properties: { token: { type: 'string' as const, minLength: 1, maxLength: 200 } }, required: ['token' as const], additionalProperties: false as const };
 const metadata = (id: string, description: string, properties: Record<string, unknown>) => ({ id, owner: 'document', description, effects: ['configuration'] as const, capability: 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema: { type: 'object', properties, required: Object.keys(properties), additionalProperties: false } });
 export const documentNativeReportOperations = [
@@ -27,6 +27,7 @@ export const documentNativeReportOperations = [
     const replace = new Set(i.replace_block_ids); const conflicts = new Set(candidate.plan.conflicts.map(conflict => conflict.blockId)); if (i.replace_block_ids.some(id => !conflicts.has(id))) throw new Error('Only the exact prepared human-block conflict IDs may be replaced.');
     const choices = JSON.stringify([...replace].sort());
     return c.commitAsync(async () => {
+      if (candidate.saving) throw new Error('This native report refresh is already being saved.');
       if (!evidenceIsCurrent(candidate.evidence)) throw new Error('Native report evidence changed; prepare the refresh again.');
       const current = nativeReportDocument(candidate.documentId), json = JSON.stringify(current);
       if (candidate.submitted) {
@@ -35,10 +36,11 @@ export const documentNativeReportOperations = [
         if (json !== candidate.plan.documentJson) throw new Error('The native report document changed since refresh preparation.');
         const document = applyReportRefresh(current, candidate.plan, replace); candidate.submitted = { document, json: JSON.stringify(document), replace: choices };
       }
-      c.checkpoint?.(); const saved = await useViewerStore.getState().upsertDocument(structuredClone(candidate.submitted.document));
+      c.checkpoint?.(); candidate.saving = true; let saved: boolean;
+      try { saved = await useViewerStore.getState().upsertDocument(structuredClone(candidate.submitted.document)); } finally { candidate.saving = false; }
       if (saved) discardReportCandidate(c.host, i.token);
       return { document_id: candidate.documentId, saved, storage: useViewerStore.getState().documentsStorage, revision: await nativeDocumentRevision(candidate.submitted.document) };
     }, result => result.saved);
   }),
-  viewerOperation<{ token: string }>(metadata('document.discardReportRefresh', 'Discard only this host-owned native refresh preview. Does not alter a document or discard any staged unsaved native persistence evidence.', { discarded: { type: 'boolean' } }), tokenInput, (i, c) => { const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'refresh') throw new Error('This token is not a native report refresh.'); return c.commit(() => ({ discarded: discardReportCandidate(c.host, i.token) })); }),
+  viewerOperation<{ token: string }>(metadata('document.discardReportRefresh', 'Discard only this host-owned native refresh preview. Does not alter a document or discard any staged unsaved native persistence evidence.', { discarded: { type: 'boolean' } }), tokenInput, (i, c) => { const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'refresh') throw new Error('This token is not a native report refresh.'); return c.commit(() => ({ discarded: discardIdleReportCandidate(c.host, i.token) })); }),
 ];

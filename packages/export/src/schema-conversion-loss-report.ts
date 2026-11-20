@@ -38,22 +38,23 @@ import {
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
+import { attrMapFor, attrsDroppedByMap } from './schema-converter-attr-maps.js';
 import { isRootedEntityType } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
 export type EntityConversionKind =
-  /** Same type, same attribute list: nothing lost. */
+  /** Same type name, nothing lost: the attribute list is unchanged, padded,
+   *  or reconciled by an attribute map (#10763). */
   | 'identity'
-  /** Different type name (or the same name, source-schema attrs trimmed/padded),
-   *  every source attribute has a same-named or explicitly mapped semantic home
-   *  in the target. */
+  /** Different type name, every source attribute has a same-named or
+   *  explicitly mapped semantic home in the target. */
   | 'renamed'
   /** Reconciled with SOME loss. Usually at least one source attribute has no
    *  home in the target schema's shape for this type (see
    *  `droppedAttributes`) — but a same-named type whose attribute lists are
-   *  reordered rather than appended/removed (neither a strict prefix of the
-   *  other, and not in `BY_NAME_ATTR_REMAP_TYPES`) is also `lossy` with an
-   *  EMPTY `droppedAttributes`: every name still exists in the target, but
+   *  reordered rather than appended/removed, with no attribute map
+   *  (`schema-converter-attr-maps.ts`, #10763), is also `lossy` with an EMPTY
+   *  `droppedAttributes`: every name still exists in the target, but
    *  `convertRecord` leaves the positional values untouched under the new
    *  shape, so they land in the wrong slots rather than disappearing. */
   | 'lossy'
@@ -143,6 +144,12 @@ export function classifyEntityTypeConversion(
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
 
+  const mapped = attrMapFor(upper, newType, fromSchema, toSchema);
+  if (mapped) {
+    // #10763: what the reviewed map carries survives; every other source attribute is dropped.
+    const dropped = attrsDroppedByMap(mapped.map, mapped.up, srcAttrs, tgtAttrs);
+    return { targetType: newType, kind: dropped.length > 0 ? 'lossy' : upper === newType ? 'identity' : 'renamed', droppedAttributes: dropped };
+  }
   // #10758: the converter writes `$` where a schema replaced an attribute in place.
   const replaced = replacedSlot(upper, srcAttrs, tgtAttrs);
   const replacedName = replaced === undefined ? [] : [srcAttrs[replaced]];

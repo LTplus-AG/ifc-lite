@@ -8,10 +8,11 @@ import type { CoordinateInfo, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
 import type { LandXmlGeorefAssumptions } from './landXmlGeorefAssumptions.js';
 import { federationRegistry } from '@ifc-lite/renderer';
+import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '../useBCF.js';
 import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
 import { FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
-import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.js';
+import { LandXmlProvisionalTransaction, type LandXmlFederationReservation } from './landXmlProvisionalTransaction.js';
 
 /**
  * A provisional GPU upload failed. Distinct from the invariant errors
@@ -45,6 +46,20 @@ function resources() {
   };
 }
 
+const landXmlRegistry: LandXmlFederationReservation = {
+  reserveModel(modelId, maxExpressId) {
+    const view = useViewerStore.getState().getMutationView(modelId);
+    const firstRetained = view?.getCreatedExpressIdBounds().lowest ?? 0;
+    // An overlapping overlay is discarded by final registration, not by a provisional upload.
+    if (firstRetained > 0 && firstRetained <= maxExpressId) {
+      return federationRegistry.reserveModel(modelId, maxExpressId);
+    }
+    return federationRegistry.reserveModel(modelId, maxExpressId, firstRetained, view?.peekNextExpressId());
+  },
+  publishRange: (modelId, start, end) => federationRegistry.publishRange(modelId, start, end),
+  unregisterModel: modelId => federationRegistry.unregisterModel(modelId),
+};
+
 export function openPrimaryLandXmlProvisional(
   modelId: string,
   preflight: LandXmlGeometryPreflight,
@@ -52,7 +67,7 @@ export function openPrimaryLandXmlProvisional(
   if (preflight.componentCount === 0 || preflight.frame === null) return null;
   const rendererResources = resources();
   if (rendererResources === null) return null;
-  return new LandXmlProvisionalTransaction(modelId, preflight.componentCount, preflight.frame, federationRegistry, rendererResources);
+  return new LandXmlProvisionalTransaction(modelId, preflight.componentCount, preflight.frame, landXmlRegistry, rendererResources);
 }
 
 export function openFederatedLandXmlStreamingPlan(
@@ -75,7 +90,7 @@ export function openFederatedLandXmlStreamingPlan(
     spatialReference,
     declaredCrs,
     assumptions,
-    registry: federationRegistry,
+    registry: landXmlRegistry,
     resources: rendererResources,
     isCurrent,
   });

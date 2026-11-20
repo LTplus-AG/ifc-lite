@@ -23,7 +23,7 @@ import {
 } from '@ifc-lite/parser';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { materialDisplayName } from './material-name.js';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat.js';
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat.js';
 
 function countEffectiveEntities(
   store: NonNullable<ReturnType<typeof useViewerStore.getState>['ifcDataStore']>,
@@ -101,7 +101,7 @@ function collectSelectedEntities(state: ReturnType<typeof useViewerStore.getStat
     const type = store.entities.getTypeName(ref.expressId) || 'Unknown';
     const name = store.entities.getName(ref.expressId) || `${type} #${ref.expressId}`;
     const view = ref.modelId === 'legacy'
-      ? state.mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? state.mutationViews.get(LEGACY_MODEL_ID)
+      ? getLegacyMutationView(state.mutationViews)
       : state.mutationViews.get(ref.modelId);
     const storeyId = effectiveStoreyId(store, view, ref.expressId);
     const storeyName = storeyId !== undefined ? (store.entities.getName(storeyId) || `Storey #${storeyId}`) : undefined;
@@ -171,8 +171,7 @@ export function getModelContext(): ModelContext {
   // Legacy single-model path
   if (models.length === 0 && state.ifcDataStore) {
     const store = state.ifcDataStore;
-    const view = state.mutationViews.get(LEGACY_MUTATION_MODEL_ID)
-      ?? state.mutationViews.get(LEGACY_MODEL_ID) ?? null;
+    const view = getLegacyMutationView(state.mutationViews) ?? null;
     models.push({
       name: 'Model',
       entityCount: countEffectiveEntities(store, view, typeCounts),

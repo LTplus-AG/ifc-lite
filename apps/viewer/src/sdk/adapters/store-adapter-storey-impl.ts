@@ -11,18 +11,19 @@
  * not part of the viewer's boot bundle.
  */
 
-import { planStoreyDelete, planStoreyLevelEdit, readStoreyInventory, suggestStorey, summarizeStoreys } from '@ifc-lite/create';
+import { planStoreyAdd, planStoreyDelete, planStoreyLevelEdit, readStoreyInventory, suggestStorey, summarizeStoreys } from '@ifc-lite/create';
 import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { commitStoreyOp, type StoreyOp } from '@/store/slices/mutation-storey';
 import { deleteStorey } from '@/lib/storeys/storey-actions';
+import { attachWallTop } from '@/components/viewer/model-inspector/wall-constraint-edits';
 import type { StoreApi } from './types.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 
 type Methods = ReturnType<typeof createModellingStoreBackend>;
 
 export type StoreyMethods = Required<Pick<Methods,
-  'listStoreyLevels' | 'suggestStorey' | 'addStorey' | 'renameStorey' | 'planStoreyEdit' | 'editStorey' | 'planStoreyDelete' | 'deleteStorey'>>;
+  'listStoreyLevels' | 'suggestStorey' | 'addStorey' | 'planAddStorey' | 'renameStorey' | 'planStoreyEdit' | 'editStorey' | 'planStoreyDelete' | 'deleteStorey' | 'setTopConstraint'>>;
 
 export function storeyMethods(store: StoreApi): StoreyMethods {
   const inventory = (modelId: string) => {
@@ -48,6 +49,14 @@ export function storeyMethods(store: StoreApi): StoreyMethods {
       const { normalized, outcome } = commit('addStorey', modelId, { kind: 'add', params });
       if (outcome.storeyId === null) throw new Error('bim.store.addStorey: the storey was not written');
       return { modelId: normalized, expressId: outcome.storeyId };
+    },
+    planAddStorey: (modelId, params) => planStoreyAdd(inventory(modelId), params),
+    setTopConstraint(ref, constraint) {
+      // The Model inspector's own write: one undo step, mirrored attachment properties, re-meshed (#10793).
+      const normalized = normalizeMutationModelId(store.getState(), ref.modelId);
+      let reason = 'the edit was refused';
+      if (!attachWallTop(normalized, ref.expressId, constraint, (refusal) => { reason = refusal; })) throw new Error(`bim.store.setTopConstraint: ${reason}`);
+      return refs(normalized, [ref.expressId]);
     },
     renameStorey(ref, Name) {
       const { normalized } = commit('renameStorey', ref.modelId, { kind: 'rename', storeyId: ref.expressId, Name });

@@ -25,7 +25,11 @@ export const inspectorOperations = [
   operation<{ express_id: number; Name: string; Color: string; Category: string; Description: string }>(meta('authoring.material.createAndAssign', 'Create and assign a material using the same native Model-inspector transaction, including supported color/category/description.', true), {
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 }, Name: { type: 'string', minLength: 1, maxLength: 240 }, Color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }, Category: { type: 'string', maxLength: 240 }, Description: { type: 'string', maxLength: 2000 } }, required: ['express_id', 'Name', 'Color', 'Category', 'Description'], additionalProperties: false,
   }, async (i, c) => { const { setElementMaterial } = await import('@/components/viewer/model-inspector/inspector-edits'); const ref = resolveRef(c.model, { express_id: i.express_id }); assertToolActive(c);
-    if (!c.commit(() => setElementMaterial(c.model.id, ref.expressId, { Name: i.Name, Color: i.Color, Category: i.Category, Description: i.Description }))) throw invalidInput('refused', 'The native inspector refused this material edit.'); return out({ changed: true });
+    c.commit(() => {
+      const changed = setElementMaterial(c.model.id, ref.expressId, { Name: i.Name, Color: i.Color, Category: i.Category, Description: i.Description });
+      if (!changed) throw invalidInput('refused', 'The native inspector refused this material edit.');
+    });
+    return out({ changed: true });
   }),
   viewerOperation<{ kind: AuthoredElementKind; field: string; metres: number; expected_defaults: string }>(meta('authoring.defaults.dimension', 'Set one existing native default dimension in metres, preserving the command HUD/inspector’s shared state.'), {
     type: 'object', properties: { kind: kindSchema, field: { type: 'string', minLength: 1, maxLength: 100 }, metres: { type: 'number', minimum: -1000000, maximum: 1000000 }, expected_defaults: { type: 'string', maxLength: 200000 } }, required: ['kind', 'field', 'metres', 'expected_defaults'], additionalProperties: false,

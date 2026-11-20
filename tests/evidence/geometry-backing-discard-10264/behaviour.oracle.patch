@@ -1,8 +1,8 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index a7ac10f..cfeba32 100644
+index 9f35a07..9974cb6 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -106,6 +106,14 @@ export class StoreGeometryBackingTap {
+@@ -107,6 +107,14 @@ export class StoreGeometryBackingTap {
      tap.stops.push(subscribeInstancedShards((event) => {
        // Dropped or discarded before upload: the backing must hold exactly what the scene drew. A full
        // discard (a reset) moved the generation: abandon. Otherwise withhold just those shards.
@@ -17,11 +17,12 @@ index a7ac10f..cfeba32 100644
        if (event.kind !== 'enqueued' || !event.shards) return;
        for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
        for (const shard of event.shards) tap.ingestShard(shard);
-@@ -340,6 +348,7 @@ export class StoreGeometryBackingTap {
-   /** Close every model's writer and acknowledge complete generations. */
-   async seal(): Promise<ModelBackingStatus[]> {
-     // A statement holds only while its queue generation does: a full discard since (even of nothing) voids it.
-+    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, supplyPoint(modelId))) this.abandon(modelId, { generation: tracked.supplied!.generation, epoch: tracked.supplied!.epoch });
+@@ -341,7 +349,7 @@ export class StoreGeometryBackingTap {
+     // A statement holds only while its queue generation does: a full discard since (even of nothing, so with
+     // no event) voids it. Checked again after every await, so one during the seal is never acknowledged.
+     const voided = (modelId: string, tracked: Tracked) => {
+-      return false;
++      if (statementVoided(tracked, supplyPoint(modelId))) { this.abandon(modelId, { ...tracked.supplied! }); return true; } return false;
+     };
+     for (const [modelId, tracked] of this.tracked) voided(modelId, tracked);
      await this.whenIdle();
-     let acknowledged = false;
-     for (const [modelId, tracked] of this.tracked) {

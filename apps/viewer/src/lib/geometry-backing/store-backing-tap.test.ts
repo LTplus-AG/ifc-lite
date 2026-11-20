@@ -451,6 +451,44 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  it('#10888 a shard the queue accepted but the backing never admitted (after a content bump), then dropped: a fresh complete supply still recovers', async () => {
+    const store = storeWith({ sx: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('sx', [shardBytes(77)], instancedShardSupplyToken('sx'));
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    await tap.seal();
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // instancing lost here
+    enqueueInstancedShards('sx', [shardBytes(78)], instancedShardSupplyToken('sx')); // queue-current, but not after the loss: unbacked
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'dropped'); });
+    const fresh = instancedShardSupplyToken('sx');
+    enqueueInstancedShards('sx', [shardBytes(79)], fresh);
+    completeInstancedShardSupply('sx', 1, fresh);
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    const [status] = await tap.seal();
+    assert.equal(status.error, undefined, 'dropping a never-backed shard is not a membership failure');
+    assert.equal(status.complete, true, 'the fresh, stated set recovers the model');
+    assert.deepEqual(await idsIn(tap.backing('sx')!), [79]);
+    await tap.stop();
+  });
+
+  it('#10888 a full discard of an EMPTY queue while seal awaits: the voided empty statement never retires the last complete copy', async () => {
+    const store = storeWith({ se: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('se', [shardBytes(77)], instancedShardGeneration());
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    await tap.seal();
+    const acknowledged = tap.backing('se')!;
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    discardInstancedShards();
+    completeInstancedShardSupply('se', 0, instancedShardGeneration()); // an empty replacement
+    const sealing = tap.seal(); // passes its first check, then awaits
+    discardInstancedShards(); // nothing pending: no event, only the generation moves
+    const [status] = await sealing;
+    assert.equal(status.complete, false, 'the statement was voided during the seal');
+    assert.equal(acknowledged.isCurrent, true, 'the last complete instanced copy is not retired');
+    await tap.stop();
+  });
+
   it('#10888 a full discard after the statement voids it even when it dropped nothing (generation fence)', async () => {
     const store = storeWith({ dg: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });

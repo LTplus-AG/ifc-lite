@@ -1,8 +1,8 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 2a985e5..4a50426 100644
+index ab6cae1..9974cb6 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -202,7 +202,14 @@ export class StoreGeometryBackingTap {
+@@ -203,7 +203,14 @@ export class StoreGeometryBackingTap {
          const source = shards === 'withhold' || next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
          if (!source?.backing || source.failure || (source.instancedLost && !next.resupply && shards !== 'withhold')) next.instancedLost = true;
          else {
@@ -18,12 +18,12 @@ index 2a985e5..4a50426 100644
            if (withheld && found !== withheld.size) throw new Error('A withheld instanced shard was not among the backed ones');
          }
        }
-@@ -362,7 +369,7 @@ export class StoreGeometryBackingTap {
- 
-   /** Shards were enqueued for this model that the tap never saw. */
-   private missedShards(modelId: string): boolean {
--    return instancedShardRevision(modelId) < 0;
-+    return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0);
+@@ -364,7 +371,7 @@ export class StoreGeometryBackingTap {
    }
  
+   /** Shards were enqueued for this model that the tap never saw. */
+-  private missedShards(modelId: string): boolean { return instancedShardRevision(modelId) < 0; }
++  private missedShards(modelId: string): boolean { return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0); }
+ 
    status(): ModelBackingStatus[] {
+     return [...this.tracked].map(([modelId, tracked]) => {

@@ -88,6 +88,7 @@ export class StoreGeometryBackingTap {
   /** Per model, the last generation acknowledged complete: the only replay source. */
   private readonly acknowledged = new Map<string, Tracked>();
   private stopped = false;
+  private readonly unbacked = new WeakSet<PendingInstancedShard>(); // ingested, never backed: not membership
 
   private constructor(
     private readonly registry: GeometryBackingRegistry,
@@ -270,7 +271,7 @@ export class StoreGeometryBackingTap {
     if (!this.tracked.has(modelId)) this.regenerate(modelId, undefined, 'none');
     else if (this.acknowledged.get(modelId) === this.tracked.get(modelId)) this.regenerate(modelId, this.tracked.get(modelId)!.meshes, 'carry');
     const target = this.tracked.get(modelId)!;
-    if (!admitShard(target, supplyPoint(modelId))) return; // `instanced-resupply.ts`
+    if (!admitShard(target, supplyPoint(modelId))) { this.unbacked.add(entry); return; } // `instanced-resupply.ts`
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.
     const shard = decodeInstancedShard(bytes.slice(0));
@@ -278,7 +279,7 @@ export class StoreGeometryBackingTap {
     // do the same, so backed occurrences answer the ids picks and flat meshes use.
     const idOffset = this.store.getState().models.get(modelId)?.idOffset;
     if (idOffset === undefined) {
-      target.instancedLost = true;
+      this.unbacked.add(entry); target.instancedLost = true;
       if (target.resupply) target.resupply.broken = true;
       console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`);
       return;
@@ -299,7 +300,8 @@ export class StoreGeometryBackingTap {
   /** Shards dropped before upload: keep exactly what the scene drew, lost until the rest is stated. */
   private withhold(modelId: string, entries: readonly PendingInstancedShard[]): void {
     const tracked = this.stopped ? undefined : this.tracked.get(modelId); // resolved against backed order once the chain settles
-    if (tracked && this.store.getState().models.has(modelId)) this.regenerate(modelId, tracked.meshes, 'withhold', new Set(entries));
+    // A never-backed entry was never membership: withholding it changes nothing it held.
+    if (tracked && this.store.getState().models.has(modelId)) this.regenerate(modelId, tracked.meshes, 'withhold', new Set(entries.filter((e) => !this.unbacked.has(e))));
   }
 
   /** Instancing whose shards were dropped before upload: a fresh lost generation, never carrying the abandoned shards. */
@@ -335,28 +337,29 @@ export class StoreGeometryBackingTap {
   }
 
   /** Resolve once every queued append has been handed to its writer. */
-  async whenIdle(): Promise<void> {
-    // Steps may enqueue more steps or regenerate; settle until nothing moved.
-    for (;;) {
-      const chains = [...this.tracked.values()].map((tracked) => tracked.chain);
-      await Promise.all(chains);
-      const now = [...this.tracked.values()].map((tracked) => tracked.chain);
-      if (now.length === chains.length && now.every((chain, i) => chain === chains[i])) return;
+  async whenIdle(): Promise<void> { // steps may enqueue more steps or regenerate: settle until nothing moved
+    for (const chains = () => [...this.tracked.values()].map((tracked) => tracked.chain); ;) {
+      const before = chains(); await Promise.all(before);
+      const now = chains(); if (now.length === before.length && now.every((chain, i) => chain === before[i])) return;
     }
   }
 
   /** Close every model's writer and acknowledge complete generations. */
   async seal(): Promise<ModelBackingStatus[]> {
-    // A statement holds only while its queue generation does: a full discard since (even of nothing) voids it.
-    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, supplyPoint(modelId))) this.abandon(modelId, { generation: tracked.supplied!.generation, epoch: tracked.supplied!.epoch });
+    // A statement holds only while its queue generation does: a full discard since (even of nothing, so with
+    // no event) voids it. Checked again after every await, so one during the seal is never acknowledged.
+    const voided = (modelId: string, tracked: Tracked) => {
+      if (statementVoided(tracked, supplyPoint(modelId))) { this.abandon(modelId, { ...tracked.supplied! }); return true; } return false;
+    };
+    for (const [modelId, tracked] of this.tracked) voided(modelId, tracked);
     await this.whenIdle();
     let acknowledged = false;
-    for (const [modelId, tracked] of this.tracked) {
-      if (tracked.failure || tracked.instancedLost || tracked.stale || this.missedShards(modelId) || !tracked.backing) continue;
+    for (const [modelId, tracked] of [...this.tracked]) {
+      if (voided(modelId, tracked) || tracked.failure || tracked.instancedLost || tracked.stale || this.missedShards(modelId) || !tracked.backing) continue;
       const backing = tracked.backing;
       await this.settle(tracked, backing.acknowledge().then(async (ack) => {
-        // Only a verified, complete, still-current replacement may retire what it replaces.
-        if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure) return;
+        // Only a verified, complete, still-current replacement whose statement still holds may retire what it replaces.
+        if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure || voided(modelId, tracked)) return;
         acknowledged ||= this.acknowledged.get(modelId) !== tracked;
         tracked.supplied = undefined;
         this.acknowledged.set(modelId, tracked);
@@ -368,9 +371,7 @@ export class StoreGeometryBackingTap {
   }
 
   /** Shards were enqueued for this model that the tap never saw. */
-  private missedShards(modelId: string): boolean {
-    return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0);
-  }
+  private missedShards(modelId: string): boolean { return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0); }
 
   status(): ModelBackingStatus[] {
     return [...this.tracked].map(([modelId, tracked]) => {
@@ -393,8 +394,7 @@ export class StoreGeometryBackingTap {
     setReleasedGeometryMetadata(null);
     for (const stop of this.stops.splice(0)) stop();
     await Promise.all([...this.tracked.values()].map((tracked) => tracked.chain));
-    this.tracked.clear();
-    this.acknowledged.clear();
+    this.tracked.clear(); this.acknowledged.clear();
     await this.registry.close();
   }
 }

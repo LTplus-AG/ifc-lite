@@ -127,6 +127,9 @@ function makeHarness() {
         case 'getUniformBufferSize': return () => MESH_UNIFORM_BYTES;
         case 'getQuantizedPipelineVariant': return () => null;
         case 'getSelectionPipeline': return () => SELECTION;
+        // No batch highlight pipeline (#10264 S3): these tests pin the copies
+        // that stand in whenever the colour batches cannot draw the highlight.
+        case 'getBatchSelectionPipeline': return () => null;
         case 'getPipeline': return () => ({ label: 'opaque', getBindGroupLayout: () => ({}) });
         case 'opaquePipeline': return () => ({ label: 'opaque' });
         case 'getTransparentPipeline': return () => ({ label: 'transparent' });

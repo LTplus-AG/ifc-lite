@@ -92,12 +92,14 @@ export const viewportLightingEn = {
   'viewportLighting.container.loadErrorCard.webgpuChecking': 'WebGPU support is still being checked. Try opening the model again in a moment.',
   'viewportLighting.container.loadErrorCard.webgpuUnsupported':
     "This browser can't run the WebGPU renderer this viewer needs. Try a recent Chrome, Edge, Firefox or Safari — see the browser-support link at the top of the viewer.",
+  'viewportLighting.container.loadErrorCard.wasmSimdUnsupported':
+    "This browser can't run the WebAssembly SIMD instructions the geometry engine needs. Update it, or try a recent Chrome, Edge, Firefox or Safari. Some security settings and older processors also turn SIMD off.",
   'viewportLighting.container.modelUrlAutoload.malformedUrl': 'The linked model address is not a valid URL.',
   'viewportLighting.container.processedModelAutoload.malformedLink': 'The model link is incomplete or damaged.',
   'viewportLighting.container.processedModel.notPrimary': 'A processed model can only be opened as the first model.',
   'viewportLighting.container.processedModel.noServer': 'No processing server is configured for this viewer, so processed models cannot be opened.',
   'viewportLighting.container.processedModel.unreachable': 'The configured processing server cannot be reached from this page.',
-  'viewportLighting.container.processedModel.unsupported': 'This browser cannot open processed models: it lacks the Parquet support they need.',
+  'viewportLighting.container.processedModel.unsupported': 'Could not initialize the Parquet decoder needed to open this processed model.',
   'viewportLighting.container.processedModel.notStored': 'This model is not available on the server (yet).',
   'viewportLighting.container.processedModel.forbidden': 'You have no access to this model.',
   'viewportLighting.container.processedModel.busy': 'The processing server is busy. Try again in a moment.',

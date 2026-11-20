@@ -6,11 +6,17 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import { evaluatorModelsFromState, definedModelTagIdsOf } from '../model-tags/evaluator-models';
 
+/** The message for a filter with no rules, which would otherwise widen the run to the whole model. */
+export function targetFilterRefusal(groups: readonly FilterGroup[]): string | null {
+  return groups.some(group => group.rules.length > 0) ? null : 'Add at least one object filter before running a filtered IDS check.';
+}
+
 /** Resolve the same edited values, IFC groups and saved groupings as Search.
  * The search UI's display limit must never truncate a validation population. */
 export async function resolveIdsTargetFilter(state: ViewerState, modelId: string, dataStore: IfcDataStore,
   groups: readonly FilterGroup[], signal?: AbortSignal): Promise<number[]> {
-  if (!groups.some(group => group.rules.length > 0)) throw new Error('Add at least one object filter before running a filtered IDS check.');
+  const refusal = targetFilterRefusal(groups);
+  if (refusal) throw new Error(refusal);
   const canonical = evaluatorModelsFromState(state).find(model => model.id === modelId);
   const model = { ...canonical, id: modelId, store: dataStore, mutationView: state.getMutationView(modelId) ?? undefined };
   const matches = await evaluateFilterGroupsFederated([model], groups, {

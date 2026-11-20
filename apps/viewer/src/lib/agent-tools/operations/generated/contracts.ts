@@ -8922,7 +8922,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.box.write",
     "version": 1,
     "owner": "zones",
-    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians.",
+    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians. A footprint prism keeps its plan centre, plan size and heading; only name, vertical centre and height may change.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -10226,7 +10226,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "storeys.prepare",
     "version": 1,
     "owner": "model",
-    "description": "Use the authoritative native Storey planner for add, elevation/floor-height edit or delete. params_json uses AddStoreyParams, StoreyLevelEdit or StoreyDeleteMode; delete modes explicitly move contents or deleteContents. Returns the actual immutable native impact plan.",
+    "description": "Use the authoritative native Storey planner for add, elevation/floor-height edit or delete. params_json uses AddStoreyParams, StoreyLevelEdit or StoreyDeleteMode; edit and delete name the storey in express_id, and an edit params storeyId must equal it; delete modes explicitly move contents or deleteContents. Returns the actual immutable native impact plan.",
     "needs": "model",
     "effects": [
       "read"
@@ -16701,7 +16701,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "fields.values",
     "version": 1,
     "owner": "hierarchy",
-    "description": "Discover native bounded sampled material, classification, predefined-type and property-value choices. Sampling limits remain those of the native UI discovery service.",
+    "description": "Discover native bounded sampled material, classification, predefined-type and property-value choices. Sampling limits remain those of the native UI discovery service. The five fields share the result size limit; a field cut to fit is named in truncated.",
     "needs": "model",
     "effects": [
       "read"
@@ -16748,6 +16748,21 @@ export const operationContracts: readonly OperationContract[] = [
               "type": "string"
             }
           }
+        },
+        "truncated": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "materials",
+              "classificationSystems",
+              "classifications",
+              "predefinedTypes",
+              "propertyValues"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
         }
       },
       "required": [

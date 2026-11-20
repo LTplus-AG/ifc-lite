@@ -8,6 +8,30 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Hierarchy rows survive a loaded-tower edit (#10535, part)
+
+**Partial lever; the F5 edit target is still open.** A fiber census of one
+loaded-column Move on F5 showed the hierarchy panel committing its whole
+visible subtree (about 3,500 component fibers: rows with tooltips, poppers
+and menus) five times per edit: on the mutation, a follow-up commit, the mesh
+swap and the idle structure build. Each panel render also re-resolved every
+storey row's membership up to three times, and once the session has edits
+each resolution re-reads the relationship overlay. The worker meshes the
+column almost at once; its reply waits behind this main-thread work.
+
+Rows are now memoized with one stable handler object, unchanged tree rows
+keep their objects across rebuilds and projections, and row membership is
+resolved once per input generation and view revision. Paired local
+diagnostics improved the edit and undo medians; unmounting the hierarchy
+entirely bounds what this lever can reach. The figures and the run protocol
+are in the PR; none of them is admission-qualified.
+
+Lesson: narrowing panel subscriptions (#9978) cost more synchronous
+publication than it saved. Cutting what each render does inside the panel
+leaves the subscriptions and the store's publication unchanged. Check a
+"hidden" panel experiment against a fiber census: collapsing the left panel
+keeps the hierarchy mounted and rendering, so it bounds nothing.
+
 ## Post-cut sliver bisection removed (#10511)
 
 The native mesh census found one changed wall across the capped fixture
@@ -1990,6 +2014,14 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | D1b #8002 cache residency ownership and typed resource stops | identical | BWK +1.0% (±3), Holter +0.7% (±30), ISSUE_098 −1.9% (±10), ISSUE_068 +0.5% (±23), schependomlaan +0.6% (±7), ISSUE_129 +0.1% (±4) | neutral: with no account installed, one thread-local read per cache publication/lookup; geometry within ±2% on every model |
 | C5b opening source probe/classifier | identical | BWK −1.7% (±3), Holter +2.5% (±18), ISSUE_098 +0.7% (±12), ISSUE_068 −1.5% (±17), schependomlaan −1.6% (±5), ISSUE_129 −1.7% (±5) vs D3 base c282c7bebf | neutral: owned classify/probe on every opening host, all deltas inside noise |
 | C5c opening gateway cutover | identical | BWK +1.2% (±8), Holter −0.4% (±9), ISSUE_098 +2.9% (±33), ISSUE_068 −3.1% (±55), schependomlaan +0.3% (±11), ISSUE_129 +1.1% (±14) vs C5b | neutral within noise; fingerprints identical on 6 models and 122/122 corpus models; deterministic FZK instruction ratchet is the strict check |
+
+## Recovering rejected cuts on touching shells (#10512)
+
+Manifold-gated recess cuts can fail when adjoining wall bodies leave internal
+faces in the merged host. The retry certifies complete consecutive shells,
+unites them without losing volume, and cuts with the original recess depth.
+The shell scan runs only on a gate rejection. Builds without the manifold gate
+keep the existing void routing.
 
 ## Exact rectangular opening union (#7941)
 

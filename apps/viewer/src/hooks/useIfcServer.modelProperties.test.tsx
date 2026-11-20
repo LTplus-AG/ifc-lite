@@ -263,16 +263,25 @@ it('a range that already carries authored ids is a hard error, never an alias', 
     assert.equal(warnings.some(args => /Optional hydration failed/.test(String(args[0]))), true);
   } finally { federationRegistry.clear(); }
 });
-it('a processed model whose reference changes aborts its properties: there is no sourceFile to compare', async () => {
-  const opened = { sha256: 'a'.repeat(64), bytes: 1 };
-  useViewerStore.getState().updateModel('server', { sourceFile: undefined, processedModel: opened });
-  await start();
-  const oldSignal = signal;
-  await act(async () => { useViewerStore.getState().updateModel('server', { processedModel: { sha256: 'b'.repeat(64), bytes: 1 } }); });
-  assert.equal(oldSignal.aborted, true, 'a replacement processed model is detected');
-  await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
-  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'the older model\'s properties are not published');
-});
+for (const changes of ['hash', 'server'] as const) {
+  it(`a processed model whose ${changes} changes aborts its properties (#10469)`, async () => {
+    const opened = { sha256: 'a'.repeat(64), bytes: 1, serverUrl: 'https://first.example' };
+    const replacement = changes === 'hash'
+      ? { ...opened, sha256: 'b'.repeat(64) }
+      : { ...opened, serverUrl: 'https://second.example' };
+    useViewerStore.getState().updateModel('server', { sourceFile: undefined, processedModel: opened });
+    await start();
+    const oldSignal = signal;
+    await act(async () => {
+      useViewerStore.getState().updateModel('server', { processedModel: { ...opened, bytes: 2 } });
+    });
+    assert.equal(oldSignal.aborted, false, 'a size metadata correction keeps the same source');
+    await act(async () => { useViewerStore.getState().updateModel('server', { processedModel: replacement }); });
+    assert.equal(oldSignal.aborted, true, 'a replacement processed model is detected');
+    await act(async () => { release(wire); await new Promise(resolve => setTimeout(resolve, 200)); });
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore, null, 'the older properties are not published');
+  });
+}
 
 
 for (const remount of [false, true]) {
@@ -726,6 +735,42 @@ for (const previousKind of ['idle', 'succeeded', 'failed'] as const) {
     } finally { useViewerStore.getState().mutationViews.get('server')?.clear(); federationRegistry.clear(); }
   });
 }
+
+for (const retainedDeletion of [false, true]) it(
+  retainedDeletion
+    ? 'does not reuse a retained deleted ID after reopening a smaller source (#10469)'
+    : 'reopens a smaller source with retained edits and room to author in a federation (#10469)',
+  () => {
+    const state = useViewerStore.getState();
+    const source = (max: number) => fixtureDataStore([
+      { expressId: 1, type: 'IfcWall', name: 'Source wall' },
+      ...(max > 11 ? [{ expressId: 11, type: 'IfcWall' as const, name: 'Deleted wall' }] : []),
+      { expressId: max, type: 'IfcProject', name: 'Project' },
+    ]);
+    const oldMax = 2_000_000;
+    state.updateModel('server', { idOffset: state.registerModelOffset('server', oldMax),
+      maxExpressId: oldMax, ifcDataStore: source(oldMax) });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    assert.equal(view.peekNextExpressId(), oldMax + 1);
+    assert.ok(state.setAttribute('server', 1, 'Name', 'Retained wall', 'Source wall'));
+    if (retainedDeletion) assert.equal(view.deleteEntity(11), true);
+
+    state.clearAllModels();
+    const newMax = 10;
+    state.addModel({ ...fixtureModel('server'), idOffset: state.registerModelOffset('server', newMax),
+      maxExpressId: newMax, ifcDataStore: source(newMax) });
+    state.addModel({ ...fixtureModel('neighbor'), idOffset: state.registerModelOffset('neighbor', 1), maxExpressId: 1 });
+
+    const after = useViewerStore.getState();
+    assert.equal(after.getMutationView('server'), view);
+    assert.equal(view.getAttributeMutationsForEntity(1).find(row => row.name === 'Name')?.value, 'Retained wall');
+    if (retainedDeletion) assert.equal(view.isDeleted(11), true);
+    assert.deepEqual(dataMutationPermission(after, 'server'), { allowed: true });
+    const created = view.createEntity('IfcMaterial', ['New material']);
+    assert.equal(created.expressId, oldMax + 1);
+    assert.equal(after.toGlobalId('server', created.expressId), oldMax + 1);
+    assert.deepEqual(after.fromGlobalId(oldMax + 1), { modelId: 'server', expressId: oldMax + 1 });
+});
 
 it('retained 1001..1005 stay publishable after reload with source max 990 (#10139)', async () => {
   try {

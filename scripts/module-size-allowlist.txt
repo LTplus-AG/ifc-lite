@@ -192,7 +192,7 @@
    807 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    680 packages/export/src/ifc5-exporter.ts
-  1585 packages/export/src/merged-exporter.ts
+  1527 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    999 packages/export/src/reference-collector.ts
    471 packages/export/src/schema-converter.ts
@@ -242,10 +242,10 @@
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
    706 packages/renderer/src/picker.ts
-   952 packages/renderer/src/pipeline.ts
+   947 packages/renderer/src/pipeline.ts
    465 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
-  3537 packages/renderer/src/renderer.ts
+  3512 packages/renderer/src/renderer.ts
    462 packages/renderer/src/scene-raycaster.ts
   4055 packages/renderer/src/scene.ts
    589 packages/renderer/src/section-2d-overlay.ts

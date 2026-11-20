@@ -162,14 +162,26 @@ it('the load option lowercases a hash for the model record, and refuses a malfor
   assert.equal(useViewerStore.getState().lastLoadRetry, null);
 });
 
-it('a browser without Parquet support is told so instead of falling back to an upload', async () => {
-  mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => false);
+it('retries decoder initialization and opens the same processed model (#10469)', async () => {
+  stubWebGpu();
+  let attempts = 0;
+  mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => ++attempts > 1);
   mock.method(console, 'error', () => {});
   await act(async () => { root.render(<Probe />); });
   await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+
+  assert.equal(model()?.loadState, 'error');
+  assert.equal(asked.length, 0, 'wait for decoder initialization before requesting the model');
   assert.equal(uploads, 0);
-  assert.match(useViewerStore.getState().error ?? '', /cannot open processed models/);
-  assert.equal(useViewerStore.getState().lastLoadRetry, null);
+  const retry = useViewerStore.getState().lastLoadRetry;
+  assert.ok(retry, 'a failed Parquet initialization offers Retry');
+  assert.match(useViewerStore.getState().error ?? '', /initialize the Parquet decoder/);
+  await act(async () => { retry(); });
+  await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'processed retry completes'); });
+  assert.equal(attempts, 2);
+  assert.deepEqual(asked, [processedModel]);
+  assert.equal(uploads, 0);
+  assert.equal(engineInits, 0);
 });
 
 for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of unknown size (${String(bytes)}) streams, since the streamed route works at any size`, async () => {
@@ -186,6 +198,11 @@ for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of un
   assert.deepEqual(asked, [], 'the one-shot route is not taken for an unknown size');
   assert.equal(model()?.loadState, 'complete');
   assert.equal(model()?.geometryResult?.meshes.length, 1);
+  const record = model()?.processedModel;
+  assert.ok(record);
+  // The record always carries a number even when the load input does not (#10469).
+  const recordedBytes: number = record.bytes;
+  assert.equal(recordedBytes, 0);
   assert.equal(model()?.fileSize, 0, 'unknown, shown as N/A rather than as a size');
 });
 
@@ -304,6 +321,30 @@ it("a host request filed before the viewer mounts wins over ?processed= in the p
 });
 
 function ModelUrlEntry() { useModelUrlAutoload(); return null; }
+for (const hash of [sha256, 'malformed'] as const) {
+  it(`a ${hash === sha256 ? 'valid' : 'malformed'} processed link does not start a second model load (#10469)`, async () => {
+    stubWebGpu();
+    const fetched: string[] = [];
+    mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+      fetched.push(String(input));
+      return new Response(null, { status: 404 });
+    });
+    window.history.replaceState(null, '', `/?model=other.ifc&processed=${hash}&bytes=123&name=stored.ifc`);
+    // Match ViewerLayout's ordering, where the model URL hook comes first.
+    await act(async () => { root.render(<><ModelUrlEntry /><Probe fromUrl /></>); });
+    if (hash === sha256) {
+      await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the processed model loads'); });
+      assert.deepEqual(asked, [{ sha256, bytes: 123 }]);
+      assert.equal(model()?.name, 'stored.ifc');
+    } else {
+      await act(async () => { await waitFor(() => useViewerStore.getState().error !== null, 'the processed link is refused'); });
+      assert.deepEqual(asked, []);
+    }
+    assert.deepEqual(fetched.filter(url => url.endsWith('/other.ifc')), []);
+    if (hash !== sha256) assert.match(useViewerStore.getState().error ?? '', /model link is incomplete or damaged/);
+  });
+}
+
 it("a host request filed before the viewer mounts also wins over ?model= in the page URL", async () => {
   stubWebGpu();
   const fetched: string[] = [];

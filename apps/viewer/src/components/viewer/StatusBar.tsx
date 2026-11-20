@@ -341,7 +341,7 @@ export function StatusBar() {
 
         <Separator orientation="vertical" className="h-3.5" />
 
-        <span className="opacity-60">{t('shellChrome.statusBar.appVersion', { version: __APP_VERSION__ })}</span>
+        <span>{t('shellChrome.statusBar.appVersion', { version: __APP_VERSION__ })}</span>
 
         {isFeatureEnabled('help.product-links') && <><Separator orientation="vertical" className="h-3.5" />
 
@@ -349,7 +349,7 @@ export function StatusBar() {
           href="https://ifclite.dev"
           target="_blank"
           rel="noopener noreferrer"
-          className="opacity-60 hover:opacity-100 hover:text-primary transition-opacity"
+          className="hover:text-primary transition-colors"
           aria-label={t('shellChrome.statusBar.ifcliteAriaLabel')}
         >
           {t('shellChrome.statusBar.ifcliteLinkLabel')}

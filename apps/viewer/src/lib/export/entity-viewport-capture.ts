@@ -10,6 +10,7 @@ import { captureViewportFrame } from '@/lib/viewport-capture';
 export function captureEntityViewportFrame(renderer: Renderer, request: {
   ids: Set<number>; mode: 'isolate' | 'ghost'; bounds?: ViewerBounds;
   clearColor: [number, number, number, number];
+  signal?: AbortSignal;
 }): Promise<string | null> {
   const camera = renderer.getCamera();
   const pose = () => ({ position: { ...camera.getPosition() }, target: { ...camera.getTarget() },
@@ -37,5 +38,6 @@ export function captureEntityViewportFrame(renderer: Renderer, request: {
       };
     },
     read: canvas => canvas.toDataURL('image/png'),
+    signal: request.signal,
   });
 }

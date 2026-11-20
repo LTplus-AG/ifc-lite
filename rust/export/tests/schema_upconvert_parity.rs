@@ -31,6 +31,9 @@ struct Case {
     to: String,
     line: String,
     expect: String,
+    /// What the conversion reports lost (#10758); absent on rows that do not pin it.
+    #[serde(default)]
+    lost: Option<Vec<String>>,
 }
 
 fn cases() -> Vec<Case> {
@@ -53,6 +56,25 @@ fn convert_through_exporter(line: &str, from: &str, to: &str) -> String {
         .find(|l| l.starts_with('#'))
         .unwrap_or_else(|| panic!("no entity line in output:\n{out}"))
         .to_string()
+}
+
+/// The values a row's conversion drops, counted by the exporter (#10758).
+fn values_dropped(line: &str, from: &str, to: &str) -> usize {
+    let src = ifc_lite_testkit::step_file(from, &[line]);
+    let options = ifc_lite_export::StepOptions { schema: Some(to.to_string()), ..Default::default() };
+    ifc_lite_export::export_step_with_stats(src.as_bytes(), &options).expect("export_step_with_stats").1.attribute_values_dropped
+}
+
+/// #10758: a row with `lost` drops one value per lost name (every source slot
+/// holds a value), and the TypeScript half names the same attributes.
+#[test]
+fn every_lost_row_counts_its_dropped_values_10758() {
+    let rows: Vec<Case> = cases().into_iter().filter(|c| c.lost.is_some()).collect();
+    assert!(rows.len() >= 8, "anti-vacuity: {} rows pin a loss", rows.len());
+    for c in &rows {
+        let want = c.lost.as_ref().map_or(0, Vec::len);
+        assert_eq!(values_dropped(&c.line, &c.from, &c.to), want, "{} -> {} [{}]", c.from, c.to, c.why);
+    }
 }
 
 #[test]

@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 import { useTranslation } from '@/i18n';
 import type { LayerGrouping } from './presentationLayerGroups';
 
-import { useMemo, useState, useCallback, useEffect, useReducer } from 'react';
+import { useMemo, useState, useCallback, useEffect, useReducer, useRef } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
@@ -30,8 +29,9 @@ import {
 } from './hierarchyGeometry';
 import { flattenVisibleHierarchy, indexHierarchyTree } from './treeProjection';
 import { lazyStructure, scheduleIdle } from './lazyStructure';
+import { shareUnchangedNodes } from './sharedTreeNodes';
 import { collectAuthoredProducts } from './authoredProducts';
-import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
+import { createNodeElementsResolver } from './nodeElements';
 
 export type { HierarchyMode } from '@/store';
 
@@ -261,12 +261,14 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const treeIndex = useMemo(() => projecting ? indexHierarchyTree(structure.get()) : null, [projecting, structure]);
   const getExpandedTreeForReveal = useCallback(() => structure.get(), [structure]);
   const revealGlobalId = useRevealGlobalId(getExpandedTreeForReveal, expandedNodes, setExpandedNodes);
-  const treeData = useMemo(
-    () => searchQuery.trim()
+  // Unchanged rows keep their objects, so an edit the tree does not show re-renders no row (#10535).
+  const sharedRows = useRef<TreeNode[]>([]);
+  const treeData = useMemo(() => {
+    const rows = searchQuery.trim()
       ? filterNodes(structure.get(), searchQuery)
-      : treeIndex ? flattenVisibleHierarchy(treeIndex, expandedNodes) : buildFor(expandedNodes),
-    [structure, treeIndex, buildFor, searchQuery, expandedNodes],
-  );
+      : treeIndex ? flattenVisibleHierarchy(treeIndex, expandedNodes) : buildFor(expandedNodes);
+    return sharedRows.current = shareUnchangedNodes(sharedRows.current, rows);
+  }, [structure, treeIndex, buildFor, searchQuery, expandedNodes]);
 
   const filteredNodes = treeData;
 
@@ -293,70 +295,12 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     });
   }, [searchQuery, structure]);
 
-  // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
-  const getNodeElements = useCallback((node: TreeNode): number[] => {
-    if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
-        node.type === 'group' || node.type === 'presentation-layer' || node.type === 'group-member') {
-      // GlobalIds are pre-stored on the node during tree construction — O(1).
-      // For 'group' rows these are the RESOLVED member geometry ids (#1622).
-      return node.globalIds;
-    }
-    if (node.type === 'unified-storey') {
-      // Get all elements from all models for this unified storey
-      const unified = unifiedStoreys.find(u => `unified-${u.key}` === node.id);
-      if (unified) {
-        return getUnifiedStoreyElements(unified);
-      }
-    } else if (node.type === 'model-header' && node.id.startsWith('contrib-')) {
-      // Model contribution header inside a unified storey - get elements for this model's storey
-      const storeyId = node.expressIds[0];
-      const modelId = node.modelIds[0];
-      const model = models.get(modelId);
-      if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), storeyId);
-        return toGlobalIdsForModel(modelId, localIds);
-      }
-    } else if (node.type === 'IfcBuildingStorey') {
-      // Get storey elements
-      const storeyId = node.expressIds[0];
-      const modelId = node.modelIds[0];
-
-      if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = effectiveSpatialMembers(ifcDataStore, getLegacyMutationView(mutationViews), storeyId);
-        if (elements.length) return elements;
-      }
-
-      const model = models.get(modelId);
-      if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), storeyId);
-        return toGlobalIdsForModel(modelId, localIds);
-      }
-    } else if (node.type === 'IfcSpace' || node.type === 'IfcSpatialZone') {
-      const spaceId = node.expressIds[0];
-      const modelId = node.modelIds[0];
-
-      if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = effectiveSpatialMembers(ifcDataStore, getLegacyMutationView(mutationViews), spaceId);
-        return [spaceId, ...elements];
-      }
-
-      const model = models.get(modelId);
-      if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), spaceId);
-        return [...node.globalIds, ...toGlobalIdsForModel(modelId, localIds)];
-      }
-    } else if (node.type === 'element') {
-      // A decomposing assembly folds in its IfcRelAggregates parts so the eye
-      // toggle / isolate / basket act on the whole assembly at once (#1133).
-      return node.assemblyChildGlobalIds && node.assemblyChildGlobalIds.length > 0
-        ? [...node.globalIds, ...node.assemblyChildGlobalIds]
-        : node.globalIds;
-    }
-    // Spatial containers (Project, Site, Building) and top-level models don't have direct element visibility toggle
-    return [];
-  // Views mutate in place; mutationVersion refreshes this callback after edits.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel, mutationViews, mutationVersion]);
+  // One resolver per input generation; views mutate in place, so mutationVersion starts a new one (#10535).
+  const getNodeElements = useMemo(
+    () => createNodeElementsResolver(models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel, mutationViews),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel, mutationViews, mutationVersion],
+  );
 
   // Persist storey sort-order preference (issue #1296)
   const handleSetSortMode = useCallback((mode: HierarchySortMode) => {

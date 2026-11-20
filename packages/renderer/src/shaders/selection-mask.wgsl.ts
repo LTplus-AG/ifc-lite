@@ -48,15 +48,18 @@ export const SELECTION_MASK_HOVER_GROUP = 1;
 
 /**
  * Which occurrences each output keeps. The non-instanced pass is handed only
- * the meshes it should draw, so every fragment qualifies; the instanced pass
+ * the meshes it should draw: a copy's every fragment qualifies, and a colour
+ * batch keeps the entities its mesh uniform names; the instanced pass
  * draws whole templates and filters per occurrence off the flat varyings
  * `vs_instanced` emits (`VertexOutput.entityId` / `.instSelected`).
  */
 function occurrenceFilterWgsl(instanced: boolean): string {
   if (!instanced) {
+    // A copy keeps every fragment; a colour batch drawn for the highlight
+    // keeps the entities its uniform's flags name (#10264 S3).
     return `
-        fn isSelectedOccurrence(input: MaskInput) -> bool { return true; }
-        fn isHoveredOccurrence(input: MaskInput) -> bool { return true; }`;
+        fn isSelectedOccurrence(input: MaskInput) -> bool { return highlightKeeps(uniforms.flags, input.sectionEntityId); }
+        fn isHoveredOccurrence(input: MaskInput) -> bool { return highlightKeeps(uniforms.flags, input.sectionEntityId); }`;
   }
   return `
         @group(${SELECTION_MASK_HOVER_GROUP}) @binding(0) var<uniform> maskHover: vec4<u32>;

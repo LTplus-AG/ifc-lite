@@ -777,7 +777,10 @@ Supports all 202 `IfcProduct` subtypes from IFC4 and IFC4X3 schemas, including i
 Merge multiple IFC models into a single file. The models are passed to the
 constructor; `export()` (sync) or `exportAsync()` (yields to the event loop for
 progress reporting, and required when any model carries pending mutation-view
-edits to bake) takes the options:
+edits to bake) takes the options. A model's `georefMutations` (the
+`StepExportOptions` shape) are baked the same way, so they too need
+`exportAsync()`; a refused or partial georeference edit is named in
+`stats.warnings`.
 
 ```typescript
 import { MergedExporter } from '@ifc-lite/export';

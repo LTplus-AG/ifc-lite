@@ -348,6 +348,9 @@ function makeHarness(): Harness {
                     case 'getMultisampleTextureView': return () => null;
                     case 'getUniformBufferSize': return () => MESH_UNIFORM_BYTES; // the real block size: arena slots stage exactly this many bytes
                     case 'getQuantizedPipelineVariant': return () => null;
+                    // The selection keeps its copies here; the batch highlight route
+                    // (#10264 S3) is pinned in selection-batch-highlight.test.ts.
+                    case 'getBatchSelectionPipeline': return () => null;
                     // Stable identities so a test can tell which pipeline drew what.
                     case 'getPipeline': return () => OPAQUE_PIPELINE;
                     // Opaque draws resolve through opaquePipeline (its twin or the base); the

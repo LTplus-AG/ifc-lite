@@ -124,7 +124,7 @@ async function inspectGaussianLayout(file: File, head: ArrayBuffer, decode: bool
         return { kind: 'invalid', reason: 'Unsupported Gaussian decoder element or property declaration.' };
       }
       // Its comment text is line.substring(8): indentation shifts the words
-      // that select a render model (SplatRenderMode, antialiased) out of view.
+      // that select a render model (SplatRenderMode, postshot.anti_aliasing) out of view.
       if (keyword === 'comment' && !line.startsWith('comment')) {
         return { kind: 'invalid', reason: 'Unsupported indented Gaussian decoder header comment.' };
       }

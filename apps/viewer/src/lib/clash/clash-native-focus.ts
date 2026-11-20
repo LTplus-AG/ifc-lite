@@ -57,8 +57,9 @@ export function createClashFocus(options: {
       state.setClashVisibilityOwned(null);
     }
   };
-  const focusClashes = (clashes: readonly Clash[], mode: ClashFocusMode = 'highlight') =>
-    focusClashGroup(clashes, refOf, applyFocusMode, mode);
+  /** `signal`: a capture that owns this focus; its cancellation drops the pending framing. */
+  const focusClashes = (clashes: readonly Clash[], mode: ClashFocusMode = 'highlight', signal?: AbortSignal) =>
+    focusClashGroup(clashes, refOf, applyFocusMode, mode, signal);
   const focusClash = (clash: Clash, mode: ClashFocusMode = 'highlight'): void => {
     const state = useViewerStore.getState();
     const a = refOf(clash.a);

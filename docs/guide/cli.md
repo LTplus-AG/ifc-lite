@@ -1092,6 +1092,18 @@ Handles entity type mapping automatically (e.g., `IfcWallStandardCase` → `IfcW
 | `--out <file>` | Output file (required) |
 | `--json` | Output conversion stats as JSON |
 
+With `--json`, stdout contains `file`, `sourceSchema`, `targetSchema`, `fileSize`,
+and a `lossReport` array. Each entry keeps its summary fields: `type`,
+`targetType`, `kind`, `count`, `expressIds`, and `droppedAttributes`. When records
+of one type have different conversion outcomes, the entry also includes
+`recordGroups`. Each group has `expressIds`, `count`, and `droppedAttributes`, plus
+`targetType` when it overrides the entry target. These match the separate
+groups printed in the text report.
+Use these groups for per-record details; the entry-level fields remain the
+summary for existing consumers. Entries without distinct groups omit
+`recordGroups`.
+
+
 ---
 
 ### `diff` — Compare IFC Files

@@ -65,7 +65,7 @@ import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from 
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
 import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
-import { hasPendingWorkOutsideView } from './pending-outside-view.js';
+import { hasPendingScheduleEdits } from './pending-outside-view.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
@@ -1085,7 +1085,8 @@ export const createMutationSlice: StateCreator<
         const keepGeoref = options?.keepGeoref === true && [...undo, ...redo].some(isGeorefMutation);
         // What still makes the model unsaved without its view: a pending georeference
         // value, or the schedule it owns (generated tasks or edits).
-        const stillUnsaved = options?.keepGeoref === true && hasPendingWorkOutsideView(initial, modelId);
+        const stillUnsaved = hasPendingScheduleEdits(initial, modelId)
+          || (options?.keepGeoref === true && initial.georefMutations.has(modelId));
         mutationViews.delete(modelId);
         storeEditors.delete(modelId);
         if (!stillUnsaved) dirtyModels.delete(modelId);

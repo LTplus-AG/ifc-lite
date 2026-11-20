@@ -1442,6 +1442,19 @@ END-ISO-10303-21;`;
       expectAllReachable(file);
     });
 
+    it('a hidden entity stays out of an isolation that includes it (#10695)', () => {
+      const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null);
+      const file = JSON.parse(exporter.export({
+        visibleOnly: true,
+        isolatedEntityIds: new Set([1, 10]),
+        hiddenEntityIds: new Set([1]),
+      }).content);
+      const named = (name: string) => file.data.find((n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name'] === name);
+      expect(named('Wall1')).toBeUndefined();
+      expect(named('Storey1')).toBeDefined();
+      expectNoDanglingChildren(file);
+    });
+
     // The spatial-tree filter has the same shape of hole, in one narrow spot:
     // `buildTreeEntitySet` adds the *values* of the containment maps but not
     // their keys, so a container that only ever appears as a map KEY (no

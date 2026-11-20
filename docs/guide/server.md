@@ -1098,6 +1098,9 @@ URL, or a same-origin path such as `/ifc` behind a reverse proxy), it opens
 ```
 
 from the server alone: no IFC is requested, and there is no local fallback.
+If a page URL contains both `?processed=` and `?model=`, the viewer uses the
+processed entry and skips the `?model=` request. A malformed processed hash
+still shows its link error.
 A host that builds its own entry does the same without a URL, and can name the
 server at runtime instead of at build time:
 
@@ -1111,9 +1114,10 @@ openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
 
 The call may come before the viewer mounts; the request waits for it, and a
 `?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
-A collaboration link (`?room=`) is refused the same way. If its join is still in progress,
-the viewer leaves it before it can hydrate or seed the host's model. A call after the join
-has finished does not leave the room.
+A collaboration link (`?room=`) is refused the same way. When a host asks
+for its own model after a page room starts joining, the viewer leaves that room
+before opening the host's model. An independent room joined by the user keeps
+its own session.
 The `serverUrl` option applies only to this request and its Retry; it does not redirect local uploads.
 Without it, the load asks the global server as it stands when the load runs.
 `setProcessingServerUrl(url)` explicitly sets the global server. This URL replaces

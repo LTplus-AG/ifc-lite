@@ -68,10 +68,19 @@ export async function leaseRegionGeometry(
   return backing.reader.leaseChunks(backing.directory.chunksIntersecting(bounds.min, bounds.max), options);
 }
 
-/** Stream a model's flat meshes: resident list as-is, or backed chunks one at a time. */
+/**
+ * Stream a model's flat meshes: resident list as-is, or backed chunks one at a time. An empty list says
+ * nothing about residency (`[].every` is vacuously true): a current, complete backing answers it, and with
+ * none there is nothing to read (an empty model yields nothing, it does not fail).
+ */
 export async function* modelGeometry(
   source: BackingSource | undefined, modelId: string, resident: readonly MeshData[], options: ReadOptions = {},
 ): AsyncGenerator<readonly MeshData[]> {
+  if (resident.length === 0) {
+    const backing = source?.backing(modelId);
+    if (backing?.isCurrent && backing.isComplete) yield* backing.reader.meshes(options);
+    return;
+  }
   if (resident.every(meshIsResident)) { yield resident; return; }
   yield* completeBacking(source, modelId).reader.meshes(options);
 }

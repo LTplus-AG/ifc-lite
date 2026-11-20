@@ -337,4 +337,15 @@ describe('released geometry readback for tools', () => {
     assert.equal(open, 0, 'the flat leases taken before the failed occurrence placement were released');
     await registry.close();
   });
+
+  it('#10880 r4646577967 an empty store list reads a current complete backing, and yields nothing without one', async () => {
+    const { registry, backing } = await backed([mesh(1, 0), mesh(2, 3)]);
+    const batches: Array<readonly MeshData[]> = [];
+    for await (const batch of modelGeometry({ backing: () => backing }, 'm', [])) batches.push(batch);
+    assert.deepEqual(batches.flat().map((m) => m.expressId).sort(), [1, 2], 'the backed meshes, never one empty batch');
+    const none: Array<readonly MeshData[]> = [];
+    for await (const batch of modelGeometry({ backing: () => undefined }, 'm', [])) none.push(batch);
+    assert.deepEqual(none, [], 'an unbacked empty model yields nothing and does not fail');
+    await registry.close();
+  });
 });

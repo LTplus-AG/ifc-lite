@@ -20,8 +20,9 @@
  *   flat-list change (recolour copies, prune, authored mesh) leaves instanced
  *   geometry alone, so committed shards are carried into the new generation.
  *   A content-version bump may move occurrences, so a model that had shards
- *   is then reported `instancedLost` and never complete (fail closed) until a
- *   live instanced source re-supplies them. So is a model whose shards were
+ *   is then reported `instancedLost` and never complete (fail closed) for the
+ *   rest of this tap's life: this layer has no re-supply proof (a fresh supply
+ *   stated whole and drawn is #10888's), so later shards never clear it. So is a model whose shards were
  *   enqueued before the tap started (the queue's revision is ahead of what
  *   the tap saw): those shards never reached the backing.
  * Appends for one model are chained in order; a writer failure is reported in

@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
-import { discardInstancedShards, hasPendingInstancedShards, instancedShardDrops, instancedShardSupplyToken } from '@/store/instancedShardQueue';
+import { discardInstancedShards, hasPendingInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
 import { adoptedSceneOutlivesEmptyGeometry } from '@/components/viewer/sceneSnapshotOwnership';
 import { BufferWriter } from '@ifc-lite/cache';
 import { writeInstancedShards } from '../../../../packages/cache/src/sections/instanced-shards.js';
@@ -22,18 +22,39 @@ import { sceneSnapshotKey } from '@/components/viewer/sceneSnapshotOwnership';
 import { setGlobalRendererRef } from './useBCF';
 import { adoptCachedSceneSnapshot, publishAdoptedSceneMeshes, type AdoptedSceneSnapshot } from './sceneSnapshotLoad';
 
-it('#10888 a discard during a deferred adoption: its shards are refused on requeue, never stamped with the newer supply', async () => {
+it('#10888 a discard during a deferred adoption: its shards are never stamped with the newer supply; nothing is registered', async () => {
   const modelId = 'snap-supply';
   const supply = instancedShardSupplyToken(modelId); // adoption begins
   const adopted = { adoption: {}, shards: [new ArrayBuffer(8)], supply, fit: null, firstVisible: Promise.resolve() } as unknown as AdoptedSceneSnapshot;
   discardInstancedShards(modelId); // the model is removed and re-added while the adoption awaits
-  const superseded = instancedShardDrops().superseded;
   const open = { chunks: [], readChunk: async () => [], coordinateInfo: undefined } as never;
-  await publishAdoptedSceneMeshes(adopted, open, modelId, {} as never, undefined, undefined, NOOP_LOAD_TRACE, () => {});
-  // The scene refuses the snapshot: its shards are handed to the ordinary drain.
-  adoptedSceneOutlivesEmptyGeometry({ isSceneSnapshotHydrating: () => true, hydrateSceneSnapshot: () => false, removeInstancedTemplatesForModel: () => {} } as never);
-  assert.equal(hasPendingInstancedShards(modelId), false, 'the superseded shards never reach the queue');
-  assert.equal(instancedShardDrops().superseded, superseded + 1, 'they are refused as superseded');
+  const published = await publishAdoptedSceneMeshes(adopted, open, modelId, {} as never, undefined, undefined, NOOP_LOAD_TRACE, () => {});
+  assert.equal(published, null, 'superseded: the caller abandons the adoption');
+  let hydrated = 0;
+  adoptedSceneOutlivesEmptyGeometry({ isSceneSnapshotHydrating: () => true, hydrateSceneSnapshot: () => { hydrated++; return false; }, removeInstancedTemplatesForModel: () => {} } as never);
+  assert.equal(hydrated, 0, 'no pending adoption was registered to settle');
+  assert.equal(hasPendingInstancedShards(modelId), false, 'and nothing requeued its shards under the newer supply');
+});
+
+it('#10888 a discard and re-add during the adopted chunk decode: the old read registers no adoption and appends no meshes', async () => {
+  const modelId = 'snap-decode';
+  const supply = instancedShardSupplyToken(modelId);
+  const adopted = { adoption: {}, shards: [], supply, fit: null, firstVisible: Promise.resolve() } as unknown as AdoptedSceneSnapshot;
+  let resume!: () => void;
+  const gate = new Promise<void>((done) => { resume = done; });
+  const old = { expressId: 1, positions: new Float32Array(9), normals: new Float32Array(9), indices: Uint32Array.from([0, 1, 2]), color: [1, 1, 1, 1] };
+  const open = { chunks: [0], readChunk: async () => { await gate; return [old]; }, coordinateInfo: undefined } as never;
+  const appended: unknown[] = [];
+  const publishing = publishAdoptedSceneMeshes(adopted, open, modelId, {} as never, undefined, undefined, NOOP_LOAD_TRACE,
+    (_id, meshes) => { appended.push(...meshes); });
+  await new Promise((done) => setTimeout(done, 0)); // the chunk decode is awaiting
+  discardInstancedShards(modelId); // removed; a replacement load of the same id begins
+  resume(); // the OLD read resolves
+  assert.equal(await publishing, null, 'superseded without any isStale callback');
+  assert.deepEqual(appended, [], 'no old mesh enters the replacement model');
+  let hydrated = 0;
+  adoptedSceneOutlivesEmptyGeometry({ isSceneSnapshotHydrating: () => true, hydrateSceneSnapshot: () => { hydrated++; return true; }, removeInstancedTemplatesForModel: () => {} } as never);
+  assert.equal(hydrated, 0, 'and no old adoption is registered for it');
 });
 
 /** IFNS v1: one template triangle, one occurrence of `entityId`. */

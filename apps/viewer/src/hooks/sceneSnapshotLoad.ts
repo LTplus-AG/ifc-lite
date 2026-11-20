@@ -143,7 +143,12 @@ export async function adoptCachedSceneSnapshot(
   return { adoption, shards, supply, shardsUploaded, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
 }
 
-/** Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives. */
+/**
+ * Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives.
+ * `null` when the load was superseded during the decode, by `isStale` or by a reset or discard of the
+ * model since adoption began (its captured supply): nothing is registered or appended, and the caller
+ * abandons the adoption, so neither the old adoption nor its meshes enter a re-added model.
+ */
 export async function publishAdoptedSceneMeshes(
   adopted: AdoptedSceneSnapshot,
   open: ReturnType<typeof openGeometryChunksV13>,
@@ -153,10 +158,10 @@ export async function publishAdoptedSceneMeshes(
   isStale: (() => boolean) | undefined,
   trace: LoadTrace,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
-): Promise<MeshData[]> {
+): Promise<MeshData[] | null> {
   const shardGeneration = adopted.supply; // captured when adoption began: a reset or discard since supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
-  if (isStale?.()) return [];
+  if (isStale?.() || !instancedShardSupplyCurrent(modelId, shardGeneration)) return null;
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
     enqueueInstancedShards(modelId, adopted.shards, shardGeneration);

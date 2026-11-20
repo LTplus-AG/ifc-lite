@@ -45,7 +45,13 @@ for (const failOne of [true, false]) {
       attestAdoptedShards(modelId, { shards, shardsUploaded }, token); // hydrateSceneSnapshot committed
       const [status] = await tap.seal();
       assert.equal(status.complete, !failOne, failOne ? 'the scene lacks occurrence 78: the backing must not claim it' : status.error ?? 'incomplete');
-      if (!failOne) assert.equal(status.shards, 2);
+      if (!failOne) {
+        assert.equal(status.shards, 2);
+        // Materialized from the backing: exactly the occurrences the accepted snapshot drew.
+        const ids: number[] = [];
+        for await (const shard of tap.backing(modelId)!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+        assert.deepEqual(ids.sort(), [77, 78]);
+      }
     } finally { await tap.stop(); }
   });
 }

@@ -1,8 +1,8 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 9f35a07..9974cb6 100644
+index 222399f..0ba44ab 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -107,6 +107,14 @@ export class StoreGeometryBackingTap {
+@@ -109,6 +109,14 @@ export class StoreGeometryBackingTap {
      tap.stops.push(subscribeInstancedShards((event) => {
        // Dropped or discarded before upload: the backing must hold exactly what the scene drew. A full
        // discard (a reset) moved the generation: abandon. Otherwise withhold just those shards.
@@ -14,10 +14,10 @@ index 9f35a07..9974cb6 100644
 +        }
 +        return;
 +      }
-       if (event.kind !== 'enqueued' || !event.shards) return;
+       if ((event.kind !== 'enqueued' && event.kind !== 'adopted') || !event.shards) return;
        for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
        for (const shard of event.shards) tap.ingestShard(shard);
-@@ -341,7 +349,7 @@ export class StoreGeometryBackingTap {
+@@ -331,7 +339,7 @@ export class StoreGeometryBackingTap {
      // A statement holds only while its queue generation does: a full discard since (even of nothing, so with
      // no event) voids it. Checked again after every await, so one during the seal is never acknowledged.
      const voided = (modelId: string, tracked: Tracked) => {

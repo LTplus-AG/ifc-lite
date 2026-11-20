@@ -186,7 +186,8 @@ export function useIfcCache() {
         let firstVisible: Promise<void> | undefined;
         if (adopted) {
           firstVisible = adopted.firstVisible;
-          allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, trace, appendGeometryBatch);
+          const published = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, trace, appendGeometryBatch);
+          if (published === null) superseded = true; else allMeshes = published; // superseded: `finally` abandons the adoption
         } else {
           if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale, trace, modelId)) {
             return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };

@@ -146,6 +146,16 @@ describe('undo and redo the room did not get, or got differently (#10810)', () =
     assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Name', 'Wall']]);
   });
 
+  it('an SDK attribute edit in the legacy store: undo restores the session edit it replaced', async () => {
+    // The legacy store has its data store and view but no `models` entry.
+    useViewerStore.setState({ editEnabled: true, models: new Map(), ifcDataStore: await parseHelloWall(), mutationViews: new Map(), undoStacks: new Map() });
+    const sdk = createMutateAdapter(useViewerStore), wall = { modelId: 'legacy', expressId: WALL_ID };
+    sdk.setAttribute(wall, 'Name', 'First');
+    sdk.setAttribute(wall, 'Name', 'Second');
+    state().undo('__legacy__');
+    assert.deepEqual(state().mutationViews.get('__legacy__')?.getAttributeMutationsForEntity(WALL_ID), [{ name: 'Name', value: 'First' }]);
+  });
+
   it('a move: undo moves the room copy back, redo forward again', () => {
     const moved = state().translateEntity('hello', WALL_ID, [1, 0, 0]);
     assert.ok(moved.ok, 'reason' in moved ? moved.reason : '');

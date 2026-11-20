@@ -43,10 +43,14 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       assertCanEdit('setAttribute', ref.modelId);
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, ref.modelId);
-      if (!getOrCreateMutationView(store, ref.modelId)) return undefined;
-      // The value before the edit, so its undo restores it here and in a collab room.
+      const view = getOrCreateMutationView(store, ref.modelId);
+      if (!view) return undefined;
+      // The value before the edit, so its undo restores it here and in a collab room. A store with no `models` entry
+      // (the legacy one) has no reader, but its view still holds the session edit this one replaces.
       const reader = modelReader(state, normalizedModelId);
-      state.setAttribute?.(normalizedModelId, ref.expressId, attrName, value, reader ? attributeUndoPrior(reader, ref.expressId, attrName) : undefined);
+      const prior = reader ? attributeUndoPrior(reader, ref.expressId, attrName)
+        : view.getAttributeMutationsForEntity(ref.expressId).find(mutation => mutation.name === attrName)?.value;
+      state.setAttribute?.(normalizedModelId, ref.expressId, attrName, value, prior);
       return undefined;
     },
     deleteProperty(ref: EntityRef, psetName: string, propName: string) {

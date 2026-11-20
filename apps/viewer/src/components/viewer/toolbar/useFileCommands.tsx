@@ -35,7 +35,10 @@ import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/service
 import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
 
 // lazyChunk: a failed chunk renders nothing instead of unwinding the toolbar (#10772).
-const ShareDialog = lazyChunk(() => import('../ShareDialog').then(module => ({ default: module.ShareDialog })));
+// A failed load never mounts the dialog, so clear the open request it would have reset.
+const ShareDialog = lazyChunk(() => import('../ShareDialog').then(module => ({ default: module.ShareDialog }), (error: unknown) => {
+  useCollabShareReview.setState({ dialogOpen: false }); throw error;
+}));
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
 // files are 2D reference underlays, not models, and split off to the DXF

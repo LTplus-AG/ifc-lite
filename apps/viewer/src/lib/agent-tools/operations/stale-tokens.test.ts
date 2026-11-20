@@ -120,7 +120,7 @@ describe('reviewed model candidates (#10792)', () => {
       writes++;
       // Hold the first write open while the agent retries, so the replay must find the write still in flight.
       replay ??= invoke('authoring.apply', { token }, true);
-      for (let tick = 0; tick < 20; tick++) await new Promise(resolve => setTimeout(resolve, 0));
+      for (let tick = 0; tick < 100; tick++) await new Promise(resolve => setTimeout(resolve, 0));
       return put(...args);
     };
     try {
@@ -287,7 +287,8 @@ describe('reviewed model candidates (#10792)', () => {
     const proposal_json = await groupProposal();
     for (let i = 0; i < 31; i++) answer(await invoke('authoring.group.prepare', { proposal_json }));
     // 31 pending plus the applied one fill the cap; a prepare that fails to parse must not take the applied one's place.
-    assert.equal((await invoke('authoring.group.prepare', { proposal_json: '{"not":"a proposal"}' })).isError, true);
+    const malformed = await invoke('authoring.group.prepare', { proposal_json: '{"not":"a proposal"}' });
+    assert.equal(malformed.isError, true); assert.doesNotMatch(malformed.text, /At most 32/, 'admitted, then refused by parsing');
     answer(await invoke('authoring.graph.apply', { token: applied }, true)); // still held: its replay answers
   });
 
@@ -671,7 +672,8 @@ describe('zone emission reviews (#10792)', () => {
     assert.ok((useViewerStore.getState().mutationViews.get('bonsai')?.getMutationRevision() ?? 0) > 0, 'the edit reached the model');
     // Admission without a recompute (which would record a new owner and drop them on its own): any prepare checks the
     // cap first, here one that then fails to parse.
-    assert.equal((await invoke('authoring.zone.prepare', { proposal_json: '{"not":"a proposal"}' })).isError, true);
+    const malformed = await invoke('authoring.zone.prepare', { proposal_json: '{"not":"a proposal"}' });
+    assert.equal(malformed.isError, true); assert.doesNotMatch(malformed.text, /At most 32/, 'admitted, then refused by parsing');
     assert.match((await invoke('authoring.graph.discard', { token: tokens[0] })).text, /Unknown graph review/, 'the edit dropped them');
   });
 });
@@ -741,7 +743,8 @@ describe('Room review admission probe (#10792)', () => {
     for (let i = 0; i < 31; i++) groups.push(answer<{ token: string }>(await invoke('authoring.group.prepare', { proposal_json: group })).token);
     assert.match((await invoke('authoring.group.prepare', { proposal_json: group })).text, /At most 32 graph review candidates/, 'the Room review keeps its place');
     reorderMeshes();
-    assert.equal((await invoke('authoring.group.prepare', { proposal_json: '{"not":"a proposal"}' })).isError, true); // any prepare checks the cap
+    const malformed = await invoke('authoring.group.prepare', { proposal_json: '{"not":"a proposal"}' }); // any prepare checks the cap
+    assert.equal(malformed.isError, true); assert.doesNotMatch(malformed.text, /At most 32/, 'admitted, then refused by parsing');
     // Kept above (its forwarded probe was true), dropped now. (The reorder replaced the model entry, so the Group
     // reviews, which bind it by identity, went too.)
     assert.match((await invoke('authoring.graph.discard', { token: room })).text, /Unknown graph review/, 'the reordered Room review was dropped');

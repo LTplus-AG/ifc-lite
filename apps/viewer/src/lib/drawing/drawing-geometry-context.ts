@@ -35,7 +35,7 @@ export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent
     backing = (modelId) => tap?.backing(modelId);
   }
   // Every instanced occurrence must be visible to the drawing, or it does not draw.
-  assertInstancedReady(state, renderer, (globalId) => resolveEntityRef(globalId).modelId);
+  assertInstancedReady(state, renderer);
   const indices = modelIndices(state.models);
   // Legacy single-model mode keeps no `models` entry: everything is one model.
   const legacy = state.models.size === 0;

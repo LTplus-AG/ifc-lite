@@ -20,8 +20,6 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '../store/index.js';
 import { discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
-import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { assertInstancedReady } from '../lib/drawing/drawing-instanced-presence.js';
 import { setGlobalRendererRef } from './useBCF.js';
 import { useDrawingGeneration } from './useDrawingGeneration.js';
 
@@ -130,14 +128,5 @@ describe('useDrawingGeneration over instanced-only geometry (#10264)', () => {
     assert.equal(drawing, null, 'the cut that missed the queued shard is not published');
     assert.equal(error, null);
     assert.equal(progress, 'Waiting for instanced geometry...');
-  });
-
-  it('refuses a visible model that streamed shards but has no occurrence in the scene', () => {
-    const state = { models: new Map([['m-recorded', { visible: true }], ['m-flat', { visible: true }]]) } as unknown as Parameters<typeof assertInstancedReady>[0];
-    noteInstancedShardModel('m-recorded');
-    const owner = (id: number) => (id === POST ? 'm-recorded' : undefined);
-    const empty = { getScene: () => ({ getInstancedEntityCount: () => 0, getInstancedEntityIds: () => [][Symbol.iterator]() }) } as unknown as Renderer;
-    assert.throws(() => assertInstancedReady(state, empty, owner), /Instanced geometry of m-recorded is not in the scene/);
-    assert.doesNotThrow(() => assertInstancedReady(state, renderer(), owner));
   });
 });

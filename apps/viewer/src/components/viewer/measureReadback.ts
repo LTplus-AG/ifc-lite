@@ -55,8 +55,9 @@ export function viaReadback(ctx: MouseHandlerContext, kind: ReadbackKind, act: (
 /**
  * What a pixel names a surface under: the view-projection matrix (a copy) plus the renderer's pick-geometry
  * revision (a renderer-side model move, setModelTranslation/Rotation, bumps it with no store change) and its
- * pick-clip revision (a section cut that changes exposes other surfaces at the same pixel). Undefined when the
- * renderer has no camera to ask.
+ * pick-clip revision (a section cut that changes exposes other surfaces at the same pixel), and the canvas's CSS
+ * size (a proportional resize keeps the matrix but moves the ray a CSS pixel names; a drawing-buffer-only
+ * resize, as in Point mode, changes nothing here). Undefined when the renderer has no camera to ask.
  */
 export function viewOf(ctx: MouseHandlerContext): readonly number[] | undefined {
   const renderer = ctx.renderer as {
@@ -68,7 +69,8 @@ export function viewOf(ctx: MouseHandlerContext): readonly number[] | undefined 
   if (!m) return undefined;
   const revisions = [renderer.getPickGeometryRevision?.(), renderer.getPickClipRevision?.()]
     .filter((revision): revision is number => revision !== undefined);
-  return [...Array.from(m), ...revisions];
+  const canvas = ctx.canvas as { clientWidth?: number; clientHeight?: number } | undefined;
+  return [...Array.from(m), ...revisions, canvas?.clientWidth ?? 0, canvas?.clientHeight ?? 0];
 }
 
 /**

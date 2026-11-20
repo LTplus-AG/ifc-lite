@@ -45,12 +45,12 @@ export const answered = (outcome: string): boolean => outcome === 'fed' || outco
 
 /** Run `action` now (resident), or after reading (x, y) back. Returns true if deferred. */
 export function runWithReadback(renderer: Renderer, x: number, y: number, visibility: Visibility, action: () => void,
-  stillValid: () => boolean = () => true, kind: 'preview' | 'placement' = 'preview'): boolean {
+  stillValid: () => boolean = () => true, kind: 'preview' | 'placement' = 'preview', skipped: () => void = () => {}): boolean {
   if (!sceneGeometryReleased(renderer)) { action(); return false; }
   const mine = epoch;
   const valid = () => (kind === 'placement' || mine === epoch) && stillValid();
   chain = chain.then(async () => {
-    if (!valid()) return;
+    if (!valid()) { skipped(); return; }
     // A newer read (a moving hover) took the feeder: read again. A preview retries once; a placement keeps
     // retrying while it is valid (bounded), so a click is never dropped because the pointer kept moving.
     let outcome = await feed(renderer, x, y, visibility);
@@ -58,8 +58,8 @@ export function runWithReadback(renderer: Renderer, x: number, y: number, visibi
       outcome = await feed(renderer, x, y, visibility);
     }
     if (outcome === 'cancelled' && kind === 'placement' && valid()) console.warn('[Measure] Point not placed: geometry readback kept being superseded');
-    if (valid() && answered(outcome)) action();
-  }).catch((error: unknown) => console.error('[Measure] Geometry readback failed', error));
+    if (valid() && answered(outcome)) action(); else skipped();
+  }).catch((error: unknown) => { console.error('[Measure] Geometry readback failed', error); skipped(); });
   return true;
 }
 
@@ -116,7 +116,7 @@ export function sameView(then: readonly number[] | undefined, now: readonly numb
 
 /** One entry for every handler: a hover or drag preview, a placement, or a double-click finish. */
 /** The store state the readback paths read, handed in by the eager half. */
-export type GateStore = () => { measureGestureEpoch: number; setMeasurePointLive: (point: null) => void };
+export type GateStore = () => { measureGestureEpoch: number; setMeasurePointLive: (point: null) => void; resetMeasureGesture: () => void };
 
 // `actNow`, `viewNow`, `shownNow` and the store come from the eager half, never by static import: that cycle would merge
 // this module into the entry chunk, and a store import lists its whole graph as this chunk's preload dependencies.
@@ -140,7 +140,15 @@ export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => v
       if (!warned) { warned = true; console.warn('[Measure] Point not placed: the view or what it shows changed before its geometry was read back'); }
       return false;
     };
-    runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), placeable, 'placement');
+    // A point that cannot land (refused, stale or failed readback) discards the measurement it belonged to, so a
+    // later finish never records the others as a complete measurement with a point missing. A point whose
+    // gesture was already reset (Esc, a mode or tool switch) has nothing left to discard.
+    const discard = () => {
+      if (store().measureGestureEpoch !== scope.gesture) return;
+      console.warn('[Measure] A point could not be read back; the measurement in progress was discarded');
+      store().resetMeasureGesture();
+    };
+    runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), placeable, 'placement', discard);
   }
   // A double-click finish runs after every placement already queued in its gesture.
   else afterPlacements(ctx.renderer, () => actNow(act), () => scope.tool === 'measure' && inScope());

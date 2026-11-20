@@ -79,4 +79,14 @@ describe('released device recovery rebuild (viewer)', () => {
       assert.equal(await rebuildReleasedScene(context), false);
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
+
+  it('#10937 an unrecorded drawn list (a snapshot hydration never noted) fails closed instead of rebuilding an empty scene', async () => {
+    const { store } = await releasedModel(`recovery-unrecorded-${process.pid}`);
+    try {
+      noteSceneGeometry([]);
+      const { context, uploaded } = recordingScene();
+      assert.equal(await rebuildReleasedScene(context), false, 'never a "recovered" scene with its flat geometry missing');
+      assert.deepEqual(uploaded, []);
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  });
 });

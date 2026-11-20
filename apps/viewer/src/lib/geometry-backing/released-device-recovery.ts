@@ -65,6 +65,12 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
       return false;
     }
   }
+  // An unrecorded drawn list would rebuild an empty scene and call it whole: fail closed instead.
+  const drawn = currentSceneGeometry();
+  if (drawn.length === 0 && [...state.models.values()].some((model) => model.visible !== false && (model.geometryResult?.meshes.length ?? 0) > 0)) {
+    console.warn('[GeometryBacking] no drawn list was recorded for a scene with flat geometry; refusing a released device recovery');
+    return false;
+  }
   const { replayReleasedGeometry } = await import('@ifc-lite/renderer');
   const flat = await releasedBatches(currentSceneGeometry().slice());
   async function* placed(): AsyncGenerator<MeshData[]> {

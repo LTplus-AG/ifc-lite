@@ -21,7 +21,8 @@ type Hook = typeof import('../../apps/viewer/src/lib/geometry-backing/backing-de
 type Probe = typeof globalThis & {
   __ifc_lite_viewer_store__?: { getState(): { loading: boolean; geometryStreamingActive: boolean; models: Map<string, unknown> } };
   __ifc_lite_scene_settled__?: () => boolean;
-  __ifc_lite_geometry_backing__?: (command: { action: string }) => Promise<Array<Record<string, unknown>>>;
+  __ifc_lite_geometry_backing__?: (command: { action: string; pose?: unknown }) => Promise<Array<Record<string, unknown>>>;
+  __ifc_lite_pick_parity__?: (request: { columns: number; rows: number }) => Promise<{ rows: Array<{ annotation: boolean; gpu: { expressId: number } | null }> }>;
   __ifc_lite_cpu_geometry_held__?: () => Promise<{ totalBytes: number }>;
 };
 const HOOK = '/src/lib/geometry-backing/backing-debug-hook.ts';
@@ -117,6 +118,34 @@ test('current-view export of a released model plus a later resident model matche
     return { status: plain(status), rows: plain(rows), heldBefore: held, heldAfter: (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes };
   });
   expect(released.heldAfter, JSON.stringify(released)).toBeLessThan(released.heldBefore);
+  // A was hydrated from its warm scene snapshot (no streamed route pass): a real device loss now must
+  // rebuild exactly what that snapshot drew, from the backing.
+  const recovery = await page.evaluate(async () => {
+    const g = globalThis as Probe;
+    const hook = g.__ifc_lite_geometry_backing__!;
+    const grid = async () => (await g.__ifc_lite_pick_parity__!({ columns: 48, rows: 32 })).rows
+      .map((row) => (row.annotation ? null : row.gpu?.expressId ?? null));
+    const [pose] = await hook({ action: 'camera-for-test' });
+    const before = await grid();
+    await hook({ action: 'lose-device-for-test' });
+    let state = { lost: true, ready: false };
+    for (let i = 0; i < 300; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      state = (await hook({ action: 'device-state-for-test' }))[0] as typeof state;
+      if (!state.lost && state.ready) break;
+    }
+    await hook({ action: 'camera-for-test', pose });
+    for (let i = 0; i < 200 && !(g.__ifc_lite_scene_settled__?.()); i++) await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const after = await grid();
+    return { state, drawn: before.filter((id) => id !== null).length, drawnAfter: after.filter((id) => id !== null).length,
+      differing: before.filter((id, i) => id !== after[i]).length };
+  });
+  await writeFile(info.outputPath('warm-recovery.json'), JSON.stringify(recovery, null, 2));
+  expect(recovery.drawn, 'the hydrated, released scene draws entities').toBeGreaterThan(100);
+  // A rebuild of an unrecorded list either fails closed (still lost) or draws nothing: both are wrong here.
+  expect(recovery.state, JSON.stringify(recovery)).toEqual({ lost: false, ready: true });
+  expect(recovery.differing, `GPU picks after recovering a snapshot-hydrated scene: ${JSON.stringify(recovery)}`).toBe(0);
   await load(page, B, 2);
   const mixed = await viewExport(page);
   await page.screenshot({ path: info.outputPath('mixed.png') });

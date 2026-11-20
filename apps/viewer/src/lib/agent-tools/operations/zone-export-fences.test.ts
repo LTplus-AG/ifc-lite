@@ -53,13 +53,12 @@ async function setup(t: TestContext) {
 
   function recolour() {
     const color: MeshData['color'] = [0.25, 0.5, 0.75, 1];
-    const geometryResult = { ...fixture.geometry, meshes: fixture.meshes.map(mesh => ({ ...mesh, color })) };
-    useViewerStore.getState().updateZone(fixture.zoneSet.id, 'whole', { color: [0.25, 0.5, 0.75] });
-    useViewerStore.setState(state => ({
-      models: new Map([...state.models].map(([id, model]) => [id, { ...model, geometryResult }])),
-      geometryResult,
-      geometryUpdateTick: state.geometryUpdateTick + 1,
-      zoneAssignments: new Map(state.zoneAssignments),
+    const state = useViewerStore.getState();
+    state.updateZone(fixture.zoneSet.id, 'whole', { color: [0.25, 0.5, 0.75] });
+    state.updateMeshColors(new Map([[fixture.wall.expressId, color]]));
+    useViewerStore.setState(now => ({
+      geometryUpdateTick: now.geometryUpdateTick + 1,
+      zoneAssignments: new Map(now.zoneAssignments),
     }));
   }
 
@@ -85,7 +84,7 @@ test('zones.geometry.export discards a realigned wall and publishes after a reco
   const realigned = await fixture.duringExport('zones.geometry.export', input, () => {
     // Federation realignment changes vertices in place and increments the content version.
     fixture.wall.positions[0] += 0.125;
-    useViewerStore.setState(state => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    useViewerStore.getState().bumpGeometryContentVersion();
   });
   assert.equal(realigned.isError, true, realigned.text);
   assert.match(realigned.text, /changed during native export/);

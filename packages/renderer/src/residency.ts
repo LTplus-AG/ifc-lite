@@ -202,6 +202,7 @@ export interface SplitResidency {
  * parent each frame after the budget evicts it.
  */
 export function pushSplit(requests: PartialBatchRequests, scene: SplitResidency, batch: BatchedMesh, isTransparent: boolean, ids: Set<number> | null = null): 'whole' | 'split' | 'pieces' {
+  if (batch.laneIds) return 'whole'; // colour-merged: never partitioned, so never worth its pieces from disk (#10653)
   if (requests.pushSplit(batch, isTransparent, ids)) {
     return batch.gpuResident === false && scene.requestBatchPieces(batch) ? 'pieces' : 'split';
   }

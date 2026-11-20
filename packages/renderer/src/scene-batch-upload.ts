@@ -11,6 +11,7 @@ import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { meshUniformArena, type MeshUniformSlot } from './mesh-uniform-arena.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
+import { laneIdsOf } from './batch-entities.js';
 import {
   simplifyIndicesByClustering,
   lodCellSizeForBounds,
@@ -162,6 +163,7 @@ export function createSceneBatch(
       uniformSlot,
       bounds: merged.bounds,
       modelIndices,
+      ...laneIdsOf(meshDataArray),
       // Per-batch local frame: positions are stored relative to this; the draw
       // loop applies model = translate(origin) so they land in world space.
       origin: merged.origin,
@@ -218,6 +220,7 @@ export function createSceneBatchShell(
     ...(meshDataArray[0]?.material ? { finish: meshDataArray[0].material } : {}), // #5582
     expressIds: meshDataArray.map((mesh) => mesh.expressId),
     modelIndices: meshDataArray.map((mesh) => mesh.modelIndex),
+    ...laneIdsOf(meshDataArray),
     bounds: merged.bounds,
     origin: merged.origin,
     gpuResident: false,

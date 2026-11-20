@@ -21,7 +21,8 @@
  * Grid axes, annotation text and structural glyphs are off for every test
  * (`open()`): they load in idle time after the model and raced the captures
  * (#10853). The cost is that IfcAnnotation/IfcGrid meshes are not uploaded,
- * so no scenario here exercises them as hidden or visible batchmates.
+ * so no scenario here exercises them as hidden or visible batchmates, or
+ * carries them through a model move.
  *
  * #10767 (last test) uses its own oracle: after a model move, the frame with
  * instanced state carried through the move must equal the frame with the same
@@ -99,6 +100,12 @@ async function load(page: Page, file: string, count: number): Promise<void> {
       && g.__ifc_lite_capture_color_frame__ && g.__ifc_lite_pick_parity__);
   }, count, { timeout: LOAD_TIMEOUT, polling: 250 });
   await settle(page);
+  // open() turned the late overlays off (#10853); every test relies on it.
+  const overlays = await page.evaluate(() => {
+    const visibility = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().typeVisibility as Record<string, boolean>;
+    return [visibility.ifcAnnotations, visibility.ifcGrid, visibility.structuralGlyphs];
+  });
+  expect(overlays, 'grid, annotation and glyph overlays are off').toEqual([false, false, false]);
 }
 
 async function settle(page: Page): Promise<void> {
@@ -395,7 +402,8 @@ async function diffWithin(page: Page, a: string, b: string, on: string, off: str
   }, [a, b, on, off]);
 }
 
-/** A still frame: wait until two frames 20 animation frames apart match. */
+/** A still frame: wait until two frames 20 animation frames apart match. Residency and
+ * batch rebuilds settle a few frames after a change (#10767), so captures wait for it. */
 async function stillCapture(page: Page, info: TestInfo, name: string): Promise<string> {
   const grab = () => capture(page, info, name, false);
   let frame = await grab();
@@ -415,11 +423,6 @@ test('deleted instanced occurrences stay off the frame and the picks with nothin
   await open(page);
   await load(page, FIXTURES.institute, 1);
   await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
-  const overlays = await page.evaluate(() => {
-    const visibility = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().typeVisibility as Record<string, boolean>;
-    return [visibility.ifcAnnotations, visibility.ifcGrid, visibility.structuralGlyphs];
-  });
-  expect(overlays, 'grid, annotation and glyph overlays are off').toEqual([false, false, false]);
   // Instanced-only entities: deleting them leaves no flat piece, so only the
   // instance flag (and the discarding shader) can keep them off the frame.
   const ids = await page.evaluate(async () => {

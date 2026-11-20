@@ -43,14 +43,16 @@ export async function* replayStoreList(
   for (const chunk of backing?.directory.chunks ?? []) { starts.push(total); total += chunk.meshCount; }
   let held: { chunk: number; lease: MeshLease } | undefined;
   const recordAt = async (at: number): Promise<MeshData> => {
-    if (!backing?.isCurrent || !backing.isComplete || total !== (previous.meshes?.length ?? -1)) {
+    // The acknowledged source is superseded the moment the store replaced it (consumers stop reading it), but it
+    // stays durable for exactly this replay until the replacement commits: read it through the tap's own reader.
+    if (!backing?.isDurablyComplete || total !== (previous.meshes?.length ?? -1)) {
       throw new GeometryUnavailableError('The previous backing generation cannot answer for released meshes');
     }
     let chunk = starts.length - 1;
     while (chunk > 0 && starts[chunk] > at) chunk--;
     if (held?.chunk !== chunk) {
       held?.lease.release();
-      held = { chunk, lease: await backing.reader.leaseChunks([chunk], { signal }) };
+      held = { chunk, lease: await backing.carryReader.leaseChunks([chunk], { signal }) };
     }
     return held.lease.meshes[at - starts[chunk]];
   };

@@ -3,11 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { pendingReport, recentReport, subscribeRecentReport } from '@/lib/error-reports/pending';
-import { lazy, Suspense, useEffect, useSyncExternalStore } from 'react';
+import { Suspense, useEffect, useSyncExternalStore } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { useTranslation } from '@/i18n';
 import { dismissErrorReport, getReportPrompt, offerErrorReport, subscribeReportPrompt } from '@/lib/error-reports/context';
 import { openErrorReportDestination, registerErrorReportHost } from '@/lib/error-reports/destination';
-const ErrorReportDialog = lazy(() => import('./ErrorReportDialog').then(module => ({ default: module.ErrorReportDialog })));
+const ErrorReportDialog = lazyChunk(() => import('./ErrorReportDialog').then(module => ({ default: module.ErrorReportDialog })));
 /** Independent of renderer/store: remains usable when the viewport failed. */
 export function ErrorReportHost() {
   const prompt = useSyncExternalStore(subscribeReportPrompt, getReportPrompt, () => null);

@@ -109,9 +109,11 @@ export function attestAdoptedShards(modelId: string, adopted: Pick<AdoptedSceneS
     completeInstancedShardSupply(modelId, adopted.shards.length, token);
   };
   // A first primary load commits its snapshot during geometry sync, BEFORE the model is registered:
-  // the backing places shard ids with the model's id offset, so announce only once it is known. A
-  // reset or discard of the model meanwhile (its supply moved) supersedes the attestation entirely.
-  const registered = () => store.getState().models.get(modelId)?.idOffset !== undefined;
+  // the backing places shard ids with the model's id offset, so announce only once the model is
+  // registered. A registered model without an idOffset is model 0's space (offset 0), as the tap and
+  // the drain read it (r4647509027). A reset or discard of the model meanwhile (its supply moved)
+  // supersedes the attestation entirely.
+  const registered = () => store.getState().models.has(modelId);
   if (registered()) { announce(); return; }
   const off = store.subscribe(() => {
     if (!instancedShardSupplyCurrent(modelId, token)) { off(); return; }

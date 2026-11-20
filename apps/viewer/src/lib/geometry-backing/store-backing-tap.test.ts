@@ -116,7 +116,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     const status = Object.fromEntries((await tap.seal()).map((s) => [s.modelId, s]));
     // The replacement cannot vouch for moved occurrences, so it never retires the old generation.
-    assert.equal(before.isCurrent, true, 'the older durable copy survives an unacknowledgeable replacement');
+    assert.equal(before.isLive, true, 'the older durable copy survives an unacknowledgeable replacement');
     assert.notEqual(tap.backing('m2a'), before);
     assert.equal(tap.backing('m2a')!.isComplete, false, 'readers through the tap are refused, never served stale');
     assert.equal(status.m2a.instancedLost, true);
@@ -163,12 +163,12 @@ describe('store geometry backing tap (test/debug only)', () => {
       completeInstancedShardSupply(id, 1, fresh); // ...stated complete
       let [status] = await tap.seal(); // before the renderer drained it
       assert.equal(status.complete, false, `${outcome}: 71 was never drawn, so it cannot be acknowledged`);
-      assert.equal(old.isCurrent, true, `${outcome}: the last complete copy stays durable`);
+      assert.equal(old.isDurablyComplete, true, `${outcome}: the last complete copy stays durable`);
       drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, outcome); });
       [status] = await tap.seal();
       if (outcome === 'dropped') {
         assert.equal(status.complete, false, 'the dropped shard never reached the scene');
-        assert.equal(old.isCurrent, true, 'the old durable copy is still the source after the drop');
+        assert.equal(old.isDurablyComplete, true, 'the old durable copy is still the source after the drop');
       } else {
         assert.equal(status.complete, true, status.error ?? 'the drawn set commits once settled');
         assert.deepEqual(await idsIn(tap.backing(id)!), [71]);
@@ -246,7 +246,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
-    assert.equal(acknowledged.isCurrent, false, 'retired only after the replacement committed');
+    assert.equal(acknowledged.isDurablyComplete, false, 'retired only after the replacement committed');
     const lease = await tap.backing('rel')!.reader.leaseEntity(1);
     assert.equal(lease.meshes[0].positions.length, 9, 'real arrays, never the emptied ones');
     assert.deepEqual(lease.meshes[0].color, [1, 0, 0, 1]);
@@ -298,7 +298,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const acknowledged = tap.backing('st')!;
     const idsOf = async (backing: typeof acknowledged) => {
       const ids: number[] = [];
-      for await (const shard of backing.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+      for await (const shard of backing.carryReader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
       return ids.sort();
     };
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // occurrences may have moved
@@ -315,7 +315,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, false, 'a partial fresh supply is never complete');
-    assert.equal(acknowledged.isCurrent, true, 'the acknowledged durable copy survives');
+    assert.equal(acknowledged.isDurablyComplete, true, 'the acknowledged durable copy survives');
     assert.deepEqual(await idsOf(acknowledged), [77, 78], 'and stays readable with its own occurrences');
     completeInstancedShardSupply('st', 2, fresh); // the producer says two: one has arrived
     drawAll(); // the renderer draws what was queued before any seal
@@ -331,7 +331,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
-    assert.equal(acknowledged.isCurrent, false, 'retired only now');
+    assert.equal(acknowledged.isDurablyComplete, false, 'retired only now');
     assert.deepEqual(await idsOf(tap.backing('st')!), [80, 81], 'only the fresh occurrences, never the stale ones');
     await tap.stop();
   });
@@ -369,7 +369,7 @@ describe('store geometry backing tap (test/debug only)', () => {
       const acknowledged = tap.backing(id)!;
       const idsOf = async (backing: typeof acknowledged) => {
         const ids: number[] = [];
-        for await (const shard of backing.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+        for await (const shard of backing.carryReader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
         return ids.sort();
       };
       store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
@@ -382,7 +382,7 @@ describe('store geometry backing tap (test/debug only)', () => {
       drawAll(); // the renderer draws what was queued before any seal
       let [status] = await tap.seal();
       assert.equal(status.complete, false, 'the scene never received the stated set');
-      assert.equal(acknowledged.isCurrent, true, 'the acknowledged copy stays durable');
+      assert.equal(acknowledged.isDurablyComplete, true, 'the acknowledged copy stays durable');
       assert.deepEqual(await idsOf(acknowledged), [77, 78]);
       // A later, real re-supply must hold only its own shards.
       discardInstancedShards();
@@ -414,7 +414,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'the scene never received the stated shard');
-    assert.equal(acknowledged.isCurrent, true, 'the last complete generation is not retired');
+    assert.equal(acknowledged.isDurablyComplete, true, 'the last complete generation is not retired');
     // The model is re-supplied within the same queue generation (a new epoch of its own).
     enqueueInstancedShards('dp', [shardBytes(81)], fresh);
     completeInstancedShardSupply('dp', 1, fresh);
@@ -439,7 +439,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'backed but never drawn: lost');
-    assert.equal(acknowledged.isCurrent, true);
+    assert.equal(acknowledged.isLive, true);
     // A partial replacement in the same generation is still not whole.
     enqueueInstancedShards('ms', [shardBytes(90)], generation);
     completeInstancedShardSupply('ms', 2, generation);
@@ -472,7 +472,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'a superseded load never completes the new supply');
-    assert.equal(acknowledged.isCurrent, true);
+    assert.equal(acknowledged.isLive, true);
     const fresh = instancedShardSupplyToken('op');
     enqueueInstancedShards('op', [shardBytes(90)], fresh);
     completeInstancedShardSupply('op', 1, fresh);
@@ -500,9 +500,9 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, false, 'the cancelled empty statement must not retire the instanced copy');
-    assert.equal(acknowledged.isCurrent, true, 'the last instanced backing stays durable');
+    assert.equal(acknowledged.isDurablyComplete, true, 'the last instanced backing stays durable');
     const ids: number[] = [];
-    for await (const shard of acknowledged.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    for await (const shard of acknowledged.carryReader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
     assert.deepEqual(ids, [77]);
     await tap.stop();
   });
@@ -520,10 +520,10 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'the model misses 78: never sealed complete');
-    assert.equal(acknowledged.isCurrent, true, 'the last complete generation is kept');
+    assert.equal(acknowledged.isDurablyComplete, true, 'the last complete generation is kept');
     const idsOf = async (backing: NonNullable<ReturnType<typeof tap.backing>>) => {
       const ids: number[] = [];
-      for await (const shard of backing.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+      for await (const shard of backing.carryReader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
       return ids.sort();
     };
     assert.deepEqual(await idsOf(tap.backing('mx')!), [70, 77], 'exactly what the scene drew: 77 is kept, 78 withheld');
@@ -610,7 +610,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     discardInstancedShards(); // nothing pending: no event, only the generation moves
     const [status] = await sealing;
     assert.equal(status.complete, false, 'the statement was voided during the seal');
-    assert.equal(acknowledged.isCurrent, true, 'the last complete instanced copy is not retired');
+    assert.equal(acknowledged.isDurablyComplete, true, 'the last complete instanced copy is not retired');
     await tap.stop();
   });
 
@@ -753,6 +753,46 @@ describe('store geometry backing tap (test/debug only)', () => {
     drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, false, 'no coverage proof, no completeness');
+  });
+
+  it('#10884 a registered model without an id offset keeps its shards, in model 0\'s id space', async () => {
+    const store = storeWith({ plain: [mesh(1)] });
+    store.setState({ models: new Map([['plain', { geometryResult: { meshes: [mesh(1)] } }]]) }); // no idOffset field
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('plain', [shardBytes(5)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
+    await tap.seal();
+    const backing = tap.backing('plain')!;
+    assert.equal(backing.isComplete, true, 'its instancing is backed, not lost');
+    assert.deepEqual(backing.directory.shardsOf(5), [0]);
+    await tap.stop();
+  });
+
+  it('#10888 r4647508608 an in-place append while seal() awaits the acknowledgement is never acknowledged without it', async () => {
+    const list = [mesh(1, 0), mesh(2, 1)];
+    const store = storeWith({ sa: list });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    await tap.whenIdle();
+    // The loader appends in place exactly while seal() awaits this generation's acknowledgement.
+    const generation = tap.backing('sa')!;
+    const acknowledge = generation.acknowledge.bind(generation);
+    generation.acknowledge = async () => {
+      const pending = acknowledge();
+      append(store, 'sa', [mesh(3, 2)]);
+      return pending;
+    };
+    await tap.seal();
+    const [status] = await tap.seal();
+    assert.equal(status.meshes, 3, 'the appended mesh is consumed');
+    const candidate = tap.releaseCandidate('sa');
+    if (candidate) {
+      // Whatever the allowlist offers must hold every listed mesh, the late one included.
+      const lease = await candidate.backing.reader.leaseEntity(3);
+      try { assert.equal(lease.meshes.length, 1, 'the late mesh is backed in the offered generation'); } finally { lease.release(); }
+    }
+    assert.equal(status.complete, true, status.error ?? 'incomplete: the late append must land in a successor, not fail the model');
+    const lease = await tap.backing('sa')!.reader.leaseEntity(3);
+    try { assert.equal(lease.meshes.length, 1); } finally { lease.release(); }
     await tap.stop();
   });
 });

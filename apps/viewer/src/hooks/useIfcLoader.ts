@@ -77,7 +77,6 @@ import { describeProcessedModelFailure, normalizedProcessedModel, refuseFederate
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
-import { loadLandXmlModel } from './ingest/landXmlLoad.js';
 import { drapeIfGeoRaster } from './ingest/drapeIfGeoRaster.js';
 import { createLocalIfcLoadAdmission } from './ingest/confirmLocalIfcAdmission.js';
 import { clearLandXmlRefusalPrompts, publishLandXmlRefusalPrompts } from './ingest/landXmlRefusalPrompts.js';
@@ -96,7 +95,6 @@ import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
-import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFinalize.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
@@ -728,16 +726,19 @@ export function useIfcLoader() {
         // A .xml file is handed to the authoritative LandXML parser, which
         // validates its root/namespace while streaming. This keeps legal
         // long XML prologs from forcing a whole-file detection read.
-        const sourceKeyFingerprint = await computeSourceFingerprintFromBlob(file);
+        const [landXml, sourceKeyFingerprint] = await Promise.all([
+          import('./ingest/landXmlLoad.js'), computeSourceFingerprintFromBlob(file),
+        ]);
+        if (isStale()) return;
         modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
         placementIdentity = startLoadSourceIdentity(modelId, file, () => isStale());
         if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
-        await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace,
+        await landXml.loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace,
           assumedLinearUnit: options?.assumedLinearUnit, landXmlAssumptions: options?.landXmlAssumptions ?? useViewerStore.getState().landXmlGeorefAssumptionSettings,
           isCurrent: () => isCurrent(), setProgress, settleLoadUi,
-          openProvisional: target.kind === 'primary' ? (preflight) => openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
+          openProvisional: target.kind === 'primary' ? (preflight) => landXml.openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
           openFederatedStreamingPlan: target.kind === 'federated'
-            ? (preflight, sourceCoordinateInfo, spatialReference, declaredCrs, assumptions) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, declaredCrs, () => isCurrent(), assumptions)
+            ? (preflight, sourceCoordinateInfo, spatialReference, declaredCrs, assumptions) => landXml.openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, declaredCrs, () => isCurrent(), assumptions)
             : undefined,
           onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
           onError: (message, error) => {

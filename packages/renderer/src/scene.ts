@@ -2503,7 +2503,7 @@ export class Scene {
    * The caller must fall back to drawing the batch whole when this is false.
    */
   canPartitionBatch(batch: BatchedMesh): boolean {
-    if (this.geometryReleased || this.snapshots.hydrating) return false;
+    if (this.geometryReleased || this.snapshots.hydrating || batch.laneIds) return false; // laneIds: colour-merged (#10653)
     const bucket = this.buckets.get(batch.colorKey);
     const live = bucket !== undefined && bucket.batchedMesh === batch;
     if (live && bucket.meshData.length === 0) return false;

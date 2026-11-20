@@ -41,6 +41,7 @@ function host(state: { released: boolean; hit: { expressId: number; modelIndex?:
     getInstancedEntityBounds: (id: number) => instanced.get(id) ?? null,
     // A model translated by +100 in x, as the scene's own placement would.
     placeAppearanceSource: (m: MeshData) => ({ ...m, origin: [100 + (m.origin?.[0] ?? 0), m.origin?.[1] ?? 0, m.origin?.[2] ?? 0] as [number, number, number] }),
+    getModelRotation: () => null,
   };
   const value: ReadbackRaycastHost = {
     pick: async () => state.hit,
@@ -76,6 +77,35 @@ describe('released geometry readback for tools', () => {
     assert.equal(h.fed.at(-1), null);
     backing.reader.clear();
     assert.equal(backing.reader.retainedBytes, 0, 'superseded leases were released');
+    await registry.close();
+  });
+
+  it('a placement that throws releases the leases it took and feeds nothing', async () => {
+    const { registry, backing } = await backed([mesh(1, 0), mesh(2, 0.5)]);
+    const h = host({ released: true, hit: { expressId: 1, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } });
+    const scene = h.value.getScene() as { placeAppearanceSource: (m: MeshData) => MeshData };
+    // The offset probe (expressId 0) still places; the first real piece fails, after every lease was taken.
+    const placeFirst = scene.placeAppearanceSource;
+    scene.placeAppearanceSource = (m: MeshData) => {
+      if (m.expressId === 0) return placeFirst(m);
+      throw new Error('placement failed');
+    };
+    // Count the leases the feeder takes and gives back.
+    let open = 0;
+    const reader = backing.reader as unknown as Record<'leaseEntity' | 'leaseChunks', (...args: unknown[]) => Promise<{ release: () => void }>>;
+    for (const name of ['leaseEntity', 'leaseChunks'] as const) {
+      const real = reader[name].bind(reader);
+      reader[name] = async (...args) => {
+        const lease = await real(...args);
+        open++;
+        const release = lease.release.bind(lease);
+        return { ...lease, release: () => { open--; release(); } };
+      };
+    }
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(10, 10), 'unavailable');
+    assert.equal(h.fed.at(-1) ?? null, null, 'nothing was fed');
+    assert.equal(open, 0, 'every lease taken before the failed placement was released');
     await registry.close();
   });
 
@@ -243,5 +273,96 @@ describe('released geometry readback for tools', () => {
     assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
     await registry.close();
   });
-});
 
+  it('#10884 an instanced hit without a model index is refused, never materialized as model 0', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard());
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const h = host({ released: true, hit: { expressId: 501, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, new Map([[501, near]]));
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'unavailable', 'its occurrences would be placed in the wrong frame');
+    assert.match(feeder.lastError!.message, /no model index/);
+    assert.equal(h.fed.at(-1), null);
+    await registry.close();
+  });
+
+  it('#10884 hidden instanced neighbours neither count toward the cap nor are fed', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard());
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const crowd = new Map<number, Box>([[501, near]]);
+    const hidden = new Set<number>();
+    for (let id = 1000; id < 1300; id++) { crowd.set(id, near); hidden.add(id); } // 300 hidden neighbours inside the box
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, crowd);
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0, { hiddenIds: hidden }), 'fed', feeder.lastError?.message ?? 'not fed');
+    assert.equal(await feeder.prepare(0, 0, { isolatedIds: new Set([501]) }), 'fed', 'isolation leaves the others out too');
+    await registry.close();
+  });
+
+  it('#10884 an instanced occurrence whose placement throws releases the flat leases too and feeds nothing', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard()); // 501 opaque
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, new Map([[501, near]]));
+    const scene = h.value.getScene() as { placeAppearanceSource: (m: MeshData) => MeshData };
+    const placeFlat = scene.placeAppearanceSource;
+    scene.placeAppearanceSource = (m: MeshData) => {
+      if (m.occurrenceKey?.startsWith('readback:')) throw new Error('occurrence placement failed');
+      return placeFlat(m);
+    };
+    let open = 0;
+    const reader = backing.reader as unknown as Record<'leaseEntity' | 'leaseChunks', (...args: unknown[]) => Promise<{ release: () => void }>>;
+    for (const name of ['leaseEntity', 'leaseChunks'] as const) {
+      const real = reader[name].bind(reader);
+      reader[name] = async (...args) => {
+        const lease = await real(...args);
+        open++;
+        const release = lease.release.bind(lease);
+        return { ...lease, release: () => { open--; release(); } };
+      };
+    }
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'unavailable');
+    assert.equal(h.fed.at(-1) ?? null, null, 'nothing was fed');
+    assert.equal(open, 0, 'the flat leases taken before the failed occurrence placement were released');
+    await registry.close();
+  });
+
+  it('#10880 r4646577967 an empty store list reads a current complete backing, and yields nothing without one', async () => {
+    const { registry, backing } = await backed([mesh(1, 0), mesh(2, 3)]);
+    const batches: Array<readonly MeshData[]> = [];
+    for await (const batch of modelGeometry({ backing: () => backing }, 'm', [])) batches.push(batch);
+    assert.deepEqual(batches.flat().map((m) => m.expressId).sort(), [1, 2], 'the backed meshes, never one empty batch');
+    const none: Array<readonly MeshData[]> = [];
+    for await (const batch of modelGeometry({ backing: () => undefined }, 'm', [])) none.push(batch);
+    assert.deepEqual(none, [], 'an unbacked empty model yields nothing and does not fail');
+  });
+
+  it('#10884 an instanced overlay neighbour (an annotation the resident raycast never tests) is not fed', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard()); // 501 opaque
+    const overlay = instancedShard();
+    overlay.instances = [{ ...overlay.instances[0], entityId: 503 }]; // an instanced IfcAnnotation beside the hit
+    await backing.writer.appendInstancedShard(overlay);
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, new Map([[501, near], [503, near]]));
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm', undefined, (id) => id !== 503);
+    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
+    const instanced = h.fed.at(-1)!.filter((m) => m.occurrenceKey?.startsWith('readback:'));
+    assert.deepEqual(instanced.map((m) => m.expressId), [501], 'the overlay is never a raycast target, as in the resident scene');
+    await registry.close();
+  });
+});

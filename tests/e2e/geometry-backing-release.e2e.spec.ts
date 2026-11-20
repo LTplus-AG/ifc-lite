@@ -33,6 +33,9 @@ type TapStore = { measurePointLast: { x: number; y: number; z: number } | null;
   setActiveTool(tool: string): void; setMeasureMode(mode: string): void };
 const FIXTURES = ['tests/models/ara3d/AC20-FZK-Haus.ifc', 'tests/models/ara3d/duplex.ifc', 'tests/models/ara3d/C20-Institute-Var-2.ifc'];
 const HOOK = '/src/lib/geometry-backing/backing-debug-hook.ts';
+const DECODER = `/@fs${join(process.cwd(), 'packages/geometry/src/packed-instanced-decoder.ts')}`;
+/** One instanced occurrence, as a comparable key: its entity and its transform (4 decimals). */
+const OCCURRENCE_KEY = '(instance) => `${instance.entityId}:${Array.from(instance.transform, (v) => v.toFixed(4)).join(",")}`';
 const DRAWING = `/@fs${join(process.cwd(), 'packages/drawing-2d/src/index.ts')}`;
 
 /**
@@ -141,12 +144,22 @@ async function open(page: Page): Promise<void> {
   await page.waitForFunction(() => Boolean((globalThis as Probe).__ifc_lite_viewer_store__), null, { timeout: 180_000 });
   // The viewport hook appears only once a renderer exists, after a load starts;
   // start the tap through the same module first so it sees the whole stream.
-  await page.evaluate(async (hookPath) => {
+  await page.evaluate(async ([hookPath, decoderPath, keySource]) => {
     const { geometryBackingCommand } = await import(hookPath) as Hook;
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__: Parameters<Hook['geometryBackingCommand']>[0] }).__ifc_lite_viewer_store__;
     // Small chunks: many per model, so readback leases a neighbourhood, not the whole model.
     await geometryBackingCommand(store, undefined, { action: 'start', options: { chunkBytes: 64 * 1024, queueBytes: 4 << 20 } });
-  }, HOOK);
+    // Independent of the backing: every occurrence the loader enqueued, decoded from the wire bytes.
+    const { decodeInstancedShard } = await import(decoderPath) as typeof import('../../packages/geometry/src/packed-instanced-decoder');
+    const key = (0, eval)(keySource) as (instance: { entityId: number; transform: ArrayLike<number> }) => string;
+    const expected: string[] = [];
+    (globalThis as unknown as { __expected_occurrences__: string[] }).__expected_occurrences__ = expected;
+    (globalThis as unknown as { __ifc_lite_instanced_shards__: { subscribe(l: (e: { kind: string; shards?: Array<{ bytes: ArrayBuffer }> }) => void): void } })
+      .__ifc_lite_instanced_shards__.subscribe((event) => {
+        if (event.kind !== 'enqueued') return;
+        for (const shard of event.shards ?? []) for (const instance of decodeInstancedShard(new Uint8Array(shard.bytes.slice(0))).instances) expected.push(key(instance));
+      });
+  }, [HOOK, DECODER, OCCURRENCE_KEY] as const);
 }
 
 for (const fixture of FIXTURES) {
@@ -197,9 +210,10 @@ for (const fixture of FIXTURES) {
     const tapResident = await tapAndRead();
     const toolsResident = await toolProbe(page, phase1.modelId);
     // Phase 2: test-only release, readback probes, and a full read-back digest.
-    const report = await page.evaluate(async ([hookPath, digest, modelId, points]) => {
+    const report = await page.evaluate(async ([hookPath, digest, modelId, points, keySource]) => {
       const g = globalThis as Probe & typeof globalThis;
       const hash = (0, eval)(digest) as (meshes: MeshData[]) => string;
+      const key = (0, eval)(keySource) as (instance: { entityId: number; transform: ArrayLike<number> }) => string;
       const { activeGeometryBackingTap } = await import(hookPath) as Hook;
       const model = g.__ifc_lite_viewer_store__!.getState().models.get(modelId)!;
       const heldBefore = (await g.__ifc_lite_cpu_geometry_held__!()).totalBytes;
@@ -212,9 +226,15 @@ for (const fixture of FIXTURES) {
       let peak = 0;
       for await (const batch of backing.reader.meshes()) { read.push(...batch); peak = Math.max(peak, backing.reader.retainedBytes); }
       let occurrences = 0, templates = 0;
-      for await (const shard of backing.reader.instancedShards()) { occurrences += shard.instances.length; templates += shard.templates.length; }
-      return { after: hash(read), released, heldBefore, heldAfter, storeEmpty, snapsAfter, occurrences, templates, peakDecodedBytes: peak };
-    }, [HOOK, digestSource(), phase1.modelId, phase1.points] as const);
+      const backed: string[] = [];
+      for await (const shard of backing.reader.instancedShards()) {
+        occurrences += shard.instances.length; templates += shard.templates.length;
+        for (const instance of shard.instances) backed.push(key(instance));
+      }
+      const expected = [...(globalThis as unknown as { __expected_occurrences__: string[] }).__expected_occurrences__].sort();
+      return { after: hash(read), released, heldBefore, heldAfter, storeEmpty, snapsAfter, occurrences, templates, peakDecodedBytes: peak,
+        expectedOccurrences: expected.length, occurrencesMatch: JSON.stringify(backed.sort()) === JSON.stringify(expected) };
+    }, [HOOK, digestSource(), phase1.modelId, phase1.points, OCCURRENCE_KEY] as const);
     // The probes fed readback at the last grid point; the tap point is uncovered, so the tap reads back on demand.
     const tapReleased = await tapAndRead();
     const toolsReleased = await toolProbe(page, phase1.modelId);
@@ -230,12 +250,17 @@ for (const fixture of FIXTURES) {
     expect(phase1.sealed[0].complete).toBe(true);
     expect(report.storeEmpty).toBe(true);
     expect(report.after).toBe(phase1.before);
+    // Instanced readback, against the occurrences the loader enqueued (entity and transform, with multiplicity).
+    expect(report.occurrencesMatch, `backed ${report.occurrences} vs enqueued ${report.expectedOccurrences} occurrences`).toBe(true);
+    if (fixture.includes('C20-Institute')) expect(report.expectedOccurrences, 'C20-Institute is an instanced fixture').toBeGreaterThan(0);
     expect(report.heldAfter).toBeLessThan(report.heldBefore);
     for (let k = 0; k < 3; k++) expect(Math.abs(tapReleased[k] - tapResident[k]), 'touch point after release').toBeLessThan(1e-6);
     // Exports (flat + instanced), caps, selection centre and quantities after release equal the resident outputs.
     expect(toolsResident.exportedMeshes as number).toBeGreaterThan(0);
     expect(toolsReleased).toEqual(toolsResident);
     if (report.occurrences > 0) expect(summary.instancedHits, 'instanced occurrences under the grid').toBeGreaterThan(0);
+    // Two missing snaps compare equal: require real snap targets, so the comparison proves the readback snaps.
+    expect(before.filter((probe) => probe.snap !== null).length, 'the probe grid must produce snap targets').toBeGreaterThan(0);
     expect(before.every((probe) => probe.outcome === 'resident')).toBe(true);
     for (let i = 0; i < before.length; i++) {
       const a = before[i], b = after[i];
@@ -243,6 +268,7 @@ for (const fixture of FIXTURES) {
       if (a.expressId === null) continue;
       expect(b.outcome, `probe ${i} came from readback`).toBe('fed');
       for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `probe ${i} hit`).toBeLessThan(1e-6);
+      expect(b.snap === null, `probe ${i} snaps after release exactly when it snapped before`).toBe(a.snap === null);
       expect(b.snap?.type, `probe ${i} snap kind`).toBe(a.snap?.type);
       if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `probe ${i} snap`).toBeLessThan(1e-6);
     }

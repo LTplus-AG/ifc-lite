@@ -19,6 +19,8 @@ export const viewerShellIt = {
   "viewerShell.chunkError.crashedDetail": "Un errore imprevisto ne ha impedito la visualizzazione.",
   "viewerShell.chunkError.reload": "Ricarica",
   "viewerShell.staleDeployment.notice": "È disponibile una nuova versione del visualizzatore: ricarica per continuare.",
+  "viewerShell.staleDeployment.offline": "Sei offline. Riconnettiti per continuare.",
+  "viewerShell.staleDeployment.reconnected": "Connessione ripristinata. Ricarica la pagina per continuare.",
   "viewerShell.staleDeployment.reopenPrompt": "Il visualizzatore è stato aggiornato a una nuova versione e ricaricato. Apri di nuovo {files} per continuare.",
   "viewerShell.staleDeployment.reopenAction": "Apri file…",
   "viewerShell.hostConfig.errorTitle": "Il visualizzatore non si è avviato",

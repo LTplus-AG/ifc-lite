@@ -125,11 +125,12 @@ describe('authoring operations write the named target (#10793)', () => {
   it('#58 a box write to a footprint prism zone is refused', async () => {
     const setId = useViewerStore.getState().createZoneSet('Prisms');
     useViewerStore.getState().addZone(setId, { name: 'P', center: [1, 1, 1], size: [2, 2, 2], rotationY: 0, footprint: [[0, 0], [2, 0], [2, 2], [0, 2]] });
-    const zone = useViewerStore.getState().zoneSets[0].zones[0], configuration = () => JSON.stringify(useViewerStore.getState().zoneSets);
-    const result = await invoke('zones.box.write', { set_id: setId, zone_id: zone.id, name: 'P', center: [9, 1, 9], size: [5, 2, 5], rotationY: 0, expected_configuration: configuration() });
-    assert.equal(result.isError, true); assert.deepEqual(useViewerStore.getState().zoneSets[0].zones[0].center, zone.center);
+    // The zone token is the configuration_revision zones.read returns (#10794).
+    const zone = useViewerStore.getState().zoneSets[0].zones[0], configuration = async () => answer<{ configuration_revision: string }>(await invoke('zones.read', {}, false)).configuration_revision;
+    const result = await invoke('zones.box.write', { set_id: setId, zone_id: zone.id, name: 'P', center: [9, 1, 9], size: [5, 2, 5], rotationY: 0, expected_configuration: await configuration() });
+    assert.equal(result.isError, true); assert.match(result.text, /footprint prism/); assert.deepEqual(useViewerStore.getState().zoneSets[0].zones[0].center, zone.center);
     // What the prism keeps from a box write (name, vertical centre, height) still applies.
-    answer(await invoke('zones.box.write', { set_id: setId, zone_id: zone.id, name: 'Taller', center: [zone.center[0], 2, zone.center[2]], size: [zone.size[0], 4, zone.size[2]], rotationY: zone.rotationY, expected_configuration: configuration() }));
+    answer(await invoke('zones.box.write', { set_id: setId, zone_id: zone.id, name: 'Taller', center: [zone.center[0], 2, zone.center[2]], size: [zone.size[0], 4, zone.size[2]], rotationY: zone.rotationY, expected_configuration: await configuration() }));
     const after = useViewerStore.getState().zoneSets[0].zones[0];
     assert.deepEqual([after.name, after.center[1], after.size[1]], ['Taller', 2, 4]); assert.deepEqual(after.footprint, zone.footprint);
   });

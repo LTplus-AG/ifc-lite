@@ -34,18 +34,12 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
-import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
-
-/**
- * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
- * `/* ... *​/` comment, #3789) tolerated between the type name and `(` —
- * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
- * a wrapped record's attribute is silently unreadable here (`getStepAttr`
- * returns `null`), which reads identically to a genuinely-absent attribute.
- */
-const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
+import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
+import { BARE_REF_RE } from './reference-collector.js';
+import { getStepAttr, groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
+import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {
@@ -62,41 +56,9 @@ const WCS_TOLERANCE_M = 1e-6;
 /** 0-based attribute index of `IfcGeometricRepresentationSubContext.ParentContext`. */
 const SUBCONTEXT_PARENT_CONTEXT_ATTR = 6;
 
-function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
-  const source = dataStore.source;
-  if (!source) return null;
-  // @raw-entity-enumeration-ok point lookup for source bytes; MergeExporter bakes each edited input through STEP export and reparses it before this reader runs
-  const ref = dataStore.entityIndex.byId.get(expressId);
-  if (!ref) return null;
-  return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
-}
-
-/**
- * Extract one 0-based STEP attribute of `expressId`'s entity, or null if
- * unreadable.
- *
- * `splitTopLevelStepArguments` returning null (a malformed record, OR — since
- * #4162's per-slot check — a well-formed record whose split it cannot vouch
- * for) is one more way to land here, same as no source bytes or no regex
- * match: every caller of this function already reads null as "unresolvable,
- * treat permissively" (see {@link resolveContextWcsMetres}'s and
- * {@link parseVector}'s doc comments) and falls back to NOT unifying rather
- * than acting on a guess — the safe direction for a WCS/frame comparison,
- * unlike a unit conversion (`unit-normalize.ts`'s `rescaleEntityLengths`,
- * which throws instead: there is no permissive fallback for "this length is
- * in the wrong unit").
- */
-function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number): string | null {
-  const text = decodeEntity(dataStore, expressId);
-  const match = text?.match(RECORD_RE);
-  if (!match) return null;
-  const args = splitTopLevelStepArguments(match[1]);
-  const raw = args?.[index];
-  return raw === undefined ? null : raw.trim();
-}
-
+/** A `#N` reference, with STEP trivia (a comment, #3789) tolerated around it. */
 function refId(raw: string | null): number | null {
-  const m = raw?.match(/^#(\d+)$/);
+  const m = raw?.match(BARE_REF_RE);
   return m ? parseInt(m[1], 10) : null;
 }
 
@@ -180,6 +142,45 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
   return contextId === undefined ? null : resolveContextWcsMetres(dataStore, contextId, lengthUnitScale);
 }
 
+/** Relative tolerance for comparing two length unit scale factors. */
+const UNIT_SCALE_TOLERANCE = 1e-6;
+
+/** True when two length unit scales are equal within {@link UNIT_SCALE_TOLERANCE}. */
+export function unitScalesEqual(a: number, b: number): boolean {
+  const max = Math.max(Math.abs(a), Math.abs(b));
+  return a === b || max === 0 || Math.abs(a - b) <= max * UNIT_SCALE_TOLERANCE;
+}
+
+/**
+ * A context's georeference as the values that place it on the map: `placement` the operation and CRS, `unitScale`
+ * the map unit in metres, null when the parser cannot resolve it (then it matches no other).
+ */
+export interface GeorefSignature { placement: string; unitScale: number | null }
+
+/**
+ * The {@link GeorefSignature} of `dataStore`'s first representation context, or null when no coordinate operation
+ * sits on it. It reads the parser's georeference, which resolves the map unit, and fills IFC defaults (scale 1, no
+ * rotation), so two spellings of one georeference agree; a CRS without a map unit uses the project's length unit
+ * (`lengthUnitScale`). An operation the parser does not read as the model's georeference, and a geographic CRS
+ * (whose height unit it does not read), match no other. Two contexts in one frame with different georeferences
+ * place the same coordinates at two places on the map, so they must not be unified (#10798).
+ */
+export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, lengthUnitScale: number): GeorefSignature | null {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current context and operations
+  const { byType } = dataStore.entityIndex;
+  const contextId = (byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+  if (contextId === undefined || !COORDINATE_OPERATION_STEP_TYPES.some(type => (byType.get(type) ?? [])
+    .some(id => refId(getStepAttr(dataStore, id, 0)) === contextId))) return null;
+  const { mapConversion: op, projectedCRS: crs } = extractGeoreferencingOnDemand(dataStore) ?? {};
+  if (!op || op.sourceCRS !== contextId) return { placement: 'unread', unitScale: null };
+  return {
+    placement: JSON.stringify([op.operation ?? 'mapConversion', crs?.kind, crs?.name, crs?.geodeticDatum, crs?.verticalDatum,
+      crs?.mapProjection, crs?.mapZone, crs?.wellKnownText, op.eastings, op.northings, op.orthogonalHeight,
+      op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, op.scale ?? 1, op.factorX ?? 1, op.factorY ?? 1, op.factorZ ?? 1]),
+    unitScale: crs?.mapUnitResolved === false || crs?.kind === 'geographic' ? null : crs?.mapUnitScale ?? lengthUnitScale,
+  };
+}
+
 /**
  * The primary model's context state {@link planInfrastructureUnify} matches
  * every later model against: its subcontexts grouped by kind key
@@ -190,6 +191,11 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
 export interface PrimaryContextState {
   subContextsByKey: Map<string, number[]>;
   contextWcs: WcsSignature | null;
+  /**
+   * {@link resolveModelContextGeorefSignature} of the shared context so far: the primary model's, or, when it has
+   * none, that of the first later model that unified onto it. {@link planInfrastructureUnify} updates it.
+   */
+  contextGeoref: GeorefSignature | null;
 }
 
 /** Build the {@link PrimaryContextState} for the primary model. */
@@ -201,6 +207,7 @@ export function resolvePrimaryContextState(
   return {
     subContextsByKey: groupSubContextsByKey(dataStore, subContextIds),
     contextWcs: resolveModelContextWcs(dataStore, primaryScale),
+    contextGeoref: resolveModelContextGeorefSignature(dataStore, primaryScale),
   };
 }
 
@@ -218,6 +225,18 @@ function wcsSignaturesCompatible(a: WcsSignature | null, b: WcsSignature | null)
     && a.refDirection.every((value, index) => Math.abs(value - b.refDirection[index]) <= WCS_TOLERANCE_M);
 }
 
+/** True when two georeferences agree, or either model declares none (one georeferences the shared frame). */
+function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignature | null): boolean {
+  if (a === null || b === null) return true;
+  return a.placement === b.placement && a.unitScale !== null && b.unitScale !== null && unitScalesEqual(a.unitScale, b.unitScale);
+}
+
+/** 0-based attribute index of `IfcContext.RepresentationContexts` (IfcProject in IFC2X3 and IFC4, IfcProjectLibrary). */
+const PROJECT_REPRESENTATION_CONTEXTS_ATTR = 7;
+
+/** The `#N` references in an attribute slot of references (`$` has none); its comments are not read. */
+const refsIn = (slot: string): string[] => slot.replace(/\/\*[\s\S]*?\*\//g, '').match(/#\d+/g) ?? [];
+
 /**
  * Plan the whole shared-infrastructure dedup for one model — `MergedExporter`
  * delegates its entire "remap and skip duplicate infrastructure" step here.
@@ -226,7 +245,8 @@ function wcsSignaturesCompatible(a: WcsSignature | null, b: WcsSignature | null)
  * context (`IFCGEOMETRICREPRESENTATIONCONTEXT`) unifies only when its resolved
  * WCS frame agrees with the primary model's (origin in metres AND
  * axis/refDirection orientation, so a differing length unit or a rotated frame
- * doesn't produce a false match); a mismatch leaves it un-remapped — kept as
+ * doesn't produce a false match) and its georeference agrees with the one on
+ * the shared context (#10798); a mismatch leaves it un-remapped — kept as
  * this model's own root — so its untouched coordinates are never
  * re-interpreted against the wrong frame.
  *
@@ -237,7 +257,10 @@ function wcsSignaturesCompatible(a: WcsSignature | null, b: WcsSignature | null)
  * `contextsCompatible` computed once up front: a subcontext inherits its WCS
  * from `ParentContext`, so when the parent root's frame disagrees, retaining
  * the parent means every child must be retained too, not just remapped in
- * isolation. Mutates `sharedRemap`/`skipEntityIds`.
+ * isolation. Mutates `sharedRemap`/`skipEntityIds`, and records a unified
+ * model's georeference on `firstModelContext.contextGeoref` when it had none.
+ * Returns the top-level contexts it kept that one of the model's IfcProjects
+ * listed (directly or through a subcontext), for {@link listKeptContexts}.
  *
  * `lengthUnitScale` is the scale THIS model's raw WCS coordinates resolve
  * under. Under assume-shared the caller asserts raw coordinates are already
@@ -257,12 +280,15 @@ export function planInfrastructureUnify(
   lengthUnitScale: number,
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
-): void {
+): number[] {
   // Computed once, up front — not per type in the loop below — so its result
   // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
+  // Two georeferences that differ keep this model's context, and its conversion with it, as its own root (#10798).
+  const georef = resolveModelContextGeorefSignature(dataStore, lengthUnitScale);
   const contextsCompatible = wcsSignaturesCompatible(firstModelContext.contextWcs,
-    resolveModelContextWcs(dataStore, lengthUnitScale));
+    resolveModelContextWcs(dataStore, lengthUnitScale))
+    && georefSignaturesCompatible(firstModelContext.contextGeoref, georef);
   // Only the model's FIRST top-level context is (positionally) unified below;
   // any later sibling context — a model with both a 'Model' and a 'Plan'
   // context, say — is always retained. A subcontext may therefore unify ONLY
@@ -275,6 +301,8 @@ export function planInfrastructureUnify(
   const unifiedContextId = contextsCompatible && modelContextIds.length > 0 && firstContextIds.length > 0
     ? modelContextIds[0]
     : null;
+  // This model's georeference now lands on the shared context, so a later model must agree with it too.
+  if (unifiedContextId !== null) firstModelContext.contextGeoref ??= georef;
   for (const [type, firstIds] of firstModelInfraMap) {
     const thisIds = modelInfra.get(type);
     if (!thisIds || firstIds.length === 0 || thisIds.length === 0) continue;
@@ -295,4 +323,51 @@ export function planInfrastructureUnify(
     sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);
     skipEntityIds.add(thisIds[0]);
   }
+  // One rule: a kept context follows its own project, which folds into the primary. Listed by one of this model's
+  // IfcProjects, it joins the merged project (a library listing it too keeps it as well: IFC allows both); listed
+  // only by a library, or by nothing, it stays as it was.
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current projects
+  const projects = dataStore.entityIndex.byType.get('IFCPROJECT') ?? [];
+  const listed = projects.flatMap(id => refsIn(getStepAttr(dataStore, id, PROJECT_REPRESENTATION_CONTEXTS_ATTR) ?? '')
+    .map(ref => Number(ref.slice(1))));
+  // A project that lists a subcontext lists its root too (a root context has no ParentContext slot, so reads null).
+  const projectListed = new Set([...listed, ...listed.map(id => refId(getStepAttr(dataStore, id, SUBCONTEXT_PARENT_CONTEXT_ATTR)))]);
+  return modelContextIds.filter(id => !sharedRemap.has(id) && projectListed.has(id));
+}
+
+/**
+ * List `contextIds` in the merged project's RepresentationContexts (#10798). A compatible later model's IfcProject
+ * folds into the primary's, so a top-level context of it that was kept rather than unified (a different frame or
+ * georeference, or a second context its own project listed) belongs to no project otherwise. Only
+ * ids written to `lines` are listed.
+ */
+export function listKeptContexts(lines: string[], projectId: number | undefined, contextIds: readonly number[]): void {
+  if (projectId === undefined || contextIds.length === 0) return;
+  const wanted = new Set(contextIds), written: number[] = [];
+  let projectIndex = -1;
+  // Stops once the project and every kept context are found.
+  for (let index = 0; index < lines.length && (projectIndex < 0 || written.length < wanted.size); index++) {
+    const id = leadingId(lines[index]);
+    if (id === projectId) projectIndex = index;
+    else if (wanted.has(id)) written.push(id);
+  }
+  if (projectIndex < 0 || written.length === 0) return;
+  const text = lines[projectIndex], frame = stepRecordFrame(text, { allowMissingSemicolon: true });
+  const args = frame && splitTopLevelStepArguments(frameArgs(text, frame));
+  if (!frame || !args || args.length <= PROJECT_REPRESENTATION_CONTEXTS_ATTR) return;
+  // The slot holds references only, so it is rewritten from them: `(#2) /* c */` and `$ /* c */` read as the list.
+  args[PROJECT_REPRESENTATION_CONTEXTS_ATTR] = `(${[...refsIn(args[PROJECT_REPRESENTATION_CONTEXTS_ATTR]), ...written.map(id => `#${id}`)].join(',')})`;
+  lines[projectIndex] = withFrameArgs(text, frame, args.join(','));
+}
+
+/** The `#N` a STEP line starts with, or -1; read by char code, as it runs over every line of a merge. */
+function leadingId(line: string): number {
+  if (line.charCodeAt(0) !== 35) return -1;
+  let id = 0, index = 1;
+  for (; index < line.length; index++) {
+    const digit = line.charCodeAt(index) - 48;
+    if (digit < 0 || digit > 9) break;
+    id = id * 10 + digit;
+  }
+  return index > 1 ? id : -1;
 }

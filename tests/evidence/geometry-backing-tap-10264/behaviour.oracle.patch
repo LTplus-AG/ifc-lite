@@ -1,22 +1,22 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 4b16048..192018d 100644
+index 6e0cd1279f..d7f73cc3f7 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -202,7 +202,7 @@ export class StoreGeometryBackingTap {
-         // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
-         const source = shards === 'withhold' || next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
-         if (!source?.backing || source.failure || (source.instancedLost && !next.resupply && shards !== 'withhold')) next.instancedLost = true;
--        else void source.backing;
-+        else await carryBackedShards(source, next, withheld); // `carry-shards.ts`
+@@ -180,7 +180,7 @@ export class StoreGeometryBackingTap {
+       const carried: DecodedInstancedShard[] = [];
+       if (shards === 'carry') {
+         if (!previous?.backing || previous.failure || previous.instancedLost) next.instancedLost = true;
+-        else void previous.backing;
++        else for await (const shard of previous.backing.carryReader.instancedShards()) carried.push(shard);
        }
-     });
-     next.chain = this.settle(next, begun);
-@@ -369,7 +369,7 @@ export class StoreGeometryBackingTap {
-     const t = this.tracked.get(modelId), b = t?.backing;
-     return !!t?.flatSealed && !!b && !t.failure && !t.stale && b.isCurrent && !b.writer.error && !b.writer.hasUnsealed && b.writer.pendingBytes === 0 && b.directory.chunks.every((c) => c.state === 'durable');
+       next.backing = await this.registry.begin(modelId, this.options);
+       if (next.replaced) next.backing.supersede(); // replaced again before it began
+@@ -276,7 +276,7 @@ export class StoreGeometryBackingTap {
+ 
+   /** Shards were enqueued for this model that the tap never saw. */
+   private missedShards(modelId: string): boolean {
+-    return instancedShardRevision(modelId) < 0;
++    return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0);
    }
--  private missedShards(modelId: string): boolean { return false; }
-+  private missedShards(modelId: string): boolean { return this.preTap.missed(modelId, this.shardEvents.get(modelId) ?? 0); }
  
    status(): ModelBackingStatus[] {
-     return [...this.tracked].map(([modelId, tracked]) => {

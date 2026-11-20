@@ -23,6 +23,8 @@ it('#9523 recognises error responses under any model name', async () => {
   const cases: Array<[BlobPart, string, RegExp]> = [
     ['<title>403 Forbidden</title>', 'house.ifc', /HTML page/],
     ['<h1>Forbidden</h1>', 'model.ifcx', /HTML page/],
+    ['<!-- login -->\n<ARTICLE>Sign in</ARTICLE>', 'model.glb', /HTML page/],
+    ['<input/>', 'model.glb', /HTML page/],
     ['<!DOCTYPEhtml><p>denied</p>', 'scan.las', /HTML page/],
     [`<!DOCTYPE${' '.repeat(80)}html><h1>403</h1>`, 'model.glb', /HTML page/],
     [`<!-- ${'b'.repeat(5000)} --><html><body>Sign in</body></html>`, 'house.ifc', /HTML page/],

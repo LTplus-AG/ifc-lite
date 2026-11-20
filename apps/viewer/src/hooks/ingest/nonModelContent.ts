@@ -41,7 +41,17 @@ export function afterProlog(text: string): string {
   }
 }
 
-const HTML_START = /^<(?:!doctype\s*html|html|head|body|title|meta|h[1-6]|div|p|pre|span|center|form|script|style|noscript|a)[\s>]/i;
+const HTML_DOCUMENT_START = /^<(?:!doctype\s*html|html)[\s/>]/i;
+// Error pages can start with an HTML fragment, with no doctype or document wrapper.
+const HTML_ELEMENTS = new Set([
+  'a abbr address area article aside audio b base bdi bdo blockquote body br button canvas caption center',
+  'cite code col colgroup data datalist dd del details dfn dialog div dl dt em embed fieldset figcaption',
+  'figure footer form h1 h2 h3 h4 h5 h6 head header hgroup hr i iframe img input ins kbd label legend li link',
+  'main map mark menu meta meter nav noscript object ol optgroup option output p picture pre progress q',
+  'rp rt ruby s samp script search section select slot small source span strong style sub summary sup table',
+  'tbody td template textarea tfoot th thead time title tr track u ul var video wbr',
+].join(' ').split(' '));
+const MARKUP_ROOT = /^<([\w.:-]{1,128})(?=[\s/>])/;
 /** Error-root local names in any case, or ones ending in a capitalised Error/Exception/Fault (S3Error, ows:ExceptionReport, soap:Fault). */
 const XML_ERROR_NAMES = new Set(['error', 'errors', 'errorresponse', 'exception', 'exceptionreport', 'fault', 'accessdenied']);
 const XML_ERROR_SUFFIX = /(?:Error|Exception|Fault)(?:Report|Response)?$/;
@@ -89,10 +99,13 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
   const scan = await readScan(file, first);
   const text = scan === first ? headText : decode(scan);
   const body = afterProlog(text);
-  if (binary ? /^<(?:!doctype\s*html|html)[\s>]/i.test(body) : HTML_START.test(body)) return NON_MODEL_REASONS.html;
+  const qualifiedRoot = binary ? undefined : MARKUP_ROOT.exec(body)?.[1];
+  if (HTML_DOCUMENT_START.test(body) || (qualifiedRoot && HTML_ELEMENTS.has(qualifiedRoot.toLowerCase()))) {
+    return NON_MODEL_REASONS.html;
+  }
   const whole = file.size <= scan.byteLength;
-  if (!binary && whole && body.startsWith('<')) {
-    const root = (/^<([\w.:-]{1,128})/.exec(body.slice(0, 256))?.[1] ?? '').split(':').pop() ?? '';
+  if (whole && qualifiedRoot) {
+    const root = qualifiedRoot.split(':').pop() ?? '';
     if (XML_ERROR_NAMES.has(root.toLowerCase()) || XML_ERROR_SUFFIX.test(root)) return NON_MODEL_REASONS.xmlError;
   }
   if (!binary && whole && /^[{["]/.test(body)) {

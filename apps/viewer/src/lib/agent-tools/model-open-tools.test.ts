@@ -453,6 +453,7 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       ['https://example.com/house.ifc', 'Access Denied', undefined, /neither STEP/],
       ['https://example.com/model.ifcx', '<h1>Forbidden</h1>', undefined, /HTML page/],
       ['https://example.com/model.glb', '<form action="/login">Sign in</form>', undefined, /HTML page/],
+      ['https://example.com/model.glb', '<main>Sign in</main>', undefined, /HTML page/],
       ['https://example.com/terrain.xml', '<?xml version="1.0"?><Error/>', undefined, /XML error response/],
     ] as const) {
       respond = served(body, to);

@@ -43,6 +43,12 @@ export function carryReleasedMesh(source: MeshData, copy: MeshData): MeshData {
   return copy;
 }
 
+/** Whether this mesh's geometry arrays are exactly the ones a CPU release assigned (#10264). */
+export function isReleasedMesh(mesh: MeshData): boolean {
+  const retained = releasedCounts.get(mesh);
+  return retained !== undefined && (retained.positions === mesh.positions || retained.indices === mesh.indices);
+}
+
 /** Counts this mesh contributes to geometryResult totals, live or as retained at release. */
 export function meshGeometryCounts(mesh: MeshData): MeshGeometryCounts {
   const retained = releasedCounts.get(mesh);

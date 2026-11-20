@@ -210,7 +210,7 @@ export class HiddenLineClassifier {
     const depthAt = lineDepthAt(line);
     const pointAt = (t: number) => point2DLerp(line.line.start, line.line.end, t);
 
-    // For very short lines, just test the midpoint
+    // A degenerate line gets one sample interval (both endpoints).
     const numSamples = lineLength < EPSILON ? 1 : Math.max(2, samplesPerLine);
     const bisectionSteps = this.transitionBisectionSteps(line, numSamples);
 

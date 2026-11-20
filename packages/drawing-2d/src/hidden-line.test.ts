@@ -486,8 +486,8 @@ describe('HiddenLineClassifier transition point (bisected, not half a sample)', 
   it.each([[2, 9], [9, 2]])(
     'bisects an off-sample depth crossing, depth %d -> %d (#9705)',
     (depth, depthEnd) => {
-      // The crossing lies strictly between coarse samples. Reusing either
-      // endpoint's depth during bisection moves the split to a sample boundary.
+      // The crossing lies strictly between coarse samples, so the split is
+      // only right if each bisection probe uses its own lerped depth.
       const classifier = new HiddenLineClassifier({
         resolution: 256, samplesPerLine: 10, depthBias: 0,
       });
@@ -509,14 +509,14 @@ describe('HiddenLineClassifier transition point (bisected, not half a sample)', 
   );
 
   it.each([10, 10000])(
-    'ends the hidden stretch at the occluder edge, not half a sample past it (edge to y = %d)',
+    'ends the hidden stretch at the occluder edge, not half a sample past it (edge to y = %d) (#9705)',
     (endY) => {
       // A slab at view depth 5 covers y in [-1, 1.2] of a vertical edge at
       // view depth 7 behind it. At endY = 10 with 10 samples (spacing 1) the
       // flip is seen between y = 1 (hidden) and y = 2 (visible); the old
       // midpoint guess put the visible part's start at 1.5. At endY = 10000
-      // one sample spans 1000, and seven fixed halvings stopped near y = 3.9;
-      // bisection must continue to the raster pixel.
+      // one sample spans 1000, so bisection must run to raster-pixel
+      // precision, not a fixed fraction of the sample spacing.
       const classifier = new HiddenLineClassifier({ samplesPerLine: 10 });
       classifier.buildDepthBuffer([occluderMesh(-5, -1, 1.2)], { axis: 'z', position: 0, flipped: false }, 10);
       const edge: DrawingLine = {

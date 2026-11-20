@@ -33,10 +33,16 @@
 #                         rust-toolchain.toml governs this build and the
 #                         caller's own directory may resolve to a different
 #                         compiler entirely. A harness recording provenance
-#                         wants this value, not its own.
+#                         wants this value, not its own. Compiler overrides
+#                         are refused (below), so it is also the compiler
+#                         that built the binary (#10965).
 #
 # The worktree is removed on exit, success or not. Exit 1 if the patch does
-# not apply or the build fails; the cause is in the log.
+# not apply, cargo cannot read its config, the build fails, or --rustc-out
+# cannot record rustc -vV; the cause is in the log. Exit 1 too if RUSTC, a
+# rustc wrapper, or build.rustc* is in effect, because the binary would then
+# come from a compiler other than the ref's toolchain. As for cargo, an empty
+# wrapper (RUSTC_WRAPPER=, or "" in config) means no wrapper.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
@@ -67,7 +73,7 @@ while [ $# -gt 0 ]; do
     --worktree-root) WT_ROOT="${2:?--worktree-root needs a directory}"; shift 2;;
     --log) LOG="${2:?--log needs a file}"; shift 2;;
     --rustc-out) RUSTC_OUT="${2:?--rustc-out needs a path}"; shift 2;;
-    -h|--help) sed -n '2,41p' "$0"; exit 0;;
+    -h|--help) sed -n '2,45p' "$0"; exit 0;;
     *) echo "build-at-ref.sh: unknown argument $1" >&2; exit 2;;
   esac
 done
@@ -86,6 +92,25 @@ if [ -n "$LOG" ]; then
 else
   exec 3>&2
 fi
+
+for override in RUSTC RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER \
+    CARGO_BUILD_RUSTC CARGO_BUILD_RUSTC_WRAPPER CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER; do
+  # An empty wrapper means "no wrapper" to cargo (RUSTC_WRAPPER= skips
+  # sccache); an empty RUSTC is an error there, so refuse it here too.
+  case "$override" in
+    # RUSTC_WRAPPER (even empty) takes precedence over CARGO_BUILD_RUSTC_WRAPPER.
+    CARGO_BUILD_RUSTC_WRAPPER) [ -n "${RUSTC_WRAPPER+x}" ] && continue;;
+    CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER) [ -n "${RUSTC_WORKSPACE_WRAPPER+x}" ] && continue;;
+  esac
+  case "$override" in
+    *WRAPPER) value="${!override:-}"; fix="unset $override or set it empty";;
+    *) value="${!override+set}"; fix="unset $override";;
+  esac
+  if [ -n "$value" ]; then
+    echo "build-at-ref.sh: $fix before building (compiler override)" >&3
+    exit 1
+  fi
+done
 
 # Inherited GIT_* variables (e.g. from a git hook) override -C and would point
 # worktree add/apply/remove at the wrong repository or index.
@@ -112,6 +137,41 @@ if [ -n "$PATCH" ]; then
     echo "build-at-ref.sh: $PATCH does not apply at $REF" >&3
     exit 1
   fi
+fi
+# Cargo resolves build.rustc* from the worktree, its ancestors and CARGO_HOME,
+# so ask it from the build directory after injections and patches.
+# RUSTC_BOOTSTRAP lets this one query run on a ref whose toolchain is stable;
+# it does not reach the build. Fail closed if the query itself fails.
+if ! CARGO_CONFIG="$(cd "$WT" && RUSTC_BOOTSTRAP=1 cargo -Z unstable-options config get 2>&3)"; then
+  echo "build-at-ref.sh: cargo failed at $REF before building (config query, see above)" >&3
+  exit 1
+fi
+# A set RUSTC_*WRAPPER (empty, per the loop above) or an empty
+# CARGO_BUILD_RUSTC_*WRAPPER turns off that config key, as in cargo.
+KEYS=rustc
+[ -n "${RUSTC_WRAPPER+x}${CARGO_BUILD_RUSTC_WRAPPER+x}" ] || KEYS+="|rustc-wrapper"
+[ -n "${RUSTC_WORKSPACE_WRAPPER+x}${CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER+x}" ] || KEYS+="|rustc-workspace-wrapper"
+# Values print in any TOML string form ("", '', """, '''), so match the
+# key only. An empty value prints as "": no wrapper, but an unusable rustc.
+override="$(awk -v key="^build[.]($KEYS) = " '$0 ~ key && !/^build[.]rustc-[a-z-]+ = ""$/ { print; exit }' <<<"$CARGO_CONFIG")"
+if [ -n "$override" ]; then
+  key="${override%% = *}"
+  case "$key" in
+    build.rustc-wrapper) hint="; or set RUSTC_WRAPPER= for this run";;
+    build.rustc-workspace-wrapper) hint="; or set RUSTC_WORKSPACE_WRAPPER= for this run";;
+    *) hint="";;
+  esac
+  # Name the file now: the worktree, and any config it carries, is removed on exit.
+  origin="$(cd "$WT" && RUSTC_BOOTSTRAP=1 cargo -Z unstable-options config get --show-origin "$key" 2>/dev/null)" || true
+  origin="${origin##*$'\n'}"
+  case "$origin" in *" # "*) where="${origin##* # }";; *) where="Cargo config";; esac
+  # A file inside the worktree is gone after exit: name it as the ref has it.
+  wt_real="$(cd "$WT" && pwd -P)"
+  case "$where" in
+    "$wt_real"/*) where="${where#"$wt_real"/} at $REF (from the ref, --inject or --patch)";;
+  esac
+  echo "build-at-ref.sh: remove $key from $where before building (compiler override$hint)" >&3
+  exit 1
 fi
 # Refs older than the `profiling` profile get today's definition, so every
 # ref builds with the same optimisation and symbol settings. Only that profile
@@ -145,9 +205,10 @@ if ! ( cd "$WT" && CARGO_TARGET_DIR="$TARGET_DIR" \
   exit 1
 fi
 # The compiler that built it, resolved where it was resolved for the build:
-# same directory, same environment, after the build so a toolchain rustup had
-# to install first is the one reported. Written before the binary is copied
-# out, so a caller that finds $OUT finds this too.
+# same directory, same environment. Overrides were refused above, so this is
+# the toolchain cargo used (rustup installs it, if needed, at the config query).
+# Written before the binary is copied out, so a caller that finds $OUT finds
+# this too.
 if [ -n "$RUSTC_OUT" ]; then
   mkdir -p "$(dirname "$RUSTC_OUT")"
   if ! RUSTC_VV="$( cd "$WT" && rustc -vV 2>&3 )"; then

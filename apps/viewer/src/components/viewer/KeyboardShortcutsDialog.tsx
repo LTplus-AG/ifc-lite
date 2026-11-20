@@ -4,7 +4,8 @@
 
 import { isFeatureEnabled } from '@/lib/features';
 import { isSurfaceCommandAvailable } from './surface-command-features';
-import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { Dialog, DialogBody, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -20,7 +21,7 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 
 // Lazy: What's New inlines every package's release history (`__RELEASE_HISTORY__`,
 // over 1 MB and growing with each release), so it must not sit in the eager bundle.
-const WhatsNewTab = lazy(() => import('./KeyboardShortcutsWhatsNewTab').then(m => ({ default: m.WhatsNewTab })));
+const WhatsNewTab = lazyChunk(() => import('./KeyboardShortcutsWhatsNewTab').then(m => ({ default: m.WhatsNewTab })));
 
 // Re-exported for `ViewportWelcomeCard.privacy.test.tsx` (#5119): the start
 // screen renders the same banner and asserts it's the same component, not a

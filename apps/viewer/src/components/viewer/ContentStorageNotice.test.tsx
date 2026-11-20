@@ -13,6 +13,8 @@ import { blankDocument } from '@/lib/document/presets';
 import { DEFAULT_CLASH_SETTINGS, loadReviews, loadSettings, saveReviews, saveSettings } from '@/lib/clash/persistence';
 import { loadManualLibrary } from '@/lib/validation/manual/persistence';
 import { loadDocuments } from '@/lib/document/persistence';
+import { decodeBcfProject } from '@/lib/bcf-project/project-codec';
+import { readBcfSlot } from '@/lib/bcf-project/project-storage';
 import { createContentBackup, encodeContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from '@/lib/storage/content-backup';
 import '@/test/download-capture';
 import { Toaster } from '@/components/ui/toast';
@@ -26,6 +28,27 @@ function Notice() {
   return <ContentStorageNotice status={status} retry={() => useViewerStore.getState().retryDocumentsSave()}
     restore={() => useViewerStore.getState().restoreDocuments()} />;
 }
+
+it('#10976 restores a v2 BCF working copy through the library import control', async () => {
+  const bcfProject = JSON.stringify({ version: 1, project: { version: '3.0', name: 'Site coordination', topics: [
+    { guid: 'topic', title: 'Check the sleeve', comments: [], viewpoints: [] },
+  ] } });
+  const backup = { version: 2, libraries: { document: [], validation: [], comparison: [] }, bcfProject };
+  const ui = render(<Notice />);
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"]');
+  assert.ok(input);
+  Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(backup)], 'bcf-v2.json')] });
+  try {
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => !useViewerStore.getState().contentStorageActionBusy, 'library import finishes');
+    assert.equal(useViewerStore.getState().bcfProject?.topics.get('topic')?.title, 'Check the sleeve');
+    const saved = await readBcfSlot();
+    assert.ok(saved && saved !== 'unreadable');
+    assert.equal(decodeBcfProject(saved.data)?.name, 'Site coordination');
+  } finally {
+    await act(async () => { await useViewerStore.getState().clearBcfProject(); });
+  }
+});
 
 it('#6679 a refused backup import stages an independent exportable draft and Retry save commits that same copy', async () => {
   const entry = { ...blankDocument(), name: 'Existing saved document' };

@@ -69,6 +69,8 @@
  * graph.
  */
 import { reloadKeepingOpenModels } from './reload-resume.js';
+import { isCssPreloadFailure } from './chunk-load-error.js';
+import { reportOfflineChunkFailure, reportStaleDeployment } from './stale-deployment.js';
 
 /**
  * sessionStorage key holding the epoch-ms of the last chunk-skew reload.
@@ -96,77 +98,40 @@ const RELOAD_TS_KEY = 'ifclite:chunk-skew-reload-ts';
  */
 const RELOAD_DEBOUNCE_MS = 60_000;
 
-/** Vite's wording for arm 1. The only rejection reason it constructs itself. */
-const CSS_PRELOAD_FAILURE = /unable to preload css for /i;
-
-/**
- * How each engine words a failed dynamic import. Chromium and Gecko say
- * "Failed to fetch dynamically imported module" / "error loading dynamically
- * imported module"; WebKit says "Importing a module script failed."
- *
- * The `module script` arm covers the OTHER shape a rotated chunk takes: a host
- * that answers a missing asset with its SPA fallback rather than a 404 serves
- * `index.html`, and the browser rejects it as "Failed to load module script:
- * Expected a JavaScript module script but the server responded with a MIME type
- * of text/html". Same skew, no 404 anywhere. ifclite.com does return a real 404
- * for `/assets/*`, but the recovery should not depend on that staying true.
- */
-const MODULE_LOAD_FAILURE =
-  /failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed|failed to load module script/i;
-
-/** Pull a message out of whatever was thrown, without assuming an Error. */
-function messageOf(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === 'string') return err;
-  const m = (err as { message?: unknown } | null)?.message;
-  return typeof m === 'string' ? m : '';
-}
-
 /** The `vite:preloadError` event, which carries the underlying error on `payload`. */
 export interface VitePreloadErrorEvent extends Event {
   payload?: unknown;
 }
 
-/**
- * True when this event came from Vite's CSS-preload arm, where suppressing the
- * re-throw cannot poison the resolved module (Vite still calls `baseModule()`).
- */
-export function isCssPreloadFailure(payload: unknown): boolean {
-  return CSS_PRELOAD_FAILURE.test(messageOf(payload));
-}
-
-/**
- * True when `err` is a chunk that failed to load, rather than a crash inside a
- * chunk that loaded fine.
- *
- * `ChunkErrorBoundary` wraps whole page subtrees, so it catches every render
- * error under them, not just a rejected `lazy()` import. Without this
- * distinction an ordinary component crash would tell the user their tab was out
- * of date and would be filed under the chunk-skew context in error tracking,
- * mis-grouping a real bug with an auto-recovered one. That is the same
- * mis-classification that made a failed maplibre import look like a dead GPU in
- * issue #1926, so it is worth not reintroducing one file over.
- */
-export function isChunkLoadError(err: unknown): boolean {
-  const message = messageOf(err);
-  return MODULE_LOAD_FAILURE.test(message) || CSS_PRELOAD_FAILURE.test(message);
-}
-
 export interface ChunkSkewDeps {
   now: () => number;
   reload: () => void;
+  isReloadPending: (now: number) => boolean;
   /** Has a chunk-skew reload already run inside the debounce window? */
   hasRecentReload: (now: number) => boolean;
   /** Persist the attempt. Returning false VETOES the reload (storage unavailable). */
   rememberReload: (now: number) => boolean;
   /** Record that a reload is in flight, so consequential exceptions can be dropped. */
   markReloadPending: (now: number) => void;
+  /** The reload was refused: ask the user to reload instead (#10684). */
+  reportRefused: (reason: 'offline' | 'reload-unavailable') => void;
+  reportIfReloadStalls?: () => void;
 }
 
 const defaultDeps: ChunkSkewDeps = {
   now: () => Date.now(),
-  // Keep the open models: the boot reopens them (./reload-resume.ts).
+  isReloadPending: (now) => isWithinReloadWindow(now, reloadPendingSince),
   reload: () => reloadKeepingOpenModels('automatic'),
+  reportIfReloadStalls: () => {
+    // A completed reload discards this timer. Only broken imports need a
+    // manual recovery action if the original page stays open.
+    if (noticeForReload === reloadPendingSince) return;
+    noticeForReload = reloadPendingSince;
+    afterChunkReloadWindow(() => {
+      if (isOffline()) reportOfflineChunkFailure();
+      else reportStaleDeployment();
+    });
+  },
   hasRecentReload: (now) => {
     try {
       const raw = sessionStorage.getItem(RELOAD_TS_KEY);
@@ -202,13 +167,17 @@ const defaultDeps: ChunkSkewDeps = {
   markReloadPending: (now) => {
     reloadPendingSince = now;
   },
+  reportRefused: (reason) => {
+    if (reason === 'offline') reportOfflineChunkFailure();
+    else reportStaleDeployment();
+  },
 };
 
 /** What the handler decided, exposed for tests and for the caller's own logging. */
 export type ChunkSkewOutcome =
-  /** Debounced or storage unusable - Vite re-throws, the error surfaces. */
+  /** The error surfaces, with a reload notice for chunk-load failures. */
   | 'surfaced'
-  /** A reload was triggered. The import still rejects (arm 2) or continues (arm 1). */
+  /** A reload was triggered or is already in flight. */
   | 'reloaded';
 
 /**
@@ -223,19 +192,38 @@ export function handlePreloadError(
   // failed stylesheet preload from failing an import that would have succeeded.
   // Decided BEFORE the reload budget, because it is about what the import
   // resolves to, not about whether we reload.
-  if (isCssPreloadFailure(event.payload)) event.preventDefault();
+  const css = isCssPreloadFailure(event.payload);
+  if (css) event.preventDefault();
+  return recoverChunkLoad(deps, !css);
+}
 
-  // An offline fetch cannot be repaired by navigating to another offline page.
-  // Preserve the rejected import so its feature boundary can surface the error.
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'surfaced';
-
+/** Apply the same reload budget to Vite events and recognized lazy rejections. */
+export function recoverChunkLoad(
+  deps: ChunkSkewDeps = defaultDeps,
+  needsNotice = true,
+): ChunkSkewOutcome {
   const now = deps.now();
-  if (deps.hasRecentReload(now)) return 'surfaced'; // already tried; do not loop
-  if (!deps.rememberReload(now)) return 'surfaced'; // could not bound the retry
+  if (isOffline()) {
+    if (needsNotice) deps.reportRefused('offline');
+    return 'surfaced';
+  }
+  if (deps.isReloadPending(now)) {
+    if (needsNotice) deps.reportIfReloadStalls?.();
+    return 'reloaded';
+  }
+  if (deps.hasRecentReload(now) || !deps.rememberReload(now)) {
+    if (needsNotice) deps.reportRefused('reload-unavailable');
+    return 'surfaced';
+  }
 
   deps.markReloadPending(now);
+  if (needsNotice) deps.reportIfReloadStalls?.();
   deps.reload();
   return 'reloaded';
+}
+
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
 // ── Telemetry noise suppression ─────────────────────────────────────────────
@@ -261,6 +249,7 @@ export function handlePreloadError(
 //     genuinely-broken-deploy case - nothing is suppressed and every exception
 //     reaches error tracking, which is exactly when we need to hear about it.
 let reloadPendingSince: number | null = null;
+let noticeForReload: number | null = null;
 
 /**
  * Upper bound on the suppression window. `reload()` normally commits in tens of
@@ -292,12 +281,26 @@ export function shouldSuppressChunkSkewNoise(
   deps: ChunkSkewNoiseDeps = defaultNoiseDeps,
 ): boolean {
   if (!event || event.event !== '$exception') return false;
-  const since = deps.reloadPendingSince();
+  return isWithinReloadWindow(deps.now(), deps.reloadPendingSince());
+}
+
+function isWithinReloadWindow(now: number, since: number | null): boolean {
   if (since === null) return false;
-  const elapsed = deps.now() - since;
+  const elapsed = now - since;
   // A clock that jumped backwards would make `elapsed` negative and suppress
   // indefinitely; treat anything outside the forward window as "not pending".
   return elapsed >= 0 && elapsed < RELOAD_SUPPRESSION_WINDOW_MS;
+}
+
+/** Run only if the tab remains open long enough for reload suppression to expire. */
+export function afterChunkReloadWindow(callback: () => void): void {
+  const now = Date.now();
+  const since = reloadPendingSince;
+  if (since !== null && isWithinReloadWindow(now, since)) {
+    setTimeout(callback, RELOAD_SUPPRESSION_WINDOW_MS - (now - since));
+  } else {
+    callback();
+  }
 }
 
 let installed = false;

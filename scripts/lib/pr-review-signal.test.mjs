@@ -130,8 +130,10 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     // The silent-revert guard (#8377): git only, judged by the required aggregate.
     'Silent revert guard',
     'Build + WASM + Rust + Node',
-    // #3878: the two CSG accept gates are feature builds nothing else compiles.
-    'CSG accept gates (feature builds)',
+    // #3878: each CSG feature combination has its own check.
+    'CSG accept gates (manifold)',
+    'CSG accept gates (topology)',
+    'CSG accept gates (both)',
     // #6959: the perf-ratchet gate, judging the measurement `build` uploads.
     'Perf ratchet ceilings',
     // #6982: the callgrind measurement the perf-ratchet gate judges.
@@ -149,7 +151,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 55);
+  assert.equal(names.length, 57);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

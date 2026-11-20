@@ -10,11 +10,12 @@
  * Its own module because `GeoreferencingPanel.tsx` is at its size budget.
  */
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import type { GeorefDiagnosisSectionProps } from './georef-diagnosis-section';
 
-const GeorefDiagnosisSection = lazy(() => import('./georef-diagnosis-section'));
-const GeorefSiteSection = lazy(() => import('./georef-site-section'));
+const GeorefDiagnosisSection = lazyChunk(() => import('./georef-diagnosis-section'));
+const GeorefSiteSection = lazyChunk(() => import('./georef-site-section'));
 
 export function GeorefDiagnosis(props: GeorefDiagnosisSectionProps) {
   return (

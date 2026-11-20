@@ -5,6 +5,10 @@ import { useViewerStore } from '@/store';
 import { viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { currentClashes } from './clash-native';
+import { pageInput, type PageInput } from './result-limit';
+import { libraryPage } from './library-page';
+import { revisionInput } from './state-revision';
+import { groupLibraryRevision } from './clash-group-revision';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -33,7 +37,7 @@ export const clashReviewOperations = [
       properties: {
         action: { type: 'string', enum: ['select', 'retry', 'restore'] },
         workspace_id: { type: 'string', maxLength: 200 },
-        expected_library: { type: 'string', maxLength: 1000000 },
+        expected_library: revisionInput,
       },
       required: ['action', 'workspace_id', 'expected_library'],
       additionalProperties: false,
@@ -44,8 +48,7 @@ export const clashReviewOperations = [
       );
       assertToolActive(c);
       const guard = () => {
-        if (JSON.stringify(useClashGroupLibrary.getState().entries) !== i.expected_library)
-          throw new Error('Group library changed.');
+        if (groupLibraryRevision(useClashGroupLibrary.getState()) !== i.expected_library) throw new Error('Group library changed.');
       };
       if (i.action === 'select')
         return out(
@@ -58,7 +61,7 @@ export const clashReviewOperations = [
             )
               throw new Error('Native group workspace unavailable.');
             useClashGroupLibrary.setState({ activeId: i.workspace_id });
-            return { active_id: i.workspace_id };
+            return { active_id: i.workspace_id, expected_library: groupLibraryRevision(useClashGroupLibrary.getState()) };
           }),
         );
       const ok = await c.commitAsync(() => {
@@ -66,21 +69,22 @@ export const clashReviewOperations = [
         return i.action === 'retry' ? clashGroupLibrary.retry() : clashGroupLibrary.restore();
       });
       if (!ok) throw new Error('Native group storage action failed.');
-      return out({ completed: i.action });
+      return out({ completed: i.action, expected_library: groupLibraryRevision(useClashGroupLibrary.getState()) });
     },
   ),
-  viewerOperation(
+  viewerOperation<PageInput>(
     meta(
       'clash.groups.read',
-      'Read native durable manual-group workspaces, active population and save state; supplies exact workspace snapshot guards.',
+      'Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create. status summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries.',
     ),
-    emptySchema,
-    async (_, c) => {
+    pageInput,
+    async (i, c) => {
       const { useClashGroupLibrary, clashGroupLibrary } = await import('@/lib/clash/group-workspace');
       await clashGroupLibrary.initialize();
       assertToolActive(c);
-      const s = useClashGroupLibrary.getState();
-      return out({ ...s, expected_library: JSON.stringify(s.entries) });
+      const { entries, status, activeId } = useClashGroupLibrary.getState(), expected_library = groupLibraryRevision({ entries, activeId });
+      const paged = libraryPage(entries, status, i, { activeId, expected_library });
+      return out({ entries: paged.entries, ...paged.page, status: paged.storage, activeId, expected_library });
     },
   ),
   viewerOperation<{ clash_ids: string[]; run_seq: number }>(
@@ -119,7 +123,7 @@ export const clashReviewOperations = [
       type: 'object',
       properties: {
         workspace_json: { type: 'string', maxLength: 1000000 },
-        expected_library: { type: 'string', maxLength: 1000000 },
+        expected_library: revisionInput,
       },
       required: ['workspace_json', 'expected_library'],
       additionalProperties: false,
@@ -131,13 +135,16 @@ export const clashReviewOperations = [
       const workspace = decodeClashGroupWorkspace(JSON.parse(i.workspace_json));
       if (!workspace) throw new Error('Invalid native group partition.');
       assertToolActive(c);
+      let next = '';
       const ok = await c.commitAsync(() => {
-        if (JSON.stringify(useClashGroupLibrary.getState().entries) !== i.expected_library)
-          throw new Error('Group workspace changed.');
-        return clashGroupLibrary.put(workspace.id, workspace);
+        if (groupLibraryRevision(useClashGroupLibrary.getState()) !== i.expected_library) throw new Error('Group workspace changed.');
+        const saved = clashGroupLibrary.put(workspace.id, workspace);
+        // put changes the entries synchronously; the token is the state this write made, not whatever lands during the save.
+        next = groupLibraryRevision(useClashGroupLibrary.getState());
+        return saved;
       });
       if (!ok) throw new Error('Native group persistence failed.');
-      return out({ id: workspace.id, persisted: true });
+      return out({ id: workspace.id, persisted: true, expected_library: next });
     },
   ),
   viewerOperation(

@@ -10,17 +10,18 @@ import { describe, it } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+const COMMITTED_PREVIEW = 'stores its candidate inside c.commit, with the committed scene preview it controls';
 /** Modules whose host-owned stores never hold an undelivered candidate, and why. */
 const EXEMPT: Record<string, string> = {
-  'analytics-appearance.ts': 'stores its candidate inside c.commit, with the committed scene preview it controls',
-  'appearance-native-references.ts': 'stores its candidate inside c.commit, with the committed scene preview it controls',
+  'analytics-appearance.ts': COMMITTED_PREVIEW,
+  'appearance-native-references.ts': COMMITTED_PREVIEW,
   'appearance-native-scan-context.ts': 'declares the scan store; appearance-native-scan.ts writes it and retains',
   'artifacts.ts': 'creates artifacts through c.commit, a committed write',
   'executor.ts': 'the job map itself: undelivered jobs run their retained undos',
 };
 
 describe('every operation that stores a host candidate registers its undo (#10918)', () => {
-  it('modules with a host-owned token store call c.retain, or are exempt for a stated reason', () => {
+  it('modules with a host-owned token store retain their candidates, or are exempt for a stated reason', () => {
     const missing: string[] = [];
     for (const file of readdirSync(here).filter(name => name.endsWith('.ts') && !name.endsWith('.test.ts'))) {
       const source = readFileSync(join(here, file), 'utf8');
@@ -28,9 +29,9 @@ describe('every operation that stores a host candidate registers its undo (#1091
       // fresh tokens, must register how to remove an entry the caller never receives (executor.ts runs it).
       const declaresStore = /new WeakMap<[^>]*,\s*(Map<string|\(\) =>)/.test(source) && /randomUUID\(\)/.test(source);
       if (!declaresStore || EXEMPT[file]) continue;
-      if (!/\bc\.retain\(/.test(source)) missing.push(file);
+      if (!/\b(retainCandidate|c\.retain)\(/.test(source)) missing.push(file);
     }
-    assert.deepEqual(missing, [], 'a candidate-storing operation without c.retain leaks its candidate when the executor refuses its result');
+    assert.deepEqual(missing, [], 'a candidate-storing operation that neither calls retainCandidate nor c.retain leaks its candidate when the executor refuses its result');
   });
 
   it('the exempt list names only modules that exist', () => {

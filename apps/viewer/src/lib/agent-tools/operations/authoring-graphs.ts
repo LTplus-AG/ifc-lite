@@ -9,7 +9,7 @@ import type { ToolHost } from '../types';
 import { operation, emptySchema, referenceSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
-import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
+import { admitCandidate, retainCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const tokenInput = { type: 'object' as const, properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['token' as const], additionalProperties: false as const };
@@ -101,9 +101,8 @@ export const graphAuthoringOperations = [
     // Again after the await: a concurrent prepare may have taken the last place.
     let preview_json: string;
     try { assertToolActive(c); review.validate(); preview_json = JSON.stringify(review.preview); admit(true); } catch (error) { review.dispose?.(); throw error; }
-    const token = crypto.randomUUID(); owned(c).set(token, { modelId: c.model.id, store: c.model.store, review });
-    // A result the executor refuses never reaches the caller, so its candidate must not keep a place under the cap.
-    c.retain(() => { const entries = owned(c); if (entries.get(token)?.receipt === undefined) release(entries, token); });
+    const token = crypto.randomUUID();
+    retainCandidate(c, owned(c), token, { modelId: c.model.id, store: c.model.store, review }, { keep: entry => entry.receipt !== undefined, release: entry => entry.review?.dispose?.() });
     return { token, preview_json };
   })),
   operation<{ token: string }>(meta('authoring.graph.apply', 'model', 'Apply one exact prepared native graph/Room candidate through its native synchronous review commit. Preserves all native roles, source/evidence checks and native undo. A token applies once.', true), tokenInput, async (i, c) => {

@@ -18,8 +18,10 @@ export const coordinationScriptRunOperations = [
     try {
       return await c.commitAsync(async () => {
         if (useViewerStore.getState().scriptEditorRevision !== i.expected_revision) throw new Error('Native editor changed before script admission.');
-        const pending = runner.execute(source); if (c.signal?.aborted) cancel(); const result = await pending;
-        return { state: c.signal?.aborted ? 'cancelled' : result ? 'completed' : 'failed', result, error: useViewerStore.getState().scriptLastError, diagnostics: useViewerStore.getState().scriptLastDiagnostics };
+        const pending = runner.execute(source); const epoch = useViewerStore.getState().scriptRunEpoch; if (c.signal?.aborted) cancel(); const result = await pending;
+        // The store's error and diagnostics are this run's only while no later run has replaced its epoch.
+        const own = useViewerStore.getState().scriptRunEpoch === epoch;
+        return { state: c.signal?.aborted ? 'cancelled' : result ? 'completed' : 'failed', result, error: own ? useViewerStore.getState().scriptLastError : null, diagnostics: own ? useViewerStore.getState().scriptLastDiagnostics : [] };
       });
     } finally { c.signal?.removeEventListener('abort', cancel); runner.dispose(); }
   }),

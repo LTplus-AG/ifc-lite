@@ -29,6 +29,8 @@ export type GeometryBackingCommand =
 
 type Xyz = { x: number; y: number; z: number };
 export interface CameraPose { position: Xyz; target: Xyz; up: Xyz }
+/** TEST ONLY: one instanced entity's occurrence bounds as the scene holds them (placed frame). */
+export interface InstancedOccurrenceBounds { id: number; bounds: ReturnType<ReturnType<Renderer['getScene']>['getInstancedEntityBounds']> }
 
 export interface SnapProbe {
   outcome: string;
@@ -48,7 +50,7 @@ export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined 
 /** `renderer` is needed only by `release-for-test`; a test may start the tap
  * before the viewport has one, so the whole stream is observed. */
 export async function geometryBackingCommand(store: StoreApi<TapState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[] | CameraPose[]> {
+  Promise<ModelBackingStatus[] | SnapProbe[] | CameraPose[] | InstancedOccurrenceBounds[]> {
   if (command.action === 'camera-for-test') {
     const camera = renderer?.getCamera();
     if (!camera) throw new Error('Camera poses need the viewport renderer');

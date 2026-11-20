@@ -21,7 +21,7 @@
 
 import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
-import { type InstancedShardSupply, instancedShardGeneration, instancedShardModelEpoch, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
+import { type InstancedShardSupply, type PendingInstancedShard, instancedShardGeneration, instancedShardModelEpoch, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
@@ -54,7 +54,7 @@ interface Tracked extends ResupplyState {
   chain: Promise<void>;
   failure?: Error;
   shards: number;
-  sources: (ArrayBuffer | null)[]; // the queued bytes each backed shard came from, in backed order
+  sources: (PendingInstancedShard | null)[]; // the queue entry each backed shard came from, in backed order
   /** Instanced occurrences backed; empty shard records are not instancing. */
   occurrences: number;
   /** The store list changed after a CPU release: this generation is kept durable but no longer answers. */
@@ -110,13 +110,13 @@ export class StoreGeometryBackingTap {
         const g = instancedShardGeneration();
         for (const id of event.modelIds) {
           if (event.full) tap.abandon(id, { generation: g - 1, epoch: Infinity });
-          else tap.withhold(id, (event.withheld ?? []).filter((shard) => shard.modelId === id).map((shard) => shard.bytes));
+          else tap.withhold(id, (event.withheld ?? []).filter((shard) => shard.modelId === id));
         }
         return;
       }
       if (event.kind !== 'enqueued' || !event.shards) return;
       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
-      for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
+      for (const shard of event.shards) tap.ingestShard(shard);
     }));
     tap.sync(store.getState());
     // Only a complete, current generation answers; anything else is unavailable.
@@ -183,7 +183,7 @@ export class StoreGeometryBackingTap {
     }
   }
 
-  private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost' | 'withhold', withheld?: ReadonlySet<ArrayBuffer>): void {
+  private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost' | 'withhold', withheld?: ReadonlySet<PendingInstancedShard>): void {
     const previous = this.tracked.get(modelId);
     const key = `${modelId}\u0001${++this.sequence}`;
     // Every older generation stays durable until this one is acknowledged complete (`seal`).
@@ -264,7 +264,7 @@ export class StoreGeometryBackingTap {
     });
   }
 
-  private ingestShard(modelId: string, bytes: ArrayBuffer): void {
+  private ingestShard(entry: PendingInstancedShard, { modelId, bytes } = entry): void {
     if (this.stopped) return;
     // A sealed generation's writer is closed: stage a successor that carries it, then append there.
     if (!this.tracked.has(modelId)) this.regenerate(modelId, undefined, 'none');
@@ -287,7 +287,7 @@ export class StoreGeometryBackingTap {
     target.occurrences += shard.instances.length;
     if (target.resupply) target.resupply.received++;
     // Recorded in backed order (after any carried shards), for `withhold`.
-    this.enqueue(target, async () => { await this.writer(target).appendInstancedShard(shard); target.sources.push(bytes); });
+    this.enqueue(target, async () => { await this.writer(target).appendInstancedShard(shard); target.sources.push(entry); });
   }
 
   /** Lost instancing is whole again only by the model's own statement, matched shard for shard. */
@@ -297,9 +297,9 @@ export class StoreGeometryBackingTap {
   }
 
   /** Shards dropped before upload: keep exactly what the scene drew, lost until the rest is stated. */
-  private withhold(modelId: string, bytes: readonly ArrayBuffer[]): void {
+  private withhold(modelId: string, entries: readonly PendingInstancedShard[]): void {
     const tracked = this.stopped ? undefined : this.tracked.get(modelId); // resolved against backed order once the chain settles
-    if (tracked && this.store.getState().models.has(modelId)) this.regenerate(modelId, tracked.meshes, 'withhold', new Set(bytes));
+    if (tracked && this.store.getState().models.has(modelId)) this.regenerate(modelId, tracked.meshes, 'withhold', new Set(entries));
   }
 
   /** Instancing whose shards were dropped before upload: a fresh lost generation, never carrying the abandoned shards. */

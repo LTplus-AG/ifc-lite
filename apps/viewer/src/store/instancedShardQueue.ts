@@ -23,6 +23,7 @@
 import { perfTally } from '@ifc-lite/load-trace';
 import { noteInstancedShardModel } from './instancedShardModels.js';
 
+/** One queued shard. The entry object itself is its identity: two entries may share bytes. */
 export interface PendingInstancedShard {
   readonly modelId: string;
   readonly bytes: ArrayBuffer;
@@ -46,6 +47,9 @@ export interface InstancedShardQueueEvent {
 type Listener = (event: InstancedShardQueueEvent) => void;
 
 let pending: PendingInstancedShard[] = [];
+/** Shards a drain has taken and `consume` has not yet settled; a discard voids them in place. */
+interface InFlight { readonly shards: readonly PendingInstancedShard[]; readonly outcomes: Map<PendingInstancedShard, InstancedShardOutcome>; readonly voided: Set<PendingInstancedShard> }
+const inFlight = new Set<InFlight>();
 const listeners = new Set<Listener>();
 // Bumped by every full discard (session reset, all models cleared). A load
 // captures it after its own reset; its shards are refused once it is behind.
@@ -114,22 +118,25 @@ export type InstancedShardOutcome = 'uploaded' | 'dropped' | 'waiting';
  * uploads nothing twice. Listeners hear `drained` only for shards that left,
  * after `consume` finished, so a synchronous upload is done before anyone
  * treats the model as settled. A throw is rethrown after the queue is
- * restored. A full discard during `consume` wins: its shards are not restored.
+ * restored. A discard during `consume` wins: it voids the taken shards it covers that are not
+ * yet settled, reports them `withheld` itself, and they are never restored nor settled later.
  */
 export function drainInstancedShards(
   consume: (shards: readonly PendingInstancedShard[], settle: (shard: PendingInstancedShard, outcome: InstancedShardOutcome) => void) => void,
 ): void {
   if (pending.length === 0) return;
   const taken = pending;
-  const takenGeneration = generation;
   pending = [];
-  const outcomes = new Map<PendingInstancedShard, InstancedShardOutcome>();
+  const batch: InFlight = { shards: taken, outcomes: new Map(), voided: new Set() };
+  const { outcomes, voided } = batch;
+  inFlight.add(batch);
   try {
-    consume(taken, (shard, outcome) => { outcomes.set(shard, outcome); });
+    consume(taken, (shard, outcome) => { if (!voided.has(shard)) outcomes.set(shard, outcome); });
   } finally {
+    inFlight.delete(batch);
     const gone = (shard: PendingInstancedShard) => outcomes.get(shard) === 'uploaded' || outcomes.get(shard) === 'dropped';
-    const restored = taken.filter((shard) => !gone(shard));
-    if (restored.length > 0 && generation === takenGeneration) pending = [...restored, ...pending];
+    const restored = taken.filter((shard) => !gone(shard) && !voided.has(shard));
+    if (restored.length > 0) pending = [...restored, ...pending];
     const uploaded = taken.filter((shard) => outcomes.get(shard) === 'uploaded');
     const lost = taken.filter((shard) => outcomes.get(shard) === 'dropped');
     if (uploaded.length > 0) emit({ kind: 'drained', modelIds: modelIdsOf(uploaded) });
@@ -149,7 +156,17 @@ export function discardInstancedShards(modelId?: string): void {
   // A model-scoped discard ends that model's supply even when nothing was queued: a load
   // still running for it must not feed the next supply (`instancedShardSupplyToken`).
   else bumpModelEpoch(modelId);
-  const dropped = modelId === undefined ? pending : pending.filter((shard) => shard.modelId === modelId);
+  const covers = (shard: PendingInstancedShard) => modelId === undefined || shard.modelId === modelId;
+  const dropped = pending.filter(covers);
+  // Taken by a running drain but not settled: it is not in `pending`, yet it never reached the scene.
+  for (const batch of inFlight) {
+    for (const shard of batch.shards) {
+      const outcome = batch.outcomes.get(shard);
+      if (covers(shard) && outcome !== 'uploaded' && outcome !== 'dropped' && !batch.voided.has(shard)) {
+        batch.voided.add(shard); batch.outcomes.delete(shard); dropped.push(shard);
+      }
+    }
+  }
   if (dropped.length === 0) return;
 
   pending = modelId === undefined ? [] : pending.filter((shard) => shard.modelId !== modelId);

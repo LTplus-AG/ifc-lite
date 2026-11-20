@@ -418,6 +418,39 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  const idsIn = async (backing: { reader: { instancedShards(): AsyncIterable<{ instances: { entityId: number }[] }> } }) => {
+    const ids: number[] = [];
+    for await (const shard of backing.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    return ids.sort();
+  };
+
+  it('#10888 two queued entries sharing one ArrayBuffer: dropping one keeps the drawn one backed', async () => {
+    const store = storeWith({ mx: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    const shared = shardBytes(70);
+    enqueueInstancedShards('mx', [shared, shared], instancedShardSupplyToken('mx'));
+    drainInstancedShards((shards, settle) => { settle(shards[0], 'uploaded'); settle(shards[1], 'dropped'); });
+    const [status] = await tap.seal();
+    assert.equal(status.complete, false, 'one occurrence never reached the scene');
+    assert.equal(status.error, undefined, 'the drawn entry is resolved, not a collision failure');
+    assert.deepEqual(await idsIn(tap.backing('mx')!), [70], 'exactly the one drawn entry');
+    await tap.stop();
+  });
+
+  it('#10888 a model-scoped discard inside consume: the taken shard is withheld, its statement never completes the model', async () => {
+    const store = storeWith({ mx: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    const token = instancedShardSupplyToken('mx');
+    enqueueInstancedShards('mx', [shardBytes(70)], token);
+    completeInstancedShardSupply('mx', 1, token);
+    drainInstancedShards((shards, settle) => { discardInstancedShards('mx'); settle(shards[0], 'waiting'); });
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); }); // nothing may come back
+    const [status] = await tap.seal();
+    assert.equal(status.complete, false, 'the scene never drew 70: never complete');
+    assert.deepEqual(await idsIn(tap.backing('mx')!), [], 'the voided shard is not backed');
+    await tap.stop();
+  });
+
   it('#10888 a full discard after the statement voids it even when it dropped nothing (generation fence)', async () => {
     const store = storeWith({ dg: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });

@@ -1,5 +1,5 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 6ac6df0..4a50426 100644
+index a7ac10f..cfeba32 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 @@ -106,6 +106,14 @@ export class StoreGeometryBackingTap {
@@ -10,13 +10,13 @@ index 6ac6df0..4a50426 100644
 +        const g = instancedShardGeneration();
 +        for (const id of event.modelIds) {
 +          if (event.full) tap.abandon(id, { generation: g - 1, epoch: Infinity });
-+          else tap.withhold(id, (event.withheld ?? []).filter((shard) => shard.modelId === id).map((shard) => shard.bytes));
++          else tap.withhold(id, (event.withheld ?? []).filter((shard) => shard.modelId === id));
 +        }
 +        return;
 +      }
        if (event.kind !== 'enqueued' || !event.shards) return;
        for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
-       for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
+       for (const shard of event.shards) tap.ingestShard(shard);
 @@ -340,6 +348,7 @@ export class StoreGeometryBackingTap {
    /** Close every model's writer and acknowledge complete generations. */
    async seal(): Promise<ModelBackingStatus[]> {

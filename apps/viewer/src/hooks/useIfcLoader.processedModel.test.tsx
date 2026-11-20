@@ -32,7 +32,7 @@ const { useIfcLoader } = await import('./useIfcLoader.js');
 const { processedModelFromQuery, useProcessedModelAutoload } = await import('./useProcessedModelAutoload.js');
 const { isStepSourceModel } = await import('@/components/viewer/step-export-source');
 const { getReportPrompt, clearLoadReport } = await import('@/lib/error-reports/context');
-const { openProcessedModel, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } = await import('@/lib/processed-model');
+const { applyProcessingConfig, openProcessedModel, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } = await import('@/lib/processed-model');
 const { useModelUrlAutoload } = await import('./useModelUrlAutoload.js');
 
 const sha256 = 'c'.repeat(64);
@@ -89,6 +89,17 @@ afterEach(async () => {
   window.history.replaceState(null, '', '/');
   resetProcessedModelRequestsForTests(); setProcessingServerUrl('http://localhost:9999');
   useViewerStore.getState().clearAllModels();
+});
+
+it('opens a stored result from a loopback server explicitly configured for an HTTPS viewer (#10822)', async () => {
+  mock.getter(window.location, 'href', () => 'https://viewer.example.org/');
+  mock.getter(window.location, 'hostname', () => 'viewer.example.org');
+  const url = 'http://localhost:8080/ifc';
+  applyProcessingConfig({ server: { url } });
+  await act(async () => { root.render(<Probe />); });
+  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+  assert.deepEqual(servers, [url]);
+  assert.equal(model()?.loadState, 'complete');
 });
 
 it('opens the stored result from the reference alone and publishes its properties', async () => {

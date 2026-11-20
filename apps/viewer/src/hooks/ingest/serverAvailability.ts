@@ -16,16 +16,18 @@ const SERVER_CHECK_CACHE_MS = 30000; // Re-check server availability every 30 se
  * The URL is absolute, or a same-origin path (`/ifc`) when a reverse proxy
  * serves the processing server beside the viewer. Returns false for a
  * localhost server seen from a non-localhost page (it would only log a CORS
- * error).
+ * error), unless the host explicitly configured an HTTP loopback server.
  */
 export function isServerReachable(
   serverUrl: string,
   page: Pick<Location, 'href' | 'hostname'> | undefined = typeof window !== 'undefined' ? window.location : undefined,
+  allowHttpLoopback = false,
 ): boolean {
   if (serverUrl === '') return false;
   try {
     const server = new URL(serverUrl, page?.href);
     const isLocalhost = (hostname: string) => hostname === 'localhost' || hostname === '127.0.0.1';
+    if (allowHttpLoopback && server.protocol === 'http:') return true;
     return !(page && isLocalhost(server.hostname) && !isLocalhost(page.hostname));
   } catch {
     // Not a URL at all (or a path with no page to resolve it against): no server to ask.
@@ -37,9 +39,9 @@ export function isServerReachable(
  * Silently check if the server is available (no console logging on failure).
  * Returns the cached result if recently checked.
  */
-export async function isServerAvailable(serverUrl: string, client: IfcServerClient): Promise<boolean> {
+export async function isServerAvailable(serverUrl: string, client: IfcServerClient, allowHttpLoopback = false): Promise<boolean> {
   // First check if server is even reachable (prevents CORS errors)
-  if (!isServerReachable(serverUrl)) {
+  if (!isServerReachable(serverUrl, undefined, allowHttpLoopback)) {
     return false;
   }
 

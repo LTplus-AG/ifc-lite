@@ -32,7 +32,8 @@ export interface OpenProcessedModelOptions {
   serverUrl?: string;
 }
 
-let serverUrl: string = cleanServerUrl(SERVER_URL);
+const buildServerUrl = cleanServerUrl(SERVER_URL);
+let runtimeServerUrl: string | undefined;
 /** A stored result and, when a request picked one, the processing server to ask for it (also on Retry). */
 export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: string };
 
@@ -50,7 +51,12 @@ const hostRequestListeners = new Set<() => void>();
 
 /** The processing server the viewer asks: the runtime value, else the build's `VITE_IFC_SERVER_URL`. */
 export function getProcessingServerUrl(): string {
-  return serverUrl;
+  return runtimeServerUrl ?? buildServerUrl;
+}
+
+/** Whether the host explicitly selected the global server at runtime. */
+export function hasRuntimeProcessingServer(): boolean {
+  return runtimeServerUrl !== undefined;
 }
 
 /**
@@ -60,7 +66,7 @@ export function getProcessingServerUrl(): string {
  * request that named its own server.
  */
 export function setProcessingServerUrl(url: string): void {
-  serverUrl = cleanServerUrl(url);
+  runtimeServerUrl = cleanServerUrl(url);
 }
 
 function cleanServerUrl(url: unknown): string {
@@ -71,7 +77,7 @@ function cleanServerUrl(url: unknown): string {
 
 /** Whether a locally opened IFC is sent to the processing server: the build flag, and a server to send it to. */
 export function serverUploadsEnabled(): boolean {
-  return USE_SERVER && serverUrl !== '';
+  return USE_SERVER && getProcessingServerUrl() !== '';
 }
 
 /**

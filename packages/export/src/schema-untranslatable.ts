@@ -39,12 +39,13 @@ export function isRootedEntityType(type: string): boolean {
  * export on main. Twin of Rust `VERBATIM_UPGRADE`, both pinned by
  * `schema_unrepresented_vectors.json`. An IFC2X3-only type NOT listed (and not
  * a varying action, see {@link missingTypeRoute}) is proxied if rooted and
- * refused if not, so a new one cannot slip through.
+ * refused if not, so a new one cannot slip through. Until #10879 and #10970
+ * land, every listed type is written as it is.
  */
 export const VERBATIM_UPGRADE: ReadonlySet<string> = new Set([
-  // Dates: converted to IFC4 date strings by #10879.
+  // Dates: to become IFC4 date strings (#10879).
   'IFCCALENDARDATE', 'IFCCOORDINATEDUNIVERSALTIMEOFFSET', 'IFCDATEANDTIME', 'IFCLOCALTIME',
-  // Everything else: left out with its references cleared, or mapped (#10970).
+  // Everything else: to be left out with its references cleared, or mapped (#10970).
   'IFC2DCOMPOSITECURVE', 'IFCANGULARDIMENSION', 'IFCANNOTATIONCURVEOCCURRENCE', 'IFCANNOTATIONFILLAREAOCCURRENCE',
   'IFCANNOTATIONOCCURRENCE', 'IFCANNOTATIONSURFACE', 'IFCANNOTATIONSURFACEOCCURRENCE',
   'IFCANNOTATIONSYMBOLOCCURRENCE', 'IFCANNOTATIONTEXTOCCURRENCE', 'IFCAPPLIEDVALUERELATIONSHIP',
@@ -76,18 +77,22 @@ export const VERBATIM_UPGRADE: ReadonlySet<string> = new Set([
  * twin `missing_type_route` documents each case:
  *  - `written`: the target declares it, or the source does not know the name;
  *  - `unrepresented`: proxied if rooted, refused if not (`resolveUnrepresentedEntity`);
- *  - `structural`: an IFC2X3 varying action, written as it is and reported by
- *    the structural pass (#9668);
+ *  - `handled`: converted by another pass, so neither the loss report nor the
+ *    warnings name it here: an IFC2X3 varying action by the structural pass,
+ *    which reports it (#9668), an IfcPresentationStyleAssignment on an IFC4X3
+ *    target by style flattening (D57);
  *  - `verbatim`: written as it is under a name the target lacks, and reported
  *    lossy ({@link VERBATIM_UPGRADE}, or an IFC4X3 target, #10971).
  */
-export function missingTypeRoute(entityType: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion, inSource: boolean, inTarget: boolean): 'written' | 'unrepresented' | 'structural' | 'verbatim' {
+export function missingTypeRoute(entityType: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion, inSource: boolean, inTarget: boolean): 'written' | 'unrepresented' | 'handled' | 'verbatim' {
   if (inTarget) return 'written';
   // An IFC2X3 target refuses even a name no table knows (`#1=IFCLABEL('x');`, #7683).
   if (toSchema === 'IFC2X3') return 'unrepresented';
   if (!inSource) return 'written';
   const type = entityType.toUpperCase();
-  if (fromSchema === 'IFC2X3' && varyingTarget(type)) return 'structural';
+  if (fromSchema === 'IFC2X3' && varyingTarget(type)) return 'handled';
+  // `StyleFlatten.applies`, as Rust asks it; inline, as that module imports schema-converter.
+  if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4') && type === 'IFCPRESENTATIONSTYLEASSIGNMENT') return 'handled';
   if (toSchema !== 'IFC4') return 'verbatim';
   if (fromSchema === 'IFC4X3') return 'unrepresented';
   return fromSchema === 'IFC2X3' && !VERBATIM_UPGRADE.has(type) ? 'unrepresented' : 'verbatim';

@@ -24,12 +24,13 @@ use crate::schema_convert::{placeholder_guid, schema_attribute_names};
 /// would leave its referrers pointing at nothing; refusing them failed real
 /// files that export on main. Twin of the TypeScript `VERBATIM_UPGRADE`, both
 /// pinned by `tests/fixtures/schema_unrepresented_vectors.json` (`routes`). An
-/// IFC2X3-only type NOT listed (and not a varying action, [`Route::Structural`])
-/// is proxied if rooted and refused if not.
+/// IFC2X3-only type NOT listed (and not one another pass handles, [`Route::Handled`])
+/// is proxied if rooted and refused if not. Until #10879 and #10970 land, every
+/// listed type is written as it is.
 pub(crate) const VERBATIM_UPGRADE: &[&str] = &[
-    // Dates: converted to IFC4 date strings by #10879.
+    // Dates: to become IFC4 date strings (#10879).
     "IFCCALENDARDATE", "IFCCOORDINATEDUNIVERSALTIMEOFFSET", "IFCDATEANDTIME", "IFCLOCALTIME",
-    // Everything else: left out with its references cleared, or mapped (#10970).
+    // Everything else: to be left out with its references cleared, or mapped (#10970).
     "IFC2DCOMPOSITECURVE", "IFCANGULARDIMENSION", "IFCANNOTATIONCURVEOCCURRENCE",
     "IFCANNOTATIONFILLAREAOCCURRENCE", "IFCANNOTATIONOCCURRENCE", "IFCANNOTATIONSURFACE",
     "IFCANNOTATIONSURFACEOCCURRENCE", "IFCANNOTATIONSYMBOLOCCURRENCE", "IFCANNOTATIONTEXTOCCURRENCE",
@@ -66,9 +67,11 @@ pub(crate) enum Route {
     Written,
     /// A proxy if rooted, refused if not ([`resolve_unrepresented_entity`]).
     Unrepresented,
-    /// An IFC2X3 varying action: written as it is and named by the
-    /// structural pass (#9668).
-    Structural,
+    /// Converted by another pass, so the warnings do not name it here: an
+    /// IFC2X3 varying action by the structural pass, which reports it (#9668),
+    /// an `IfcPresentationStyleAssignment` on an IFC4X3 target by style
+    /// flattening (D57).
+    Handled,
     /// A type the source declares and the target does not, written as it is
     /// and named in the warnings: [`VERBATIM_UPGRADE`], or any type on an
     /// IFC4X3 target, which is not checked yet (#10971).
@@ -88,7 +91,8 @@ pub(crate) fn missing_type_route(entity_type: &str, new_type: &str, from: &str, 
     match (from, to) {
         (_, "IFC2X3") => Route::Unrepresented,
         _ if !declared_in_source => Route::Written,
-        ("IFC2X3", _) if crate::schema_structural_varying::StructuralVarying::is_varying(entity_type) => Route::Structural,
+        ("IFC2X3", _) if crate::schema_structural_varying::StructuralVarying::is_varying(entity_type) => Route::Handled,
+        _ if entity_type == crate::schema_style_flatten::ASSIGNMENT && crate::schema_style_flatten::StyleFlatten::applies(from, to) => Route::Handled,
         ("IFC4X3", "IFC4") => Route::Unrepresented,
         ("IFC2X3", "IFC4") if !VERBATIM_UPGRADE.contains(&entity_type) => Route::Unrepresented,
         _ => Route::Verbatim,
@@ -104,7 +108,7 @@ pub(crate) enum Named {
 
 impl Route {
     /// How the warnings name a record of `entity_type` on this route; a written
-    /// or refused one, or a varying action, is not named here.
+    /// or refused one, or one another pass handles ([`Route::Handled`]), is not named here.
     pub(crate) fn named(self, entity_type: &str) -> Option<Named> {
         match self {
             Route::Unrepresented if is_rooted_type(entity_type) => Some(Named::Proxied),
@@ -253,15 +257,15 @@ mod tests {
     #[test]
     fn an_ifc4_target_checks_what_an_ifc4x3_or_ifc2x3_source_declares_7742_10902() {
         assert_eq!(route("IFCCURVESEGMENT", "IFC4X3", "IFC4", true), Route::Unrepresented);
-        // An IFC4X3 target is not checked yet (#10971).
-        assert_eq!(route("IFCPRESENTATIONSTYLEASSIGNMENT", "IFC2X3", "IFC4X3", true), Route::Verbatim);
+        // IFC4X3 drops it, and style flattening carries its styles (D57).
+        assert_eq!(route("IFCPRESENTATIONSTYLEASSIGNMENT", "IFC2X3", "IFC4X3", true), Route::Handled);
         // A name the source does not declare is not judged.
         assert_eq!(route("IFCCURVESEGMENT", "IFC4X3", "IFC4", false), Route::Written);
         assert_eq!(route("IFCTRIANGULATEDFACESET", "IFC4X3", "IFC4", true), Route::Written);
         // IFC2X3-only: rooted is proxied, a listed one is kept (D59, #10902), a varying action is the structural pass's (#9668).
         assert_eq!(route("IFCRELOCCUPIESSPACES", "IFC2X3", "IFC4", true), Route::Unrepresented);
         assert_eq!(route("IFCCALENDARDATE", "IFC2X3", "IFC4", true), Route::Verbatim);
-        assert_eq!(route("IFCSTRUCTURALLINEARACTIONVARYING", "IFC2X3", "IFC4", true), Route::Structural);
+        assert_eq!(route("IFCSTRUCTURALLINEARACTIONVARYING", "IFC2X3", "IFC4", true), Route::Handled);
         // IFC5 has no registry.
         assert_eq!(route("IFCTRIANGULATEDFACESET", "IFC4", "IFC5", true), Route::Written);
     }
@@ -289,24 +293,24 @@ mod tests {
         let schemas = ["IFC2X3", "IFC4", "IFC4X3"];
         for from in schemas {
             for to in schemas.into_iter().filter(|to| *to != from) {
-                let (mut verbatim, mut proxied, mut structural) = (Vec::new(), Vec::new(), Vec::new());
+                let (mut verbatim, mut proxied, mut handled) = (Vec::new(), Vec::new(), Vec::new());
                 for name in candidates.iter().cloned() {
                     if schema_attribute_names(from, &name).is_none() { continue; }
                     let new_type = crate::schema_convert::convert_entity_type(&name, from, to);
                     if crate::schema_convert::should_skip_entity(&new_type, to) { continue; }
                     match missing_type_route(&name, &new_type, from, to, true) {
                         Route::Verbatim => verbatim.push(name),
-                        Route::Structural => structural.push(name),
+                        Route::Handled => handled.push(name),
                         Route::Unrepresented if is_rooted_type(&name) => proxied.push(name),
                         _ => {}
                     }
                 }
                 verbatim.sort();
                 proxied.sort();
-                structural.sort();
+                handled.sort();
                 let pair = format!("{from}>{to}");
                 assert_eq!(verbatim, listed(&pair, "verbatim"), "{pair}: written verbatim");
-                assert_eq!(structural, listed(&pair, "structural"), "{pair}: the structural pass's");
+                assert_eq!(handled, listed(&pair, "handled"), "{pair}: another pass's");
                 if pair == "IFC2X3>IFC4" {
                     assert_eq!(proxied, listed(&pair, "proxied"), "{pair}: proxied");
                     let mut ours: Vec<String> = VERBATIM_UPGRADE.iter().map(|s| (*s).to_owned()).collect();

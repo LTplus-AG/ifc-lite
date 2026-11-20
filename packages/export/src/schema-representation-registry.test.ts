@@ -14,23 +14,27 @@ import { attrNameTable, convertEntityType, shouldSkipEntity, type IfcSchemaVersi
 import { isRootedEntityType, missingTypeRoute, VERBATIM_UPGRADE } from './schema-untranslatable.js';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
-import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
+import { analyzeConversionLoss, classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 
-type Routes = { verbatim?: string[]; proxied?: string[]; structural?: string[] };
+type Routes = { verbatim?: string[]; proxied?: string[]; handled?: string[] };
 const fixture: { routes: Record<string, Routes> } = JSON.parse(readFileSync(
   fileURLToPath(new URL('../../../rust/export/tests/fixtures/schema_unrepresented_vectors.json', import.meta.url)), 'utf8'));
 
 const SCHEMAS: IfcSchemaVersion[] = ['IFC2X3', 'IFC4', 'IFC4X3'];
 
+/** `data` (DATA section records) as a parsed `schema` file. */
+const parse = (schema: IfcSchemaVersion, data: string) => new IfcParser().parseColumnar(new TextEncoder().encode(
+  `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;${data}ENDSEC;\nEND-ISO-10303-21;\n`).buffer as ArrayBuffer);
+
 /** The source-only types of `from -> to` by route; renamed onto a declared type, or an alignment product proxy, needs no entry. */
-function partition(from: IfcSchemaVersion, to: IfcSchemaVersion): { verbatim: string[]; proxied: string[]; refused: string[]; structural: string[] } {
+function partition(from: IfcSchemaVersion, to: IfcSchemaVersion): { verbatim: string[]; proxied: string[]; refused: string[]; handled: string[] } {
   const src = attrNameTable(from)!, tgt = attrNameTable(to)!;
-  const out = { verbatim: [] as string[], proxied: [] as string[], refused: [] as string[], structural: [] as string[] };
+  const out = { verbatim: [] as string[], proxied: [] as string[], refused: [] as string[], handled: [] as string[] };
   for (const type of src.keys()) {
     const newType = convertEntityType(type, from, to);
     if (shouldSkipEntity(newType, to)) continue;
     const route = missingTypeRoute(type, from, to, true, tgt.has(newType));
-    if (route === 'verbatim' || route === 'structural') out[route].push(type);
+    if (route === 'verbatim' || route === 'handled') out[route].push(type);
     else if (route === 'unrepresented') (isRootedEntityType(type) ? out.proxied : out.refused).push(type);
   }
   for (const list of Object.values(out)) list.sort();
@@ -45,7 +49,7 @@ describe('every source-only type has a route (#10902)', () => {
       it(`${pair}: written verbatim only where the fixture names the gap`, () => {
         const got = partition(from, to);
         expect(got.verbatim).toEqual([...(fixture.routes[pair]?.verbatim ?? [])].sort());
-        expect(got.structural).toEqual([...(fixture.routes[pair]?.structural ?? [])].sort());
+        expect(got.handled).toEqual([...(fixture.routes[pair]?.handled ?? [])].sort());
         // The upgrade's proxies are pinned so Rust can check each one; elsewhere only the verbatim gaps are.
         if (pair === 'IFC2X3>IFC4') expect(got.proxied).toEqual([...(fixture.routes[pair].proxied ?? [])].sort());
       });
@@ -64,16 +68,16 @@ describe('every source-only type has a route (#10902)', () => {
 });
 
 describe('an IFC2X3 -> IFC4 upgrade writes each route, and the loss report names it (#10902)', () => {
-  const text = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;
+  const text = `
 #1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
 #2=IFCSPACE('0AvctVUKr0kugbFTf53O9L',$,'Room',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
 #3=IFCACTOR('0BvctVUKr0kugbFTf53O9L',$,'Tenant',$,$,$);
 #4=IFCRELOCCUPIESSPACES('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);
 #5=IFCMOVE('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1','planned',$,.F.,1,$,$,('pack'));
 #6=IFCCALENDARDATE(1,2,2020);
-ENDSEC;\nEND-ISO-10303-21;\n`;
+`;
   it('maps, proxies or keeps each record, and reports all three', async () => {
-    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer);
+    const store = await parse('IFC2X3', text);
     const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4' }).content).split('\n');
     const line = (id: number) => out.find((l) => l.startsWith(`#${id}=`));
     expect(line(4)).toMatch(/^#4=IFCPROXY\('[^']+',\$,'IFCRELOCCUPIESSPACES',\$,\$,\$,\$,\.NOTDEFINED\.,\$\);$/);
@@ -85,4 +89,21 @@ ENDSEC;\nEND-ISO-10303-21;\n`;
     expect(entry('IFCMOVE')).toMatchObject({ kind: 'lossy', targetType: 'IFCTASK', droppedAttributes: ['MoveFrom', 'MoveTo', 'PunchList'], expressIds: [5] });
     expect(entry('IFCCALENDARDATE')).toMatchObject({ kind: 'lossy', targetType: 'IFCCALENDARDATE', expressIds: [6] });
   });
+});
+
+it('names no IfcPresentationStyleAssignment lost when style flattening carries it into IFC4X3 (D57, #10902)', async () => {
+  const text = `
+#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
+#2=IFCCOLOURRGB($,1.,0.,0.);
+#3=IFCSURFACESTYLESHADING(#2,$);
+#4=IFCSURFACESTYLE($,.BOTH.,(#3));
+#5=IFCPRESENTATIONSTYLEASSIGNMENT((#4));
+#6=IFCSTYLEDITEM($,(#5),$);
+`;
+  const store = await parse('IFC4', text);
+  expect(analyzeConversionLoss(store, 'IFC4', 'IFC4X3').entries.find((e) => e.sourceType === 'IFCPRESENTATIONSTYLEASSIGNMENT')).toBeUndefined();
+  const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4X3' }).content);
+  // Carried: the styled item names the style itself.
+  expect(out).toContain('#6=IFCSTYLEDITEM($,(#4),$);');
+  expect(classifyEntityTypeConversion('IFCPRESENTATIONSTYLEASSIGNMENT', 'IFC2X3', 'IFC4X3').kind).toBe('identity');
 });

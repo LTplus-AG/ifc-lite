@@ -44,6 +44,7 @@ export const coordinationCollabOperations = [
     if (!state.collabRoomId && shareRefusesEveryModel(state.models, state.activeModelId, i.scope)) throw new Error('No model in the selected native scope can be shared.');
     const prepared = state.collabRoomId ? null : await prepareShareSeed(state.models, state.mutationViews, state.activeModelId, i.scope, state.georefMutations); c.checkpoint?.();
     return c.commit(() => {
+      if (useCollabShareReview.getState().dialogOpen) throw new Error('The Share dialog is already open. Close it, then prepare the share again.');
       const live = useViewerStore.getState(); if (live.models !== state.models || live.mutationVersion !== state.mutationVersion || live.geometryContentVersion !== state.geometryContentVersion || live.collabRoomId !== state.collabRoomId) throw new Error('Model scope or room changed during share preparation.');
       const candidate = { id: crypto.randomUUID(), scope: i.scope, role: i.role, modelIds: prepared?.models.map(model => model.modelId) ?? [...state.collabRoomModels.keys()], activeModelId: state.activeModelId, loadedModelIds: [...state.models.keys()], mutationVersion: state.mutationVersion, geometryVersion: state.geometryContentVersion, roomId: state.collabRoomId };
       useCollabShareReview.setState({ candidate });

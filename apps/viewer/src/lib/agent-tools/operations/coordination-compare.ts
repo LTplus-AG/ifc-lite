@@ -48,7 +48,7 @@ export const coordinationCompareOperations = [
     ...comparisonInputSchema, properties: { ...comparisonInputSchema.properties, key_property: { type: 'string', maxLength: 500 } },
     required: [...comparisonInputSchema.required, 'key_property'],
   }, async (input, c) => {
-    const { prepareComparison, comparePreparedPair } = await import('@/lib/compare/run-comparison');
+    const [{ prepareComparison, comparePreparedPair }, { acceptedForPair }] = await Promise.all([import('@/lib/compare/run-comparison'), import('@/lib/compare/acceptedIdentity')]);
     const s = useViewerStore.getState(); const base = s.models.get(c.model.id), head = s.models.get(input.head_model_id);
     if (!base || !head) throw new Error('Both comparison models must be loaded.');
     const version = s.geometryContentVersion, mutation = s.mutationVersion;
@@ -58,7 +58,8 @@ export const coordinationCompareOperations = [
     try {
       c.checkpoint?.(); const live = useViewerStore.getState();
       if (live.models.get(base.id) !== base || live.models.get(head.id) !== head || live.geometryContentVersion !== version || live.mutationVersion !== mutation) throw new Error('Comparison inputs changed; result discarded.');
-      const result = comparePreparedPair(built, { scope: input.scope, excludedTypes: input.excluded_types, matchByContent: input.match_by_content });
+      // The same accepted identity aliases compare.run publishes with, so both agree.
+      const result = comparePreparedPair(built, { scope: input.scope, excludedTypes: input.excluded_types, matchByContent: input.match_by_content, acceptedIdentity: acceptedForPair(live.compareAcceptedIdentity, built) });
       return { ...result, comparedStores: undefined };
     } finally { built.dispose(); }
   }),

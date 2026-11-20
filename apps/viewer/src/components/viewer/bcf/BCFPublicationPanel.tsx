@@ -65,7 +65,8 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   // Whatever moves the target (the project picker, or a reconnect to another
   // server) drops both, so neither is applied to or shown for a project the
   // user has not checked.
-  const targetKey = `${config?.serverUrl ?? ''}\u0000${projectId}`;
+  // The account is part of the target: switching it drops the previous account's review too.
+  const targetKey = `${config?.serverUrl ?? ''}\u0000${config?.userId ?? ''}\u0000${projectId}`;
   useEffect(() => { setTopicTypes({}); setPreflight(null); setReport(null); }, [targetKey]);
   useEffect(() => {
     // Wait for the connection to load before comparing the candidate's account with it.

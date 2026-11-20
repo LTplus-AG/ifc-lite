@@ -51,6 +51,9 @@ export const coordinationBcfServerOperations = [
   }),
   coordination('bcf.publish', 'Present an already prepared exact publication candidate for the native Publish click. The bridge command grant cannot approve external BCF writes.', ['configuration', 'view'], idSchema, async (i, c) => {
     const [{ useBcfPublicationReview }, { useBcfDraftLibrary }] = await Promise.all([import('@/lib/bcf-publication/review-candidate'), import('@/lib/bcf-drafts/draft-library')]);
-    return c.commit(() => { const candidate = useBcfPublicationReview.getState().candidate; if (candidate?.id !== i.id) throw new Error('Publication candidate changed; prepare and review again.'); useBcfDraftLibrary.setState({ activeId: candidate.batchId, dialogOpen: true }); useViewerStore.getState().openWorkspacePanel('bcf'); return { state: 'waiting-for-approval', candidate_id: candidate.id, digest: candidate.digest }; });
+    return c.commit(() => { const candidate = useBcfPublicationReview.getState().candidate; if (candidate?.id !== i.id) throw new Error('Publication candidate changed; prepare and review again.');
+      // An edited draft would be dropped by the panel's freshness check, leaving nothing to approve.
+      if (useBcfDraftLibrary.getState().entries.find(entry => entry.id === candidate.batchId)?.modifiedAt !== candidate.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); throw new Error('The draft changed after preparation; prepare and review again.'); }
+      useBcfDraftLibrary.setState({ activeId: candidate.batchId, dialogOpen: true }); useViewerStore.getState().openWorkspacePanel('bcf'); return { state: 'waiting-for-approval', candidate_id: candidate.id, digest: candidate.digest }; });
   }),
 ];

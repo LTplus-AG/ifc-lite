@@ -34,7 +34,11 @@ export const documentNativeReportDraftOperations = [
       if (!isReportDraftCurrent(candidate.draft)) throw new Error('The native report discussion or evidence changed.');
       const existing = useViewerStore.getState().documents.find(document => document.id === candidate.draft.document.id);
       if (existing && (!candidate.submitted || JSON.stringify(existing) !== candidate.draft.documentJson)) throw new Error('Another native document already owns this prepared report identity.');
-      c.checkpoint?.(); const saved = await saveReportDraft(candidate.draft, i.reviewed_document_json); candidate.submitted = true;
+      // A save in flight is never evicted; submitted still marks only a save that ran, so a refused one can be revised.
+      c.checkpoint?.(); candidate.saving = true;
+      let saved: boolean;
+      try { saved = await saveReportDraft(candidate.draft, i.reviewed_document_json); } finally { candidate.saving = false; }
+      candidate.submitted = true;
       if (saved) discardReportCandidate(c.host, i.token); return { document_id: candidate.draft.document.id, saved, storage: useViewerStore.getState().documentsStorage };
     }, result => result.saved);
   }),

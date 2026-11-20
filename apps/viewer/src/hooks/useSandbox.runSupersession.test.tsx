@@ -424,7 +424,6 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
       const pA = execute1!(GATED).then((r) => { rA = r; });
       reset1!();
       await pA;
-      // reset() counts as a cancellation, so a run still creating its sandbox stops before eval, as after cancel().
       assert.equal(gates.length, 0, 'a run reset() superseded before its sandbox existed never enters the guest');
     });
 

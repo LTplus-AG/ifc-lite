@@ -319,23 +319,18 @@ export class NativeScriptRunner {
     }
   }
   ownsEpoch(epoch: number): boolean { return this.sharedEpoch === epoch; }
-  /** True when cancel() ran since the given cancellation count (see cancellationCount). */
+  /** True when cancel(), reset() or dispose() ran since the given cancellation count (see cancellationCount). */
   cancelledSince(count: number): boolean { return this.cancellationEpoch !== count; }
   get cancellationCount(): number { return this.cancellationEpoch; }
   cancel(): void {
-    this.cancellationEpoch++;
     if (useViewerStore.getState().scriptRunEpoch === this.sharedEpoch) this.reset();
     else { this.epoch++; this.dispose(); }
   }
   reset(): void {
-    // A run still creating its sandbox checks this after the await: a reset stops it before eval, as cancel() does.
-    this.cancellationEpoch++;
     const { setScriptExecutionState: setExecutionState, setScriptError: setError, setScriptDiagnostics: setDiagnostics } = useViewerStore.getState();
     const setResult = (result: ScriptResult | null) => useViewerStore.getState().setScriptResult(result ? stampAnalysisReport(result, captureAnalysisStamp()) : null);
-    if (this.active) {
-      disposeSandboxReportingAbort(this.active);
-      this.active = null;
-    }
+    // dispose() advances the cancellation epoch, so a run still creating its sandbox stops before eval.
+    this.dispose();
     // Same reasoning as `useClash.clearAll()`/`useIDS.clearIDS()`: bump the
     // shared epoch so an in-flight run (this instance's or any other
     // runner instance's) that lands after this reset cannot

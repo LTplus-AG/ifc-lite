@@ -192,7 +192,6 @@ function CandidateReview({
   );
 
   const exportBcf = useCallback(async () => {
-    // review.topics is the only topic list here, and layerReviewArtifact writes exactly that.
     if (!review?.topics?.length) return;
     await runAction(async () => {
       try {

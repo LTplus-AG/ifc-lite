@@ -139,6 +139,21 @@ fn group_property_mutations<'a>(
 }
 
 #[allow(clippy::type_complexity)]
+/// Resolve last-wins attribute edits, excluding anything that is not one STEP value.
+fn prepared_attribute_edits(opts: &StepOptions) -> (HashMap<u32, BTreeMap<usize, String>>, usize) {
+    let mut attribute_edits_refused = 0;
+    let mut muts_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
+    for m in &opts.attribute_mutations {
+        if !crate::step_slot::is_step_value(&m.value) {
+            attribute_edits_refused += 1;
+            continue;
+        }
+        muts_by_id.entry(m.express_id).or_default().insert(m.index, m.value.clone());
+    }
+
+    (muts_by_id, attribute_edits_refused)
+}
+
 fn emit<W: std::io::Write>(
     content: &[u8],
     opts: &StepOptions,
@@ -147,8 +162,13 @@ fn emit<W: std::io::Write>(
     // 1. Index every entity line (preserve source order). A repeated id keeps
     // its last record, as core does, and the rest are counted (#7682,
     // EXPORT-STEP-11).
+    let source_schema = detect_schema(content);
+    let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
+    let upgrading = crate::schema_unrooted_upgrade::applies(&source_schema, &schema);
+    let mut may_prune_upgrade = false;
     let mut owner_histories: Vec<(u32, usize)> = Vec::new();
     let index = crate::step_index::RecordIndex::build(content, |id, type_name, start| {
+        may_prune_upgrade |= upgrading && !may_prune_upgrade && crate::schema_unrooted_upgrade::omitted_type(type_name);
         if type_name.eq_ignore_ascii_case("IFCOWNERHISTORY") {
             owner_histories.push((id, start));
         }
@@ -159,7 +179,6 @@ fn emit<W: std::io::Write>(
 
     // 2. Resolve the included set + forward reference closure.
     let mut refused_refs = 0usize;
-    let mut attribute_edits_refused = 0usize;
     let included: HashSet<u32> = match &opts.included {
         None => order.iter().copied().collect(),
         Some(roots) => {
@@ -187,8 +206,6 @@ fn emit<W: std::io::Write>(
     // Read the source HEADER once, here, so the writer can carry its
     // provenance forward instead of blanking it (see `step_header`).
     let source_header = crate::source_header::parse_source_header(content);
-    let source_schema = detect_schema(content);
-    let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
     // Only convert entity types/attributes when an explicit target differs from source.
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
@@ -208,20 +225,7 @@ fn emit<W: std::io::Write>(
     // valid IFC2X3.
     let targets_ifc2x3 = crate::schema_convert::targets_ifc2x3(&schema);
 
-    // Root-attribute edits, resolved per (entity, attribute) as they are read.
-    // A list plus a last-wins rule made "the value at this index" a derived
-    // fact that every reader re-derived its own way, and two of them got it
-    // wrong. Keyed by index there is nothing left to derive.
-    // A value that is not one STEP value is refused here, before it can shift
-    // a slot or close the record early (#7682, EXPORT-STEP-26).
-    let mut muts_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
-    for m in &opts.attribute_mutations {
-        if !crate::step_slot::is_step_value(&m.value) {
-            attribute_edits_refused += 1;
-            continue;
-        }
-        muts_by_id.entry(m.express_id).or_default().insert(m.index, m.value.clone());
-    }
+    let (muts_by_id, mut attribute_edits_refused) = prepared_attribute_edits(opts);
 
     // Copy-on-write, resolved before the emit loop so the copies and the
     // repointed referrers both go through it. Its own module: the pass has four
@@ -241,7 +245,7 @@ fn emit<W: std::io::Write>(
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
-    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, targets_ifc2x3);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, may_prune_upgrade);
 
     let mut written = 0usize;
     for id in order {

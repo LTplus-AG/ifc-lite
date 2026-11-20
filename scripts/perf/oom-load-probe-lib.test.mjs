@@ -171,10 +171,12 @@ test('#10264 killed-after-continue fails acceptance; passes only the explicit wa
   assert.equal(phaseOf({ warning: true, tris: 0 }), 'memory warning (load not started)');
 });
 
-test('#10264 A2 loaded, refused and awaiting-decision each pin one exact outcome', () => {
-  const outcomes = ['loaded', 'refused', 'awaiting-decision', 'cancelled', 'killed'];
-  for (const pin of ['loaded', 'refused', 'awaiting-decision']) {
-    for (const outcome of outcomes) assert.equal(verdict(outcome, pin).pass, outcome === pin, `${outcome} under --expect ${pin}`);
+test('#10264 A2 every exact --expect pin passes only its own outcome', () => {
+  const { OUTCOMES, EXPECTATIONS } = lib();
+  const pins = Object.keys(EXPECTATIONS).filter((pin) => OUTCOMES.includes(pin));
+  assert.deepEqual(pins, ['killed', 'loaded', 'refused', 'awaiting-decision']);
+  for (const pin of pins) {
+    for (const outcome of OUTCOMES) assert.equal(verdict(outcome, pin).pass, outcome === pin, `${outcome} under --expect ${pin}`);
   }
 });
 

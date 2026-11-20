@@ -109,13 +109,13 @@ Two tools:
   anything missing exits 2, never skips.
 
 `--expect` is required. `--expect killed` passes only while the tab is still killed and **fails
-once the load is loaded or refused**, telling you to switch to `--expect not-killed` (the #10264
-acceptance: the tab is never killed). `--expect loaded`, `refused` and `awaiting-decision` each
-pass only that exact outcome, which is how the nightly lane below pins its cases. `error` and
-`timeout` never pass. Admission now scales its
-estimate by the sampled share of dense triangulated geometry (`geometryDensity.ts`), so the dense
-minimal case below is expected to be `refused` after a bounded sample (four 256 KiB windows), before the whole source is read; it runs with
-`--expect not-killed`.
+on any other outcome** except `error` and `timeout`, telling you to switch to `--expect
+not-killed` (the #10264 acceptance: the tab is never killed). `--expect loaded`, `refused` and
+`awaiting-decision` each pass only that exact outcome; the nightly lane below pins `refused` and
+`awaiting-decision`. `error` and `timeout` never pass. Admission now scales its estimate by the
+sampled share of dense triangulated geometry (`geometryDensity.ts`), so the dense minimal case
+below is expected to be `refused` after a bounded sample (four 256 KiB windows), before the
+whole source is read; it runs with `--expect not-killed`.
 
 A viewer may instead warn before an oversized load (a dialog "This model may exceed available
 memory" with Continue loading / Cancel). `--on-memory-dialog wait` (default) reports
@@ -204,7 +204,8 @@ outcome: dense 300 MB at a reported 4 GB / 3 GiB is `refused`, dense 1100 MB at 
 to the user manager, the probe's preflight exits 2 and the lane is red, never skipped. First
 hosted run (ubuntu-latest, 2026-11-19, run 44519558141): the user manager delegated
 `cpu memory pids`; 300 MB at 4 GB was `refused` before open after five source reads (the 4 KiB
-header, then four 256 KiB sample windows; no OOM kill), and 1100 MB at 8 GB was `awaiting-decision` after the 4 KiB header.
+header, then four 256 KiB sample windows; no OOM kill), and 1100 MB at 8 GB was
+`awaiting-decision` after the 4 KiB header.
 
 ## Gaussian capture memory ownership (#9018, #10401)
 

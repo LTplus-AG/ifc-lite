@@ -21,6 +21,7 @@ import {
   readFreshFile,
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { useTranslation } from '@/i18n';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
@@ -353,9 +354,13 @@ export function useFileCommands(): FileCommands {
         className="hidden"
       /></>}
       {collabEnabled && shareDialogOpen !== null && (
-        <Suspense fallback={null}>
-          <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
-        </Suspense>
+        // The dialog is a lazy chunk: a failed load is reported here instead of
+        // unwinding the toolbar (a stale deployment reloads through the boundary).
+        <ChunkErrorBoundary label="Share dialog" renderFallback={() => null}>
+          <Suspense fallback={null}>
+            <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+          </Suspense>
+        </ChunkErrorBoundary>
       )}
       <FederationSetupControls />
     </>

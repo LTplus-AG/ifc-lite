@@ -29,17 +29,21 @@ export const coordinationCollabOperations = [
   coordination<{ scope: 'active' | 'all'; role: 'viewer' | 'commenter' | 'editor'; expected_mutation_version: number; expected_geometry_version: number }>('collab.prepareRoom', 'Validate and prepare an exact native share scope/role for the real Share consent dialog. New room creation uploads models only after the native Create link approval; no token is returned.', ['configuration', 'view'], {
     type: 'object', properties: { scope: { type: 'string', enum: ['active', 'all'] }, role: { type: 'string', enum: ['viewer', 'commenter', 'editor'] }, expected_mutation_version: { type: 'integer', minimum: 0 }, expected_geometry_version: { type: 'integer', minimum: 0 } }, required: ['scope', 'role', 'expected_mutation_version', 'expected_geometry_version'], additionalProperties: false,
   }, async (i, c) => {
-    const [{ prepareShareSeed, shareRefusesEveryModel }, { useCollabShareReview }, { isCollabSeedInFlight }] = await Promise.all([import('@/lib/collab/share-scope'), import('@/lib/collab/share-review'), import('@/lib/collab/seed-phase')]);
+    const [{ prepareShareSeed, shareRefusesEveryModel }, { useCollabShareReview }, { isCollabSeedInFlight }, { isCollabEnabled }] = await Promise.all([import('@/lib/collab/share-scope'), import('@/lib/collab/share-review'), import('@/lib/collab/seed-phase'), import('@/lib/collab/config')]);
+    // The Share dialog, and the listener that opens it, exist only with collab enabled.
+    if (!isCollabEnabled()) throw new Error('Collaboration is not enabled in this viewer.');
     const state = useViewerStore.getState();
     if (state.mutationVersion !== i.expected_mutation_version || state.geometryContentVersion !== i.expected_geometry_version) throw new Error('Model revisions changed before share preparation.');
     if (state.collabRoomId && isCollabSeedInFlight(state.collabSeedPhase)) throw new Error('The native room seed is still in flight.');
     const rank = { viewer: 0, commenter: 1, editor: 2, admin: 3 };
     if (state.collabRole && rank[i.role] > rank[state.collabRole]) throw new Error('This native room role cannot grant the requested invite access.');
+    // Only an admin mints role-scoped links; any other member can only forward the invite it holds.
+    if (state.collabRoomId && state.collabRole !== 'admin') throw new Error('Only the room admin can prepare a role-scoped invite.');
     if (!state.collabRoomId && shareRefusesEveryModel(state.models, state.activeModelId, i.scope)) throw new Error('No model in the selected native scope can be shared.');
     const prepared = state.collabRoomId ? null : await prepareShareSeed(state.models, state.mutationViews, state.activeModelId, i.scope, state.georefMutations); c.checkpoint?.();
     return c.commit(() => {
       const live = useViewerStore.getState(); if (live.models !== state.models || live.mutationVersion !== state.mutationVersion || live.geometryContentVersion !== state.geometryContentVersion || live.collabRoomId !== state.collabRoomId) throw new Error('Model scope or room changed during share preparation.');
-      const candidate = { id: crypto.randomUUID(), scope: i.scope, role: i.role, modelIds: prepared?.models.map(model => model.modelId) ?? [...state.collabRoomModels.keys()], mutationVersion: state.mutationVersion, geometryVersion: state.geometryContentVersion, roomId: state.collabRoomId };
+      const candidate = { id: crypto.randomUUID(), scope: i.scope, role: i.role, modelIds: prepared?.models.map(model => model.modelId) ?? [...state.collabRoomModels.keys()], activeModelId: state.activeModelId, loadedModelIds: [...state.models.keys()], mutationVersion: state.mutationVersion, geometryVersion: state.geometryContentVersion, roomId: state.collabRoomId };
       useCollabShareReview.setState({ candidate }); if (typeof window !== 'undefined') window.dispatchEvent(new Event('ifc-lite:open-share-dialog'));
       return { state: 'waiting-for-approval', candidate, seed_failure: state.collabSeedFailure };
     });

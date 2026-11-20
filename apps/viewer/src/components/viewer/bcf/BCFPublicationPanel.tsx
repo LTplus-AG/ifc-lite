@@ -69,8 +69,10 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   useEffect(() => { setTopicTypes({}); setPreflight(null); setReport(null); }, [targetKey]);
   useEffect(() => {
     if (!candidate || candidate.batchId !== batch.id || candidate.target.serverUrl !== config?.serverUrl || candidate.target.userId !== config?.userId) return;
+    // A batch edited after staging would show the old preflight as current.
+    if (candidate.modifiedAt !== batch.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); return; }
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
-  }, [candidate, batch.id, config?.serverUrl, config?.userId, targetKey]);
+  }, [candidate, batch.id, batch.modifiedAt, config?.serverUrl, config?.userId, targetKey]);
 
   useEffect(() => {
     setProjects(null); setConnection(null);
@@ -109,6 +111,8 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   };
   const check = () => act(async () => {
     if (!target || !connection) return;
+    // The user's own Check supersedes an agent-staged candidate, as editing a choice does.
+    useBcfPublicationReview.setState({ candidate: null });
     const plan = await planDraftPublication(batch, record, target, undefined, { rules: publicationRules(connection), topicTypes });
     const result = await preflightPublication(connection.client, plan.record);
     adopt(result);

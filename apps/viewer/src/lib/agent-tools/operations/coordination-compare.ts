@@ -5,6 +5,7 @@ import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { emptySchema } from './contract';
 import { modelCoordination, coordination, boolSchema } from './coordination-common';
+import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
 interface CompareInput { head_model_id: string; scope: 'both' | 'data' | 'geometry'; excluded_types: string[]; match_by_content: boolean }
 export const comparisonInputSchema = { type: 'object', properties: {
   head_model_id: { type: 'string', minLength: 1, maxLength: 200 }, scope: { type: 'string', enum: ['both', 'data', 'geometry'] },
@@ -23,11 +24,18 @@ export const coordinationCompareOperations = [
     const [{ prepareComparison }, { publishCompareResult }] = await Promise.all([import('@/lib/compare/run-comparison'), import('@/lib/compare/publish-comparison')]);
     const initial = useViewerStore.getState(), base = initial.models.get(c.model.id), head = initial.models.get(i.head_model_id);
     if (!base || !head || initial.compareRunning) throw new Error('Load both models and wait for any native comparison to finish.');
+    // The same refusals as the panel's Run button (useCompare.runComparison).
+    if (isNativeWorkflowBusy()) throw new Error('A workflow is running; wait or cancel it.');
+    if (base.id === head.id) throw new Error('Pick two different models to compare.');
+    if (!base.ifcDataStore || !base.geometryResult || !head.ifcDataStore || !head.geometryResult) throw new Error('Both comparison models must be fully loaded.');
     const built = await prepareComparison({ baseModel: base, headModel: head, contentVersion: initial.geometryContentVersion, mutationVersion: initial.mutationVersion, getMutationView: initial.getMutationView, keyProperty: i.key_property || undefined, signal: c.signal });
     try {
       c.checkpoint?.(); const live = useViewerStore.getState();
       if (live.models.get(base.id) !== base || live.models.get(head.id) !== head || live.geometryContentVersion !== initial.geometryContentVersion || live.mutationVersion !== initial.mutationVersion || live.compareRunning) throw new Error('Comparison inputs changed during extraction.');
       return c.commit(() => {
+        // Clearing first releases the panel's cached pair, so its option effect
+        // cannot re-diff this result from fingerprints older than this run.
+        if (live.compareResult) live.setCompareResult(null);
         live.setCompareBaseModelId(base.id); live.setCompareHeadModelId(head.id); live.setCompareKeyProperty(i.key_property || undefined); live.setCompareScope(i.scope); live.setCompareExcludedTypes(i.excluded_types); live.setCompareMatchByContent(i.match_by_content);
         const published = publishCompareResult(built); return { ...published.result, comparedStores: undefined };
       });

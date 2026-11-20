@@ -19,7 +19,7 @@ function owned(host: ViewerOperationContext['host']) {
   let entries = owners.get(host); if (!entries) { entries = new Map(); owners.set(host, entries); } return entries;
 }
 export function addReportCandidate(host: ViewerOperationContext['host'], candidate: NativeReportCandidate) {
-  const entries = owned(host); evictOldest(entries, 30);
+  const entries = owned(host); evictOldest(entries, 30, (entry) => !entry.submitted); // a failed save keeps its token for exact retry
   const token = crypto.randomUUID(); entries.set(token, candidate); return token;
 }
 export function reportCandidate(host: ViewerOperationContext['host'], token: string): NativeReportCandidate {

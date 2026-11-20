@@ -3,6 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { create } from 'zustand';
 import type { ShareScope } from './share-scope';
-export interface ShareReviewCandidate { id: string; scope: ShareScope; role: 'viewer' | 'commenter' | 'editor'; modelIds: string[]; mutationVersion: number; geometryVersion: number; roomId: string | null }
+export interface ShareReviewCandidate { id: string; scope: ShareScope; role: 'viewer' | 'commenter' | 'editor'; modelIds: string[]; activeModelId: string | null; loadedModelIds: string[]; mutationVersion: number; geometryVersion: number; roomId: string | null }
 /** Configuration for the native consent dialog; never contains room tokens or model bytes. */
 export const useCollabShareReview = create<{ candidate: ShareReviewCandidate | null }>(() => ({ candidate: null }));

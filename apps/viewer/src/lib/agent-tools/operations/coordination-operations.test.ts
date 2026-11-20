@@ -140,3 +140,10 @@ it('BCF metadata stays below the executor limit with >1 MiB native screenshot me
     assert.deepEqual(Buffer.from(restoredViewpoint.snapshotData), png); assert.equal(restored.topics.get(created.guid)?.comments[0].comment, 'Native comment updated with its exact inspected value.');
   } finally { clearGlobalRefs(); }
 });
+it('compare.run and collab.prepareRoom refuse what the native panel and dialog would refuse (#10589)', async () => {
+  const model = context.model?.id; assert.ok(model);
+  await assert.rejects(execute('compare.run', { head_model_id: model, scope: 'both', excluded_types: [], match_by_content: false, key_property: '' }), /two different models/);
+  assert.equal(useViewerStore.getState().compareResult, null);
+  const state = useViewerStore.getState();
+  await assert.rejects(execute('collab.prepareRoom', { scope: 'all', role: 'viewer', expected_mutation_version: state.mutationVersion, expected_geometry_version: state.geometryContentVersion }), /not enabled/);
+});

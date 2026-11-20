@@ -258,6 +258,8 @@ export function useCompare() {
   // cannot stand in for it: an accepted pair the engine ignored (key not in
   // the base) leaves no trace there, and the effect would re-publish forever.
   const lastAcceptedRef = useRef(acceptedIdentity);
+  // The options this effect last ran with, to tell a real change from a mount.
+  const lastOptionsRef = useRef({ scope, excludedTypes, matchByContent });
 
   // Scope, blacklist, content-matching OR accepted-identity change with an
   // existing result for the same pair -> re-diff from the cached fingerprints
@@ -278,14 +280,28 @@ export function useCompare() {
   // re-run to catch.
   useEffect(() => {
     const built = builtRef.current;
-    if (!result || !built) return;
-    if (!isCurrentFor(built, result.baseModelId, result.headModelId, geometryContentVersion, result.keyProperty)) return;
+    const previous = lastOptionsRef.current;
+    lastOptionsRef.current = { scope, excludedTypes, matchByContent };
+    // The panel controls the result's counts depend on. Accepting an identity
+    // suggestion is a review decision recorded on its own, not a control change.
+    const optionChanged = previous.scope !== scope || previous.excludedTypes !== excludedTypes
+      || previous.matchByContent !== matchByContent;
+    if (!result) return;
     const sameScope = result.scope === scope;
     const sameExcluded =
       excludedSignature(result.diff.excludedTypes) === excludedSignature(excludedTypes);
     const sameMatching = contentMatchingRan(result.diff.contentMatches) === matchByContent;
     const sameAccepted = lastAcceptedRef.current === acceptedIdentity;
     if (sameScope && sameExcluded && sameMatching && sameAccepted) return;
+    if (!built || !isCurrentFor(built, result.baseModelId, result.headModelId, geometryContentVersion, result.keyProperty)) {
+      // No cached pair for this result (an agent compare.run publishes from its
+      // own extraction), so it cannot be re-diffed. When the user then changes
+      // an option, drop it rather than show counts that disagree with the
+      // controls, as cancelComparison does. A result merely mounted with other
+      // options (a retained stale comparison) is kept.
+      if (optionChanged) useViewerStore.getState().setCompareResult(null);
+      return;
+    }
 
     lastAcceptedRef.current = acceptedIdentity;
     publishCompareResult(built);

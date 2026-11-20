@@ -80,7 +80,10 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   useEffect(() => {
     if (!open || !shareCandidate) return;
     const state = useViewerStore.getState();
-    if (shareCandidate.mutationVersion !== state.mutationVersion || shareCandidate.geometryVersion !== state.geometryContentVersion || shareCandidate.roomId !== state.collabRoomId) { useCollabShareReview.setState({ candidate: null }); return; }
+    // The agent prepared a scope over specific models: a different active model
+    // or model set means the user would be shown a scope nobody inspected.
+    if (shareCandidate.mutationVersion !== state.mutationVersion || shareCandidate.geometryVersion !== state.geometryContentVersion || shareCandidate.roomId !== state.collabRoomId
+      || shareCandidate.activeModelId !== state.activeModelId || shareCandidate.loadedModelIds.join('\n') !== [...state.models.keys()].join('\n')) { useCollabShareReview.setState({ candidate: null }); return; }
     // Apply the agent's choice once; afterwards the dialog's own controls own scope and role.
     setScope(shareCandidate.scope); setRole(shareCandidate.role); useCollabShareReview.setState({ candidate: null });
   }, [open, shareCandidate]);

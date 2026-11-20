@@ -30,8 +30,9 @@ export async function publishNativeBcfReview(batch: DraftBatch, target: Publicat
   // or failed one never blocks the native Publish button.
   const release = () => { if (candidate && useBcfPublicationReview.getState().candidate === candidate) useBcfPublicationReview.setState({ candidate: null }); };
   const stale = (message: string): never => { release(); throw new Error(message); };
+  const choices = (value: TopicTypeChoice) => JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
   if (candidate?.batchId === batch.id) {
-    if ((candidate.target.serverUrl !== target.serverUrl || candidate.target.projectId !== target.projectId || candidate.target.userId !== target.userId) || JSON.stringify(candidate.topicTypes) !== JSON.stringify(topicTypes) || candidate.modifiedAt !== batch.modifiedAt) stale('The staged BCF publication changed. Check the current candidate before publishing.');
+    if ((candidate.target.serverUrl !== target.serverUrl || candidate.target.projectId !== target.projectId || candidate.target.userId !== target.userId) || choices(candidate.topicTypes) !== choices(topicTypes) || candidate.modifiedAt !== batch.modifiedAt) stale('The staged BCF publication changed. Check the current candidate before publishing.');
     const existing = (await readPublication(draftPublicationId(batch.id, target)))?.record;
     const current = await planDraftPublication(batch, existing, target, undefined, { rules: publicationRules(connection), topicTypes });
     // Entry ids of a not-yet-persisted plan are random. Bind wire digests and source batch, not those fresh ids.

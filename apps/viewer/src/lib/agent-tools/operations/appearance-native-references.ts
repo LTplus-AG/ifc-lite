@@ -17,8 +17,9 @@ import type { AppearanceAssetOwner } from '@/lib/appearance/assets';
 import type { ToolHost } from '../types';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { restoreReferenceSource, referenceEditSettings } from '@/lib/appearance/references/edit';
+import { parseReferences } from '@/lib/appearance/references/persistence';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
-import { invalidInput, stale, unavailable } from './refusals';
+import { decodedInput, invalidInput, stale, unavailable } from './refusals';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -276,19 +277,21 @@ export const appearanceReferenceOperations = [
       out(
         c.commit(() => {
           const s = useViewerStore.getState();
-          if (s.collabRoomId || s.referenceRevision !== i.reference_revision)
-            throw stale('Native reference workspace changed or is in a shared room.');
           if (
-            ['update', 'remove', 'select'].includes(i.action) &&
-            i.reference_id &&
+            (i.action === 'update' || i.action === 'remove' || (i.action === 'select' && i.reference_id)) &&
             !s.appearanceReferences.has(i.reference_id)
           )
             throw invalidInput('unknown-target', 'Unknown reference.');
+          if (s.referenceRevision !== i.reference_revision) throw stale('Native reference workspace changed.');
+          if (s.collabRoomId) throw unavailable('Leave the shared room before editing native references.');
           if (i.action === 'update')
             s.updateAppearanceReference(i.reference_id, { visible: i.visible, locked: i.locked, opacity: i.opacity });
           else if (i.action === 'remove') s.removeAppearanceReference(i.reference_id);
           else if (i.action === 'select') s.selectAppearanceReference(i.reference_id || null);
-          else if (i.action === 'import') s.importAppearanceReferences(i.content);
+          else if (i.action === 'import') {
+            s.importAppearanceReferences(i.content, (text, frame) =>
+              decodedInput('content', () => parseReferences(text, frame), { json: true }));
+          }
           else s.replayAppearanceReference(i.action);
           return { revision: useViewerStore.getState().referenceRevision };
         }),

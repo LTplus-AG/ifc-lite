@@ -32,12 +32,12 @@ const png = Uint8Array.from(
   (c) => c.charCodeAt(0),
 );
 let host: ToolHost;
-const call = (id: string, input: unknown = {}, write = false) =>
+const call = (id: string, input: unknown = {}, write = false, signal?: AbortSignal) =>
   dispatchMainViewerTool(
     host,
     write ? 'viewer_operation_execute' : 'viewer_operation_inspect',
     { ...(viewerOperation(id).needs === 'model' ? { model_id: SAMPLE_MODEL } : {}), operation_id: id, input },
-    { canEdit: () => true },
+    { canEdit: () => true, signal },
   );
 function value<T>(result: AgentToolResult): T {
   assert.equal(result.isError, false, result.text);
@@ -200,10 +200,19 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
       target = s.models.get(SAMPLE_MODEL)!,
       source = {
         ...fixtureModel('capture-source'),
+        sourceFile: new File(['textured scan fixture'], 'fixture.glb'),
         loadedAt: 1,
         geometryResult: { ...target.geometryResult!, meshes: [mesh], totalTriangles: 2, totalVertices: 6 },
       };
-    useViewerStore.setState({ models: new Map(s.models).set(source.id, source) });
+    useViewerStore.setState({ models: new Map(s.models).set(target.id, { ...target, schemaVersion: 'IFC4' }).set(source.id, source) });
+    const signal = new AbortController().signal;
+    const scan = value<{ token: string; version: number }>(await call('appearance.scan.prepare', {
+      source_model_id: source.id, source_kind: 'mesh', mesh_ordinal: 0,
+    }, false, signal));
+    const missingPreview = await call('appearance.scan.transfer.compare', { token: scan.token, version: scan.version, original: true }, true, signal);
+    assert.equal(missingPreview.errorCode, 'UNSUPPORTED_OPERATION', missingPreview.text);
+    assert.equal((missingPreview.structured as { reason: string }).reason, 'unavailable');
+
     const container_id = target.ifcDataStore!.entities.getExpressIdByGlobalId(GROUND_STOREY);
     const prepared = value<{ token: string; triangles: number; positions: number }>(
       await call('appearance.capture.prepare', {
@@ -223,7 +232,7 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     assert.match(refused.text, /changed|registration/i);
     assert.equal(useViewerStore.getState().mutationVersion, before);
   });
-  it('shares fingerprint-bound native face edits and whole-surface semantics', () => {
+  it('shares fingerprint-bound native face edits and classifies reviewed mask refusals (#10871)', async () => {
     const conversions: NonNullable<AppearancePlan['conversions']> = [
       {
         productId: 7,
@@ -240,6 +249,15 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     ]);
     assert.equal(faceMaskRequests(changeNativeFaceMask(masks, conversions, 7, [0, 1]), [7]), undefined);
     assert.equal(faceMaskRequests(masks, [8]), undefined);
+    const { applyReviewedFaceMask } = await import('./appearance-native-faces') as Partial<typeof import('./appearance-native-faces')>;
+    assert.ok(applyReviewedFaceMask);
+    for (const [product_id, surface_fingerprint, triangles, code, reason] of [
+      [8, 'native-surface', [1], 'INVALID_INPUT', 'unknown-target'],
+      [7, 'changed-surface', [1], 'STATE_CHANGED', 'stale'],
+      [7, 'native-surface', [2], 'INVALID_INPUT', 'invalid-value'],
+    ] as const) {
+      assert.throws(() => applyReviewedFaceMask(masks, conversions, { product_id, surface_fingerprint, triangles }), { code, details: { reason } });
+    }
   });
   it('keeps real raycast source observations independent and refuses duplicate scan correspondences', () => {
     const mesh: MeshData = {

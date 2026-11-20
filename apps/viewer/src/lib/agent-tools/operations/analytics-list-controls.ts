@@ -15,8 +15,11 @@ export const analyticsListControlOperations = [
     type: 'object', properties: { id: idSchema.properties.id, column_id: idSchema.properties.id, expected_json: { type: 'string', minLength: 2, maxLength: 500000 }, source: { type: 'string', enum: ['property', 'quantity'] }, set_name: { type: 'string', maxLength: 10000 }, property_name: { type: 'string', minLength: 1, maxLength: 10000 } }, required: ['id', 'column_id', 'expected_json', 'source', 'set_name', 'property_name'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string; column_id: string; expected_json: string; source: 'property' | 'quantity'; set_name: string; property_name: string }>, (i, c) => {
     const s = useViewerStore.getState(); const list = s.listDefinitions.find(row => row.id === i.id);
-    if (!list || !matchesJsonSnapshot(list, i.expected_json)) throw stale('List definition changed since inspection.');
-    const column = list.columns.find(row => row.id === i.column_id); if (!column || !isEditableColumn(column)) throw invalidInput('invalid-value', 'The native pencil editor supports property/quantity columns only.');
+    if (!list) throw invalidInput('unknown-target', 'Unknown saved list.');
+    const column = list.columns.find(row => row.id === i.column_id);
+    if (!column) throw invalidInput('unknown-target', 'Unknown list column.');
+    if (!matchesJsonSnapshot(list, i.expected_json)) throw stale('List definition changed since inspection.');
+    if (!isEditableColumn(column)) throw invalidInput('invalid-value', 'The native pencil editor supports property/quantity columns only.');
     const draft = { source: i.source, setName: i.set_name, propName: i.property_name };
     if (!draft.propName.trim() || list.columns.some(row => row.id !== column.id && columnDefKey(row) === draftDefKey(draft))) throw invalidInput('invalid-value', 'Empty or duplicate native column definition.');
     const next = { ...list, columns: updateColumnInPlace(list.columns, column.id, columnFromDraft(draft, column.id, column)), updatedAt: Date.now() };

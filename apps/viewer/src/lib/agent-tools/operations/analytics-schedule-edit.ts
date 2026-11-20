@@ -14,7 +14,7 @@ import { shouldConfirmClobber } from '@/components/viewer/schedule/useScheduleFi
 import { operation, emptySchema, referenceSchema } from './contract';
 import type { OperationContext } from './contract';
 import { matchesJsonSnapshot, metadata, checkpoint, idSchema } from './analytics-common';
-import { invalidInput, stale, unavailable } from './refusals';
+import { decodedInput, invalidInput, stale, unavailable } from './refusals';
 import { mutationRefusal } from './mutation-refusal';
 const output = { type: 'object', properties: { model_id: { type: ['string', 'null'] }, data: { type: ['object', 'null'] }, edited: { type: 'boolean' }, undo: { type: 'integer' }, redo: { type: 'integer' } }, required: ['model_id', 'data', 'edited', 'undo', 'redo'], additionalProperties: false };
 function inspect() { const s = useViewerStore.getState(); return { model_id: s.scheduleSourceModelId, data: s.scheduleData, edited: s.scheduleIsEdited, undo: s.scheduleUndoStack.length, redo: s.scheduleRedoStack.length }; }
@@ -96,7 +96,7 @@ export const analyticsScheduleEditOperations = [
     type: 'object', properties: { text: { type: 'string', minLength: 1, maxLength: 1000000 }, format: { type: 'string', enum: ['csv', 'mspdi'] } }, required: ['text', 'format'], additionalProperties: false,
   } satisfies JSONSchemaType<{ text: string; format: 'csv' | 'mspdi' }>, (i, c) => {
     const s = native(c); if (shouldConfirmClobber(s.scheduleData, s.scheduleIsEdited)) throw unavailable('Native schedule replacement requires the existing clobber confirmation. Save or clear the current schedule in the native workflow first.');
-    const result = importScheduleFromText(i.format === 'csv' ? 'schedule.csv' : 'schedule.xml', i.text); checkpoint(c);
+    const result = decodedInput('text', () => importScheduleFromText(i.format === 'csv' ? 'schedule.csv' : 'schedule.xml', i.text)); checkpoint(c);
     c.commit(() => s.commitGeneratedSchedule(result.extraction, c.model.id)); return { ...receipt(), warning_count: result.warnings.length };
   }),
 ];

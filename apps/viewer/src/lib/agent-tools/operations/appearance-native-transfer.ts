@@ -149,8 +149,8 @@ export const appearanceTransferOperations = [
       const state = nativeScanState(c, i.token, i.version),
         transfer = state.transfer,
         renderer = getGlobalRenderer();
-      if (!transfer || !renderer || renderer !== transfer.renderer)
-        throw stale('No current native transfer preview or renderer changed.');
+      if (!transfer || !renderer) throw unavailable('A native transfer preview and renderer are required.');
+      if (renderer !== transfer.renderer) throw stale('Native transfer renderer changed.');
       return out(
         c.commit(() => {
           transfer.stage.preview = compareNativeAppearancePreview(
@@ -176,8 +176,9 @@ export const appearanceTransferOperations = [
         transfer = state.transfer,
         registration = state.result,
         renderer = getGlobalRenderer();
-      if (!transfer?.output.plan || !registration || !renderer || renderer !== transfer.renderer || !c.signal)
+      if (!transfer?.output.plan || !registration || !renderer || !c.signal)
         throw unavailable('No current reviewed native transfer.');
+      if (renderer !== transfer.renderer) throw stale('Native transfer renderer changed.');
       if (transfer.applied) return out(transfer.applied);
       const recovery = { request: registration.request, rebind: state.session.afterAppearance() };
       transfer.applying = true;

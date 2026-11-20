@@ -92,6 +92,36 @@ describe('operation refusals carry an executor code and a reason (#10871)', () =
     }
   });
 
+  for (const [operation_id, input] of [
+    ['drawing.styleText', { id: 'missing', expected_json: '{}', font_size: 12, color: '#000000', border: '#000000', background: '#ffffff' }],
+    ['drawing.editText', { id: 'missing', expected_text: 'old', text: 'new' }],
+    ['drawing.importDxf', { filename: 'test.dxf', content: 'invalid DXF', units: 'm', register_to_drawing_plane: false }],
+    ['lists.editColumn', { id: 'missing', column_id: 'missing', expected_json: '{}', source: 'property', set_name: '', property_name: 'Name' }],
+    ['annotations.manage', { id: 'missing', expected_json: '{}', action: 'select' }],
+  ] as const) {
+    it(`${operation_id} classifies caller input before comparing snapshots or publishing`, async () => {
+      const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true });
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      assert.equal(reason(result), operation_id === 'drawing.importDxf' ? 'invalid-value' : 'unknown-target');
+    });
+  }
+
+  for (const [room, revision, code, expected] of [
+    ['shared', 0, 'UNSUPPORTED_OPERATION', 'unavailable'],
+    [null, 1, 'STATE_CHANGED', 'stale'],
+  ] as const) {
+    it(`reference replay reports ${expected} for the relevant precondition`, async () => {
+      useViewerStore.setState({ collabRoomId: room, referenceRevision: 0 });
+      const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_execute', {
+        operation_id: 'appearance.references.action', input: {
+          action: 'undo', reference_id: '', reference_revision: revision, visible: true, locked: false, opacity: 1, content: '',
+        },
+      }, { canEdit: () => true });
+      assert.equal(result.errorCode, code, result.text);
+      assert.equal(reason(result), expected);
+    });
+  }
+
   it('deleting a document while its revision is calculated reports stale state', async t => {
     const document = blankDocument();
     useViewerStore.setState({ documents: [document] });
@@ -125,6 +155,19 @@ describe('operation refusals carry an executor code and a reason (#10871)', () =
     assert.match(proposal.text, /proposal_json is not valid JSON\./); assert.doesNotMatch(proposal.text, /not json/);
   });
 
+  for (const [operation_id, input, write] of [
+    ['ids.document.prepare', { format: 'idsz', content: '!', document_revision: 0 }, false],
+    ['appearance.references.action', { action: 'import', reference_id: '', reference_revision: 0, visible: true, locked: false, opacity: 1, content: '{' }, true],
+    ['appearance.references.action', { action: 'import', reference_id: '', reference_revision: 0, visible: true, locked: false, opacity: 1, content: '{}' }, true],
+  ] as const) {
+    it(`${operation_id} reports bad encoding or schema as invalid input`, async () => {
+      useViewerStore.setState({ idsStudioRevision: 0, referenceRevision: 0, collabRoomId: null });
+      const result = await dispatchMainViewerTool(viewerHost(), write ? 'viewer_operation_execute' : 'viewer_operation_inspect', { operation_id, input }, { canEdit: () => true });
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      assert.equal(reason(result), 'invalid-value');
+    });
+  }
+
   it('a failed lens save is refused inside the commit, so it is never reported as a committed write', async (t: TestContext) => {
     const host = viewerHost();
     const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
@@ -133,9 +176,9 @@ describe('operation refusals carry an executor code and a reason (#10871)', () =
     useViewerStore.setState({ savedLenses: [...useViewerStore.getState().savedLenses, { id: 'custom', name: 'Custom', rules: [] } as never] });
     for (const call of [{ operation_id: 'lens.import', input: { content_json: '[]' } }, { operation_id: 'lens.delete', input: { id: 'custom' } }]) {
       const result = await dispatchMainViewerTool(host, 'viewer_operation_execute', call, { canEdit: () => true });
-      assert.equal(result.isError, true, call.operation_id); assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION', result.text);
+      assert.equal(result.isError, true, call.operation_id); assert.equal(result.errorCode, 'INTERNAL_ERROR', result.text);
       const details = result.structured as { reason?: string; committed?: boolean; save?: string };
-      assert.equal(details.reason, 'unavailable'); assert.equal(details.save, 'unavailable'); assert.equal(details.committed, undefined, call.operation_id);
+      assert.equal(details.reason, 'internal'); assert.equal(details.save, 'unavailable'); assert.equal(details.committed, undefined, call.operation_id);
       assert.ok(useViewerStore.getState().savedLenses.some(lens => lens.id === 'custom'), `${call.operation_id} left the lens in place`);
     }
     const notArray = await dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'lens.import', input: { content_json: '{"id":"x"}' } }, { canEdit: () => true });
@@ -145,8 +188,8 @@ describe('operation refusals carry an executor code and a reason (#10871)', () =
   it('a save failure maps by its reason, and a decoder keeps its own diagnostic but not a viewer fault', async () => {
     const { saveRefusal, decodedInput } = await import('./refusals') as { saveRefusal?: (f: { reason: string; message: string }) => { code: string; details?: { save?: string } }; decodedInput?: <T>(field: string, decode: () => T, options?: { json?: boolean }) => T };
     assert.ok(saveRefusal && decodedInput, 'helpers exist');
-    for (const save of ['unavailable', 'unreadable', 'too_many']) assert.equal(saveRefusal({ reason: save, message: 'm' }).code, 'UNSUPPORTED_OPERATION', save);
-    for (const save of ['quota', 'serialize', 'rollback_failed']) assert.equal(saveRefusal({ reason: save, message: 'm' }).code, 'INTERNAL_ERROR', save);
+    assert.equal(saveRefusal({ reason: 'too_many', message: 'm' }).code, 'UNSUPPORTED_OPERATION');
+    for (const save of ['unavailable', 'unreadable', 'quota', 'serialize', 'rollback_failed']) assert.equal(saveRefusal({ reason: save, message: 'm' }).code, 'INTERNAL_ERROR', save);
     assert.equal(saveRefusal({ reason: 'quota', message: 'm' }).details?.save, 'quota');
     const parseError = Object.assign(new Error('Invalid XML format'), { details: 'line 3: unclosed tag' + 'x'.repeat(1000) });
     assert.throws(() => decodedInput('xml', () => { throw parseError; }), (error: { code?: string; message?: string }) =>
@@ -163,6 +206,33 @@ describe('operation refusals carry an executor code and a reason (#10871)', () =
     const fault = new TypeError('crypto.randomUUID is not a function');
     assert.throws(() => decodedInput('content_json', () => { throw fault; }, { json: true }), (error: unknown) => error === fault);
   });
+
+  for (const background of [false, true]) {
+    it(`a dependency rejection includes internal details in ${background ? 'a job' : 'a foreground call'}`, async t => {
+      const document = blankDocument();
+      useViewerStore.setState({ documents: [document] });
+      t.mock.method(crypto.subtle, 'digest', async () => { throw new Error('Document digest unavailable'); });
+      const host = viewerHost();
+      const result = await dispatchMainViewerTool(host, 'viewer_operation_inspect', {
+        operation_id: 'document.inspect', input: { id: document.id, offset: 0, limit: 1 }, background,
+      });
+      if (!background) {
+        assert.equal(result.errorCode, 'INTERNAL_ERROR', result.text);
+        assert.equal(reason(result), 'internal');
+        return;
+      }
+      assert.equal(result.isError, false, result.text);
+      const { job } = result.structured as { job: { id: string } };
+      let snapshot: { state: string; error_code?: string; error_details?: { reason: string } } = { state: 'running' };
+      for (let i = 0; i < 100 && snapshot.state === 'running'; i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+        snapshot = (await dispatchMainViewerTool(host, 'viewer_operation_job', { job_id: job.id })).structured as typeof snapshot;
+      }
+      assert.equal(snapshot.state, 'failed');
+      assert.equal(snapshot.error_code, 'INTERNAL_ERROR');
+      assert.equal(snapshot.error_details?.reason, 'internal');
+    });
+  }
 
   it('a result that fails its own output schema is INTERNAL_ERROR, not the caller\'s input', async (t: TestContext) => {
     const host = viewerHost();

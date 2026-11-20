@@ -162,7 +162,7 @@ export const appearanceSourceOperations = [
       if (!calibration) throw invalidInput('invalid-value', 'Choose two distinct source landmarks and a positive metric distance.');
       return out(
         c.commit(() => {
-          if (source(i.source_id) !== value) throw stale('The native source changed.');
+          if (useViewerStore.getState().appearanceSources.find(item => item.id === i.source_id) !== value) throw stale('The native source changed.');
           useViewerStore.getState().updateAppearanceSource({ ...value, calibration });
           return { calibration, expected_source: JSON.stringify(source(i.source_id)) };
         }),

@@ -14,6 +14,7 @@ import { resolveRef } from '../refs';
 import { prepareAppearanceSnapshot } from '@/lib/appearance/snapshot';
 import { prepareNativeAppearancePlan } from '@/lib/appearance/prepare-native-preview';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
+import type { AppearancePlan } from '@/lib/appearance/planner-types';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { changeNativeFaceMask, faceMaskRequests, reconcileFaceMasks, type FaceMasks } from '@/lib/appearance/face-masks';
 import { invalidInput, stale, unavailable } from './refusals';
@@ -36,6 +37,18 @@ const meta = (id: string, description: string, write = false) => ({
 function candidate(c: OperationContext, id: string) {
   assertToolActive(c);
   return inspectAnalyticsAppearanceCandidate(c.host, id, c.model.id);
+}
+export function applyReviewedFaceMask(
+  masks: FaceMasks,
+  conversions: AppearancePlan['conversions'],
+  mask: { product_id: number; surface_fingerprint: string; triangles: readonly number[] },
+) {
+  const conversion = conversions?.find(item => item.productId === mask.product_id);
+  if (!conversion) throw invalidInput('unknown-target', 'Unknown convertible surface in the reviewed preview.');
+  if (conversion.surfaceFingerprint !== mask.surface_fingerprint) throw stale('The native face surface changed.');
+  if (mask.triangles.some(ordinal => ordinal >= conversion.sourceIndices.length / 3))
+    throw invalidInput('invalid-value', 'Face triangle ordinal is outside the reviewed surface.');
+  return changeNativeFaceMask(masks, conversions, mask.product_id, mask.triangles);
 }
 export const appearanceFaceOperations = [
   operation<{ source_id: string; express_ids: number[]; settings_json: string }>(
@@ -64,8 +77,9 @@ export const appearanceFaceOperations = [
       for (const express_id of i.express_ids) resolveRef(c.model, { express_id });
       if (!c.signal) throw unavailable('A live cancellation signal is required.');
       assertToolActive(c);
-      const source = useViewerStore.getState().appearanceSources.find((item) => item.id === i.source_id),
-        owner = { kind: 'draft' as const, id: crypto.randomUUID() },
+      const source = useViewerStore.getState().appearanceSources.find(item => item.id === i.source_id);
+      if (!source) throw invalidInput('unknown-target', 'Unknown native appearance source.');
+      const owner = { kind: 'draft' as const, id: crypto.randomUUID() },
         planner = createAppearancePlanner();
       try {
         const snapshot = await prepareAppearanceSnapshot(null, c.model.id, i.express_ids, planner, c.signal),
@@ -205,14 +219,7 @@ export const appearanceFaceOperations = [
         if (ids.has(mask.product_id) || !i.express_ids.includes(mask.product_id))
           throw invalidInput('invalid-value', 'Mask products must be unique and explicitly in scope.');
         ids.add(mask.product_id);
-        const conversion = old.plan.conversions?.find((item) => item.productId === mask.product_id);
-        if (
-          !conversion ||
-          conversion.surfaceFingerprint !== mask.surface_fingerprint ||
-          mask.triangles.some((ordinal) => ordinal >= conversion.sourceIndices.length / 3)
-        )
-          throw stale('The native face surface or ordinal changed.');
-        masks = changeNativeFaceMask(masks, old.plan.conversions, mask.product_id, mask.triangles);
+        masks = applyReviewedFaceMask(masks, old.plan.conversions, mask);
       }
       assertToolActive(c);
       candidate(c, i.candidate_id);

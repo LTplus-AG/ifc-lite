@@ -60,7 +60,7 @@ describe('replayReleasedGeometry', () => {
     assert.ok(scene.getEntityBoundingBox(2), 'every replayed entity keeps a box');
   });
 
-  it('a superseded or cancelled replay still finishes the ephemeral pass and says it is partial', async () => {
+  it('a superseded or cancelled replay closes the pass, says it is partial and keeps nothing it uploaded', async () => {
     let current = true;
     const scene = new Scene();
     async function* twoThenStale(): AsyncGenerator<readonly MeshData[]> {
@@ -72,6 +72,7 @@ describe('replayReleasedGeometry', () => {
     assert.deepEqual(superseded, { status: 'superseded', batches: 1, meshes: 1 });
     assert.equal(scene.isEphemeralStreaming(), false, 'never left open');
     assert.equal(scene.getEntityBoundingBox(2), null, 'nothing after the fence');
+    assert.equal(scene.getBatchedMeshes().length, 0, 'and batch 1 is rolled back: a retry starts clean');
 
     const controller = new AbortController();
     controller.abort();
@@ -79,12 +80,36 @@ describe('replayReleasedGeometry', () => {
     assert.equal(cancelled.status, 'cancelled');
   });
 
-  it('a device swap mid-replay supersedes it', async () => {
+  it('#10903 a device swap mid-replay supersedes it before the next batch is ever uploaded', async () => {
     const scene = new Scene();
+    const uploaded: number[][] = [];
+    const append = scene.appendToBatches.bind(scene);
+    scene.appendToBatches = (batch, ...rest) => { uploaded.push(batch.map((m) => m.expressId)); return append(batch, ...rest); };
     let gpu: GPUDevice = device();
     const renderer = { getScene: () => scene, getGPUDevice: () => gpu, getPipeline: () => pipeline, requestRender() {} } as unknown as Pick<Renderer, 'getScene' | 'getGPUDevice' | 'getPipeline' | 'requestRender'>;
     async function* swap(): AsyncGenerator<readonly MeshData[]> { yield [tri(1, 0, 0)]; gpu = device(); yield [tri(2, 0, 0)]; }
     assert.equal((await replayReleasedGeometry(renderer, swap())).status, 'superseded');
+    assert.deepEqual(uploaded, [[1]], 'batch 2 never reached the stale device (the in-loop fence, not only the final one)');
+  });
+
+  it('#10903 a replay that uploads batch 1 then fails keeps nothing; its retry draws every batch exactly once', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    let fail = true;
+    async function* source(): AsyncGenerator<readonly MeshData[]> {
+      yield [tri(1, 0, 0)];
+      if (fail) throw new Error('backing read failed at batch 2');
+      yield [tri(2, 5, 0)];
+    }
+    await assert.rejects(replayReleasedGeometry(host(scene, gpu).renderer, source()), /batch 2/);
+    assert.equal(scene.getBatchedMeshes().length, 0, 'the partial upload is rolled back');
+    fail = false;
+    assert.equal((await replayReleasedGeometry(host(scene, gpu).renderer, source())).status, 'complete');
+    const reference = new Scene();
+    await replayReleasedGeometry(host(reference, device()).renderer, batches([tri(1, 0, 0)], [tri(2, 5, 0)]));
+    assert.equal(scene.getBatchedMeshes().length, reference.getBatchedMeshes().length, 'the same batches as one clean replay, never batch 1 twice');
+    const drawn = scene.getBatchedMeshes().flatMap((b) => [...(b as unknown as { expressIds: number[] }).expressIds]).sort();
+    assert.deepEqual(drawn, [1, 2]);
   });
 
   for (const change of ['abort', 'device', 'owner'] as const) {
@@ -109,7 +134,7 @@ describe('replayReleasedGeometry', () => {
       });
       assert.deepEqual(result, { status: change === 'abort' ? 'cancelled' : 'superseded', batches: 1, meshes: 1 });
       assert.equal(scene.isEphemeralStreaming(), false, 'a partial final result still closes the pass');
-      assert.equal(scene.isGeometryDataReleased(), true);
+      assert.equal(scene.getBatchedMeshes().length, 0, 'and keeps none of what it uploaded');
     });
   }
 
@@ -118,6 +143,7 @@ describe('replayReleasedGeometry', () => {
     async function* broken(): AsyncGenerator<readonly MeshData[]> { yield [tri(1, 0, 0)]; throw new Error('backing read failed'); }
     await assert.rejects(replayReleasedGeometry(host(scene, device()).renderer, broken()), /backing read failed/);
     assert.equal(scene.isEphemeralStreaming(), false);
+    assert.equal(scene.getBatchedMeshes().length, 0, 'and rolls back what it uploaded');
   });
 
   it('reports a missing device instead of pretending to replay', async () => {

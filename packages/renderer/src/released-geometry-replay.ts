@@ -12,13 +12,28 @@
  * released state it started from. Peak CPU memory is one batch.
  *
  * Fencing: `isCurrent` is checked between batches (a newer reload or a lost
- * device supersedes this one) and `signal` cancels. Either way the replay
- * still finishes the ephemeral pass, so the scene is consistent and released;
- * the result says it is partial so the host replays again rather than trust it.
+ * device supersedes this one) and `signal` cancels. A replay is all or
+ * nothing: one that errors, is cancelled or is superseded removes every
+ * fragment it uploaded before closing the ephemeral pass, so the scene stays
+ * consistent and released and a retry never draws a batch twice.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from './renderer.js';
+import { destroyGpuResources } from './scene-geometry.js';
+
+type BatchedFragment = Parameters<typeof destroyGpuResources>[0];
+/** The scene's own fragment lists (friend access, as device recovery uses). */
+interface FragmentHost { streamingFragments: BatchedFragment[]; batchedMeshes: BatchedFragment[] }
+
+/** Destroy and remove fragments a replay created; idempotent. */
+function rollBack(host: FragmentHost, created: readonly BatchedFragment[]): void {
+  const gone = new Set(created.filter((fragment) => host.batchedMeshes.includes(fragment) || host.streamingFragments.includes(fragment)));
+  if (gone.size === 0) return;
+  for (const fragment of gone) destroyGpuResources(fragment);
+  host.streamingFragments = host.streamingFragments.filter((fragment) => !gone.has(fragment));
+  host.batchedMeshes = host.batchedMeshes.filter((fragment) => !gone.has(fragment));
+}
 
 export interface ReleasedGeometryReplayOptions {
   signal?: AbortSignal;
@@ -49,6 +64,10 @@ export async function replayReleasedGeometry(
   const current = () => (options.isCurrent?.() ?? true) && renderer.getGPUDevice() === startDevice;
   let count = 0, meshes = 0;
   let stopped: 'cancelled' | 'superseded' | undefined;
+  const host = scene as unknown as FragmentHost;
+  const before = new Set(host.streamingFragments);
+  let created: BatchedFragment[] = [];
+  let ok = false;
   scene.setEphemeralStreamingMode(true);
   try {
     for await (const batch of batches) {
@@ -59,16 +78,23 @@ export async function replayReleasedGeometry(
       count++; meshes += batch.length;
       renderer.requestRender();
     }
+    // The iterator's final next() is asynchronous too: re-check before committing.
+    if (!stopped) {
+      if (options.signal?.aborted) stopped = 'cancelled';
+      else if (!current()) stopped = 'superseded';
+    }
+    ok = !stopped;
   } finally {
-    // Always leave a consistent, released scene, even after an error mid-stream.
+    created = host.streamingFragments.filter((fragment) => !before.has(fragment));
+    // All or nothing: a replay that does not complete removes what it uploaded, so a retry
+    // never draws a batch twice. Then the pass is always closed, leaving a released scene.
+    if (!ok) rollBack(host, created);
     if (scene.isEphemeralStreaming()) await scene.finalizeStreamingAsync(device, pipeline);
     renderer.requestRender();
   }
-  // The iterator's final next() and finalization are asynchronous too. A
-  // device/content change or cancellation during either must not report success.
-  if (!stopped) {
-    if (options.signal?.aborted) stopped = 'cancelled';
-    else if (!current()) stopped = 'superseded';
-  }
+  // Finalization is asynchronous: a change during it must not report (or keep) a complete replay.
+  if (options.signal?.aborted) stopped = 'cancelled';
+  else if (!current()) stopped = 'superseded';
+  if (stopped) { rollBack(host, created); renderer.requestRender(); }
   return stopped ? { status: stopped, batches: count, meshes } : { status: 'complete', batches: count, meshes };
 }

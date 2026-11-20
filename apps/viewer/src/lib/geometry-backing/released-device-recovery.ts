@@ -55,8 +55,12 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
   // Fenced by the renderer (device, generation) AND by the viewer: a model replaced, a content
   // version moved or a new drawn list while a chunk was read must not publish the old source.
   const source = viewerSource(state);
+  // Per restaged model, the drawn shard revision its backing was read at: a shard ingested,
+  // withheld or unattested during any await (or before the final publish) makes it stale.
+  const attested = new Map<string, number>();
   const isCurrent = () => {
     if (!deviceCurrent()) return false;
+    for (const [modelId, revision] of attested) if (tap.drawnShardRevision(modelId) !== revision || !tap.holdsDrawnShards(modelId)) return false;
     const now = viewerSource(getViewerState());
     return now.length === source.length && now.every((value, i) => value === source[i]);
   };
@@ -93,6 +97,7 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
     // And exactly the set it drew: a shard ingested after the seal (a pending successor), one
     // withheld since, or one still queued means the acknowledged copy is not that set.
     if (!source?.backing?.isCurrent || !source.backing.isComplete || !tap.holdsDrawnShards(modelId)) return false;
+    attested.set(modelId, tap.drawnShardRevision(modelId));
     for await (const shard of source.backing.reader.instancedShards()) {
       if (!isCurrent()) return false;
       scene.addInstancedShard(device, liftedCopy(shard, lift), modelIndex);

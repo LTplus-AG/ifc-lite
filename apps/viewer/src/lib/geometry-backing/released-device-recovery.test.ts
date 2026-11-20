@@ -10,12 +10,13 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { ReleasedSceneRebuildContext } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
-import { geometryBackingCommand } from './backing-debug-hook';
+import { activeGeometryBackingTap, geometryBackingCommand } from './backing-debug-hook';
 import type { TapState } from './store-backing-tap';
 import { noteSceneGeometry } from './released-scene-replay';
 import { rebuildReleasedScene } from './released-device-recovery';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { drainInstancedShards, enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
+import { uploadSnapshotShards } from '@/hooks/sceneSnapshotLoad';
 
 /** The renderer's drain: the scene draws every queued shard. */
 const drawQueued = () => drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
@@ -158,6 +159,44 @@ describe('released device recovery rebuild (viewer)', () => {
         assert.deepEqual(shards, [], after === 'drawn' ? 'never restaged without 78' : 'never restaged ahead of the drain that will draw 78');
       } finally {
         drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'dropped'); });
+        await geometryBackingCommand(store, undefined, { action: 'stop' });
+      }
+    });
+  }
+
+  for (const late of ['enqueue during the restage read', 'partial snapshot upload'] as const) {
+    it(`#10937 a prior complete acknowledgement, then a ${late}: recovery never restores the old instances as whole`, async () => {
+      const id = `late-${late.split(' ')[0]}`, meshes = [mesh(1, 0)];
+      const geometryResult: GeometryResult = { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+      useViewerStore.setState({ models: new Map([[id, { id, idOffset: 0, maxExpressId: 100, geometryResult }]]) } as never);
+      const store = useViewerStore as unknown as StoreApi<TapState>;
+      await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `recovery-${id}-${process.pid}`, locks: null } } as never });
+      try {
+        enqueueInstancedShards(id, [shardBytes(77)], instancedShardSupplyToken(id));
+        drawQueued();
+        const [status] = await geometryBackingCommand(store, undefined, { action: 'seal' }) as Array<{ complete: boolean }>;
+        assert.equal(status.complete, true, 'the prior acknowledgement holds 77, complete');
+        if (late === 'partial snapshot upload') {
+          // A snapshot draws 78 directly, then its second shard fails: the scene now draws 77 and 78.
+          let calls = 0;
+          const direct = { addInstancedShard: () => { if (++calls === 2) throw new Error('device lost'); } };
+          assert.equal(uploadSnapshotShards(direct as never, {} as GPUDevice, id, [shardBytes(78), shardBytes(79)]), false);
+          assert.equal(activeGeometryBackingTap()!.holdsDrawnShards(id), false, 'the failed upload is an explicit transition: the old acknowledgement no longer attests the drawn set');
+        }
+        releaseCpuMeshBuffers(meshes);
+        noteSceneGeometry([]);
+        const { context } = recordingScene();
+        const shards: number[] = [];
+        (context.scene as unknown as { addInstancedShard: (d: unknown, shard: { instances: Array<{ entityId: number }> }) => void })
+          .addInstancedShard = (_d, shard) => {
+            shards.push(...shard.instances.map((i) => i.entityId));
+            // The load enqueues and draws 78 while recovery awaits its backing read.
+            if (late === 'enqueue during the restage read' && shards.length === 1) { enqueueInstancedShards(id, [shardBytes(78)], instancedShardSupplyToken(id)); drawQueued(); }
+          };
+        const held = new Set([modelIndices(useViewerStore.getState().models).get(id)!]);
+        assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: held }), false, 'the older set is not the drawn one: never a whole recovery');
+      } finally {
+        drainInstancedShards((queued, settle) => { for (const shard of queued) settle(shard, 'dropped'); });
         await geometryBackingCommand(store, undefined, { action: 'stop' });
       }
     });

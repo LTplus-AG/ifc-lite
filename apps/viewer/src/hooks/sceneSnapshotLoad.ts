@@ -16,7 +16,7 @@ import type { LoadTrace } from '@ifc-lite/load-trace';
 import type { StoreApi } from 'zustand';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
+import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken, unattestInstancedShards } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
@@ -90,6 +90,8 @@ export function uploadSnapshotShards(scene: Pick<SceneContents, 'addInstancedSha
       console.warn('[useIfcCache] snapshot shard upload failed (device lost?), skipping:', err);
     }
   }
+  // Partly drawn (or not at all): the scene's set is no longer any backing's, even before commit.
+  if (!all) unattestInstancedShards(modelId);
   return all;
 }
 

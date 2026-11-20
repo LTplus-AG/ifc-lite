@@ -35,7 +35,7 @@ export interface InstancedShardQueueEvent {
    * `discarded`: removed undrained (a reset, or a model's removal).
    * `adopted`: uploaded directly by a committed scene snapshot, outside the queue.
    */
-  readonly kind: 'enqueued' | 'drained' | 'dropped' | 'discarded' | 'adopted';
+  readonly kind: 'enqueued' | 'drained' | 'dropped' | 'discarded' | 'adopted' | 'unattested';
   readonly modelIds: ReadonlySet<string>;
   /** `enqueued`: the shards this call queued; `adopted`: shards a committed scene snapshot uploaded directly (bytes read, never detached). */
   readonly shards?: readonly PendingInstancedShard[];
@@ -228,6 +228,14 @@ export function subscribeInstancedShardSupply(listener: (supply: InstancedShardS
 export function announceAdoptedInstancedShards(modelId: string, shards: readonly ArrayBuffer[], fromGeneration: number | InstancedShardSupplyToken): void {
   if (shards.length === 0 || !supplyCurrent(modelId, fromGeneration)) return;
   emit({ kind: 'adopted', modelIds: new Set([modelId]), shards: shards.map((bytes) => ({ modelId, bytes })) });
+}
+
+/**
+ * The scene now draws shards of `modelId` that nothing will attest (a snapshot whose direct upload
+ * failed part-way): no older backing may stand for its instancing any more (#10264).
+ */
+export function unattestInstancedShards(modelId: string): void {
+  emit({ kind: 'unattested', modelIds: new Set([modelId]) });
 }
 
 export function hasPendingInstancedShards(modelId?: string): boolean {

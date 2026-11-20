@@ -112,6 +112,7 @@ export class StoreGeometryBackingTap {
         }
         return;
       }
+      if (event.kind === 'unattested') { for (const id of event.modelIds) tap.abandon(id, supplyPoint(id)); return; } // drawn, never attested
       if ((event.kind !== 'enqueued' && event.kind !== 'adopted') || !event.shards) return;
       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
       for (const shard of event.shards) tap.ingestShard(shard);
@@ -140,9 +141,9 @@ export class StoreGeometryBackingTap {
 
   /** The acknowledged generation holds exactly the shards the scene draws: nothing ingested or withheld since, none still queued. */
   holdsDrawnShards(modelId: string): boolean {
-    const ack = this.acknowledged.get(modelId);
-    return !!ack && ack.revision === (this.revisions.get(modelId) ?? 0) && !hasPendingInstancedShards(modelId);
+    const ack = this.acknowledged.get(modelId); return !!ack && ack.revision === this.drawnShardRevision(modelId) && !hasPendingInstancedShards(modelId);
   }
+  drawnShardRevision(modelId: string): number { return this.revisions.get(modelId) ?? 0; }
 
   /** The last acknowledged generation and its store members: what released meshes are replayed from. */
   replaySource(modelId: string): PreviousGeneration | undefined {
@@ -293,8 +294,7 @@ export class StoreGeometryBackingTap {
 
   /** Instancing whose shards were dropped before upload: a fresh lost generation, never carrying the abandoned shards. */
   private abandon(modelId: string, lostAt: SupplyPoint): void {
-    const tracked = this.stopped ? undefined : this.tracked.get(modelId);
-    if (!tracked || !this.store.getState().models.has(modelId)) return;
+    const tracked = this.stopped ? undefined : this.tracked.get(modelId); if (!tracked || !this.store.getState().models.has(modelId)) return;
     this.bump(modelId); this.regenerate(modelId, tracked.meshes, 'lost');
     this.tracked.get(modelId)!.lostAt = lostAt;
   }

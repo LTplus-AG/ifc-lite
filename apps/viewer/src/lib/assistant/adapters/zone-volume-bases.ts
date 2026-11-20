@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
-  getLegacySourceMutationView, isLegacyMutationRef, LEGACY_MUTATION_MODEL_ID, LEGACY_MUTATION_MODEL_IDS,
+  getLegacySourceMutationView, isLegacySourceRef, LEGACY_MUTATION_MODEL_IDS,
 } from '@/sdk/adapters/model-compat';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { RelationshipType } from '@ifc-lite/data';
@@ -22,12 +22,6 @@ import { allBasisBreakdowns, declaredVolumeBases, ZONE_QUANTITY_SET_NAME_PREFIX,
 /** Shared public unit convention; unresolved declared units and unavailable context are distinct. */
 export const ZONE_VOLUME_UNIT_LIMITATIONS = 'When the project context is available but its VOLUMEUNIT is unresolved, implicit declared bases retain the existing Properties card scale-1 SI default; an m3 label does not prove a declared file unit or a measured conversion. When the current project unit context is unavailable, implicit declared bases are withheld. A basis with an independently resolved explicit native Unit retains its measured SI conversion; an unresolved explicit Unit is reported as unavailable rather than given a scale-1 default.';
 
-/** Legacy refs can still read the old source while federation is populated. */
-function canReadLegacySource(s: ViewerState, modelId: string): boolean {
-  return !s.models.has(modelId)
-    && (isLegacyMutationRef(s, modelId) || modelId === LEGACY_MUTATION_MODEL_ID || modelId === 'legacy');
-}
-
 /** Declared shares belong to these exact native sources and overlay revisions,
  * including edits that do not publish a viewer mutationVersion. This walks
  * loaded sources only, never their elements, quantities or geometry. */
@@ -39,7 +33,7 @@ export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySe
     identity.push(modelId, model.ifcDataStore, model.ifcDataStore?.source,
       model.sourceContentHash, view, view?.getMutationRevision());
   }
-  if (!modelIds || LEGACY_MUTATION_MODEL_IDS.some(id => modelIds.has(id) && canReadLegacySource(s, id))) {
+  if (!modelIds || LEGACY_MUTATION_MODEL_IDS.some(id => modelIds.has(id) && isLegacySourceRef(s, id))) {
     const legacyView = getLegacySourceMutationView(s);
     identity.push(s.ifcDataStore, s.ifcDataStore?.source, legacyView, legacyView?.getMutationRevision());
   }
@@ -59,7 +53,7 @@ export function zoneQuantitySources(s: ViewerState) {
     let source = models.get(ref.modelId);
     if (!source) {
       const modelStore = s.models.get(ref.modelId)?.ifcDataStore;
-      const legacy = canReadLegacySource(s, ref.modelId);
+      const legacy = isLegacySourceRef(s, ref.modelId);
       const store = modelStore ?? (legacy ? s.ifcDataStore : null);
       const view = legacy ? getLegacySourceMutationView(s) : s.mutationViews.get(ref.modelId) ?? null;
       const units = currentProjectUnitContext(store, view);

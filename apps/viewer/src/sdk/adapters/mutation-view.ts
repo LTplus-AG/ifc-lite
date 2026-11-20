@@ -6,7 +6,7 @@ import { createModelMutationView } from '@/utils/model-mutation-view';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { getAttributeNamesForSchema, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type { EntityAttributeData, EntityData } from '@ifc-lite/sdk';
-import { getModelForRef, isLegacyMutationRef, normalizeMutationModelId, LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from './model-compat.js';
+import { getModelForRef, normalizeMutationModelId, LEGACY_MUTATION_MODEL_ID } from './model-compat.js';
 import type { StoreApi } from './types.js';
 
 export { LEGACY_MUTATION_MODEL_ID };
@@ -24,8 +24,7 @@ export function getOrCreateMutationView(store: StoreApi, modelId: string): Mutab
   const existing = state.getMutationView?.(normalizedModelId);
   if (existing) return existing;
 
-  const modelRefId = isLegacyMutationRef(state, modelId) ? LEGACY_MODEL_ID : modelId;
-  const model = getModelForRef(state, modelRefId);
+  const model = getModelForRef(state, modelId);
   const dataStore = model?.ifcDataStore;
   if (!dataStore) return null;
 

@@ -94,12 +94,8 @@ export function getModelForRef(state: Pick<ViewerState, 'models' | 'ifcDataStore
   const model = state.models.get(modelId);
   if (model) return model;
 
-  // Legacy single-model fallback. `__legacy__` belongs in this list because
-  // the store adapter hands it back on every ref it mints in single-model mode
-  // (#5234): without it, feeding such a ref's `modelId` to any reader built on
-  // this resolver — `bim.cost`, the mutation-view attribute reader — failed
-  // with "Unknown modelId '__legacy__'" for an id this adapter itself issued.
-  if (isLegacyMutationRef(state, modelId) && state.ifcDataStore) {
+  // A top-level source may remain available while another model enters the federation.
+  if (isLegacySourceRef(state, modelId) && state.ifcDataStore) {
     return buildLegacyModel(state.ifcDataStore);
   }
 

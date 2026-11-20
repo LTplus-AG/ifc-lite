@@ -351,6 +351,18 @@ it('legacy zone evidence uses the loaded source during a mixed-model transition 
     assert.equal(quantities?.find(quantity => quantity.name === 'GrossVolume')?.value, 8);
     assert.ok(zoneQuantitySourceIdentity(state, new Set(['legacy'])).includes(view));
     assert.ok(!zoneQuantitySourceIdentity(state, new Set(['federated'])).includes(view));
+    const defaultEvidence = zoneQuantitySources(state)({ modelId: 'default', expressId: 10 });
+    assert.equal(defaultEvidence.quantities[0]?.quantities[0]?.value, 8);
+    assert.ok(zoneQuantitySourceIdentity(state, new Set(['default'])).includes(view));
+
+    state.clearMutationView('legacy');
+    const created = getOrCreateMutationView(useViewerStore, 'legacy');
+    assert.ok(created, 'the SDK can create a legacy view while another model is registered');
+    created.setAttribute(10, 'Name', 'First SDK edit');
+    assert.ok(mod);
+    const edited = await parse(mod.editedModelBytes(store, useViewerStore.getState().getMutationView('default')));
+    assert.equal(edited.entities.getName(10), 'First SDK edit');
+
 
     const federatedStore = await parse(new TextEncoder().encode(FIXTURE.replace('Wall A', 'Federated wall')));
     const defaultModel = { ...fixtureModel('default', { idOffset: 1_000_000 }), ifcDataStore: federatedStore };

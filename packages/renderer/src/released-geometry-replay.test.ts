@@ -171,4 +171,58 @@ describe('replayReleasedGeometry', () => {
     assert.deepEqual(await replayReleasedGeometry(host(new Scene(), null).renderer, batches([tri(1, 0, 0)])),
       { status: 'unavailable', reason: 'no-device' });
   });
+  const releasedOf = (scene: Scene) => (scene as unknown as { modelTranslations: { releasedEntities: Map<number, Map<number, unknown>> } }).modelTranslations.releasedEntities;
+  const drawnIds = (scene: Scene) => scene.getBatchedMeshes().flatMap((b) => [...(b as unknown as { expressIds: number[] }).expressIds]).sort();
+
+  it('#10903 a superseded replay rolls back only what it owns: a successor that wrote meanwhile keeps its fragment and boxes', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    let current = true;
+    async function* stalled(): AsyncGenerator<readonly MeshData[]> {
+      yield [{ ...tri(1, 0, 0), modelIndex: 0 }];
+      // While this replay waits on its next read, a successor reshapes the scene: it draws
+      // entity 9 and widens entity 1's boxes, then this replay is superseded.
+      scene.appendToBatches([{ ...tri(9, 20, 0), modelIndex: 0 }, { ...tri(1, -10, 0), modelIndex: 0 }], gpu, pipeline, true);
+      current = false;
+      yield [tri(2, 5, 0)];
+    }
+    const result = await replayReleasedGeometry(host(scene, gpu).renderer, stalled(), { isCurrent: () => current });
+    assert.equal(result.status, 'superseded');
+    assert.deepEqual(drawnIds(scene), [1, 9], "the successor's fragment survives; only this replay's own is destroyed");
+    assert.ok(scene.getEntityBoundingBox(9), "the successor's entity box survives");
+    const box = scene.getEntityBoundingBox(1)!;
+    assert.deepEqual([box.min.x, box.max.x], [-10, 1], "entity 1's box was rewritten by the successor: never reverted to the pre-replay state");
+    assert.ok(releasedOf(scene).get(9)?.has(0), "the successor's placement group survives");
+  });
+
+  it('#10903 a clear() and a complete successor replay before the stale one resumes: the stale rollback touches nothing', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    let resume!: () => void;
+    const gate = new Promise<void>((done) => { resume = done; });
+    async function* stale(): AsyncGenerator<readonly MeshData[]> { yield [tri(1, 0, 0)]; await gate; yield [tri(2, 5, 0)]; }
+    let current = true;
+    const first = replayReleasedGeometry(host(scene, gpu).renderer, stale(), { isCurrent: () => current });
+    await new Promise((done) => setTimeout(done, 0));
+    current = false;
+    scene.clear(); // a reload resets the scene, then its successor replays the new content
+    assert.equal((await replayReleasedGeometry(host(scene, gpu).renderer, batches([tri(1, 30, 0)]))).status, 'complete');
+    resume();
+    assert.equal((await first).status, 'superseded');
+    assert.deepEqual(drawnIds(scene), [1], "the successor's draw stays");
+    const box = scene.getEntityBoundingBox(1)!;
+    assert.deepEqual([box.min.x, box.max.x], [30, 31], "the successor's box, never the stale replay's prior state");
+    assert.equal(scene.isGeometryDataReleased(), true);
+  });
+
+  it('#10903 a finalize that rejects after every batch uploaded rolls the replay back and closes the pass', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    scene.finalizeStreamingAsync = () => Promise.reject(new Error('finalize failed'));
+    await assert.rejects(replayReleasedGeometry(host(scene, gpu).renderer, batches([{ ...tri(4, 0, 0), modelIndex: 0 }])), /finalize failed/);
+    assert.equal(scene.getBatchedMeshes().length, 0, 'no partial upload survives a failed finalize');
+    assert.equal(scene.getEntityBoundingBox(4), null, 'nor its entity box');
+    assert.equal(releasedOf(scene).has(4), false, 'nor its placement group');
+    assert.equal(scene.isEphemeralStreaming(), false, 'the pass is closed');
+  });
 });

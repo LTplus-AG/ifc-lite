@@ -1,12 +1,13 @@
 diff --git a/packages/renderer/src/released-geometry-replay.ts b/packages/renderer/src/released-geometry-replay.ts
-index d17363e..86fcb4b 100644
+index c9335fa..54fe360 100644
 --- a/packages/renderer/src/released-geometry-replay.ts
 +++ b/packages/renderer/src/released-geometry-replay.ts
-@@ -53,6 +53,7 @@ export async function replayReleasedGeometry(
+@@ -128,7 +128,7 @@ export async function replayReleasedGeometry(
+   const host = scene as unknown as FragmentHost;
+   const tx = new ReplayTransaction(host);
+   const reason = (): 'cancelled' | 'superseded' | undefined =>
+-    options.signal?.aborted ? 'cancelled' : host.clearEpoch !== tx.epoch ? 'superseded' : undefined;
++    options.signal?.aborted ? 'cancelled' : !current() || host.clearEpoch !== tx.epoch ? 'superseded' : undefined;
+   let ok = false;
+   scene.setEphemeralStreamingMode(true);
    try {
-     for await (const batch of batches) {
-       if (options.signal?.aborted) { stopped = 'cancelled'; break; }
-+      if (!current()) { stopped = 'superseded'; break; }
-       if (batch.length === 0) continue;
-       scene.appendToBatches([...batch], device, pipeline, true);
-       count++; meshes += batch.length;

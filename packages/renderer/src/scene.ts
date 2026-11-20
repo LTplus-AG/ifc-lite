@@ -156,6 +156,8 @@ export class Scene {
   private authoredGeneration = 0;
   // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
   private pickGeometryRevision = 0;
+  /** Bumped by `clear()`: what a transaction owned before it is no longer its to roll back (#10264). */
+  private clearEpoch = 0;
   private triangleCounts = new SceneTriangleCounts();
   private geometryChanges = new GeometryChangeSignal();
   private bumpPickGeometryRevision(): void { this.pickGeometryRevision++; this.geometryChanges.changed(); }
@@ -3608,6 +3610,7 @@ export class Scene {
   }
 
   clear(): void {
+    this.clearEpoch++;
     this.modelTranslations.clear();
     // GPU-instancing templates own their vertex/index/instance buffers.
     // (Freed slots are holes whose buffers are already destroyed — skip them so

@@ -20,7 +20,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
-import { subscribeReleasedGeometryMetadata } from './released-geometry-metadata';
+import { releasedGeometryMetadataVersion, subscribeReleasedGeometryMetadata } from './released-geometry-metadata';
 
 const SLICE = 256;
 const RETRIES = 3;
@@ -48,8 +48,12 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
   const released = meshes.filter(isReleasedMesh);
   const mine = epoch;
   const isCurrent = () => mine === epoch;
+  // The backing revision each attempt started from: a change during the LAST failing attempt
+  // lands before `park` subscribes, so park compares against it instead of losing that wake.
+  let seen = releasedGeometryMetadataVersion();
   const run = async (): Promise<void> => {
     for (let attempt = 1; attempt <= RETRIES && isCurrent(); attempt++) {
+      seen = releasedGeometryMetadataVersion();
       try {
         if (await replayOnce(renderer, released, isCurrent)) return;
       } catch (error) {
@@ -87,6 +91,7 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
     };
     const unsubscribe = subscribeReleasedGeometryMetadata(schedule);
     parked.add(stop);
+    if (releasedGeometryMetadataVersion() !== seen) schedule(); // changed since the last attempt began
   };
   chain = chain.then(run, run);
   return meshes.filter((mesh) => !isReleasedMesh(mesh));

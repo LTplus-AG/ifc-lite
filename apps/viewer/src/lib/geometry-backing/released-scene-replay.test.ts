@@ -56,6 +56,23 @@ describe('released scene replay (content reload)', () => {
     assert.equal(attempts, 4, 'and stopped listening once complete');
   });
 
+  it('#10903 the backing recovers DURING the last bounded attempt (before park subscribes): the wake is not lost', async () => {
+    const list = releasedList();
+    let attempts = 0, available = false;
+    const uploaded: MeshData[][] = [];
+    splitReleasedForReplay(renderer, list, async (_r, released) => {
+      attempts++;
+      if (attempts === 3) { available = true; notifyReleasedGeometryMetadataChanged(); throw new Error('read began before the seal'); }
+      if (!available) throw new Error('backing unavailable');
+      uploaded.push([...released]);
+      return true;
+    });
+    await releasedReplaysIdle();
+    await releasedReplaysIdle();
+    assert.equal(attempts, 4, 'parking saw the change made during attempt 3 and retried at once');
+    assert.deepEqual(uploaded, [[list[1]]], 'with no further notification needed');
+  });
+
   it('#10903 a notification while a parked attempt is in flight never makes a successful replay upload twice', async () => {
     const list = releasedList();
     let attempts = 0, available = false;

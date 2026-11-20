@@ -171,9 +171,11 @@ test('#10264 killed-after-continue fails acceptance; passes only the explicit wa
   assert.equal(phaseOf({ warning: true, tris: 0 }), 'memory warning (load not started)');
 });
 
-test('#10264 A2 the nightly lane pins the unanswered consent dialog exactly', () => {
-  assert.equal(verdict('awaiting-decision', 'awaiting-decision').pass, true);
-  for (const other of ['loaded', 'refused', 'cancelled', 'killed']) assert.equal(verdict(other, 'awaiting-decision').pass, false, other);
+test('#10264 A2 loaded, refused and awaiting-decision each pin one exact outcome', () => {
+  const outcomes = ['loaded', 'refused', 'awaiting-decision', 'cancelled', 'killed'];
+  for (const pin of ['loaded', 'refused', 'awaiting-decision']) {
+    for (const outcome of outcomes) assert.equal(verdict(outcome, pin).pass, outcome === pin, `${outcome} under --expect ${pin}`);
+  }
 });
 
 test('#10264 CLI options are validated before anything runs', () => {

@@ -203,8 +203,8 @@ outcome: dense 300 MB at a reported 4 GB / 3 GiB is `refused`, dense 1100 MB at 
 8 GB / 6 GiB is `awaiting-decision`. If the hosted runner does not delegate the memory controller
 to the user manager, the probe's preflight exits 2 and the lane is red, never skipped. First
 hosted run (ubuntu-latest, 2026-11-19, run 44519558141): the user manager delegated
-`cpu memory pids`; 300 MB at 4 GB was `refused` before open after five source reads, the 4 KiB
-header and the four 256 KiB sample windows (no OOM kill), and 1100 MB at 8 GB was `awaiting-decision` after the 4 KiB header.
+`cpu memory pids`; 300 MB at 4 GB was `refused` before open after five source reads (the 4 KiB
+header, then four 256 KiB sample windows; no OOM kill), and 1100 MB at 8 GB was `awaiting-decision` after the 4 KiB header.
 
 ## Gaussian capture memory ownership (#9018, #10401)
 

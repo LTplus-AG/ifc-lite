@@ -148,7 +148,10 @@ function fileRequest(request: FiledProcessedModelRequest): void {
  */
 export function applyProcessingConfig(config: Pick<ViewerRuntimeConfig, 'server' | 'open'> | undefined): void {
   if (config?.server) setProcessingServerUrl(config.server.url);
-  if (config?.open) openProcessedModel(config.open.processedModel); // a host request: the page URL yields
+  if (config?.open) {
+    if (!getProcessingServerUrl()) console.error('[viewer config] open.processedModel requires server.url or VITE_IFC_SERVER_URL.');
+    openProcessedModel(config.open.processedModel); // a host request: the page URL yields
+  }
 }
 
 /** The mounted viewer's side: take the waiting request, once. */

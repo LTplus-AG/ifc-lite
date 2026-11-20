@@ -53,6 +53,33 @@ describe('applyProcessingConfig', () => {
     }
   });
 
+  it('reports a missing server in the config and still files the model for the error card (#10822)', (t) => {
+    const error = t.mock.method(console, 'error', () => {});
+    const processedModel = { sha256: 'b'.repeat(64), bytes: 0, name: 'host.ifc' };
+    try {
+      setProcessingServerUrl('');
+      applyProcessingConfig({ open: { processedModel } });
+      assert.deepEqual(takeProcessedModelRequest(), processedModel);
+      assert.equal(error.mock.callCount(), 1);
+      assert.match(String(error.mock.calls[0].arguments[0]), /viewer config.*open\.processedModel.*server\.url/i);
+    } finally {
+      resetProcessedModelRequestsForTests();
+    }
+  });
+
+  it('uses an existing processing server when the config supplies only the model (#10822)', (t) => {
+    const error = t.mock.method(console, 'error', () => {});
+    const processedModel = { sha256: 'b'.repeat(64), bytes: 0, name: 'host.ifc' };
+    try {
+      setProcessingServerUrl('/ifc');
+      applyProcessingConfig({ open: { processedModel } });
+      assert.deepEqual(takeProcessedModelRequest(), processedModel);
+      assert.equal(error.mock.callCount(), 0);
+    } finally {
+      resetProcessedModelRequestsForTests();
+    }
+  });
+
   it('names the server, then files the start model as a host request that the page URL yields to', () => {
     const info = console.info;
     console.info = () => {};

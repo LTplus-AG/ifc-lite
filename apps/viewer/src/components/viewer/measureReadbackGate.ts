@@ -96,9 +96,17 @@ export function measureReadbacksIdle(): Promise<void> { return chain; }
  * What a click captured when it happened: the reset that drops its placement is any change of these. `view`
  * (a placement's view-projection matrix at the click): its (x, y) names a surface only under that view, so a
  * placement whose view changed before its read ran (an orbit, pan or zoom) is dropped, never placed on
- * whatever is now under those pixels.
+ * whatever is now under those pixels. `shown` (the hide and isolate sets at the click, compared by identity:
+ * the store replaces them on every change): a hide or isolate before the read can expose another surface at
+ * the same pixel, so that drops the placement too.
  */
-export interface PlacementScope { tool: string; gesture: number; view?: readonly number[] }
+export interface PlacementScope { tool: string; gesture: number; view?: readonly number[]; shown?: readonly unknown[] }
+
+/** Whether the hide and isolate sets are still the ones a click captured (no capture: treated as unchanged). */
+export function sameShown(then: readonly unknown[] | undefined, now: readonly unknown[] | undefined): boolean {
+  if (!then || !now) return true;
+  return then.length === now.length && then.every((v, i) => v === now[i]);
+}
 
 /** Whether `now` is the view `then` was captured in (no capture: nothing to compare, treated as unchanged). */
 export function sameView(then: readonly number[] | undefined, now: readonly number[] | undefined): boolean {
@@ -110,10 +118,11 @@ export function sameView(then: readonly number[] | undefined, now: readonly numb
 /** The store state the readback paths read, handed in by the eager half. */
 export type GateStore = () => { measureGestureEpoch: number; setMeasurePointLive: (point: null) => void };
 
-// `actNow`, `viewNow` and the store come from the eager half, never by static import: that cycle would merge
+// `actNow`, `viewNow`, `shownNow` and the store come from the eager half, never by static import: that cycle would merge
 // this module into the entry chunk, and a store import lists its whole graph as this chunk's preload dependencies.
 export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => void, x: number, y: number, scope: PlacementScope,
-  actNow: (act: () => void) => void, store: GateStore, viewNow: () => readonly number[] | undefined = () => undefined): void {
+  actNow: (act: () => void) => void, store: GateStore, viewNow: () => readonly number[] | undefined = () => undefined,
+  shownNow: () => readonly unknown[] | undefined = () => undefined): void {
   const visibility: Visibility = { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current };
   const measuring = () => ctx.activeToolRef.current === 'measure';
   const inScope = () => ctx.activeToolRef.current === scope.tool && store().measureGestureEpoch === scope.gesture;
@@ -127,8 +136,8 @@ export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => v
     let warned = false;
     const placeable = () => {
       if (!inScope()) return false;
-      if (sameView(scope.view, viewNow())) return true;
-      if (!warned) { warned = true; console.warn('[Measure] Point not placed: the view moved before its geometry was read back'); }
+      if (sameView(scope.view, viewNow()) && sameShown(scope.shown, shownNow())) return true;
+      if (!warned) { warned = true; console.warn('[Measure] Point not placed: the view or what it shows changed before its geometry was read back'); }
       return false;
     };
     runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), placeable, 'placement');

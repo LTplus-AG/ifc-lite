@@ -24,10 +24,11 @@ let acting = false;
 export function viaReadback(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => void, x = 0, y = 0): boolean {
   const scene = ctx.renderer.getScene() as { isGeometryDataReleased?: () => boolean };
   if (acting || scene.isGeometryDataReleased?.() !== true) return false;
-  // A placement's (x, y) names a surface only under the view it was clicked in: keep that view.
-  const view = kind === 'place' ? viewOf(ctx) : undefined;
-  const scope = { tool: ctx.activeToolRef.current, gesture: useViewerStore.getState().measureGestureEpoch, view };
-  void (gate ??= import('./measureReadbackGate.js')).then((loaded) => loaded.route(ctx, kind, act, x, y, scope, actNow, useViewerStore.getState, () => viewOf(ctx)));
+  // A placement's (x, y) names a surface only under the view and the visibility it was clicked in: keep both.
+  const place = kind === 'place';
+  const scope = { tool: ctx.activeToolRef.current, gesture: useViewerStore.getState().measureGestureEpoch,
+    view: place ? viewOf(ctx) : undefined, shown: place ? shownOf(ctx) : undefined };
+  void (gate ??= import('./measureReadbackGate.js')).then((loaded) => loaded.route(ctx, kind, act, x, y, scope, actNow, useViewerStore.getState, () => viewOf(ctx), () => shownOf(ctx)));
   return true;
 }
 
@@ -36,6 +37,14 @@ export function viewOf(ctx: MouseHandlerContext): readonly number[] | undefined 
   const camera = (ctx.renderer as { getCamera?: () => { getViewProjMatrix?: () => { m: ArrayLike<number> } } }).getCamera?.();
   const m = camera?.getViewProjMatrix?.().m;
   return m ? Array.from(m) : undefined;
+}
+
+/**
+ * The hide and isolate sets a pick is made under. The store replaces these sets on every change, so their
+ * identities say whether what is shown at a pixel can have changed.
+ */
+export function shownOf(ctx: MouseHandlerContext): readonly [unknown, unknown] {
+  return [ctx.hiddenEntitiesRef.current, ctx.isolatedEntitiesRef.current];
 }
 
 /** The gate acting on a finished read: a handler re-entered from here runs its resident path. */

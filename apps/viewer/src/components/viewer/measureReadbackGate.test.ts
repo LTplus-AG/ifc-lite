@@ -162,6 +162,19 @@ describe('#10880 drag and placement readback', () => {
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own view');
   });
 
+  it('a placement whose hide or isolate changed before its read ran is dropped, not placed on what is now shown', async () => {
+    const c = ctx();
+    handlePolylineClick(c, 0, 0); // clicked on surface A
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick(); // the first lands under the same visibility
+    c.hiddenEntitiesRef.current = new Set([7]); // then A is hidden, exposing B at the second click's pixel
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast under the new visibility');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own visibility');
+  });
+
   it('a gesture reset (Esc, a mode or tool switch) drops a pending placement', async () => {
     const c = ctx();
     handlePolylineClick(c, 0, 0);

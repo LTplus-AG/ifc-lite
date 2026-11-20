@@ -68,17 +68,13 @@ export function effectiveAttribute(reader: ModelReader, expressId: number, name:
   return effectiveListStringAttribute(dataStore, view, expressId, name, () => baseAttribute(dataStore, expressId, name));
 }
 
-/** This session's edit of attribute `name` of `expressId`, if any. */
-export const sessionAttributeEdit = (view: MutablePropertyView, expressId: number, name: string) =>
-  view.getAttributeMutationsForEntity(expressId).find(mutation => mutation.name === name);
-
 /**
  * The value an undo of an edit to attribute `name` restores: a session edit's value exactly (even '' or `$`), else the
  * source string, null when unset, or undefined for an attribute this reader cannot read (anything but IfcRoot's
  * editable strings).
  */
 export function attributeUndoPrior(reader: ModelReader, expressId: number, name: string): string | null | undefined {
-  const edited = sessionAttributeEdit(reader.view, expressId, name);
+  const edited = reader.view.getAttributeMutationsForEntity(expressId).find(mutation => mutation.name === name);
   if (edited) return edited.value;
   return (EDITABLE_ATTRIBUTES as readonly string[]).includes(name) ? effectiveAttribute(reader, expressId, name) || null : undefined;
 }

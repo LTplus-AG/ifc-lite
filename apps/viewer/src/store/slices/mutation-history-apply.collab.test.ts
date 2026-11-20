@@ -154,6 +154,8 @@ describe('undo and redo the room did not get, or got differently (#10810)', () =
     sdk.setAttribute(wall, 'Name', 'Second');
     state().undo('__legacy__');
     assert.deepEqual(state().mutationViews.get('__legacy__')?.getAttributeMutationsForEntity(WALL_ID), [{ name: 'Name', value: 'First' }]);
+    // The first edit's prior is the source Name, as for a federated model.
+    assert.equal(state().undoStacks.get('__legacy__')?.at(-1)?.oldValue, 'Wall');
   });
 
   it('a move: undo moves the room copy back, redo forward again', () => {

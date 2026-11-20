@@ -41,17 +41,23 @@ export function sameModels(a: ViewerState['models'], b: ViewerState['models']) {
  * version for in-place federation realignment.
  */
 export function captureZoneExportInputs(set: ZoneSet) {
-  const { models, geometryResult, geometryUpdateTick, geometryContentVersion, mutationVersion, zoneAssignments } = useViewerStore.getState();
+  const { models, geometryResult, geometryContentVersion, mutationVersion, zoneAssignments } = useViewerStore.getState();
   const signature = zoneSetRevision(set), assignments = zoneAssignmentSignature(zoneAssignments, set.id);
 
-  return () => {
+  let invalidated = false;
+  const release = useViewerStore.subscribe((now, previous) => {
+    // Check each tick against the preceding write. A previous recolour cannot explain a later bare tick.
+    if (now.geometryUpdateTick !== previous.geometryUpdateTick
+      && now.models === previous.models && now.geometryResult === previous.geometryResult) invalidated = true;
+  });
+
+  function current() {
     const now = useViewerStore.getState();
-    if (now.geometryContentVersion !== geometryContentVersion || now.mutationVersion !== mutationVersion) return false;
-    // A bare tick without replacement geometry is an invalidation, with no colour-only replacement to compare.
-    if (now.geometryUpdateTick !== geometryUpdateTick && now.models === models && now.geometryResult === geometryResult) return false;
+    if (invalidated || now.geometryContentVersion !== geometryContentVersion || now.mutationVersion !== mutationVersion) return false;
     if (!sameModels(now.models, models) || !sameGeometry(now.geometryResult, geometryResult)) return false;
     const current = now.zoneSets.find(zoneSet => zoneSet.id === set.id);
     return current !== undefined && current.name === set.name && zoneSetRevision(current) === signature
       && zoneAssignmentSignature(now.zoneAssignments, set.id) === assignments;
-  };
+  }
+  return { current, release };
 }

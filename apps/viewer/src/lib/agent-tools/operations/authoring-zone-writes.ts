@@ -86,12 +86,14 @@ export const zoneWriteOperations = [
   }, async (i, c) => {
     const { exportZoneGeometry } = await import('@/hooks/useZoneGeometrySplit'); assertToolActive(c);
     const set = zoneSet(i.set_id), index = set.zones.findIndex(zone => zone.id === i.zone_id); if (index < 0) throw new Error('Unknown native zone.');
-    const current = captureZoneExportInputs(set);
-    let captured: { bytes: Uint8Array; filename: string } | undefined;
-    const result = await exportZoneGeometry(set, index, { emit: (bytes, filename) => { captured = { bytes, filename }; } });
-    assertToolActive(c);
-    if (!current()) throw new Error('Geometry or zones changed during native export. Discarded result.');
-    if (!result.ok || !captured) return out({ result, artifact: null });
-    const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: 'model/gltf-binary', data: captured.bytes }); return out({ result, artifact });
+    const { current, release } = captureZoneExportInputs(set);
+    try {
+      let captured: { bytes: Uint8Array; filename: string } | undefined;
+      const result = await exportZoneGeometry(set, index, { emit: (bytes, filename) => { captured = { bytes, filename }; } });
+      assertToolActive(c);
+      if (!current()) throw new Error('Geometry or zones changed during native export. Discarded result.');
+      if (!result.ok || !captured) return out({ result, artifact: null });
+      const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: 'model/gltf-binary', data: captured.bytes }); return out({ result, artifact });
+    } finally { release(); }
   }),
 ];

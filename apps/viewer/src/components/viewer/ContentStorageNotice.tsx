@@ -24,7 +24,7 @@ import { downloadFile } from '@/lib/export/download';
 import type { ContentCommitReceipt } from '@/lib/storage/content-library';
 import type { ContentStatus } from '@/lib/storage/content-library';
 import { cleanupContentLegacy, ContentImportFailure, createContentBackup, importContentBackup, parseContentBackup, readBackupDrafts,
-  readContentRecovery, retryContentDrafts, retryContentImports, retryLocalWorkImport } from '@/lib/storage/content-backup';
+  readContentRecovery, retryContentDrafts, retryContentImports, retryLocalWorkImport, type LocalWorkImportResult } from '@/lib/storage/content-backup';
 import { stageContentDrafts } from '@/lib/storage/content-backup-drafts';
 import { loadSavedFilters } from '@/lib/search/saved-filters';
 import { encodeContentBackup } from '@/lib/storage/content-backup';
@@ -131,15 +131,11 @@ export function ContentStorageNotice({ status, retry, restore }: {
     const initialized = await Promise.all([assistantLibrary.initialize(), clashGroupLibrary.initialize(), bcfDraftLibrary.initialize(), modelChangeLibrary.initialize(), clashGroupApplicationLibrary.initialize(), reviewWorkspaceLibrary.initialize(), semanticReviewLibrary.initialize(), assistantRecipeLibrary.initialize(), assistantPreferencesLibrary.initialize(), analysisRunLibrary.initialize(),
       initializeBcfOutbox(), state.initializeValidationReports(), state.initializeSavedComparisons(), clashReportsReady, state.initializeDocuments()]);
     let count: number, committed: readonly ContentCommitReceipt[] = [];
-    let pendingLocal: LocalWorkBackup = {}, preservedLocal = 0;
+    let local: LocalWorkImportResult = { restored: [], pending: {}, preserved: 0 };
     try {
       count = await importContentBackup(parsed, visibleLibraries, initialized.every(Boolean), rows => { committed = rows; }, {
         canWrite: canRestoreLocalWork,
-        committed: result => {
-          pendingLocal = result.pending;
-          preservedLocal = result.preserved;
-          refreshRestoredLocalWork(result.restored);
-        },
+        committed: result => { local = result; },
       });
     } catch (error) {
       if (!(error instanceof ContentImportFailure)) throw error;
@@ -167,15 +163,16 @@ export function ContentStorageNotice({ status, retry, restore }: {
       if (drafts.length) toast.error(t('contentStorage.draftsUnsaved', { count: drafts.length }));
       return;
     }
-    const artifacts = saveArtifacts(parsed.libraries, pendingLocal);
+    const artifacts = saveArtifacts(parsed.libraries, local.pending);
     count += artifacts.saved;
     if (artifacts.localPending) toast.error(t('contentStorage.localWorkPending'));
     else if (artifacts.failed.length) toast.error(t('contentStorage.artifactsPending'));
     else toast.success(t('contentStorage.imported', { count }));
     if (drafts.length) toast.info(t('contentStorage.draftsPreserved', { count: drafts.length }));
-    if (preservedLocal) toast.info(t('contentStorage.localWorkPreserved'));
+    if (local.preserved) toast.info(t('contentStorage.localWorkPreserved'));
     // A committed import is never restaged just because refreshing its UI failed.
     try {
+      refreshRestoredLocalWork(local.restored);
       const refreshed = await Promise.all([assistantLibrary.refresh(committed), clashGroupLibrary.refresh(committed),
         bcfDraftLibrary.refresh(committed), bcfOutboxLibrary.refresh(committed), modelChangeLibrary.refresh(committed), clashGroupApplicationLibrary.refresh(committed), reviewWorkspaceLibrary.refresh(committed), semanticReviewLibrary.refresh(committed), assistantRecipeLibrary.refresh(committed), assistantPreferencesLibrary.refresh(committed), analysisRunLibrary.refresh(committed), state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshSavedClashReports(committed), state.refreshDocuments(committed)]);
       if (!refreshed.every(Boolean)) toast.info(t('contentStorage.refreshFailed'));
@@ -214,11 +211,11 @@ export function ContentStorageNotice({ status, retry, restore }: {
           const identitiesSaved = await retryContentImports();
           const unfinished = pendingArtifacts();
           const local = unfinished?.localWork ? await retryLocalWorkImport(unfinished.localWork, canRestoreLocalWork) : null;
+          const artifacts = unfinished ? saveArtifacts(unfinished, local?.pending ?? {}) : null;
           if (local) {
             refreshRestoredLocalWork(local.restored);
             if (local.preserved) toast.info(t('contentStorage.localWorkPreserved'));
           }
-          const artifacts = unfinished ? saveArtifacts(unfinished, local?.pending ?? {}) : null;
           if (saved.every(Boolean) && identitiesSaved && !artifacts?.failed.length && !artifacts?.localPending) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>

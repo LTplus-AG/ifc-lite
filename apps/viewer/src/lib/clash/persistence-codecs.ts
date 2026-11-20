@@ -208,7 +208,13 @@ export function decodeStoredPresets(value: unknown, guarded = false): ClashPrese
 export function decodeStoredSettings(value: unknown): ClashGlobalSettings {
   if (!supported(value) || !record(value)) throw new Error('Invalid stored clash settings');
   const body = Object.hasOwn(value, 'settings') ? value.settings : value;
-  if (!record(body) || (body.mode !== 'clearance' && body.mode !== 'hard')) {
+  if (!record(body) || (body.mode !== 'clearance' && body.mode !== 'hard')
+    || Object.keys(CLASH_BOUNDS).some(key => {
+      const number = body[key];
+      return number !== undefined && (typeof number !== 'number' && (typeof number !== 'string' || !number.trim())
+        || !Number.isFinite(Number(number)));
+    })
+    || (body.reportTouch !== undefined && typeof body.reportTouch !== 'boolean')) {
     throw new Error('Invalid stored clash settings');
   }
   return normalizeSettings(value);
@@ -223,6 +229,7 @@ export function decodeStoredReviews(value: unknown, guarded = false): Map<string
       if (guarded) throw new Error('Invalid stored clash review');
       continue;
     }
+    if (guarded && row.comment !== undefined && typeof row.comment !== 'string') throw new Error('Invalid stored clash review comment');
     const comment = normalizeComment(row.comment);
     const review: ClashReview = {
       status: row.status, ...(comment ? { comment } : {}),

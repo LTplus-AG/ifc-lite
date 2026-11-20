@@ -28,7 +28,6 @@ import { BACKUP_DRAFT_PREFIX, draftRecoveryRows, forgetContentDrafts, mergeConte
 import { CONTENT_KINDS, CONTENT_POLICIES } from './content-kinds.js';
 import { CONTENT_DEFINITIONS, contentKindForLegacyKey } from './content-registry.js';
 import { decodeArtifactLibraries, encodeArtifactLibraries, type StandaloneArtifactLibraries } from './artifact-backup.js';
-
 import { commitLocalWorkImport, planLocalWorkImport, readLocalWorkBackup, type LocalWorkBackup } from './local-work-backup.js';
 import type { LocalWorkKey } from './local-work-codecs.js';
 
@@ -84,7 +83,7 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
   for (const kind of ['filters', 'lists', 'lenses'] as const) {
     if (!artifactLibraries[kind]?.length) delete artifactLibraries[kind];
   }
-  const recovery = mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), local.drafts, drafts);
+  const recovery = mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), local.drafts);
   // Durable library partitioning below also adds incomplete session drafts.
   const version = artifactLibraries.localWork || recovery.some(entry => entry.kind === 'localWork') ? 3
     : Object.keys(artifactLibraries).length ? 2 : 1;
@@ -180,9 +179,14 @@ export interface LocalWorkImportResult {
   preserved: number;
 }
 
+interface LocalWorkImportOptions {
+  committed: (result: LocalWorkImportResult) => void;
+  canWrite?: (key: LocalWorkKey) => boolean;
+}
+
 /** Preserve originals on conflicts; atomic commit and refusal use one canonical plan. */
 export async function importContentBackup(backup: ContentBackup, readVisible?: () => ContentLibraries, allowCommit = true,
-  committed?: (rows: readonly ContentCommitReceipt[]) => void, localWork?: { committed: (result: LocalWorkImportResult) => void; canWrite?: (key: LocalWorkKey) => boolean }): Promise<number> {
+  committed?: (rows: readonly ContentCommitReceipt[]) => void, localWork?: LocalWorkImportOptions): Promise<number> {
   const parsed = parseContentBackup(JSON.stringify(encodeContentBackup(backup)));
   const local = planLocalWorkImport(parsed.libraries.localWork ?? {}, localWork?.canWrite);
   const drafts = mergeContentDrafts(parsed.drafts ?? [], local.drafts);

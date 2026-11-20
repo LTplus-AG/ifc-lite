@@ -16,7 +16,7 @@ import { buildInitialPresets, DEFAULT_CLASH_SETTINGS, loadExclusions, loadReview
 import { loadRevisionBaseline, saveRevisionBaseline } from '../clash/revision-baseline.js';
 import { loadDefinitionLibrary, saveDefinitionLibrary } from '../validation/definition-library.js';
 import { loadManualLibrary, saveManualLibrary } from '../validation/manual/persistence.js';
-import { CHECKLIST_VERSION } from '../validation/manual/checklist.js';
+import { CHECKLIST_VERSION, type ChecklistTemplate } from '../validation/manual/checklist.js';
 import { createContentBackup, encodeContentBackup, importContentBackup, parseContentBackup, readBackupDrafts } from './content-backup.js';
 import { contentTransaction, transactionDone } from './content-database.js';
 
@@ -27,7 +27,7 @@ const presetsKey = 'ifc-lite-clash-presets';
 const manualKey = 'ifc-lite:validation:manual-library';
 const settingsKey = 'ifc-lite-clash-settings';
 const exclusionsKey = 'ifc-lite-clash-exclusions';
-const template = { version: CHECKLIST_VERSION, name: 'Survey', groups: [{ id: 'survey', name: 'Coordinates', items: [{ id: 'origin', text: 'Origin agrees with survey' }] }] };
+const template: ChecklistTemplate = { version: CHECKLIST_VERSION, name: 'Survey', groups: [{ id: 'survey', name: 'Coordinates', items: [{ id: 'origin', text: 'Origin agrees with survey' }] }] };
 const answers = { 'source-hash': { origin: { status: 'fail' as const, updatedAt: 12, comment: 'Survey differs' } } };
 
 beforeEach(async () => {

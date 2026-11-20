@@ -279,6 +279,22 @@ describe('reviewed model candidates (#10792)', () => {
     assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
   });
 
+  it('#10918: a prepare whose handler throws after storing its candidate keeps none', async () => {
+    const uuid = crypto.randomUUID.bind(crypto), stringify = JSON.stringify;
+    let token: string | undefined, thrown = false;
+    mock.method(crypto, 'randomUUID', () => { const value = uuid(); if (token === undefined && new Error().stack?.includes('authoring-native')) token = value; return value; });
+    // The preview serializes after the candidate is stored; make that one serialization fail.
+    mock.method(JSON, 'stringify', (...args: Parameters<typeof JSON.stringify>) => {
+      if (token !== undefined && !thrown && new Error().stack?.includes('authoring-native')) { thrown = true; throw new Error('Preview could not be serialized'); }
+      return stringify(...args);
+    });
+    let failed: AgentToolResult;
+    try { failed = await invoke('properties.prepare', { proposal_json: rename('Throws after storing') }); } finally { mock.restoreAll(); }
+    assert.equal(thrown, true, 'the handler threw after storing');
+    assert.match(failed.text, /Preview could not be serialized/);
+    assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
+  });
+
   it('#10918: a refused revert prepare keeps no candidate', async () => {
     answer(await invoke('authoring.apply', { token: await prepareRename() }, true));
     const [change] = answer<Array<{ id: string }>>(await invoke('changes.read'));

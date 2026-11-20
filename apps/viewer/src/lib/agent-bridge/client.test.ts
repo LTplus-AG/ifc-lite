@@ -359,6 +359,40 @@ describe('local agent bridge client: calls (#9523)', () => {
     ]);
     assert.doesNotMatch(JSON.stringify(rows), /measure distance|color walls/);
   });
+
+  it('keeps the same read separate when the structured reply changes (#9523 review)', async () => {
+    let models: string[] = [];
+    const h = paired({ dispatch: async () => ({ text: 'Available models', structured: { models }, isError: false }) });
+    call(h.socket(), 'empty', 'model_list', {});
+    await flush();
+    models = ['house.ifc'];
+    call(h.socket(), 'loaded', 'model_list', {});
+    await flush();
+    call(h.socket(), 'unchanged', 'model_list', {});
+    await flush();
+
+    const rows = foldActivity([...h.activity].reverse());
+    assert.deepEqual(rows.map(({ seq, count }) => ({ seq, count })), [
+      { seq: 3, count: 2 },
+      { seq: 1, count: undefined },
+    ]);
+    assert.doesNotMatch(JSON.stringify(rows), /Available models|house\.ifc/);
+  });
+
+  it('keeps screenshot activity separate even when the bridge can only forward text (#9523 review)', async () => {
+    const h = paired({ dispatch: async () => ({
+      text: 'Viewport screenshot', structured: { width: 2, height: 1 }, isError: false,
+      image: { data: '/9j/2Q==', mimeType: 'image/jpeg' },
+    }) });
+    for (const id of ['first', 'second']) {
+      call(h.socket(), id, 'viewer_screenshot', {});
+      await flush();
+    }
+    assert.deepEqual(foldActivity([...h.activity].reverse()).map(({ seq, count }) => ({ seq, count })), [
+      { seq: 2, count: undefined },
+      { seq: 1, count: undefined },
+    ]);
+  });
 });
 
 describe('local agent bridge client: a drop after pairing is always a disconnect (#9523 review)', () => {

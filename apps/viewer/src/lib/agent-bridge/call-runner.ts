@@ -155,14 +155,16 @@ export class CallRunner {
       };
     }
     const cancelled = entry.controller.signal.aborted && !timedOut;
+    const finishedAt = this.now();
+    // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
+    const resultDigest = !cancelled && stillPending ? this.reply(call, outcome) : undefined;
     // An applied edit is in the model whatever happened to the call, so its row always says what it changed.
     this.record(entry, {
       ...(cancelled ? { outcome: 'cancelled', errorCode: 'CANCELLED' }
         : outcome.isError ? { outcome: 'error', errorCode: outcome.errorCode ?? 'INTERNAL_ERROR' } : { outcome: 'ok' }),
       ...(outcome.edit ? { edit: outcome.edit } : {}),
-    });
-    // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
-    if (!cancelled && stillPending) this.reply(call, outcome);
+      resultDigest,
+    }, finishedAt);
     this.startNext();
   }
 
@@ -178,12 +180,14 @@ export class CallRunner {
     }, 0);
   }
 
-  private reply(call: BridgeCallMessage, outcome: ToolOutcome): void {
+  private reply(call: BridgeCallMessage, outcome: ToolOutcome): string | undefined {
     if (!this.live()) return;
     try {
-      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome, this.opts.imageContent), this.opts.maxResultBytes);
+      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome, this.opts.imageContent),
+        this.opts.maxResultBytes, !outcome.isError && !outcome.image);
       if (frame.truncated) warn(`the result of ${call.name} was more than the bridge accepts and was truncated`);
       this.opts.send(frame.json);
+      return frame.resultDigest;
     } catch (err) {
       warn(`could not send the result of ${call.name}`, err);
     }
@@ -198,13 +202,13 @@ export class CallRunner {
     }
   }
 
-  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode' | 'edit'>): void {
+  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode' | 'edit' | 'resultDigest'>, finishedAt = this.now()): void {
     const row: AgentBridgeActivity = {
       seq: ++this.seq,
       tool: entry.tool,
       modelId: entry.modelId,
       startedAt: entry.startedAt,
-      durationMs: Math.max(0, this.now() - entry.startedAt),
+      durationMs: Math.max(0, finishedAt - entry.startedAt),
       argumentDigest: entry.argumentDigest,
       ...(this.opts.mutates?.(entry.tool) ? { mutating: true } : {}),
       ...result,

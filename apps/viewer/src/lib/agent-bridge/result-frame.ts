@@ -29,6 +29,7 @@
 import {
   BRIDGE_LIMITS, parseTabMessage, type BridgeCallResult, type BridgeImageContent, type BridgeResultMessage,
 } from '@ifc-lite/mcp/bridge-protocol';
+import { digest } from '@ifc-lite/flow';
 import type { AgentBridgeEdit } from './state';
 
 /** A tool outcome, as `dispatchMainViewerTool` returns it. */
@@ -50,6 +51,8 @@ export const IMAGE_NEEDS_NEWER_BRIDGE = '[This result includes an image, but the
 
 /** Room left in a frame for the envelope, the note and JSON escaping slack. */
 const ENVELOPE_RESERVE_BYTES = 4096;
+/** Large replies stay separate so activity logging adds bounded work. */
+const MAX_ACTIVITY_RESULT_CHARS = 64 * 1024;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -101,6 +104,8 @@ export interface ResultFrame {
   /** The serialised `result` frame, which the bridge's own validator accepts. */
   json: string;
   truncated: boolean;
+  /** Session-scoped digest of a small, complete result for activity folding. */
+  resultDigest?: string;
 }
 
 /**
@@ -116,13 +121,16 @@ export function buildResultFrame(
   id: string,
   result: BridgeCallResult,
   maxResultBytes: number = BRIDGE_LIMITS.maxResultBytes,
+  digestForActivity = false,
 ): ResultFrame {
   const frame = (r: BridgeCallResult): string =>
     JSON.stringify({ type: 'result', sessionId, id, result: r } satisfies BridgeResultMessage);
   // A frame is its result's JSON inside a fixed envelope, so a result's size is
   // its frame's size minus the envelope: one encode per check, not a re-stringify.
   const empty: BridgeCallResult = { content: [] };
-  const envelopeBytes = byteLength(frame(empty)) - byteLength(JSON.stringify(empty));
+  const emptyFrame = frame(empty);
+  const emptyResult = JSON.stringify(empty);
+  const envelopeBytes = byteLength(emptyFrame) - byteLength(emptyResult);
   const resultBytes = (json: string): number => byteLength(json) - envelopeBytes;
   const refusal = (json: string): string | null => {
     const checked = parseTabMessage(json);
@@ -132,7 +140,13 @@ export function buildResultFrame(
   };
   const full = frame(result);
   const why = refusal(full);
-  if (why === null) return { json: full, truncated: false };
+  if (why === null) {
+    const envelopeChars = emptyFrame.length - emptyResult.length;
+    const resultDigest = digestForActivity && full.length - envelopeChars <= MAX_ACTIVITY_RESULT_CHARS
+      // The serialised result begins after the prefix and ends before the envelope's closing brace.
+      ? digest([sessionId, full.slice(envelopeChars - 1, -1)]) : undefined;
+    return { json: full, truncated: false, resultDigest };
+  }
 
   const originalBytes = resultBytes(full);
   const texts = result.content.filter((block) => block.type === 'text');

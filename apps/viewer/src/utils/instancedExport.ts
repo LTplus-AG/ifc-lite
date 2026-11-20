@@ -96,18 +96,27 @@ export function withInstancedMeshes(
   geometryResult = placedViewGeometry(geometryResult, undefined, modelRange?.modelId);
   const scene = getGlobalRenderer()?.getScene();
   const live = scene?.getAllInstancedMeshData() ?? [];
+  // An occurrence without a modelIndex belongs to the sole model (canonical index 0); in a
+  // federation it is ambiguous, and an owner-scoped export must not guess.
+  const singleModel = getViewerState().models.size <= 1;
+  const occurrenceIndex = (mesh: MeshData) => mesh.modelIndex ?? (singleModel ? 0 : undefined);
   const residentInstances = prepared ? live.filter((mesh) => {
-    const index = mesh.modelIndex ?? (getViewerState().models.size <= 1 ? 0 : undefined);
+    const index = occurrenceIndex(mesh);
     if (index === undefined) throw new GeometryUnavailableError('A resident instanced export has no model owner');
     return prepared.scopeModelIndices.has(index) && !prepared.instancedModelIndices.has(index);
   }) : live;
   const all = prepared ? [...prepared.instanced, ...residentInstances] : residentInstances;
   const ownerIndex = modelRange?.rendererModelIndex ?? (modelRange?.modelId
     ? modelIndices(getViewerState().models).get(modelRange.modelId) : undefined);
+  const ownedBy = (m: MeshData, owner: number) => {
+    const index = occurrenceIndex(m);
+    if (index === undefined) throw new GeometryUnavailableError(`Instanced entity ${m.expressId} has no model owner in a federation`);
+    return index === owner;
+  };
   const instanced = modelRange
     ? all.filter(
         (m) => m.expressId > modelRange.idOffset && m.expressId <= modelRange.idOffset + modelRange.maxExpressId
-          && (ownerIndex === undefined || m.modelIndex === ownerIndex),
+          && (ownerIndex === undefined || ownedBy(m, ownerIndex)),
       )
     : all;
   if (instanced.length === 0) return geometryResult;

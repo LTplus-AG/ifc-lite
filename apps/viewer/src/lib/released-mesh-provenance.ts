@@ -34,23 +34,35 @@ export function retainReleasedMeshProvenance(
  * (e.g. `updateMeshColors`' `{ ...mesh, color }`), whose buffers are just as
  * empty but which the WeakMaps would not otherwise know. Returns `copy`.
  */
-/** Released copy -> the mesh it was copied from (weak); buffers no longer link them. */
-const releasedSources = new WeakMap<MeshData, MeshData>();
+/**
+ * Copy -> the meshes it descends from, nearest first, flattened and WEAK (#10264, #6584):
+ * a live copy never keeps an earlier wrapper (or its buffers) alive. The root, the
+ * canonical store mesh the store list holds, is always kept as the last entry.
+ */
+const releasedSources = new WeakMap<MeshData, readonly WeakRef<MeshData>[]>();
+const MAX_ANCESTRY = 8;
 
-/** The meshes a released copy descends from, nearest first (#10264 readback provenance). */
+/** The meshes a released copy descends from that are still alive, nearest first. */
 export function* releasedAncestry(mesh: MeshData): Iterable<MeshData> {
   const seen = new Set<MeshData>([mesh]);
-  for (let at = releasedSources.get(mesh); at && !seen.has(at); at = releasedSources.get(at)) {
-    seen.add(at);
-    yield at;
+  for (const ref of releasedSources.get(mesh) ?? []) {
+    const at = ref.deref();
+    if (at && !seen.has(at)) { seen.add(at); yield at; }
   }
+}
+
+function recordAncestry(source: MeshData, copy: MeshData): void {
+  const inherited = (releasedSources.get(source) ?? []).filter((ref) => ref.deref() !== undefined && ref.deref() !== copy);
+  let chain = [new WeakRef(source), ...inherited];
+  if (chain.length > MAX_ANCESTRY) chain = [...chain.slice(0, MAX_ANCESTRY - 1), chain[chain.length - 1]];
+  releasedSources.set(copy, chain);
 }
 
 export function carryReleasedMesh(source: MeshData, copy: MeshData): MeshData {
   registerCpuMeshCopy(source, copy);
   // A copy can outlive a later release of its shared buffers. Record its
   // source while resident too; release clears both registered aliases.
-  if (source !== copy) releasedSources.set(copy, source);
+  if (source !== copy) recordAncestry(source, copy);
   const provenance = released.get(source);
   if (provenance) released.set(copy, provenance);
   const counts = releasedCounts.get(source);

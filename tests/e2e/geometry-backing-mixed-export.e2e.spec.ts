@@ -52,7 +52,7 @@ async function viewExport(page: Page): Promise<{ meshes: number; instanced: numb
       import('/src/utils/instancedExport.ts'), import('/src/lib/export/view-pdf/view-pdf-export-source.ts'), import('/src/store/index.ts'),
     ]) as [typeof import('../../apps/viewer/src/utils/instancedExport'),
       typeof import('../../apps/viewer/src/lib/export/view-pdf/view-pdf-export-source'), typeof import('../../apps/viewer/src/store')];
-    const source = await withReleasedExportGeometry(() => readViewPdfSource(useViewerStore.getState()));
+    const source = await withReleasedExportGeometry((context) => readViewPdfSource(useViewerStore.getState(), context));
     const meshes = source.view.meshes as MeshData[];
     const hash = (mesh: MeshData) => {
       let h = 0x811c9dc5;

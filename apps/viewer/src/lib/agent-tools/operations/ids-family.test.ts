@@ -31,7 +31,7 @@ async function call<T>(id: string, input: unknown = {}, write = false): Promise<
 describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', () => {
   beforeEach(async () => {
     await seedAuthoringSample(); fixture = await wallFixture(); await loadIdsStudioRuntime();
-    useViewerStore.setState({ idsStudioState: fixture.state, idsStudioContexts: fixture.contexts, idsStudioRevision: 0, idsStudioRejection: null });
+    useViewerStore.setState({ idsStudioState: fixture.state, idsStudioContexts: fixture.contexts, idsStudioRevision: 0, idsStudioDraftId: null, idsStudioRejection: null });
     host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   });
   it('previews every op through the authoritative gate, applies once and uses one native Undo entry', async () => {

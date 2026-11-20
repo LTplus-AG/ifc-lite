@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { withoutComments } from './step-comment-skip.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
 /**
@@ -115,5 +116,8 @@ export function remapRenamedAttributesByName(
   for (let i = 0; i < srcNames.length && i < values.length; i++) {
     byName.set(srcNames[i], values[i]);
   }
-  return tgtNames.map((name) => byName.get(name) ?? '$').join(',');
+  return tgtNames.map((name) => {
+    const value = byName.get(name) ?? '$';
+    return withoutComments(value) === '$' ? '$' : value;
+  }).join(',');
 }

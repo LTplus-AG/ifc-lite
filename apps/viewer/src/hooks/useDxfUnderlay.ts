@@ -75,6 +75,27 @@ export function useDxfMapToWorldTransform(): DxfMapToWorld {
   }, [models, ifcDataStore, geometryResult, anchorModelIdOverride, georefMutations, mutationVersion]);
 }
 
+export function prepareDxfUnderlaysForDrawing(params: Parameters<typeof useDxfUnderlaysForDrawing>[0], frame: DxfMapToWorld, state = useViewerStore.getState()): readonly DxfUnderlayRenderData[] {
+  const { enabled, sectionAxis, isCustomPlane, flipped, coordinateInfo } = params;
+  const { transform: mapToWorld, available: georeferenceAvailable } = frame;
+  const dxfUnderlays = state.dxfUnderlays;
+    // Site plans remain plan-only; registered references project in compatible views.
+    if (!enabled) return [];
+    const visible = dxfUnderlays.filter((u) => u.visible && u.opacity > 0);
+    if (visible.length === 0) return [];
+    const shift = dxfWorldShift(coordinateInfo);
+    // Cardinal flipped sections mirror the drawing's X axis (see
+    // projectTo2D's flipped-U rule); the underlay must follow.
+    const plane: SectionPlaneConfig = params.plane ?? {axis: sectionAxis === 'down' ? 'y' : sectionAxis === 'front' ? 'z' : 'x', position: 0, flipped};
+    return visible.flatMap(u => {
+      if (u.referenceFrame) {
+        const mapper = dxfPlaneDrawingMapper(u, state, plane);
+        return mapper ? [dxfUnderlayToDrawing(u, shift, flipped, mapToWorld, georeferenceAvailable, mapper)] : [];
+      }
+      return sectionAxis === 'down' && !isCustomPlane ? [dxfUnderlayToDrawing(u, shift, flipped, mapToWorld, georeferenceAvailable)] : [];
+    });
+}
+
 export function useDxfUnderlaysForDrawing(params: {
   plane?: SectionPlaneConfig;
   enabled: boolean;
@@ -88,23 +109,7 @@ export function useDxfUnderlaysForDrawing(params: {
   const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
   const { transform: mapToWorld, available: georeferenceAvailable } = useDxfMapToWorldTransform();
 
-  return useMemo(() => {
-    // Site plans remain plan-only; registered references project in compatible views.
-    if (!enabled) return [];
-    const visible = dxfUnderlays.filter((u) => u.visible && u.opacity > 0);
-    if (visible.length === 0) return [];
-    const shift = dxfWorldShift(coordinateInfo);
-    // Cardinal flipped sections mirror the drawing's X axis (see
-    // projectTo2D's flipped-U rule); the underlay must follow.
-    const plane: SectionPlaneConfig = params.plane ?? {axis: sectionAxis === 'down' ? 'y' : sectionAxis === 'front' ? 'z' : 'x', position: 0, flipped};
-    return visible.flatMap(u => {
-      if (u.referenceFrame) {
-        const mapper = dxfPlaneDrawingMapper(u, useViewerStore.getState(), plane);
-        return mapper ? [dxfUnderlayToDrawing(u, shift, flipped, mapToWorld, georeferenceAvailable, mapper)] : [];
-      }
-      return sectionAxis === 'down' && !isCustomPlane ? [dxfUnderlayToDrawing(u, shift, flipped, mapToWorld, georeferenceAvailable)] : [];
-    });
-  }, [enabled, sectionAxis, isCustomPlane, flipped, coordinateInfo, dxfUnderlays, mapToWorld, georeferenceAvailable, params.plane, models, placement]);
+  return useMemo(() => prepareDxfUnderlaysForDrawing(params, { transform: mapToWorld, available: georeferenceAvailable }), [enabled, sectionAxis, isCustomPlane, flipped, coordinateInfo, dxfUnderlays, mapToWorld, georeferenceAvailable, params.plane, models, placement]);
 }
 
 /**

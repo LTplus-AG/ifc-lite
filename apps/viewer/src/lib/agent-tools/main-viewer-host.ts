@@ -68,7 +68,7 @@ export function mainViewerModelStatus(entry: ModelLike, federated: FederatedMode
  * (`maxExpressId > 0`), lowest `idOffset` first. Every other sharer is a
  * `composed-layer` pointing at it, never a second answer for the same data.
  */
-function compositionOwners(entries: Array<[string, ModelLike]>, state: ViewerState): Map<string, string> {
+export function compositionOwners(entries: Array<[string, ModelLike]>, state: ViewerState): Map<string, string> {
   const sharers = new Map<object, string[]>();
   for (const [id, entry] of entries) {
     if (!entry.ifcDataStore) continue;

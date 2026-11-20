@@ -19,7 +19,9 @@ export async function decodeCorpusEntry(entry, bytes) {
   const column = name => {
     const data = table.getColumnByName(name)?.data;
     assert.ok(data && data.length === table.numRows, `missing or incomplete ${name}`);
-    assert.ok(data.every(Number.isFinite), `${name} must be finite`);
+    // #10613: SplatTransform 3.11 stores true opacity 1 and 0 as +/-Infinity logits.
+    if (name === 'opacity') assert.ok(!data.some(Number.isNaN), 'opacity must not be NaN');
+    else assert.ok(data.every(Number.isFinite), `${name} must be finite`);
     return data;
   };
   for (const name of ['x', 'y', 'z', 'opacity', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'scale_0', 'scale_1', 'scale_2']) column(name);

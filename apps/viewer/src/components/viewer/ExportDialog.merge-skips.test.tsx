@@ -26,7 +26,7 @@ function tabularModel(id: string): FederatedModel {
   return { ...fixtureModel(id), schemaVersion: 'IFC4' as const, ifcDataStore: tabularFixtureStore() };
 }
 
-afterEach(() => { cleanup(); clearDownloads(); });
+afterEach(() => { cleanup(); clearDownloads(); useViewerStore.setState({ georefMutations: new Map() }); });
 
 describe('merged STEP export reports the models it leaves out', () => {
   it('names a tabular model as skipped, before and after the export', async () => {
@@ -45,6 +45,22 @@ describe('merged STEP export reports the models it leaves out', () => {
     assert.match(downloadedNames()[0], /^house.*_merged\.ifc$/, 'the STEP model is still exported');
     // After it: the result names the skipped model instead of only the included count.
     assert.match(shellText(), /Merged 1 models, [\d,]+ entities\. Left out of the merged file, no IFC records to write from: terrain\.3dm\./);
+  });
+
+  it('counts only the georeference edits of models the merge writes (#10669)', async () => {
+    const ifcDataStore = await parseFixtureModel();
+    const step = { ...fixtureModel('house.ifc'), ifcDataStore, schemaVersion: 'IFC4' as const };
+    const georef = { mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 500 } };
+    // Only the skipped tabular model carries an edit: the merged file holds none.
+    useViewerStore.setState({ ...fixtureModels(step, tabularModel('terrain.3dm')), dirtyModels: new Set(),
+      georefMutations: new Map([['terrain.3dm', georef]]) });
+    const ui = render(<ExportDialog surface="ribbon" />);
+    openExportDialog(ui, 'Export IFC');
+    await chooseMerged();
+    assert.doesNotMatch(shellText(), /ha(s|ve) been modified/, 'a skipped model\'s edit is not a pending change of this file');
+    // The written model's edit is one.
+    useViewerStore.setState({ georefMutations: new Map([['house.ifc', georef]]) });
+    await waitFor(() => /1 entity has been modified/.test(shellText()), 'the written model\'s georeference edit is counted');
   });
 
   it('an all-STEP federation reports exactly what it did before', async () => {

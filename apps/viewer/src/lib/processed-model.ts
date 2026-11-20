@@ -34,6 +34,9 @@ export interface OpenProcessedModelOptions {
 let serverUrl: string = cleanServerUrl(SERVER_URL);
 /** A stored result and, when a request picked one, the processing server to ask for it (also on Retry). */
 export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: string };
+
+/** The normalized reference stored on a loaded model. Zero means the source size is unknown. */
+export type ProcessedModelRecord = ProcessedModelSource & { readonly bytes: number };
 export type FiledProcessedModelRequest = ProcessedModelRequest & Pick<ProcessedModelSource, 'serverUrl'>;
 let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
@@ -41,6 +44,7 @@ const listeners = new Set<() => void>();
 let hostRequested = false;
 type PageUrlParameter = 'processed' | 'model' | 'room';
 const ignoredLogged = new Set<PageUrlParameter>();
+const hostRequestListeners = new Set<() => void>();
 
 /** The processing server the viewer asks: the runtime value, else the build's `VITE_IFC_SERVER_URL`. */
 export function getProcessingServerUrl(): string {
@@ -77,6 +81,7 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
   const override = options?.serverUrl;
   const request = override == null ? normalizedRequest(model) : { ...normalizedRequest(model), serverUrl: cleanServerUrl(override) };
   hostRequested = true;
+  for (const listener of [...hostRequestListeners]) listener();
   fileRequest(request);
 }
 
@@ -133,4 +138,11 @@ export function takeProcessedModelRequest(): FiledProcessedModelRequest | null {
 export function onProcessedModelRequest(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
+}
+
+
+/** Called for a valid host request before the viewer can consume it. */
+export function onHostProcessedModelRequest(listener: () => void): () => void {
+  hostRequestListeners.add(listener);
+  return () => { hostRequestListeners.delete(listener); };
 }

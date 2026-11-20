@@ -7,17 +7,17 @@
  * point-cloud scan band, and the exports that render all of them together.
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useIfc } from '@/hooks/useIfc';
 import { useTranslation } from '@/i18n';
 import { drawingAnnotationFrame } from '@/lib/model-placement/drawing-annotation-frame';
 import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
-import { useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
-import { drawingModelCenter } from '@/hooks/dxfDrawingBounds';
-import { dxfPlaneDrawingMapper, dxfDrawingDeltaToPlacement } from '@/hooks/dxfReferencePlane';
+import { useDxfMapToWorldTransform } from '@/hooks/useDxfUnderlay';
+import { centerDxfPlacement } from '@/lib/drawing/center-dxf';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
+import { publishDrawingExportFrame } from '@/lib/drawing/export-view-frame';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
 import type { DrawingViewModel } from './useDrawingViewModel';
 
@@ -59,38 +59,11 @@ export function useDrawingLayers(vm: DrawingViewModel) {
   const handleCenterDxfUnderlay = useCallback((id: string) => {
     const entry = dxfUnderlays.find((u) => u.id === id);
     if (!entry || !drawing) return;
-    const shift = dxfWorldShift(geometryResult?.coordinateInfo);
-    const mirrorX = drawnPlane.flipped && drawnPlane.custom === undefined;
-    const zeroOffsetEntry = {...entry,placement:{...entry.placement,offsetX:0,offsetY:0}};
-    const state = useViewerStore.getState();
-    const mapper = entry.referenceFrame ? dxfPlaneDrawingMapper(zeroOffsetEntry, state, drawing.config.plane) : undefined;
-    if (entry.referenceFrame && !mapper) { toast.error(t('section2d.underlay.unavailableReference')); return; }
-    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX, dxfMapToWorld, dxfGeoreferenceAvailable, mapper ?? undefined);
-    if (!underlayBounds) {
-      // PR #1965 review: this guard fires when the underlay has no usable
-      // bounds AT ALL (missing extents) OR the georeference produced a
-      // non-finite corner (`dxfUnderlayDrawingBounds` collapses both into
-      // `null` — see its docstring). Tell the user so a malformed
-      // `IfcMapConversion` doesn't read as an unresponsive button.
-      toast.error(t('section2d.underlay.missingBounds'));
-      return;
-    }
-    const modelCenter = drawingModelCenter(vm.sourceDrawing);
-    if (!modelCenter) { toast.error(t('section2d.underlay.emptyDrawing')); return; }
-    const underlayCx = (underlayBounds.min.x + underlayBounds.max.x) / 2;
-    const underlayCy = (underlayBounds.min.y + underlayBounds.max.y) / 2;
-    const offset = dxfDrawingDeltaToPlacement(entry,state,drawing.config.plane,{x:modelCenter.x-underlayCx,y:modelCenter.y-underlayCy});
-    if (!offset) { toast.error(t('section2d.underlay.incompatiblePlacement')); return; }
-    const offsetX = offset.x, offsetY = offset.y;
-    // Defense-in-depth (PR #1965 review): `drawing.bounds` comes from the
-    // generated drawing, not the underlay, and a NaN here would otherwise be
-    // written into the stored placement, which survives toggling
-    // georeferencing back off.
-    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
-      toast.error(t('section2d.underlay.nonFiniteDrawing'));
-      return;
-    }
-    updateDxfUnderlayPlacement(id, { offsetX, offsetY });
+    const result = centerDxfPlacement(entry, drawing, vm.sourceDrawing, geometryResult?.coordinateInfo,
+      drawnPlane.flipped && drawnPlane.custom === undefined,
+      { transform: dxfMapToWorld, available: dxfGeoreferenceAvailable }, useViewerStore.getState());
+    if (result.error) { toast.error(t(`section2d.underlay.${result.error}`)); return; }
+    updateDxfUnderlayPlacement(id, result.placement);
   }, [dxfUnderlays, drawing, vm.sourceDrawing, geometryResult, drawnPlane.flipped, drawnPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable, t]);
 
   // Point-cloud scan overlay (issue #1805): a thin band of the loaded
@@ -107,6 +80,8 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     legacyPointClouds: geometryResult?.pointClouds,
     outline: { enabled: displayOptions.scanSectionOutline, maxGap: displayOptions.scanSectionOutlineMaxGap },
   });
+
+  useEffect(() => { publishDrawingExportFrame({ drawing: vm.sourceDrawing, isPinned: vm.isPinned, cachedSheetTransformRef: vm.cachedSheetTransformRef }); }, [vm.sourceDrawing, vm.isPinned, vm.cachedSheetTransformRef]);
 
   const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint, getExportDimensionGraphics } = useDrawingExport({
     // Only the drawing on screen exports: a dialog left open while the cut

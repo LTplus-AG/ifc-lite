@@ -69,7 +69,7 @@ export function planGeorefNormalize(dataStore: IfcDataStore, metre: MetreUnit, m
   for (const { conversion, targetCRS } of conversions ?? []) {
     const alone = viewerAxisScales(conversion, targetCRS?.mapUnitScale, modelScale);
     const keeps = (scale: number | undefined) => viewerAxisScales({ ...conversion, scale }, targetCRS?.mapUnitScale, primaryScale)
-      .every((value, axis) => Math.abs(value - alone[axis]) <= 1e-9 * Math.max(1, Math.abs(alone[axis])));
+      .every((value, axis) => Math.abs(value - alone[axis]) <= 1e-9 * Math.abs(alone[axis])); // relative: scales can be tiny
     // As written: a value that rounds to within 1e-9 of 1 reads as unset in the viewer.
     const divided = Number(toStepRealScaled((conversion.scale ?? 1) / lengthFactor));
     if (keeps(divided)) records.set(conversion.id, { kind: 'operation', scale: divided });

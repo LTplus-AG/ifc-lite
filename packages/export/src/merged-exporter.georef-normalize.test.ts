@@ -152,6 +152,18 @@ describe('normalize keeps each model\'s georeference (#10886)', () => {
     ]);
   });
 
+  it('names a map conversion whose viewer scale is far below 1 and changes', async () => {
+    // Alone the viewer scales it by 1.E-9; with Scale as written it would be 1.E-12, a change only a relative tolerance sees.
+    const operation = '#21=IFCMAPCONVERSIONSCALED(#14,#20,2600100.,1200000.,500.,1.,0.,0.001,1.E-06,1.E-06,1.E-06);';
+    const { stats, content } = await mergeResult([{ unit: 'm', mapUnit: 'm', easting: 2600000, schema: 'IFC4X3' },
+      { unit: 'mm', mapUnit: 'mm', easting: 0, schema: 'IFC4X3', operation }]);
+    expect(stats.warnings.filter(warning => warning.includes('cannot show'))).toEqual([
+      expect.stringContaining('The viewer cannot show its map conversion #21 (an id in "b") at its own scale'),
+    ]);
+    // Written with the divided, spec Scale.
+    expect(new TextDecoder().decode(content)).toMatch(/=IFCMAPCONVERSIONSCALED\([^;]*,0\.,1\.,1\.E-0?6,1\.E-0?6,1\.E-0?6\);/);
+  });
+
   it('names no map conversion when a Scale keeps the viewer\'s scale', async () => {
     const { stats } = await mergeResult([{ unit: 'm', mapUnit: 'm', easting: 2600000 }, { unit: 'mm', mapUnit: 'm', easting: 2600100, scale: '0.001' }]);
     expect(stats.warnings.some(warning => warning.includes('georeferencing'))).toBe(true);

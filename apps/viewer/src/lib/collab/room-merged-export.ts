@@ -14,6 +14,7 @@ export function roomMergeInput(options: {
   store: IfcDataStore;
   roomView?: MutablePropertyView;
   applyMutations: boolean;
+  georefMutations?: MergeModelInput['georefMutations'];
 }): { input: MergeModelInput; portable?: RoomStepExportSource } {
   const portable = stepExportSource(options.store, options.roomView, options.id, options.name);
   if (portable?.resources?.resources.size) {
@@ -25,6 +26,7 @@ export function roomMergeInput(options: {
       name: options.name,
       dataStore: portable?.dataStore ?? options.store,
       mutationView: options.applyMutations ? (portable?.mutationView ?? options.roomView) : undefined,
+      georefMutations: options.applyMutations ? options.georefMutations : undefined,
     },
     portable: portable ?? undefined,
   };

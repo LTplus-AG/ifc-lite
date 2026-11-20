@@ -533,16 +533,10 @@ export function ViewportContainer() {
   // fire-and-forget write races the reload), so it fell to window.location.reload() which
   // DROPPED the model — the "nothing loads" blank.
   const serverProcessedNotice = useCallback(() => toast.info(t('mergeLayersBanner.serverProcessed')), [t]);
-  const handleMergeLayersReload = useCallback(async () => {
-    useViewerStore.getState().clearMergeLayersPendingReload();
-    await reloadActiveModelInPlace(loadFile, 'merge-reload', serverProcessedNotice);
-  }, [loadFile, serverProcessedNotice]);
-  const handleGeometryModeReload = useCallback(async () => {
-    const st = useViewerStore.getState();
-    st.clearGeometryModePendingReload();
-    st.clearMergeLayersPendingReload();
-    await reloadActiveModelInPlace(loadFile, 'geom-mode-reload', serverProcessedNotice);
-  }, [loadFile, serverProcessedNotice]);
+  const handleGeometrySettingsReload = useCallback(
+    () => reloadActiveModelInPlace(loadFile, serverProcessedNotice),
+    [loadFile, serverProcessedNotice],
+  );
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
@@ -781,8 +775,8 @@ export function ViewportContainer() {
           top of the canvas. Only renders when the user has flipped the
           merge-layers toggle while a model is in scope. `onReload` re-loads the
           model in place (full page reload would drop it — no boot auto-restore). */}
-      <MergeLayersBanner onReload={handleMergeLayersReload} />
-      <GeometryModeBanner onReload={handleGeometryModeReload} />
+      <MergeLayersBanner onReload={handleGeometrySettingsReload} />
+      <GeometryModeBanner onReload={handleGeometrySettingsReload} />
       {/* #7955 M2: the retained chip + panel; `null` (nothing) in a default build. */}
       {retainedKernel && <retainedKernel.Chip reload={loadFile} />}
       {/* #5175: offers a retry with a user-chosen linear unit when a LandXML

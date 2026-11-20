@@ -68,7 +68,17 @@ const DIRECTIONS = [
 
 const rows = [];
 for (const [from, to] of DIRECTIONS) {
-  for (const slot of valueFormSlots(REGISTRIES[from], REGISTRIES[to], from, to, MAPS)) rows.push({ from, to, ...slot });
+  const here = valueFormSlots(REGISTRIES[from], REGISTRIES[to], from, to, MAPS);
+  for (const slot of here) {
+    // Both converters clear a positional group by its own slots' rows, so each slot needs one, alike.
+    for (const i of slot.whole) {
+      const partner = here.find((s) => s.type === slot.type && s.index === i);
+      if (!partner || partner.required !== slot.required || partner.empty !== slot.empty) {
+        throw new Error(`generate-value-forms: ${from} → ${to} ${slot.type} positional slot ${i} has no row like ${slot.attribute}'s.`);
+      }
+    }
+    rows.push({ from, to, ...slot });
+  }
 }
 // Field by field in byte order, as Rust compares the tuple it binary-searches.
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -81,8 +91,9 @@ const sections = DIRECTIONS.map(([from, to]) => {
   if (!here.length) return [...lines, 'Every same-named attribute keeps a value form the target accepts.', ''].join('\n');
   lines.push('| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |', '| --- | --- | --- | --- | --- | --- |');
   for (const r of here) {
-    const names = r.whole.map((i) => REGISTRIES[to].entities[r.entity].allAttributes[i].name);
-    const emptied = r.whole.length ? `whole: ${names.join(' + ')}` : r.empty ? '`()`' : '';
+    const meta = REGISTRIES[to].entities[r.entity];
+    const names = r.whole.map((i) => (meta.allAttributes ?? meta.attributes)[i].name);
+    const emptied = [r.whole.length ? `whole: ${names.join(' + ')}` : '', r.empty ? '`()`' : ''].filter(Boolean).join('; ');
     lines.push(`| ${r.entity}.${r.attribute} | ${r.sourceType} | ${r.targetType} | ${r.required ? 'yes' : ''} | ${emptied} | ${r.rejected.map((f) => `\`${f}\``).join(', ')} |`);
   }
   return [...lines, ''].join('\n');
@@ -99,7 +110,7 @@ const text = [
   'Both converters write such a value as `$`, count it dropped and name the slot in the export',
   'warnings (#10847), separately when the target requires the slot, since the record is then invalid.',
   'A value another pass already rewrote into an accepted form is kept. An aggregate loses only its',
-  'rejected members, unless they are positional (`whole`: those slots are written `$` together); a',
+  'rejected members, unless they are positional (`whole`: those slots are emptied together); a',
   'required aggregate that may be empty and loses every member is written `()`.',
   '',
   'Forms: `#` entity reference, `S` string, `R` real, `I` integer, `E` enumeration (and BOOLEAN /',
@@ -133,7 +144,7 @@ function renderRs() {
     '//!   node scripts/generate-value-forms.mjs',
     '',
     '/// `(slot index, attribute name, the target requires the slot, the target',
-    '/// aggregate may be empty, slots written `$` together when a positional member',
+    '/// aggregate may be empty, slots emptied together when a positional member',
     '/// is rejected, rejected forms)`.',
     "pub type ValueFormSlot = (u8, &'static str, bool, bool, &'static [u8], &'static [&'static str]);",
     '',

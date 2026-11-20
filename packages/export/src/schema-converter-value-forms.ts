@@ -8,7 +8,7 @@
  * the registries once per type; a value of a rejected form is written `$`,
  * one a policy row converts is wrapped or unwrapped, and anything else stays.
  * An aggregate loses only its rejected members, unless they are positional:
- * then it and the slots it pairs with are written `$`. A required aggregate
+ * then it and the slots it pairs with are emptied, each as below. A required aggregate
  * that may be empty and loses every member is written `()`. Twin of Rust
  * `schema_value_forms.rs`, which reads the same rows from
  * `generated/value_forms.rs` (`scripts/generate-value-forms.mjs --check`).
@@ -29,7 +29,7 @@ interface Rule {
   readonly required: boolean;
   /** The target aggregate may be empty. */
   readonly empty: boolean;
-  /** Slots written `$` together when a positional member is rejected. */
+  /** Slots emptied together when a positional member is rejected. */
   readonly whole: readonly number[];
   /** Form -> null (drop), `T:NAME` (wrap), `U` (unwrap), `U1` (one member) or an integer form (`I`, `AI`). */
   readonly forms: ReadonlyMap<string, string | null>;
@@ -118,7 +118,11 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
     : to === 'U' ? unwrapped(body)
     : to === 'U1' ? onlyMember(unwrapped(body))
     : wholeDecimal(body) && Number.isSafeInteger(n) ? String(n) : null; // an integer form, `I` or `AI`
-  return { value: fixed, lost: fixed === null ? 1 : 0 };
+  // A set of references that could not be unwrapped loses each of them, and at least one value,
+  // so an emptied slot is always named.
+  const inner = to === 'U1' ? unwrapped(body) : null;
+  const lost = fixed === null ? Math.max(1, inner === null ? 1 : valueCount(inner)) : 0;
+  return { value: fixed, lost };
 }
 
 /** Value-form reconciliation for one export: rewrites, and names what it dropped. */
@@ -141,18 +145,22 @@ export class ValueForms {
     for (const rule of rules) {
       if (rule.index >= slots.length) continue;
       const fixed = fix(slots[rule.index], '', rule);
-      let { lost, value } = fixed;
-      if (lost && rule.whole.length) {
-        // Positional members: the aggregate and its partners go whole.
-        lost = rule.whole.reduce((sum, i) => sum + valueCount(slots[i]), 0);
+      if (fixed.lost && rule.whole.length) {
+        // Positional members: every slot of the group goes whole, each named for what it held.
         for (const i of rule.whole) {
-          if (i !== rule.index && slots[i] !== '$') { slots[i] = '$'; changed = true; }
+          // The generator gives every slot of a group a row like this one.
+          const own = rules.find((r) => r.index === i), held = own ? valueCount(slots[i]) : 0;
+          if (!own || !held) continue;
+          const emptied = own.empty && own.required ? '()' : '$';
+          this.count(emptied === '$' && own.required ? this.emptied : this.dropped, own.where, held);
+          slots[i] = emptied;
+          changed = true;
         }
-        value = null;
+        continue;
       }
+      let { value } = fixed;
       if (value === null && rule.empty && rule.required) value = '()';
-      const into = value === null && rule.required ? this.emptied : this.dropped;
-      if (lost) into.set(rule.where, (into.get(rule.where) ?? 0) + lost);
+      if (fixed.lost) this.count(value === null && rule.required ? this.emptied : this.dropped, rule.where, fixed.lost);
       value ??= '$';
       if (value !== slots[rule.index]) {
         slots[rule.index] = value;
@@ -160,6 +168,10 @@ export class ValueForms {
       }
     }
     return changed ? `${record.prefix}${slots.join(',')}${record.suffix}` : line;
+  }
+
+  private count(into: Map<string, number>, where: string, n: number): void {
+    into.set(where, (into.get(where) ?? 0) + n);
   }
 
   /** One warning per kind, naming every slot a value was dropped from (#10847). */

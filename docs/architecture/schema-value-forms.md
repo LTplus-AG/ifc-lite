@@ -8,7 +8,7 @@ can hold a STEP value form the target type cannot (`packages/export/src/schema-v
 Both converters write such a value as `$`, count it dropped and name the slot in the export
 warnings (#10847), separately when the target requires the slot, since the record is then invalid.
 A value another pass already rewrote into an accepted form is kept. An aggregate loses only its
-rejected members, unless they are positional (`whole`: those slots are written `$` together); a
+rejected members, unless they are positional (`whole`: those slots are emptied together); a
 required aggregate that may be empty and loses every member is written `()`.
 
 Forms: `#` entity reference, `S` string, `R` real, `I` integer, `E` enumeration (and BOOLEAN /

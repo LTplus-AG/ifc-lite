@@ -11,7 +11,7 @@
 //!   node scripts/generate-value-forms.mjs
 
 /// `(slot index, attribute name, the target requires the slot, the target
-/// aggregate may be empty, slots written `$` together when a positional member
+/// aggregate may be empty, slots emptied together when a positional member
 /// is rejected, rejected forms)`.
 pub type ValueFormSlot = (u8, &'static str, bool, bool, &'static [u8], &'static [&'static str]);
 

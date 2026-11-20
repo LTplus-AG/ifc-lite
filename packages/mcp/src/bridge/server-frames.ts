@@ -46,6 +46,11 @@ export function parseServerMessage(text: string): ParseResult<BridgeServerMessag
     case 'cancel':
       if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string') return { ok: false, error: 'malformed cancel' };
       return { ok: true, value: raw as unknown as BridgeCancelMessage };
+    case 'result-ack':
+      if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || typeof raw.accepted !== 'boolean') {
+        return { ok: false, error: 'malformed result acknowledgement' };
+      }
+      return { ok: true, value: { type: 'result-ack', sessionId: raw.sessionId, id: raw.id, accepted: raw.accepted } };
     case 'error':
       if (typeof raw.code !== 'string' || typeof raw.message !== 'string') return { ok: false, error: 'malformed error' };
       return { ok: true, value: raw as unknown as BridgeErrorMessage };

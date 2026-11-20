@@ -91,6 +91,35 @@ async function pair(agent: Agent, extra: Partial<Parameters<typeof pairTab>[0]> 
   return paired;
 }
 
+it('#11029: acknowledges only accepted intact results for the negotiated session', async () => {
+  const agent = await startAgent();
+  const { tab, welcome } = await pair(agent, { resultAck: true });
+  expect(welcome.resultAck).toBe(true);
+  const reply = (id: string, result: unknown) => tab.sendRaw({
+    type: 'result', sessionId: welcome.sessionId, id, resultAck: true, result,
+  });
+
+  const received = agent.call(READ_TOOL.name);
+  const first = await tab.next('call');
+  reply(first.id, textResult('retained token'));
+  expect((await received).content).toEqual([{ type: 'text', text: 'retained token' }]);
+  expect(await tab.next('result-ack')).toMatchObject({ id: first.id, accepted: true });
+
+  const cancelled = agent.call(READ_TOOL.name, {}, 987);
+  const second = await tab.next('call');
+  await agent.cancel(987);
+  await tab.next('cancel');
+  reply(second.id, textResult('expired token'));
+  expect(await tab.next('result-ack')).toMatchObject({ id: second.id, accepted: false });
+  expect((await cancelled).isError).toBe(true);
+
+  const malformed = agent.call(READ_TOOL.name);
+  const third = await tab.next('call');
+  reply(third.id, { content: 'invalid' });
+  expect(await tab.next('result-ack')).toMatchObject({ id: third.id, accepted: false });
+  expect((await malformed).isError).toBe(true);
+});
+
 describe('1. read-only pairing', () => {
   it('neither lists nor forwards a mutating tool', async () => {
     const agent = await startAgent();

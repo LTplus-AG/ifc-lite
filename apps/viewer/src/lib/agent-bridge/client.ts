@@ -47,6 +47,7 @@ import {
 import type {
   AgentBridgeActivity, AgentBridgePermission, AgentBridgeStatus,
 } from './state';
+import type { DeliveryClaim } from '../agent-tools/delivery';
 import type { ToolOutcome } from './result-frame';
 import { CALL_LIMITS, type CallLimits } from './call-admission';
 import { CallRunner } from './call-runner';
@@ -88,7 +89,7 @@ export interface BridgeClientOptions {
    */
   tools: readonly BridgeToolDescriptor[];
   /** Runs one call. Must not throw (a throw is still caught and reported as INTERNAL_ERROR). */
-  dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome>;
+  dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal, onDelivery?: (claim: DeliveryClaim) => void): Promise<ToolOutcome>;
   /** The model a call is about, for the activity log. */
   modelIdFor?(args: Record<string, unknown>): string | null;
   onStatus(status: AgentBridgeStatus): void;
@@ -225,6 +226,7 @@ export class BridgeClient {
       protocol: BRIDGE_PROTOCOL_VERSION,
       pairingCode: normalizePairingCode(this.opts.pairingCode),
       permission: 'read-only',
+      resultAck: true,
       tools: [...this.opts.tools],
       ...(this.opts.clientInfo ? { client: this.opts.clientInfo } : {}),
     };
@@ -262,6 +264,8 @@ export class BridgeClient {
           maxResultBytes: this.opts.maxResultBytes ?? BRIDGE_LIMITS.maxResultBytes,
           now: this.now,
           dispatch: this.opts.dispatch,
+          ...(msg.resultAck === true ? { onAckTimeout: () =>
+            this.end({ kind: 'disconnected', reason: 'connection-lost' }, 1011, 'result acknowledgement timeout') } : {}),
           modelIdFor: this.opts.modelIdFor,
           mutates: (name) => this.mutating.has(name),
           onActivity: this.opts.onActivity,
@@ -278,6 +282,9 @@ export class BridgeClient {
       case 'call':
         if (!this.runner || msg.sessionId !== this.sessionId || this.runner.has(msg.id)) return;
         this.runner.admit(msg);
+        return;
+      case 'result-ack':
+        if (msg.sessionId === this.sessionId) this.runner?.acknowledge(msg.id, msg.accepted);
         return;
       case 'cancel':
         if (this.runner && msg.sessionId === this.sessionId) this.runner.cancel(msg.id);

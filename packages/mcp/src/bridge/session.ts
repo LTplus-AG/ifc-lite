@@ -61,6 +61,7 @@ export class BridgeSession {
     public tools: BridgeToolDescriptor[],
     readonly client: { name: string; version?: string } | undefined,
     private readonly log: (line: string) => void,
+    readonly resultAck = false,
   ) {}
 
   send(msg: BridgeServerMessage): void {

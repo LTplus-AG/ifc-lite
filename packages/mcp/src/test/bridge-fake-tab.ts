@@ -46,6 +46,7 @@ export interface FakeTabOptions {
   origin?: string;
   host?: string;
   protocol?: number;
+  resultAck?: true;
   client?: { name: string; version?: string };
 }
 
@@ -151,6 +152,7 @@ export async function connectTab(opts: FakeTabOptions): Promise<FakeTab> {
     pairingCode: opts.code,
     permission: opts.permission ?? 'read-only',
     tools: opts.tools ?? [READ_TOOL, MUTATING_TOOL],
+    resultAck: opts.resultAck,
     client: opts.client ?? { name: 'fake-tab', version: '0' },
   });
   return opened.tab;

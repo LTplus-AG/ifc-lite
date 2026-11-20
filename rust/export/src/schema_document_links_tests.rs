@@ -62,3 +62,20 @@ fn a_subset_export_arms_nothing_10846() {
     assert_eq!(record(&out, "#6="), "#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,$);");
     assert_eq!(dropped, 1);
 }
+
+/// /code-review on the #10872 restack, the twin of the TypeScript case: a
+/// repeated record id is its last copy, at that copy's place, so it is listed
+/// once and in that order.
+#[test]
+fn a_repeated_reference_is_listed_once_at_its_last_place_10846() {
+    let doc = "#5=IFCDOCUMENTINFORMATION('D1','Doc',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);";
+    let (a, b) = ("#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);", "#7=IFCDOCUMENTREFERENCE('b.pdf','B1',$,$,#5);");
+    let adjacent = export(&model("IFC4", &[doc, a, a, b].join("\n")), &to("IFC2X3")).0;
+    assert_eq!(record(&adjacent, "#5="), "#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#6,#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
+    let apart = export(&model("IFC4", &[doc, a, b, a].join("\n")), &to("IFC2X3")).0;
+    assert_eq!(record(&apart, "#5="), "#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7,#6),$,$,$,$,$,$,$,$,$,$,$,$,$);");
+    // Kept as another type of the same arity, with a reference in the link slot: no reference.
+    let wall = "#6=IFCDOCUMENTINFORMATIONRELATIONSHIP($,$,#5,(#5),#5);";
+    let walled = export(&model("IFC4", &[doc, a, b, a, wall].join("\n")), &to("IFC2X3")).0;
+    assert_eq!(record(&walled, "#5="), "#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
+}

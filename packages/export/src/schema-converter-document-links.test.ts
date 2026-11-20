@@ -50,6 +50,26 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     expect(repeat.stats.warnings.join('\n')).not.toContain('IfcDocumentReference listing');
   });
 
+  // /code-review on the #10872 restack: a repeated record id is its last copy, at that copy's place, as Rust's
+  // `kept` reads it; a copy of another type is no holder.
+  it('lists a reference once on a downgrade when its record id repeats', async () => {
+    const ifc4 = `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
+#5=IFCDOCUMENTINFORMATION('D1','Doc',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
+#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);
+#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);
+#7=IFCDOCUMENTREFERENCE('b.pdf','B1',$,$,#5);`;
+    const down = new TextDecoder().decode(new StepExporter(await parse(model('IFC4', ifc4))).export({ schema: 'IFC2X3' }).content);
+    expect(record(down, 5)).toBe("#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#6,#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
+    // Not adjacent: the last copy's place orders the list.
+    const apart = ifc4.replace("#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);\n#7", "#7").replace("('b.pdf','B1',$,$,#5);", "('b.pdf','B1',$,$,#5);\n#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);");
+    const later = new TextDecoder().decode(new StepExporter(await parse(model('IFC4', apart))).export({ schema: 'IFC2X3' }).content);
+    expect(record(later, 5)).toBe("#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7,#6),$,$,$,$,$,$,$,$,$,$,$,$,$);");
+    // Kept as another type of the same arity, with a reference in the link slot: no reference.
+    const retyped = `${apart}\n#6=IFCDOCUMENTINFORMATIONRELATIONSHIP($,$,#5,(#5),#5);`;
+    const walled = new TextDecoder().decode(new StepExporter(await parse(model('IFC4', retyped))).export({ schema: 'IFC2X3' }).content);
+    expect(record(walled, 5)).toBe("#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
+  });
+
   it('arms nothing for a subset, which has no source links to read', async () => {
     const out = exportToStep(await parse(model('IFC2X3', IFC2X3)), { schema: 'IFC4', subsetEntityIds: new Set([5, 6, 7]) });
     expect(record(out, 6)).toBe("#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,$);");

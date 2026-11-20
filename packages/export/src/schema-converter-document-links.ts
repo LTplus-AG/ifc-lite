@@ -20,6 +20,16 @@ import { listItems } from './schema-converter-structural-axes.js';
 import { slotRef, slotUnset, type SourceRecords } from './schema-converter-structural-source.js';
 import { readStepSlots } from './step-argument-parser.js';
 
+/**
+ * The ids of `type` as Rust's `kept` reads them (/code-review on the #10872 restack): a repeated id is
+ * its last copy, at that copy's place, and only when that copy is of `type`.
+ */
+function kept(source: SourceRecords, type: string): number[] {
+  const ids = source.ids(type), last = new Map<number, number>();
+  ids.forEach((id, i) => last.set(id, i));
+  return ids.filter((id, i) => last.get(id) === i && source.type(id) === type);
+}
+
 const DOC = 'IFCDOCUMENTINFORMATION';
 const REF = 'IFCDOCUMENTREFERENCE';
 const ifc4Like = (s: string) => s === 'IFC4' || s === 'IFC4X3';
@@ -46,9 +56,9 @@ export class DocumentLinks {
     const readAt = names(from, holder)?.indexOf(up ? 'DocumentReferences' : 'ReferencedDocument') ?? -1;
     const at = names(to, target)?.indexOf(up ? 'ReferencedDocument' : 'DocumentReferences') ?? -1;
     if (readAt < 0 || at < 0) return;
-    const targets = new Set(source.ids(target));
+    const targets = new Set(kept(source, target));
     // A holder whose slot count is not the source schema's is not read.
-    const holders = source.ids(holder).flatMap((id) => {
+    const holders = kept(source, holder).flatMap((id) => {
       const slots = source.slots(id);
       return slots && slots.length === names(from, holder)!.length ? [{ id, link: slots[readAt] }] : [];
     });

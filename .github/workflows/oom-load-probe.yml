@@ -35,7 +35,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false # a cancelled scheduled run would be filed as a lane failure
+  cancel-in-progress: false # a newer run must not cancel a scheduled one: that is filed as a failure
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -44,7 +44,8 @@ jobs:
   probe:
     name: Capped load (4 GB / 3 GiB, 8 GB / 6 GiB)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The source build and two 20 min cases fit, so a hang ends in a step timeout (filed) first.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -110,6 +111,7 @@ jobs:
           cat "/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/cgroup.subtree_control" || true
 
       - name: Dense 300 MB at a reported 4 GB under a 3 GiB cap (expect refused)
+        id: case1
         timeout-minutes: 20
         run: |
           node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect refused \
@@ -117,7 +119,7 @@ jobs:
             --out test-results/oom-load-probe/tfs-300-4g
 
       - name: Dense 1100 MB at a reported 8 GB under a 6 GiB cap (expect awaiting-decision)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.case1.outcome != 'skipped' }}
         timeout-minutes: 20
         run: |
           node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect awaiting-decision \
@@ -128,7 +130,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: oom-load-probe-${{ github.sha }}
+          name: oom-load-probe-${{ github.run_id }}-${{ github.run_attempt }}
           # A killed probe can leave its generated model behind; never upload it.
           path: |
             test-results/oom-load-probe/
@@ -138,7 +140,7 @@ jobs:
 
   report-scheduled-failure:
     needs: [probe]
-    if: always() && github.event_name == 'schedule' && needs.probe.result != 'success' && needs.probe.result != 'cancelled'
+    if: always() && github.event_name == 'schedule' && needs.probe.result != 'success'
     uses: ./.github/workflows/report-scheduled-failure.yml
     with:
       workflow_name: OOM load probe (capped memory)

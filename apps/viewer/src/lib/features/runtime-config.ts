@@ -13,6 +13,7 @@
  */
 
 import { normalizeProcessedModelHash } from '@ifc-lite/server-client/processed-model';
+import { isLoopbackHostname } from '../loopback.js';
 import type { FeatureSelection } from './index';
 
 export interface ViewerRuntimeConfig {
@@ -84,8 +85,7 @@ function parseServer(value: unknown, pageUrl: string | undefined): { url: string
     return { url: url.pathname };
   }
   const httpPage = pageUrl !== undefined && new URL(pageUrl).protocol === 'http:';
-  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && (httpPage || loopback))) {
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && (httpPage || isLoopbackHostname(url.hostname)))) {
     invalid(BAD_SERVER);
   }
   return { url: url.href };

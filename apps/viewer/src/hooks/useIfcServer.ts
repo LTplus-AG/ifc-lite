@@ -104,10 +104,10 @@ export function useIfcServer() {
       // Silent server availability check (cached, no error logging). A processed model skips the
       // health round trip: its geometry request asks the same question, and a down server ends in
       // the same error card either way.
-      const allowHttpLoopback = (processed && file.serverUrl !== undefined) || hasRuntimeProcessingServer();
+      const explicitlyConfigured = (processed && file.serverUrl !== undefined) || hasRuntimeProcessingServer();
       const serverAvailable = processed
-        ? isServerReachable(serverUrl, undefined, allowHttpLoopback)
-        : await isServerAvailable(serverUrl, client, allowHttpLoopback);
+        ? isServerReachable(serverUrl, undefined, explicitlyConfigured)
+        : await isServerAvailable(serverUrl, client, explicitlyConfigured);
       if (!serverAvailable) {
         if (processed) throw new ProcessedModelUnavailable(serverUrl === '' ? 'no-server' : 'unreachable');
         return false; // Silently fall back - caller handles logging

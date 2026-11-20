@@ -8,7 +8,7 @@ import { assertToolActive } from '../cancellation';
 import type { ZoneSet } from '@/lib/zones/types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
 import { captureZoneExportInputs } from './zone-operation-inputs';
-import { zoneSetRevision } from '@/lib/zones/apportionment-cache';
+import { validEntry, zoneSetRevision } from '@/lib/zones/apportionment-cache';
 import { boundedPage, pageInput, type PageInput, type PageRequest } from './result-limit';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
 import { invalidInput, stale, unavailable } from './refusals';
@@ -168,12 +168,18 @@ export const zoneOperations = [
   operation<{ set_id: string; basis: VolumeBasis; format: 'csv' | 'parquet' }>({ ...meta('zones.table.export', 'Export the canonical native per-element zone table as CSV or Parquet through the existing safe exporter.', 'artifact'), outputSchema: jsonOutput }, {
     type: 'object', properties: { ...idInput.properties, basis, format: { type: 'string', enum: ['csv', 'parquet'] } }, required: ['set_id', 'basis', 'format'], additionalProperties: false,
   }, async (i, c) => {
-    const { exportZoneTable } = await import('@/hooks/useZoneTableExport'); assertToolActive(c);
-    const zoneSet = set(i.set_id), current = captureZoneExportInputs(zoneSet, { checkApportionment: true });
+    const [{ exportZoneTable }, { ensureZoneApportionment }] = await Promise.all([
+      import('@/hooks/useZoneTableExport'), import('@/hooks/zoneFacts'),
+    ]);
+    assertToolActive(c);
+    const zoneSet = set(i.set_id), current = captureZoneExportInputs(zoneSet);
+    // The table normally fills a cold cache itself. Capture the exact entry it will read.
+    const apportionment = ensureZoneApportionment(zoneSet);
     let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
     const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });
     assertToolActive(c);
-    if (!current()) throw stale('Zone inputs changed during export. Discarded result.');
+    if (!current() || validEntry(useViewerStore.getState().zoneApportionment, zoneSet) !== apportionment)
+      throw stale('Zone inputs changed during export. Discarded result.');
     if (!captured) return out({ result, artifact: null }); const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: captured.mime, data: captured.bytes }); return out({ result, artifact });
   }),
 ];

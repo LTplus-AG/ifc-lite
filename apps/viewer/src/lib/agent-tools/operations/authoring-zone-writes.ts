@@ -4,7 +4,7 @@
 
 import { useViewerStore } from '@/store';
 import { mutationPermission, mutationPermissionForModels } from '@/store/mutation-permission';
-import { operation, type OperationContext } from './contract';
+import { operation, viewerOperation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
@@ -85,7 +85,8 @@ export const zoneWriteOperations = [
     });
     return out(candidate.result);
   }),
-  operation<{ set_id: string; zone_id: string }>(meta('zones.geometry.export', 'Build a native GLB geometric section using the same proved-solid exact split service as the panel. Cancellation suppresses artifact publication; an already dispatched native worker may finish.', 'artifact'), {
+  // This export reads the whole scene. Its fence covers the full model set.
+  viewerOperation<{ set_id: string; zone_id: string }>(meta('zones.geometry.export', 'Build a native GLB geometric section using the same proved-solid exact split service as the panel. Cancellation suppresses artifact publication; an already dispatched native worker may finish.', 'artifact'), {
     type: 'object', properties: { set_id: { type: 'string', minLength: 1, maxLength: 200 }, zone_id: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['set_id', 'zone_id'], additionalProperties: false,
   }, async (i, c) => {
     const { exportZoneGeometry } = await import('@/hooks/useZoneGeometrySplit'); assertToolActive(c);

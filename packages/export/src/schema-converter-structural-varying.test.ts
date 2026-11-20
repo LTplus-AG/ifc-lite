@@ -163,8 +163,10 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     }
   });
 
-  it('needs the source store, so a subset export keeps the varying action unconverted', async () => {
+  it('converts a subset that retains the varying action and its load locations (#11037)', async () => {
     const result = new StepExporter(await parse(IFC2X3)).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 10, 11, 20, 21, 30]) });
-    expect(line(new TextDecoder().decode(result.content), 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    const output = new TextDecoder().decode(result.content);
+    expect(line(output, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);
+    expect(records(output, 'IFCSTRUCTURALLOADCONFIGURATION')).toEqual([expect.stringContaining('(#20,#21),$);')]);
   });
 });

@@ -49,6 +49,7 @@ export class StructuralVarying {
   ids: (() => number) | null = null;
   private readonly pending: string[] = [];
   private mode: 'upgrade' | 'downgrade' | null = null;
+  private effectiveTypes: ReadonlyMap<number, string> | undefined;
   private byId: IfcDataStore['entityIndex']['byId'] = new Map();
   /** IFC4 IfcStructuralLoadConfiguration id -> its values. */
   private readonly configs = new Map<number, number[]>();
@@ -64,14 +65,7 @@ export class StructuralVarying {
       // With no action to convert, a downgrade still checks what names a configuration.
       : mode === 'downgrade' && present(['IFCSTRUCTURALLOADCONFIGURATION']);
     if (!work) return;
-    for (const id of byType.get('IFCSHAPEASPECT') ?? []) {
-      const args = source.slots(id);
-      const shape = refId(args?.[4]);
-      if (shape === null) continue;
-      const list = this.aspects.get(shape) ?? [];
-      list.push({ id, representations: listItems(args?.[0] ?? '')?.length ?? -1 });
-      this.aspects.set(shape, list);
-    }
+    this.readAspects(byType.get('IFCSHAPEASPECT') ?? [], (id) => source.slots(id));
     for (const id of mode === 'downgrade' ? byType.get('IFCSTRUCTURALLOADCONFIGURATION') ?? [] : []) {
       const values = listItems(source.slots(id)?.[1] ?? '')?.map(refId);
       if (values?.length && values.every((v) => v !== null)) this.configs.set(id, values as number[]);
@@ -79,6 +73,24 @@ export class StructuralVarying {
     this.mode = mode;
     this.byId = byId;
     if (mode === 'downgrade') this.checkSharedConfigurations(source);
+  }
+
+  /** Prepare the same upgrade using the records a filtered or edited export actually writes. */
+  fromEffective(types: ReadonlyMap<number, string>, aspects: readonly number[], slots: (id: number) => readonly string[] | undefined): void {
+    this.mode = 'upgrade';
+    this.effectiveTypes = types;
+    this.readAspects(aspects, slots);
+  }
+
+  private readAspects(ids: readonly number[], slots: (id: number) => readonly string[] | undefined): void {
+    for (const id of ids) {
+      const args = slots(id);
+      const shape = refId(args?.[4]);
+      if (shape === null) continue;
+      const list = this.aspects.get(shape) ?? [];
+      list.push({ id, representations: listItems(args?.[0] ?? '')?.length ?? -1 });
+      this.aspects.set(shape, list);
+    }
   }
 
   /** Rust scan_ifc4 keeps configurations referenced by any record that is not converted.
@@ -102,7 +114,7 @@ export class StructuralVarying {
     }
   }
 
-  private typeOf(id: number): string { return this.byId.get(id)?.type.toUpperCase() ?? ''; }
+  private typeOf(id: number): string { return this.effectiveTypes?.get(id) ?? this.byId.get(id)?.type.toUpperCase() ?? ''; }
 
   /** The target record body for a varying action of either schema, or undefined. */
   rewrite(id: number, entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {

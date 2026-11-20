@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
+import { boundedPage, pageInput, pageOutputProperties, type PageInput } from './result-limit';
+import { stateRevision } from './state-revision';
 import { executeNativeList } from '@/lib/lists/execute-native-list';
 import { parseListDefinitionFile } from '@/lib/lists/persistence';
 import { decodeSavedList } from '@/lib/lists/saved-list-codec';
@@ -19,7 +21,7 @@ function savedDefinition(id: string) {
   return value;
 }
 function definition(id: string) { return structuredClone(savedDefinition(id)); }
-const resultSchema = { type: 'object', properties: { columns: { type: 'array' }, rows: { type: 'array' }, totalCount: { type: 'integer' }, executionTime: { type: 'number' }, groups: { type: 'array', nullable: true }, summary: { type: 'object', nullable: true } }, required: ['columns', 'rows', 'totalCount', 'executionTime'] };
+const resultSchema = { type: 'object', properties: { columns: { type: 'array' }, rows: { type: 'array' }, totalCount: { type: 'integer' }, executionTime: { type: 'number' }, ...pageOutputProperties, groups: { type: 'array', nullable: true }, summary: { type: 'object', nullable: true } }, required: ['columns', 'rows', 'totalCount', 'executionTime', 'next_offset', 'page_revision'] };
 export const analyticsListOperations = [
   viewerOperation(metadata('lists.library', 'lists', 'Read persisted definitions, active result state and native save errors.', ['read'], {
     type: 'object', properties: { definitions: { type: 'array' }, activeId: { type: ['string', 'null'] }, executing: { type: 'boolean' }, error: { type: ['string', 'null'] } }, required: ['definitions', 'activeId', 'executing', 'error'], additionalProperties: false,
@@ -50,12 +52,16 @@ export const analyticsListOperations = [
     if (!c.commit(() => s.setListDefinitions(s.listDefinitions.filter(row => row.id !== i.id)))) throw new Error(useViewerStore.getState().listError ?? 'List persistence failed.');
     return { removed: i.id };
   }),
-  operation<{ id: string; offset: number; limit: number }>(metadata('lists.run', 'lists', 'Await a saved native federated list query with provenance; publish completed rows to the panel and return a bounded page. Cancels before publishing.', ['read', 'configuration'], resultSchema), {
-    type: 'object', properties: { id: idSchema.properties.id, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, required: ['id', 'offset', 'limit'], additionalProperties: false,
-  } satisfies JSONSchemaType<{ id: string; offset: number; limit: number }>, async (i, c) => {
+  operation<PageInput & { id: string; offset: number; limit: number }>(metadata('lists.run', 'lists', 'Await a saved native federated list query with provenance; publish completed rows to the panel and return a bounded page. Cancels before publishing. Pass next_offset and page_revision to continue.', ['read', 'configuration'], resultSchema), {
+    type: 'object', properties: { id: idSchema.properties.id, ...pageInput.properties, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, required: ['id', 'offset', 'limit'], additionalProperties: false,
+  } satisfies JSONSchemaType<PageInput & { id: string; offset: number; limit: number }>, async (i, c) => {
     const original = savedDefinition(i.id);
     const value = structuredClone(original);
     const result = await executeNativeList(value, c); checkpoint(c);
+    const { columns, totalCount, executionTime, groups, summary } = result;
+    const header = { columns, totalCount, executionTime, groups: groups?.slice(0, i.limit), group_count: groups?.length ?? 0, summary };
+    const { items: rows, total: _total, offset: _offset, ...page } = boundedPage(result.rows, i, header,
+      stateRevision([columns, result.rows, groups, summary]));
     c.commit(() => {
       const s = useViewerStore.getState();
       if (s.listDefinitions.find(row => row.id === value.id) !== original) throw new Error('List definition changed during evaluation.');
@@ -63,7 +69,7 @@ export const analyticsListOperations = [
       s.setListResult(result);
       s.setListError(null);
     });
-    return { columns: result.columns, rows: result.rows.slice(i.offset, i.offset + i.limit), totalCount: result.totalCount, executionTime: result.executionTime, groups: result.groups?.slice(0, i.limit), group_count: result.groups?.length ?? 0, summary: result.summary };
+    return { ...header, ...page, rows };
   }),
   operation<{ id: string; format: 'csv' | 'xlsx' | 'pdf' }>(metadata('lists.export', 'lists', 'Await a fresh native list run and real CSV/Excel/PDF writer. Return an artifact handle; never fabricate rows or report a dispatched download as complete.', ['read', 'artifact'], artifactSchema), {
     type: 'object', properties: { id: idSchema.properties.id, format: { type: 'string', enum: ['csv', 'xlsx', 'pdf'] } }, required: ['id', 'format'], additionalProperties: false,

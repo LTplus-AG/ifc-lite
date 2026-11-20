@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { parseFilterGroups, isCapturedEntityScope, totalRuleCount } from '@ifc-lite/rules';
 import { useViewerStore } from '@/store';
+import { boundedPage, pageInput, type PageInput } from './result-limit';
+import { stateRevision } from './state-revision';
 import type { SearchFilterStateValue } from '@/store/slices/searchSlice';
 import { evaluateViewerFilter } from '@/lib/search/evaluate-viewer-filter';
 import { loadSavedFilters, saveFilter, deleteSavedFilter } from '@/lib/search/saved-filters';
@@ -68,12 +70,15 @@ export const searchOperations = [
     });
     return wire({ total: result.result.rows.length, limit_hit: result.limitHit, columns: result.result.columns, preview: result.result.rows.slice(0, 100), run_ms: result.result.runMs });
   }),
-  viewerOperation<{ offset: number; limit: number }>(metadata('filters.results', 'Read a bounded page of the native Search Filter result. current=false means its recorded source revision changed; null means a legacy/native UI result did not record a revision. Never presents that unverified result as a fresh analysis.'), {
-    type: 'object', properties: { offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, required: ['offset', 'limit'], additionalProperties: false,
+  viewerOperation<PageInput & { offset: number; limit: number }>(metadata('filters.results', 'Read a bounded page of the native Search Filter result. current=false means its recorded source revision changed; null means a legacy/native UI result did not record a revision. Never presents that unverified result as a fresh analysis. Pass next_offset and page_revision to continue.'), {
+    type: 'object', properties: { ...pageInput.properties, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 500 } }, required: ['offset', 'limit'], additionalProperties: false,
   }, i => {
     const s = useViewerStore.getState(), result = s.searchFilterResult;
     const stamp = analysisStampOf(result);
-    return wire({ current: stamp ? !isAnalysisStale(stamp, s) : null, columns: result?.columns ?? [], total: result?.rows.length ?? 0, rows: result?.rows.slice(i.offset, i.offset + i.limit) ?? [] });
+    const header = { current: stamp ? !isAnalysisStale(stamp, s) : null, columns: result?.columns ?? [] };
+    const rows = result?.rows ?? [];
+    const { items, ...page } = boundedPage(rows, i, header, stateRevision([header.columns, rows]));
+    return wire({ ...header, ...page, rows: items });
   }),
   viewerOperation<{ expected_json: string; name: string; action: 'save' | 'delete'; expected_catalog_json: string }>(metadata('filters.preset', 'Save the exact current native filter or delete a named native preset using the same durable codec/catalog as the builder. expected_catalog_json must match JSON.stringify(presets) from filters.state. Reports native storage refusal without claiming persistence.', true), {
     type: 'object', properties: { expected_json: expected, name: { type: 'string', minLength: 1, maxLength: 80 }, action: { type: 'string', enum: ['save', 'delete'] }, expected_catalog_json: expected }, required: ['expected_json', 'name', 'action', 'expected_catalog_json'], additionalProperties: false,

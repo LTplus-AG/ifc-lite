@@ -64,7 +64,7 @@ const STEP_MARKER = /^ISO[- ]?10303-21/i;
 export async function nonModelContentReason(file: File, head?: ArrayBuffer): Promise<NonModelReason | null> {
   const first = head ?? await file.slice(0, FORMAT_HEAD_BYTES).arrayBuffer();
   const bytes = new Uint8Array(first);
-  if (bytes.length === 0 || headIsZip(first)) return null;
+  if (headIsZip(first)) return null;
   const routed = detectFormat(first);
   if (routed === 'glb' || routed === '3dm') return null;
   const ifcName = /\.(?:ifc|ifczip)$/i.test(file.name);
@@ -104,10 +104,10 @@ export async function nonModelContentReason(file: File, head?: ArrayBuffer): Pro
     return textStartsLikeStep(text) ? NON_MODEL_REASONS.utf16Step : NON_MODEL_REASONS.notStep;
   }
   if (!ifcNotStep || routed === 'ifcx' || detectPointCloudFormat('content', first)) return null;
-  // Leave blank files and incomplete headers at the scan boundary to the loader.
+  // Leave incomplete headers to the loader only when the scan stops short of EOF.
   const lead = text === headText ? headLead : afterStepComments(text);
   const header = classifyStepHeader(lead);
-  return lead === '' || header === 'step' || (header === 'incomplete' && !whole) ? null : NON_MODEL_REASONS.notStep;
+  return header === 'step' || (header === 'incomplete' && !whole) ? null : NON_MODEL_REASONS.notStep;
 }
 
 /** Whether `text`, after whitespace and STEP comments, starts like STEP: the one rule the preflight's IFC admission shares. */

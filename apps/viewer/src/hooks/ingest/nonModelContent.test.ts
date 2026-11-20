@@ -83,12 +83,12 @@ it('#9523 leaves every file a loader would open alone', async () => {
     ['ISO 10303-21;\nHEADER;', 'spaced-iso.ifc'],
     ['ISO10303-21;\nHEADER;', 'tight-iso.ifc'],
     ['iso-10303-21;\nHEADER;', 'lower-iso.ifc'],
-    ['   \n', 'blank.ifc'],
     [utf16('3\n1.0 2.0 3.0'), 'cloud.pts'],
     [new Uint8Array([0xff, 0xfe, 0x3c, 0x00, 0x01, 0x00, 0x02, 0x00, 0x7b, 0x00]), 'capture.splat'], // binary that starts like a UTF-16 BOM
     ['ply\nformat ascii 1.0\nelement vertex 1\n', 'renamed-ply.ifc'],
     ['VERSION 0.7\nFIELDS x y z\n', 'renamed-pcd.ifc'],
     [`${' '.repeat(5000)}${step}`, 'spaced.ifc'],
+    [`${' '.repeat(64 * 1024)}${step}`, 'step-beyond-scan.ifc'],
     [zipSync({ 'model.ifc': strToU8(step) }), 'pack.ifczip'],
     [zipSync({ 'model.ifc': strToU8(step) }), 'zipped.ifc'],
     [ifcx, 'model.ifcx'],
@@ -103,7 +103,7 @@ it('#9523 leaves every file a loader would open alone', async () => {
     ['3\n1.0 2.0 3.0\n', 'cloud.pts'],
     ['ply\nformat ascii 1.0\n', 'mesh.ply'],
     [new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0]), 'model.glb'],
-    ['', 'empty.ifc'],
+    ['', 'empty.pts'],
   ];
   for (const [body, name] of cases) assert.equal(await reason(body, name), null, `${name}: ${String(body).slice(0, 40)}`);
 });

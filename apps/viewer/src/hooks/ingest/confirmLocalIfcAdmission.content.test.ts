@@ -24,6 +24,9 @@ async function preflight(file: File): Promise<{ head: ArrayBuffer | null; failur
 
 it('#9523 refuses a .ifc or .ifczip that is neither STEP nor ZIP before the scene reset', async () => {
   for (const [file, reason] of [
+    [new File([], 'empty.ifc'), /neither STEP nor an IFC ZIP/],
+    [new File([], 'empty.ifczip'), /neither STEP nor an IFC ZIP/],
+    [new File(['  \n'], 'blank.ifc'), /neither STEP nor an IFC ZIP/],
     [new File(['Access Denied'], 'house.ifc'), /neither STEP nor an IFC ZIP/],
     [new File(['<h1>403</h1>'], 'house.IFC'), /an HTML page/],
     [new File(['nope'], 'pack.ifczip'), /neither STEP nor an IFC ZIP/],

@@ -79,8 +79,12 @@ const sections = DIRECTIONS.map(([from, to]) => {
   const here = inDirection.get(`${from} → ${to}`);
   const lines = [`## ${from} → ${to}`, ''];
   if (!here.length) return [...lines, 'Every same-named attribute keeps a value form the target accepts.', ''].join('\n');
-  lines.push('| Entity.Attribute | Source type | Target type | Required | Forms the target rejects |', '| --- | --- | --- | --- | --- |');
-  for (const r of here) lines.push(`| ${r.entity}.${r.attribute} | ${r.sourceType} | ${r.targetType} | ${r.required ? 'yes' : ''} | ${r.rejected.map((f) => `\`${f}\``).join(', ')} |`);
+  lines.push('| Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |', '| --- | --- | --- | --- | --- | --- |');
+  for (const r of here) {
+    const names = r.whole.map((i) => REGISTRIES[to].entities[r.entity].allAttributes?.[i]?.name ?? i);
+    const emptied = r.whole.length ? `whole: ${names.join(' + ')}` : r.empty ? '`()`' : '';
+    lines.push(`| ${r.entity}.${r.attribute} | ${r.sourceType} | ${r.targetType} | ${r.required ? 'yes' : ''} | ${emptied} | ${r.rejected.map((f) => `\`${f}\``).join(', ')} |`);
+  }
   return [...lines, ''].join('\n');
 });
 
@@ -94,7 +98,9 @@ const text = [
   'can hold a STEP value form the target type cannot (`packages/export/src/schema-value-form-policy.ts`).',
   'Both converters write such a value as `$`, count it dropped and name the slot in the export',
   'warnings (#10847), separately when the target requires the slot, since the record is then invalid.',
-  'A value another pass already rewrote into an accepted form is kept.',
+  'A value another pass already rewrote into an accepted form is kept. An aggregate loses only its',
+  'rejected members, unless they are positional (`whole`: those slots are written `$` together); a',
+  'required aggregate that may be empty and loses every member is written `()`.',
   '',
   'Forms: `#` entity reference, `S` string, `R` real, `I` integer, `E` enumeration (and BOOLEAN /',
   'LOGICAL), `B` binary, `T:NAME` a typed select member, and `A` before a form for an aggregate member.',
@@ -126,15 +132,17 @@ function renderRs() {
     '//! DO NOT EDIT - regenerate with',
     '//!   node scripts/generate-value-forms.mjs',
     '',
-    '/// `(slot index, attribute name, the target requires the slot, rejected forms)`.',
-    "pub type ValueFormSlot = (u8, &'static str, bool, &'static [&'static str]);",
+    '/// `(slot index, attribute name, the target requires the slot, the target',
+    '/// aggregate may be empty, slots written `$` together when a positional member',
+    '/// is rejected, rejected forms)`.',
+    "pub type ValueFormSlot = (u8, &'static str, bool, bool, &'static [u8], &'static [&'static str]);",
     '',
     '/// `(source schema, target schema, UPPERCASE target type, slots)`, sorted.',
     "pub static VALUE_FORM_SLOTS: &[(&str, &str, &str, &[ValueFormSlot])] = &[",
   ];
   for (const [key, slots] of groups) {
     const [from, to, type] = key.split('|');
-    const body = slots.map((s) => `(${s.index}, "${s.attribute}", ${s.required}, &[${s.rejected.map((f) => `"${f}"`).join(', ')}])`).join(', ');
+    const body = slots.map((s) => `(${s.index}, "${s.attribute}", ${s.required}, ${s.empty}, &[${s.whole.join(', ')}], &[${s.rejected.map((f) => `"${f}"`).join(', ')}])`).join(', ');
     lines.push(`    ("${from}", "${to}", "${type}", &[${body}]),`);
   }
   lines.push('];', '');

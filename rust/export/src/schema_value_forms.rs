@@ -5,8 +5,11 @@
 //! (`schema-value-form-policy.ts`, which documents the forms). A value of a
 //! rejected form is written `$` and counted dropped; one a row converts is
 //! wrapped (`R>T:NAME`), unwrapped (`T:NAME>U`) or written as an integer
-//! (`R>I`); anything else stays. An aggregate loses only its rejected
-//! members. Twin of `packages/export/src/schema-converter-value-forms.ts`.
+//! (`R>I`), or written as its one member (`T:NAME>U1`); anything else stays.
+//! An aggregate loses only its rejected members, unless they are positional:
+//! then it and the slots it pairs with are written `$`. A required aggregate
+//! that may be empty and loses every member is written `()`. Twin of
+//! `packages/export/src/schema-converter-value-forms.ts`.
 use std::collections::BTreeMap;
 use ifc_lite_core::parser::skip_step_trivia;
 use crate::generated::value_forms::{ValueFormSlot, VALUE_FORM_SLOTS};
@@ -57,6 +60,11 @@ fn whole_decimal(token: &str) -> bool {
     int.bytes().chain(frac.bytes()).skip(point).all(|b| b == b'0')
 }
 
+/// How many values a slot holds: its members, or one unless it is `$`.
+fn value_count(slot: &str) -> usize {
+    list_items(slot).map_or_else(|| usize::from(value_form(&crate::schema_attr_maps::without_comments(slot)).is_some()), |m| m.len())
+}
+
 /// `value` in the target's form (`None` to drop it), and how many values that lost.
 fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     let Some(start) = skip_step_trivia(value.as_bytes(), 0) else { return (Some(value.to_owned()), 0) };
@@ -74,10 +82,12 @@ fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     // Classified and converted without comments, so a trailing `/* .. */` changes nothing.
     let body = crate::step_slot::without_comments(value);
     let Some(to) = value_form(&body).and_then(|form| rule(rows, &format!("{prefix}{form}"))) else { return (Some(value.to_owned()), 0) };
+    let inner = body.find('(').zip(body.rfind(')')).map(|(open, close)| body[open + 1..close].trim().to_owned());
     let fixed = match to {
         None => None,
         Some(to) if to.starts_with("T:") => Some(format!("{}({body})", &to[2..])),
-        Some("U") => body.find('(').zip(body.rfind(')')).map(|(open, close)| body[open + 1..close].trim().to_owned()),
+        Some("U") => inner,
+        Some("U1") => inner.as_deref().and_then(list_items).filter(|m| m.len() == 1).map(|m| m[0].trim().to_owned()),
         Some(_) => body.parse::<f64>().ok().filter(|n| whole_decimal(&body) && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64)),
     };
     let lost = usize::from(fixed.is_none());
@@ -106,15 +116,28 @@ impl ValueForms {
         // A record whose arity is not the target's is left alone: slot i need not be attribute i.
         if crate::schema_convert::schema_attribute_names(cto, &ty).map(<[_]>::len) != Some(args.len()) { return line; }
         let mut changed = false;
-        for &(index, attribute, required, rows) in slots {
-            let Some(slot) = args.get_mut(usize::from(index)) else { continue };
-            let (fixed, lost) = fix(slot, "", rows);
+        for &(index, attribute, required, empty, whole, rows) in slots {
+            let Some(slot) = args.get(usize::from(index)) else { continue };
+            let (mut fixed, mut lost) = fix(slot, "", rows);
+            if lost > 0 && !whole.is_empty() {
+                // Positional members: the aggregate and its partners go whole.
+                lost = whole.iter().filter_map(|&i| args.get(usize::from(i))).map(|s| value_count(s)).sum();
+                for &i in whole {
+                    if let Some(partner) = args.get_mut(usize::from(i)).filter(|s| i != index && *s != "$") {
+                        *partner = "$".to_owned();
+                        changed = true;
+                    }
+                }
+                fixed = None;
+            }
+            if fixed.is_none() && empty && required { fixed = Some("()".to_owned()); }
             if lost > 0 {
                 *dropped += lost;
                 let into = if fixed.is_none() && required { &mut self.emptied } else { &mut self.dropped };
                 *into.entry(format!("{ty}.{attribute}")).or_default() += lost;
             }
             let value = fixed.unwrap_or_else(|| "$".to_owned());
+            let slot = &mut args[usize::from(index)];
             if value != *slot {
                 *slot = value;
                 changed = true;
@@ -130,7 +153,7 @@ impl ValueForms {
             let sites: Vec<&str> = where_.keys().map(String::as_str).collect();
             (!where_.is_empty()).then(|| format!("{total} value(s) of a type the target slot does not accept {what}: {} (#10847).", sites.join(", ")))
         };
-        line(&self.dropped, "were written as $").into_iter()
+        line(&self.dropped, "were dropped").into_iter()
             .chain(line(&self.emptied, "left a slot the target requires as $, so the file is not valid against its header"))
             .collect()
     }

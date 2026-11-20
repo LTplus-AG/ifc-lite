@@ -52,37 +52,55 @@ function resource(type: string): AttrMap {
   return same(type, { renamed: [['ResourceIdentifier', 'Identification'], ['ResourceGroup', 'LongDescription']], retyped: ['BaseQuantity'] });
 }
 
-export const ATTR_MAPS: readonly AttrMap[] = [
-  same('IFCAPPROVAL', { renamed: [['ApprovalStatus', 'Status'], ['ApprovalLevel', 'Level'], ['ApprovalQualifier', 'Qualifier']] }),
-  same('IFCAPPROVALRELATIONSHIP', { setOfOne: ['RelatedApproval', 'RelatedApprovals'] }),
-  // IFC4 replaced IfcSurfaceTexture's `TextureType` enum with a `Mode` string of another meaning.
-  same('IFCBLOBTEXTURE', { retyped: ['RasterCode'] }),
-  same('IFCIMAGETEXTURE', { renamed: [['UrlReference', 'URLReference']] }),
-  same('IFCPIXELTEXTURE'),
-  same('IFCTEXTURECOORDINATEGENERATOR', { retyped: ['Parameter'] }),
-  same('IFCTEXTUREMAP'),
-  resource('IFCCONSTRUCTIONEQUIPMENTRESOURCE'),
-  resource('IFCCONSTRUCTIONMATERIALRESOURCE'),
-  resource('IFCCONSTRUCTIONPRODUCTRESOURCE'),
-  resource('IFCCREWRESOURCE'),
-  resource('IFCLABORRESOURCE'),
-  resource('IFCSUBCONTRACTRESOURCE'),
-  same('IFCCOSTSCHEDULE', { renamed: [['ID', 'Identification']], retyped: ['SubmittedOn', 'UpdateDate'] }),
-  same('IFCCURRENCYRELATIONSHIP', { retyped: ['RateDateTime'] }),
-  same('IFCDOCUMENTINFORMATIONRELATIONSHIP'),
-  same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
-  // IFC4 deleted this IFC2X3 subtype for its now-concrete supertype, so a
-  // downgrade writes the deleted subtype (`IFC4_TO_IFC2X3`). Downgrade only:
-  // nothing renames the IFC2X3 subtype on an upgrade. IfcMaterialProperties is
-  // left unmapped here: its Material referent must be resolved first (#10763 follow-up).
-  map('IFCGENERALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
-  same('IFCPERFORMANCEHISTORY'),
-  same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
-  same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
-];
+interface AttrMapIndex {
+  readonly maps: readonly AttrMap[];
+  readonly byIfc2x3: ReadonlyMap<string, AttrMap>;
+  readonly byIfc4: ReadonlyMap<string, AttrMap>;
+}
 
-const BY_IFC2X3: ReadonlyMap<string, AttrMap> = new Map(ATTR_MAPS.map((m) => [m.ifc2x3, m]));
-const BY_IFC4: ReadonlyMap<string, AttrMap> = new Map(ATTR_MAPS.map((m) => [m.ifc4, m]));
+let attrMapIndex: AttrMapIndex | undefined;
+
+function getAttrMapIndex(): AttrMapIndex {
+  if (attrMapIndex) return attrMapIndex;
+  const maps: readonly AttrMap[] = [
+    same('IFCAPPROVAL', { renamed: [['ApprovalStatus', 'Status'], ['ApprovalLevel', 'Level'], ['ApprovalQualifier', 'Qualifier']] }),
+    same('IFCAPPROVALRELATIONSHIP', { setOfOne: ['RelatedApproval', 'RelatedApprovals'] }),
+    // IFC4 replaced IfcSurfaceTexture's `TextureType` enum with a `Mode` string of another meaning.
+    same('IFCBLOBTEXTURE', { retyped: ['RasterCode'] }),
+    same('IFCIMAGETEXTURE', { renamed: [['UrlReference', 'URLReference']] }),
+    same('IFCPIXELTEXTURE'),
+    same('IFCTEXTURECOORDINATEGENERATOR', { retyped: ['Parameter'] }),
+    same('IFCTEXTUREMAP'),
+    resource('IFCCONSTRUCTIONEQUIPMENTRESOURCE'),
+    resource('IFCCONSTRUCTIONMATERIALRESOURCE'),
+    resource('IFCCONSTRUCTIONPRODUCTRESOURCE'),
+    resource('IFCCREWRESOURCE'),
+    resource('IFCLABORRESOURCE'),
+    resource('IFCSUBCONTRACTRESOURCE'),
+    same('IFCCOSTSCHEDULE', { renamed: [['ID', 'Identification']], retyped: ['SubmittedOn', 'UpdateDate'] }),
+    same('IFCCURRENCYRELATIONSHIP', { retyped: ['RateDateTime'] }),
+    same('IFCDOCUMENTINFORMATIONRELATIONSHIP'),
+    same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
+    // IFC4 deleted this IFC2X3 subtype for its now-concrete supertype, so a
+    // downgrade writes the deleted subtype (`IFC4_TO_IFC2X3`). Downgrade only:
+    // nothing renames the IFC2X3 subtype on an upgrade. IfcMaterialProperties is
+    // left unmapped here: its Material referent must be resolved first (#10763 follow-up).
+    map('IFCGENERALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
+    same('IFCPERFORMANCEHISTORY'),
+    same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
+    same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
+  ];
+  attrMapIndex = {
+    maps,
+    byIfc2x3: new Map(maps.map((m) => [m.ifc2x3, m])),
+    byIfc4: new Map(maps.map((m) => [m.ifc4, m])),
+  };
+  return attrMapIndex;
+}
+
+export function getAttrMaps(): readonly AttrMap[] {
+  return getAttrMapIndex().maps;
+}
 
 /** True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
  *  counted: a structural record, or one a map wrote, which can leave a
@@ -91,7 +109,7 @@ const BY_IFC4: ReadonlyMap<string, AttrMap> = new Map(ATTR_MAPS.map((m) => [m.if
 export function upgradeCountsIfc4Slots(line: string): boolean {
   const head = stepRecordHead(line);
   const type = head ? line.slice(head.typeStart, head.typeEnd) : '';
-  return type.startsWith('IFCSTRUCTURAL') || BY_IFC4.has(type);
+  return type.startsWith('IFCSTRUCTURAL') || getAttrMapIndex().byIfc4.has(type);
 }
 
 /** The map for writing `entityType` as `newType`, and whether it runs upward. */
@@ -102,11 +120,11 @@ export function attrMapFor(
   toSchema: IfcSchemaVersion,
 ): { map: AttrMap; up: boolean } | undefined {
   if (fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3')) {
-    const found = BY_IFC2X3.get(entityType);
+    const found = getAttrMapIndex().byIfc2x3.get(entityType);
     return found?.ifc4 === newType ? { map: found, up: true } : undefined;
   }
   if (toSchema === 'IFC2X3' && (fromSchema === 'IFC4' || fromSchema === 'IFC4X3')) {
-    const found = BY_IFC4.get(entityType);
+    const found = getAttrMapIndex().byIfc4.get(entityType);
     return found?.ifc2x3 === newType ? { map: found, up: false } : undefined;
   }
   return undefined;

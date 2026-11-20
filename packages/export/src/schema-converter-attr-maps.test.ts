@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { attrNameTable, convertStepLine } from './schema-converter.js';
-import { ATTR_MAPS } from './schema-converter-attr-maps.js';
+import { getAttrMaps } from './schema-converter-attr-maps.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 
@@ -15,15 +15,17 @@ const fixture: { maps: unknown[] } = JSON.parse(
   readFileSync(fileURLToPath(new URL('../../../rust/export/tests/fixtures/schema_attribute_maps.json', import.meta.url)), 'utf8'),
 );
 
-describe('ATTR_MAPS (#10763)', () => {
+describe('attribute maps (#10763)', () => {
   it('is the shared fixture, entry for entry', () => {
-    expect(ATTR_MAPS.length).toBeGreaterThanOrEqual(20);
+    const maps = getAttrMaps();
+    expect(getAttrMaps()).toBe(maps);
+    expect(maps.length).toBeGreaterThanOrEqual(20);
     const strip = (m: object) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== 'why'));
-    expect(ATTR_MAPS.map(strip)).toEqual(fixture.maps.map((m) => strip(m as object)));
+    expect(maps.map(strip)).toEqual(fixture.maps.map((m) => strip(m as object)));
   });
 
   it('names real attributes, and IFC4X3 declares the IFC4 list', () => {
-    for (const m of ATTR_MAPS) {
+    for (const m of getAttrMaps()) {
       const old = attrNameTable('IFC2X3')!.get(m.ifc2x3)!;
       const next = attrNameTable('IFC4')!.get(m.ifc4)!;
       expect(attrNameTable('IFC4X3')!.get(m.ifc4), m.ifc4).toEqual(next);

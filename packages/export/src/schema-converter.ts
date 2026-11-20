@@ -90,7 +90,7 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // of the other — `BY_NAME_ATTR_REMAP_TYPES` reconciles both by name.
   ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
   ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
-  // #10763: IFC4 deleted this subtype for the now-concrete supertype (`ATTR_MAPS`).
+  // #10763: IFC4 deleted this subtype for the now-concrete supertype (see the reviewed attribute map).
   ['IFCPROFILEPROPERTIES', 'IFCGENERALPROFILEPROPERTIES'],
   // IFC4X3 spatial structure → IFC2X3 equivalents
   ['IFCFACILITY', 'IFCBUILDING'],
@@ -389,7 +389,7 @@ function convertRecord(
   // [Identifier, Name, Description, …]; IfcMaterialProperties [Material] →
   // [Name, Description, Properties, Material]), and trimming the tail or
   // appending `$` there would leave values in the wrong, type-invalid slots.
-  // Those take a reviewed `ATTR_MAPS` entry (#10763) or are left alone.
+  // Those take a reviewed attribute map (#10763) or are left alone.
   // Appended attributes are optional, so `$` is a valid pad.
   //
   // The two branches cannot both apply: each needs ITS OWN list strictly shorter.

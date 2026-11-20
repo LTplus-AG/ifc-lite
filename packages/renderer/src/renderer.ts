@@ -348,7 +348,7 @@ export class Renderer {
      * NOT bump it — see `destroy()` vs `teardown()`. Bumping there would make
      * every re-init invalidate itself, and nothing would ever become ready again.
      */
-    private initGeneration = 0;
+    private initGeneration = 0; private initStartedGeneration = 0; // the generation whose initOnce last began building
 
     /**
      * Set once the GPU device is lost for a non-intentional reason (driver
@@ -591,7 +591,7 @@ export class Renderer {
         generation: number,
         options: { clearDeviceLost?: boolean; publishReady?: boolean } = {},
     ): Promise<void> {
-        // `pipeline` is the marker for "a previous init() completed": it is
+        this.initStartedGeneration = generation; // `pipeline` marks "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
             // Release the previous GPU lifetime and revoke readiness without

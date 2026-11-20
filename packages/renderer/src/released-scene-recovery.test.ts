@@ -25,7 +25,8 @@ function lostReleasedRenderer() {
   renderer['scene']['restoreGpuResourcesAfterRecovery'] = () => { throw new Error('a released scene has no CPU pieces to restore'); };
   renderer['refreshPlacementBounds'] = () => { calls.push('bounds'); };
   renderer['teardown'] = () => { renderer['ready'] = false; renderer['pipeline'] = null; };
-  renderer['initOnce'] = async () => {
+  renderer['initOnce'] = async (generation: number) => {
+    renderer['initStartedGeneration'] = generation; // as the real initOnce records
     calls.push('init');
     renderer['pipeline'] = { replacement: true } as never;
     const device = renderer['device'] as unknown as { device: GPUDevice; context: GPUCanvasContext };
@@ -93,6 +94,33 @@ describe('released scene device recovery (#10264)', () => {
     await renderer.recoverDevice();
     assert.deepStrictEqual(seen.at(-1), [5], 'after a successful recovery and a successor, the membership is captured fresh');
   });
+
+  for (const whole of [true, false]) {
+    it(`#10937 a stale recovery (rebuild ${whole ? 'whole' : 'incomplete'}) whose newer init already built never tears that init down`, async () => {
+      const { renderer } = lostReleasedRenderer();
+      let resume!: () => void;
+      const gate = new Promise<void>((done) => { resume = done; });
+      renderer.setReleasedSceneRebuild(async () => { await gate; return whole; });
+      const recovering = renderer.recoverDevice();
+      await new Promise((done) => setTimeout(done, 0)); // the rebuild awaits its backing
+      // A newer public init starts and completes while the old recovery waits.
+      const newer = ++renderer['initGeneration'];
+      await renderer['initOnce'](newer);
+      const built = { newer: true };
+      renderer['pipeline'] = built as never;
+      renderer['deviceLost'] = false;
+      renderer['ready'] = true;
+      let teardowns = 0;
+      renderer['teardown'] = () => { teardowns++; renderer['ready'] = false; renderer['pipeline'] = null; };
+      resume();
+      const result = await recovering;
+      assert.equal(result.ok, false, 'the stale recovery is superseded');
+      assert.equal(teardowns, 0, "it never tears down the newer init's state");
+      assert.equal(renderer['pipeline'], built, "the newer init's pipeline survives");
+      assert.equal(renderer.isReady(), true, 'and stays ready');
+      assert.equal(renderer.isDeviceLost(), false, 'never latched lost by the stale recovery');
+    });
+  }
 
   it('an incomplete rebuild leaves the renderer lost and reports a retryable failure', async () => {
     const { renderer } = lostReleasedRenderer();

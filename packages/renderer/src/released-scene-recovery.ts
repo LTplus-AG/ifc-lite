@@ -18,7 +18,7 @@
  */
 
 import { WebGPUDevice } from './device.js';
-import type { DeviceRecoveryResult, RendererRecoveryHost } from './device-recovery.js';
+import { ownsLifecycle, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { Scene } from './scene.js';
 import type { SceneRecoveryHost } from './scene-device-recovery.js';
@@ -47,6 +47,7 @@ export async function recoverReleasedScene(
   const current = () => generation === host.initGeneration && !host.destroyed
     && host.deviceLossSequence === lossSequence && host.scene === scene;
   const failed = (error?: unknown): DeviceRecoveryResult => {
+    if (!ownsLifecycle(host, generation)) return { ok: false, reason: 'renderer-destroyed', superseded: true };
     host.deviceLost = true; host.ready = false;
     host.teardown(false);
     return { ok: false, reason: 'scene-restore-failed', ...(error === undefined ? {} : { error }) };
@@ -57,7 +58,7 @@ export async function recoverReleasedScene(
   // A newer init/destroy owns the lifecycle: hand it an empty scene, as the ordinary recovery does.
   const superseded = () => generation !== host.initGeneration || host.destroyed;
   const invalidated = (): DeviceRecoveryResult => {
-    host.teardown(true);
+    if (ownsLifecycle(host, generation)) host.teardown(true); // never a newer init's freshly built state
     return { ok: false, reason: 'renderer-destroyed', ...(host.destroyed ? {} : { superseded: true as const }) };
   };
   const pointCloudOptions = host.pointCloudRenderer?.getOptions() ?? host.recovery.pointCloudOptions;

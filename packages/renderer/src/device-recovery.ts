@@ -60,6 +60,8 @@ export interface RendererRecoveryHost {
   destroyed: boolean;
   ready: boolean;
   initGeneration: number;
+  /** The init generation whose `initOnce` last began building (a recovery's own uses its generation). */
+  readonly initStartedGeneration: number;
   deviceLostGeneration: number | null;
   initChain: Promise<void>;
   deviceLossSequence: number;
@@ -139,6 +141,15 @@ export function recoverRendererDevice(host: RendererRecoveryHost): Promise<Devic
   return run;
 }
 
+/**
+ * Whether a recovery begun for `generation` still owns the renderer's lifecycle: no newer init has
+ * started building its own. A newer one tears its predecessor down itself; a stale recovery's teardown
+ * would destroy what it just built. Every recovery teardown asks this first.
+ */
+export function ownsLifecycle(host: Pick<RendererRecoveryHost, 'initStartedGeneration'>, generation: number): boolean {
+  return host.initStartedGeneration <= generation;
+}
+
 /** Preserve the published reason union; supersession is additive metadata. */
 function invalidatedRecovery(host: RendererRecoveryHost): DeviceRecoveryResult {
   if (host.destroyed) return { ok: false, reason: 'renderer-destroyed' };
@@ -174,6 +185,7 @@ async function recoverRendererDeviceOnce(
   let rollbackRestoredGpu: (() => void) | null = null;
   const sourceValid = () => host.scene === scene && (!lease || lease.valid());
   const sourceRefused = (): DeviceRecoveryResult => {
+    if (!ownsLifecycle(host, generation)) return invalidatedRecovery(host);
     host.deviceLost = true; host.ready = false;
     rollbackRestoredGpu?.();
     // Do not clear CPU state belonging to a newer load. Replacement pipelines
@@ -215,7 +227,7 @@ async function recoverRendererDeviceOnce(
       // normal scene-clearing teardown and inherit stale CPU buckets. Give the
       // superseding ordinary lifecycle the same empty-scene starting point it
       // gets when it replaces any completed init.
-      host.teardown(true);
+      if (ownsLifecycle(host, generation)) host.teardown(true);
       return invalidatedRecovery(host);
     }
     if (host.deviceLossSequence !== lossSequence) {
@@ -235,7 +247,7 @@ async function recoverRendererDeviceOnce(
       // #7655: init/destroy can supersede this recovery while validation yields.
       // Recheck before admitting a layout OR allocating restored scene buffers.
       if (generation !== host.initGeneration || host.destroyed || host.pipeline !== pipeline) {
-        host.teardown(true);
+        if (ownsLifecycle(host, generation)) host.teardown(true);
         return invalidatedRecovery(host);
       }
       if (host.deviceLossSequence !== lossSequence) {
@@ -256,7 +268,7 @@ async function recoverRendererDeviceOnce(
     // caller to mutate the scene.
     await Promise.resolve();
     if (generation !== host.initGeneration || host.destroyed) {
-      host.teardown(true);
+      if (ownsLifecycle(host, generation)) host.teardown(true);
       return invalidatedRecovery(host);
     }
     if (host.deviceLossSequence !== lossSequence) {
@@ -287,6 +299,8 @@ async function recoverRendererDeviceOnce(
     host.requestRender();
     return { ok: true, omissions };
   } catch (error) {
+    // A newer init already started building: this failure is not this lifecycle's to latch or tear down.
+    if (!ownsLifecycle(host, generation)) return invalidatedRecovery(host);
     console.error(`[Renderer] Device recovery failed during ${phase} restore:`, error);
     host.deviceLost = true;
     host.ready = false;

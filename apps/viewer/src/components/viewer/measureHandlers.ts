@@ -116,7 +116,7 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
       if (isGeometryHeld(useViewerStore.getState())) return;
       // Shift can change while a view change prevents its immediate re-pick (#9242).
       runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current },
-        () => moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint));
+        () => moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint), () => ctx.activeToolRef.current === 'measure');
     });
   }
 

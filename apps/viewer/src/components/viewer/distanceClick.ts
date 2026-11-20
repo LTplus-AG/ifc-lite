@@ -10,7 +10,7 @@
  */
 
 import { useViewerStore, type MeasurePoint } from '@/store';
-import { runWithReadback } from './measureReadbackGate.js';
+import { invalidatePendingMeasureReadbacks, runWithReadback } from './measureReadbackGate.js';
 import type { MouseHandlerContext, MouseState } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
@@ -63,6 +63,7 @@ export function pressOutlivedReset(press: object): boolean {
  */
 export function resetMeasurePress(ctx: MouseHandlerContext): void {
   if (ctx.activeToolRef.current === 'measure') cancelQueuedHover(ctx);
+  invalidatePendingMeasureReadbacks(); // a readback in flight for the gone gesture must not act (#10264)
   startingPresses.delete(ctx.mouseState);
   forgetVertexPress(ctx);
   forgetDistancePress(ctx.mouseState);
@@ -186,57 +187,65 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
 
-  const useOrthogonalConstraint = e.shiftKey && ctx.measurementConstraintEdgeRef.current;
-  const currentLock = ctx.edgeLockStateRef.current;
-
-  // Use simpler snap options in orthogonal mode (no magnetic locking needed)
-  const finalLock = useOrthogonalConstraint
-    ? { edge: null, meshExpressId: null, lockStrength: 0 }
-    : currentLock;
-
-  // Not through a capture's frame (#9137): a start pending stays pending for the next click.
-  const result = refuseCaptureHeldPick(renderer) ? null : renderer.raycastSceneMagnetic(mx, my, {
-    edge: finalLock.edge,
-    meshExpressId: finalLock.meshExpressId,
-    lockStrength: finalLock.lockStrength,
-  }, {
-    hiddenIds: ctx.hiddenEntitiesRef.current,
-    isolatedIds: ctx.isolatedEntitiesRef.current,
-    snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint }),
-  });
-
-  // The final position, snapped and (with Shift) on the axis
-  let end: MeasurePoint | null = null;
-  if (result && (result.intersection || result.snapTarget)) {
-    const snapPoint = result.snapTarget || result.intersection;
-    let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
-
-    if (pos) {
-      // Apply orthogonal constraint if shift is held
-      if (useOrthogonalConstraint && ctx.activeMeasurementRef.current) {
-        const constraint = ctx.measurementConstraintEdgeRef.current!;
-        const start = ctx.activeMeasurementRef.current.start;
-        const projected = projectOntoConstraintAxis(start, pos, constraint);
-        pos = projected.projectedPos;
-      }
-
-      const screenPos = projectToCssScreen(camera, canvas, pos);
-      end = {
-        x: pos.x,
-        y: pos.y,
-        z: pos.z,
-        screenX: screenPos?.x ?? mx,
-        screenY: screenPos?.y ?? my,
-      };
-    }
-  }
-
   // The second click, or a press dragged past the click slop, finishes where it is released (#8771).
-  // A release on background or back on the start keeps the start pending; a first click leaves it so.
+  // Captured now: the press state is reset below, before a deferred readback can run.
   const finishing = !startingPresses.has(mouseState) || mouseState.didDrag;
-  // On the Shift axis an end projected onto the start is the constrained answer, not a stray snap.
-  const at = useOrthogonalConstraint ? undefined : { x: mx, y: my };
-  if (finishing && end && finishDistance(ctx, end, at)) finishingPresses.add(mouseState);
+  const shift = e.shiftKey;
+  const release = () => {
+    const useOrthogonalConstraint = shift && ctx.measurementConstraintEdgeRef.current;
+    const currentLock = ctx.edgeLockStateRef.current;
+
+    // Use simpler snap options in orthogonal mode (no magnetic locking needed)
+    const finalLock = useOrthogonalConstraint
+      ? { edge: null, meshExpressId: null, lockStrength: 0 }
+      : currentLock;
+
+    // Not through a capture's frame (#9137): a start pending stays pending for the next click.
+    const result = refuseCaptureHeldPick(renderer) ? null : renderer.raycastSceneMagnetic(mx, my, {
+      edge: finalLock.edge,
+      meshExpressId: finalLock.meshExpressId,
+      lockStrength: finalLock.lockStrength,
+    }, {
+      hiddenIds: ctx.hiddenEntitiesRef.current,
+      isolatedIds: ctx.isolatedEntitiesRef.current,
+      snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint }),
+    });
+
+    // The final position, snapped and (with Shift) on the axis
+    let end: MeasurePoint | null = null;
+    if (result && (result.intersection || result.snapTarget)) {
+      const snapPoint = result.snapTarget || result.intersection;
+      let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
+
+      if (pos) {
+        // Apply orthogonal constraint if shift is held
+        if (useOrthogonalConstraint && ctx.activeMeasurementRef.current) {
+          const constraint = ctx.measurementConstraintEdgeRef.current!;
+          const start = ctx.activeMeasurementRef.current.start;
+          const projected = projectOntoConstraintAxis(start, pos, constraint);
+          pos = projected.projectedPos;
+        }
+
+        const screenPos = projectToCssScreen(camera, canvas, pos);
+        end = {
+          x: pos.x,
+          y: pos.y,
+          z: pos.z,
+          screenX: screenPos?.x ?? mx,
+          screenY: screenPos?.y ?? my,
+        };
+      }
+    }
+
+    // A release on background or back on the start keeps the start pending; a first click leaves it so.
+    // On the Shift axis an end projected onto the start is the constrained answer, not a stray snap.
+    const at = useOrthogonalConstraint ? undefined : { x: mx, y: my };
+    if (finishing && end && finishDistance(ctx, end, at)) finishingPresses.add(mouseState);
+  };
+  // Released geometry (#10264): an uncovered release point (a second click away from the first)
+  // reads back first; the finish is dropped if the gesture was reset or the tool left meanwhile.
+  runWithReadback(renderer, mx, my, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current }, release,
+    () => ctx.activeToolRef.current === 'measure' && !!ctx.activeMeasurementRef.current);
   startingPresses.delete(mouseState);
   mouseState.isDragging = false;
   mouseState.didDrag = false;

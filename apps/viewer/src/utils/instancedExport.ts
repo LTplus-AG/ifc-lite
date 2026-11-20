@@ -36,8 +36,10 @@
  * wrongly include.
  */
 import { getGlobalRenderer } from '../hooks/useBCF.js';
-import { modelIndices } from '@/lib/model-placement/model-indices';
 import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
+import { modelIndices } from '@/lib/model-placement/model-indices';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import { hasRetainedShapeOnlyModel, type RetainedGeometrySummary } from '@/store/retainedGeometry';
 import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
 import { getViewerState } from '@/store/viewerStoreHandle';
@@ -46,8 +48,7 @@ import { geometryOwnerNeedsReadback } from '@/lib/geometry-backing/geometry-owne
 import { storeGeometryOwners } from '@/lib/geometry-backing/store-geometry-owners';
 import { releasedCopyFrom } from '@/lib/geometry-backing/store-mesh-readback';
 import type { ReleasedExportGeometry } from '@/lib/geometry-backing/export-readback';
-import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { hasRetainedShapeOnlyModel, type RetainedGeometrySummary } from '@/store/retainedGeometry';
+import type { MeshData } from '@ifc-lite/geometry';
 
 /** This model's global-id bracket, for scoping `getAllInstancedMeshData()`'s
  *  unfiltered (all-models) output down to just this model's occurrences. */
@@ -135,6 +136,40 @@ export function withInstancedMeshes(
   };
 }
 
+/**
+ * `modelId`'s instanced range, owner index included: an overlapping-id collab model's occurrences fall inside the id
+ * bracket too, and only the renderer index tells them apart (#10695). `models` must be the store's whole map: the
+ * index allocator releases any id missing from the map it is given.
+ */
+export function instancedModelRangeOf(modelId: string, models: ReadonlyMap<string, { idOffset?: number; maxExpressId?: number }>): InstancedModelRange | null {
+  const model = models.get(modelId);
+  return model ? { modelId, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0, rendererModelIndex: modelIndices(models).get(modelId) } : null;
+}
+
+/** Resolves a single panel's `InstancedModelRange` (see the module doc above)
+ *  from its own `modelId` plus the currently loaded models, AND whether an
+ *  instanced-geometry export may proceed at all.
+ *
+ * `null` is the correct, unfiltered range ONLY when the model id resolved to
+ * nothing because this is provably the sole loaded model. An unresolved
+ * `modelId` while `models.size > 1` (e.g. no entity selected in a
+ * federation, or a stale id after a model was removed) must NOT fall through
+ * to `null` — `withInstancedMeshes(geometryResult, null)` then splices every
+ * OTHER loaded model's instanced occurrences into this model's export. Such
+ * a leak was `GeoreferencingPanel`'s KMZ export before this helper existed
+ * (PR #2878 review): `canExport: false` tells the caller to withhold the
+ * export instead of falling through to that unfiltered case. */
+export function resolveInstancedExportGate(
+  modelId: string | undefined,
+  models: ReadonlyMap<string, { idOffset?: number; maxExpressId?: number; retainedGeometry?: RetainedGeometrySummary }>,
+): { instancedModelRange: InstancedModelRange | null; canExport: boolean } {
+  const model = modelId ? models.get(modelId) : undefined;
+  const instancedModelRange = modelId ? instancedModelRangeOf(modelId, models) : null;
+  // An incomplete or shape-only retained model would export its partial meshes as the model (#7955).
+  const canExport = (models.size <= 1 || instancedModelRange !== null) && !hasRetainedShapeOnlyModel(model && modelId ? new Map([[modelId, model]]) : models);
+  return { instancedModelRange, canExport };
+}
+
 /** Read-back geometry for collectors running inside {@link withReleasedExportGeometry}. */
 let releasedExport: ReleasedExportGeometry | null = null;
 // Collectors are synchronous, but their enclosing exports may await. Give each
@@ -179,30 +214,4 @@ export async function withReleasedExportGeometry<T>(run: () => T | Promise<T>, m
     releasedExport = null;
     finish();
   }
-}
-
-/** Resolves a single panel's `InstancedModelRange` (see the module doc above)
- *  from its own `modelId` plus the currently loaded models, AND whether an
- *  instanced-geometry export may proceed at all.
- *
- * `null` is the correct, unfiltered range ONLY when the model id resolved to
- * nothing because this is provably the sole loaded model. An unresolved
- * `modelId` while `models.size > 1` (e.g. no entity selected in a
- * federation, or a stale id after a model was removed) must NOT fall through
- * to `null` — `withInstancedMeshes(geometryResult, null)` then splices every
- * OTHER loaded model's instanced occurrences into this model's export. Such
- * a leak was `GeoreferencingPanel`'s KMZ export before this helper existed
- * (PR #2878 review): `canExport: false` tells the caller to withhold the
- * export instead of falling through to that unfiltered case. */
-export function resolveInstancedExportGate(
-  modelId: string | undefined,
-  models: ReadonlyMap<string, { idOffset?: number; maxExpressId?: number; retainedGeometry?: RetainedGeometrySummary }>,
-): { instancedModelRange: InstancedModelRange | null; canExport: boolean } {
-  const model = modelId ? models.get(modelId) : undefined;
-  const instancedModelRange: InstancedModelRange | null = model
-    ? { modelId, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }
-    : null;
-  // An incomplete or shape-only retained model would export its partial meshes as the model (#7955).
-  const canExport = (models.size <= 1 || instancedModelRange !== null) && !hasRetainedShapeOnlyModel(model && modelId ? new Map([[modelId, model]]) : models);
-  return { instancedModelRange, canExport };
 }

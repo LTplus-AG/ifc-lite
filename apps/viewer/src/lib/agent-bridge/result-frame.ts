@@ -105,7 +105,7 @@ export interface ResultFrame {
 
 /**
  * Serialise the `result` frame for call `id`. The frame is checked with the
- * bridge's own validator (`parseTabMessage`: text-only content, result bytes,
+ * bridge's own validator (`parseTabMessage`: text and image content, result bytes,
  * depth and node count) and against `maxResultBytes`; one that would be
  * refused is cut down instead. A cut result keeps `isError` and, for an
  * error, its code; it drops `structuredContent` (which cannot be cut without

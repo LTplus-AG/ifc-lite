@@ -63,7 +63,7 @@ export const MODEL_OPEN_SPECS = {
 } as const;
 
 type Source = { kind: 'sample'; id: SampleId } | { kind: 'url'; url: URL };
-interface OpenRequest { source: Source; mode: 'replace' | 'add' }
+interface OpenRequest { source: Source; mode: 'replace' | 'add'; /** True when the call left `mode` out on an empty viewer. */ modeDefaulted: boolean }
 
 function parseUrl(raw: unknown): URL {
   if (typeof raw !== 'string' || raw.length > 2048) invalid('url must be a string of at most 2048 characters.');
@@ -82,7 +82,7 @@ function parseArgs(args: Record<string, unknown>, state: ViewerState): OpenReque
   const loaded = state.models.size > 0 || state.ifcDataStore !== null;
   if (loaded && mode === undefined) invalid("Models are already loaded. Pass mode: 'replace' to close them or 'add' to federate.");
   if (source.kind === 'sample' && source.id === 'layers-demo' && mode === 'add') invalid("layers-demo always replaces the loaded models; use mode: 'replace'.");
-  return { source, mode: mode ?? 'replace' };
+  return { source, mode: mode ?? 'replace', modeDefaulted: mode === undefined };
 }
 
 /** The file name: the URL path's last segment, percent-decoded, never carrying an encoded path separator. */
@@ -215,6 +215,12 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   assertGranted(ctx);
   const state = store.getState();
   if (state.loading) fail(ToolErrorCode.STATE_CHANGED, 'A model started loading meanwhile. Try again when it finishes.');
+  // The replace default was chosen for an empty viewer; a model opened during the download needs an explicit choice.
+  if (request.modeDefaulted && (state.models.size > 0 || state.ifcDataStore !== null)) fail(ToolErrorCode.STATE_CHANGED,
+    "A model was opened while the file downloaded. Pass mode: 'replace' to close it or 'add' to federate.");
+  // The file commands may have remounted during the download; load through the current host.
+  const liveLoader = getAgentModelLoader();
+  if (!liveLoader) fail(ToolErrorCode.UNSUPPORTED_OPERATION, 'This viewer page has no file loader mounted. Retry after it has finished loading.');
   if (request.mode === 'replace') {
     const unexported = totalChangeCount(collectChangedModels(state));
     if (unexported > 0) fail(ToolErrorCode.STATE_CHANGED,
@@ -222,11 +228,11 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   }
 
   const before = new Set(state.models.keys());
+  const stack = files.length > 1;
   const snapshot = () => [...store.getState().models.values()].map((m) => ({
     model_id: m.id, name: m.name, schema: m.schemaVersion ?? null, new: !before.has(m.id),
     failed: m.loadState === 'error', error: m.loadError ?? null,
   }));
-  const stack = files.length > 1;
   const name = stack ? 'the layer stack' : files[0].name;
   // A declaration: TypeScript ends control flow at its calls (an unannotated `never` arrow would not).
   function couldNotLoad(reason: string): never { return fail(ToolErrorCode.INTERNAL_ERROR, `The viewer could not load ${name}: ${reason}`); }
@@ -236,8 +242,8 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   const primaryId = request.mode === 'replace' && !stack ? crypto.randomUUID() : null;
   // From here the load changes the session whatever happens to this call: it is not cancellable.
   if (ctx.commitState) ctx.commitState.committing = true;
-  const load: Promise<string | null | void> = request.mode === 'add' ? loader.addModel(files[0], onError)
-    : stack ? loader.loadStack(files) : loader.loadFile(files[0], primaryId!, onError);
+  const load: Promise<string | null | void> = request.mode === 'add' ? liveLoader.addModel(files[0], onError)
+    : stack ? liveLoader.loadStack(files) : liveLoader.loadFile(files[0], primaryId!, onError);
   const stillLoading = (): ToolOutput => ({
     text: `${name} is still loading; it continues in the tab.${request.mode === 'replace' ? ' A replace closes the previous models as it proceeds.' : ''} `
       + 'Do not retry. Call model_list to see what is open; if the model never appears, the load failed: take a viewer_screenshot or ask the user what the viewer reports.',

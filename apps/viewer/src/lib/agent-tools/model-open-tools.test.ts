@@ -127,6 +127,17 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
       [['old', false], ['m-1-hello-wall.ifc', true]]);
   });
 
+  it('refuses a defaulted replace when the user opened a model during the download (#10596 review)', async () => {
+    const fetchDuring = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      useViewerStore.setState({ models: new Map([['user', model('user', 'mine.ifc')]]) as never });
+      return fetchDuring(input, init);
+    }) as typeof fetch;
+    await assert.rejects(run({ sample: 'hello-wall' }), { code: 'STATE_CHANGED', message: /opened while the file downloaded/ });
+    assert.deepEqual(calls, []);
+    assert.ok(useViewerStore.getState().models.has('user'));
+  });
+
   it('refuses to replace models with unexported edits', async () => {
     useViewerStore.setState({
       models: new Map([['old', model('old', 'a.ifc')]]) as never,

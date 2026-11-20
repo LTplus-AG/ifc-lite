@@ -53,8 +53,6 @@ export interface RendererRecoveryHost {
     replacementLostInfo: { message: string; reason: string } | null;
     /** The host's rebuild for a released scene (#10264); without it such a scene is refused. */
     releasedRebuild: ReleasedSceneRebuild | null;
-    /** A released scene's pre-loss instanced membership, kept across unsuccessful attempts. */
-    releasedDrawn?: { scene: object; epoch: number; instancedModelIndices: ReadonlySet<number> } | null;
   };
   deviceLost: boolean;
   destroyed: boolean;

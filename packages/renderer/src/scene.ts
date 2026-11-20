@@ -7,6 +7,7 @@
  */
 
 import { unionEntityWorldBounds } from './released-entity-bounds.js';
+import { dropFromReleasedMembership, forgetReleasedMembership, keepPresentInReleasedMembership } from './released-template-membership.js';
 import { GeometryChangeSignal } from './geometry-change-signal.js';
 import { SceneTriangleCounts } from './triangle-counts.js';
 import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
@@ -2817,7 +2818,7 @@ export class Scene {
    * no-op).
    */
   removeInstancedTemplatesForModel(modelIndex: number): number {
-    this.instanceSuppression.forgetModel(modelIndex);
+    this.instanceSuppression.forgetModel(modelIndex); dropFromReleasedMembership(this, modelIndex);
     const freed = new Set<number>();
     for (let i = 0; i < this.instancedTemplates.length; i++) {
       const t = this.instancedTemplates[i];
@@ -3612,9 +3613,8 @@ export class Scene {
   resetReleasedForRebuild(): void { this.destroyAllInstancedTemplates(); this.clearFlatGeometry(); this.setEphemeralStreamingMode(false); }
 
   clear(): void {
-    this.clearEpoch++; this.modelTranslations.clear(); // clearFlatGeometry() below moves replayEpoch
-    // GPU-instancing templates own their vertex/index/instance buffers. (Freed slots are holes whose
-    // buffers are already destroyed — skip them so a per-model removal then clear() can't double-destroy.)
+    this.clearEpoch++; this.modelTranslations.clear(); forgetReleasedMembership(this); // new content; clearFlatGeometry() moves replayEpoch
+    // Instancing templates own their buffers; freed slots are already-destroyed holes (no double-destroy).
     this.destroyAllInstancedTemplates();
     this.clearFlatGeometry();
   }
@@ -3638,7 +3638,7 @@ export class Scene {
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
-    this.snapshots.onFlatCleared();
+    this.snapshots.onFlatCleared(); keepPresentInReleasedMembership(this, models);
     this.replayEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];

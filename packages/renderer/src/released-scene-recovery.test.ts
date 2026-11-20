@@ -145,6 +145,24 @@ describe('released scene device recovery (#10264)', () => {
     assert.equal(clearingTeardowns, 0, "the successor's scene content is never torn down");
   });
 
+  it('#10937 an incomplete recovery, then a reshape that drops model B: the retry never resurrects B', async () => {
+    const { renderer } = lostReleasedRenderer();
+    const scene = renderer.getScene() as unknown as { getInstancedModelIndices: () => number[]; clearFlatGeometryForRebuild(g: unknown[], present: ReadonlySet<number>): void };
+    let templates = [0, 2]; // A (0) and B (2) drew instancing before the loss
+    scene.getInstancedModelIndices = () => templates;
+    renderer['scene']['resetReleasedForRebuild'] = () => { templates = []; }; // the failed attempt's reset
+    const seen: number[][] = [];
+    let complete = false;
+    renderer.setReleasedSceneRebuild(async (context) => { seen.push([...context.instancedModelIndices].sort()); return complete; });
+    assert.equal((await renderer.recoverDevice()).ok, false, 'the first attempt is incomplete');
+    // A reshape (B hidden, still in the store) keeps only A's templates. B's are already gone, so its
+    // removal loop finds nothing to remove: only the reshape's present set says B left.
+    scene.clearFlatGeometryForRebuild([], new Set([0]));
+    complete = true;
+    assert.equal((await renderer.recoverDevice()).ok, true);
+    assert.deepStrictEqual(seen, [[0, 2], [0]], 'the retry restages A only; B is not resurrected');
+  });
+
   it('an incomplete rebuild leaves the renderer lost and reports a retryable failure', async () => {
     const { renderer } = lostReleasedRenderer();
     renderer.setReleasedSceneRebuild(async () => false);

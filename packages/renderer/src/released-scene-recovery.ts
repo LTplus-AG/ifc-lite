@@ -23,6 +23,7 @@ import type { RenderPipeline } from './pipeline.js';
 import type { Scene } from './scene.js';
 import type { SceneRecoveryHost } from './scene-device-recovery.js';
 import { releaseInstanceVertices } from './scene-model-translation.js';
+import { forgetReleasedMembership, keepReleasedMembership, keptReleasedMembership } from './released-template-membership.js';
 
 /** What a released-scene rebuild runs against: the replacement device, before readiness. */
 export interface ReleasedSceneRebuildContext {
@@ -69,11 +70,10 @@ export async function recoverReleasedScene(
   host.recovery.pointCloudOptions = pointCloudOptions ?? null;
   try {
     // Captured before the discard empties the template list: the rebuild restores exactly this membership.
-    // An unsuccessful attempt already reset the templates, so its retry keeps the ORIGINAL pre-loss set;
-    // only a successful recovery or a successor scene (replaced, or cleared for new content) replaces it.
-    const epoch = (scene as unknown as { clearEpoch: number }).clearEpoch, kept = host.recovery.releasedDrawn;
-    const instancedModelIndices = kept && kept.scene === scene && kept.epoch === epoch ? kept.instancedModelIndices : new Set(scene.getInstancedModelIndices());
-    host.recovery.releasedDrawn = { scene, epoch, instancedModelIndices };
+    // An unsuccessful attempt already reset the templates, so a retry keeps the pre-loss set, as every
+    // reshape since has updated it (`released-template-membership.ts`); a clear() (new content) drops it.
+    const instancedModelIndices = new Set(keptReleasedMembership(scene) ?? scene.getInstancedModelIndices());
+    keepReleasedMembership(scene, instancedModelIndices);
     scene.discardGpuResourcesForRecovery();
     host.teardown(false);
     host.device = new WebGPUDevice();
@@ -103,7 +103,7 @@ export async function recoverReleasedScene(
     host.deviceLostInfo = null;
     host.recovery.lostReferenceImages = false;
     host.recovery.pointCloudOptions = null;
-    host.recovery.releasedDrawn = null;
+    forgetReleasedMembership(scene);
     const omissions = [...host.recovery.omissions];
     host.recovery.omissions.clear();
     host.markReady(generation);

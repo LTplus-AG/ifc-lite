@@ -352,7 +352,11 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
       // A created record this cannot read (the overlay writer, building per slot, may still write it) resolves to
       // nothing: the IfcMaterialProperties naming it is left out, its id in the export warnings as naming an unread record.
       if (mutationView && effective.isOverlayCreated(id)) {
-        try { return effectiveCreatedRecord(mutationView, id, sourceSchema)?.text; } catch { return undefined; }
+        try { return effectiveCreatedRecord(mutationView, id, sourceSchema)?.text; } catch (error) {
+          const why = error instanceof Error ? error.message : String(error);
+          pass.warnings.push(`${why.startsWith(`#${id}:`) ? why : `#${id}: ${why}`}; it was read while resolving an IfcMaterialProperties Material (#10763).`);
+          return undefined;
+        }
       }
       const text = source.text(id), type = source.type(id);
       return text === undefined || !type ? undefined

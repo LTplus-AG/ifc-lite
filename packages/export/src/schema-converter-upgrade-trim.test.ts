@@ -23,6 +23,7 @@
 import { describe, it, expect } from 'vitest';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { downgradesMaterial } from './schema-converter-material-referent.js';
 import { isStrictAttrPrefix } from './schema-converter-renames.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -83,7 +84,8 @@ function makeLine(type: string, n: number): string {
  */
 function isDivertedByConversion(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
   const out = convertStepLine(makeLine(type, 1), from, to);
-  // A record the conversion does not write (#10763) is diverted too.
+  // Only the IfcMaterialProperties a downgrade checks may go unwritten (#10763); any other null is a lost record.
+  if (out === null && !(type === 'IFCMATERIALPROPERTIES' && downgradesMaterial(from, to))) throw new Error(`${from} -> ${to} wrote no ${type}`);
   return out === null || !out.startsWith(`#1=${type}(`);
 }
 

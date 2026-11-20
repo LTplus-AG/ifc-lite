@@ -319,6 +319,9 @@ export class NativeScriptRunner {
     }
   }
   ownsEpoch(epoch: number): boolean { return this.sharedEpoch === epoch; }
+  /** True when cancel() ran since the given cancellation count (see cancellationCount). */
+  cancelledSince(count: number): boolean { return this.cancellationEpoch !== count; }
+  get cancellationCount(): number { return this.cancellationEpoch; }
   cancel(): void {
     this.cancellationEpoch++;
     if (useViewerStore.getState().scriptRunEpoch === this.sharedEpoch) this.reset();

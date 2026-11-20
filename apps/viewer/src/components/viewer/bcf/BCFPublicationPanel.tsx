@@ -73,9 +73,10 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     if (!candidate || !config) return;
     // Moving to another batch or account is a user choice: the candidate never comes back for it.
     if (candidate.batchId !== batch.id || candidate.target.serverUrl !== config?.serverUrl || candidate.target.userId !== config?.userId) { useBcfPublicationReview.setState({ candidate: null }); return; }
-    // A batch edited after staging would show the old preflight as current.
-    // An edited batch, or a choice the user made while the agent prepared, outranks the candidate.
-    if (candidate.modifiedAt !== batch.modifiedAt || !bcfPublicationCandidateCurrent(candidate)) { useBcfPublicationReview.setState({ candidate: null }); return; }
+    // A batch edited after staging makes the candidate's preflight, adopted or not, out of date.
+    if (candidate.modifiedAt !== batch.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); setTopicTypes({}); setPreflight(null); setReport(null); return; }
+    // A choice the user made while the agent prepared outranks the candidate and keeps the user's own state.
+    if (!bcfPublicationCandidateCurrent(candidate)) { useBcfPublicationReview.setState({ candidate: null }); return; }
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
     // As the native Check does, so the dialog can offer the server's assignees.
     onUsers(candidate.preflight.extensions.user_id_type ?? []);

@@ -42,7 +42,7 @@ import { resolveExportVisibility } from '@/store/exportVisibility';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { MergedExporter, type ExportProgress } from '@ifc-lite/export';
+import type { ExportProgress } from '@ifc-lite/export';
 import { exportModelIfcx } from '@/lib/export/model-ifcx-export';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { landXmlDownloadInput, landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
@@ -346,6 +346,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           : { hidden: new Map<string, Set<number>>(), isolated: new Map<string, Set<number> | null>() };
 
         const prepared = await sectionMergeInputs(mergeInputs, visibility, schema, sectionExport.options);
+        // Loaded on use: the merged export is its own lazy chunk, off the startup bundle.
+        const { MergedExporter } = await import('@ifc-lite/export/merged-exporter');
         const mergedExporter = new MergedExporter(prepared.inputs);
         // Assemble the merged download off-heap so it does not materialise as
         // one contiguous Uint8Array on the JS heap.

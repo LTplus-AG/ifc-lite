@@ -216,7 +216,7 @@ function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOp
       if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
       const target = refId(getStepAttr(dataStore, id, 1));
       const crs = target !== null && CRS_TYPES.has(byId.get(target)?.type?.toUpperCase() ?? '')
-        && ![...COORDINATE_OPERATION_STEP_TYPES].some(type => byType.get(type)?.some(op => refId(getStepAttr(dataStore, op, 0)) === target)) ? target : null;
+        && !COORDINATE_OPERATION_STEP_TYPES.some(kind => byType.get(kind)?.some(op => refId(getStepAttr(dataStore, op, 0)) === target)) ? target : null;
       const wkt = crs === null ? [] : (byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === crs);
       const record = JSON.stringify([recordValue(dataStore, id, 4, [0, 1]), crs === null ? null : recordValue(dataStore, crs, 4),
         wkt.map(text => recordValue(dataStore, text, 0, [1]))]);

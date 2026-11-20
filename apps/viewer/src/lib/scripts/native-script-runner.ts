@@ -328,6 +328,8 @@ export class NativeScriptRunner {
     else { this.epoch++; this.dispose(); }
   }
   reset(): void {
+    // A run still creating its sandbox checks this after the await: a reset stops it before eval, as cancel() does.
+    this.cancellationEpoch++;
     const { setScriptExecutionState: setExecutionState, setScriptError: setError, setScriptDiagnostics: setDiagnostics } = useViewerStore.getState();
     const setResult = (result: ScriptResult | null) => useViewerStore.getState().setScriptResult(result ? stampAnalysisReport(result, captureAnalysisStamp()) : null);
     if (this.active) {

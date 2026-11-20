@@ -423,10 +423,9 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     await act(async () => {
       const pA = execute1!(GATED).then((r) => { rA = r; });
       reset1!();
-      await waitForGates(1);
-      assert.equal(gates.length, 1, 'the superseded run still runs to its gate — reset() only bumps the epoch here, it has no sandbox to dispose yet');
-      gates[0]!({ marker: 'stale' });
       await pA;
+      // reset() counts as a cancellation, so a run still creating its sandbox stops before eval, as after cancel().
+      assert.equal(gates.length, 0, 'a run reset() superseded before its sandbox existed never enters the guest');
     });
 
     assert.equal(rA, null, "a run reset() superseded before its first await must resolve null");

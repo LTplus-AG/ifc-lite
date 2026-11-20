@@ -191,7 +191,7 @@ describe('replayReleasedGeometry', () => {
     assert.deepEqual(drawnIds(scene), [1, 9], "the successor's fragment survives; only this replay's own is destroyed");
     assert.ok(scene.getEntityBoundingBox(9), "the successor's entity box survives");
     const box = scene.getEntityBoundingBox(1)!;
-    assert.deepEqual([box.min.x, box.max.x], [-10, 1], "entity 1's box was rewritten by the successor: never reverted to the pre-replay state");
+    assert.deepEqual([box.min.x, box.max.x], [-10, -9], "entity 1's box holds only the successor's extent: the superseded replay's staged [0, 1] never reached the scene");
     assert.ok(releasedOf(scene).get(9)?.has(0), "the successor's placement group survives");
   });
 
@@ -206,9 +206,10 @@ describe('replayReleasedGeometry', () => {
     await new Promise((done) => setTimeout(done, 0));
     current = false;
     scene.clear(); // a reload resets the scene, then its successor replays the new content
-    assert.equal((await replayReleasedGeometry(host(scene, gpu).renderer, batches([tri(1, 30, 0)]))).status, 'complete');
+    const successor = replayReleasedGeometry(host(scene, gpu).renderer, batches([tri(1, 30, 0)])); // waits for the stale pass
     resume();
     assert.equal((await first).status, 'superseded');
+    assert.equal((await successor).status, 'complete');
     assert.deepEqual(drawnIds(scene), [1], "the successor's draw stays");
     const box = scene.getEntityBoundingBox(1)!;
     assert.deepEqual([box.min.x, box.max.x], [30, 31], "the successor's box, never the stale replay's prior state");
@@ -224,5 +225,29 @@ describe('replayReleasedGeometry', () => {
     assert.equal(scene.getEntityBoundingBox(4), null, 'nor its entity box');
     assert.equal(releasedOf(scene).has(4), false, 'nor its placement group');
     assert.equal(scene.isEphemeralStreaming(), false, 'the pass is closed');
+  });
+  it('#10903 interleaved replays A [0,1] and B [-10,-9] of one entity: A never finalizes B\'s pass, and only B\'s bounds survive', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    let resumeA!: () => void, resumeB!: () => void;
+    const gateA = new Promise<void>((done) => { resumeA = done; }), gateB = new Promise<void>((done) => { resumeB = done; });
+    let aCurrent = true, bAwaiting = false;
+    async function* a(): AsyncGenerator<readonly MeshData[]> { yield [{ ...tri(1, 0, 0), modelIndex: 0 }]; await gateA; yield [tri(2, 5, 0)]; }
+    async function* b(): AsyncGenerator<readonly MeshData[]> { yield [{ ...tri(1, -10, 0), modelIndex: 0 }]; bAwaiting = true; await gateB; }
+    const first = replayReleasedGeometry(host(scene, gpu).renderer, a(), { isCurrent: () => aCurrent });
+    await new Promise((done) => setTimeout(done, 0)); // A has uploaded [0,1] and waits on its next read
+    const second = replayReleasedGeometry(host(scene, gpu).renderer, b());
+    aCurrent = false; // B's reload supersedes A
+    resumeA();
+    assert.equal((await first).status, 'superseded');
+    while (!bAwaiting) await new Promise((done) => setTimeout(done, 0));
+    assert.equal(scene.isEphemeralStreaming(), true, "A's close never finalized B's pass while B awaits its read");
+    resumeB();
+    assert.equal((await second).status, 'complete');
+    const box = scene.getEntityBoundingBox(1)!;
+    assert.deepEqual([box.min.x, box.max.x], [-10, -9], "only B's extent: A's never contaminated it");
+    const group = releasedOf(scene).get(1)?.get(0) as { min: { x: number }; max: { x: number } } | undefined;
+    assert.deepEqual([group?.min.x, group?.max.x], [-10, -9], "and the placement group is B's alone");
+    assert.deepEqual(drawnIds(scene), [1], "only B's fragment is drawn");
   });
 });

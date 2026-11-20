@@ -536,10 +536,12 @@ if (result.status !== 'complete') retryLater(); // superseded, cancelled or unav
 Each batch is uploaded through the ephemeral streaming path (GPU fragments only)
 and can be dropped as soon as the generator resumes. The scene keeps per-entity
 bounds, so picking and framing still work, and it ends in the released state it
-started from. A replay is all or nothing: one that errors, is cancelled, is
-superseded by a newer one or is interrupted by a device loss removes what it
-uploaded (fragments and the bounds it unioned) before returning, so replaying
-again never draws a batch twice.
+started from. Replays of one scene run one at a time, each in its own pass. A
+replay is all or nothing. Its entity bounds reach the scene only when it
+completes. One that errors, is cancelled, is superseded by a newer one, fails to
+finalize or is interrupted by a device loss removes the fragments it uploaded
+and drops its bounds before returning, so replaying again never draws a batch
+twice. Picking and framing see a replay's bounds once it completes.
 
 ### Magnetic Snap Configuration
 

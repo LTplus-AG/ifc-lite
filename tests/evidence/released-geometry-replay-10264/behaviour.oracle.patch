@@ -1,13 +1,13 @@
 diff --git a/packages/renderer/src/released-geometry-replay.ts b/packages/renderer/src/released-geometry-replay.ts
-index c9335fa..54fe360 100644
+index c696254..515f809 100644
 --- a/packages/renderer/src/released-geometry-replay.ts
 +++ b/packages/renderer/src/released-geometry-replay.ts
-@@ -128,7 +128,7 @@ export async function replayReleasedGeometry(
+@@ -135,7 +135,7 @@ async function replayOwnPass(
    const host = scene as unknown as FragmentHost;
    const tx = new ReplayTransaction(host);
    const reason = (): 'cancelled' | 'superseded' | undefined =>
 -    options.signal?.aborted ? 'cancelled' : host.clearEpoch !== tx.epoch ? 'superseded' : undefined;
 +    options.signal?.aborted ? 'cancelled' : !current() || host.clearEpoch !== tx.epoch ? 'superseded' : undefined;
-   let ok = false;
-   scene.setEphemeralStreamingMode(true);
-   try {
+   // Superseded while waiting for the pass: never open one.
+   let stopped = reason();
+   if (stopped) return { status: stopped, batches: 0, meshes: 0 };

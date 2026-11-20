@@ -103,9 +103,9 @@ fn a_required_ifc4_slot_with_no_source_is_counted_10763() {
 
 #[test]
 fn first_member_reads_a_list_and_passes_anything_else_through_10763() {
-    assert_eq!(first_member("( #3 , #4 )"), ("#3".to_owned(), 1));
-    assert_eq!(first_member("#3"), ("#3".to_owned(), 0));
-    assert_eq!(first_member("()"), ("$".to_owned(), 0));
+    assert_eq!(first_member("( #3 , #4 )"), ("#3", 1));
+    assert_eq!(first_member("#3"), ("#3", 0));
+    assert_eq!(first_member("()"), ("$", 0));
 }
 
 /// A SET slot is rebuilt without its comments, so a comment before, after or

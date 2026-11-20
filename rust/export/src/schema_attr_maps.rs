@@ -145,44 +145,48 @@ impl AttrMap {
 /// Positions follow `src`, as `remap_attrs_by_name` does.
 pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static str], tgt: &[&'static str], lost: &mut usize) -> String {
     let mut used = vec![false; values.len()];
-    let out: Vec<String> = tgt
-        .iter()
-        .map(|name| {
-            let Some((source, how)) = map.source_of(up, name, src) else { return "$".to_owned() };
-            let Some(i) = src.iter().position(|s| *s == source).filter(|&i| i < values.len()) else {
-                return "$".to_owned();
-            };
+    let mut out = String::with_capacity(values.iter().map(|v| v.len() + 1).sum());
+    for (k, name) in tgt.iter().enumerate() {
+        if k > 0 { out.push(','); }
+        let slot = map.source_of(up, name, src).and_then(|(source, how)| {
+            let i = src.iter().position(|s| *s == source).filter(|&i| i < values.len())?;
             used[i] = true;
-            let value = values[i].as_str();
+            Some((values[i].as_str(), how))
+        });
+        match slot {
+            Some((value, How::Value)) if holds_value(value) => out.push_str(value),
             // A SET is rebuilt, so comments around it or its members go.
-            let bare = if let How::Value = how { value.to_owned() } else { without_comments(value) };
-            if !holds_value(&bare) {
-                return "$".to_owned();
-            }
-            match how {
-                How::Value => bare,
-                How::Unwrap => {
+            Some((value, how @ (How::Wrap | How::Unwrap))) => {
+                let bare = without_comments(value);
+                if !holds_value(&bare) {
+                    out.push('$');
+                } else if let How::Unwrap = how {
                     let (first, extra) = first_member(&bare);
                     *lost += extra;
-                    first
+                    out.push_str(first);
+                } else if bare.starts_with('(') {
+                    out.push_str(&bare);
+                } else {
+                    out.push('(');
+                    out.push_str(&bare);
+                    out.push(')');
                 }
-                How::Wrap if bare.starts_with('(') => bare,
-                How::Wrap => format!("({bare})"),
             }
-        })
-        .collect();
+            _ => out.push('$'),
+        }
+    }
     *lost += values.iter().zip(&used).filter(|(v, used)| !**used && holds_value(v)).count();
-    out.join(",")
+    out
 }
 
 /// The first member of a STEP list `value`, and how many more members hold a
 /// value. A value that is not a list is its own first member.
-fn first_member(value: &str) -> (String, usize) {
-    let Some(members) = crate::schema_ifc2x3_records::list(Some(value)) else { return (value.to_owned(), 0) };
+fn first_member(value: &str) -> (&str, usize) {
+    let Some(members) = crate::schema_ifc2x3_records::list(Some(value)) else { return (value, 0) };
     let mut held = members.into_iter().filter(|m| holds_value(m));
     match held.next() {
-        Some(first) => (first.trim().to_owned(), held.count()),
-        None => ("$".to_owned(), 0),
+        Some(first) => (first.trim(), held.count()),
+        None => ("$", 0),
     }
 }
 

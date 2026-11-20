@@ -9,6 +9,9 @@ import type { ValidationReport } from '@ifc-lite/ids';
 import type { IdsReportBlock } from '@/lib/document/ids-report-types';
 import type { ToolHost } from '../types';
 import { evictOldest } from './host-handles';
+import { pageInput, type PageInput } from './result-limit';
+import { libraryPage } from './library-page';
+import { assertRevision, revisionInput, stateRevision } from './state-revision';
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const artifactOutput = { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer' } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
@@ -121,13 +124,15 @@ export const nativeValidationOperations = [
     type: 'object', properties: { ...runInput.properties, name: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['run_id', 'name'], additionalProperties: false,
   }, async (i, c) => { const value = run(c, i.run_id); const id = await c.commitAsync(() => useViewerStore.getState().saveValidationReport(value.snapshot, i.name), saved => !!saved);
     if (!id) throw new Error('Native report persistence failed.'); return out({ id }); }),
-  viewerOperation(meta('validation.reports.read', 'Read the native durable report library and its persistence diagnostics with no model required. Historical evidence never installs old entity IDs into the scene.'), emptySchema, async (_, c) => {
-    await useViewerStore.getState().initializeValidationReports(); assertToolActive(c); const s = useViewerStore.getState(); return out({ reports: s.savedValidationReports, expected_reports: JSON.stringify(s.savedValidationReports), storage: s.validationReportsStorage });
+  viewerOperation<PageInput>(meta('validation.reports.read', 'Read the native durable report library, one page at a time (pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), and its persistence diagnostics with no model required. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Historical evidence never installs old entity IDs into the scene.'), pageInput, async (i, c) => {
+    await useViewerStore.getState().initializeValidationReports(); assertToolActive(c); const s = useViewerStore.getState();
+    const expected_reports = stateRevision(s.savedValidationReports), { entries: reports, page, storage } = libraryPage(s.savedValidationReports, s.validationReportsStorage, i, { expected_reports });
+    return out({ reports, ...page, expected_reports, storage });
   }),
   viewerOperation<{ action: 'rename' | 'remove' | 'reuseManual' | 'restore' | 'retry'; id: string; name: string; expected_reports: string }>(meta('validation.reports.manage', 'Rename/remove saved native reports, restore/retry native durable storage or create an independent editable copy of an eligible saved Manual report. Native fingerprint eligibility remains authoritative.', 'configuration'), {
-    type: 'object', properties: { action: { type: 'string', enum: ['rename', 'remove', 'reuseManual', 'restore', 'retry'] }, id: { type: 'string', maxLength: 200 }, name: { type: 'string', maxLength: 200 }, expected_reports: { type: 'string', maxLength: 1000000 } }, required: ['action', 'id', 'name', 'expected_reports'], additionalProperties: false,
+    type: 'object', properties: { action: { type: 'string', enum: ['rename', 'remove', 'reuseManual', 'restore', 'retry'] }, id: { type: 'string', maxLength: 200 }, name: { type: 'string', maxLength: 200 }, expected_reports: revisionInput }, required: ['action', 'id', 'name', 'expected_reports'], additionalProperties: false,
   }, async (i, c) => {
-    const expected = () => { if (JSON.stringify(useViewerStore.getState().savedValidationReports) !== i.expected_reports) throw new Error('The native report library changed. Inspect again.'); };
+    const expected = () => assertRevision(useViewerStore.getState().savedValidationReports, i.expected_reports, 'The native report library changed. Inspect again.');
     expected(); const s = useViewerStore.getState();
     if (i.action === 'reuseManual') {
       const report = s.savedValidationReports.find(row => row.id === i.id); if (!report) throw new Error('Unknown saved native report.');

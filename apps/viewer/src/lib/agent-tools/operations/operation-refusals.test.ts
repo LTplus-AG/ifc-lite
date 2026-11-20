@@ -13,6 +13,8 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it, type TestContext } from 'node:test';
 import { useViewerStore } from '@/store';
 import { resetFeaturesForTest } from '@/lib/features';
+import { blankDocument } from '@/lib/document/presets';
+import { modelOverviewDashboard } from '@/lib/charts/presets';
 import { DEFAULT_ANONYMIZE_TOGGLES } from '@/components/viewer/anonymized-export/AnonymizationOptionsPanel';
 import { parseHelloWall, model, seed, viewerHost } from '@/test/agent-tools-fixture';
 import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
@@ -43,6 +45,40 @@ describe('operation refusals carry an executor code and a reason (#10871)', () =
     const host = viewerHost();
     const result = await dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'zones.set.create', input: { name: 'Z', expected_configuration: '1:0' } }, { canEdit: () => true });
     assert.equal(result.isError, true); assert.equal(result.errorCode, 'STATE_CHANGED', result.text); assert.equal(reason(result), 'stale');
+  });
+
+  it('a disabled operation returns a permission denial', async () => {
+    resetFeaturesForTest({ default: 'all', disable: ['tools.section'] });
+    const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_execute', {
+      operation_id: 'section.box', input: { min: [0, 0, 0], max: [1, 2, 3] },
+    }, { canEdit: () => true });
+    assert.equal(result.errorCode, 'PERMISSION_DENIED', result.text);
+    assert.equal(reason(result), 'disabled');
+  });
+
+  it('the native chart evaluator reports an unknown chart as an input refusal', async () => {
+    const dashboard = modelOverviewDashboard();
+    useViewerStore.setState({ dashboards: [dashboard] });
+    const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_inspect', {
+      operation_id: 'charts.evaluate', input: { dashboard_id: dashboard.id, chart_id: 'missing' },
+    });
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal(reason(result), 'unknown-target');
+  });
+
+  it('deleting a document while its revision is calculated reports stale state', async t => {
+    const document = blankDocument();
+    useViewerStore.setState({ documents: [document] });
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    t.mock.method(crypto.subtle, 'digest', (...args: Parameters<SubtleCrypto['digest']>) => {
+      useViewerStore.setState({ documents: [] });
+      return digest(...args);
+    });
+    const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_inspect', {
+      operation_id: 'document.inspect', input: { id: document.id, offset: 0, limit: 1 },
+    });
+    assert.equal(result.errorCode, 'STATE_CHANGED', result.text);
+    assert.equal(reason(result), 'stale');
   });
 
   it('malformed JSON in a string field is INVALID_INPUT, not a SyntaxError reported as INTERNAL_ERROR', async () => {

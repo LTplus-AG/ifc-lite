@@ -14,20 +14,21 @@ import { internal, invalidInput, stale, parseJsonInput } from './refusals';
 const revisionSchema = { type: 'string' as const, pattern: '^sha256:[a-f0-9]{64}$' };
 const json = { type: 'string' as const, minLength: 2, maxLength: 100000 };
 const written = { type: 'object', properties: { id: { type: 'string' }, revision: { type: 'string' }, block_id: { type: ['string', 'null'] }, blocks: { type: 'integer' } }, required: ['id', 'revision', 'block_id', 'blocks'], additionalProperties: false };
-function current(id: string) { const doc = useViewerStore.getState().documents.find(row => row.id === id); if (!doc) throw invalidInput('unknown-target', 'Unknown native document.'); return doc; }
+const findDocument = (id: string) => useViewerStore.getState().documents.find(row => row.id === id);
+function current(id: string) { const doc = findDocument(id); if (!doc) throw invalidInput('unknown-target', 'Unknown native document.'); return doc; }
 async function admitted(id: string, expected: string, c: ViewerOperationContext) {
-  const before = current(id); if (await nativeDocumentRevision(before) !== expected || current(id) !== before) throw stale('Document changed since inspection.'); checkpoint(c); return before;
+  const before = current(id); if (await nativeDocumentRevision(before) !== expected || findDocument(id) !== before) throw stale('Document changed since inspection.'); checkpoint(c); return before;
 }
 async function persist(before: DocumentSpec, next: DocumentSpec, blockId: string | null, c: ViewerOperationContext) {
   checkpoint(c);
-  if (!await c.commitAsync(() => { if (current(before.id) !== before) throw stale('Document changed before native persistence admission.'); return useViewerStore.getState().upsertDocument(next); })) throw internal('Native document persistence failed; inspect the library save status.');
+  if (!await c.commitAsync(() => { if (findDocument(before.id) !== before) throw stale('Document changed before native persistence admission.'); return useViewerStore.getState().upsertDocument(next); })) throw internal('Native document persistence failed; inspect the library save status.');
   return { id: next.id, revision: await nativeDocumentRevision(next), block_id: blockId, blocks: next.blocks.length };
 }
 export const documentNativeEditOperations = [
   viewerOperation<PageInput & { id: string; offset: number; limit: number }>(metadata('document.inspect', 'document', 'Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export. Pass next_offset and page_revision to continue.', ['read'], { type: 'object', properties: { document: { type: 'object' }, page_metadata_json: { type: 'string' }, blocks: { type: 'array' }, total_blocks: { type: 'integer' }, ...pageOutputProperties }, required: ['document', 'page_metadata_json', 'blocks', 'total_blocks', 'next_offset', 'page_revision'], additionalProperties: false }), {
     type: 'object', properties: { id: idSchema.properties.id, ...pageInput.properties, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['id', 'offset', 'limit'], additionalProperties: false,
   } satisfies JSONSchemaType<PageInput & { id: string; offset: number; limit: number }>, async (i, c) => {
-    const doc = current(i.id); const summary = await nativeDocumentSummary(doc); checkpoint(c); if (current(i.id) !== doc) throw stale('Document changed during inspection.');
+    const doc = current(i.id); const summary = await nativeDocumentSummary(doc); checkpoint(c); if (findDocument(i.id) !== doc) throw stale('Document changed during inspection.');
     const header = { document: summary, page_metadata_json: nativeDocumentPageMetadata(doc) };
     const { items: blocks, total: total_blocks, offset: _offset, ...page } = boundedMappedPage(doc.blocks, nativeBlockMetadata, i, header, stateRevision(summary.revision));
     return { ...header, ...page, blocks, total_blocks };

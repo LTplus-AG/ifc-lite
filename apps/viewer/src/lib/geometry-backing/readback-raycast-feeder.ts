@@ -190,6 +190,8 @@ export class ReadbackRaycastFeeder {
           // Only what the scene draws: the store also holds type-filtered meshes
           // (spaces, openings) and class-2 type templates the scene never had.
           if ((mesh.geometryClass ?? 0) === 2 || scene.getEntityBoundingBox(mesh.expressId) === null) continue;
+          // Nor an overlay the resident raycast never tests (an annotation or grid the re-pick saw through), as for instanced neighbours.
+          if (mesh.expressId !== hit.expressId && (skipped.has(mesh.expressId) || !this.raycastable(mesh.expressId))) continue;
           meshes.push(place(scene, mesh));
         }
         // Occurrences are model-local like flat sources; the same placement applies.

@@ -44,7 +44,7 @@ export interface BCFSliceState {
 export interface BCFSlice extends BCFSliceState {
   // Project actions
   setBcfProject: (project: BCFProject | null) => void;
-  clearBcfProject: () => void;
+  clearBcfProject: () => Promise<boolean>;
   initializeBcfAutosave: () => Promise<boolean>;
   flushBcfAutosave: () => Promise<boolean>;
 
@@ -110,7 +110,11 @@ export const createBcfSlice: StateCreator<BCFSlice, [], [], BCFSlice> = (set, ge
     set(edit);
     if (before !== get().bcfProject) autosave.changed();
   };
+  const clearBcfProject = () => autosave.clear(() => {
+    set({ bcfProject: null, activeTopicId: null, activeViewpointId: null, bcfError: null });
+  });
   const setBcfProject = (bcfProject: BCFProject | null) => {
+    if (!bcfProject) { void clearBcfProject(); return; }
     set({ bcfProject, activeTopicId: null, activeViewpointId: null, bcfError: null });
     autosave.changed(true);
   };
@@ -128,7 +132,7 @@ export const createBcfSlice: StateCreator<BCFSlice, [], [], BCFSlice> = (set, ge
 
     // Project actions
     setBcfProject,
-    clearBcfProject: () => setBcfProject(null),
+    clearBcfProject,
     initializeBcfAutosave: autosave.initialize,
     flushBcfAutosave: autosave.flush,
 

@@ -331,10 +331,10 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     })) return;
     const state = useViewerStore.getState();
     if (state.bcfProject !== bcfProject || state.bcfLoading) return;
+    if (!await state.clearBcfProject() || useViewerStore.getState().bcfProject) return;
     captureFlight.reset();
     createFlight.reset();
     setShowCreateForm(false);
-    state.clearBcfProject();
   };
 
   return (

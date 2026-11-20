@@ -67,8 +67,7 @@ test('#10975 BCF edits survive reload and explicit close clears the working copy
   assert.equal(reloaded().activeTopicId, null);
 
   reloaded().updateTopic(topic.guid, { title: 'Pending before close' });
-  reloaded().clearBcfProject();
-  assert.equal(await reloaded().flushBcfAutosave(), true);
+  assert.equal(await reloaded().clearBcfProject(), true);
   const closed = makeStore();
   await closed().initializeBcfAutosave();
   assert.equal(closed().bcfProject, null);
@@ -107,9 +106,9 @@ test('#10975 an explicit close during startup also wins over restore', async () 
   await first().flushBcfAutosave();
   const next = makeStore();
   const restoring = next().initializeBcfAutosave();
-  next().clearBcfProject();
+  const closing = next().clearBcfProject();
   await restoring;
-  assert.equal(await next().flushBcfAutosave(), true);
+  assert.equal(await closing, true);
   assert.equal(next().bcfProject, null);
   const last = makeStore();
   await last().initializeBcfAutosave();
@@ -155,8 +154,8 @@ test('#10975 preserves unreadable bytes through startup, edits and close', async
   next().setBcfProject(project('Memory only'));
   assert.equal(await next().flushBcfAutosave(), false);
   assert.equal(next().bcfAutosaveStatus, 'unreadable');
-  next().clearBcfProject();
-  assert.equal(await next().flushBcfAutosave(), false);
+  assert.equal(await next().clearBcfProject(), false);
+  assert.equal(next().bcfProject?.name, 'Memory only');
   assert.deepEqual(await slot(), damaged);
 });
 
@@ -181,6 +180,9 @@ test('#10975 quota and image limit refusals preserve the previous commit', async
     assert.equal(live().bcfAutosaveStatus, 'quota');
     assert.equal(live().bcfProject?.name, 'In memory');
     assert.deepEqual(await slot(), before);
+    assert.equal(await live().clearBcfProject(), false);
+    assert.equal(live().bcfProject?.name, 'In memory', 'a refused close keeps the project available for export');
+    assert.deepEqual(await slot(), before);
   } finally { put.mock.restore(); }
 
   const topic = createBCFTopic({ title: 'Large capture', author: 'reviewer@example.com' });
@@ -191,4 +193,6 @@ test('#10975 quota and image limit refusals preserve the previous commit', async
   assert.deepEqual(await slot(), before);
   live().deleteViewpoint(topic.guid, 'large');
   assert.equal(await live().flushBcfAutosave(), true);
+  assert.equal(await live().clearBcfProject(), true, 'close succeeds after storage recovers');
+  assert.equal(live().bcfProject, null);
 });

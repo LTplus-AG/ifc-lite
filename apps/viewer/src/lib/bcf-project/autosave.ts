@@ -52,7 +52,7 @@ export function createBcfAutosave(
     })();
   }
 
-  function enqueue(project: BCFProject | null, version: number): Promise<boolean> {
+  function enqueue(project: BCFProject | null, version: number, onCommit?: () => void): Promise<boolean> {
     if (queuedGeneration === version) return queue;
     queuedGeneration = version;
     queue = queue.then(async () => {
@@ -70,6 +70,7 @@ export function createBcfAutosave(
       if (result.ok) {
         revision = result.revision;
         committed = version;
+        if (version === generation) onCommit?.();
       }
       if (version === generation) publish(result.ok ? (project ? 'saved' : 'idle') : result.reason);
       return result.ok;
@@ -99,7 +100,7 @@ export function createBcfAutosave(
       if (!started) {
         started = true;
         const result = load();
-        if (generation > 0) schedule(current() === null);
+        if (generation > 0) schedule(true);
         return result;
       }
       return load();
@@ -107,6 +108,14 @@ export function createBcfAutosave(
     changed: (immediate = false): void => {
       generation++;
       schedule(immediate);
+    },
+    clear: (onCommit: () => void): Promise<boolean> => {
+      started = true;
+      clearTimeout(timer);
+      timer = undefined;
+      const closing = enqueue(null, ++generation, onCommit);
+      if (!unreadable) publish('pending');
+      return closing;
     },
     flush,
   };

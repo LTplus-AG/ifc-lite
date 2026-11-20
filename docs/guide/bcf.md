@@ -36,8 +36,9 @@ save failures. The last successful copy is retained when a save fails. Export
 a BCF archive to keep the current edits, or remove snapshot viewpoints to
 bring the project within the limit.
 
-**Close BCF project** in the BCF panel menu clears the recovery copy. Closing
-the panel keeps the project open. Importing a `.bcf` or `.bcfzip` replaces the
+**Close BCF project** in the BCF panel menu clears the recovery copy. If storage refuses the clear, the project stays open so
+you can export it or try closing it again. Closing the panel keeps the project
+open. Importing a `.bcf` or `.bcfzip` replaces the
 working project. **Download library backup** includes the open BCF project
 within the same size limit. A library backup can restore its BCF project when
 the BCF panel has no open project. Export and close your current project before

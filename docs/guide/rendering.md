@@ -550,12 +550,13 @@ scene has none, so it is refused with `cpu-geometry-released` unless the host
 registers a rebuild that puts the geometry back from its own storage:
 
 ```typescript
-renderer.setReleasedSceneRebuild(async ({ device, pipeline, scene, isCurrent, requestRender }) => {
+renderer.setReleasedSceneRebuild(async ({ device, pipeline, scene, instancedModelIndices, isCurrent, requestRender }) => {
   const flat = await replayReleasedGeometry(
     { getScene: () => scene, getGPUDevice: () => (isCurrent() ? device : null), getPipeline: () => pipeline, requestRender },
     storedFlatBatches(), { isCurrent });
   if (flat.status !== 'complete') return false;
   for await (const shard of storedInstancedShards()) {
+    if (!instancedModelIndices.has(modelIndexOf(shard))) continue; // only templates the scene held
     if (!isCurrent()) return false;
     scene.addInstancedShard(device, shard, modelIndexOf(shard));
   }

@@ -124,6 +124,17 @@ describe('released scene device recovery (#10264)', () => {
     });
   }
 
+  it('#10937 hands the rebuild exactly the instanced model indices the scene held before the loss', async () => {
+    const { renderer } = lostReleasedRenderer();
+    let held = [2, 5];
+    renderer['scene']['getInstancedModelIndices'] = () => held;
+    renderer['scene']['discardGpuResourcesForRecovery'] = () => { held = []; }; // the discard empties the template list
+    let seen: ReadonlySet<number> | undefined;
+    renderer.setReleasedSceneRebuild(async (context) => { seen = context.instancedModelIndices; return true; });
+    assert.equal((await renderer.recoverDevice()).ok, true);
+    assert.deepStrictEqual([...(seen ?? [])].sort(), [2, 5], 'captured before the discard, so a hidden model stays out');
+  });
+
   it('clearing the rebuild refuses again', async () => {
     const { renderer } = lostReleasedRenderer();
     renderer.setReleasedSceneRebuild(async () => true);

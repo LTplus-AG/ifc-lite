@@ -28,6 +28,8 @@ import { releaseInstanceVertices } from './scene-model-translation.js';
 export interface ReleasedSceneRebuildContext {
   readonly device: GPUDevice;
   readonly pipeline: RenderPipeline;
+  /** Model indices that had instanced templates before the loss: restage exactly these, no others. */
+  readonly instancedModelIndices: ReadonlySet<number>;
   readonly scene: Scene;
   /** False once this recovery is superseded (newer init/destroy, replacement device lost). */
   isCurrent(): boolean;
@@ -61,6 +63,8 @@ export async function recoverReleasedScene(
   const pointCloudOptions = host.pointCloudRenderer?.getOptions() ?? host.recovery.pointCloudOptions;
   host.recovery.pointCloudOptions = pointCloudOptions ?? null;
   try {
+    // Captured before the discard empties the template list: the rebuild restores exactly this membership.
+    const instancedModelIndices = new Set(scene.getInstancedModelIndices());
     scene.discardGpuResourcesForRecovery();
     host.teardown(false);
     host.device = new WebGPUDevice();
@@ -79,7 +83,7 @@ export async function recoverReleasedScene(
     }
     // Placements, ids and per-model translations stay; every GPU-derived flat and instanced piece goes.
     scene.resetReleasedForRebuild();
-    const whole = await rebuild({ device: host.device.getDevice(), pipeline, scene, isCurrent: current, requestRender: () => host.requestRender() });
+    const whole = await rebuild({ device: host.device.getDevice(), pipeline, scene, instancedModelIndices, isCurrent: current, requestRender: () => host.requestRender() });
     if (superseded()) return invalidated();
     if (!current() || !whole) return failed(new Error(whole ? 'Released scene rebuild was superseded' : 'Released scene rebuild was incomplete'));
     // Restaged templates carry CPU vertices; a released scene keeps only occurrence transforms.

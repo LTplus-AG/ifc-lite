@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
-import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { collectRelatedEntities, type RelatedEntityOptions } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { ensureModelExportReady } from '@/services/desktop-export';

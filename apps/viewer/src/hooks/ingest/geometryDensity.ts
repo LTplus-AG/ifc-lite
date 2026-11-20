@@ -35,26 +35,29 @@ const NUMERIC_TUPLES = /[^0-9.,()eE+\-\s]/g;
  * Dense and total record bytes in `text`. The bytes before the first record
  * start belong to a record cut by the window edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
- * numeric tuples alone (98 %+), and is skipped otherwise. A long numeric record
+ * numeric tuples alone (98 %+), and as sparse otherwise: it always counts
+ * toward the total, so a window inside a long text record weighs as much as
+ * one inside a mesh record (review on #10814). A long numeric record
  * that is not a mesh (B-spline knots, curve points) also passes that test; like
  * the point-list overcount it errs toward refusal. The last record runs to the
  * end of the window.
  */
-export function denseRecordBytes(text: string): { dense: number; total: number } {
+export function denseRecordBytes(text: string): { dense: number; total: number; records: number } {
   RECORD_START.lastIndex = 0;
   const first = RECORD_START.exec(text);
   const lead = first ? first.index : text.length;
   const other = lead > 0 ? (text.slice(0, lead).match(NUMERIC_TUPLES)?.length ?? 0) : lead;
-  let dense = lead > 0 && other <= lead * 0.02 ? lead : 0, total = dense, start = -1, denseRecord = false;
+  let dense = lead > 0 && other <= lead * 0.02 ? lead : 0, total = lead, records = 0, start = -1, denseRecord = false;
   const close = (end: number) => { if (start >= 0) { total += end - start; if (denseRecord) dense += end - start; } };
   RECORD_START.lastIndex = 0;
   for (let match = RECORD_START.exec(text); match; match = RECORD_START.exec(text)) {
     close(match.index);
+    records++;
     start = match.index;
     denseRecord = DENSE_TYPES.has(match[1]!);
   }
   close(text.length);
-  return { dense, total };
+  return { dense, total, records };
 }
 
 /**
@@ -71,10 +74,11 @@ export async function sampleDenseGeometryShare(file: Blob): Promise<number | und
       const start = Math.floor(((file.size - SAMPLE_WINDOW_BYTES) * i) / (SAMPLE_WINDOWS - 1));
       return [start, start + SAMPLE_WINDOW_BYTES];
     });
-  let dense = 0, total = 0;
+  let dense = 0, total = 0, records = 0;
   for (const [start, end] of windows) {
     const counted = denseRecordBytes(decoder.decode(await file.slice(start, end).arrayBuffer()));
-    dense += counted.dense; total += counted.total;
+    dense += counted.dense; total += counted.total; records += counted.records;
   }
-  return total > 0 ? dense / total : undefined;
+  // No record start in any window: not a STEP file this sample can describe.
+  return records > 0 && total > 0 ? dense / total : undefined;
 }

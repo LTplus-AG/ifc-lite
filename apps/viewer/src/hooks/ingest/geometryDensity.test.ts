@@ -36,9 +36,22 @@ describe('dense geometry share (#10264)', () => {
     assert.ok(mixed.dense > 0 && mixed.dense < mixed.total);
     // A large mesh can be one record longer than a window: the cut fragment is still mesh payload.
     const inside = '(1.5,2.5,3.5),'.repeat(1000);
-    assert.deepEqual(denseRecordBytes(inside), { dense: inside.length, total: inside.length }, 'a window inside one point list is dense');
+    assert.deepEqual(denseRecordBytes(inside), { dense: inside.length, total: inside.length, records: 0 }, 'a window inside one point list is dense');
     const cutText = "x',$,$,'Body');\n#7=IFCPROPERTYSET('a',$,'b',$,(#8));\n";
     assert.equal(denseRecordBytes(cutText).dense, 0, 'a cut text record is not');
+  });
+
+  // Review on #10814 (discussion_r4639861101): a window cut inside a long text record used to add
+  // nothing to the total while a window cut inside a mesh record counted in full, so one mesh
+  // window decided the share alone.
+  it('counts a window cut inside a long non-mesh record as sparse, not as nothing', async () => {
+    const text = "'" + 'Lorem ipsum dolor sit amet, '.repeat(12_000) + "'";
+    assert.deepEqual(denseRecordBytes(text.slice(1000, 200_000)), { dense: 0, total: 199_000, records: 0 });
+    // One 300 KiB mesh record, then long text property records: four windows, one in the mesh.
+    let file = `${HEADER}#10=IFCCARTESIANPOINTLIST3D((${points(12_000)}));\n`;
+    for (let id = 20; file.length < 1_400_000; id++) file += `#${id}=IFCPROPERTYSINGLEVALUE('Note',$,IFCTEXT(${text}),$);\n`;
+    const share = (await sampleDenseGeometryShare(new Blob([file])))!;
+    assert.ok(share > 0.1 && share < 0.4, `one of four windows is mesh, the share follows: ${share}`);
   });
 
   it('measures a file of a few giant mesh records as dense', async () => {

@@ -154,4 +154,40 @@ void run_mesh_canonical_tests() {
         a.indices={0,1,2,3,4,5}; a.faces={0,1}; a.normals.assign(18,0.);
         order_mesh(a); require(std::signbit(a.positions[0]) && a.positions[2]==1,"-0 sorts before +0");
     }
+    // Sliver: in doubles, the cross product from corner a rounds to exactly 0
+    // (from b and c it is -4.77e-18, the exact orientation's sign). a is also
+    // the lowest vertex, so it becomes the canonical first corner: a normal
+    // from the first corner alone would refuse the triangle as degenerate.
+    {
+        const Point a{0.12926848008708913,0.44750716155345727,0.},b{0.49154698840753275,0.8401951656845025,0.},
+            c{0.4859970667001983,0.8341793860335357,0.};
+        for (const auto& t:{std::array<Point,3>{a,b,c},std::array<Point,3>{b,c,a},std::array<Point,3>{c,a,b}}) {
+            Point n{}; require(flat_normal(t[0],t[1],t[2],n),"sliver is not degenerate from every corner");
+            require(n[2]==-1 && n[0]==0 && n[1]==0,"sliver normal follows the exact orientation from any first corner");
+        }
+        std::vector<AdapterMesh> meshes;
+        for (unsigned start=0;start<3;++start) {
+            AdapterMesh mesh; for (const auto& p:{a,b,c}) mesh.positions.insert(mesh.positions.end(),p.begin(),p.end());
+            mesh.indices={start,(start+1)%3,(start+2)%3}; mesh.faces={0}; mesh.normals.assign(9,0.);
+            order_mesh(mesh); meshes.push_back(mesh);
+        }
+        require(meshes[0].normals[2]==-1,"canonical sliver keeps its exact orientation");
+        same_bytes(meshes[1],meshes[0],"sliver canonical from any input corner");
+        same_bytes(meshes[2],meshes[0],"sliver canonical from any input corner");
+    }
+    // A planar quad is not re-split onto a diagonal that is already a mesh edge.
+    {
+        const std::vector<Point> points{{1,0,0},{1,1,0},{0,1,0},{0,0,0},{.5,.5,1}}; // B C D A E
+        auto quad=[&](bool shared) {
+            AdapterMesh mesh; for (const auto& p:points) mesh.positions.insert(mesh.positions.end(),p.begin(),p.end());
+            mesh.indices={0,1,2,2,3,0}; mesh.faces={0,0}; // split along B-D, not through A
+            if (shared) { mesh.indices.insert(mesh.indices.end(),{3,1,4}); mesh.faces.push_back(1); } // uses A-C
+            mesh.normals.assign(mesh.indices.size()*3,0.);
+            canonicalize(mesh,{true,false});
+            return mesh;
+        };
+        require(has_edge(quad(false),{0,0,0},{1,1,0}),"free quad split through its lowest vertex");
+        const auto kept=quad(true);
+        require(has_edge(kept,{1,0,0},{0,1,0}) && face_areas(kept).at(0)==1,"existing edge blocks the new diagonal");
+    }
 }

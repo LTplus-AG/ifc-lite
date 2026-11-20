@@ -74,13 +74,13 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
             if (inserted.second) mesh->positions.insert(mesh->positions.end(),{point.x,point.y,point.z});
             mesh->indices.push_back(inserted.first->second);
         }
-        const double ux=points[1].x-points[0].x, uy=points[1].y-points[0].y, uz=points[1].z-points[0].z;
-        const double vx=points[2].x-points[0].x, vy=points[2].y-points[0].y, vz=points[2].z-points[0].z;
-        const double nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
-        const double length=std::hypot(nx,ny,nz);
-        ensure(std::isfinite(length) && length > 0,"degenerate tessellation triangle");
+        // Degenerate unless some corner's cross product is nonzero, whichever
+        // corner the SDK lists first (order_mesh recomputes the normal).
+        std::array<double,3> normal{};
+        ensure(flat_normal({points[0].x,points[0].y,points[0].z},{points[1].x,points[1].y,points[1].z},
+            {points[2].x,points[2].y,points[2].z},normal),"degenerate tessellation triangle");
         for (unsigned corner=0; corner<3; ++corner)
-            mesh->normals.insert(mesh->normals.end(),{nx/length,ny/length,nz/length});
+            mesh->normals.insert(mesh->normals.end(),{normal[0],normal[1],normal[2]});
         mesh->faces.push_back(source->second);
     }
     std::vector<std::optional<CylinderPatch>> cylinders(source_faces.GetSize());

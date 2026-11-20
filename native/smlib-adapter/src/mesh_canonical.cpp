@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <numeric>
+#include <set>
 #include <tuple>
 
 namespace {
@@ -37,6 +38,8 @@ Point cross(const AdapterMesh& mesh,const Triangle& t) {
     return {uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx};
 }
 double dot(const Point& a,const Point& b) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+using Edge=std::pair<uint32_t,uint32_t>;
+Edge edge(uint32_t a,uint32_t b) { return std::minmax(a,b); }
 Triangle rotated(Triangle t) {
     std::rotate(t.begin(),std::min_element(t.begin(),t.end()),t.end());
     return t;
@@ -51,6 +54,27 @@ bool less(const Corner& a,const Corner& b) {
     if (less(std::get<1>(b),std::get<1>(a))) return false;
     return less(std::get<2>(a),std::get<2>(b));
 }
+}
+
+bool flat_normal(const std::array<double,3>& a,const std::array<double,3>& b,const std::array<double,3>& c,
+    std::array<double,3>& out) {
+    // Each corner's cross product is the same vector in exact arithmetic; in
+    // doubles a sliver's can round to zero or flip. The longest is the most
+    // accurate, and the choice does not depend on which corner comes first
+    // unless two lengths tie exactly (then the earliest corner wins).
+    const std::array<std::array<double,3>,3> corners{{a,b,c}};
+    double best=0; Point n{};
+    for (unsigned k=0;k<3;++k) {
+        const auto& p=corners[k]; const auto& q=corners[(k+1)%3]; const auto& r=corners[(k+2)%3];
+        const double ux=q[0]-p[0],uy=q[1]-p[1],uz=q[2]-p[2];
+        const double vx=r[0]-p[0],vy=r[1]-p[1],vz=r[2]-p[2];
+        const Point m{uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx};
+        const double length=std::hypot(m[0],m[1],m[2]);
+        if (std::isfinite(length) && length>best) { best=length; n=m; }
+    }
+    if (!(best>0)) return false;
+    for (unsigned axis=0;axis<3;++axis) out[axis]=n[axis]/best;
+    return true;
 }
 
 void order_mesh(AdapterMesh& mesh) {
@@ -98,19 +122,22 @@ void order_mesh(AdapterMesh& mesh) {
     for (size_t t=0;t<triangles;++t) {
         mesh.faces[t]=sorted[t].first;
         for (unsigned k=0;k<3;++k) mesh.indices[3*t+k]=sorted[t].second[k];
-        // Same arithmetic as the tessellation boundary: a flat normal from the
-        // (now canonical) first corner.
-        const auto n=cross(mesh,sorted[t].second);
-        const double length=std::hypot(n[0],n[1],n[2]);
-        if (!std::isfinite(length) || !(length>0))
+        const auto& c=sorted[t].second;
+        Point n;
+        if (!flat_normal(point(mesh,c[0]),point(mesh,c[1]),point(mesh,c[2]),n))
             throw AdapterMeshFailure{"degenerate tessellation triangle"};
         for (unsigned k=0;k<3;++k) for (unsigned axis=0;axis<3;++axis)
-            mesh.normals[9*t+3*k+axis]=n[axis]/length;
+            mesh.normals[9*t+3*k+axis]=n[axis];
     }
 }
 
 void canonical_planar_quads(AdapterMesh& mesh,const std::vector<bool>& planar_faces) {
     const size_t triangles=mesh.indices.size()/3;
+    // A new diagonal must not duplicate an edge the mesh already has (as in
+    // normalize_mesh_diagonals); that would make the mesh non-manifold.
+    std::set<Edge> edges;
+    for (size_t t=0;t<triangles;++t) for (unsigned k=0;k<3;++k)
+        edges.insert(edge(mesh.indices[3*t+k],mesh.indices[3*t+(k+1)%3]));
     // order_mesh made each source face's triangles contiguous.
     for (size_t first=0;first<triangles;) {
         size_t end=first+1;
@@ -130,6 +157,7 @@ void canonical_planar_quads(AdapterMesh& mesh,const std::vector<bool>& planar_fa
         if (i==3) continue; // not one quad with consistent winding
         const uint32_t u=a[i],v=a[(i+1)%3],p=a[(i+2)%3],q=b[(j+2)%3];
         if (p==q || std::min({u,v,p,q})==std::min(u,v)) continue; // already through the lowest vertex
+        if (edges.count(edge(p,q))) continue;
         const Triangle left{p,u,q},right{q,v,p};
         auto n=cross(mesh,a); const auto nb=cross(mesh,b);
         for (unsigned k=0;k<3;++k) n[k]+=nb[k];
@@ -144,5 +172,6 @@ void canonical_planar_quads(AdapterMesh& mesh,const std::vector<bool>& planar_fa
             mesh.indices[3*(second-1)+k]=left[k];
             mesh.indices[3*second+k]=right[k];
         }
+        edges.erase(edge(u,v)); edges.insert(edge(p,q));
     }
 }

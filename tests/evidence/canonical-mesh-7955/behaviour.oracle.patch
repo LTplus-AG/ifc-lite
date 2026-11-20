@@ -1,6 +1,6 @@
 --- a/native/smlib-adapter/src/mesh.cpp
 +++ b/native/smlib-adapter/src/mesh.cpp
-@@ -92,7 +92,14 @@
+@@ -93,7 +93,14 @@
          if (static_cast<SmCone*>(surface)->GetCanonical(patch.frame,patch.radius,semi_angle)==SM_SUCCESS &&
              semi_angle==0 && std::isfinite(patch.radius) && patch.radius>0) cylinders[i]=patch;
      }

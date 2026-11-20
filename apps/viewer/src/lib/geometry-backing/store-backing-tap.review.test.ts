@@ -185,3 +185,67 @@ it('#10876 a stale (released) generation is replaced by a fresh resident list un
   assert.equal(old.isCurrent, false, 'the retained old handle stays stale');
   await tap.stop();
 });
+
+it('#10876 a registered model with no geometry yet (geometryResult null) is not complete, and release-for-test refuses it', async () => {
+  const { geometryBackingCommand } = await import('./backing-debug-hook');
+  const store = createStore<TapState>(() => ({ models: new Map([['ng', { geometryResult: null }]]), geometryContentVersion: 0 }));
+  await geometryBackingCommand(store, undefined, { action: 'start', options: { database: database() } as never });
+  let released = 0;
+  const renderer = { getScene: () => ({ releaseGeometryData: () => { released++; }, isGeometryDataReleased: () => released > 0 }) } as never;
+  try {
+    let [status] = await geometryBackingCommand(store, undefined, { action: 'seal' });
+    assert.equal(status.complete, false, 'no geometry yet is not a valid empty model');
+    await assert.rejects(geometryBackingCommand(store, renderer, { action: 'release-for-test' }), /nothing was released/);
+    assert.equal(released, 0);
+    setList(store, 'ng', [mesh(1)]); // the first batch arrives
+    [status] = await geometryBackingCommand(store, undefined, { action: 'seal' });
+    assert.equal(status.complete, true, status.error ?? 'incomplete once its geometry arrived');
+    assert.equal(status.meshes, 1);
+  } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+});
+
+it('#10876 an in-place append after a seal: the retained acknowledged handle goes stale and the new backing holds the new suffix', async () => {
+  const list = [mesh(1)];
+  const store = storeWith({ ps: list });
+  const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+  await tap.seal();
+  const retained = tap.backing('ps')!;
+  const ack = await retained.acknowledge();
+  list.push(mesh(2, 1)); // the loader grows the SAME array after the seal
+  store.setState((s) => ({ models: new Map(s.models).set('ps', { geometryResult: { meshes: list } }) }));
+  assert.equal(retained.isCurrent, false, 'superseded at once: it lacks the new mesh');
+  assert.equal(tap.registryHandle.verify(ack), false, 'and its acknowledgement no longer verifies');
+  const [status] = await tap.seal();
+  assert.equal(status.complete, true, status.error ?? 'incomplete');
+  const ids: number[] = [];
+  for await (const batch of tap.backing('ps')!.reader.meshes()) ids.push(...batch.map((m) => m.expressId));
+  assert.deepEqual(ids.sort(), [1, 2], 'the new generation holds the whole list, new suffix included');
+  await tap.stop();
+});
+
+it('#10876 stop() drains a removal whose retirement is still pending, so its records are deleted before the database closes', async () => {
+  const { BackingDatabase, CHUNKS } = await import('./backing-database');
+  const name = database();
+  const store = storeWith({ gone: [mesh(1)] });
+  const tap = await StoreGeometryBackingTap.start(store, { database: name });
+  await tap.seal();
+  const removed = tap.backing('gone')!;
+  const session = tap.registryHandle.session; // records are keyed by the page's session
+  const original = BackingDatabase.prototype.deleteBacking;
+  let release!: () => void;
+  const gate = new Promise<void>((done) => { release = done; });
+  BackingDatabase.prototype.deleteBacking = async function (this: InstanceType<typeof BackingDatabase>, id: string) { await gate; return original.call(this, id); };
+  try {
+    setList(store, 'gone', null); // removed: its retirement (and delete) is deferred
+    let stopped = false;
+    const stopping = tap.stop().then(() => { stopped = true; });
+    await new Promise((done) => setTimeout(done, 20));
+    assert.equal(stopped, false, 'stop waits for the pending retirement before closing the database');
+    release();
+    await stopping;
+  } finally { BackingDatabase.prototype.deleteBacking = original; release(); }
+  const probe = await BackingDatabase.open({ ...name, session });
+  try {
+    assert.equal(await probe.count(CHUNKS, removed.backingId), 0, 'no orphan records of the removed model (same session)');
+  } finally { probe.close(); }
+});

@@ -736,6 +736,42 @@ for (const previousKind of ['idle', 'succeeded', 'failed'] as const) {
   });
 }
 
+for (const retainedDeletion of [false, true]) it(
+  retainedDeletion
+    ? 'does not reuse a retained deleted ID after reopening a smaller source (#10469)'
+    : 'reopens a smaller source with retained edits and room to author in a federation (#10469)',
+  () => {
+    const state = useViewerStore.getState();
+    const source = (max: number) => fixtureDataStore([
+      { expressId: 1, type: 'IfcWall', name: 'Source wall' },
+      ...(max > 11 ? [{ expressId: 11, type: 'IfcWall' as const, name: 'Deleted wall' }] : []),
+      { expressId: max, type: 'IfcProject', name: 'Project' },
+    ]);
+    const oldMax = 2_000_000;
+    state.updateModel('server', { idOffset: state.registerModelOffset('server', oldMax),
+      maxExpressId: oldMax, ifcDataStore: source(oldMax) });
+    const view = getOrCreateMutationView(useViewerStore, 'server')!;
+    assert.equal(view.peekNextExpressId(), oldMax + 1);
+    assert.ok(state.setAttribute('server', 1, 'Name', 'Retained wall', 'Source wall'));
+    if (retainedDeletion) assert.equal(view.deleteEntity(11), true);
+
+    state.clearAllModels();
+    const newMax = 10;
+    state.addModel({ ...fixtureModel('server'), idOffset: state.registerModelOffset('server', newMax),
+      maxExpressId: newMax, ifcDataStore: source(newMax) });
+    state.addModel({ ...fixtureModel('neighbor'), idOffset: state.registerModelOffset('neighbor', 1), maxExpressId: 1 });
+
+    const after = useViewerStore.getState();
+    assert.equal(after.getMutationView('server'), view);
+    assert.equal(view.getAttributeMutationsForEntity(1).find(row => row.name === 'Name')?.value, 'Retained wall');
+    if (retainedDeletion) assert.equal(view.isDeleted(11), true);
+    assert.deepEqual(dataMutationPermission(after, 'server'), { allowed: true });
+    const created = view.createEntity('IfcMaterial', ['New material']);
+    assert.equal(created.expressId, oldMax + 1);
+    assert.equal(after.toGlobalId('server', created.expressId), oldMax + 1);
+    assert.deepEqual(after.fromGlobalId(oldMax + 1), { modelId: 'server', expressId: oldMax + 1 });
+});
+
 it('retained 1001..1005 stay publishable after reload with source max 990 (#10139)', async () => {
   try {
     federationRegistry.registerModel('server', 1000);

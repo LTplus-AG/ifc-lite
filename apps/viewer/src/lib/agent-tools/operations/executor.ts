@@ -46,6 +46,14 @@ function boundedResult(result: unknown): unknown {
   return JSON.parse(text) as unknown;
 }
 
+/** A model entry a remesh replaced: the same entry apart from its geometry and the pre-alignment tail it carries. */
+const GEOMETRY_FIELDS = new Set(['geometryResult', 'preAlignment']);
+function geometryOnly<T extends object>(before: T, after: T): boolean {
+  for (const key in before) if (!GEOMETRY_FIELDS.has(key) && before[key] !== after[key]) return false;
+  for (const key in after) if (!GEOMETRY_FIELDS.has(key) && !(key in before)) return false;
+  return true;
+}
+
 /** Native services perform writes synchronously after this final live grant check. */
 export async function executeOperation(
   host: ToolHost, model: ReadyModel | undefined, args: Record<string, unknown>, context: ToolCallContext, readOnly: boolean,
@@ -134,7 +142,18 @@ export async function executeOperation(
     if (!entry.effects.includes('artifact')) throw new Error('The operation did not declare artifact creation.');
     return commit(write);
   });
-  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, artifacts };
+  const ownGeometry = async <T>(work: () => Promise<T>, release: (value: T) => void): Promise<T> => {
+    checkpoint();
+    const value = await work();
+    const state = useViewerStore.getState(), now = model ? state.models.get(model.id) : undefined;
+    if (nativeModel && now && state.mutationVersion === activeRevision && geometryOnly(nativeModel, now)) nativeModel = now;
+    try { checkpoint(); } catch (error) {
+      try { release(value); } catch (releaseError) { console.warn('[viewer operation] releasing a refused result failed', releaseError); }
+      throw error;
+    }
+    return value;
+  };
+  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, ownGeometry, artifacts };
   check();
   if (!args.background) {
     const run = async (forget = () => {}) => {

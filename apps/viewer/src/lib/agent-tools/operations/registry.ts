@@ -28,7 +28,7 @@ function lazyOperation(contract: OperationContract): Operation {
     // A transient import failure (chunk 404 after a redeploy, network drop) must stay retryable.
     implementation = undefined; throw error;
   });
-  return { ...metadata, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema),
+  return { ...metadata, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema), load,
     async execute(input, context) { return (await load()).execute(input, context); },
   };
 }

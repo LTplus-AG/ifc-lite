@@ -47,6 +47,8 @@ import { isMainEntry } from './lib/is-main-entry.mjs';
 
 export const SHARD_COUNT = 8;
 export const PROJECT = 'viewer-e2e-ci';
+/** Where the project's specs live. Walked alone (not all of tests/): the viewer-e2e job's triggers cover this directory, and ci-path-coverage rejects a gate input outside them. */
+const E2E_DIR = 'tests/e2e';
 
 /**
  * Seconds a file's tests take, as the MEDIAN over four successful `Viewer E2E
@@ -180,7 +182,7 @@ function walk(dir, out) {
  */
 export function selectedFiles(root = REPO_ROOT) {
   const re = projectTestMatch(readFileSync(join(root, 'playwright.config.ts'), 'utf8'));
-  return walk(join(root, 'tests'), [])
+  return walk(join(root, E2E_DIR), [])
     .filter((p) => re.test(p))
     .map((p) => relative(root, p).split('\\').join('/'))
     .sort();
@@ -243,20 +245,34 @@ export function parseShard(spec) {
  * The Playwright filters for one shard of `n/8`.
  * @param {string} spec
  * @param {string} [root]
+ * @param {Record<string, number>} [timings]
  * @returns {string[]}
  */
-export function shardFilters(spec, root = REPO_ROOT) {
+export function shardFilters(spec, root = REPO_ROOT, timings = TIMINGS_S) {
   const shard = parseShard(spec);
-  const { shards } = packShards(selectedFiles(root));
+  const { shards } = packShards(selectedFiles(root), SHARD_COUNT, timings);
   const mine = shards[shard - 1];
   if (mine.length === 0) fail(`shard ${shard}/${SHARD_COUNT} would run no spec file`);
   return mine.map(fileFilter);
 }
 
+/**
+ * `--shard n/8` prints that shard's filters. `--plan` prints every shard's
+ * files and predicted seconds as JSON. `--root <dir>` and `--timings <json
+ * file>` point either at another tree or table: the tests drive the CLI with
+ * fixtures, so they observe it the way the workflow does.
+ */
 function main(argv) {
-  const at = argv.indexOf('--shard');
+  const opt = (name) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+  const root = opt('--root') ?? REPO_ROOT;
   try {
-    for (const f of shardFilters(at >= 0 ? argv[at + 1] : undefined)) console.log(f);
+    const timings = opt('--timings') ? JSON.parse(readFileSync(opt('--timings'), 'utf8')) : TIMINGS_S;
+    if (argv.includes('--plan')) {
+      const { shards, loads } = packShards(selectedFiles(root), SHARD_COUNT, timings);
+      console.log(JSON.stringify(shards.map((files, i) => ({ files, seconds: loads[i] })), null, 2));
+      return;
+    }
+    for (const f of shardFilters(opt('--shard'), root, timings)) console.log(f);
   } catch (err) {
     if (!(err instanceof ShardError)) throw err;
     console.error(`::error::ci-e2e-shards: ${err.message}`);

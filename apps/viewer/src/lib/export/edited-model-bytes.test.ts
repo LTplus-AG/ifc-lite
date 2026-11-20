@@ -366,6 +366,15 @@ it('legacy zone evidence uses the loaded source during a mixed-model transition 
     const mixed = zoneQuantitySources(useViewerStore.getState());
     assert.equal(mixed({ modelId: 'legacy', expressId: 10 }).quantities[0]?.quantities[0]?.value, 8);
     assert.equal(mixed({ modelId: 'default', expressId: 10 }).quantities[0]?.quantities[0]?.value, 99);
+
+    const loadingLegacyModel = { ...fixtureModel('legacy', { idOffset: 2_000_000 }), ifcDataStore: null };
+    useViewerStore.setState({ models: new Map([['legacy', loadingLegacyModel]]) });
+    const loadingState = useViewerStore.getState();
+    const unavailable = zoneQuantitySources(loadingState)({ modelId: 'legacy', expressId: 10 });
+    assert.equal(unavailable.status, 'unavailable-model');
+    assert.deepEqual(unavailable.quantities, []);
+    assert.equal(unavailable.scale, null);
+    assert.ok(!zoneQuantitySourceIdentity(loadingState, new Set(['legacy'])).includes(store));
   } finally {
     useViewerStore.setState(snapshot);
   }

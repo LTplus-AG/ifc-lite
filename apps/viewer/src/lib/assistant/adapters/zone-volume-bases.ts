@@ -24,7 +24,8 @@ export const ZONE_VOLUME_UNIT_LIMITATIONS = 'When the project context is availab
 
 /** Legacy refs can still read the old source while federation is populated. */
 function canReadLegacySource(s: ViewerState, modelId: string): boolean {
-  return isLegacyMutationRef(s, modelId) || modelId === LEGACY_MUTATION_MODEL_ID || modelId === 'legacy';
+  return !s.models.has(modelId)
+    && (isLegacyMutationRef(s, modelId) || modelId === LEGACY_MUTATION_MODEL_ID || modelId === 'legacy');
 }
 
 /** Declared shares belong to these exact native sources and overlay revisions,
@@ -58,7 +59,7 @@ export function zoneQuantitySources(s: ViewerState) {
     let source = models.get(ref.modelId);
     if (!source) {
       const modelStore = s.models.get(ref.modelId)?.ifcDataStore;
-      const legacy = !modelStore && canReadLegacySource(s, ref.modelId);
+      const legacy = canReadLegacySource(s, ref.modelId);
       const store = modelStore ?? (legacy ? s.ifcDataStore : null);
       const view = legacy ? getLegacySourceMutationView(s) : s.mutationViews.get(ref.modelId) ?? null;
       const units = currentProjectUnitContext(store, view);

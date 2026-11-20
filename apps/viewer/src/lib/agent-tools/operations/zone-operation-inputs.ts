@@ -11,8 +11,11 @@ type ViewerState = ReturnType<typeof useViewerStore.getState>;
 
 /** Same own fields, by identity, except `ignored`. */
 function sameExcept(a: object, b: object, ignored: string) {
+  if (a === b) return true;
   const keys = Object.keys(a).filter(key => key !== ignored);
-  return keys.length === Object.keys(b).filter(key => key !== ignored).length && keys.every(key => Object.hasOwn(b, key) && Reflect.get(a, key) === Reflect.get(b, key));
+  // Some native meshes carry NaN for an unavailable proved volume.
+  return keys.length === Object.keys(b).filter(key => key !== ignored).length
+    && keys.every(key => Object.hasOwn(b, key) && Object.is(Reflect.get(a, key), Reflect.get(b, key)));
 }
 /**
  * Geometry as the proved volumes read it. A recolour replaces every mesh with `{ ...mesh, color }`, and with it

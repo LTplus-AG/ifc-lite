@@ -28,6 +28,7 @@
 
 import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
+import { SourceRecords } from './schema-converter-structural-source.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
@@ -38,7 +39,7 @@ import {
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
-import { attrMapFor, attrsDroppedByMap } from './schema-converter-attr-maps.js';
+import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
 import { isRootedEntityType } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
@@ -237,12 +238,11 @@ function entryAfterRestoration(
   sourceType: string,
   expressIds: readonly number[],
   info: EntityConversionInfo,
-  restored: ReadonlyMap<number, ReadonlySet<string>>,
+  isRetained: (id: number, attribute: string) => boolean,
 ): ConversionLossEntry | undefined {
   const groups = new Map<string, { dropped: string[]; ids: number[] }>();
   for (const id of expressIds) {
-    const back = restored.get(id);
-    const dropped = info.droppedAttributes.filter((a) => !back?.has(a));
+    const dropped = info.droppedAttributes.filter((attribute) => !isRetained(id, attribute));
     if (info.kind === 'lossy' && !dropped.length) continue;
     const key = dropped.join(',');
     const group = groups.get(key) ?? { dropped, ids: [] };
@@ -273,10 +273,9 @@ function entryAfterRestoration(
  * contains from `fromSchema` to `toSchema` — no export attempted, so this
  * does not throw for a record the export cannot write and always covers the
  * whole file, not just the first record a full export would have aborted on.
- * If the carrier preview fails, the report falls back to schema-level losses. With the
- * source bytes, it leaves out what
- * an IFC2X3 <-> IFC4 structural carrier brings back (#9668); it describes the
- * default export, an unedited full one, which is the only kind that arms them.
+ * With source bytes, the report checks whether a narrowed SET actually loses
+ * members and excludes values preserved by IFC2X3 ↔ IFC4 structural carriers
+ * (#9668). Those carriers describe the default, unedited full export.
  */
 export function analyzeConversionLoss(
   store: Pick<IfcDataStore, 'entityIndex'> & Partial<Pick<IfcDataStore, 'source'>>,
@@ -303,9 +302,19 @@ export function analyzeConversionLoss(
       ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema,
         [...typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])), ...varying.flatMap(([, ids]) => ids)])
       : NO_ROUND_TRIP;
+    const records = source ? new SourceRecords({ entityIndex: store.entityIndex, source }) : undefined;
     for (const [sourceType, expressIds, info] of typed) {
-      const entry = carrying(sourceType, info)
-        ? entryAfterRestoration(sourceType, expressIds, info, restored)
+      const mapped = records && toSchema === 'IFC2X3' ? attrMapFor(sourceType, info.targetType, fromSchema, toSchema) : undefined;
+      const narrowedSet = mapped?.map.setOfOne?.[1];
+      const slot = narrowedSet ? attrNameTable(fromSchema)?.get(sourceType)?.indexOf(narrowedSet) ?? -1 : -1;
+      const isRetained = (id: number, attribute: string) => {
+        if (restored.get(id)?.has(attribute)) return true;
+        if (attribute !== narrowedSet) return false;
+        const value = records?.slots(id)?.[slot];
+        return value !== undefined && !dropsSetMembers(value);
+      };
+      const entry = carrying(sourceType, info) || slot >= 0
+        ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);
     }

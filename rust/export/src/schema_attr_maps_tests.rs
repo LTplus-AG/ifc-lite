@@ -63,6 +63,21 @@ fn a_single_reference_becomes_a_set_and_back_10763() {
     assert_eq!(down("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));"), "#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');");
 }
 
+/// #10763, PR #10781: narrowing RelatedApprovals keeps exactly one held
+/// value. Comments and omitted items do not contribute to the loss.
+#[test]
+fn approval_relationship_counts_only_discarded_members_10781() {
+    let cases = ["(#3)", "(#3,#6,#7)", "/* before */(#3,/* empty */$)/* after */"];
+    let counts = cases.map(|related| {
+        let source = format!("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,{related});");
+        let mut checks = ConversionChecks::default();
+        let out = convert_step_line(&source, "IFC4", "IFC2X3", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        assert_eq!(out, "#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');");
+        checks.attribute_values_dropped
+    });
+    assert_eq!(counts, [0, 2, 0]);
+}
+
 /// What each direction cannot carry is counted, including the members of a
 /// SET past the first, and an up-only reference is dropped on the way down.
 #[test]

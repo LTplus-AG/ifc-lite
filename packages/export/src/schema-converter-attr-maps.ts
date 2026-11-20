@@ -179,9 +179,14 @@ export function remapByAttrMap(
   }).join(',');
 }
 
-/** Source attribute names whose values `remapByAttrMap` has no target slot
- *  for. A downgraded SET is named too: its members past the first are dropped,
- *  which a per-type report cannot rule out (Rust counts them per record). */
+/** Whether narrowing this SET to one value discards any held member. */
+export function dropsSetMembers(value: string): boolean {
+  const members = list(withoutComments(value));
+  return members !== null && members.filter(holdsValue).length > 1;
+}
+
+/** Source attributes with no target slot for their values, including a SET
+ *  that could lose members. The model report checks that SET per record. */
 export function attrsDroppedByMap(map: AttrMap, up: boolean, src: readonly string[], tgt: readonly string[]): string[] {
   const used = new Set(tgt.flatMap((name) => sourceOf(map, up, name, src)?.name ?? []));
   return src.filter((name) => !used.has(name) || (!up && name === map.setOfOne?.[1]));

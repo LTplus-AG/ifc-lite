@@ -18,10 +18,11 @@ const points = (n: number) => Array.from({ length: n }, (_, i) => `(${i}.125,${i
 const tfsElement = (id: number) => `#${id}=IFCCARTESIANPOINTLIST3D((${points(400)}));\n`
   + `#${id + 1}=IFCTRIANGULATEDFACESET(#${id},$,.T.,(${Array.from({ length: 700 }, (_, i) => `(${i + 1},${i + 2},${i + 3})`).join(',')}),$);\n`
   + `#${id + 2}=IFCSHAPEREPRESENTATION(#9,'Body','Tessellation',(#${id + 1}));\n`;
-/** One brep element: points, loops, bounds and faces, as --kind brep writes them. */
+/** One brep element: points, loops, bounds, faces and their shell, as --kind brep writes them. */
 const brepElement = (id: number) => Array.from({ length: 60 }, (_, i) => `#${id + i}=IFCCARTESIANPOINT((${i}.5,${i}.25,0.));\n`).join('')
   + Array.from({ length: 20 }, (_, i) => `#${id + 60 + i * 3}=IFCPOLYLOOP((#${id + i},#${id + i + 1},#${id + i + 2}));\n`
-    + `#${id + 61 + i * 3}=IFCFACEOUTERBOUND(#${id + 60 + i * 3},.T.);\n#${id + 62 + i * 3}=IFCFACE((#${id + 61 + i * 3}));\n`).join('');
+    + `#${id + 61 + i * 3}=IFCFACEOUTERBOUND(#${id + 60 + i * 3},.T.);\n#${id + 62 + i * 3}=IFCFACE((#${id + 61 + i * 3}));\n`).join('')
+  + `#${id + 120}=IFCCLOSEDSHELL((${Array.from({ length: 20 }, (_, i) => `#${id + 62 + i * 3}`).join(',')}));\n#${id + 121}=IFCFACETEDBREP(#${id + 120});\n`;
 const fileOf = (element: (id: number) => string, bytes: number): string => {
   let text = HEADER;
   for (let id = 100; text.length < bytes; id += 1000) text += element(id);
@@ -38,12 +39,17 @@ describe('dense geometry share (#10264)', () => {
     // A large mesh can be one record longer than a window: the cut fragment is still mesh payload.
     const inside = '(1.5,2.5,3.5),'.repeat(1000);
     assert.equal(denseRecordBytes(inside), inside.length, 'a window inside one point list is dense');
-    // A large IfcPolygonalFaceSet's face list can run past a window too (review on #10814). A B-rep
-    // shell's list has the same bytes and reads dense as well: the error leans toward refusal.
-    const faces = Array.from({ length: 40_000 }, (_, i) => `#${100_000 + i}`).join(',');
-    const faceListCut = faces.slice(100, 100 + 256 * 1024);
-    assert.equal(faceListCut.length, 256 * 1024, 'the cut lies wholly inside the face list');
-    assert.equal(denseRecordBytes(faceListCut), faceListCut.length, 'a window inside a polygonal face list is dense');
+    // A long `#n` list is a face set's face list, a B-rep shell or a relationship (reviews on #10814).
+    const refs = Array.from({ length: 40_000 }, (_, i) => `#${100_000 + i}`).join(',');
+    const inList = refs.slice(100, 100 + 256 * 1024);
+    assert.equal(inList.length, 256 * 1024, 'the cut lies wholly inside the list');
+    assert.equal(denseRecordBytes(inList), inList.length, 'inside the list, the type is unknown: dense, toward refusal');
+    const next = '#9=IFCPROPERTYSET(\'g\',$,\'P\',$,(#8));\n';
+    const cutBy = (end: string) => denseRecordBytes(`${refs.slice(100)}${end}\n${next}`);
+    assert.equal(cutBy('),$);'), refs.length - 100 + 6, 'a face set\'s face list is mesh');
+    assert.equal(cutBy('),(1,2,3));'), refs.length - 100 + 12, 'so is one followed by its PnIndex');
+    assert.equal(cutBy('));'), 0, 'a B-rep shell\'s face list is not');
+    assert.equal(cutBy('),#50);'), 0, 'nor is a spatial containment list');
     const cutText = "x',$,$,'Body');\n#7=IFCPROPERTYSET('a',$,'b',$,(#8));\n";
     assert.equal(denseRecordBytes(cutText), 0, 'a cut text record is not');
   });

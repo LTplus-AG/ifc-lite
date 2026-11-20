@@ -30,23 +30,29 @@ const RECORD_START = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
 
 /** Anything but mesh payload: coordinate and index tuples, or a polygonal face set's `#n` face list. */
 const NOT_NUMERIC_TUPLES = /[^0-9.,()eE+\-\s#]/g;
+/** How a face set's list ends: `),$);` or `),(…));`. A shell ends `));`, a relationship `),#n);`. */
+const FACE_SET_END = /\)\s*,\s*[$(][^#]*\)\s*;\s*$/;
 
 /**
  * Bytes of `text` in dense geometry records. The bytes before the first record
  * start belong to a record cut by the window edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
- * numeric tuples or `#n` references alone (98 %+). A cut record's type is
- * unknown, so non-mesh numeric records (B-spline knots, curve points, B-rep
- * shell or relationship `#n` lists) also pass; like the point-list overcount
- * that errs toward refusal, which beats undercounting a polygonal face set's
- * face list (#10814). The last record runs to the end of the window.
+ * numeric tuples or `#n` references alone (98 %+). A `#n` list is mesh only as
+ * a face set's face list: when the window holds the list's end, the end decides;
+ * a window wholly inside a list counts it as mesh, since a B-rep shell or a
+ * relationship cannot be told apart there (reviews on #10814). Non-mesh numeric
+ * records (B-spline knots, curve points) also pass. Like the point-list
+ * overcount, both err toward refusal. The last record runs to the end of the
+ * window.
  */
 export function denseRecordBytes(text: string): number {
   RECORD_START.lastIndex = 0;
   let match = RECORD_START.exec(text);
   const lead = match ? match.index : text.length;
-  const other = lead - text.slice(0, lead).replace(NOT_NUMERIC_TUPLES, '').length;
-  let dense = lead > 0 && other <= lead * 0.02 ? lead : 0;
+  const fragment = text.slice(0, lead);
+  const other = lead - fragment.replace(NOT_NUMERIC_TUPLES, '').length;
+  const meshEnd = !match || !fragment.includes('#') || FACE_SET_END.test(fragment);
+  let dense = lead > 0 && other <= lead * 0.02 && meshEnd ? lead : 0;
   while (match) {
     const next = RECORD_START.exec(text);
     if (DENSE_TYPES.has(match[1]!)) dense += (next ? next.index : text.length) - match.index;

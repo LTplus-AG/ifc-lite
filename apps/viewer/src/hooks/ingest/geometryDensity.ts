@@ -36,12 +36,10 @@ const NOT_NUMERIC_TUPLES = /[^0-9.,()eE+\-\s#]/g;
  * start belong to a record cut by the window edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
  * numeric tuples or `#n` references alone (98 %+). A cut record's type is
- * unknown, so a long numeric record that is not a mesh (B-spline knots, curve
- * points, a B-rep shell's or a relationship's `#n` list) also passes that test;
- * like the point-list overcount it errs toward refusal, where counting those as
- * sparse would undercount a large polygonal face set's face list (reviews on
- * #10814). The last record runs to the end of the
- * window.
+ * unknown, so non-mesh numeric records (B-spline knots, curve points, B-rep
+ * shell or relationship `#n` lists) also pass; like the point-list overcount
+ * that errs toward refusal, which beats undercounting a polygonal face set's
+ * face list (#10814). The last record runs to the end of the window.
  */
 export function denseRecordBytes(text: string): number {
   RECORD_START.lastIndex = 0;

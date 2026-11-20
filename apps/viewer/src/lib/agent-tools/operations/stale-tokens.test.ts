@@ -286,22 +286,6 @@ describe('reviewed model candidates (#10792)', () => {
     assert.match((await invoke('changes.revert.apply', { token }, true)).text, /Unknown revert candidate/);
   });
 
-  it('#10918: a result cancelled after the executor accepted it, before delivery, keeps no candidate', async () => {
-    const controller = new AbortController(), uuid = crypto.randomUUID.bind(crypto), entry = viewerOperation('authoring.group.prepare');
-    let token: string | undefined;
-    mock.method(crypto, 'randomUUID', () => { const value = uuid(); if (token === undefined && new Error().stack?.includes('authoring-graphs')) token = value; return value; });
-    const validate = entry.validateResult.bind(entry);
-    // Accepted: the result passed the final check and its schema; the cancellation lands while it travels to the caller.
-    mock.method(entry, 'validateResult', (value: unknown) => { validate(value); queueMicrotask(() => controller.abort()); });
-    try {
-      const cancelled = await dispatchMainViewerTool(host, 'viewer_operation_inspect', { model_id: modelId, operation_id: 'authoring.group.prepare',
-        input: { proposal_json: await groupProposal() } }, { canEdit: () => true, signal: controller.signal });
-      assert.equal(cancelled.isError, true);
-      assert.ok(token);
-    } finally { mock.restoreAll(); }
-    assert.match((await invoke('authoring.graph.discard', { token })).text, /Unknown graph review/);
-  });
-
   it('#32: revert candidates never lock the host out', async () => {
     answer(await invoke('authoring.apply', { token: await prepareRename() }, true));
     const [change] = answer<Array<{ id: string }>>(await invoke('changes.read'));

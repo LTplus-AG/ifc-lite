@@ -116,9 +116,7 @@ export interface ModelEditor {
 
 export interface ToolCallContext {
   /** Set only by a native synchronous commit; cancellation cannot claim it rolled back. */
-  /** `discard`, set by the executor: the dispatch answered a cancellation, so the result, even an accepted one, is never
-   * delivered; it removes what the call stored for that result. */
-  commitState?: { committed: boolean; committing?: boolean; discard?: () => void };
+  commitState?: { committed: boolean; committing?: boolean };
   /** Cancellation of the call; tools check it between asynchronous phases. */
   signal?: AbortSignal;
   /**

@@ -17,9 +17,6 @@
  *   took the feeder) is retried (a placement up to 8 times); an `unavailable` one (an unbacked front
  *   surface, an instanced occurrence) never acts: a raycast past it could
  *   measure or snap to whatever is behind, a point cloud included.
- * - A read answers the hide/isolate state it was made under. If that state changed before the
- *   action runs (a surface unhidden mid-read), the read is redone first, like a `cancelled` one:
- *   the raycast would otherwise test the now-visible surface against pieces chosen without it.
  */
 
 import type { Renderer } from '@ifc-lite/renderer';
@@ -28,11 +25,6 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import type { ReadbackKind } from './measureReadback.js';
 
 type Visibility = { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null };
-/** The hide/isolate state now: a fixed value, or the handler's refs read at each step. */
-type VisibilityNow = Visibility | (() => Visibility);
-const visibilityOf = (v: VisibilityNow): (() => Visibility) => (typeof v === 'function' ? v : () => v);
-/** The store replaces these sets on every change, so identity tells whether a read still answers. */
-const sameVisibility = (a: Visibility, b: Visibility): boolean => a.hiddenIds === b.hiddenIds && (a.isolatedIds ?? null) === (b.isolatedIds ?? null);
 type Feed = (renderer: Renderer, x: number, y: number, visibility: Visibility) => Promise<string>;
 const realFeed: Feed = async (...args) => (await import('@/lib/geometry-backing/readback-measure')).feedReadbackAt(...args);
 let feed: Feed = realFeed;
@@ -52,26 +44,21 @@ export function invalidatePendingMeasureReadbacks(): void { epoch++; hoverRead++
 export const answered = (outcome: string): boolean => outcome === 'fed' || outcome === 'no-hit' || outcome === 'resident';
 
 /** Run `action` now (resident), or after reading (x, y) back. Returns true if deferred. */
-export function runWithReadback(renderer: Renderer, x: number, y: number, visibility: VisibilityNow, action: () => void,
+export function runWithReadback(renderer: Renderer, x: number, y: number, visibility: Visibility, action: () => void,
   stillValid: () => boolean = () => true, kind: 'preview' | 'placement' = 'preview'): boolean {
   if (!sceneGeometryReleased(renderer)) { action(); return false; }
   const mine = epoch;
   const valid = () => (kind === 'placement' || mine === epoch) && stillValid();
-  const now = visibilityOf(visibility);
   chain = chain.then(async () => {
     if (!valid()) return;
-    // A newer read (a moving hover) took the feeder, or the hide/isolate state changed under it: read again.
-    // A preview retries once; a placement keeps retrying while it is valid (bounded), so a click is never
-    // dropped because the pointer kept moving.
-    let under = now();
-    let outcome = await feed(renderer, x, y, under);
-    const stale = () => outcome === 'cancelled' || !sameVisibility(under, now());
-    for (let tries = kind === 'placement' ? PLACEMENT_RETRIES : 1; stale() && valid() && tries > 0; tries--) {
-      under = now();
-      outcome = await feed(renderer, x, y, under);
+    // A newer read (a moving hover) took the feeder: read again. A preview retries once; a placement keeps
+    // retrying while it is valid (bounded), so a click is never dropped because the pointer kept moving.
+    let outcome = await feed(renderer, x, y, visibility);
+    for (let tries = kind === 'placement' ? PLACEMENT_RETRIES : 1; outcome === 'cancelled' && valid() && tries > 0; tries--) {
+      outcome = await feed(renderer, x, y, visibility);
     }
-    if (stale() && kind === 'placement' && valid()) console.warn('[Measure] Point not placed: geometry readback kept being superseded');
-    if (valid() && !stale() && answered(outcome)) action();
+    if (outcome === 'cancelled' && kind === 'placement' && valid()) console.warn('[Measure] Point not placed: geometry readback kept being superseded');
+    if (valid() && answered(outcome)) action();
   }).catch((error: unknown) => console.error('[Measure] Geometry readback failed', error));
   return true;
 }
@@ -81,15 +68,12 @@ export function runWithReadback(renderer: Renderer, x: number, y: number, visibi
  * read; an `unavailable` one (never raycast past an unbacked front: it could snap to a point cloud behind)
  * clears the preview via `clear`. A `cancelled` one was superseded by a newer read, which acts instead.
  */
-export function hoverWithReadback(renderer: Renderer, x: number, y: number, visibility: VisibilityNow, run: () => void,
+export function hoverWithReadback(renderer: Renderer, x: number, y: number, visibility: Visibility, run: () => void,
   stillValid: () => boolean, clear: () => void): void {
   if (!sceneGeometryReleased(renderer)) { run(); return; }
   const mine = ++hoverRead;
-  const now = visibilityOf(visibility);
-  const under = now();
-  void feed(renderer, x, y, under).then((outcome) => {
-    // A hide/isolate change mid-read: this preview answers the old state, and the next hover reads the new one.
-    if (mine !== hoverRead || !stillValid() || !sameVisibility(under, now())) return;
+  void feed(renderer, x, y, visibility).then((outcome) => {
+    if (mine !== hoverRead || !stillValid()) return;
     if (answered(outcome)) run(); else if (outcome === 'unavailable') clear();
   }, (error: unknown) => console.error('[Measure] Geometry readback failed', error));
 }
@@ -112,9 +96,17 @@ export function measureReadbacksIdle(): Promise<void> { return chain; }
  * What a click captured when it happened: the reset that drops its placement is any change of these. `view`
  * (a placement's view-projection matrix at the click): its (x, y) names a surface only under that view, so a
  * placement whose view changed before its read ran (an orbit, pan or zoom) is dropped, never placed on
- * whatever is now under those pixels.
+ * whatever is now under those pixels. `shown` (the hide and isolate sets at the click, compared by identity:
+ * the store replaces them on every change): a hide or isolate before the read can expose another surface at
+ * the same pixel, so that drops the placement too.
  */
-export interface PlacementScope { tool: string; gesture: number; view?: readonly number[] }
+export interface PlacementScope { tool: string; gesture: number; view?: readonly number[]; shown?: readonly unknown[] }
+
+/** Whether the hide and isolate sets are still the ones a click captured (no capture: treated as unchanged). */
+export function sameShown(then: readonly unknown[] | undefined, now: readonly unknown[] | undefined): boolean {
+  if (!then || !now) return true;
+  return then.length === now.length && then.every((v, i) => v === now[i]);
+}
 
 /** Whether `now` is the view `then` was captured in (no capture: nothing to compare, treated as unchanged). */
 export function sameView(then: readonly number[] | undefined, now: readonly number[] | undefined): boolean {
@@ -126,11 +118,12 @@ export function sameView(then: readonly number[] | undefined, now: readonly numb
 /** The store state the readback paths read, handed in by the eager half. */
 export type GateStore = () => { measureGestureEpoch: number; setMeasurePointLive: (point: null) => void };
 
-// `actNow`, `viewNow` and the store come from the eager half, never by static import: that cycle would merge
+// `actNow`, `viewNow`, `shownNow` and the store come from the eager half, never by static import: that cycle would merge
 // this module into the entry chunk, and a store import lists its whole graph as this chunk's preload dependencies.
 export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => void, x: number, y: number, scope: PlacementScope,
-  actNow: (act: () => void) => void, store: GateStore, viewNow: () => readonly number[] | undefined = () => undefined): void {
-  const visibility = (): Visibility => ({ hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current });
+  actNow: (act: () => void) => void, store: GateStore, viewNow: () => readonly number[] | undefined = () => undefined,
+  shownNow: () => readonly unknown[] | undefined = () => undefined): void {
+  const visibility: Visibility = { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current };
   const measuring = () => ctx.activeToolRef.current === 'measure';
   const inScope = () => ctx.activeToolRef.current === scope.tool && store().measureGestureEpoch === scope.gesture;
   if (kind === 'hover') {
@@ -143,8 +136,8 @@ export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => v
     let warned = false;
     const placeable = () => {
       if (!inScope()) return false;
-      if (sameView(scope.view, viewNow())) return true;
-      if (!warned) { warned = true; console.warn('[Measure] Point not placed: the view moved before its geometry was read back'); }
+      if (sameView(scope.view, viewNow()) && sameShown(scope.shown, shownNow())) return true;
+      if (!warned) { warned = true; console.warn('[Measure] Point not placed: the view or what it shows changed before its geometry was read back'); }
       return false;
     };
     runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), placeable, 'placement');

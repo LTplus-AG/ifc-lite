@@ -162,6 +162,19 @@ describe('#10880 drag and placement readback', () => {
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own view');
   });
 
+  it('a placement whose hide or isolate changed before its read ran is dropped, not placed on what is now shown', async () => {
+    const c = ctx();
+    handlePolylineClick(c, 0, 0); // clicked on surface A
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick(); // the first lands under the same visibility
+    c.hiddenEntitiesRef.current = new Set([7]); // then A is hidden, exposing B at the second click's pixel
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast under the new visibility');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own visibility');
+  });
+
   it('a gesture reset (Esc, a mode or tool switch) drops a pending placement', async () => {
     const c = ctx();
     handlePolylineClick(c, 0, 0);
@@ -201,21 +214,4 @@ it('#10880 a double-click with two placements still pending finishes after both 
   assert.equal(state.activePolyline, null, 'the finish ran, after the points');
   assert.equal(state.polylineMeasurements.length, 1, 'one polyline was recorded');
   assert.equal(state.polylineMeasurements[0].points.length, 3, 'with all three points');
-});
-
-it('#10884 a hide/isolate change during the read is read again under the new state before the action runs', async () => {
-  const c = ctx(), acted: string[] = [];
-  const seen: Array<ReadonlySet<number> | undefined> = [];
-  let hidden: ReadonlySet<number> = new Set([7]); // the front surface 7 is hidden when the click reads back
-  setMeasureReadbackFeedForTest((_r, x, y, visibility) => new Promise((settle) => { seen.push(visibility.hiddenIds); reads.push({ x, y, settle }); }));
-  runWithReadback(c.renderer, 5, 5, () => ({ hiddenIds: hidden, isolatedIds: null }), () => acted.push('place'), undefined, 'placement');
-  await tick();
-  hidden = new Set(); // 7 is unhidden while the read is in flight (the store replaces the set)
-  reads[0].settle('fed'); await tick();
-  assert.deepEqual(acted, [], 'never acts on pieces chosen without the now-visible surface');
-  assert.equal(seen.length, 2, 'read again');
-  assert.equal(seen[1], hidden, 'under the new visibility');
-  reads[1].settle('fed');
-  await measureReadbacksIdle();
-  assert.deepEqual(acted, ['place']);
 });

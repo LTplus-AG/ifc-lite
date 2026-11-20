@@ -68,13 +68,13 @@ export function useExtraSectionCaps(
 
   useEffect(() => {
     const queue = queueRef.current!;
-    prune(wanted.map((p) => p.id));
+    // A cap whose plane or model state changed is dropped NOW, before any cut: a held, failed or
+    // unavailable (released) read-back must never leave the old cap showing for the new cut.
+    const stale = wanted.filter((p) => caps[p.id]?.signature !== `${modelToken}:${capSignature(p)}`);
+    prune(wanted.filter((p) => !stale.includes(p)).map((p) => p.id));
     const cancel = () => queue.cancel();
     if (geometryHeld) return cancel;
-    if (wanted.length === 0 || !geometryResult) return cancel;
-
-    const stale = wanted.filter((p) => caps[p.id]?.signature !== `${modelToken}:${capSignature(p)}`);
-    if (stale.length === 0) return cancel;
+    if (wanted.length === 0 || !geometryResult || stale.length === 0) return cancel;
 
     void queue.request(async (isCurrent) => {
       const generator = new Drawing2DGenerator();

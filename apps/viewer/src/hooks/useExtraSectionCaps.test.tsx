@@ -17,6 +17,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { useExtraSectionCaps } from './useExtraSectionCaps.js';
+import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 
 const state = () => useViewerStore.getState();
 
@@ -134,6 +135,25 @@ describe('caps of the inactive cutting planes (#7545)', () => {
     await mount();
     await settle();
     assert.equal(state().sectionExtraCaps[b], undefined);
+  });
+
+  it('#10887 a moved plane whose released read-back fails never keeps its old cap', async () => {
+    const b = twoPlanes();
+    const geometry: GeometryResult = { ...TWO_WALLS, meshes: [wall(WALL), wall(SECOND, 1)] };
+    await mount(geometry);
+    await settle();
+    assert.ok(state().sectionExtraCaps[b]?.cutPolygons.length, 'the first cut, from resident geometry');
+    releaseCpuMeshBuffers(geometry.meshes); // released with no backing: every later read-back is unavailable
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      await act(async () => { state().activateSectionPlane(b); state().setSectionPlanePosition(95); state().activateSectionPlane(state().inactiveSectionPlanes[0].id); });
+      assert.equal(state().sectionExtraCaps[b], undefined, 'the changed cut invalidates the old cap at once, before any read-back');
+      await settle();
+    } finally { console.error = original; }
+    assert.ok(errors.length > 0, 'the read-back did fail');
+    assert.equal(state().sectionExtraCaps[b], undefined, 'and the failure leaves no cap of the old position');
   });
 
   it('re-cuts when the plane moves, and drops the cap when the plane is removed', async () => {

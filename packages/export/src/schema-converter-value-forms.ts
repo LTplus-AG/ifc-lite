@@ -20,8 +20,9 @@ import { getAttrMaps } from './schema-converter-attr-maps.js';
 import { withoutComments } from './step-comment-skip.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
+import { durationFromSeconds, durationToSeconds } from './schema-converter-durations.js';
 import { stepRecordHead } from './step-record-frame.js';
-import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
+import { isStepValue, parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 
 interface Rule {
   readonly index: number;
@@ -86,6 +87,11 @@ function unwrapped(body: string): string | null {
   return close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim();
 }
 
+/** Retype exactly one STEP string without decoding its escapes. */
+function asText(value: string | null): string | null {
+  return value?.startsWith("'") && isStepValue(value) ? 'IFCTEXT(' + value + ')' : null;
+}
+
 /** The one member of an aggregate; null for any other count. */
 function onlyMember(list: string | null): string | null {
   const members = list === null ? null : listItems(list);
@@ -132,6 +138,9 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   // The shared STEP number grammar gates the integer form; `wholeDecimal` reads the digits.
   const fixed = to === null ? null
     : to.startsWith('T:') ? `${to.slice(2)}(${body})`
+    : to === 'TEXT' ? asText(unwrapped(body))
+    : to === 'D+' ? durationFromSeconds(body)
+    : to === 'D-' ? durationToSeconds(body)
     : to === 'U' ? unwrapped(body)
     : to === 'U1' ? onlyMember(unwrapped(body))
     : asInteger(body); // an integer form, `I` or `AI`

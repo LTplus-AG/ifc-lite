@@ -21,7 +21,7 @@ export const documentNativeReportDraftOperations = [
   viewerOperation<{ token: string; expected_document_json: string; claim_id: string; action: 'edit' | 'remove'; text: string }>(meta('assistant.reviseReportDraftClaim', 'Edit or remove one exact native checked report claim through the canonical reviewer reducer. Rechecks the current native conversation and returns the recomposed checked document, including any remaining contradicted claims.', previewFields), {
     type: 'object', properties: { token: tokenProperty, expected_document_json: documentProperty, claim_id: tokenProperty, action: { type: 'string', enum: ['edit', 'remove'] }, text: { ...string, maxLength: 10000 } }, required: ['token', 'expected_document_json', 'claim_id', 'action', 'text'], additionalProperties: false,
   }, (i, c) => {
-    const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'draft' || candidate.submitted || candidate.draft.documentJson !== i.expected_document_json || !isReportDraftCurrent(candidate.draft)) throw new Error('This native report draft changed, was submitted or belongs to another workflow.');
+    const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'draft' || candidate.draft.documentJson !== i.expected_document_json || !isReportDraftCurrent(candidate.draft)) throw new Error('This native report draft changed, was submitted or belongs to another workflow.');
     if (!candidate.draft.claims.some(claim => claim.id === i.claim_id)) throw new Error('Unknown checked native claim.');
     const draft = reviseReportClaim(candidate.draft, i.claim_id, i.action === 'remove' ? 'remove' : { text: i.text }); return c.commit(() => { candidate.draft = draft; return preview(i.token, draft); });
   }),
@@ -33,12 +33,13 @@ export const documentNativeReportDraftOperations = [
     return c.commitAsync(async () => {
       if (!isReportDraftCurrent(candidate.draft)) throw new Error('The native report discussion or evidence changed.');
       const existing = useViewerStore.getState().documents.find(document => document.id === candidate.draft.document.id);
-      if (existing && (!candidate.submitted || JSON.stringify(existing) !== candidate.draft.documentJson)) throw new Error('Another native document already owns this prepared report identity.');
-      // A save in flight is never evicted; submitted still marks only a save that ran, so a refused one can be revised.
+      // Only a document this candidate's own refused save staged may be overwritten.
+      if (existing && (candidate.staged === undefined || JSON.stringify(existing) !== candidate.staged)) throw new Error('Another native document already owns this prepared report identity.');
+      // A save in flight is never evicted; a refused save stays revisable and records what it staged.
       c.checkpoint?.(); candidate.saving = true;
       let saved: boolean;
       try { saved = await saveReportDraft(candidate.draft, i.reviewed_document_json); } finally { candidate.saving = false; }
-      candidate.submitted = true;
+      candidate.staged = candidate.draft.documentJson;
       if (saved) discardReportCandidate(c.host, i.token); return { document_id: candidate.draft.document.id, saved, storage: useViewerStore.getState().documentsStorage };
     }, result => result.saved);
   }),

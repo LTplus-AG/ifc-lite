@@ -22,6 +22,7 @@ import {
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
 import { lazyChunk } from '@/lib/lazy-chunk';
+import { useCollabShareReview } from '@/lib/collab/share-review';
 import { useTranslation } from '@/i18n';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
@@ -92,13 +93,15 @@ export function useFileCommands(): FileCommands {
   // Defer the first mount until a user or agent requests sharing. Keep the
   // dialog mounted after that so its close effects and room state still run.
   const [shareDialogOpen, setShareDialogOpen] = useState<boolean | null>(null);
-  const openShareDialog = useCallback(() => setShareDialogOpen(true), []);
+  // Mark Share open at the request, before the lazy dialog mounts, so collab.prepareRoom refuses meanwhile.
+  const requestShareDialog = useCallback(() => { useCollabShareReview.setState({ dialogOpen: true }); setShareDialogOpen(true); }, []);
+  const openShareDialog = requestShareDialog;
   useEffect(() => {
     if (!collabEnabled) return;
-    const shareHandler = () => setShareDialogOpen(true);
+    const shareHandler = requestShareDialog;
     window.addEventListener('ifc-lite:open-share-dialog', shareHandler);
     return () => window.removeEventListener('ifc-lite:open-share-dialog', shareHandler);
-  }, [collabEnabled]);
+  }, [collabEnabled, requestShareDialog]);
 
   // Listen for programmatic file-load requests (from command palette recent files)
   useEffect(() => {

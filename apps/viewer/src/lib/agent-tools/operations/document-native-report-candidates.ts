@@ -12,14 +12,15 @@ interface RefreshCandidate {
   kind: 'refresh'; documentId: string; plan: ReportRefreshPlan; evidence: EvidenceSnapshot;
   submitted?: { json: string; replace: string; document: DocumentSpec };
 }
-interface DraftCandidate { kind: 'draft'; draft: ReportDraft; submitted?: boolean; saving?: boolean }
+/** staged: the JSON a refused save already wrote; it keeps the token and its identity, never blocks revision. */
+interface DraftCandidate { kind: 'draft'; draft: ReportDraft; staged?: string; saving?: boolean }
 export type NativeReportCandidate = RefreshCandidate | DraftCandidate;
 const owners = new WeakMap<ViewerOperationContext['host'], Map<string, NativeReportCandidate>>();
 function owned(host: ViewerOperationContext['host']) {
   let entries = owners.get(host); if (!entries) { entries = new Map(); owners.set(host, entries); } return entries;
 }
 export function addReportCandidate(host: ViewerOperationContext['host'], candidate: NativeReportCandidate) {
-  const entries = owned(host); evictOldest(entries, 30, (entry) => !entry.submitted && !('saving' in entry && entry.saving)); // a failed or in-flight save keeps its token
+  const entries = owned(host); evictOldest(entries, 30, (entry) => entry.kind === 'draft' ? entry.staged === undefined && !entry.saving : !entry.submitted); // a failed or in-flight save keeps its token
   if (entries.size >= 30) throw new Error('Too many native report candidates await a retry; apply or discard one first.');
   const token = crypto.randomUUID(); entries.set(token, candidate); return token;
 }

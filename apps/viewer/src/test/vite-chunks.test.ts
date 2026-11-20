@@ -101,3 +101,17 @@ test('the installed QuickJS core still splits where the runtime group expects', 
   assert.notEqual(largest, 'index.mjs', 'the runtime lives outside the index, in a file the group claims');
 });
 
+test('the merged-export group claims the exporter, not the merged modules eager code imports', () => {
+  // merged-guid and merged-remap serve schema conversion and renumbering; merged-bake's mergeWarningLabel reaches the
+  // eager export dialog through the package root. Claimed by the lazy group, any of them would preload it (#10798).
+  const group = chunks.mergedExportChunkGroup;
+  for (const id of [
+    '/repo/packages/export/src/merged-guid.js',
+    '/repo/packages/export/src/merged-remap.js',
+    '/repo/packages/export/src/merged-bake.js',
+  ]) assert.equal(group.test.test(id), false, id);
+  for (const id of [
+    '/repo/packages/export/src/merged-exporter.js',
+    '/repo/packages/export/src/merged-context.js',
+  ]) assert.equal(group.test.test(id), true, id);
+});

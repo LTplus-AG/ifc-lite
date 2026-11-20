@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/hooks/ingest/geometryDensity.ts",
+  "mutation": "tests/evidence/10264-density-fragment/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/ingest/geometryDensity.test.ts",
+  "why": "Reverse application counts a cut record fragment toward the total only when it is mesh, the bug the review on #10814 found: a window inside a long text record adds nothing, so the sampled share overstates density and the fragment cases go red."
+}

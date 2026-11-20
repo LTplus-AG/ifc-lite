@@ -11,7 +11,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, press, type } from '@/test/render.js';
+import { render, cleanup, click, press, settle, type } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { saveCurrentSectionCut, useSavedSectionCuts } from '@/store/savedSectionCutsStore';
 import { orderedSectionPlanes } from '@/lib/section/section-plane-set';
@@ -50,8 +50,9 @@ describe('saved views on the Section bar (#7545)', () => {
     assert.equal(menu()!.getAttribute('aria-label'), 'Views');
   });
 
-  it('saves the current planes under a name, and applying it later brings them and the camera back', () => {
+  it('saves the current planes under a name, and applying it later brings them and the camera back', async () => {
     twoPlanes();
+    await settle();
     const before = names();
     render(<SectionViewsMenu />);
     click(document.querySelector('[data-testid="section-views"]')!);
@@ -63,24 +64,28 @@ describe('saved views on the Section bar (#7545)', () => {
     assert.match(rows()[0]!.textContent ?? '', /2 planes/);
 
     act(() => { state().clearSectionPlanes(); state().addSectionPlane('front'); state().setActiveTool('select'); });
+    await settle();
     click(rows()[0]!.querySelector('button')!);
     assert.deepEqual(names(), before);
     assert.equal(state().activeTool, 'section');
     assert.deepEqual(applied, [VIEW]);
   });
 
-  it('has nothing to save before there is a plane: Save is off, and the store refuses', () => {
+  it('has nothing to save before there is a plane: Save is off, and the store refuses', async () => {
+    await settle();
     render(<SectionViewsMenu />);
     click(document.querySelector('[data-testid="section-views"]')!);
     assert.equal(button('Save current').disabled, true, 'a viewer with no plane holds only a placeholder, which would cut when applied');
     assert.throws(() => saveCurrentSectionCut('Nothing'), /no cutting plane/);
     assert.equal(rows().length, 0);
     act(() => { twoPlanes(); });
+    await settle();
     assert.equal(button('Save current').disabled, false);
   });
 
-  it('an unnamed save is named for you; rename and delete work in place', () => {
+  it('an unnamed save is named for you; rename and delete work in place', async () => {
     twoPlanes();
+    await settle();
     render(<SectionViewsMenu />);
     click(document.querySelector('[data-testid="section-views"]')!);
     click(button('Save current'));

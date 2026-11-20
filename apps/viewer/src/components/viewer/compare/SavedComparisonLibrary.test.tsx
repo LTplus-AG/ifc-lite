@@ -12,7 +12,7 @@ import { createSavedComparisonsSlice, type SavedComparisonsSlice } from '@/store
 import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
-import { render, click, type, cleanup, waitFor } from '@/test/render';
+import { render, click, type, cleanup, waitFor, settle as settleEdit } from '@/test/render';
 import { loadSavedComparisons, SAVED_COMPARISONS_KEY } from '@/lib/compare/savedComparisonPersistence';
 import { SavedComparisonLibrary } from './SavedComparisonLibrary';
 import { snapshotComparison } from '@/lib/compare/savedComparisons';
@@ -134,6 +134,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
     assert.equal(useViewerStore.getState().models.size, 0);
     assert.equal(useViewerStore.getState().savedComparisons.length, 3, 'canonical model teardown preserves saved reports');
     act(() => { useViewerStore.getState().resetViewerState(); useViewerStore.getState().clearAllModels(); });
+    await settleEdit();
     assert.deepEqual(useViewerStore.getState().savedComparisons.map((saved) => saved.report.rows.map((row) => row.globalId)),
       [['new', 'wall', 'removed'], ['new', 'third', 'wall', 'removed'], ['third', 'new']],
       'session reset and full federation clear preserve historical report rows');

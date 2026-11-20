@@ -10,7 +10,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, settle } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 import { HierarchyPanel } from './HierarchyPanel.js';
@@ -47,6 +47,7 @@ describe('HierarchyPanel group click over the edited model (#5249, #5885)', () =
       hierarchyMode: 'groups',
       typeVisibility: { ...state.typeVisibility, spaces: false },
     }));
+    await settle();
 
     const panel = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
     const group = [...panel.querySelectorAll<HTMLElement>('.hierarchy-item')]

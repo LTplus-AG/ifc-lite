@@ -15,7 +15,7 @@ import { semanticReviewLibrary, useSemanticReviews } from '@/lib/semantic/assist
 import { assistantRecipeLibrary, useAssistantRecipes } from '@/lib/assistant/reuse/recipe-library';
 import { assistantPreferencesLibrary, useAssistantPreferences } from '@/lib/assistant/reuse/preferences';
 import { analysisRunLibrary, useSavedAnalysisRuns } from '@/lib/compare/saved-analysis-runs';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { DisclosureSummary, DISCLOSURE_GROUP } from '@/components/ui/disclosure';
 import { toast } from '@/components/ui/toast';
 import { downloadFile } from '@/lib/export/download';
+import { estimateBrowserStorage, storagePersistence } from '@/lib/storage/browser-storage';
 import type { ContentCommitReceipt } from '@/lib/storage/content-library';
 import type { ContentStatus } from '@/lib/storage/content-library';
 import { cleanupContentLegacy, ContentImportFailure, createContentBackup, importContentBackup, parseContentBackup, readBackupDrafts,
@@ -60,6 +61,10 @@ export function ContentStorageNotice({ status, retry, restore }: {
 }) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
+  const [persistence, setPersistence] = useState<Awaited<ReturnType<typeof storagePersistence.read>>>();
+  const [requestingPersistence, setRequestingPersistence] = useState(false);
+  const [estimate, setEstimate] = useState<StorageEstimate>();
+  const mib = (value: number | undefined) => value === undefined ? t('contentStorage.unknown') : (value / 1024 / 1024).toFixed(1);
   const librariesLoading = useViewerStore(state => [state.documentsStorage, state.validationReportsStorage, state.savedComparisonsStorage, state.savedClashReportsStorage]
     .some(library => library.phase === 'loading'));
   const assistantLoading = useAssistantLibrary(s => s.status.phase === 'loading');
@@ -207,8 +212,15 @@ export function ContentStorageNotice({ status, retry, restore }: {
       const saved = await retry();
       if (!saved || !await retryContentImports()) toast.error(t('contentStorage.someUnsaved'));
     })}>{t('validationPanel.history.retrySave')}</Button>}
-    <details className={DISCLOSURE_GROUP}>
+    <details className={DISCLOSURE_GROUP} onToggle={event => {
+      if (!event.currentTarget.open) return;
+      void storagePersistence.read().then(setPersistence);
+      void estimateBrowserStorage().then(setEstimate);
+    }}>
       <DisclosureSummary className="font-medium">{t('contentStorage.controls')}</DisclosureSummary>
+      {persistence && <output className="block">{t(`contentStorage.persistence.${persistence.state}`)}</output>}
+      {estimate?.usage !== undefined && <p>{t('contentStorage.originUsage', { usage: mib(estimate.usage) })}</p>}
+      {estimate?.quota !== undefined && <p>{t('contentStorage.originQuota', { quota: mib(estimate.quota) })}</p>}
       <div className="flex flex-wrap gap-1 py-1">
         <Button size="sm" variant="outline" disabled={busy || artifactsPending || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || idsDraftsLoading || receiptsLoading || recipesLoading || preferencesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {artifactsPending && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
@@ -241,16 +253,17 @@ export function ContentStorageNotice({ status, retry, restore }: {
           }
         })}>{t('contentStorage.cleanup')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
-          const estimate = await navigator.storage?.estimate?.();
+          const estimate = await estimateBrowserStorage();
+          setEstimate(estimate);
           const live = useViewerStore.getState();
           const bytes = new Blob([JSON.stringify([live.documents, live.savedComparisons, live.savedValidationReports, live.savedClashReports])]).size;
-          const mib = (value: number | undefined) => value === undefined ? t('contentStorage.unknown') : (value / 1024 / 1024).toFixed(1);
           toast.info(t('contentStorage.estimate', { library: mib(bytes), usage: mib(estimate?.usage), quota: mib(estimate?.quota) }));
         })}>{t('contentStorage.checkUsage')}</Button>
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
-          const protectedStorage = await navigator.storage?.persist?.();
-          toast.info(t(protectedStorage ? 'contentStorage.protected' : 'contentStorage.notProtected'));
-        })}>{t('contentStorage.protect')}</Button>
+        {persistence?.canRequest && <Button size="sm" variant="outline" disabled={requestingPersistence} onClick={async () => {
+          setRequestingPersistence(true);
+          setPersistence(await storagePersistence.request());
+          setRequestingPersistence(false);
+        }}>{t('contentStorage.protect')}</Button>}
       </div>
     </details>
     <input ref={input} type="file" accept=".json" className="hidden" aria-label={t('contentStorage.import')}

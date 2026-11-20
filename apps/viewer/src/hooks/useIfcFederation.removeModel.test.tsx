@@ -9,7 +9,7 @@ import { act } from 'react';
 import { createSyntheticDataStore } from '@ifc-lite/parser';
 import { federationRegistry } from '@ifc-lite/renderer';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, settle } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { useIfcFederation } from './useIfcFederation.js';
 import { useVisibilityState } from './useViewerSelectors.js';
@@ -65,13 +65,14 @@ function mountFederation() {
 }
 
 for (const firstId of [2035, 7]) {
-  it(`#7890: removing a non-active model preserves a hidden active model (first ID ${firstId})`, () => {
+  it(`#7890: removing a non-active model preserves a hidden active model (first ID ${firstId})`, async () => {
     federationRegistry.clear();
     const first = model('first', firstId), active = model('active', 7), removed = model('removed', 10);
     active.visible = false;
     seed([first, active, removed], active);
     const api = mountFederation();
     act(() => api.removeModel(removed.id));
+    await settle();
 
     const state = useViewerStore.getState();
     // This is the original incident's selector path. Before the fix, the

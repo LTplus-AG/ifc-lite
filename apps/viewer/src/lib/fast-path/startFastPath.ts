@@ -82,7 +82,9 @@ export function startFastPath(): boolean {
         previous = loading;
         listener(loading);
       };
-      const offStore = useViewerStore.subscribe(onChange);
+      const offStore = useViewerStore.subscribe((state, previousState) => {
+        if (state.loading !== previousState.loading) onChange();
+      });
       const offPending = onPendingProcessedModelChange(onChange);
       return () => { offStore(); offPending(); };
     },

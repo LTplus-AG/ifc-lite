@@ -113,6 +113,29 @@ describe('processedModelRequested', () => {
     assert.equal(processedModelRequested(), false, 'the load now owns the request');
   });
 
+  it('blocks idle warm-up for a traced processed URL before React files the request (#10822)', () => {
+    const sha256 = 'a'.repeat(64);
+    try {
+      window.history.replaceState(null, '', `/?processed=${sha256}&perfTrace=1`);
+      assert.equal(processedModelRequested(), true, 'the URL is visible while the tracer is still loading');
+      openProcessedModelFromUrl({ sha256, bytes: 0, name: 'page.ifc' });
+      assert.equal(processedModelRequested(), true, 'the filed request still waits for the loader');
+      assert.ok(takeProcessedModelRequest());
+      assert.equal(processedModelRequested(), false, 'the URL does not keep the gate closed after handoff');
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
+  it('does not block warm-up for a malformed processed URL (#10822)', () => {
+    try {
+      window.history.replaceState(null, '', '/?processed=invalid&perfTrace=1');
+      assert.equal(processedModelRequested(), false);
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   it('trims the name of every request, and falls back to model.ifc for a blank one', () => {
     resetProcessedModelRequestsForTests();
     openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '  Haus A.ifc  ' });

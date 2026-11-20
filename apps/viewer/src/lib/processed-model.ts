@@ -17,7 +17,7 @@
  * a host has asked for a model: the host's model wins over the page URL.
  */
 
-import { assertProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
+import { assertProcessedModelHash, normalizeProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
 import { SERVER_URL, USE_SERVER } from '@/utils/ifcConfig';
 import type { ViewerRuntimeConfig } from './features/runtime-config';
 
@@ -45,6 +45,7 @@ const listeners = new Set<() => void>();
 const pendingListeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`, or the configuration's start model); a model named in the page URL then yields. */
 let hostRequested = false;
+let pageRequestFiled = false;
 type PageUrlParameter = 'processed' | 'model' | 'room';
 const ignoredLogged = new Set<PageUrlParameter>();
 const hostRequestListeners = new Set<() => void>();
@@ -99,7 +100,10 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
  * `openProcessedModel` it does not count as a host request.
  */
 export function openProcessedModelFromUrl(model: ProcessedModelRequest): void {
-  if (pageUrlModelAllowed('processed')) fileRequest(normalizedRequest(model));
+  if (!pageUrlModelAllowed('processed')) return;
+  const request = normalizedRequest(model);
+  pageRequestFiled = true;
+  fileRequest(request);
 }
 
 /**
@@ -121,6 +125,7 @@ export function pageUrlModelAllowed(parameter: PageUrlParameter): boolean {
 /** Tests only: forget host requests, the waiting request and the ignored-parameter log. */
 export function resetProcessedModelRequestsForTests(): void {
   hostRequested = false;
+  pageRequestFiled = false;
   ignoredLogged.clear();
   pending = null;
 }
@@ -132,7 +137,10 @@ function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest 
 
 /** Whether a server-meshed model is waiting for the viewer to take it. */
 export function processedModelRequested(): boolean {
-  return pending !== null;
+  if (pending) return true;
+  if (hostRequested || pageRequestFiled || typeof window === 'undefined') return false;
+  // A valid URL request is already waiting while trace setup or WebGPU delays autoload.
+  return normalizeProcessedModelHash(new URLSearchParams(window.location?.search).get('processed')) !== null;
 }
 
 /** Observe the handoff from the request queue to the viewer's loader. */

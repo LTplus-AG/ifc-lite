@@ -13,7 +13,8 @@ import { wallFixture } from '@/test/ids-studio-fixture';
 import { seedAuthoringSample, SAMPLE_MODEL } from '@/test/authoring-sample-fixture';
 import { setFieldOp, setSpecTextOp } from '@/lib/ids-studio/ops';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
-import { useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
+import type { IdsStudioDraft } from '@/lib/ids-studio/draft-codec';
+import { readContentRows } from '@/lib/storage/content-database';
 import { refuseContentWrites } from '@/test/content-fixture';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
@@ -146,8 +147,8 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     }
     await call('ids.document.close', { document_revision: useViewerStore.getState().idsStudioRevision }, true);
     assert.equal(useViewerStore.getState().idsStudioState, null);
-    const saved = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draftId);
-    assert.ok(saved?.document.includes('Unsaved walls'), 'close waited for the draft write');
+    const saved = (await readContentRows('idsStudioDrafts')).find(row => row.id === draftId)?.payload as IdsStudioDraft | undefined;
+    assert.ok(saved?.document.includes('Unsaved walls'), 'close waited for the durable draft write');
   });
   it('refuses agent close without a retry hint when the draft can never be saved (#11013)', async () => {
     useViewerStore.getState().idsStudioOpen(fixture.doc);

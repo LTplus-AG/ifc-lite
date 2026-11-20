@@ -159,7 +159,7 @@ export const bcfDe = {
   "bcf.panel.createTopicFailed": "Das Thema konnte nicht erstellt werden. {message}",
   "bcf.panel.addViewpointFailed": "Der Ansichtspunkt konnte dem Thema nicht hinzugefügt werden. {message}",
   "bcf.panel.busy": "BCF-Datei wird verarbeitet…",
-  "bcf.panel.captureViewpointFailed": "Kein Ansichtspunkt konnte erfasst werden. Warten Sie, bis das Modell vollständig geladen ist, und versuchen Sie es erneut."
+  "bcf.panel.captureViewpointFailed": "Kein Ansichtspunkt konnte erfasst werden. Warten Sie, bis das Modell vollständig geladen ist, und versuchen Sie es erneut.",
   "bcf.autosave.pending": "BCF-Projekt wird in diesem Browser gespeichert …",
   "bcf.autosave.saved": "BCF-Projekt wurde in diesem Browser gespeichert.",
   "bcf.autosave.tooLarge": "Die automatische BCF-Speicherung ist auf 32 MiB einschließlich Bildern begrenzt. Exportieren Sie das Projekt als BCF oder entfernen Sie Schnappschüsse.",

@@ -29,6 +29,7 @@ pub(crate) enum Adjust {
     /// The source list is a strict name prefix of the target's: pad to this many.
     Pad(usize),
     /// A renamed type in `BY_NAME_ATTR_REMAP_TYPES`: source names, target names.
+    UpgradeIfc4x3(&'static [&'static str], &'static [&'static str]),
     ByName(&'static [&'static str], &'static [&'static str]),
     /// A type IFC4 inserted, reordered or retyped attributes in (#10763): the
     /// reviewed map, whether it runs upward, source names, target names.
@@ -75,6 +76,7 @@ fn plan_and_route(entity_type: &str, cfrom: &'static str, cto: &'static str) -> 
     // strictly shorter.
     let tgt_names = schema_attribute_names(cto, new_type);
     let adjust = match (src_names, tgt_names, attr_map(entity_type, new_type, cfrom, cto)) {
+        (Some(src), Some(tgt), _) if cto == "IFC4X3" && renamed.is_some() && crate::schema_ifc4x3_upgrade::needs_slot_map(entity_type) => Adjust::UpgradeIfc4x3(src, tgt),
         (Some(src), Some(tgt), Some((map, up))) => Adjust::Mapped(map, up, src, tgt),
         (Some(src), Some(tgt), _) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
         (Some(src), Some(tgt), _) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),

@@ -4,7 +4,8 @@ import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRecordFrame } from './step-record-frame.js';
 import { forEachExpressRef, referencesAnyExpressId } from './step-ref-scan.js';
-import { OMIT_ON_UPGRADE } from './schema-untranslatable.js';
+import { missingTypeRoute } from './schema-untranslatable.js';
+import type { IfcSchemaVersion } from './schema-converter.js';
 import { isStepValue, skipStepTrivia } from './step-slot-grammar.js';
 
 type OutputRecord = { id: number; type: string; line: string; raw: string; frame: StepRecordFrame | null };
@@ -13,14 +14,24 @@ type Slot = { value: string; optional: boolean; members: string[] | null; minimu
 type Group = { id: number; remaining: number; minimum: number };
 type Member = { group: Group; lost: boolean };
 
-const registry = () => getSchemaRegistryForVersion('IFC4').entities;
-let layouts: Map<string, readonly Attribute[]> | undefined;
+type RegistrySchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
+type UpgradeSchema = 'IFC4' | 'IFC4X3';
 
-function attributes(type: string): readonly Attribute[] | undefined {
-  layouts ??= new Map(Object.entries(registry()).map(([name, info]) => [
-    name.toUpperCase(), info.allAttributes ?? info.attributes,
-  ]));
-  return layouts.get(type);
+const layouts = new Map<RegistrySchema, Map<string, readonly Attribute[]>>();
+
+function attributes(type: string, schema: RegistrySchema): readonly Attribute[] | undefined {
+  let table = layouts.get(schema);
+  if (!table) {
+    table = new Map(Object.entries(getSchemaRegistryForVersion(schema).entities).map(([name, info]) => [
+      name.toUpperCase(), info.allAttributes ?? info.attributes,
+    ]));
+    layouts.set(schema, table);
+  }
+  return table.get(type);
+}
+
+function removesObsoleteResources(from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
+  return (from === 'IFC2X3' && (to === 'IFC4' || to === 'IFC4X3')) || (from === 'IFC4' && to === 'IFC4X3');
 }
 
 function recordId(line: string): number {
@@ -39,13 +50,17 @@ function record(line: string): OutputRecord | undefined {
   return { id, type, line, raw, frame };
 }
 
-/** Collect a direct omission only from the IFC2X3 input of an IFC4 upgrade. */
-export function noteUnrootedUpgradeSeed(line: string, seeds: Set<number>): void {
+/** Collect direct omissions only from the source model that is being upgraded. */
+export function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
+  if (!removesObsoleteResources(from, to)) return;
   const head = stepRecordHead(line);
-  if (head && OMIT_ON_UPGRADE.has(line.slice(head.typeStart, head.typeEnd).toUpperCase())) {
-    const id = recordId(line);
-    if (id <= 0xffffffff) seeds.add(id);
-  }
+  if (!head) return;
+  const type = line.slice(head.typeStart, head.typeEnd).toUpperCase();
+  if (from === 'IFC5' || to === 'IFC5') return;
+  const route = missingTypeRoute(type, from, to, attributes(type, from) !== undefined, attributes(type, to) !== undefined);
+  if (route !== 'omitted') return;
+  const id = recordId(line);
+  if (id <= 0xffffffff) seeds.add(id);
 }
 
 function listMembers(value: string): string[] | null {
@@ -71,17 +86,17 @@ function slot(value: string, attribute?: Attribute): Slot {
   return { value, members, optional: attribute?.optional ?? false, minimum: members ? attribute?.arrayBounds?.[0] ?? 1 : 1 };
 }
 
-function readSlots(rec: OutputRecord): Slot[] {
+function readSlots(rec: OutputRecord, to: UpgradeSchema): Slot[] {
   const values = rec.frame ? splitTopLevelStepArguments(rec.raw) : null;
-  const layout = attributes(rec.type);
+  const layout = attributes(rec.type, to);
   // If the target layout cannot be established, the record is only safe when
   // none of its references is lost. Treat the entire argument list as required.
   if (!values || !layout || values.length !== layout.length) return [slot(rec.raw)];
   return values.map((value, index) => slot(value, layout[index]));
 }
 
-function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>): void {
-  for (const part of readSlots(rec)) {
+function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>, to: UpgradeSchema): void {
+  for (const part of readSlots(rec, to)) {
     if (part.optional || part.minimum === 0) continue;
     const members = part.members ?? [part.value];
     const group = { id: rec.id, remaining: members.length, minimum: part.minimum };
@@ -97,11 +112,11 @@ function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>): 
   }
 }
 
-function cascadeOmissions(records: readonly (OutputRecord | undefined)[], seeds: ReadonlySet<number>): Set<number> {
+function cascadeOmissions(records: readonly (OutputRecord | undefined)[], seeds: ReadonlySet<number>, to: UpgradeSchema): Set<number> {
   const dropped = new Set(seeds);
   const users = new Map<number, Member[]>();
   for (const rec of records) {
-    if (rec && !dropped.has(rec.id)) indexRequiredMembers(rec, users);
+    if (rec && !dropped.has(rec.id)) indexRequiredMembers(rec, users, to);
   }
   // Set iteration visits newly inserted ids. Each reference edge is visited
   // once. A member that names several dropped records counts as one loss.
@@ -115,9 +130,9 @@ function cascadeOmissions(records: readonly (OutputRecord | undefined)[], seeds:
   return dropped;
 }
 
-function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>): string {
+function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: UpgradeSchema): string {
   if (!rec.frame || !referencesAnyExpressId(rec.raw, dropped)) return rec.line;
-  const layout = attributes(rec.type);
+  const layout = attributes(rec.type, to);
   const values = splitTopLevelStepArguments(rec.raw);
   if (!layout || !values || values.length !== layout.length) return rec.line;
   const kept = values.map((value, index) => {
@@ -130,18 +145,18 @@ function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>): string {
 }
 
 /** Run after conversion so every reference is in the final id space and slot. */
-export function omitUnrootedUpgrade(lines: string[], seeds: ReadonlySet<number>): string[] {
-  if (seeds.size === 0) return [];
+export function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion): string[] {
+  if (seeds.size === 0 || (to !== 'IFC4' && to !== 'IFC4X3')) return [];
   const records = lines.map(record);
-  const dropped = cascadeOmissions(records, seeds);
+  const dropped = cascadeOmissions(records, seeds, to);
   const warnings: string[] = [];
   let next = 0;
   for (const [index, rec] of records.entries()) {
     if (rec && dropped.has(rec.id)) {
-      const reason = seeds.has(rec.id) ? 'the IFC4 schema does not declare its type' : 'a required IFC4 attribute lost a reference';
-      warnings.push(`#${rec.id} (${rec.type}) was omitted because ${reason} (#10970).`);
+      const reason = seeds.has(rec.id) ? `the ${to} schema does not declare its type` : `a required ${to} attribute lost a reference`;
+      warnings.push(`#${rec.id} (${rec.type}) was omitted because ${reason} (#${to === 'IFC4' ? 10970 : 10971}).`);
     } else {
-      lines[next++] = rec ? rewrite(rec, dropped) : lines[index];
+      lines[next++] = rec ? rewrite(rec, dropped, to) : lines[index];
     }
   }
   lines.length = next;
@@ -150,8 +165,9 @@ export function omitUnrootedUpgrade(lines: string[], seeds: ReadonlySet<number>)
 
 
 /** Single-model output contains only converted records, including pending edits. */
-export function pruneUnrootedUpgrade(lines: string[]): string[] {
+export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion): string[] {
+  if (!removesObsoleteResources(from, to)) return [];
   const seeds = new Set<number>();
-  for (const line of lines) noteUnrootedUpgradeSeed(line, seeds);
-  return omitUnrootedUpgrade(lines, seeds);
+  for (const line of lines) noteUpgradeSeed(line, seeds, from, to);
+  return pruneUpgrade(lines, seeds, to);
 }

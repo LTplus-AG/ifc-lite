@@ -294,7 +294,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // Emit.
         let source_schema = detect_schema(model.content);
         let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
-        let upgrading = crate::schema_unrooted_upgrade::applies(&source_schema, &schema);
+        let upgrading = crate::schema_unrooted_upgrade::Upgrade::between(&source_schema, &schema);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -397,7 +397,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 guid_to_final.entry(local_guid.clone()).or_insert((final_id, effective_scale));
             }
 
-            if upgrading && crate::schema_unrooted_upgrade::omitted_type(ty) {
+            if upgrading.is_some_and(|upgrade| upgrade.seeds(final_text.as_bytes()).next().is_some()) {
                 upgrade_seeds.insert(id.saturating_add(offset));
             }
             out.push_str(&final_text);

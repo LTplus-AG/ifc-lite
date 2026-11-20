@@ -268,9 +268,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     write_header(out, opts, content, converting, &target, pass.new_entity_count + pass.ledger.modified_count())?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
-    let may_prune_upgrade = crate::schema_unrooted_upgrade::applies(&source_label, &target)
-        && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
-            || crate::schema_unrooted_upgrade::seeds(content).next().is_some());
+    let may_prune_upgrade = crate::schema_unrooted_upgrade::Upgrade::between(&source_label, &target).filter(|upgrade|
+        !pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
+            || upgrade.seeds(content).next().is_some());
     let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, may_prune_upgrade);
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());

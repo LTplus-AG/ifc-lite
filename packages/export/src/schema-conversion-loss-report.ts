@@ -40,7 +40,8 @@ import {
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
-import { isRootedEntityType, missingTypeRoute, OMIT_ON_UPGRADE } from './schema-untranslatable.js';
+import { droppedIfc4x3SlotNames, needsIfc4x3SlotMap } from './schema-converter-ifc4x3-upgrade.js';
+import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
 export type EntityConversionKind =
@@ -139,6 +140,10 @@ export function classifyEntityTypeConversion(
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
 
+  if (toSchema === 'IFC4X3' && upper !== newType && needsIfc4x3SlotMap(upper)) {
+    return { targetType: newType, kind: 'lossy', droppedAttributes: droppedIfc4x3SlotNames(upper, srcAttrs, tgtAttrs) };
+  }
+
   if (srcAttrs.length === tgtAttrs.length && srcAttrs.every((name, i) => name === tgtAttrs[i])) {
     // Neither list is a STRICT prefix of the other when they are equal
     // (`isStrictAttrPrefix` requires shorter.length < longer.length) — the
@@ -211,10 +216,10 @@ export interface ConversionLossReport {
 
 const MAX_IDS_NAMED = 8;
 
-function describeEntry(entry: ConversionLossEntry, omit: boolean): string {
+function describeEntry(entry: ConversionLossEntry, omittedBy?: string): string {
   const ids = entry.expressIds.slice(0, MAX_IDS_NAMED).map((id) => `#${id}`).join(', ');
   const more = entry.expressIds.length > MAX_IDS_NAMED ? `, +${entry.expressIds.length - MAX_IDS_NAMED} more` : '';
-  if (omit) return `${entry.count} × ${entry.sourceType} (${ids}${more}) will be omitted because IFC4 does not declare its type.`;
+  if (omittedBy) return `${entry.count} × ${entry.sourceType} (${ids}${more}) will be omitted because ${omittedBy} does not declare its type.`;
   const attrs = entry.droppedAttributes.length > 0 ? ` — loses ${entry.droppedAttributes.join(', ')}` : '';
   switch (entry.kind) {
     case 'blocked':
@@ -339,8 +344,12 @@ export function analyzeConversionLoss(
     }
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
-  const describe = (entry: ConversionLossEntry) => describeEntry(entry,
-    fromSchema === 'IFC2X3' && toSchema === 'IFC4' && OMIT_ON_UPGRADE.has(entry.sourceType));
+  const describe = (entry: ConversionLossEntry) => {
+    const sourceKnown = attrNameTable(fromSchema)?.has(entry.sourceType) ?? false;
+    const target = attrNameTable(toSchema);
+    const route = missingTypeRoute(entry.sourceType, fromSchema, toSchema, sourceKnown, !target || target.has(entry.targetType));
+    return describeEntry(entry, route === 'omitted' ? toSchema : undefined);
+  };
   const hasBlocking = entries.some((e) => e.kind === 'blocked');
   return {
     fromSchema,

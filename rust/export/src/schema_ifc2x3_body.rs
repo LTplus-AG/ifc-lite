@@ -4,6 +4,7 @@
 use std::io::{self, Write};
 
 use crate::schema_ifc2x3_placements::place_each_object_once;
+use crate::schema_unrooted_upgrade::Upgrade;
 
 /// Hold the DATA section when a conversion needs to see the final record set:
 /// placement adaptation in IFC2X3, or pruning obsolete resources and their
@@ -11,16 +12,16 @@ use crate::schema_ifc2x3_placements::place_each_object_once;
 pub(crate) struct Body<'w> {
     out: &'w mut dyn Write,
     held: Option<Vec<u8>>,
-    prune_upgrade: bool,
+    prune_upgrade: Option<Upgrade>,
 }
 
 impl<'w> Body<'w> {
     pub(crate) fn new(out: &'w mut dyn Write, ifc2x3: bool) -> Self {
-        Self::for_conversion(out, ifc2x3, false)
+        Self::for_conversion(out, ifc2x3, None)
     }
 
-    pub(crate) fn for_conversion(out: &'w mut dyn Write, ifc2x3: bool, prune_upgrade: bool) -> Self {
-        Body { out, held: (ifc2x3 || prune_upgrade).then(Vec::new), prune_upgrade }
+    pub(crate) fn for_conversion(out: &'w mut dyn Write, ifc2x3: bool, prune_upgrade: Option<Upgrade>) -> Self {
+        Body { out, held: (ifc2x3 || prune_upgrade.is_some()).then(Vec::new), prune_upgrade }
     }
 
     pub(crate) fn finish(self) -> io::Result<isize> {
@@ -30,12 +31,11 @@ impl<'w> Body<'w> {
     /// Write the held section, adapted; the change in record count.
     pub(crate) fn finish_with_warnings(self, warnings: &mut Vec<String>) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
-        if self.prune_upgrade {
-            use crate::schema_unrooted_upgrade::{prune, seeds};
+        if let Some(upgrade) = self.prune_upgrade {
             // The upgrading STEP and log writers serialize their records
             // as UTF-8. Other writers can still supply legacy single bytes.
             if let Ok(text) = std::str::from_utf8(&held) {
-                if let Some((pruned, removed, losses)) = prune(text, &seeds(&held).collect()) {
+                if let Some((pruned, removed, losses)) = upgrade.prune(text) {
                     self.out.write_all(pruned.as_bytes())?;
                     warnings.extend(losses);
                     return Ok(-(removed as isize));

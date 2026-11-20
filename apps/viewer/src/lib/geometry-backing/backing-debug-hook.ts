@@ -63,12 +63,24 @@ export async function geometryBackingCommand(store: StoreApi<TapState>, renderer
 async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<TapState>, renderer: Renderer):
   Promise<ModelBackingStatus[]> {
   const status = await tap.seal();
-  const models = store.getState().models;
-  for (const modelId of models.keys()) {
+  const verified = new Map<string, NonNullable<ReturnType<typeof tap.backing>>>();
+  for (const modelId of store.getState().models.keys()) {
     const backing = tap.backing(modelId);
     const row = status.find((entry) => entry.modelId === modelId);
     if (!backing || !row?.complete || !tap.registryHandle.verify(await backing.acknowledge())) {
       throw new Error(`Model ${modelId} has no verified complete backing; nothing was released`);
+    }
+    verified.set(modelId, backing);
+  }
+  // The store may have changed during those awaits: re-check synchronously, with no await between this and
+  // the release, that exactly the verified models and generations are current and still complete.
+  const models = store.getState().models;
+  const now = new Map(tap.status().map((row) => [row.modelId, row]));
+  for (const modelId of new Set([...models.keys(), ...verified.keys()])) {
+    const backing = verified.get(modelId);
+    if (!backing || !models.has(modelId) || tap.backing(modelId) !== backing || !now.get(modelId)?.complete
+      || now.get(modelId)?.generation !== backing.generation) {
+      throw new Error(`Model ${modelId} changed while its backing was verified; nothing was released`);
     }
   }
   // `SceneContents` deliberately does not publish release; whether it should

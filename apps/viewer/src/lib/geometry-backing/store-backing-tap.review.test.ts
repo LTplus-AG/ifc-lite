@@ -108,3 +108,29 @@ it('#10876 a tap started on a list that is already released never backs it as em
   assert.ok(status.error, 'the reason is reported');
   await tap.stop();
 });
+
+it('#10876 release-for-test re-checks the models after its awaits: one added meanwhile means nothing is released', async () => {
+  const { geometryBackingCommand, activeGeometryBackingTap } = await import('./backing-debug-hook');
+  const meshes = [mesh(1)];
+  const store = storeWith({ ra: meshes });
+  await geometryBackingCommand(store, undefined, { action: 'start', options: { database: database() } as never });
+  let released = 0;
+  const scene = { releaseGeometryData: () => { released++; }, isGeometryDataReleased: () => released > 0 };
+  const renderer = { getScene: () => scene } as never;
+  try {
+    await geometryBackingCommand(store, undefined, { action: 'seal' });
+    const backing = activeGeometryBackingTap()!.backing('ra')!;
+    const acknowledge = backing.acknowledge.bind(backing);
+    let calls = 0;
+    backing.acknowledge = async () => {
+      const ack = await acknowledge();
+      // release-for-test seals first (call 1), then verifies each model (call 2): the model is added during
+      // the verification's await, after the model set was read.
+      if (++calls === 2) setList(store, 'rb', [mesh(9)]);
+      return ack;
+    };
+    await assert.rejects(geometryBackingCommand(store, renderer, { action: 'release-for-test' }), /nothing was released/);
+    assert.equal(released, 0, 'the scene was not released');
+    assert.equal(meshes[0].positions.length, 9, 'and the store arrays are still resident');
+  } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+});

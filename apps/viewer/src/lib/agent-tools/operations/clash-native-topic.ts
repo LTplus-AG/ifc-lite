@@ -47,7 +47,7 @@ export const clashTopicOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ createNativeClashTopic }, runtime] = await Promise.all([
+      const [{ createNativeClashTopic, StaleCaptureError }, runtime] = await Promise.all([
         import('@/lib/clash/clash-native-topic'),
         clashRuntime(c),
       ]);
@@ -66,20 +66,27 @@ export const clashTopicOperations = [
         !c.signal?.aborted &&
         useViewerStore.getState().clashResult === result &&
         useViewerStore.getState().clashRunSeq === i.run_seq;
-      const created = await createNativeClashTopic({
-        clashes: pairs,
-        total: result.clashes.length,
-        ...(i.kind === 'group' ? { groupName: i.group_name } : {}),
-        mode: i.mode,
-        focusClash: runtime.focusClash,
-        focusClashes: runtime.focusClashes,
-        isCurrent,
-        signal: c.signal,
-        commit: (write) => c.commit(write),
-        requireSnapshot: true,
-      });
+      let created;
+      try {
+        created = await createNativeClashTopic({
+          clashes: pairs,
+          total: result.clashes.length,
+          ...(i.kind === 'group' ? { groupName: i.group_name } : {}),
+          mode: i.mode,
+          focusClash: runtime.focusClash,
+          focusClashes: runtime.focusClashes,
+          isCurrent,
+          signal: c.signal,
+          commit: (write) => c.commit(write),
+          requireSnapshot: true,
+        });
+      } catch (error) {
+        if (error instanceof StaleCaptureError) throw stale(error.message);
+        throw error;
+      }
       assertToolActive(c);
-      if (!created) throw internal('Native BCF topic capture failed or was superseded.');
+      if (!created) throw isCurrent() ? internal('Native BCF topic capture failed.')
+        : stale('The clash result changed during BCF topic capture.');
       return created;
     },
   ),

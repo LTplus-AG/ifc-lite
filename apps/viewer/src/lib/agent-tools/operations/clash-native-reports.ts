@@ -135,20 +135,22 @@ export const clashReportOperations = [
       }
       if (i.action === 'rename' && !i.name.trim()) throw invalidInput('invalid-value', 'A saved clash report needs a name.');
       assertToolActive(c);
-      const ok = await c.commitAsync(() => {
+      const ok = await c.commitAsync(async () => {
         const s = useViewerStore.getState();
         assertRevision(s.savedClashReports, i.expected_reports, 'Saved reports changed.');
         if (i.action === 'restore') return s.restoreSavedClashReports();
         if (i.action === 'retry') return s.retrySaveClashReports();
-        if (i.action === 'import') return s.saveClashReport(report!);
+        if (report) {
+          const result = await s.saveClashReportResult(report);
+          if (result === 'conflict') throw invalidInput('conflict', 'Another saved clash report holds this ID with different evidence.');
+          if (result === 'invalid') throw invalidInput('invalid-value', 'Invalid canonical native clash report.');
+          if (result === 'storage') throw internal('Native report import could not be saved.');
+          return true;
+        }
         if (!s.savedClashReports.some((row) => row.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved clash report.');
         return s.renameSavedClashReport(i.id, i.name);
       });
-      // The library answers only false. With a blank name refused above, restore, retry and rename fail on storage, the
-      // report rules or an overlapping edit; an import that passed the schema most likely holds an id with other evidence.
-      if (!ok) throw i.action === 'import'
-        ? invalidInput('refused', 'Native report import refused: another report holds this id with other evidence, or storage failed.')
-        : unavailable('Native report storage refused. Read the reports again and retry.');
+      if (!ok) throw unavailable('Native report storage refused. Read the reports again and retry.');
       return out({ completed: i.action });
     },
   ),

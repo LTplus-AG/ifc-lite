@@ -60,12 +60,12 @@ export function createClashFocus(options: {
   /** `signal`: a capture that owns this focus; its cancellation drops the pending framing. */
   const focusClashes = (clashes: readonly Clash[], mode: ClashFocusMode = 'highlight', signal?: AbortSignal) =>
     focusClashGroup(clashes, refOf, applyFocusMode, mode, signal);
-  const focusClash = (clash: Clash, mode: ClashFocusMode = 'highlight'): void => {
+  const focusClash = (clash: Clash, mode: ClashFocusMode = 'highlight'): boolean => {
     const state = useViewerStore.getState();
     const a = refOf(clash.a);
     const b = refOf(clash.b);
     const refs = [a, b].filter((r): r is SelectionRef => r !== null);
-    if (refs.length === 0) return;
+    if (refs.length === 0) return false;
     const globalIds: number[] = [];
     if (a) globalIds.push(clash.a.ref);
     if (b) globalIds.push(clash.b.ref);
@@ -139,6 +139,7 @@ export function createClashFocus(options: {
     } else {
       state.setClashSolidUnavailable('empty-operand', 0, 0);
     }
+    return true;
   };
   const selectElement = (el: ClashElementRef, mode: ClashFocusMode = 'highlight'): void => {
     const state = useViewerStore.getState();

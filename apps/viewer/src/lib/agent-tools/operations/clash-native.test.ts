@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
-import '@/test/content-fixture';
+import { refuseContentWrites } from '@/test/content-fixture';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -83,6 +83,43 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(result.isError, true);
     assert.equal(useViewerStore.getState().clashRunSeq, seq);
   });
+  it('preserves native unavailable refusals for unresolved clash pairs and groups (#10871)', async t => {
+    await seedCoincidentWalls(1, 3);
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const ids = useViewerStore.getState().clashResult!.clashes.map(clash => clash.id);
+    assert.ok(ids.length > 1);
+    t.mock.method(useViewerStore.getState(), 'resolveGlobalIdInModel', () => null);
+    for (const clash_ids of [[ids[0]], ids]) {
+      const result = await call('clash.focus', { clash_ids, run_seq, element: 'pair', mode: 'highlight' }, true);
+      assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION', result.text);
+      assert.equal((result.structured as { reason: string }).reason, 'unavailable');
+    }
+  });
+
+  it('distinguishes conflicting evidence from storage failure when importing a valid clash report (#10871)', async () => {
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const { id } = value<{ id: string }>(await call('clash.reports.save', { name: 'Coordination', run_seq }, true));
+    const report = useViewerStore.getState().savedClashReports.find(row => row.id === id)!;
+    const { expected_reports } = value<{ expected_reports: string }>(await call('clash.reports.read'));
+    const importReport = (report_json: string) => call('clash.reports.write', {
+      action: 'import', id: '', name: '', report_json, expected_reports,
+    }, true);
+    const refused = refuseContentWrites();
+    try {
+      const result = await importReport(JSON.stringify({ ...report, id: 'imported-report' }));
+      assert.equal(result.errorCode, 'INTERNAL_ERROR', result.text);
+      assert.equal((result.structured as { reason: string }).reason, 'internal');
+    } finally { refused.mock.restore(); }
+
+    const latest = value<{ expected_reports: string }>(await call('clash.reports.read'));
+    const result = await call('clash.reports.write', {
+      action: 'import', id: '', name: '', expected_reports: latest.expected_reports,
+      report_json: JSON.stringify({ ...report, savedAt: '2020-01-01T00:00:00.000Z' }),
+    }, true);
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal((result.structured as { reason: string }).reason, 'conflict');
+  });
+
   it('filters and restores native findings without rerunning and writes durable native reviews', async () => {
     const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
     const s = useViewerStore.getState(),

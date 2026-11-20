@@ -6,6 +6,7 @@
 #include <array>
 #include <iterator>
 #include <cmath>
+#include <cstdint>
 #include <map>
 #include <numeric>
 #include <set>
@@ -46,16 +47,41 @@ Triangle rotated(Triangle t) {
     std::rotate(t.begin(),std::min_element(t.begin(),t.end()),t.end());
     return t;
 }
-// Coincident vertices tie on coordinates; tell them apart by their incident
-// corners (source face, next and previous corner positions), which do not
-// depend on vertex numbering.
-using Corner=std::tuple<uint32_t,Point,Point>;
-bool less(const Corner& a,const Corner& b) {
-    if (std::get<0>(a)!=std::get<0>(b)) return std::get<0>(a)<std::get<0>(b);
-    if (less(std::get<1>(a),std::get<1>(b))) return true;
-    if (less(std::get<1>(b),std::get<1>(a))) return false;
-    return less(std::get<2>(a),std::get<2>(b));
+// Sort keys are coordinates on the canonical grid (see canonical_grid), so
+// that the SDK's run-to-run value noise of about one ULP does not reorder
+// vertices or flip a near-tie. Values themselves are never rounded.
+using QKey=std::array<int64_t,3>;
+// Nearest grid point, not floor: exact model values (0, integers, multiples
+// of the power-of-two step) then sit mid-cell, and the boundaries are at half
+// steps, where a 1-ULP change matters only for values within a ULP of them.
+int64_t quantize(double x,double h) { return std::llround(x/h); }
+QKey qkey(const Point& p,double h) { return {quantize(p[0],h),quantize(p[1],h),quantize(p[2],h)}; }
+// Coincident vertices (equal keys) are told apart by their incident corners:
+// (source face, next and previous corner keys), which do not depend on vertex
+// numbering; exact coordinates come last.
+using Corner=std::tuple<uint32_t,QKey,QKey>;
 }
+
+double canonical_grid(const AdapterMesh& mesh) {
+    // The SDK's coordinates differ between runs by about one ULP of their own
+    // magnitude, so the step must be far above ULP(M) = M * 2^-52 for the
+    // largest |coordinate| M: at least 2^16 ULP(M) here, which makes a 1-ULP
+    // change cross a grid boundary for about 1 in 2^15 noisy coordinates. It
+    // also stays at or below 2^-29 of the bounding-box extent where the
+    // offset is small (sub-nanometre for building parts), so ties only join
+    // points that are practically coincident; with a large georeferenced
+    // offset it is about 2^-36 M (38 um at 2.6e6 m). A power of two keeps the
+    // step itself stable under the same noise.
+    double low[3]={0,0,0},high[3]={0,0,0},largest=0;
+    for (size_t i=0;i<mesh.positions.size();i+=3) for (unsigned axis=0;axis<3;++axis) {
+        const double x=mesh.positions[i+axis];
+        if (i==0 || x<low[axis]) low[axis]=x;
+        if (i==0 || x>high[axis]) high[axis]=x;
+        largest=std::max(largest,std::abs(x));
+    }
+    const double extent=std::max({high[0]-low[0],high[1]-low[1],high[2]-low[2]});
+    const double base=std::max(std::ldexp(extent,-30),std::ldexp(largest,-36));
+    return base>0 && std::isfinite(base) ? std::ldexp(1.,std::ilogb(base)+1) : 1.;
 }
 
 bool flat_normal(const std::array<double,3>& a,const std::array<double,3>& b,const std::array<double,3>& c,
@@ -82,28 +108,27 @@ bool flat_normal(const std::array<double,3>& a,const std::array<double,3>& b,con
 void order_mesh(AdapterMesh& mesh) {
     const auto vertices=uint32_t(mesh.positions.size()/3);
     const size_t triangles=mesh.indices.size()/3;
+    const double h=canonical_grid(mesh);
+    std::vector<QKey> keys(vertices);
+    for (uint32_t v=0;v<vertices;++v) keys[v]=qkey(point(mesh,v),h);
     std::vector<uint32_t> order(vertices);
     std::iota(order.begin(),order.end(),0u);
-    std::stable_sort(order.begin(),order.end(),[&](uint32_t a,uint32_t b) {
-        return less(point(mesh,a),point(mesh,b));
-    });
-    std::vector<std::vector<Corner>> corners; // built once, only if two vertices coincide
+    std::stable_sort(order.begin(),order.end(),[&](uint32_t a,uint32_t b) { return keys[a]<keys[b]; });
+    std::vector<std::vector<Corner>> corners; // built once, only if two keys tie
     for (size_t begin=0;begin<order.size();) {
         size_t end=begin+1;
-        const auto p=point(mesh,order[begin]);
-        while (end<order.size() && !less(p,point(mesh,order[end]))) ++end;
+        while (end<order.size() && keys[order[end]]==keys[order[begin]]) ++end;
         if (end-begin>1) {
             if (corners.empty()) {
                 corners.resize(vertices);
                 for (size_t t=0;t<triangles;++t) for (unsigned k=0;k<3;++k)
                     corners[mesh.indices[3*t+k]].emplace_back(mesh.faces[t],
-                        point(mesh,mesh.indices[3*t+(k+1)%3]),point(mesh,mesh.indices[3*t+(k+2)%3]));
-                for (auto& c:corners)
-                    std::sort(c.begin(),c.end(),[](const Corner& a,const Corner& b) { return less(a,b); });
+                        keys[mesh.indices[3*t+(k+1)%3]],keys[mesh.indices[3*t+(k+2)%3]]);
+                for (auto& c:corners) std::sort(c.begin(),c.end());
             }
             std::stable_sort(order.begin()+begin,order.begin()+end,[&](uint32_t a,uint32_t b) {
-                return std::lexicographical_compare(corners[a].begin(),corners[a].end(),
-                    corners[b].begin(),corners[b].end(),[](const Corner& x,const Corner& y) { return less(x,y); });
+                if (corners[a]!=corners[b]) return corners[a]<corners[b];
+                return less(point(mesh,a),point(mesh,b));
             });
         }
         begin=end;
@@ -184,8 +209,23 @@ struct Plane2 {
         return sign*orient2(at(mesh,a),at(mesh,b),at(mesh,c));
     }
 };
-double squared(const Point& a,const Point& b) {
-    const double x=a[0]-b[0],y=a[1]-b[1],z=a[2]-b[2]; return x*x+y*y+z*z;
+// A vertex within one grid step of the open segment a-b (3D). A diagonal that
+// passes this close to a vertex is never taken: whether it would pass inside
+// or outside a nearly collinear vertex is decided by the SDK's last bits.
+// This only rejects candidates; accepted ones are still validated exactly.
+bool near(const Point& a,const Point& b,const Point& c,double h) {
+    const Point ab{b[0]-a[0],b[1]-a[1],b[2]-a[2]},ac{c[0]-a[0],c[1]-a[1],c[2]-a[2]};
+    const double length=dot(ab,ab);
+    if (!(length>0)) return true;
+    const double t=dot(ac,ab)/length;
+    if (!(t>0 && t<1)) return false;
+    const Point d{ac[0]-t*ab[0],ac[1]-t*ab[1],ac[2]-t*ab[2]};
+    return dot(d,d)<=h*h;
+}
+// Diagonal length on the canonical grid: equal lengths (a rectangle's
+// diagonals) stay equal under the SDK's ULP noise and fall to the vertex IDs.
+int64_t grid_length(const Point& a,const Point& b,double h) {
+    const double x=a[0]-b[0],y=a[1]-b[1],z=a[2]-b[2]; return quantize(std::sqrt(x*x+y*y+z*z),h);
 }
 // The face's projection from its directed boundary (Newell normal).
 bool projection(const AdapterMesh& mesh,const std::vector<std::pair<uint32_t,uint32_t>>& boundary,Plane2& plane,Point& n) {
@@ -194,8 +234,13 @@ bool projection(const AdapterMesh& mesh,const std::vector<std::pair<uint32_t,uin
         const auto p=point(mesh,a),q=point(mesh,b);
         n[0]+=(p[1]-q[1])*(p[2]+q[2]); n[1]+=(p[2]-q[2])*(p[0]+q[0]); n[2]+=(p[0]-q[0])*(p[1]+q[1]);
     }
+    // Largest component on a grid of 2^-30 of the largest, so a 45-degree
+    // face keeps its axis under ULP noise (ties go to the lower axis).
+    const double largest=std::max({std::abs(n[0]),std::abs(n[1]),std::abs(n[2])});
+    if (!(largest>0) || !std::isfinite(largest)) return false;
+    const double step=std::ldexp(1.,std::ilogb(largest)-29);
     unsigned axis=0;
-    for (unsigned k=1;k<3;++k) if (std::abs(n[k])>std::abs(n[axis])) axis=k;
+    for (unsigned k=1;k<3;++k) if (quantize(std::abs(n[k]),step)>quantize(std::abs(n[axis]),step)) axis=k;
     if (!(std::abs(n[axis])>0)) return false;
     plane=Plane2{(axis+1)%3,(axis+2)%3,n[axis]>0 ? 1 : -1};
     return true;
@@ -205,16 +250,19 @@ bool projection(const AdapterMesh& mesh,const std::vector<std::pair<uint32_t,uin
 // and leaves both triangles strictly positive; otherwise the other one.
 // Empty when neither qualifies (the SDK's split stays).
 std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Triangle& b,
-    const std::vector<Edge>& foreign) {
+    const std::vector<Edge>& foreign,double h) {
     for (unsigned i=0;i<3;++i) for (unsigned j=0;j<3;++j) {
         if (!(b[j]==a[(i+1)%3] && b[(j+1)%3]==a[i])) continue;
         const uint32_t u=a[i],v=a[(i+1)%3],p=a[(i+2)%3],q=b[(j+2)%3];
         if (p==q) return {};
         Plane2 plane; Point n;
         if (!projection(mesh,{{u,q},{q,v},{v,p},{p,u}},plane,n)) return {};
-        auto rank=[&](uint32_t x,uint32_t y) { return std::make_tuple(squared(point(mesh,x),point(mesh,y)),std::min(x,y),std::max(x,y)); };
-        const bool kept=plane.orient(mesh,u,v,p)>0 && plane.orient(mesh,v,u,q)>0 && !std::binary_search(foreign.begin(),foreign.end(),edge(u,v));
-        const bool flipped=plane.orient(mesh,p,u,q)>0 && plane.orient(mesh,q,v,p)>0 && !std::binary_search(foreign.begin(),foreign.end(),edge(p,q));
+        auto rank=[&](uint32_t x,uint32_t y) { return std::make_tuple(grid_length(point(mesh,x),point(mesh,y),h),std::min(x,y),std::max(x,y)); };
+        const auto U=point(mesh,u),V=point(mesh,v),P=point(mesh,p),Q=point(mesh,q);
+        const bool kept=plane.orient(mesh,u,v,p)>0 && plane.orient(mesh,v,u,q)>0 &&
+            !near(U,V,P,h) && !near(U,V,Q,h) && !std::binary_search(foreign.begin(),foreign.end(),edge(u,v));
+        const bool flipped=plane.orient(mesh,p,u,q)>0 && plane.orient(mesh,q,v,p)>0 &&
+            !near(P,Q,U,h) && !near(P,Q,V,h) && !std::binary_search(foreign.begin(),foreign.end(),edge(p,q));
         if (flipped && (!kept || rank(p,q)<rank(u,v))) return {Triangle{p,u,q},Triangle{q,v,p}};
         if (kept) return {a,b};
         return {};
@@ -225,7 +273,7 @@ std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Tri
 // boundary alone. Empty on any doubt; the caller then keeps the SDK's split.
 // `foreign` holds edges this face must not create (other faces' edges).
 std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Triangle>& face,
-    const std::vector<Edge>& foreign) {
+    const std::vector<Edge>& foreign,double h) {
     std::set<std::pair<uint32_t,uint32_t>> directed;
     std::map<Edge,unsigned> uses;
     std::vector<uint32_t> vertices;
@@ -279,11 +327,11 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
     };
     std::set<Edge> edges;
     for (const auto& [a,b]:boundary) edges.insert(edge(a,b));
-    std::vector<std::tuple<double,uint32_t,uint32_t>> candidates;
+    std::vector<std::tuple<int64_t,uint32_t,uint32_t>> candidates;
     for (size_t i=0;i<vertices.size();++i) for (size_t j=i+1;j<vertices.size();++j) {
         const Edge e{vertices[i],vertices[j]};
         if (edges.count(e) || std::binary_search(foreign.begin(),foreign.end(),e)) continue;
-        candidates.emplace_back(squared(point(mesh,e.first),point(mesh,e.second)),e.first,e.second);
+        candidates.emplace_back(grid_length(point(mesh,e.first),point(mesh,e.second),h),e.first,e.second);
     }
     std::sort(candidates.begin(),candidates.end());
     // A triangulation of this face has exactly (3T + B) / 2 edges (Euler), so
@@ -294,10 +342,11 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
         if (!inward(a,b) || !inward(b,a)) continue;
         bool ok=true;
         const auto p=plane.at(mesh,a),q=plane.at(mesh,b);
+        const auto A=point(mesh,a),B=point(mesh,b);
         for (uint32_t c:vertices) {
             if (c==a || c==b) continue;
             const auto r=plane.at(mesh,c);
-            if (orient2(p,q,r)==0 && within(p,q,r)) { ok=false; break; }
+            if ((orient2(p,q,r)==0 && within(p,q,r)) || near(A,B,point(mesh,c),h)) { ok=false; break; }
         }
         for (auto it=edges.begin();ok && it!=edges.end();++it) {
             const auto [c,d]=*it;
@@ -348,6 +397,7 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
 
 void canonical_planar_faces(AdapterMesh& mesh,const std::vector<bool>& planar_faces) {
     const size_t triangles=mesh.indices.size()/3;
+    const double h=canonical_grid(mesh);
     struct Span { size_t begin, end; bool eligible; };
     std::vector<Span> spans;
     // order_mesh made each source face's triangles contiguous.
@@ -391,7 +441,7 @@ void canonical_planar_faces(AdapterMesh& mesh,const std::vector<bool>& planar_fa
         for (size_t t=s.begin;t<s.end;++t) face.push_back(triangle(mesh,t));
         // This face's own boundary edges are in `foreign` too; they are never
         // candidates, so only other faces' edges can block a diagonal.
-        const auto result=face.size()==2 ? requad(mesh,face[0],face[1],foreign) : retriangulate(mesh,face,foreign);
+        const auto result=face.size()==2 ? requad(mesh,face[0],face[1],foreign,h) : retriangulate(mesh,face,foreign,h);
         if (!result.empty())
             for (size_t t=s.begin;t<s.end;++t) for (unsigned k=0;k<3;++k) mesh.indices[3*t+k]=result[t-s.begin][k];
     }

@@ -153,6 +153,17 @@ void declined(AdapterMesh mesh,const std::vector<bool>& planar,const char* name)
     canonicalize(mesh,planar);
     same_bytes(mesh,ordered,name);
 }
+// The SDK's values differ between runs by about one ULP. Canonical topology
+// (indices and source faces after canonicalization) must not.
+void nudge(AdapterMesh& mesh,std::mt19937& random) {
+    for (double& x:mesh.positions) {
+        const unsigned r=random()%3;
+        if (r==1) x=std::nextafter(x,INFINITY); else if (r==2) x=std::nextafter(x,-INFINITY);
+    }
+}
+void same_topology(const AdapterMesh& a,const AdapterMesh& b,const char* message) {
+    require(a.indices==b.indices && a.faces==b.faces,message);
+}
 }
 
 void run_mesh_canonical_tests() {
@@ -222,9 +233,13 @@ void run_mesh_canonical_tests() {
     }
     // -0 sorts before +0, so signed zeros never tie.
     {
-        AdapterMesh a; a.positions={0.,0,0,1,0,0,0,1,0,-0.,0,1,1,0,1,0,1,1};
-        a.indices={0,1,2,3,4,5}; a.faces={0,1}; a.normals.assign(18,0.);
-        order_mesh(a); require(std::signbit(a.positions[0]) && a.positions[2]==1,"-0 sorts before +0");
+        // -0 and +0 share a grid key; with identical incident corners the
+        // exact order breaks the tie: -0 first, whatever the input order.
+        for (bool minus_first:{true,false}) {
+            AdapterMesh a; a.positions={minus_first ? -0. : 0.,0,0, minus_first ? 0. : -0.,0,0, 1,0,0, 0,1,0};
+            a.indices={0,2,3,1,2,3}; a.faces={0,0}; a.normals.assign(18,0.);
+            order_mesh(a); require(std::signbit(a.positions[0]) && !std::signbit(a.positions[3]),"-0 sorts before +0 on a full tie");
+        }
     }
     // Sliver: in doubles, the cross product from corner a rounds to exactly 0
     // (from b and c it is -4.77e-18, the exact orientation's sign). a is also
@@ -391,5 +406,49 @@ void run_mesh_canonical_tests() {
             canonicalize(mesh,{true,true}); results.push_back(mesh);
         }
         for (const auto& mesh:results) same_bytes(mesh,results[0],"back-to-back coplanar faces are canonical");
+    }
+    // +/-1 ULP noise on every coordinate leaves the canonical topology alone.
+    {
+        // AC20-FZK-Haus #21966: a slab whose corner came back as 4.195 or as
+        // 4.195000000000001 (other vertices share x = 4.195 exactly).
+        const std::vector<Point> slab{{-0.3,0,0},{4.195,0,0},{-0.3,0.3,0},{4.195,0.3,0},
+            {-0.3,0,2.01},{4.195,0,2.01},{-0.3,0.3,2.01},{4.195,0.3,2.01}};
+        const std::vector<Quad> sides{{0,{0,2,3,1}},{1,{4,5,7,6}},{2,{0,1,5,4}},
+            {3,{2,6,7,3}},{4,{0,4,6,2}},{5,{1,3,7,5}}};
+        AdapterMesh reference=enumerate(slab,sides,random); canonicalize(reference,planar);
+        for (double x:{std::nextafter(4.195,INFINITY),std::nextafter(4.195,-INFINITY)}) {
+            auto moved=slab; moved[1][0]=x;
+            AdapterMesh mesh=enumerate(moved,sides,random); canonicalize(mesh,planar);
+            same_topology(mesh,reference,"#21966 corner +/-1 ULP keeps the canonical topology");
+        }
+        for (unsigned run=0;run<64;++run) {
+            AdapterMesh mesh=enumerate(slab,sides,random); nudge(mesh,random); canonicalize(mesh,planar);
+            same_topology(mesh,reference,"slab with +/-1 ULP noise keeps the canonical topology");
+        }
+        // Rectangles: two exactly equal diagonals, axis-aligned and rotated.
+        std::uniform_real_distribution<double> unit(0,1);
+        for (unsigned trial=0;trial<40;++trial) {
+            const double angle=trial%2 ? 6.283185307179586*unit(random) : 0,c=std::cos(angle),s=std::sin(angle);
+            const double w=0.1+5*unit(random),d=0.1+5*unit(random),x0=1e4*unit(random),y0=1e4*unit(random);
+            std::vector<Point> corners;
+            for (const auto& [i,j]:std::array<std::pair<double,double>,4>{{{0,0},{w,0},{w,d},{0,d}}})
+                corners.push_back({x0+c*i-s*j,y0+s*i+c*j,3});
+            const std::vector<Quad> quad{{0,{0,1,2,3}}};
+            AdapterMesh base=enumerate(corners,quad,random); canonicalize(base,{true});
+            for (unsigned run=0;run<16;++run) {
+                AdapterMesh mesh=enumerate(corners,quad,random); nudge(mesh,random); canonicalize(mesh,{true});
+                same_topology(mesh,base,"rectangle with +/-1 ULP noise keeps its diagonal");
+            }
+        }
+        // A rotated, offset grid with a hole (a planar face of many triangles).
+        const double c30=std::cos(0.5235987755982988),s30=std::sin(0.5235987755982988);
+        std::vector<Point> points,flat; std::vector<Tri> triangles;
+        grid(6,6,{{2,2},{2,3},{3,2},{3,3}},[&](double i,double j) {
+            return Point{12+0.6*(c30*i-s30*j),12+0.6*(s30*i+c30*j),3}; },random,points,flat,triangles);
+        AdapterMesh base=variant(points,triangles,0,random,&flat); canonicalize(base,{true});
+        for (unsigned run=0;run<32;++run) {
+            AdapterMesh mesh=variant(points,triangles,run,random,&flat); nudge(mesh,random); canonicalize(mesh,{true});
+            same_topology(mesh,base,"rotated grid with a hole and +/-1 ULP noise keeps its topology");
+        }
     }
 }

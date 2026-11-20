@@ -98,7 +98,7 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
     // cylinder flips walk canonical IDs; then retriangulate planar faces and
     // order again. Positions and source-face IDs are unchanged.
     order_mesh(*mesh);
-    normalize_mesh_diagonals(*mesh,angle,chord,cylinders);
+    normalize_mesh_diagonals(*mesh,angle,chord,cylinders,canonical_grid(*mesh));
     canonical_planar_faces(*mesh,planar);
     order_mesh(*mesh);
     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);

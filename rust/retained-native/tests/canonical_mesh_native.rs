@@ -70,38 +70,60 @@ fn point(part: &ShapePart, index: u32) -> Point {
     let i = 3 * index as usize;
     [part.positions[i], part.positions[i + 1], part.positions[i + 2]]
 }
-/// The adapter's total order: coordinates lexicographically, -0 before +0.
-fn key(p: Point) -> [(f64, bool); 3] { p.map(|v| (v, !v.is_sign_negative())) }
-fn less(a: Point, b: Point) -> bool {
-    key(a).partial_cmp(&key(b)) == Some(std::cmp::Ordering::Less)
+/// mesh_canonical.cpp canonical_grid: a power of two, at least 2^16 ULP of
+/// the largest |coordinate|, otherwise 2^-30 of the bounding-box extent.
+fn grid(part: &ShapePart) -> f64 {
+    let (mut low, mut high, mut largest) = ([0f64; 3], [0f64; 3], 0f64);
+    for (i, v) in part.positions.chunks_exact(3).enumerate() {
+        for axis in 0..3 {
+            if i == 0 || v[axis] < low[axis] { low[axis] = v[axis]; }
+            if i == 0 || v[axis] > high[axis] { high[axis] = v[axis]; }
+            largest = largest.max(v[axis].abs());
+        }
+    }
+    let extent = (0..3).map(|a| high[a] - low[a]).fold(0f64, f64::max);
+    let base = (extent * 2f64.powi(-30)).max(largest * 2f64.powi(-36));
+    if !(base > 0. && base.is_finite()) { return 1.; }
+    // ilogb for a normal f64: its unbiased binary exponent.
+    let exponent = ((base.to_bits() >> 52) & 0x7ff) as i32 - 1023;
+    2f64.powi(exponent + 1)
 }
+/// The adapter's sort key: nearest grid point (llround) per coordinate.
+fn key(p: Point, h: f64) -> [i64; 3] { p.map(|v| (v / h).round() as i64) }
+/// Exact order, the last tie-break: coordinates, -0 before +0.
+fn exact(p: Point) -> [(f64, bool); 3] { p.map(|v| (v, !v.is_sign_negative())) }
 
-type Corner = (u32, [(f64, bool); 3], [(f64, bool); 3]);
+type Corner = (u32, [i64; 3], [i64; 3]);
 /// A vertex's incident corners as order_mesh compares them: (source face, next
-/// corner position, previous corner position), sorted.
-fn corners(part: &ShapePart) -> Vec<Vec<Corner>> {
+/// corner key, previous corner key), sorted.
+fn corners(part: &ShapePart, h: f64) -> Vec<Vec<Corner>> {
     let mut result = vec![Vec::new(); part.positions.len() / 3];
     for (t, &face) in part.indices.chunks_exact(3).zip(&part.revision_local_faces) {
         for k in 0..3 {
-            result[t[k] as usize].push((face, key(point(part, t[(k + 1) % 3])), key(point(part, t[(k + 2) % 3]))));
+            result[t[k] as usize].push((face, key(point(part, t[(k + 1) % 3]), h), key(point(part, t[(k + 2) % 3]), h)));
         }
     }
-    for c in &mut result { c.sort_by(|a, b| a.partial_cmp(b).unwrap()); }
+    for c in &mut result { c.sort(); }
     result
 }
 
 fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
     let vertices = (part.positions.len() / 3) as u32;
-    // Coordinates non-decreasing; coincident vertices are kept and ordered by
-    // their incident corners (mesh_canonical.cpp order_mesh).
-    let incident = corners(part);
+    // Grid keys non-decreasing; equal keys (coincident vertices) ordered by
+    // their incident corners, then exactly (mesh_canonical.cpp order_mesh).
+    let h = grid(part);
+    let incident = corners(part, h);
     for v in 1..vertices {
         let (a, b) = (point(part, v - 1), point(part, v));
-        if less(b, a) {
-            return Err(format!("{model}#{id}: vertex {v} is before vertex {} in (x, y, z) order", v - 1));
+        let (ka, kb) = (key(a, h), key(b, h));
+        if kb < ka {
+            return Err(format!("{model}#{id}: vertex {v} is before vertex {} in grid (x, y, z) order", v - 1));
         }
-        if !less(a, b) && incident[v as usize].partial_cmp(&incident[v as usize - 1]) == Some(std::cmp::Ordering::Less) {
-            return Err(format!("{model}#{id}: coincident vertices {} and {v} are not in incident-corner order", v - 1));
+        if ka == kb {
+            let (ca, cb) = (&incident[v as usize - 1], &incident[v as usize]);
+            if cb < ca || (cb == ca && exact(b).partial_cmp(&exact(a)) == Some(std::cmp::Ordering::Less)) {
+                return Err(format!("{model}#{id}: coincident vertices {} and {v} are not in incident-corner order", v - 1));
+            }
         }
     }
     let triangles: Vec<_> = part.indices.chunks_exact(3).zip(&part.revision_local_faces)
@@ -115,7 +137,7 @@ fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
         }
     }
     // A planar, strictly convex two-triangle face takes the diagonal first in
-    // (squared length, lower vertex, upper vertex) order, unless another face
+    // (grid length, lower vertex, upper vertex) order, unless another face
     // already has that edge (canonical_planar_faces' existing-edge exception).
     let mut faces: BTreeMap<u32, Vec<[u32; 3]>> = BTreeMap::new();
     for (face, t) in &triangles { faces.entry(*face).or_default().push(*t); }
@@ -128,10 +150,10 @@ fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
         if !planar_strictly_convex(part, [u, q, v, p]) { continue; }
         let rank = |a: u32, b: u32| {
             let d = sub(point(part, a), point(part, b));
-            (dot(d, d), a.min(b), a.max(b))
+            ((dot(d, d).sqrt() / h).round() as i64, a.min(b), a.max(b))
         };
         let (current, other) = (rank(u, v), rank(p, q));
-        let (first, second) = if current.partial_cmp(&other) == Some(std::cmp::Ordering::Less) { (current, other) } else { (other, current) };
+        let (first, second) = if current < other { (current, other) } else { (other, current) };
         let expected = if edges_of(*face).contains(&(first.1, first.2)) { second } else { first };
         if current != expected {
             return Err(format!("{model}#{id}: quad face {face} uses diagonal {:?}, canonical is {:?}", (current.1, current.2), (expected.1, expected.2)));

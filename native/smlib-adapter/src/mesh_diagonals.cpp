@@ -54,7 +54,7 @@ bool within_cylinder(const AdapterMesh& mesh,const Triangle& t,const CylinderPat
 }
 
 void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees,double chord,
-    const std::vector<std::optional<CylinderPatch>>& cylinders) {
+    const std::vector<std::optional<CylinderPatch>>& cylinders,double grid) {
     // #7955: the SDK triangulates surface polygons before SmApiTessellate
     // returns. Its aspect-ratio ties can choose different diagonals for a
     // warped quad on native/WASM. A strictly shorter interior diagonal gives
@@ -104,6 +104,7 @@ void normalize_mesh_diagonals(AdapterMesh& mesh,double angle_degrees,double chor
         const auto U=point(mesh,u),V=point(mesh,v),P=point(mesh,p),Q=point(mesh,q);
         const double old_length=U.DistanceBetweenSquared(V),new_length=P.DistanceBetweenSquared(Q);
         if (!std::isfinite(new_length) || !(new_length>0 && new_length<old_length)) continue;
+        if (grid>0 && !(std::llround(std::sqrt(new_length)/grid)<std::llround(std::sqrt(old_length)/grid))) continue;
         const auto na=normal(mesh,a),nb=normal(mesh,b),n=na+nb;
         // A coplanar pair has identical volume for either diagonal. Preserve
         // it. For warped pairs require all four boundary turns to agree with

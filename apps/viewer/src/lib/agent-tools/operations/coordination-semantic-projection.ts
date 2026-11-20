@@ -9,7 +9,7 @@ import { coordination, modelCoordination, idSchema } from './coordination-common
 import { evictOldest } from './host-handles';
 const plans = new Map<string, { plan: ProjectionPlan; dataVersion: number; revisions: ReadonlyMap<string, string> }>();
 export const coordinationSemanticProjectionOperations = [
-  coordination<{ resource_id: string; model_scope: string; select: boolean }>('semantic.resolveResource', 'Resolve an exact native linked record with the configured identity strategy, inspect its relationships, and optionally select its native ownership targets in one explicit model scope.', ['read', 'view'], {
+  coordination<{ resource_id: string; model_scope: string; select: boolean }>('semantic.resolveResource', 'Resolve an exact native linked record with the configured identity strategy, inspect its relationships, and optionally select its native ownership targets in one explicit model scope.', ['read', 'view', 'selection'], {
     type: 'object', properties: { resource_id: { type: 'string', minLength: 1, maxLength: 2000 }, model_scope: { type: 'string', minLength: 1, maxLength: 200 }, select: { type: 'boolean' } }, required: ['resource_id', 'model_scope', 'select'], additionalProperties: false,
   }, (i, c) => {
     if (!c.host.models().some(model => model.id === i.model_scope)) throw new Error('Unknown native model scope.');

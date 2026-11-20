@@ -7303,7 +7303,8 @@ export const operationContracts: readonly OperationContract[] = [
     "needs": "viewer",
     "effects": [
       "read",
-      "view"
+      "view",
+      "selection"
     ],
     "capability": "commands-and-edits",
     "inputSchema": {
@@ -7990,7 +7991,8 @@ export const operationContracts: readonly OperationContract[] = [
     "needs": "viewer",
     "effects": [
       "configuration",
-      "view"
+      "view",
+      "selection"
     ],
     "capability": "commands-and-edits",
     "inputSchema": {

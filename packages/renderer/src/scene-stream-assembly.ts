@@ -44,6 +44,7 @@ import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { MeshUniformSlot } from './mesh-uniform-arena.js';
 import { LOD_MIN_TRIANGLES, lodCellSizeForBounds, simplifyIndicesByClustering } from './lod-simplify.js';
+import { laneIdsOf } from './batch-entities.js';
 
 /** What one fragment uploaded: whole registered meshes, in upload order. */
 interface FragmentRun {
@@ -228,6 +229,7 @@ export class StreamAssembly {
         uniformSlot,
         bounds,
         modelIndices: meshes.map((mesh) => mesh.modelIndex),
+        ...laneIdsOf(meshes),
         origin: options.origin,
         ...(lod1IndexBuffer ? { lod1IndexBuffer, lod1IndexCount } : {}),
         ...(quantized ? { quantized: { min: quantized.min, step: quantized.step } } : {}),

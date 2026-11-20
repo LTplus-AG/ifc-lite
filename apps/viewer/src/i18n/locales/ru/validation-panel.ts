@@ -155,5 +155,10 @@ export const validationPanelRu = {
   "contentStorage.checkUsage": "Проверить использование хранилища",
   "contentStorage.unknown": "неизвестно",
   "contentStorage.estimate": "Данные библиотек в этой вкладке: около {library} МиБ. Хранилище сайта: {usage} МиБ из примерно {quota} МиБ, включая кэш моделей и другие данные сайта.",
+  "contentStorage.persistence.persisted": "Постоянное хранилище включено.",
+  "contentStorage.persistence.bestEffort": "Хранилище без гарантий. Браузер может удалить сохранённую работу, если ему понадобится место. Скачайте резервную копию библиотеки, чтобы сохранить копию.",
+  "contentStorage.persistence.unsupported": "Постоянное хранилище здесь недоступно. Скачайте резервную копию библиотеки, чтобы сохранить копию.",
+  "contentStorage.originUsage": "Этот сайт использует около {usage} МиБ, включая кэши моделей.",
+  "contentStorage.originQuota": "Оценочная квота хранилища браузера: {quota} МиБ.",
   "contentStorage.failed": "Операция хранения завершилась с ошибкой: {message}",
 } satisfies Catalogue;

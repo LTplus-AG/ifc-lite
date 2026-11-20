@@ -115,5 +115,10 @@ export const validationPanelDe = {
   "contentStorage.checkUsage": "Überprüfen Sie die Speichernutzung",
   "contentStorage.unknown": "unbekannt",
   "contentStorage.estimate": "Bibliotheksdaten in diesem Tab: etwa {library} MiB. Website-Speicher: {usage} MiB von etwa {quota} MiB, einschließlich Modellcaches und anderer Website-Daten.",
+  "contentStorage.persistence.persisted": "Persistenter Speicher ist aktiviert.",
+  "contentStorage.persistence.bestEffort": "Speicherung nach Möglichkeit. Der Browser kann gespeicherte Arbeit entfernen, wenn er Platz benötigt. Laden Sie ein Bibliotheks-Backup herunter, um eine Kopie zu behalten.",
+  "contentStorage.persistence.unsupported": "Persistenter Speicher ist hier nicht verfügbar. Laden Sie ein Bibliotheks-Backup herunter, um eine Kopie zu behalten.",
+  "contentStorage.originUsage": "Diese Website belegt etwa {usage} MiB, einschließlich Modellcaches.",
+  "contentStorage.originQuota": "Das geschätzte Speicherkontingent des Browsers beträgt {quota} MiB.",
   "contentStorage.failed": "Speichervorgang fehlgeschlagen: {message}",
 } satisfies Catalogue;

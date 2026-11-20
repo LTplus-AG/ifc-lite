@@ -115,5 +115,10 @@ export const validationPanelFr = {
   "contentStorage.checkUsage": "Vérifier l'utilisation du stockage",
   "contentStorage.unknown": "inconnu",
   "contentStorage.estimate": "Contenu des bibliothèques dans cet onglet : environ {library} Mio. Stockage de l'origine : {usage} Mio sur environ {quota} Mio, y compris les caches de modèles et les autres données du site.",
+  "contentStorage.persistence.persisted": "Le stockage persistant est activé.",
+  "contentStorage.persistence.bestEffort": "Stockage au mieux. Le navigateur peut supprimer le travail enregistré lorsqu'il a besoin d'espace. Téléchargez une sauvegarde de la bibliothèque pour en conserver une copie.",
+  "contentStorage.persistence.unsupported": "Le stockage persistant n'est pas disponible ici. Téléchargez une sauvegarde de la bibliothèque pour en conserver une copie.",
+  "contentStorage.originUsage": "Ce site utilise environ {usage} Mio, caches de modèles compris.",
+  "contentStorage.originQuota": "Le quota de stockage estimé du navigateur est de {quota} Mio.",
   "contentStorage.failed": "Échec de l'opération de stockage : {message}",
 } satisfies Catalogue;

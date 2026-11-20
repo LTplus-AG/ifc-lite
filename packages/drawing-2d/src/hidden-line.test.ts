@@ -533,4 +533,20 @@ describe('HiddenLineClassifier transition point (bisected, not half a sample)', 
     expect(result.segments[1].visible).toBe(true);
     expect(result.segments[1].start.y).toBeCloseTo(1.2, 1);
   });
+
+  it('keeps the split within a pixel on a line far longer than the raster', () => {
+    // Same slab, but the edge runs to y = 10000, so one sample spans 1000.
+    // Seven halvings alone stop near y = 3.9; the pixel-based stop keeps
+    // bisecting until the split is at the slab edge.
+    const classifier = new HiddenLineClassifier({ samplesPerLine: 10 });
+    classifier.buildDepthBuffer([occluderMesh(-5, -1, 1.2)], { axis: 'z', position: 0, flipped: false }, 10);
+    const edge: DrawingLine = {
+      line: { start: { x: 5, y: 0 }, end: { x: 5, y: 10000 } },
+      category: 'projection', visibility: 'visible', entityId: 1,
+      ifcType: 'IfcWall', modelIndex: 0, depth: 7,
+    };
+    const [result] = classifier.classifyLines([edge]);
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments[1].start.y).toBeCloseTo(1.2, 1);
+  });
 });

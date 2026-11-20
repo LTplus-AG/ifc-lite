@@ -63,12 +63,14 @@ const DEFAULT_OPTIONS: HiddenLineOptions = {
 
 /**
  * Halvings used to locate where a line's visibility flips between two
- * neighbouring samples. 7 narrows the gap to 2^-7 of a sample spacing (about
- * 2.3 mm on a 3 m edge at the default 10 samples, so the midpoint is within
- * about 1.2 mm), for 7 extra depth lookups per flip. The depth raster pixel
- * still bounds the final precision.
+ * neighbouring samples. Bisection runs at least the minimum (2^-7 of a sample
+ * spacing, enough to refine a sloped line's depth crossing inside one pixel),
+ * then continues while the interval still spans more than one depth-raster
+ * pixel, so a long line's split is not left where sample spacing put it. The
+ * maximum is a termination cap for a degenerate raster.
  */
-const TRANSITION_BISECTION_STEPS = 7;
+const MIN_TRANSITION_BISECTION_STEPS = 7;
+const MAX_TRANSITION_BISECTION_STEPS = 32;
 
 /**
  * View depth along a line as an affine function of the line parameter t
@@ -239,7 +241,13 @@ export class HiddenLineClassifier {
         // the occluder's edge, not half a sample spacing away from it.
         let lo = (i - 1) / numSamples;
         let hi = t;
-        for (let step = 0; step < TRANSITION_BISECTION_STEPS; step++) {
+        const linePixels = this.lineLengthInPixels(line);
+        for (
+          let step = 0;
+          step < MAX_TRANSITION_BISECTION_STEPS &&
+          (step < MIN_TRANSITION_BISECTION_STEPS || (hi - lo) * linePixels > 1);
+          step++
+        ) {
           const mid = (lo + hi) / 2;
           const midVisible = this.sampleVisibility(pointAt(mid), depthAt(mid), depthBias);
           if (midVisible === currentVisible) lo = mid;
@@ -285,6 +293,22 @@ export class HiddenLineClassifier {
     }
 
     return { line, segments, overallVisibility };
+  }
+
+  /**
+   * The line's length in depth-raster pixels along its longer pixel axis.
+   * Only called once a transition exists, which needs a raster.
+   */
+  private lineLengthInPixels(line: DrawingLine): number {
+    const raster = this.raster;
+    if (!raster) return 0;
+    const { bounds, width, height } = raster;
+    const dx = Math.abs(line.line.end.x - line.line.start.x);
+    const dy = Math.abs(line.line.end.y - line.line.start.y);
+    return Math.max(
+      (dx / (bounds.max.x - bounds.min.x)) * (width - 1),
+      (dy / (bounds.max.y - bounds.min.y)) * (height - 1),
+    );
   }
 
   private sampleVisibility(point: Point2D, lineDepth: number, depthBias: number): boolean {

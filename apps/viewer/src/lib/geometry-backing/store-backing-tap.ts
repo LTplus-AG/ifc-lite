@@ -20,8 +20,9 @@
  *   flat-list change (recolour copies, prune, authored mesh) leaves instanced
  *   geometry alone, so committed shards are carried into the new generation.
  *   A content-version bump may move occurrences, so a model that had shards
- *   is then reported `instancedLost` and never complete (fail closed) until a
- *   live instanced source re-supplies them. So is a model whose shards were
+ *   is then reported `instancedLost` and never complete (fail closed) for the
+ *   rest of this tap's life: this layer has no re-supply proof (a fresh supply
+ *   stated whole and drawn is #10888's), so later shards never clear it. So is a model whose shards were
  *   enqueued before the tap started (the queue's revision is ahead of what
  *   the tap saw): those shards never reached the backing.
  * Appends for one model are chained in order; a writer failure is reported in
@@ -57,6 +58,10 @@ interface Tracked {
   shards: number;
   /** The store list changed after a CPU release: this generation is kept durable but no longer answers. */
   stale?: Error;
+  /** Replaced (or removed) before its generation began: superseded as soon as it does. */
+  replaced?: boolean;
+  /** A carry of the predecessor's shards is still pending: they count as this generation's shards. */
+  carrying?: boolean;
 }
 
 export interface ModelBackingStatus {
@@ -81,10 +86,12 @@ export class StoreGeometryBackingTap {
   /** Shard enqueue events seen per model since start, compared with the queue's revision. */
   private readonly shardEvents = new Map<string, number>();
   private stopped = false;
+  /** Deferred cleanups of removed models' generations, awaited by `whenIdle`. */
+  private readonly removals = new Set<Promise<void>>();
 
   private constructor(
     private readonly registry: GeometryBackingRegistry,
-    private readonly store: StoreApi<TapState>,
+    store: StoreApi<TapState>, // read once here; the store subscription in `start` drives every sync
     private readonly options: ModelBackingOptions,
   ) {
     this.contentVersion = store.getState().geometryContentVersion;
@@ -119,7 +126,16 @@ export class StoreGeometryBackingTap {
     for (const [modelId, model] of state.models) {
       const meshes = model.geometryResult?.meshes;
       const tracked = this.tracked.get(modelId);
-      if (!tracked) { this.regenerate(modelId, meshes, 'none'); continue; }
+      if (!tracked) {
+        // A list already released when the tap first sees it (a restart after release-for-test) has no
+        // arrays to back: never back its empty records as a generation.
+        if (meshes?.some(isReleasedMesh)) {
+          const stale = new Error('The store list was released before the tap saw it; nothing can be backed');
+          this.tracked.set(modelId, { meshes, consumed: meshes.length, chain: Promise.resolve(), instancedLost: false, shards: 0, stale });
+          console.error(`[GeometryBacking] ${modelId}: ${stale.message}`);
+        } else this.regenerate(modelId, meshes, 'none');
+        continue;
+      }
       // First geometry of a model whose shards arrived earlier: an append.
       if (!versionChanged && tracked.meshes === undefined && tracked.consumed === 0 && meshes) tracked.meshes = meshes;
       if (tracked.stale) continue;
@@ -131,7 +147,7 @@ export class StoreGeometryBackingTap {
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
           continue;
         }
-        const hadShards = tracked.shards > 0 || tracked.instancedLost;
+        const hadShards = tracked.shards > 0 || tracked.instancedLost || !!tracked.carrying;
         this.regenerate(modelId, meshes, !hadShards ? 'none' : versionChanged ? 'lost' : 'carry');
         continue;
       }
@@ -149,21 +165,30 @@ export class StoreGeometryBackingTap {
     }
   }
 
+  /** The store replaced this generation's geometry: not current from now on, even before its successor begins. */
+  private supersede(tracked: Tracked | undefined): void {
+    if (!tracked) return;
+    if (tracked.backing) tracked.backing.supersede(); else tracked.replaced = true;
+  }
+
   private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost'): void {
     const previous = this.tracked.get(modelId);
-    const next: Tracked = { meshes, consumed: 0, chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0 };
+    this.supersede(previous);
+    const next: Tracked = { meshes, consumed: 0, chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0, carrying: shards === 'carry' };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
-      // Read committed shards before `begin` deletes the previous generation.
+      // Read committed shards before `begin` deletes the previous generation (its own carry has run).
       const carried: DecodedInstancedShard[] = [];
       if (shards === 'carry') {
         if (!previous?.backing || previous.failure || previous.instancedLost) next.instancedLost = true;
-        else for await (const shard of previous.backing.reader.instancedShards()) carried.push(shard);
+        else for await (const shard of previous.backing.carryReader.instancedShards()) carried.push(shard);
       }
       next.backing = await this.registry.begin(modelId, this.options);
+      if (next.replaced) next.backing.supersede(); // replaced again before it began
       for (const shard of carried) {
         next.shards++;
         await next.backing.writer.appendInstancedShard(shard);
       }
+      next.carrying = false;
     });
     next.chain = this.settle(next, begun);
     this.tracked.set(modelId, next);
@@ -221,16 +246,20 @@ export class StoreGeometryBackingTap {
     const tracked = this.tracked.get(modelId);
     if (!tracked) return;
     this.tracked.delete(modelId);
-    this.settle(tracked, tracked.chain.then(() => this.registry.invalidate(modelId, reason)));
+    this.supersede(tracked); // a retained handle stops being current now, not once the pending append ends
+    // Retire exactly this generation (a re-added model's must survive); whenIdle waits for it.
+    const removal = this.settle(tracked, tracked.chain.then(() => (tracked.backing ? this.registry.retire(tracked.backing, reason) : undefined)));
+    this.removals.add(removal);
+    void removal.then(() => { this.removals.delete(removal); });
   }
 
   /** Resolve once every queued append has been handed to its writer. */
   async whenIdle(): Promise<void> {
     // Steps may enqueue more steps or regenerate; settle until nothing moved.
     for (;;) {
-      const chains = [...this.tracked.values()].map((tracked) => tracked.chain);
+      const chains = [...[...this.tracked.values()].map((tracked) => tracked.chain), ...this.removals];
       await Promise.all(chains);
-      const now = [...this.tracked.values()].map((tracked) => tracked.chain);
+      const now = [...[...this.tracked.values()].map((tracked) => tracked.chain), ...this.removals];
       if (now.length === chains.length && now.every((chain, i) => chain === chains[i])) return;
     }
   }

@@ -156,6 +156,8 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
     // Slot the fence first: a source aliasing it (or any other array of this
     // mesh) must stay that slot so decode restores the identity; else pool it.
     const fence = slot(appearance.indices);
+    // The corner mapping is slotted before the source too: a source aliasing it must stay that slot.
+    const corners = appearance.cornerIndices !== undefined ? slot(appearance.cornerIndices) : undefined;
     const local = slotOf.get(appearance.sourceIndices);
     let source: { pooled: number } | { slot: number };
     if (local !== undefined) source = { slot: local };
@@ -166,7 +168,7 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
     }
     record.appearance = {
       kind: 'canonical-item', fence, source,
-      ...(appearance.cornerIndices !== undefined ? { corners: slot(appearance.cornerIndices) } : {}),
+      ...(corners !== undefined ? { corners } : {}),
     };
   }
   if (mesh.textureBitmap !== undefined) {

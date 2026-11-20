@@ -41,6 +41,9 @@ describe('live geometry backing', () => {
     const shared = Uint32Array.from([0, 1, 2, 2, 1, 0]);
     const bitmap = { width: 1, height: 1, close() {} } as unknown as ImageBitmap;
     const meshes = [fullMesh(10, shared, bitmap), fullMesh(20, shared, bitmap)];
+    // Described BEFORE the writer runs, deep-copied: an encoder that changed the input in place (rounding a
+    // colour to f32, say) and persisted it must not change the expected side too.
+    const expected = structuredClone(meshes.map(describeMesh));
     await backing.writer.append(meshes);
     await backing.writer.close();
     assert.equal(backing.isComplete, true);
@@ -49,7 +52,7 @@ describe('live geometry backing', () => {
     assert.equal(await db.count(SOURCES, backing.backingId), 1, 'shared canonical source stored once');
 
     const read = await collect(backing);
-    assert.deepEqual(read.map(describeMesh), meshes.map(describeMesh));
+    assert.deepEqual(read.map(describeMesh), expected);
     assert.equal(read[0].appearanceSource?.indices, read[0].indices, 'identity fence restored');
     assert.equal(read[0].appearanceSource?.sourceIndices, read[1].appearanceSource?.sourceIndices,
       'pieces of one item share their decoded canonical source');

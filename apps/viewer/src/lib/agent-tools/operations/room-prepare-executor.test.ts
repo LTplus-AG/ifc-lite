@@ -20,10 +20,10 @@ import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { SpacePlateHandle } from '@ifc-lite/wasm';
 
-let host: ToolHost;
+let host: ToolHost, granted = true;
 const invoke = (id: string, input: unknown = {}, write = false) => dispatchMainViewerTool(host, write ? 'viewer_operation_execute' : 'viewer_operation_inspect', {
   ...(viewerOperation(id).needs === 'model' ? { model_id: MODEL } : {}), operation_id: id, input,
-}, { canEdit: () => true });
+}, { canEdit: () => granted });
 function answer<T>(result: AgentToolResult): T {
   assert.equal(result.isError, false, result.text);
   const value = (result.structured as { result: { native_json?: string } }).result;
@@ -47,7 +47,7 @@ function alongsideRemesh(change: () => void) {
 
 describe('authoring.room.prepare through the operation executor (#10908)', () => {
   const initial = useViewerStore.getState();
-  beforeEach(() => { resetFeaturesForTest(); });
+  beforeEach(() => { resetFeaturesForTest(); granted = true; });
   afterEach(() => { clearModelLayouts(MODEL); setRemeshClientFactory(null); useViewerStore.setState(initial, true); });
 
   it('prepares despite its own wall remesh, and the token applies', async (t) => {
@@ -90,6 +90,22 @@ describe('authoring.room.prepare through the operation executor (#10908)', () =>
     try {
       const refused = await prepare({ action: 'edit', operation: { kind: 'split', a: [21, 20], b: [21, 23] }, tolerance: .01 });
       assert.match(refused.text, /Model replaced, closed, or edited during the operation/);
+      assert.equal(plates.length, 1, 'the split duplicated one plate');
+      assert.ok(freed.has(plates[0]), 'the refused preparation freed the plate it held');
+    } finally { stop(); dup.mock.restore(); fre.mock.restore(); }
+  });
+
+  it('releases the native preparation when the edit grant is revoked during the remesh', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await setup();
+    const plates: SpacePlateHandle[] = [], freed = new Set<SpacePlateHandle>();
+    const duplicate = SpacePlateHandle.prototype.duplicate, free = SpacePlateHandle.prototype.free;
+    const dup = mock.method(SpacePlateHandle.prototype, 'duplicate', function (this: SpacePlateHandle) { const plate = duplicate.call(this); plates.push(plate); return plate; });
+    const fre = mock.method(SpacePlateHandle.prototype, 'free', function (this: SpacePlateHandle) { freed.add(this); return free.call(this); });
+    const stop = alongsideRemesh(() => { granted = false; });
+    try {
+      const refused = await prepare({ action: 'edit', operation: { kind: 'split', a: [21, 20], b: [21, 23] }, tolerance: .01 });
+      assert.match(refused.text, /Commands and edits grant was revoked/);
       assert.equal(plates.length, 1, 'the split duplicated one plate');
       assert.ok(freed.has(plates[0]), 'the refused preparation freed the plate it held');
     } finally { stop(); dup.mock.restore(); fre.mock.restore(); }

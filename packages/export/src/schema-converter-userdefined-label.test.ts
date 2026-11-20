@@ -58,7 +58,9 @@ describe('the .USERDEFINED. label (#10824)', () => {
       expect(run("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", 'IFC2X3', to).out, to)
         .toBe("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);");
     }
-    // Down, the label is UserDefinedFunction, IFC2X3's short name for it.
+    // Down, the label is UserDefinedFunction, IFC2X3's short name for it. Every IFC4/IFC4X3 board member is in
+    // IFC2X3's point enum, so the member here is one the source enum lacks too: IfcDistributionBoard's
+    // `.DISPATCHINGBOARD.` written on an IfcElectricDistributionBoard (Claude review on #10862).
     expect(run("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", 'IFC4X3', 'IFC2X3'))
       .toEqual({ out: "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'DISPATCHINGBOARD');", warnings: [] });
     expect(run('#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,$);', 'IFC4', 'IFC2X3'))

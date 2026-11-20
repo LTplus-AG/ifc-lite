@@ -24,7 +24,7 @@ import { useViewerStore } from '@/store';
 import type { MeshData } from '@ifc-lite/geometry';
 import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
 import { toast } from '../ui/toast.js';
-import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
+import { clearSceneSupersedingReplays, reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { geometryMeshKey } from './geometry-mesh-key';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
@@ -200,7 +200,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         cameraSnapshotRef.current = null;
         robustFitAccRef.current.reset();
         if (renderer && isInitialized) {
-          renderer.getScene().clear();
+          clearSceneSupersedingReplays(renderer.getScene());
           invalidateLandXmlGpuOwnershipAfterSceneClear();
           renderer.getCamera().reset();
           geometryBoundsRef.current = { ...DEFAULT_BOUNDS };

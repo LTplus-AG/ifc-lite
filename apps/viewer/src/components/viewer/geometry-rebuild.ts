@@ -37,3 +37,13 @@ export function reshapeSceneKeepingPresentInstanced(
     }
   }
 }
+
+/**
+ * A full scene clear (geometry unloaded or a session reset). Like every flat reshape it starts
+ * a new released-replay epoch first: a replay awaiting the backing must not upload a removed
+ * model into the cleared scene (#10264). Every viewer scene clear goes through here or the reshape.
+ */
+export function clearSceneSupersedingReplays(scene: Pick<SceneContents, 'clear'>): void {
+  supersedeReleasedReplays();
+  scene.clear();
+}

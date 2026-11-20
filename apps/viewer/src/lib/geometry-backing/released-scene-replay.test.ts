@@ -8,7 +8,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import type { SceneContents } from '@ifc-lite/renderer';
-import { reshapeSceneKeepingPresentInstanced } from '@/components/viewer/geometry-rebuild';
+import { clearSceneSupersedingReplays, reshapeSceneKeepingPresentInstanced } from '@/components/viewer/geometry-rebuild';
 import { releasedReplaysIdle, splitReleasedForReplay } from './released-scene-replay';
 import { notifyReleasedGeometryMetadataChanged } from './released-geometry-metadata';
 
@@ -82,6 +82,26 @@ describe('released scene replay (content reload)', () => {
     notifyReleasedGeometryMetadataChanged();
     await releasedReplaysIdle();
     assert.equal(attempts, 4, 'no retry is pending after the success');
+  });
+
+  it('#10903 unloading the geometry (a full scene clear) during a deferred backing read uploads nothing into the cleared scene', async () => {
+    const list = releasedList();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const uploads: string[] = [];
+    splitReleasedForReplay(renderer, list, async (_r, _m, isCurrent) => {
+      await gate; // the awaited backing read
+      if (!isCurrent()) return false;
+      uploads.push('removed model');
+      return true;
+    });
+    // useGeometryStreaming's null-geometry branch: the scene is cleared, not reshaped.
+    let cleared = 0;
+    clearSceneSupersedingReplays({ clear: () => { cleared++; } });
+    release();
+    await releasedReplaysIdle();
+    assert.equal(cleared, 1);
+    assert.deepEqual(uploads, [], 'the removed model never reaches the cleared scene');
   });
 
   it('a parked replay is dropped by the next reshape and never uploads into it', async () => {

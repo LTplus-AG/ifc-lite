@@ -212,6 +212,7 @@ export class HiddenLineClassifier {
 
     // For very short lines, just test the midpoint
     const numSamples = lineLength < EPSILON ? 1 : Math.max(2, samplesPerLine);
+    const bisectionSteps = this.transitionBisectionSteps(line, numSamples);
 
     const segments: VisibilitySegment[] = [];
     let currentStart = line.line.start;
@@ -241,13 +242,7 @@ export class HiddenLineClassifier {
         // the occluder's edge, not half a sample spacing away from it.
         let lo = (i - 1) / numSamples;
         let hi = t;
-        const linePixels = this.lineLengthInPixels(line);
-        for (
-          let step = 0;
-          step < MAX_TRANSITION_BISECTION_STEPS &&
-          (step < MIN_TRANSITION_BISECTION_STEPS || (hi - lo) * linePixels > 1);
-          step++
-        ) {
+        for (let step = 0; step < bisectionSteps; step++) {
           const mid = (lo + hi) / 2;
           const midVisible = this.sampleVisibility(pointAt(mid), depthAt(mid), depthBias);
           if (midVisible === currentVisible) lo = mid;
@@ -296,19 +291,23 @@ export class HiddenLineClassifier {
   }
 
   /**
-   * The line's length in depth-raster pixels along its longer pixel axis.
-   * Only called once a transition exists, which needs a raster.
+   * Halvings needed to narrow one sample spacing of `line` to under one
+   * depth-raster pixel, clamped to the min/max step counts. No raster (so no
+   * transitions) or degenerate bounds fall back to the minimum or the cap.
    */
-  private lineLengthInPixels(line: DrawingLine): number {
+  private transitionBisectionSteps(line: DrawingLine, numSamples: number): number {
     const raster = this.raster;
-    if (!raster) return 0;
+    if (!raster) return MIN_TRANSITION_BISECTION_STEPS;
     const { bounds, width, height } = raster;
     const dx = Math.abs(line.line.end.x - line.line.start.x);
     const dy = Math.abs(line.line.end.y - line.line.start.y);
-    return Math.max(
+    const spacingPixels = Math.max(
       (dx / (bounds.max.x - bounds.min.x)) * (width - 1),
       (dy / (bounds.max.y - bounds.min.y)) * (height - 1),
-    );
+    ) / numSamples;
+    const steps = Math.ceil(Math.log2(spacingPixels));
+    if (Number.isNaN(steps)) return MIN_TRANSITION_BISECTION_STEPS;
+    return Math.min(MAX_TRANSITION_BISECTION_STEPS, Math.max(MIN_TRANSITION_BISECTION_STEPS, steps));
   }
 
   private sampleVisibility(point: Point2D, lineDepth: number, depthBias: number): boolean {

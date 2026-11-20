@@ -508,45 +508,27 @@ describe('HiddenLineClassifier transition point (bisected, not half a sample)', 
     },
   );
 
-  it('ends the hidden stretch at the occluder edge, not half a sample past it', () => {
-    // A slab at view depth 5 covers y in [-1, 1.2] of a 10-high vertical edge
-    // at view depth 7 behind it. With 10 samples (spacing 1) the flip is
-    // seen between y = 1 (hidden) and y = 2 (visible); the old midpoint
-    // guess put the visible part's start at 1.5, 0.3 above the slab edge.
-    const slab = occluderMesh(-5, -1, 1.2);
-    const classifier = new HiddenLineClassifier({ samplesPerLine: 10 });
-    classifier.buildDepthBuffer([slab], { axis: 'z', position: 0, flipped: false }, 10);
-
-    const edge: DrawingLine = {
-      line: { start: { x: 5, y: 0 }, end: { x: 5, y: 10 } },
-      category: 'projection',
-      visibility: 'visible',
-      entityId: 1,
-      ifcType: 'IfcWall',
-      modelIndex: 0,
-      depth: 7,
-    };
-
-    const [result] = classifier.classifyLines([edge]);
-    expect(result.segments).toHaveLength(2);
-    expect(result.segments[0].visible).toBe(false);
-    expect(result.segments[1].visible).toBe(true);
-    expect(result.segments[1].start.y).toBeCloseTo(1.2, 1);
-  });
-
-  it('keeps the split within a pixel on a line far longer than the raster', () => {
-    // Same slab, but the edge runs to y = 10000, so one sample spans 1000.
-    // Seven halvings alone stop near y = 3.9; the pixel-based stop keeps
-    // bisecting until the split is at the slab edge.
-    const classifier = new HiddenLineClassifier({ samplesPerLine: 10 });
-    classifier.buildDepthBuffer([occluderMesh(-5, -1, 1.2)], { axis: 'z', position: 0, flipped: false }, 10);
-    const edge: DrawingLine = {
-      line: { start: { x: 5, y: 0 }, end: { x: 5, y: 10000 } },
-      category: 'projection', visibility: 'visible', entityId: 1,
-      ifcType: 'IfcWall', modelIndex: 0, depth: 7,
-    };
-    const [result] = classifier.classifyLines([edge]);
-    expect(result.segments).toHaveLength(2);
-    expect(result.segments[1].start.y).toBeCloseTo(1.2, 1);
-  });
+  it.each([10, 10000])(
+    'ends the hidden stretch at the occluder edge, not half a sample past it (edge to y = %d)',
+    (endY) => {
+      // A slab at view depth 5 covers y in [-1, 1.2] of a vertical edge at
+      // view depth 7 behind it. At endY = 10 with 10 samples (spacing 1) the
+      // flip is seen between y = 1 (hidden) and y = 2 (visible); the old
+      // midpoint guess put the visible part's start at 1.5. At endY = 10000
+      // one sample spans 1000, and seven fixed halvings stopped near y = 3.9;
+      // bisection must continue to the raster pixel.
+      const classifier = new HiddenLineClassifier({ samplesPerLine: 10 });
+      classifier.buildDepthBuffer([occluderMesh(-5, -1, 1.2)], { axis: 'z', position: 0, flipped: false }, 10);
+      const edge: DrawingLine = {
+        line: { start: { x: 5, y: 0 }, end: { x: 5, y: endY } },
+        category: 'projection', visibility: 'visible', entityId: 1,
+        ifcType: 'IfcWall', modelIndex: 0, depth: 7,
+      };
+      const [result] = classifier.classifyLines([edge]);
+      expect(result.segments).toHaveLength(2);
+      expect(result.segments[0].visible).toBe(false);
+      expect(result.segments[1].visible).toBe(true);
+      expect(result.segments[1].start.y).toBeCloseTo(1.2, 1);
+    },
+  );
 });

@@ -74,6 +74,7 @@ export const clashTopicOperations = [
         isCurrent,
         signal: c.signal,
         commit: (write) => c.commit(write),
+        requireSnapshot: true,
       });
       assertToolActive(c);
       if (!created) throw new Error('Native BCF topic capture failed or was superseded.');

@@ -184,18 +184,15 @@ function assertModelCurrent(host: ToolHost, model: ReadyModel): void {
 }
 
 /** Settle as cancelled the moment `signal` aborts, instead of waiting on a lookup that cannot be interrupted. */
-function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined, committed: () => boolean = () => false, dropped: () => void = () => {}): Promise<T> {
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined, committed: () => boolean = () => false): Promise<T> {
   if (!signal) return work;
   return new Promise<T>((resolve, reject) => {
-    // The caller gets the cancellation, never the result, so nothing stored for that result may stay.
-    const abort = () => { if (!committed()) { dropped(); reject(cancelledDispatch()); } };
+    const abort = () => { if (!committed()) reject(cancelledDispatch()); };
     if (signal.aborted && !committed()) { abort(); return; }
     if (!signal.aborted) signal.addEventListener('abort', abort, { once: true });
     work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
 }
-
-function drop(state: { discard?: () => void }) { state.discard?.(); }
 
 export interface DispatchContext {
   signal?: AbortSignal;
@@ -232,15 +229,15 @@ export async function dispatchMainViewerTool(
     }
     const input = (args ?? {}) as Record<string, unknown>;
     assertDispatchActive(ctx.signal);
-    const commitState: { committed: boolean; committing?: boolean; discard?: () => void } = { committed: false };
+    const commitState: { committed: boolean; committing?: boolean } = { committed: false };
     if (tool.needs === 'none') {
-      const out = await untilAborted(tool.run(host, input, { ...ctx, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true, () => drop(commitState));
+      const out = await untilAborted(tool.run(host, input, { ...ctx, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true);
       return { text: out.text, structured: out.structured, isError: false };
     }
     const model = usableModel(resolveModel(host, input), tool.needs, toolName);
     const stillCurrent = () => assertModelCurrent(host, model);
     const out = await untilAborted(
-      tool.run(host, model, input, { signal: ctx.signal, checkpoint: stillCurrent, canEdit: ctx.canEdit, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true, () => drop(commitState));
+      tool.run(host, model, input, { signal: ctx.signal, checkpoint: stillCurrent, canEdit: ctx.canEdit, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true);
     // An edit is written synchronously and is in the undo history: report it as done.
     if (commitState.committed) return { text: out.text, structured: out.structured, isError: false, ...(out.edit ? { edit: out.edit } : {}) };
     if (out.edit) return { text: out.text, structured: out.structured, isError: false, edit: out.edit };

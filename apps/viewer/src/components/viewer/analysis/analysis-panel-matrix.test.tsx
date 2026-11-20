@@ -27,7 +27,7 @@ import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import type { Clash, ClashResult } from '@ifc-lite/clash';
 import type { IDSDocument, IDSValidationReport } from '@ifc-lite/ids';
 import type { ModelDiff } from '@ifc-lite/diff';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, settle as settleEdit } from '@/test/render.js';
 import { installLayout } from '@/test/dom-layout.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture.js';
@@ -186,7 +186,7 @@ function mountedRows(root: ParentNode): number {
   return root.querySelectorAll('[data-index]').length;
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   clearDownloads();
   useViewerStore.setState({
@@ -198,6 +198,7 @@ afterEach(() => {
     bcfProject: null, activeTopicId: null, bcfError: null, bcfLoading: false,
     isolatedEntities: null, selectedEntityIds: new Set(), selectedEntityId: null,
   });
+  await settleEdit();
 });
 
 // ── the matrix ──────────────────────────────────────────────────────────────
@@ -335,25 +336,28 @@ describe('analysis-panel consistency matrix (#5834)', () => {
       assert.match(ui.querySelector('output')?.textContent ?? '', /model changed/i);
       assert.ok(ui.querySelector('.opacity-60'), 'the old result is dimmed');
     };
-    for (const n of counts('IDS')) it(`IDS, ${n} model(s)`, () => {
+    for (const n of counts('IDS')) it(`IDS, ${n} model(s)`, async () => {
       seedIdsModels(n);
       useViewerStore.setState({ idsDocument, idsValidationReport: stampAnalysisReport(idsReport(), captureAnalysisStamp()) });
       const ui = render(<IDSPanel />);
       act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+      await settleEdit();
       expectStale(ui);
       mark('stale', 'IDS');
     });
     for (const n of counts('Clash')) it(`Clash, ${n} model(s)`, async () => {
       const ui = await clashWithResult(n);
       act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+      await settleEdit();
       expectStale(ui);
       mark('stale', 'Clash');
     });
-    for (const n of counts('Compare')) it(`Compare, ${n} models`, () => {
+    for (const n of counts('Compare')) it(`Compare, ${n} models`, async () => {
       seedCompareModels(n);
       useViewerStore.setState({ compareResult: stampAnalysisReport(compareResult(), captureAnalysisStamp()) });
       const ui = render(<ComparePanel />);
       act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+      await settleEdit();
       expectStale(ui);
       mark('stale', 'Compare');
     });

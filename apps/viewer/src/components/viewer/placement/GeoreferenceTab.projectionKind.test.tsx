@@ -11,7 +11,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { advance, cleanup, click, render, waitFor } from '@/test/render';
+import { advance, cleanup, click, render, settle, waitFor } from '@/test/render';
 import { resolveProjection } from '@/lib/geo/reproject';
 import { GeoreferenceTab } from './GeoreferenceTab';
 import { CesiumPlacementGizmo } from './CesiumPlacementGizmo';
@@ -99,6 +99,7 @@ it('preserves projected one-metre nudge/apply and immediately disables on CRS ch
   assert.equal(useViewerStore.getState().cesiumPlacementDraft?.eastings, conversion.eastings + 1);
   click(Array.from(ui.querySelectorAll('button')).find(button => button.textContent?.includes('Set as georeference'))!);
   assert.equal(useViewerStore.getState().getGeorefMutations('m')?.mapConversion?.eastings, conversion.eastings + 1);
+  await settle(); // the applied edit reaches the tab before the next action, as on screen
   const sourceBefore = useViewerStore.getState().getGeorefMutations('m');
   const draftBefore = useViewerStore.getState().cesiumPlacementDraft;
   click(Array.from(ui.querySelectorAll('button')).find(button => button.textContent === 'Switch to geographic')!);

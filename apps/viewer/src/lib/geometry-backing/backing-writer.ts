@@ -25,12 +25,22 @@ import { encodeShardRecord } from './shard-record';
 
 export const DEFAULT_CHUNK_BYTES = 8 * 1024 * 1024;
 export const DEFAULT_QUEUE_BYTES = 64 * 1024 * 1024;
+/**
+ * Records bound a chunk and the queue too: a mesh with empty arrays adds a record and directory entries
+ * but no bytes, so a byte bound alone would never seal or pause on a list of them.
+ */
+export const DEFAULT_CHUNK_RECORDS = 4096;
+export const DEFAULT_QUEUE_CHUNKS = 8;
 
 export interface BackingWriterOptions {
   /** A chunk is sealed once its stored bytes reach this. */
   chunkBytes?: number;
   /** Encoded-but-uncommitted bytes above which `append` waits. */
   queueBytes?: number;
+  /** A chunk is also sealed once it holds this many records. */
+  chunkRecords?: number;
+  /** Sealed-but-uncommitted chunks above which `append` also waits. */
+  queueChunks?: number;
 }
 
 export interface ChunkRecord { meshes: MeshRecord[] }
@@ -58,6 +68,8 @@ export class BackingWriter {
   private records: MeshRecord[] = [];
   private sources: PendingSource[] = [];
   private readonly queue: Job[] = [];
+  private readonly chunkRecords: number;
+  private readonly queueChunks: number;
   private draining = false;
   private uncommitted = 0;
   private failure: Error | undefined;
@@ -76,6 +88,8 @@ export class BackingWriter {
   ) {
     this.chunkBytes = positiveBytes(options.chunkBytes, DEFAULT_CHUNK_BYTES, 'Backing chunk size');
     this.queueBytes = positiveBytes(options.queueBytes, DEFAULT_QUEUE_BYTES, 'Backing queue bound');
+    this.chunkRecords = positiveBytes(options.chunkRecords, DEFAULT_CHUNK_RECORDS, 'Backing chunk record bound');
+    this.queueChunks = positiveBytes(options.queueChunks, DEFAULT_QUEUE_CHUNKS, 'Backing queue chunk bound');
     // The open chunk is outside the queue's wait condition; keep it within the bound.
     if (this.chunkBytes > this.queueBytes) throw new RangeError('Backing chunk size must not exceed the queue bound');
   }
@@ -118,10 +132,10 @@ export class BackingWriter {
         this.records.push(encoded.record);
         this.sources.push(...encoded.sources);
         this.uncommitted += encoded.bytes;
-        if (this.builder.bytes >= this.chunkBytes) this.seal();
+        if (this.builder.bytes >= this.chunkBytes || this.builder.meshCount >= this.chunkRecords) this.seal();
         // A single append can contain a model's entire resident mesh list.
         // Stop after the first mesh crossing the bound, before copying more.
-        if (this.uncommitted > this.queueBytes) {
+        if (this.full()) {
           await this.room();
           this.usable();
         }
@@ -251,8 +265,11 @@ export class BackingWriter {
     return new Promise<void>((resolve, reject) => { this.progress.push({ resolve, reject }); });
   }
 
+  /** Too much encoded and not yet committed: by bytes, or by sealed chunks (empty records weigh nothing). */
+  private full(): boolean { return this.uncommitted > this.queueBytes || this.queue.length > this.queueChunks; }
+
   private async room(): Promise<void> {
-    while (this.uncommitted > this.queueBytes && this.queue.length > 0) await this.nextProgress();
+    while (this.full() && this.queue.length > 0) await this.nextProgress();
     if (this.failure) throw this.failure;
   }
 

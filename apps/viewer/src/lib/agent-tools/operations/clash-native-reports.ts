@@ -40,13 +40,22 @@ function owned(host: ToolHost) {
   }
   return map;
 }
+/** Every live and durable dependency, refusing a preview that could not read them all: a reference it
+ * cannot see would be broken by the deletion. */
 async function dependencies(id: string) {
   const [{ loadDocuments }, { reportChartDependencies }] = await Promise.all([
     import('@/lib/document/persistence'),
     import('@/lib/reports/chart-dependencies'),
   ]);
   const entries = await loadDocuments();
-  return reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
+  const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
+  // Opening the library is a configuration effect of its own, so a read does not do it here.
+  if (preview.documentPhase === 'loading') throw new Error('The Documents library is not open yet. Run document.initialize, then prepare again.');
+  // Invalid single dashboards (omittedDashboards) and recovered documents stay in the preview for the agent to
+  // weigh, as the panel shows them; only storage that could not be read at all hides every reference in it.
+  if (preview.documentPhase === 'unavailable' || preview.dashboardsUnavailable)
+    throw new Error('Saved dashboards or Documents could not be read, so their references to this report are unknown. Restore that storage, then prepare again.');
+  return preview;
 }
 export const clashReportOperations = [
   viewerOperation<PageInput>(
@@ -185,9 +194,17 @@ export const clashReportOperations = [
       )
         throw new Error('Deletion target or dependencies changed. Preview again.');
       let staged = false;
+      // The library also runs this on a later storage retry, after this call has ended or lost its grant.
+      // Refusing then (not throwing) lets the library restore the report instead of leaving it hidden.
       const guard = async () => {
-        const latest = await dependencies(candidate.report.id);
-        assertToolActive(c);
+        let latest: Awaited<ReturnType<typeof dependencies>>;
+        try {
+          latest = await dependencies(candidate.report.id);
+          assertToolActive(c);
+        } catch (error) {
+          console.warn('[Clash reports] Deletion guard refused:', error);
+          return false;
+        }
         const now = useViewerStore.getState();
         if (
           now.deleteSavedClashReport !== candidate.action ||

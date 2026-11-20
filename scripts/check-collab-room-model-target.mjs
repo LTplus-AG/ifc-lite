@@ -515,7 +515,7 @@ const CALL_SITE_FLOOR = {
   mirrorPropertyEdit: 1,
   mirrorPropertyDelete: 1,
   mirrorAttributeEdit: 1,
-  mirrorPlacementEdit: 3,
+  mirrorPlacementEdit: 3, // a move's is `publishMove(get(), modelId, …)`, which mirrors it and records its undo (#10810)
   mirrorEntityRemove: 1,
   mirrorEntityCreate: 1, // runInStoreElementBuilder: every add*, addColumn included
   mirrorEntityGeometry: 1, // requestRemesh: every re-mesh (add*, resize, their undo / redo), one call per re-meshed element (#6232)
@@ -526,19 +526,15 @@ const CALL_SITE_FLOOR = {
 {
   const entityActionNames = new Set(entityActions.map((a) => a.name));
   const seen = new Map();
-  const CALL_RE = /get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(\s*([A-Za-z0-9_.()!]*)/g;
-  // A move mirrors through `publishMove(get(), modelId, …)` (mutation-room-history.ts), which hands its modelId on
-  // to `mirrorPlacementEdit` and records the move for its undo (#10810), so it counts as that call site.
-  const PUBLISH_MOVE_RE = /publishMove\(\s*get\(\)\s*,\s*([A-Za-z0-9_.()!]*)/g;
+  const CALL_RE = /(?:get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(|publishMove\(\s*get\(\)\s*,)\s*([A-Za-z0-9_.()!]*)/g;
   for (const file of [mutation, mutationWallResize, remeshService, mutationRotateEntity]) {
-    const calls = [...file.clean.matchAll(CALL_RE)].map((m) => ({ index: m.index, name: m[1], firstArg: m[2] }))
-      .concat([...file.clean.matchAll(PUBLISH_MOVE_RE)].map((m) => ({ index: m.index, name: 'mirrorPlacementEdit', firstArg: m[1] })));
-    for (const { index, name, firstArg } of calls) {
+    for (const m of file.clean.matchAll(CALL_RE)) {
+      const name = m[1] ?? 'mirrorPlacementEdit', firstArg = m[2];
       if (!entityActionNames.has(name)) continue;
       seen.set(name, (seen.get(name) ?? 0) + 1);
       if (firstArg !== 'modelId') {
         fail([
-          `${file.rel}:${file.lineOf(index)}: \`${name}\` is handed \`${firstArg}\`, not \`modelId\`.`,
+          `${file.rel}:${file.lineOf(m.index)}: \`${name}\` is handed \`${firstArg}\`, not \`modelId\`.`,
           '',
           `The room gate inside \`${name}\` trusts the modelId it is given. Handing it
 anything but the model this edit was made ON — \`activeModelId\` above all —

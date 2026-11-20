@@ -44,7 +44,10 @@ export const coordinationScriptSessionOperations = [
   coordination<{ id: string; name: string }>('script.rename', 'Rename a known saved native script.', ['configuration'], {
     type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['id', 'name'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
-    const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw new Error('Unknown saved script.'); const storage = s.renameScript(i.id, i.name); return { id: i.id, name: i.name, storage: storage ?? null }; 
+    const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw new Error('Unknown saved script.'); const storage = s.renameScript(i.id, i.name);
+    // renameScript returns nothing when native name validation refuses the name; the script keeps its old one.
+    if (storage === undefined) throw new Error('The native script name was refused.');
+    return { id: i.id, name: useViewerStore.getState().savedScripts.find(script => script.id === i.id)?.name ?? i.name, storage }; 
   })),
   coordination('script.delete', 'Delete one saved script through its native lifecycle; this does not execute any source.', ['configuration'], idSchema, (i, c) => c.commit(() => {
     const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw new Error('Unknown saved script.'); const storage = s.deleteScript(i.id); return { deleted: i.id, storage }; 

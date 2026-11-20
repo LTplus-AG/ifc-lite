@@ -81,6 +81,17 @@ test('#10975 BCF edits survive reload and explicit close clears the working copy
   assert.equal(next().bcfProject?.name, 'Next project');
 });
 
+test('#10975 a flush before initialization reports an unsaved edit', async () => {
+  const early = makeStore();
+  early().setBcfProject(project('Before start'));
+  assert.equal(await early().flushBcfAutosave(), false);
+  await early().initializeBcfAutosave();
+  assert.equal(await early().flushBcfAutosave(), true);
+  const reloaded = makeStore();
+  await reloaded().initializeBcfAutosave();
+  assert.equal(reloaded().bcfProject?.name, 'Before start');
+});
+
 test('#10975 replaces the recovery copy when a project opens during startup', async () => {
   const first = makeStore();
   await first().initializeBcfAutosave();

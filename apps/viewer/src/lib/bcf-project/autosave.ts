@@ -81,7 +81,8 @@ export function createBcfAutosave(
   function flush(): Promise<boolean> {
     clearTimeout(timer);
     timer = undefined;
-    if (!started) return Promise.resolve(true);
+    // Before initialization an edit is only scheduled, never written; report it as unsaved.
+    if (!started) return Promise.resolve(generation === 0);
     if (generation === 0) return load();
     return enqueue(current(), generation);
   }

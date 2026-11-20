@@ -24,7 +24,7 @@ test('#10975 the BCF project codec refuses malformed nested data and unknown ver
     stored([topic, topic]),
     stored([{ ...topic, comments: [{ guid: 'comment', comment: 4 }] }]),
     stored([{ ...topic, viewpoints: [{ guid: 'view', snapshotData: '===' }] }]),
-    stored([{ ...topic, viewpoints: [{ guid: 'view', clippingPlanes: [{ direction: { x: 0, y: null, z: 1 } }] }] }]),
+    stored([{ ...topic, viewpoints: [{ guid: 'view', clippingPlanes: [{ location: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: null, z: 1 } }] }] }]),
     '{"version":9,"project":{"version":"3.0","topics":[]}}',
   ];
   for (const bcfProject of invalid) {

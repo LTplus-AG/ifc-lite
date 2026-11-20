@@ -12,7 +12,7 @@
  * `ViewerConfigError` and the entry shows an error instead of mounting.
  */
 
-import { normalizeProcessedModelHash } from '@ifc-lite/server-client';
+import { normalizeProcessedModelHash } from '@ifc-lite/server-client/processed-model';
 import type { FeatureSelection } from './index';
 
 export interface ViewerRuntimeConfig {

@@ -84,7 +84,8 @@ export const graphAuthoringOperations = [
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
     // Unchanged by the review's own cheap probe, the permanent half of its validate(): loaded models and edit revisions
-    // for Group and Structural, plus geometry identity for Room, and source owners plus zone configuration for Zone.
+    // for Group and Structural, plus geometry content through the review's lease probe for Room, and source owners plus
+    // zone configuration for Zone.
     // A review that fails it is dropped and its native handles released.
     const admit = () => {
       const stillApplies = candidateStillApplies(c.host);

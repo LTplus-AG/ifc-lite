@@ -19,6 +19,7 @@ import { cancelMeasureRaycast, handleMeasureHover } from './measureHandlers.js';
 import { handlePolylineClick } from './selectionHandlers.js';
 import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { measureReadbacksIdle, runWithReadback, setMeasureReadbackFeedForTest } from './measureReadbackGate.js';
+import { setMeasureReadbackGateLoaderForTest } from './measureReadback.js';
 
 type Read = { x: number; y: number; settle: (outcome: string) => void };
 let reads: Read[] = [];
@@ -30,10 +31,13 @@ const released = { isGeometryDataReleased: () => true };
 const raycasts: Array<[number, number]> = [];
 /** The fake camera's view-projection matrix; an orbit, pan or zoom changes it. */
 let view: number[] = [];
+/** The renderer's pick-geometry revision; a renderer-side model move bumps it with no store change. */
+let pickRevision = 0;
 function ctx(): MouseHandlerContext {
   const renderer = {
     getScene: () => released,
     getCamera: () => ({ getViewProjMatrix: () => ({ m: Float32Array.from(view) }) }),
+    getPickGeometryRevision: () => pickRevision,
     raycastSceneMagnetic: (x: number, y: number) => {
       raycasts.push([x, y]);
       return { intersection: { point: { x, y, z: 0 } }, snapTarget: null,
@@ -70,7 +74,7 @@ const original = globalThis.requestAnimationFrame;
 const originalCancel = globalThis.cancelAnimationFrame;
 beforeEach(() => {
   reads = []; frames = []; snapTargets = []; residue = []; raycasts.length = 0;
-  view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; pickRevision = 0;
   globalThis.requestAnimationFrame = ((cb: () => void) => { frames.push(cb); return frames.length; }) as typeof requestAnimationFrame;
   globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
   setMeasureReadbackFeedForTest((_r, x, y) => new Promise((settle) => { reads.push({ x, y, settle }); }));
@@ -162,6 +166,19 @@ describe('#10880 drag and placement readback', () => {
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own view');
   });
 
+  it('a placement whose model moved (renderer-side) before its read ran is dropped', async () => {
+    const c = ctx();
+    handlePolylineClick(c, 0, 0);
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick(); // the first lands
+    pickRevision++; // setModelTranslation moves the model under the second click's pixel, with no store change
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after its model moved');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+  });
+
   it('a placement whose hide or isolate changed before its read ran is dropped, not placed on what is now shown', async () => {
     const c = ctx();
     handlePolylineClick(c, 0, 0); // clicked on surface A
@@ -184,6 +201,33 @@ describe('#10880 drag and placement readback', () => {
     assert.equal(raycasts.length, 0);
     assert.equal(useViewerStore.getState().activePolyline, null);
   });
+});
+
+it('#10880 a gate chunk that fails to load is retried by the next action, not cached as a failure', async () => {
+  const errors: unknown[] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args[0]); };
+  try {
+    // The first load fails (a network blip); later ones succeed. Nothing resets the gate between the clicks.
+    let loads = 0;
+    setMeasureReadbackGateLoaderForTest(() => (loads++ === 0
+      ? Promise.reject(new Error('chunk failed to load'))
+      : import('./measureReadbackGate.js')));
+    const c = ctx();
+    handlePolylineClick(c, 0, 0);
+    await tick(); await tick();
+    assert.equal(reads.length, 0, 'a failed load runs nothing');
+    assert.ok(errors.some((e) => String(e).includes('did not load')), 'and says so');
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[40, 0]], 'the next action loads the gate and acts');
+    assert.equal(loads, 2, 'the failed load was retried, once');
+  } finally {
+    console.error = originalError;
+    setMeasureReadbackGateLoaderForTest(null);
+  }
 });
 
 it('#10880 a refused Point-mode hover clears the live point an earlier hover showed', async () => {

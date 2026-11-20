@@ -32,7 +32,8 @@ test('#10585 an agent document candidate does not replace an open draft whose sa
   const prepared = await dispatchMainViewerTool(host, 'viewer_operation_inspect', { operation_id: 'ids.document.prepare',
     input: { format: 'new', content: 'Replacement', document_revision: revision } });
   assert.equal(prepared.isError, false, prepared.text);
-  const { token } = (prepared.structured as { result: { token: string } }).result;
+  const output = (prepared.structured as { result: { native_json?: string; token?: string } }).result;
+  const { token } = (output.native_json === undefined ? output : JSON.parse(output.native_json)) as { token: string };
 
   const applied = await dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'ids.candidate.apply', input: { token } }, { canEdit: () => true });
   const detail = `${applied.text} / feedback ${JSON.stringify(useIdsDraftFeedback.getState())}`;

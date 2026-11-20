@@ -173,9 +173,10 @@ test('#10264 killed-after-continue fails acceptance; passes only the explicit wa
 
 test('#10264 A2 every exact --expect pin passes only its own outcome', () => {
   const { OUTCOMES, EXPECTATIONS } = lib();
-  const pins = Object.keys(EXPECTATIONS).filter((pin) => OUTCOMES.includes(pin));
+  const pins = Object.keys(EXPECTATIONS).filter((pin) => EXPECTATIONS[pin].length === 1);
   assert.deepEqual(pins, ['killed', 'loaded', 'refused', 'awaiting-decision']);
   for (const pin of pins) {
+    assert.deepEqual(EXPECTATIONS[pin], [pin], `--expect ${pin} names its outcome`);
     for (const outcome of OUTCOMES) assert.equal(verdict(outcome, pin).pass, outcome === pin, `${outcome} under --expect ${pin}`);
   }
 });

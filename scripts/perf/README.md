@@ -110,12 +110,12 @@ Two tools:
 
 `--expect` is required. `--expect killed` passes only while the tab is still killed and **fails
 on any other outcome**; unless that outcome is `error` or `timeout`, it tells you to switch to
-`--expect not-killed` (the #10264 acceptance: the tab is never killed). `--expect loaded`, `refused` and
-`awaiting-decision` each pass only that exact outcome; the nightly lane below pins `refused` and
-`awaiting-decision`. `error` and `timeout` never pass. Admission now scales its estimate by the
-sampled share of dense triangulated geometry (`geometryDensity.ts`), so the dense minimal case
-below is expected to be `refused` after a bounded sample (four 256 KiB windows), before the
-whole source is read; it runs with `--expect not-killed`.
+`--expect not-killed` (the #10264 acceptance: the tab is never killed). `--expect loaded`,
+`refused` and `awaiting-decision` each pass only that exact outcome. `error` and `timeout` never
+pass. Admission now scales its estimate by the sampled share of dense triangulated geometry
+(`geometryDensity.ts`), so the dense minimal case below is expected to be `refused` after a
+bounded sample (four 256 KiB windows), before the whole source is read. The manual example
+runs it with `--expect not-killed`; the nightly lane below pins it with `--expect refused`.
 
 A viewer may instead warn before an oversized load (a dialog "This model may exceed available
 memory" with Continue loading / Cancel). `--on-memory-dialog wait` (default) reports

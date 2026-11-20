@@ -77,7 +77,8 @@ test('a real anonymized IFC export succeeds when full diagnostic IDs alone excee
   const included = [30, ...relationships];
   const result = await dispatchMainViewerTool(host, 'viewer_operation_execute', {
     operation_id: 'exports.anonymized',
-    input: { ...input, seed_ids: included, expected_included_ids: included },
+    // Anonymized membership always includes the source IfcProject (#1).
+    input: { ...input, seed_ids: included, expected_included_ids: [1, ...included] },
   }, { canEdit: () => true });
   assert.equal(result.isError, false, result.text.slice(0, 500));
   const { artifact, diagnostics_json } = (result.structured as { result: { artifact: { artifact_id: string }; diagnostics_json: string } }).result;

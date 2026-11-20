@@ -26,7 +26,7 @@
  * dialog on a live room shows what was shared.
  */
 
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Copy, Link2, Users } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -77,8 +77,14 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // uploads the model (#5599), and its scope is fixed by the seed (#4444).
   const [scopeConfirmed, setScopeConfirmed] = useState(false);
   const shareCandidate = useCollabShareReview(state => state.candidate);
+  // A candidate applies only as the dialog opens. One staged while it is already open would
+  // overwrite the user's role choice, and the mint effect would create that invite unasked.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
+    const justOpened = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
     if (!open || !shareCandidate) return;
+    if (!justOpened) { useCollabShareReview.setState({ candidate: null }); return; }
     const state = useViewerStore.getState();
     // The agent prepared a scope over specific models: a different active model
     // or model set means the user would be shown a scope nobody inspected.

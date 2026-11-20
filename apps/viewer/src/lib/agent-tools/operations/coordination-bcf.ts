@@ -44,7 +44,7 @@ export const coordinationBcfOperations = [
     return bcfTopicMetadata(topic(i.id));
   })),
   coordination<{ topic_id: string; comment_id: string; expected_comment: string; comment: string }>('bcf.updateComment', 'Edit a local BCF comment only if its current text still matches the inspected value.', ['configuration'], {
-    type: 'object', properties: { topic_id: { type: 'string', minLength: 1, maxLength: 200 }, comment_id: { type: 'string', minLength: 1, maxLength: 200 }, expected_comment: { type: 'string', maxLength: 10000 }, comment: { type: 'string', minLength: 1, maxLength: 10000 } }, required: ['topic_id', 'comment_id', 'expected_comment', 'comment'], additionalProperties: false,
+    type: 'object', properties: { topic_id: { type: 'string', minLength: 1, maxLength: 200 }, comment_id: { type: 'string', minLength: 1, maxLength: 200 }, expected_comment: { type: 'string', maxLength: 1000000 }, comment: { type: 'string', minLength: 1, maxLength: 10000 } }, required: ['topic_id', 'comment_id', 'expected_comment', 'comment'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
     const t = topic(i.topic_id), comment = t.comments.find(comment => comment.guid === i.comment_id);
     if (!comment || comment.comment !== i.expected_comment) throw new Error('BCF comment changed or no longer exists.');
@@ -52,7 +52,7 @@ export const coordinationBcfOperations = [
     return { topic_id: i.topic_id, comment_id: i.comment_id, comment: i.comment };
   })),
   coordination<{ topic_id: string; comment_id: string; expected_comment: string }>('bcf.deleteComment', 'Delete one inspected local comment using the native deletion contract and an expected-text guard.', ['configuration'], {
-    type: 'object', properties: { topic_id: { type: 'string', minLength: 1, maxLength: 200 }, comment_id: { type: 'string', minLength: 1, maxLength: 200 }, expected_comment: { type: 'string', maxLength: 10000 } }, required: ['topic_id', 'comment_id', 'expected_comment'], additionalProperties: false,
+    type: 'object', properties: { topic_id: { type: 'string', minLength: 1, maxLength: 200 }, comment_id: { type: 'string', minLength: 1, maxLength: 200 }, expected_comment: { type: 'string', maxLength: 1000000 } }, required: ['topic_id', 'comment_id', 'expected_comment'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
     const comment = topic(i.topic_id).comments.find(comment => comment.guid === i.comment_id);
     if (!comment || comment.comment !== i.expected_comment) throw new Error('BCF comment changed or no longer exists.');

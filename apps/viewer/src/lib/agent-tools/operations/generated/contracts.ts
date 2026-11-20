@@ -8409,7 +8409,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_comment": {
           "type": "string",
-          "maxLength": 10000
+          "maxLength": 1000000
         },
         "comment": {
           "type": "string",
@@ -8476,7 +8476,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_comment": {
           "type": "string",
-          "maxLength": 10000
+          "maxLength": 1000000
         }
       },
       "required": [

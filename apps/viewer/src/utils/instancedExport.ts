@@ -81,7 +81,12 @@ export interface InstancedModelRange {
  * There is no ambient context: a collector called without one sees only resident geometry, so
  * unrelated code can never read (or be scoped by) another operation's preparation.
  */
-export interface ReleasedExportContext { readonly prepared: ReleasedExportGeometry | null }
+export interface ReleasedExportContext {
+  readonly prepared: ReleasedExportGeometry | null;
+  /** The models this operation was prepared for (#10887 r4647377537); absent: every model. The collector judges
+   * release over exactly these, so a released model outside them cannot refuse or skew the operation. */
+  readonly scope?: readonly string[];
+}
 
 export function withInstancedMeshes(
   geometryResult: GeometryResult,
@@ -91,7 +96,7 @@ export function withInstancedMeshes(
   // Released CPU geometry (#10264): substitute what this operation read back; without its
   // context, fail rather than export empty arrays and no occurrences.
   const prepared = context?.prepared ?? null;
-  if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : undefined)) {
+  if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : context?.scope)) {
     throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');
   }
   if (prepared) {
@@ -214,10 +219,10 @@ export async function withReleasedExportGeometry<T>(run: (context: ReleasedExpor
   exportTail = new Promise<void>((resolve) => { finish = resolve; });
   await previous;
   try {
-    if (!geometryReleased(undefined, scope)) return await run({ prepared: null });
+    if (!geometryReleased(undefined, scope)) return await run({ prepared: null, scope });
     const { prepareReleasedExport } = await import('@/lib/geometry-backing/export-readback');
     const renderer = getGlobalRenderer();
-    return await run({ prepared: await prepareReleasedExport(getViewerState(), renderer?.getScene(), scope) });
+    return await run({ prepared: await prepareReleasedExport(getViewerState(), renderer?.getScene(), scope), scope });
   } finally {
     finish();
   }

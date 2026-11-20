@@ -16,6 +16,7 @@
 
 import { mutationViewBaseStore } from '@/utils/configureMutationView';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { SchemaVersion } from '@ifc-lite/sdk';
 import type { ViewerState } from '../../store/index.js';
 
@@ -36,16 +37,23 @@ export function getLegacyMutationView<T>(views: ReadonlyMap<string, T>): T | und
   return undefined;
 }
 
+type LegacySourceState = Pick<ViewerState, 'models' | 'ifcDataStore'>;
+
+/** Real federated identifiers keep their own overlay, even if they spell an old alias. */
+export function isLegacySourceRef(state: LegacySourceState, modelId: string): boolean {
+  return LEGACY_MUTATION_MODEL_IDS.includes(modelId)
+    && (state.models.size === 0 || (!!state.ifcDataStore && !state.models.has(modelId)));
+}
+
 /** Resolve the overlay paired with the legacy source during single-model
  * loading and while another model is being added to the federation. */
 export function getLegacySourceMutationView(
-  state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews'>,
+  state: LegacySourceState & { mutationViews: ReadonlyMap<string, MutablePropertyView> },
 ) {
   for (const alias of LEGACY_MUTATION_MODEL_IDS) {
     const view = state.mutationViews.get(alias);
     if (!view) continue;
-    const modelStore = state.models.get(alias)?.ifcDataStore;
-    if (modelStore && modelStore !== state.ifcDataStore) continue;
+    if (!isLegacySourceRef(state, alias)) continue;
     const viewStore = mutationViewBaseStore(view);
     if (state.ifcDataStore && viewStore && viewStore !== state.ifcDataStore) continue;
     return view;

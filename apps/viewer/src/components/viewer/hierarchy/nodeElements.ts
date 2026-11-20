@@ -6,7 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store';
 import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
-import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
+import { getLegacySourceMutationView } from '@/sdk/adapters/model-compat';
 import type { TreeNode, UnifiedStorey } from './types';
 
 /** Rows whose elements come from spatial membership; the rest carry theirs on the node. */
@@ -30,7 +30,7 @@ export function createNodeElementsResolver(
   toGlobalIdsForModel: (modelId: string, expressIds: number[]) => number[],
   mutationViews: ReadonlyMap<string, MutablePropertyView>,
 ): (node: TreeNode) => number[] {
-  const legacyView = getLegacyMutationView(mutationViews);
+  const legacyView = getLegacySourceMutationView({ models, ifcDataStore: ifcDataStore ?? null, mutationViews });
   const resolve = (node: TreeNode): number[] => {
     if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
         node.type === 'group' || node.type === 'presentation-layer' || node.type === 'group-member') {

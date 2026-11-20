@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { prepareMutationViewMerge, type MutablePropertyView } from '@ifc-lite/mutations';
-import { isLegacyMutationRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
+import { isLegacySourceRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
 import { mutationViewBaseStore } from '@/utils/configureMutationView';
 import type { ViewerState } from '../index.js';
 import { dropFromChangeSets } from './mutation-history-record.js';
@@ -15,9 +15,10 @@ export function registerOverlayView(
   view: MutablePropertyView,
 ): Partial<ViewerState> {
   const mutationViews = new Map(state.mutationViews).set(modelId, view);
-  if (!isLegacyMutationRef(state, modelId)) return { mutationViews };
+  if (!isLegacySourceRef(state, modelId)) return { mutationViews };
 
-  const aliases = LEGACY_MUTATION_MODEL_IDS.flatMap(id => {
+  const aliasIds = LEGACY_MUTATION_MODEL_IDS.filter(id => isLegacySourceRef(state, id));
+  const aliases = aliasIds.flatMap(id => {
     const aliasView = mutationViews.get(id);
     return aliasView ? [[id, aliasView] as const] : [];
   });
@@ -37,7 +38,7 @@ export function registerOverlayView(
     mutationBatchTags: state.mutationBatchTags, mutationMeshTranslations: state.mutationMeshTranslations,
   };
   const discarded = new Set<string>();
-  for (const id of LEGACY_MUTATION_MODEL_IDS) {
+  for (const id of aliasIds) {
     const records = [...(state.undoStacks.get(id) ?? []), ...(state.redoStacks.get(id) ?? [])];
     for (const mutation of records) if (merge.isShadowed(mutation)) {
       if (state.mutationBatchTags.has(mutation.id)) {

@@ -13,7 +13,7 @@ import { modelEditTarget, readModelEditTarget } from './mutation-modelling-recor
 import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
-import { getLegacyMutationView, isLegacyMutationRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
+import { getLegacySourceMutationView, isLegacySourceRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
@@ -1061,8 +1061,8 @@ export const createMutationSlice: StateCreator<
   // Mutation View Management
   getMutationView: (modelId) => {
     const state = get();
-    const view = isLegacyMutationRef(state, modelId)
-      ? getLegacyMutationView(state.mutationViews)
+    const view = isLegacySourceRef(state, modelId)
+      ? getLegacySourceMutationView(state)
       : state.mutationViews.get(modelId);
     return view ?? null;
   },
@@ -1079,7 +1079,8 @@ export const createMutationSlice: StateCreator<
       const discarded: Mutation[] = [];
       const requestedIds = typeof modelIds === 'string' ? [modelIds] : modelIds;
       const clearedIds = new Set(requestedIds.flatMap(modelId =>
-        isLegacyMutationRef(initial, modelId) ? LEGACY_MUTATION_MODEL_IDS : [modelId]));
+        isLegacySourceRef(initial, modelId)
+          ? LEGACY_MUTATION_MODEL_IDS.filter(id => isLegacySourceRef(initial, id)) : [modelId]));
       for (const modelId of clearedIds) {
         const undo = history.undoStacks.get(modelId) ?? [], redo = history.redoStacks.get(modelId) ?? [];
         const keepGeoref = options?.keepGeoref === true && [...undo, ...redo].some(isGeorefMutation);

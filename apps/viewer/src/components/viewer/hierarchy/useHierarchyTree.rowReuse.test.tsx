@@ -139,6 +139,18 @@ describe('hierarchy rows across edits (#10535)', () => {
     assert.deepEqual(resolve(row), [51]);
   });
 
+  it('ignores a federated model named default when resolving legacy membership (#10762)', async () => {
+    const { tree } = await mountTree();
+    const store = useViewerStore.getState().models.get(MODEL)?.ifcDataStore;
+    assert.ok(store);
+    const otherStore = await new IfcParser().parseColumnar(new TextEncoder().encode(FIXTURE).buffer, { disableWorkerScan: true });
+    const other = { ...fixtureModel('default'), ifcDataStore: otherStore };
+    const view = new MutablePropertyView(otherStore.properties || null, 'default');
+    view.deleteEntity(50);
+    const resolve = createNodeElementsResolver(new Map([['default', other]]), store, [], () => [], (_id, ids) => ids, new Map([['default', view]]));
+    assert.deepEqual(resolve({ ...storeyRow(tree().treeData), modelIds: ['legacy'] }), [50, 51]);
+  });
+
   it('resolves a storey row once per input generation and view revision, and again after either changes', async () => {
     const { tree, view } = await mountTree();
     const storey = storeyRow(tree().treeData);

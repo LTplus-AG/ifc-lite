@@ -256,6 +256,39 @@ it('registration refuses to merge edited aliases bound to different sources (#10
   }
 });
 
+it('merges and clears only the legacy source while an alias-named model is federated (#10762)', async () => {
+  assert.ok(mod);
+  const source = await parse(new TextEncoder().encode(FIXTURE));
+  const otherSource = await parse(new TextEncoder().encode(FIXTURE.replace('Wall A', 'Other source')));
+  const initial = useViewerStore.getState();
+  const canonical = new MutablePropertyView(source.properties, '__legacy__');
+  const historical = new MutablePropertyView(source.properties, 'legacy');
+  const federated = new MutablePropertyView(otherSource.properties, 'default');
+  configureMutationView(canonical, source);
+  configureMutationView(historical, source);
+  configureMutationView(federated, otherSource);
+  canonical.setAttribute(10, 'Name', 'Canonical rename');
+  historical.setAttribute(11, 'Name', 'Historical rename');
+  federated.setAttribute(11, 'Name', 'Federated rename');
+  const other = { ...fixtureModel('default'), ifcDataStore: otherSource };
+
+  useViewerStore.setState({ models: new Map([['default', other]]), ifcDataStore: source, mutationViews: new Map([['default', federated]]) });
+  try {
+    const state = useViewerStore.getState();
+    state.registerMutationView('__legacy__', canonical);
+    state.registerMutationView('legacy', historical);
+    const merged = await parse(mod.editedModelBytes(source, state.getMutationView('legacy')));
+    assert.equal(merged.entities.getName(10), 'Canonical rename');
+    assert.equal(merged.entities.getName(11), 'Historical rename');
+    state.clearMutationView('legacy');
+    assert.equal(state.getMutationView('__legacy__'), null);
+    const untouched = await parse(mod.editedModelBytes(otherSource, state.getMutationView('default')));
+    assert.equal(untouched.entities.getName(11), 'Federated rename');
+  } finally {
+    useViewerStore.setState(initial);
+  }
+});
+
 it('selected entity actions reject a deleted legacy target during federation (#10676)', async () => {
   const store = await parse(new TextEncoder().encode(FIXTURE));
   const initial = useViewerStore.getState();

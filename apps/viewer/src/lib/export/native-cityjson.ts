@@ -18,8 +18,9 @@ export const cityJsonFilename = (name: string, sequence: boolean) => modelExport
  */
 export async function produceNativeCityJson(engine: CityJsonEngine, model: StepExportModel,
   getMutationView: (modelId: string) => MutablePropertyView | null,
-  georefMutations: StepExportGeorefMutations | undefined, sequence: boolean) {
+  georefMutations: StepExportGeorefMutations | undefined, sequence: boolean, checkpoint = () => {}) {
   const source = await resolveStepExportSource(model, getMutationView, georefMutations);
+  checkpoint();
   const result = await engine.exportCityJson(source.bytes, { sequence });
   return {
     blob: new Blob([result.text], { type: sequence ? 'application/x-ndjson' : 'application/json' }),

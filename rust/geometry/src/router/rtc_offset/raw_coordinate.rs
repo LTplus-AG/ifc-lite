@@ -56,6 +56,44 @@ impl GeometryRouter {
         ))
     }
 
+    /// Where a raw item is anchored when the per-mesh local frame rebases it
+    /// by its own position (#10835), in metres: the centre of a face set's
+    /// point list's box, read in f64: per axis it is the point every vertex is
+    /// nearest to in the worst case, so no other anchor (the model RTC, the
+    /// first vertex) narrows a long face set more finely. Other raw items use
+    /// their first vertex.
+    pub(in crate::router) fn representation_item_anchor_meters(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
+        use ifc_lite_core::slot;
+        let coordinates = match item.ifc_type {
+            IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork => {
+                item.attr(slot::IfcTriangulatedFaceSet::COORDINATES)
+            }
+            IfcType::IfcPolygonalFaceSet => item.attr(slot::IfcPolygonalFaceSet::COORDINATES),
+            _ => None,
+        };
+        let point_list = coordinates
+            .and_then(|value| value.as_entity_ref())
+            .and_then(|id| decoder.get_raw_bytes(id))
+        .and_then(ifc_lite_core::extract_coordinate_list_from_entity_f64);
+        let Some(values) = point_list.filter(|values| values.len() >= 3) else {
+            return self.representation_item_first_vertex_meters(item, decoder);
+        };
+        let mut min = [f64::INFINITY; 3];
+        let mut max = [f64::NEG_INFINITY; 3];
+        for point in values.chunks_exact(3) {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(point[axis]);
+                max[axis] = max[axis].max(point[axis]);
+            }
+        }
+        let centre = |axis: usize| (min[axis] + max[axis]) * 0.5 * self.unit_scale();
+        Some((centre(0), centre(1), centre(2)))
+    }
+
     /// Check the proposed offset in the SAME frame as the item's coordinates.
     /// Element-aware callers pull world RTC through their inverse rotation first.
     pub(in crate::router) fn representation_item_benefits_from_rtc(

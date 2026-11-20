@@ -64,12 +64,41 @@ pub(crate) fn scale_positions(mesh: &mut Mesh, unit_scale: f64) {
 /// Finish one item mesh at the boundary every item walk shares: strip
 /// out-of-bounds indices, scale file units to metres, and publish object-frame
 /// bounds when it was rebased by `rtc_offset` (metres, item frame).
-pub(crate) fn finish_item_mesh(mesh: &mut Mesh, unit_scale: f64, rtc_offset: Option<(f64, f64, f64)>) {
+pub(crate) fn finish_item_mesh(mesh: &mut Mesh, unit_scale: f64, rebase: Option<RawRebase>) {
     // Safety net: strip any out-of-bounds indices before downstream use
     mesh.validate_indices();
     scale_positions(mesh, unit_scale);
-    if let Some(offset) = rtc_offset {
-        publish_object_frame_bounds(mesh, offset);
+    if let Some(rebase) = rebase {
+        rebase.finish(mesh);
+    }
+}
+
+/// The f64 rebase a raw-coordinate item is meshed in, chosen by
+/// [`GeometryRouter::raw_item_rebase`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RawRebase {
+    /// Subtracted from every coordinate before narrowing, in file units.
+    pub(crate) file_units: (f64, f64, f64),
+    /// The same offset in metres, in the item's frame.
+    pub(crate) meters: (f64, f64, f64),
+    /// The offset is the item's own anchor, carried in `origin` (#10835),
+    /// not the model RTC, which the mesh is then marked `rtc_applied` for.
+    pub(crate) anchored: bool,
+}
+
+impl RawRebase {
+    /// Finish a unit-scaled mesh meshed in this rebase: publish its
+    /// object-frame bounds and, for an anchor, hand the offset to `origin`
+    /// so placement adds it back in f64.
+    pub(crate) fn finish(self, mesh: &mut Mesh) {
+        publish_object_frame_bounds(mesh, self.meters);
+        if self.anchored {
+            mesh.rtc_applied = false;
+            let (x, y, z) = self.meters;
+            for (origin, offset) in mesh.origin.iter_mut().zip([x, y, z]) {
+                *origin += offset;
+            }
+        }
     }
 }
 
@@ -233,41 +262,60 @@ impl GeometryRouter {
         if !matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork) {
             return None;
         }
-        let rtc = offset_meters.and_then(|offset| {
-            self.raw_item_rtc_file_units(item, decoder, offset)
-                .zip(Some(offset))
-        });
+        let rebase = offset_meters.and_then(|offset| self.raw_item_rebase(item, decoder, offset));
         let proc = crate::processors::TriangulatedFaceSetProcessor::new();
         let (mut mesh, uvs) = proc
-            .process_with_texture_rebased(item, decoder, map, rtc.map(|(file_units, _)| file_units))
+            .process_with_texture_rebased(item, decoder, map, rebase.map(|rebase| rebase.file_units))
             .ok()?;
         if mesh.is_empty() {
             return None;
         }
         self.scale_mesh(&mut mesh); // UVs are unaffected by scale
-        if let Some((_, offset)) = rtc {
-            publish_object_frame_bounds(&mut mesh, offset);
+        if let Some(rebase) = rebase {
+            rebase.finish(&mut mesh);
         }
         Some((mesh, uvs))
     }
 
-    /// `offset_meters` in file units when rebasing `item` by it before f32
-    /// narrowing reduces the item's coordinate magnitude; `None` when there
-    /// is no model RTC or the item is not raw-coordinate geometry (#5684).
-    pub(crate) fn raw_item_rtc_file_units(
+    /// How a raw-coordinate `item` is rebased in f64 before f32 narrowing,
+    /// or `None` when it is not (#5684, #5698).
+    ///
+    /// With the per-mesh local frame on, an item whose coordinates are large
+    /// in its own frame, and still large after the model RTC, is rebased by
+    /// its OWN anchor ([`Self::representation_item_anchor_meters`], rounded to
+    /// the metre), which [`RawRebase::finish`] carries in the
+    /// mesh's f64 `origin`: the model RTC (`offset_meters`, item frame) can
+    /// leave it kilometres away, where f32 has a millimetre grid, as the
+    /// site-local frame does for an item 10 km from its `IfcSite` (#10835).
+    /// Otherwise it is rebased by `offset_meters` when that reduces its
+    /// coordinate magnitude, and marked `rtc_applied`.
+    pub(crate) fn raw_item_rebase(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
         offset_meters: (f64, f64, f64),
-    ) -> Option<(f64, f64, f64)> {
+    ) -> Option<RawRebase> {
+        let scale = self.unit_scale();
+        if self.local_frame_enabled() {
+            let point = self.representation_item_first_vertex_meters(item, decoder);
+            let shifted = point.map(|p| (p.0 - offset_meters.0, p.1 - offset_meters.1, p.2 - offset_meters.2));
+            // An item the model RTC already brings near keeps that rebase.
+            let far = point.is_some_and(crate::coord_is_large) && shifted.is_some_and(crate::coord_is_large);
+            if let Some(anchor) = far.then(|| self.representation_item_anchor_meters(item, decoder)).flatten() {
+                let anchor = (anchor.0.round(), anchor.1.round(), anchor.2.round());
+                return Some(RawRebase {
+                    file_units: (anchor.0 / scale, anchor.1 / scale, anchor.2 / scale),
+                    meters: anchor,
+                    anchored: true,
+                });
+            }
+        }
         (self.has_rtc_offset()
             && self.representation_item_benefits_from_rtc(item, decoder, offset_meters))
-        .then(|| {
-            (
-                offset_meters.0 / self.unit_scale(),
-                offset_meters.1 / self.unit_scale(),
-                offset_meters.2 / self.unit_scale(),
-            )
+        .then(|| RawRebase {
+            file_units: (offset_meters.0 / scale, offset_meters.1 / scale, offset_meters.2 / scale),
+            meters: offset_meters,
+            anchored: false,
         })
     }
 

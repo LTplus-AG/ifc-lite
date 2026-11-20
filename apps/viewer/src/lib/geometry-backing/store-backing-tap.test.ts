@@ -767,4 +767,32 @@ describe('store geometry backing tap (test/debug only)', () => {
     assert.deepEqual(backing.directory.shardsOf(5), [0]);
     await tap.stop();
   });
+
+  it('#10888 r4647508608 an in-place append while seal() awaits the acknowledgement is never acknowledged without it', async () => {
+    const list = [mesh(1, 0), mesh(2, 1)];
+    const store = storeWith({ sa: list });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    await tap.whenIdle();
+    // The loader appends in place exactly while seal() awaits this generation's acknowledgement.
+    const generation = tap.backing('sa')!;
+    const acknowledge = generation.acknowledge.bind(generation);
+    generation.acknowledge = async () => {
+      const pending = acknowledge();
+      append(store, 'sa', [mesh(3, 2)]);
+      return pending;
+    };
+    await tap.seal();
+    const [status] = await tap.seal();
+    assert.equal(status.meshes, 3, 'the appended mesh is consumed');
+    const candidate = tap.releaseCandidate('sa');
+    if (candidate) {
+      // Whatever the allowlist offers must hold every listed mesh, the late one included.
+      const lease = await candidate.backing.reader.leaseEntity(3);
+      try { assert.equal(lease.meshes.length, 1, 'the late mesh is backed in the offered generation'); } finally { lease.release(); }
+    }
+    assert.equal(status.complete, true, status.error ?? 'incomplete: the late append must land in a successor, not fail the model');
+    const lease = await tap.backing('sa')!.reader.leaseEntity(3);
+    try { assert.equal(lease.meshes.length, 1); } finally { lease.release(); }
+    await tap.stop();
+  });
 });

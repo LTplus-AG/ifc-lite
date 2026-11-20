@@ -62,6 +62,8 @@ interface Tracked {
   replaced?: boolean;
   /** A carry of the predecessor's shards is still pending: they count as this generation's shards. */
   carrying?: boolean;
+  /** The store has listed this model: only then can its absence mean a removal (a shard may arrive first). */
+  registered?: boolean;
 }
 
 export interface ModelBackingStatus {
@@ -126,6 +128,7 @@ export class StoreGeometryBackingTap {
     for (const [modelId, model] of state.models) {
       const meshes = model.geometryResult?.meshes;
       const tracked = this.tracked.get(modelId);
+      if (tracked) tracked.registered = true;
       if (!tracked) {
         // A list already released when the tap first sees it (a restart after release-for-test) has no
         // arrays to back: never back its empty records as a generation.
@@ -134,16 +137,19 @@ export class StoreGeometryBackingTap {
           this.tracked.set(modelId, { meshes, consumed: meshes.length, chain: Promise.resolve(), instancedLost: false, shards: 0, stale });
           console.error(`[GeometryBacking] ${modelId}: ${stale.message}`);
         } else this.regenerate(modelId, meshes, 'none');
+        this.tracked.get(modelId)!.registered = true;
         continue;
       }
       // First geometry of a model whose shards arrived earlier: an append.
       if (!versionChanged && tracked.meshes === undefined && tracked.consumed === 0 && meshes) tracked.meshes = meshes;
-      if (tracked.stale) continue;
+      // A stale (released) generation answers nothing; only a fresh resident list may replace it.
+      if (tracked.stale && !(meshes && meshes !== tracked.meshes && meshes.length > 0 && !meshes.some(isReleasedMesh))) continue;
       if (versionChanged || meshes !== tracked.meshes || (meshes && meshes.length < tracked.consumed)) {
         // A released list has no arrays to back, and a new generation would delete the
         // acknowledged one: keep that durable, stop answering from it, never back empties.
         if (meshes?.some(isReleasedMesh)) {
           tracked.stale = new Error('The store list changed after a CPU release; its backing no longer answers');
+          this.supersede(tracked); // retained handles too: not current, its old bytes durable for the tap alone
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
           continue;
         }
@@ -154,6 +160,7 @@ export class StoreGeometryBackingTap {
       if (meshes && meshes.length > tracked.consumed) {
         if (meshes.slice(tracked.consumed).some(isReleasedMesh)) {
           tracked.stale = new Error('Released meshes were appended; they have no arrays to back');
+          this.supersede(tracked);
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
           continue;
         }
@@ -161,7 +168,8 @@ export class StoreGeometryBackingTap {
       }
     }
     for (const modelId of [...this.tracked.keys()]) {
-      if (!state.models.has(modelId)) this.drop(modelId, 'Model was removed');
+      // A generation begun by a shard that arrived before its model was registered waits for the model.
+      if (!state.models.has(modelId) && this.tracked.get(modelId)?.registered) this.drop(modelId, 'Model was removed');
     }
   }
 
@@ -174,7 +182,8 @@ export class StoreGeometryBackingTap {
   private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost'): void {
     const previous = this.tracked.get(modelId);
     this.supersede(previous);
-    const next: Tracked = { meshes, consumed: 0, chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0, carrying: shards === 'carry' };
+    const next: Tracked = { meshes, consumed: 0, chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0, carrying: shards === 'carry',
+      registered: previous?.registered };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       // Read committed shards before `begin` deletes the previous generation (its own carry has run).
       const carried: DecodedInstancedShard[] = [];

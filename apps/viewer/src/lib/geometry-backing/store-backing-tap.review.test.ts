@@ -17,6 +17,7 @@ import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
 import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
+import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
 
 let names = 0;
@@ -133,4 +134,54 @@ it('#10876 release-for-test re-checks the models after its awaits: one added mea
     assert.equal(released, 0, 'the scene was not released');
     assert.equal(meshes[0].positions.length, 9, 'and the store arrays are still resident');
   } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+});
+
+it('#10876 a shard enqueued before its model registers, an unrelated store update, then the model: never acknowledged without that shard', async () => {
+  const store = storeWith({ other: [mesh(1)] });
+  const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+  enqueueInstancedShards('early', [shardBytes(77)], instancedShardGeneration()); // the shard arrives first
+  setList(store, 'other', [mesh(2)]); // an unrelated store update while 'early' is not registered yet
+  setList(store, 'early', [mesh(3)]); // the model registers, with no new shard
+  const status = Object.fromEntries((await tap.seal()).map((row) => [row.modelId, row]));
+  assert.equal(status.early.shards, 1, 'the pre-registration generation kept its shard');
+  assert.equal(status.early.complete, true, status.early.error ?? 'incomplete');
+  const occurrences: number[] = [];
+  for await (const shard of tap.backing('early')!.reader.instancedShards()) occurrences.push(...shard.instances.map((i) => i.entityId));
+  assert.deepEqual(occurrences, [77], 'complete means WITH its instance, never without it');
+  await tap.stop();
+});
+
+it('#10876 a recolour of a released list: the retained handle is not current, refuses reads and no longer verifies', async () => {
+  const list = [mesh(1), mesh(2, 1)];
+  const store = storeWith({ rc: list });
+  const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+  await tap.seal();
+  const retained = tap.backing('rc')!;
+  const ack = await retained.acknowledge();
+  releaseCpuMeshBuffers(list);
+  setList(store, 'rc', list.map((m) => carryReleasedMesh(m, { ...m, color: [1, 0, 0, 1] as [number, number, number, number] })));
+  assert.equal(retained.isCurrent, false, 'not current: the store now holds recoloured geometry');
+  await assert.rejects(retained.reader.leaseEntity(1), /replaced/i, 'its reader never answers the old colours');
+  assert.equal(tap.registryHandle.verify(ack), false, 'and its old acknowledgement no longer verifies');
+  await tap.stop();
+});
+
+it('#10876 a stale (released) generation is replaced by a fresh resident list under the same id, exactly', async () => {
+  const list = [mesh(1)];
+  const store = storeWith({ fr: list });
+  const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+  await tap.seal();
+  const old = tap.backing('fr')!;
+  releaseCpuMeshBuffers(list);
+  setList(store, 'fr', list.map((m) => carryReleasedMesh(m, { ...m, color: [0, 1, 0, 1] as [number, number, number, number] })));
+  assert.equal(tap.backing('fr'), undefined, 'stale: answers nothing');
+  setList(store, 'fr', [mesh(5, 2), mesh(6, 3)]); // a fresh, resident replacement (a reload of the model)
+  const [status] = await tap.seal();
+  assert.equal(status.complete, true, status.error ?? 'the fresh list regenerates');
+  assert.equal(status.meshes, 2);
+  const ids: number[] = [];
+  for await (const batch of tap.backing('fr')!.reader.meshes()) ids.push(...batch.map((m) => m.expressId));
+  assert.deepEqual(ids.sort(), [5, 6], 'the new backing holds exactly the replacement');
+  assert.equal(old.isCurrent, false, 'the retained old handle stays stale');
+  await tap.stop();
 });

@@ -16,11 +16,12 @@
  *       {
  *         "id": "engine-wasm-bytes",         // unique within the family
  *         "metric": "raw-bytes",             // what kind of number it is
- *         "unit": "bytes",                   // optional, for the report
+ *         "unit": "bytes",                   // optional, for the report and lowering default
  *         "fixture": "tests/models/x.ifc",   // optional: the input measured
  *         "description": "...",              // optional
  *         "ceiling": 1300000,                // the committed maximum
  *         "tolerance": { "kind": "relative", "value": 0.005 },
+ *         "headroom": 0.005,                 // optional, for lowering only
  *         "provenance": { "commit": "<sha>", "measuredAt": "<ISO-8601>" }
  *       }
  *     ]
@@ -31,6 +32,10 @@
  * counts. The tolerance is the WHOLE slack above the ceiling, not a per-PR
  * allowance: the ceiling does not move when a PR lands inside it, so a run of
  * small rises still fails once their sum crosses the band.
+ *
+ * `headroom` is a fraction (0 <= headroom < 1), defaulting to 0.005 for
+ * `unit: "bytes"` with relative tolerance and 0 otherwise. The lowering job adds it to the
+ * measurement proportionally and rounds byte targets down to whole bytes.
  *
  * MEASURED FILE, written by a family's `measure-<family>.mjs`:
  *
@@ -91,6 +96,9 @@ export function validateCeilingFile(data) {
     if (typeof e.metric !== 'string' || e.metric === '') problems.push(`${at}: \`metric\` must be a non-empty string`);
     if (e.fixture !== undefined && (typeof e.fixture !== 'string' || e.fixture === '')) problems.push(`${at}: \`fixture\`, when present, must be a non-empty string`);
     if (!isNonNegativeFinite(e.ceiling)) problems.push(`${at}: \`ceiling\` must be a finite number >= 0`);
+    if (e.headroom !== undefined && !(isNonNegativeFinite(e.headroom) && e.headroom < 1)) {
+      problems.push(`${at}: \`headroom\` must be a fraction, 0 <= headroom < 1 (0.005 = 0.5%)`);
+    }
     const t = e.tolerance;
     if (!t || typeof t !== 'object' || !TOLERANCE_KINDS.includes(t.kind)) {
       problems.push(`${at}: \`tolerance.kind\` must be one of ${TOLERANCE_KINDS.join(', ')}`);

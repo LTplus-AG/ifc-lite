@@ -63,6 +63,7 @@ import { computeSourceFingerprint } from '@ifc-lite/cache';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { getCached, setCached } from '../services/cacheService.js';
 import { useIfcLoader } from './useIfcLoader.js';
+import { settle } from '@/test/render.js';
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -130,6 +131,8 @@ beforeEach(async () => {
   hookApi = null;
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
+  // The reset is an edit; let it, and anything the previous test left in flight, settle (#10535).
+  await settle();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);

@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { render, click, cleanup, waitFor } from '@/test/render';
+import { render, click, cleanup, settle, waitFor } from '@/test/render';
 import { clearContentDatabase, refuseContentWrites } from '@/test/content-fixture';
 import { revisionPair, runClash, runIds, type RevisionPair } from '@/lib/compare/revision-pair.test-support';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
@@ -209,6 +209,7 @@ describe('saved runs for reconciliation (#7370)', () => {
     await waitFor(() => useSavedAnalysisRuns.getState().status.items[useSavedAnalysisRuns.getState().entries[0]?.id ?? ''] === 'saved', 'saved');
     const [saved] = useSavedAnalysisRuns.getState().entries;
     act(() => useViewerStore.getState().resetViewerState());
+    await settle();
 
     // A new session captures its own run first, then reopens the saved one.
     cleanup();

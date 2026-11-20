@@ -115,7 +115,5 @@ export const validationPanelFr = {
   "contentStorage.checkUsage": "Vérifier l'utilisation du stockage",
   "contentStorage.unknown": "inconnu",
   "contentStorage.estimate": "Contenu des bibliothèques dans cet onglet : environ {library} Mio. Stockage de l'origine : {usage} Mio sur environ {quota} Mio, y compris les caches de modèles et les autres données du site.",
-  "contentStorage.protected": "Le stockage persistant est activé. Conservez des sauvegardes exportées : effacer les données du site supprime toujours le contenu du navigateur.",
-  "contentStorage.notProtected": "Le navigateur n'a pas accordé de stockage persistant. L'enregistrement fonctionne toujours ; utilisez des sauvegardes exportées pour les travaux importants.",
   "contentStorage.failed": "Échec de l'opération de stockage : {message}",
 } satisfies Catalogue;

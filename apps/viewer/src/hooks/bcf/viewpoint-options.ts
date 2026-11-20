@@ -6,6 +6,8 @@ import type { CapturedSectionPlane } from './section-plane-position';
 export interface CreateViewpointOptions {
   /** Include a snapshot image */
   includeSnapshot?: boolean;
+  /** With `includeSnapshot`, a capture whose frame fails returns null instead of a camera-only viewpoint. */
+  requireSnapshot?: boolean;
   /** Already-rendered PNG; camera/clipping still use the canonical conversion. */ snapshotOverride?: string;
   /** Exact cut rendered by a 2D section snapshot, independent of 3D clipping. */ capturedSectionPlane?: CapturedSectionPlane;
   /** Include selected entities */
@@ -35,6 +37,8 @@ export interface CreateViewpointOptions {
   additionalColoredGuids?: { color: string; guids: string[] }[];
   /** Model-bound GUIDs that supplement an active numeric isolation allowlist. */
   additionalVisibleGuids?: string[];
+  /** The caller's cancellation, forwarded to the capture gate so a cancelled capture never takes the viewport. */
+  signal?: AbortSignal;
   /** Abort when caller-owned scene identity changes while snapshot capture yields. */
   isCaptureStillValid?: () => boolean;
   /** Exact source models represented by the visibility state bound for this capture. */

@@ -24,6 +24,8 @@ import { LandXmlProvisionalUploadError } from './landXmlGpuTransactions.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
 import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 
+export { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './landXmlGpuTransactions.js';
+
 interface LandXmlLoadOptions {
   file: File;
   fileSizeMB: number;

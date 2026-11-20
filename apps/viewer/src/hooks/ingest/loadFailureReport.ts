@@ -35,10 +35,21 @@ export function loadFailureReporter(
     const rawSimd = code !== 'wasm_simd_unsupported' && classifyLoadError(message) === 'wasm_simd_unsupported';
     const noSimd = rawSimd || code === 'wasm_simd_unsupported';
     const shown = activity.fail(rawSimd ? formatLoadError(message) : message);
-    onLoadError?.(shown);
-    const { setError, setLastLoadRetry } = useViewerStore.getState();
-    reportLoadError(setError, setLastLoadRetry, shown, noSimd ? 'wasm_simd_unsupported' : code, noSimd ? null : retry, file);
+    reportLoadFailure(shown, noSimd ? 'wasm_simd_unsupported' : code, noSimd ? null : retry, onLoadError, file);
   };
+}
+
+/** Present a load failure without requiring a load activity or local source file. */
+export function reportLoadFailure(
+  message: string,
+  code: string,
+  retry: (() => void) | null,
+  onLoadError: ((message: string) => void) | undefined,
+  file?: File,
+): void {
+  onLoadError?.(message);
+  const { setError, setLastLoadRetry } = useViewerStore.getState();
+  reportLoadError(setError, setLastLoadRetry, message, code, retry, file);
 }
 
 /** Wait out a kernel refusal (already on the error card) and hand its message, if any, to `onLoadError`. */

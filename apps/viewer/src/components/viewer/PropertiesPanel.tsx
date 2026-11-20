@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveTypeProperties, liveTypeOccurrences } from './properties/effectiveTypeProperties';
-import { lazy, Suspense, useMemo, useState, useCallback, useEffect } from 'react';
+import { Suspense, useMemo, useState, useCallback, useEffect } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { useTranslation } from '@/i18n';
 import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, ChevronDown } from 'lucide-react';
 import { EditToolbar } from './PropertyEditor';
@@ -87,7 +88,7 @@ import { AssistantAction } from './assistant/AssistantAction';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 
 // Loaded on the first structural selection: it is not entry-chunk weight (#9668).
-const StructuralCard = lazy(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
+const StructuralCard = lazyChunk(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
 
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();

@@ -1251,6 +1251,8 @@ jobs:
         # the <= ~36-minute browser path); a browser-only PR gets 40.
         timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 85 || steps.browser.outputs.needed == 'true' && 40 || 18 }}
         env:
+          # Type-only viewer changes compile the same test program as the Typecheck lane.
+          NODE_OPTIONS: --max-old-space-size=8192
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
           # Same as the viewer-e2e lane: GPU-dependent assertions skip on the
           # runner's SwiftShader device, and a skip never counts as observation.

@@ -169,6 +169,8 @@ export class AppearancePreviewSession {
   private readonly preview: AppearancePreview;
   constructor(private readonly renderer: Renderer) { this.preview = renderer.getAppearancePreview(); }
 
+  get isStaged(): boolean { return this.tokens.length > 0; }
+
   stage(groups: readonly AppearancePreviewParts[]): void {
     if (this.tokens.length) throw new Error('Discard the previous appearance preview before staging another.');
     try {

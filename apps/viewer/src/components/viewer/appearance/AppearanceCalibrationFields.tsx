@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { rasterLandmarkAt, rasterLandmarkFraction, type RasterCalibration, type RasterCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
+import { rasterLandmarkAt, rasterLandmarkFraction, completeRasterCalibration, type RasterCalibration, type RasterCalibrationFrame } from '@/lib/appearance/raster-calibration.js';
 import { useTranslation } from '@/i18n';
 
 type Point = [number, number];
@@ -23,16 +23,13 @@ export function AppearanceCalibrationFields({ frame, thumbnailUrl, value, onChan
   const [cursor, setCursor] = useState<Point>([0.5, 0.5]);
   const [distance, setDistance] = useState(value ? String(value.distanceMetres) : '');
   const metres = Number(distance);
-  const a = points[0], b = points[1];
-  const invalid = !a || !b || (a[0] === b[0] && a[1] === b[1]) || !distance.trim() || !Number.isFinite(metres) || metres <= 0;
+  const invalid = !distance.trim() || !completeRasterCalibration(points, metres);
   useEffect(() => { onInvalid('source-calibration', !!invalid); }, [invalid, onInvalid]);
   useEffect(() => () => onInvalid('source-calibration', false), [onInvalid]);
 
   function publish(next: Array<Point | undefined>, text: string): void {
-    const first = next[0], second = next[1], span = Number(text);
-    if (first && second && (first[0] !== second[0] || first[1] !== second[1]) && text.trim() && Number.isFinite(span) && span > 0) {
-      onChange({ sourcePoints: [first, second], distanceMetres: span });
-    }
+    const calibration = text.trim() ? completeRasterCalibration(next, Number(text)) : null;
+    if (calibration) onChange(calibration);
   }
   function choose(fraction: Point): void {
     const next = [...points];

@@ -6,7 +6,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { toPreparedOverlayGlobalId } from '@/store/federation-overlay-publication';
-import { faceMaskRequests, normalizeFaceTriangles, reconcileFaceMasks, type FaceMask, type FaceMasks } from '@/lib/appearance/face-masks.js';
+import { faceMaskRequests, changeNativeFaceMask, reconcileFaceMasks, type FaceMasks } from '@/lib/appearance/face-masks.js';
 import { occurrenceSourceMesh } from '@/lib/appearance/occurrence-source-mesh.js';
 import type { AppearancePlan } from '@/lib/appearance/planner-types.js';
 
@@ -88,14 +88,8 @@ export function useFaceMasks(modelId: string | null) {
     return result;
   }, [commit]);
   const change = useCallback((productId: number, triangles: Iterable<number> | null) => {
-    const conversion = conversions?.items.find(item => item.productId === productId);
     setDiagnostics([]);
-    const next = new Map(current.current);
-    const count = conversion ? conversion.sourceIndices.length / 3 : 0;
-    const normalized = triangles === null || !conversion?.surfaceFingerprint ? new Uint32Array() : normalizeFaceTriangles(triangles, count);
-    if (!normalized.length || normalized.length >= count) next.delete(productId);
-    else next.set(productId, { productId, surfaceFingerprint: conversion!.surfaceFingerprint!, triangles: normalized } satisfies FaceMask);
-    commit(next);
+    commit(changeNativeFaceMask(current.current, conversions?.items, productId, triangles));
   }, [conversions, commit]);
   /** Applied products carry a direct tessellated Body from now on; their selections are spent. */
   const clearApplied = useCallback((productIds: readonly number[]) => {

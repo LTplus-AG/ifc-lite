@@ -164,6 +164,9 @@ export function rejectedForms(
     }
     if (own && 'SRIEB'.includes(form) && accepted.has(`T:${own}`)) rejected.push(`${form}>T:${own}`);
     else if (slot && form === `T:${slot}`) rejected.push(`${form}>U`);
+    else if (from.type === 'IfcTimeMeasure' && to.type === 'IfcDuration' && form === 'R') rejected.push('R>D+');
+    else if (from.type === 'IfcDuration' && to.type === 'IfcTimeMeasure' && form === 'S') rejected.push('S>D-');
+    else if (stringAsText(source, target, form, accepted)) rejected.push(form + '>TEXT');
     else if (setOfAccepted(source, form, target, accepted)) rejected.push(`${form}>U1`);
     else if (form.endsWith('R') && accepted.has(`${form.slice(0, -1)}I`)) rejected.push(`${form}>${form.slice(0, -1)}I`);
     else rejected.push(form);
@@ -180,6 +183,14 @@ function payloadForms(reg: ValueFormRegistry, name: string | undefined): string[
   const out: Forms = new Map();
   collect(reg, reg.types[name], '', false, out, new Set());
   return [...out.keys()].every((f) => 'SRIEB'.includes(f)) ? [...out.keys()] : [];
+}
+
+/** Preserve the string of a defined type unavailable in a target IfcValue slot. */
+function stringAsText(source: ValueFormRegistry, target: ValueFormRegistry, form: string, accepted: Forms): boolean {
+  const typed = /^(A*)T:(.+)$/.exec(form);
+  if (!typed || !accepted.has(typed[1] + 'T:IFCTEXT') || typeNamed(target, typed[2])) return false;
+  const forms = payloadForms(source, typeNamed(source, typed[2]));
+  return forms.length === 1 && forms[0] === 'S';
 }
 
 /** For a typed member both sides take, the payload forms the target's defined type no longer holds. */

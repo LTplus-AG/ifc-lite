@@ -17,6 +17,9 @@ use crate::generated::value_forms::{ValueFormSlot, VALUE_FORM_SLOTS};
 use crate::schema_structural_axes::list_items;
 use crate::step_slot::split_top_level_args;
 
+#[path = "schema_durations.rs"]
+mod durations;
+
 /// The form of one STEP value as written, or `None` for `$`, `*` and anything unread.
 fn value_form(value: &str) -> Option<String> {
     let v = value.trim();
@@ -115,6 +118,9 @@ fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     let fixed = match to {
         None => None,
         Some(to) if to.starts_with("T:") => Some(format!("{}({body})", &to[2..])),
+        Some("TEXT") => inner().filter(|arg| arg.starts_with('\'') && ifc_lite_core::parser::is_step_value(arg.as_bytes())).map(|arg| format!("IFCTEXT({arg})")),
+        Some("D+") => durations::from_seconds(&body),
+        Some("D-") => durations::to_seconds(&body),
         Some("U") => inner().map(str::to_owned),
         Some("U1") => inner().and_then(list_items).filter(|m| m.len() == 1).map(|m| m[0].trim().to_owned()),
         Some(_) => as_integer(&body),

@@ -20,8 +20,8 @@ describe('value forms a target slot rejects (#10847)', () => {
       out: "#5=IFCCLASSIFICATION('src','1',$,'name',$,$,$);",
       warnings: ['1 value(s) of a type the target slot does not accept were dropped: IFCCLASSIFICATION.EditionDate (#10847).'],
     });
-    expect(convert("#5=IFCWORKPLAN('g',$,'n',$,$,'id',#9,$,$,10.,2.,#10,$,.ACTUAL.);", 'IFC2X3', 'IFC4').out)
-      .toBe("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,$,$,$,$,.ACTUAL.);");
+    expect(convert("#5=IFCWORKPLAN('g',$,'n',$,$,'id',#9,$,$,10.,2.,#10,$,.ACTUAL.,$);", 'IFC2X3', 'IFC4').out)
+      .toBe("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT10S','PT2S',$,$,.ACTUAL.);");
     expect(convert("#5=IFCRELSEQUENCE('g',$,$,$,#6,#7,2.,.START_START.);", 'IFC2X3', 'IFC4').out)
       .toBe("#5=IFCRELSEQUENCE('g',$,$,$,#6,#7,$,.START_START.,$);");
     expect(convert("#5=IFCCLASSIFICATION('src','1','2020-01-01','name',$,$,$);", 'IFC4', 'IFC2X3').out)
@@ -29,8 +29,8 @@ describe('value forms a target slot rejects (#10847)', () => {
   });
 
   it('drops a typed value IFC2X3 has no type for, member by member', () => {
-    expect(convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCDATE('2020-01-01'),$);", 'IFC4X3', 'IFC2X3').out).toBe("#5=IFCPROPERTYSINGLEVALUE('n',$,$,$);");
-    expect(convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", 'IFC4X3', 'IFC2X3').out)
+    expect(convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCBINARY(\"0A\"),$);", 'IFC4X3', 'IFC2X3').out).toBe("#5=IFCPROPERTYSINGLEVALUE('n',$,$,$);");
+    expect(convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCBINARY(\"0A\")),$);", 'IFC4X3', 'IFC2X3').out)
       .toBe("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);");
     const kept = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCLABEL('a') /* c */,$);";
     expect(convert(kept, 'IFC4X3', 'IFC2X3')).toEqual({ out: kept, warnings: [] });
@@ -68,7 +68,7 @@ describe('value forms a target slot rejects (#10847)', () => {
 
   // Positional members cannot go one by one.
   it('drops positional members whole, with the slots they pair with', () => {
-    const table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCDATE('2020-01-01'),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
+    const table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCBINARY(\"0A\"),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
     expect(convert(table, 'IFC4', 'IFC2X3')).toEqual({
       out: "#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$);",
       warnings: ['4 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847).'],
@@ -79,9 +79,9 @@ describe('value forms a target slot rejects (#10847)', () => {
       out: "#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$,$);",
       warnings: ['4 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847).'],
     });
-    expect(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCDATE('2020-01-01')),.F.);", 'IFC4', 'IFC2X3').out).toBe('#5=IFCTABLEROW($,.F.);');
+    expect(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCBINARY(\"0A\")),.F.);", 'IFC4', 'IFC2X3').out).toBe('#5=IFCTABLEROW($,.F.);');
     // A non-positional list still loses only the member.
-    expect(convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", 'IFC4', 'IFC2X3').out)
+    expect(convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCBINARY(\"0A\")),$);", 'IFC4', 'IFC2X3').out)
       .toBe("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);");
   });
 
@@ -141,4 +141,19 @@ describe('value forms a target slot rejects (#10847)', () => {
   it('leaves convertStepLine without a reconciliation object unchanged (callers opt in)', () => {
     expect(convertStepLine("#5=IFCCLASSIFICATION('src','1',#9,'name');", 'IFC2X3', 'IFC4')).toBe("#5=IFCCLASSIFICATION('src','1',#9,'name',$,$,$);");
   });
+});
+
+it('keeps the STEP text of newer typed values on downgrade (#10879)', () => {
+  const result = convert(`#5=IFCPROPERTYLISTVALUE('n',$,(IFCDATETIME('2026-11-20T10:30:00Z'),IFCURIREFERENCE('https://example.org/a''b'),IFCBINARY("0A")),$);`, 'IFC4X3', 'IFC2X3');
+  expect(result.out).toBe("#5=IFCPROPERTYLISTVALUE('n',$,(IFCTEXT('2026-11-20T10:30:00Z'),IFCTEXT('https://example.org/a''b')),$);");
+  expect(result.warnings.join(' ')).toContain('1 value(s)');
+});
+
+it('converts work control durations in seconds and rejects calendar months (#10879)', () => {
+  const up = "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,12.5,2.E-2,$,$,.ACTUAL.,$);";
+  expect(convert(up, 'IFC2X3', 'IFC4').out)
+    .toBe("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT12.5S','PT0.02S',$,$,.ACTUAL.);");
+  const down = "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'P1DT2H3M4.50S','P1M',$,$,.ACTUAL.);";
+  expect(convert(down, 'IFC4X3', 'IFC2X3').out)
+    .toBe("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,93784.5,$,$,$,.ACTUAL.,$);");
 });

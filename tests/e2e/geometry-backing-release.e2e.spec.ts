@@ -381,7 +381,7 @@ for (const fixture of FIXTURES) {
     const differing = reload.gpuBefore.filter((id, i) => id !== reload.gpuAfter[i]).length;
     expect(drawn, 'the released scene draws entities before the reload').toBeGreaterThan(100);
     expect(differing, `GPU picks after the reload (${differing} of ${reload.gpuBefore.length} texels differ)`).toBe(0);
-    // Expected-unavailable only where a LOST instanced occurrence could matter, identified independently of
+    // Unavailable exactly where a LOST instanced occurrence could matter, identified independently of
     // readback: the resident hit was instanced, or the scene draws an instanced occurrence within the
     // readback neighbourhood (1 m, placed frame) of the resident hit point. Every other hit is flat and
     // must answer exactly: entity, point and snap. (Final all-probe parity needs instanced restaging.)
@@ -393,16 +393,21 @@ for (const fixture of FIXTURES) {
     let unavailable = 0, expectedUnavailable = 0, flatHits = 0;
     for (let i = 0; i < before.length; i++) {
       const a = before[i], b = reloaded[i];
-      const mayFail = lost && a.expressId !== null && nearInstanced(a);
-      if (mayFail) expectedUnavailable++;
+      const mustRefuse = lost && a.expressId !== null && nearInstanced(a);
+      if (mustRefuse) {
+        expectedUnavailable++;
+        // The lost model's instancing has no complete backing: a probe that could depend on it refuses. Its answer
+        // cannot be checked by value, since a content-only bump leaves the old surface byte-identical (r4648107057).
+        expect(b.outcome, `reload probe ${i} near a lost instanced occurrence fails closed (${JSON.stringify({ a, b })})`).toBe('unavailable');
+      }
       if (b.outcome === 'unavailable') {
         unavailable++;
-        expect(mayFail, `reload probe ${i} is a flat hit away from any instanced occurrence: it must answer (${JSON.stringify({ a, b })})`).toBe(true);
+        expect(mustRefuse, `reload probe ${i} is a flat hit away from any instanced occurrence: it must answer (${JSON.stringify({ a, b })})`).toBe(true);
         continue;
       }
       expect(b.expressId, `reload probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
       if (a.expressId === null) continue;
-      if (!mayFail) flatHits++;
+      if (!mustRefuse) flatHits++;
       for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `reload probe ${i} hit`).toBeLessThan(1e-6);
       expect(b.snap?.type, `reload probe ${i} snap kind`).toBe(a.snap?.type);
       if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `reload probe ${i} snap`).toBeLessThan(1e-6);

@@ -15,14 +15,14 @@ import type { DrawingLine } from './types.js';
  * at z = -5 rasterizes at view depth 5. `sampleVisibility` (hidden-line.ts)
  * compares a candidate line's view depth against this depth buffer.
  */
-function occluderMesh(z: number = -5): MeshData {
+function occluderMesh(z: number = -5, yMin: number = 0, yMax: number = 10): MeshData {
   return {
     expressId: 1,
     positions: new Float32Array([
-      0, 0, z,
-      10, 0, z,
-      10, 10, z,
-      0, 10, z,
+      0, yMin, z,
+      10, yMin, z,
+      10, yMax, z,
+      0, yMax, z,
     ]),
     normals: new Float32Array(12),
     indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
@@ -166,8 +166,8 @@ describe('applyVisibility split-segment depths (PR #2644 review)', () => {
   // continues (6,5)->(10,5) at constant depth 2. L1's depth crosses the
   // occluder at t = 0.4 (x = 2.4); the transition is bisected onto that
   // crossing (within the bisection interval), where the lerped view
-  // depth is about 5.0. This flat occluder has no depth raster uncertainty. Before the
-  // fix, applyVisibility spread L1's ORIGINAL depth pair (7, 2) onto both
+  // depth is about 5.0. This flat occluder has no depth raster uncertainty.
+  // Before the fix, applyVisibility spread L1's ORIGINAL depth pair (7, 2) onto both
   // split halves, and mergeDrawingLines then faithfully propagated the stale
   // 7 onto a merged VISIBLE line spanning [2.4, 10] - self-contradictory
   // output, since the occluder covering x = 2.4 sits at depth 5.
@@ -483,10 +483,11 @@ describe('HiddenLineClassifier with a non-zero MeshData.origin (PR #2621)', () =
 });
 
 describe('HiddenLineClassifier transition point (bisected, not half a sample)', () => {
-  it('bisects off-sample depth crossings in both directions (#9705)', () => {
-    // The crossing lies strictly between coarse samples. Reusing either
-    // endpoint's depth during bisection moves the split to a sample boundary.
-    for (const [depth, depthEnd] of [[2, 9], [9, 2]]) {
+  it.each([[2, 9], [9, 2]])(
+    'bisects an off-sample depth crossing, depth %d -> %d (#9705)',
+    (depth, depthEnd) => {
+      // The crossing lies strictly between coarse samples. Reusing either
+      // endpoint's depth during bisection moves the split to a sample boundary.
       const classifier = new HiddenLineClassifier({
         resolution: 256, samplesPerLine: 10, depthBias: 0,
       });
@@ -504,26 +505,15 @@ describe('HiddenLineClassifier transition point (bisected, not half a sample)', 
       const crossingX = 1 + 8 * (5 - depth) / (depthEnd - depth);
       expect(result.segments[0].end.x).toBeCloseTo(crossingX, 2);
       expect(result.segments[1].start.x).toBe(result.segments[0].end.x);
-    }
-  });
+    },
+  );
 
   it('ends the hidden stretch at the occluder edge, not half a sample past it', () => {
     // A slab at view depth 5 covers y in [-1, 1.2] of a 10-high vertical edge
     // at view depth 7 behind it. With 10 samples (spacing 1) the flip is
     // seen between y = 1 (hidden) and y = 2 (visible); the old midpoint
     // guess put the visible part's start at 1.5, 0.3 above the slab edge.
-    const slab: MeshData = {
-      expressId: 1,
-      positions: new Float32Array([
-        0, -1, -5,
-        10, -1, -5,
-        10, 1.2, -5,
-        0, 1.2, -5,
-      ]),
-      normals: new Float32Array(12),
-      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
-      color: [1, 1, 1, 1],
-    };
+    const slab = occluderMesh(-5, -1, 1.2);
     const classifier = new HiddenLineClassifier({ samplesPerLine: 10 });
     classifier.buildDepthBuffer([slab], { axis: 'z', position: 0, flipped: false }, 10);
 

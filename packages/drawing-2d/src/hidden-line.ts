@@ -205,6 +205,7 @@ export class HiddenLineClassifier {
     // View depth varies along the line when the producer supplied a
     // per-endpoint `depthEnd` (e.g. a sloped edge); lerp it per sample.
     const depthAt = lineDepthAt(line);
+    const pointAt = (t: number) => point2DLerp(line.line.start, line.line.end, t);
 
     // For very short lines, just test the midpoint
     const numSamples = lineLength < EPSILON ? 1 : Math.max(2, samplesPerLine);
@@ -222,7 +223,7 @@ export class HiddenLineClassifier {
       // -0.3 + (0.1 - -0.3) > 0.1) and land outside the raster bounds,
       // misreading a fully occluded endpoint as visible (PR #2644 review).
       const point =
-        i === numSamples ? line.line.end : point2DLerp(line.line.start, line.line.end, t);
+        i === numSamples ? line.line.end : pointAt(t);
       const isVisible = this.sampleVisibility(point, depthAt(t), depthBias);
 
       if (isVisible) visibleCount++;
@@ -239,16 +240,12 @@ export class HiddenLineClassifier {
         let hi = t;
         for (let step = 0; step < TRANSITION_BISECTION_STEPS; step++) {
           const mid = (lo + hi) / 2;
-          const midVisible = this.sampleVisibility(
-            point2DLerp(line.line.start, line.line.end, mid),
-            depthAt(mid),
-            depthBias
-          );
+          const midVisible = this.sampleVisibility(pointAt(mid), depthAt(mid), depthBias);
           if (midVisible === currentVisible) lo = mid;
           else hi = mid;
         }
         const transitionT = (lo + hi) / 2;
-        const transitionPoint = point2DLerp(line.line.start, line.line.end, transitionT);
+        const transitionPoint = pointAt(transitionT);
 
         segments.push({
           start: currentStart,

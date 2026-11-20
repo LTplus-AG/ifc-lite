@@ -11,14 +11,15 @@
  * entry-chunk components as props, as `LandXmlGeorefAssumptionsLazy.tsx`.
  */
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import type { FederatedModel } from '@/store';
 import { SettingsGroup, SettingsRow } from './settings/SettingsGroup';
 
 // One dynamic import for both: one lazy chunk, one preload list in the entry.
 const load = () => import('./IfcFederationAssumptionsUi');
-const SettingsBody = lazy(() => load().then((m) => ({ default: m.IfcFederationSettingsGroup })));
-const Notice = lazy(() => load().then((m) => ({ default: m.IfcSharedVerticalDatumNotice })));
+const SettingsBody = lazyChunk(() => load().then((m) => ({ default: m.IfcFederationSettingsGroup })));
+const Notice = lazyChunk(() => load().then((m) => ({ default: m.IfcSharedVerticalDatumNotice })));
 
 /** Settings → General's "IFC federation" group. */
 export function IfcFederationSettingsSlot() {

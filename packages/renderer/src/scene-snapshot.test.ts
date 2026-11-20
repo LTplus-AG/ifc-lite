@@ -66,8 +66,8 @@ describe('scene snapshot format', () => {
   // If this fails you changed what a batch's bytes mean: bump
   // SCENE_SNAPSHOT_REVISION as well as these values, or stale snapshots draw garbage.
   it('pins the layout constants behind the revision', () => {
-    assert.deepStrictEqual([SCENE_SNAPSHOT_REVISION, BATCH_CONSTANTS.BYTES_PER_VERTEX, LOD_MIN_TRIANGLES], [2, 28, 500]);
-    assert.strictEqual(sceneSnapshotPolicy(true, false, null), '2|28|q|nolod|nochunk');
-    assert.strictEqual(sceneSnapshotPolicy(false, true, { cellSize: 40 }), `2|28|f|lod${LOD_MIN_TRIANGLES}|40`);
+    assert.deepStrictEqual([SCENE_SNAPSHOT_REVISION, BATCH_CONSTANTS.BYTES_PER_VERTEX, LOD_MIN_TRIANGLES], [3, 28, 500]);
+    assert.strictEqual(sceneSnapshotPolicy(true, false, null), '3|28|q|nolod|nochunk');
+    assert.strictEqual(sceneSnapshotPolicy(false, true, { cellSize: 40 }), `3|28|f|lod${LOD_MIN_TRIANGLES}|40`);
   });
 });

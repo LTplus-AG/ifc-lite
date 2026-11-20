@@ -111,6 +111,27 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     assert.equal(result.columns[0].propertyName, 'NetVolume');
     await assert.rejects(run('lists.editColumn', input), /changed since inspection/);
   });
+  it('distinguishes a removed reviewed list column from an unknown column (#11060)', async () => {
+    const definition: ListDefinition = { ...list, columns: [
+      { id: 'rating', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating' }, ...list.columns,
+    ] };
+    useViewerStore.setState({ listDefinitions: [definition] });
+    const { model: _model, ...viewer } = context;
+    const inspected = await run<{ definitions: ListDefinition[] }>('lists.library', {}, viewer);
+    const current = { ...definition, columns: list.columns };
+    useViewerStore.getState().setListDefinitions([current]);
+    for (const [column_id, code, reason] of [
+      ['rating', 'STATE_CHANGED', 'stale'],
+      ['never-existed', 'INVALID_INPUT', 'unknown-target'],
+    ] as const) {
+      await assert.rejects(run('lists.editColumn', {
+        id: definition.id, column_id, expected_json: JSON.stringify(inspected.definitions[0]),
+        source: 'quantity', set_name: 'Qto_WallBaseQuantities', property_name: 'NetVolume',
+      }, viewer), { code, details: { reason } });
+    }
+    assert.deepEqual(useViewerStore.getState().listDefinitions, [current]);
+  });
+
   it('native Lens rule switch with equal membership remains isolated and releases only its current claim', async () => {
     useViewerStore.setState({ activeLensId: 'same', lensRuleEntityIds: new Map([['a', [1, 2]], ['b', [1, 2]]]), lensRuleIsolation: null, isolatedEntities: null });
     await run('lens.ruleMembers', { id: 'a', expected_lens_id: 'same', action: 'isolate' });
@@ -135,6 +156,39 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await assert.rejects(run('schedule.configureAnimation', input, viewer), /changed since inspection/);
     await assert.rejects(run('schedule.configureAnimation', { ...input, expected_json: JSON.stringify(useViewerStore.getState().animationSettings), settings: { ...input.settings, palette: { ...input.settings.palette, COMPLETED: [1, 1, 1, 2] } } }, viewer));
   });
+  it('distinguishes a timeline owned by another model from an absent schedule (#11060)', async () => {
+    await seed(2);
+    const state = useViewerStore.getState();
+    state.setScheduleData(null);
+    state.setActiveModel('B');
+    useViewerStore.setState({ editEnabled: true, scheduleIsEdited: false });
+    const b = context.host.models().find(model => model.id === 'B');
+    assert.ok(b?.store);
+    const sourceContext = { ...context, model: { ...b, store: b.store } };
+    await run('schedule.initialize', {}, sourceContext);
+    await run('schedule.import', { format: 'csv', text: 'Name,Start,Finish\nBuild,2026-01-05,2026-01-06\n' }, sourceContext);
+    const timeline = useViewerStore.getState().scheduleData;
+    const range = useViewerStore.getState().scheduleRange;
+    assert.ok(timeline && range);
+    assert.equal(useViewerStore.getState().scheduleSourceModelId, 'B');
+    const task = timeline.tasks[0];
+    const requests = [
+      ['schedule.moveTask', { id: task.globalId, new_index: 0, expected_order: [task.globalId] }],
+      ['schedule.updateTask', { id: task.globalId, expected_name: task.name ?? '', Name: 'Rename', Identification: '', IsMilestone: false }],
+      ['schedule.nativeData', {}],
+      ['schedule.play', { until: range.end, max_real_seconds: 1 }],
+    ] as const;
+
+    for (const [operation, input] of requests)
+      await assert.rejects(run(operation, input), { code: 'INVALID_INPUT', details: { reason: 'wrong-target' } });
+    assert.equal(useViewerStore.getState().scheduleData, timeline);
+    assert.equal(useViewerStore.getState().playbackIsPlaying, false);
+
+    useViewerStore.getState().setScheduleData(null);
+    for (const [operation, input] of requests)
+      await assert.rejects(run(operation, input), { code: 'UNSUPPORTED_OPERATION', details: { reason: 'unavailable' } });
+  });
+
   it('does not publish rows when native query cancellation is requested', async () => {
     useViewerStore.setState({ listDefinitions: [list] }); const abort = new AbortController(); context.signal = abort.signal;
     const pending = run('lists.run', { id: list.id, offset: 0, limit: 10 }); abort.abort();

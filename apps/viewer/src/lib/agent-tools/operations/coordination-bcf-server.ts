@@ -32,7 +32,7 @@ export const coordinationBcfServerOperations = [
     type: 'object', properties: { batch_id: { type: 'string', minLength: 1, maxLength: 200 }, project_id: { type: 'string', minLength: 1, maxLength: 200 }, topic_types: { type: 'array', maxItems: 100, items: { type: 'object', properties: { from: { type: 'string', minLength: 1, maxLength: 200 }, to: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['from', 'to'], additionalProperties: false } } }, required: ['batch_id', 'project_id', 'topic_types'], additionalProperties: false,
   }, async (i, c) => {
     const requestedAt = Date.now(); // a user choice made while this prepares wins over the candidate
-    const [{ loadBcfServerConfig }, { createConnectedClient }, { useBcfDraftLibrary, bcfDraftLibrary }, { planDraftPublication, draftPublicationId }, { readPublication }, { publicationRules }, { preflightPublication }, { stageBcfPublicationReview }] = await Promise.all([
+    const [{ loadBcfServerConfig }, { createConnectedClient }, { useBcfDraftLibrary, bcfDraftLibrary }, { planDraftPublication, draftPublicationId }, { readPublication }, { publicationRules }, { preflightPublication }, { stageBcfPublicationReview, bcfPublicationCandidateCurrent }] = await Promise.all([
       import('@/services/bcf-server-config'), import('@/services/bcf-server'), import('@/lib/bcf-drafts/draft-library'), import('@/lib/bcf-publication/outbox-plan'), import('@/lib/bcf-publication/outbox-store'), import('@/lib/bcf-publication/outbox-server-rules'), import('@/lib/bcf-publication/outbox-preflight'), import('@/lib/bcf-publication/review-candidate'),
     ]);
     await bcfDraftLibrary.initialize(); const batch = useBcfDraftLibrary.getState().entries.find(batch => batch.id === i.batch_id), config = loadBcfServerConfig();
@@ -44,6 +44,8 @@ export const coordinationBcfServerOperations = [
     const preflight = await preflightPublication(client, plan.record, { signal: c.signal }); c.checkpoint?.();
     return c.commit(() => {
       const live = loadBcfServerConfig(); if (live?.serverUrl !== config.serverUrl || live.userId !== config.userId || useBcfDraftLibrary.getState().entries.find(item => item.id === batch.id) !== batch) throw new Error('BCF account or draft batch changed during preflight.');
+      // A user choice made while this prepared would make the panel discard it at once; say so instead.
+      if (!bcfPublicationCandidateCurrent({ requestedAt })) throw new Error('The publication controls changed while this was prepared; prepare and review again.');
       const candidate = stageBcfPublicationReview(batch, target, topicTypes, plan, preflight, requestedAt);
       useBcfDraftLibrary.setState({ activeId: batch.id, dialogOpen: true }); useViewerStore.getState().openWorkspacePanel('bcf');
       return { state: 'waiting-for-approval', candidate };

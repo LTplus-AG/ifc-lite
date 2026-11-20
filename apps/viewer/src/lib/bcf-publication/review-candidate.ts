@@ -51,4 +51,4 @@ let lastUserChoiceAt = 0;
 /** The publication panel records each choice the user makes itself (project, topic type, Check). */
 export function noteBcfPublicationUserChoice(): void { lastUserChoiceAt = Date.now(); useBcfPublicationReview.setState({ candidate: null }); }
 /** False for a candidate whose preparation began before the user's latest own choice. */
-export function bcfPublicationCandidateCurrent(candidate: BcfPublicationReview): boolean { return candidate.requestedAt > lastUserChoiceAt; }
+export function bcfPublicationCandidateCurrent(candidate: Pick<BcfPublicationReview, 'requestedAt'>): boolean { return candidate.requestedAt > lastUserChoiceAt; }

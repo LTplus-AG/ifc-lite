@@ -52,6 +52,17 @@ it('#10903 an Exploded released content reload places replayed meshes exactly as
     const renderer = { getScene: () => scene, getGPUDevice: () => device, getPipeline: () => pipeline, requestRender() {} } as unknown as Renderer;
     assert.deepEqual(splitReleasedForReplay(renderer, meshes), [], 'released-only: everything is replayed');
     await releasedReplaysIdle();
+    // Independent of placeNewMeshesAtCurrentLevel: each uploaded mesh's world box (positions + origin),
+    // computed here. Entity 2 is lifted +3.5 in Y (renderer Y up); entity 1 has no offset and stays.
+    const worldBox = (m: MeshData) => {
+      const o = m.origin ?? [0, 0, 0], p = m.positions;
+      const axis = (k: number) => { const v = [p[k] + o[k], p[k + 3] + o[k], p[k + 6] + o[k]]; return [Math.min(...v), Math.max(...v)]; };
+      return { id: m.expressId, x: axis(0), y: axis(1), z: axis(2) };
+    };
+    assert.deepEqual(uploaded.map(worldBox).sort((a, b) => a.id - b.id), [
+      { id: 1, x: [0, 1], y: [0, 1], z: [0, 0] },
+      { id: 2, x: [0, 1], y: [3.5, 4.5], z: [4, 4] },
+    ], 'entity 2 is drawn 3.5 higher; entity 1 exactly where it was');
     const place = (m: MeshData) => ({ id: m.expressId, origin: m.origin ?? null, positions: [...m.positions] });
     assert.deepEqual(uploaded.map(place).sort((a, b) => a.id - b.id), resident.map(place).sort((a, b) => a.id - b.id),
       'entity 2 arrives lifted by 3.5, entity 1 unlifted: the same placement as the resident upload');

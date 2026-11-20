@@ -31,10 +31,13 @@ import { collectRefsInByteRange } from './reference-collector.js';
  * `subset-roots.ts`'s `IDENTIFYING_TYPES`/`COORDINATE_REFERENCE_TYPES`, and
  * `on-demand-georeferencing.ts`'s `GEOREF_TYPES` all guard against (#3243).
  */
-const MAP_CONVERSION_STEP_TYPES: readonly string[] = [
+export const MAP_CONVERSION_STEP_TYPES: readonly string[] = [
   'IFCMAPCONVERSION',
   'IFCMAPCONVERSIONSCALED',
 ];
+
+/** Every STEP type a coordinate operation can be written as: the map conversions and IFC4X3's rigid operation. */
+export const COORDINATE_OPERATION_STEP_TYPES: readonly string[] = [...MAP_CONVERSION_STEP_TYPES, 'IFCRIGIDOPERATION'];
 
 /**
  * Collect `IFCMAPCONVERSION` (and, transitively, the `IFCPROJECTEDCRS` it

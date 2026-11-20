@@ -18,6 +18,7 @@ import { rebuildReleasedScene } from './released-device-recovery';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { drainInstancedShards, enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
 import { uploadSnapshotShards } from '@/hooks/sceneSnapshotLoad';
+import { clearSceneSupersedingReplays } from '@/components/viewer/geometry-rebuild';
 
 /** The renderer's drain: the scene draws every queued shard. */
 const drawQueued = () => drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
@@ -66,6 +67,20 @@ describe('released device recovery rebuild (viewer)', () => {
       const { context, uploaded } = recordingScene();
       assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: new Set<number>() }), true); // a flat-only model: the scene held no templates
       assert.deepEqual(uploaded, bytes);
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  });
+
+  it('#10937 r4648106707 after a full scene clear (geometry unloaded) the rebuild puts back nothing the scene no longer draws', async () => {
+    const { store } = await releasedModel(`recovery-cleared-${process.pid}`);
+    try {
+      // A second model the scene drew resident (CPU bytes kept) is in the same drawn list.
+      noteSceneGeometry([mesh(5, 2)]);
+      // Every model is unloaded through the null-geometry path: the store forgets them and the scene is cleared.
+      useViewerStore.setState({ models: new Map() } as never);
+      clearSceneSupersedingReplays({ clear: () => undefined });
+      const { context, uploaded } = recordingScene();
+      assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: new Set<number>() }), true, 'an empty scene recovers as empty');
+      assert.deepEqual(uploaded, [], 'never an unloaded model drawn back into the recovered scene');
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
 

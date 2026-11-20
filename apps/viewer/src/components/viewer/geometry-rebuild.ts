@@ -46,5 +46,6 @@ export function reshapeSceneKeepingPresentInstanced(
  */
 export function clearSceneSupersedingReplays(scene: Pick<SceneContents, 'clear'>): void {
   supersedeReleasedReplays();
+  noteSceneGeometry([]); // the cleared scene draws nothing: a released device recovery must not draw an unloaded model back
   scene.clear();
 }

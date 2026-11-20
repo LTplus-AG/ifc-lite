@@ -161,15 +161,15 @@ async function snapProbe(renderer: Renderer, points: Array<[number, number]>): P
   for (const [x, y] of points) {
     const outcome = sceneGeometryReleased(renderer) ? await feedReadbackAt(renderer, x, y, {}) : 'resident';
     if (outcome !== 'fed' && outcome !== 'no-hit' && outcome !== 'resident') {
-      out.push({ outcome, expressId: null, point: null, snap: null });
+      const error = outcome === 'unavailable' ? readbackFeeder(renderer).lastError?.message : undefined;
+      out.push({ outcome, ...(error ? { error } : {}), expressId: null, instanced: false, point: null, snap: null });
       continue;
     }
     const result = renderer.raycastSceneMagnetic(x, y, { edge: null, meshExpressId: null, lockStrength: 0 },
       { snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
     const hit = result.intersection;
     const target = result.snapTarget;
-    const error = outcome === 'unavailable' ? readbackFeeder(renderer).lastError?.message : undefined;
-    out.push({ outcome, ...(error ? { error } : {}), expressId: hit?.expressId ?? null, instanced: hit ? renderer.getScene().isInstancedEntity(hit.expressId) : false,
+    out.push({ outcome, expressId: hit?.expressId ?? null, instanced: hit ? renderer.getScene().isInstancedEntity(hit.expressId) : false,
       point: hit ? [hit.point.x, hit.point.y, hit.point.z] : null,
       snap: target ? { type: String(target.type), position: [target.position.x, target.position.y, target.position.z] } : null });
   }

@@ -129,4 +129,16 @@ describe('useDrawingGeneration over instanced-only geometry (#10264)', () => {
     assert.equal(error, null);
     assert.equal(progress, 'Waiting for instanced geometry...');
   });
+
+  it('does not publish a cut during which a shard was queued and already drained', async () => {
+    // Enqueued and gone again (drained/discarded) while the cutter reads the pieces: the queue is empty at publish time.
+    setGlobalRendererRef({ current: renderer(() => {
+      enqueueInstancedShards('legacy-model', [new ArrayBuffer(8)], instancedShardGeneration());
+      discardInstancedShards();
+    }) });
+    const { drawing, error, progress } = await generate();
+    assert.equal(drawing, null, 'the cut that may have missed the drained shard is not published');
+    assert.equal(error, null);
+    assert.equal(progress, 'Waiting for instanced geometry...');
+  });
 });

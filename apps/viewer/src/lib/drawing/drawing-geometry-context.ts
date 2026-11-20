@@ -56,7 +56,7 @@ export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent
     instancedReleased,
     hasInstanced: (modelId) => hasInstancedShards(modelId),
     // The scene keeps listing its instanced entities after releasing their templates.
-    listedInstanced: renderer && instancedReleased ? renderer.getScene().getInstancedEntityIds() : undefined,
+    listedInstanced: renderer && instancedReleased ? () => renderer.getScene().getInstancedEntityIds() : undefined,
     backing,
     isCurrent,
   });

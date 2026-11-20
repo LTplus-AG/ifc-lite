@@ -312,9 +312,9 @@ describe('drawing geometry source over released geometry', () => {
     await partial.writer.appendInstancedShard(shard([101, 102, 103, 104], 0));
     await partial.writer.close();
     w.backings.set('a', partial);
-    assert.throws(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: [101, 102, 105] })),
+    assert.throws(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: () => [101, 102, 105] })),
       /Instanced entity 105 of model a is in no backed shard/);
-    assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: [101, 102] })));
+    assert.doesNotThrow(() => new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: () => [101, 102] })));
     await w.registry.close();
   });
 
@@ -332,6 +332,17 @@ describe('drawing geometry source over released geometry', () => {
     const geometry = new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true }));
     await assert.rejects(new Drawing2DGenerator().generateFromSource(geometry.source(keepAll, { instanced: true }), CONFIGS[0][1], OPTIONS),
       /backed mesh 1 \(#5\) is not its current mesh #2/);
+    await w.registry.close();
+  });
+
+  it('released emptiness counts only occurrences a route draws, like the resident scene list', async () => {
+    const w = await world();
+    release(w);
+    // Isolating only the translucent 104: no route materializes it, so the drawing is empty in both.
+    const only104 = (mesh: { expressId: number }) => mesh.expressId === 104;
+    const released = new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true, listedInstanced: () => [101, 102, 103, 201, 202, 203] }));
+    assert.equal(released.isEmpty(only104, { instanced: true }), true);
+    assert.equal(released.isEmpty((mesh) => mesh.expressId === 101, { instanced: true }), false);
     await w.registry.close();
   });
 });

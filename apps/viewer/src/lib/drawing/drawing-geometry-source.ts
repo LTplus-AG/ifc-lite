@@ -55,8 +55,8 @@ export interface DrawingGeometryDeps {
   instancedReleased: boolean;
   /** Whether the model ever streamed instanced shards (the store's record, independent of any backing). */
   hasInstanced(modelId: string): boolean;
-  /** Instanced entity ids the scene still lists after releasing their CPU templates, if it does. */
-  listedInstanced?: Iterable<number>;
+  /** Instanced entity ids the scene still lists after releasing their CPU templates (opaque, uploaded ones), if it does. */
+  listedInstanced?: () => Iterable<number>;
   /** The model's current backing generation, if any. */
   backing(modelId: string): ModelGeometryBacking | undefined;
   /** False once a newer drawing request superseded this one: the next batch aborts the read. */
@@ -134,7 +134,7 @@ export class DrawingGeometry {
         throw new GeometryUnavailableError(`Model ${modelId} streamed instanced geometry its backing does not hold`);
       }
     }
-    for (const id of deps.listedInstanced ?? []) {
+    for (const id of deps.listedInstanced?.() ?? []) {
       const modelId = deps.modelOf(id);
       if (modelId === undefined || !deps.visibleModels.includes(modelId)) continue;
       if (this.pinned.get(modelId)?.directory.shardsOf(id).length) continue;
@@ -175,6 +175,15 @@ export class DrawingGeometry {
       for (const id of deps.scene?.getInstancedEntityIds() ?? []) {
         const modelId = deps.modelOf(id);
         if (modelId !== undefined && deps.visibleModels.includes(modelId)) yield id;
+      }
+      return;
+    }
+    // The scene's list is what both routes draw (opaque occurrences only); the
+    // shard directory also names translucent occurrences no route materializes.
+    if (deps.listedInstanced) {
+      for (const id of deps.listedInstanced()) {
+        const modelId = deps.modelOf(id);
+        if (modelId !== undefined && deps.visibleModels.includes(modelId) && this.pinned.has(modelId)) yield id;
       }
       return;
     }

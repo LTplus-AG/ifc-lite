@@ -55,10 +55,23 @@ export function drawingHasGeometry(flatCount: number, state: PresenceState, rend
  * and real models (AC20-FZK-Haus, duplex) record shards with none, so that
  * test refused their drawings on a real GPU. The drawing mirrors the scene.
  */
-export function assertInstancedReady(state: PresenceState, renderer: Pick<Renderer, 'getScene'> | null): void {
+export function assertInstancedReady(state: PresenceState, renderer: Pick<Renderer, 'getScene'> | null, sinceEpoch?: number): void {
   const { queued, present } = presence(state, renderer);
   if (!renderer && present) throw new GeometryUnavailableError('Instanced geometry cannot be drawn before the viewport renderer exists');
-  if (queued) throw new DrawingGeometryPendingError();
+  // Queued, or enqueued AND drained since the cut began (`sinceEpoch`): the cut may have missed it.
+  if (queued || (sinceEpoch !== undefined && instancedEpoch() !== sinceEpoch)) throw new DrawingGeometryPendingError();
+}
+
+let epoch = 0;
+let watching = false;
+/** Counts every shard enqueue, drain or discard and renderer change, for the page's lifetime. */
+export function instancedEpoch(): number {
+  if (!watching) {
+    watching = true;
+    subscribeInstancedShards(() => { epoch++; });
+    subscribeGlobalRenderer(() => { epoch++; });
+  }
+  return epoch;
 }
 
 /** Bumps whenever instanced shards reach (or leave) the scene, or the renderer changes: a drawing input. */

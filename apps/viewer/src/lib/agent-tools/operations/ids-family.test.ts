@@ -13,7 +13,9 @@ import { wallFixture } from '@/test/ids-studio-fixture';
 import { seedAuthoringSample, SAMPLE_MODEL } from '@/test/authoring-sample-fixture';
 import { setFieldOp, setSpecTextOp } from '@/lib/ids-studio/ops';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
-import type { IdsStudioDraft } from '@/lib/ids-studio/draft-codec';
+import { IDS_DRAFT_MAX_MIB, type IdsStudioDraft } from '@/lib/ids-studio/draft-codec';
+import { useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
+import { closeIdsDraft, switchIdsDraft } from '@/lib/ids-studio/draft-viewer';
 import { readContentRows } from '@/lib/storage/content-database';
 import { refuseContentWrites } from '@/test/content-fixture';
 import { createMainViewerToolHost } from '../main-viewer-host';
@@ -142,6 +144,15 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
       assert.equal(replaced.isError, true); assert.match(replaced.text, /storage refused the write/);
       const live = useViewerStore.getState();
       assert.equal(live.idsStudioDraftId, draftId); assert.equal(live.idsStudioState!.doc.ids.specifications[0].name, 'Unsaved walls');
+      await closeIdsDraft(async () => true);
+      assert.equal(useViewerStore.getState().idsStudioState, null);
+      const unsavedDraft = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draftId);
+      assert.ok(unsavedDraft);
+      await switchIdsDraft(unsavedDraft);
+      assert.equal(useViewerStore.getState().idsStudioState?.doc.ids.specifications[0].name, 'Unsaved walls');
+      const closeAfterRestore = await execute('ids.document.close', { document_revision: useViewerStore.getState().idsStudioRevision });
+      assert.equal(closeAfterRestore.isError, true);
+      assert.match(closeAfterRestore.text, /storage refused the write/);
     } finally {
       refusal.mock.restore();
     }
@@ -152,7 +163,7 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
   });
   it('refuses agent close without a retry hint when the draft can never be saved (#11013)', async () => {
     useViewerStore.getState().idsStudioOpen(fixture.doc);
-    const outcome = useViewerStore.getState().idsStudioDispatch([setSpecTextOp(fixture.specId, 'name', 'x'.repeat(4 * 1024 * 1024 + 1))]);
+    const outcome = useViewerStore.getState().idsStudioDispatch([setSpecTextOp(fixture.specId, 'name', 'x'.repeat(IDS_DRAFT_MAX_MIB * 1024 * 1024 + 1))]);
     assert.equal(outcome.ok, true);
     const closed = await dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'ids.document.close',
       input: { document_revision: useViewerStore.getState().idsStudioRevision } }, { canEdit: () => true });

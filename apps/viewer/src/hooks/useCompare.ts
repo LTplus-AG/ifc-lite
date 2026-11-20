@@ -299,7 +299,7 @@ export function useCompare() {
       // drop it rather than show counts that disagree with the controls, as
       // cancelComparison does. Native results (a stale one keeps its Re-run
       // banner) and in-flight runs are left alone.
-      if (optionChanged && isUncachedCompareResult(result)) useViewerStore.getState().setCompareResult(null);
+      if ((optionChanged || !sameAccepted) && isUncachedCompareResult(result)) useViewerStore.getState().setCompareResult(null);
       return;
     }
 

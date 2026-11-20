@@ -26,7 +26,7 @@ export const coordinationCollabOperations = [
   coordination<{ name: string; color: string }>('collab.identity', 'Edit the native local display identity and, when connected, its authorized presence record. Does not change account id, room token or role.', ['configuration', 'network'], {
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' } }, required: ['name', 'color'], additionalProperties: false,
   }, (i, c) => c.commit(() => { if (!i.name.trim()) throw new Error('A nonempty native display name is required.'); useViewerStore.getState().setCollabIdentity({ name: i.name, color: i.color }); const identity = useViewerStore.getState().collabIdentity; return { name: identity.name, color: identity.color }; })),
-  coordination<{ scope: 'active' | 'all'; role: 'viewer' | 'commenter' | 'editor'; expected_mutation_version: number; expected_geometry_version: number }>('collab.prepareRoom', 'Validate and prepare an exact native share scope/role for the real Share consent dialog. New room creation uploads models only after the native Create link approval; no token is returned.', ['configuration', 'view'], {
+  coordination<{ scope: 'active' | 'all'; role: 'viewer' | 'commenter' | 'editor'; expected_mutation_version: number; expected_geometry_version: number }>('collab.prepareRoom', 'Validate and prepare an exact native share scope/role for the real Share consent dialog. New room creation uploads models only after the native Create link approval. For an existing room the candidate waits until the user opens Share, so no invite is minted unasked; no token is returned.', ['configuration', 'view'], {
     type: 'object', properties: { scope: { type: 'string', enum: ['active', 'all'] }, role: { type: 'string', enum: ['viewer', 'commenter', 'editor'] }, expected_mutation_version: { type: 'integer', minimum: 0 }, expected_geometry_version: { type: 'integer', minimum: 0 } }, required: ['scope', 'role', 'expected_mutation_version', 'expected_geometry_version'], additionalProperties: false,
   }, async (i, c) => {
     const [{ prepareShareSeed, shareRefusesEveryModel }, { useCollabShareReview }, { isCollabSeedInFlight }, { isCollabEnabled }] = await Promise.all([import('@/lib/collab/share-scope'), import('@/lib/collab/share-review'), import('@/lib/collab/seed-phase'), import('@/lib/collab/config')]);
@@ -44,7 +44,11 @@ export const coordinationCollabOperations = [
     return c.commit(() => {
       const live = useViewerStore.getState(); if (live.models !== state.models || live.mutationVersion !== state.mutationVersion || live.geometryContentVersion !== state.geometryContentVersion || live.collabRoomId !== state.collabRoomId) throw new Error('Model scope or room changed during share preparation.');
       const candidate = { id: crypto.randomUUID(), scope: i.scope, role: i.role, modelIds: prepared?.models.map(model => model.modelId) ?? [...state.collabRoomModels.keys()], activeModelId: state.activeModelId, loadedModelIds: [...state.models.keys()], mutationVersion: state.mutationVersion, geometryVersion: state.geometryContentVersion, roomId: state.collabRoomId };
-      useCollabShareReview.setState({ candidate }); if (typeof window !== 'undefined') window.dispatchEvent(new Event('ifc-lite:open-share-dialog'));
+      useCollabShareReview.setState({ candidate });
+      // Opening the dialog on an existing room mints an invite at once, so only a
+      // new room (created on the dialog's explicit Create link) is opened for the
+      // user; otherwise the candidate waits until the user opens Share.
+      if (!state.collabRoomId && typeof window !== 'undefined') window.dispatchEvent(new Event('ifc-lite:open-share-dialog'));
       return { state: 'waiting-for-approval', candidate, seed_failure: state.collabSeedFailure };
     });
   }),

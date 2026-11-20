@@ -5990,7 +5990,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "collab.prepareRoom",
     "version": 1,
     "owner": "collab",
-    "description": "Validate and prepare an exact native share scope/role for the real Share consent dialog. New room creation uploads models only after the native Create link approval; no token is returned.",
+    "description": "Validate and prepare an exact native share scope/role for the real Share consent dialog. New room creation uploads models only after the native Create link approval. For an existing room the candidate waits until the user opens Share, so no invite is minted unasked; no token is returned.",
     "needs": "viewer",
     "effects": [
       "configuration",

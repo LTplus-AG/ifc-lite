@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
-import { WALL_ID, model, parseHelloWall, seed } from '@/test/agent-tools-fixture';
+import { WALL_ID, model, parseHelloWall, parseStep, seed } from '@/test/agent-tools-fixture';
 import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 
 const initial = useViewerStore.getState();
@@ -156,6 +156,27 @@ describe('undo and redo the room did not get, or got differently (#10810)', () =
     assert.deepEqual(state().mutationViews.get('__legacy__')?.getAttributeMutationsForEntity(WALL_ID), [{ name: 'Name', value: 'First' }]);
     // The first edit's prior is the source Name, as for a federated model.
     assert.equal(state().undoStacks.get('__legacy__')?.at(-1)?.oldValue, 'Wall');
+  });
+
+  it('an SDK edit of a Description the source writes as \'\' or $: undo publishes it as written', async () => {
+    const step = (description: string) => `ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('d','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project00000000000001',$,'P',$,$,$,$,$,$);
+#2=IFCWALL('0Wall00000000000000001',$,'W',${description},$,$,$,$,$);
+ENDSEC;END-ISO-10303-21;
+`;
+    const published: unknown[] = [];
+    for (const description of ["''", '$']) {
+      seed([model('d', await parseStep(new TextEncoder().encode(step(description))))]);
+      useViewerStore.setState({ editEnabled: true, collabRoomId: 'room-a', collabSession: session(), collabRoomModels: new Map([['d', { slotId: 'm0', pathPrefix: '/m0' }]]),
+        mirrorAttributeEdit: (...args) => { mirrored.push(['attribute', ...args]); } });
+      createMutateAdapter(useViewerStore).setAttribute({ modelId: 'd', expressId: 2 }, 'Description', 'Typed');
+      take();
+      state().undo('d');
+      published.push(take().map(call => call[4]));
+    }
+    assert.deepEqual(published, [[''], ['$']]);
   });
 
   it('a move: undo moves the room copy back, redo forward again', () => {

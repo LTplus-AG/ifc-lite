@@ -7,6 +7,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { extractEntityAttributesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { EntityNode } from '@ifc-lite/query';
 import { configureMutationView } from '@/utils/configureMutationView';
 import type { ViewerState } from '@/store';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
@@ -76,7 +77,10 @@ export function effectiveAttribute(reader: ModelReader, expressId: number, name:
 export function attributeUndoPrior(reader: ModelReader, expressId: number, name: string): string | null | undefined {
   const edited = reader.view.getAttributeMutationsForEntity(expressId).find(mutation => mutation.name === name);
   if (edited) return edited.value;
-  return (EDITABLE_ATTRIBUTES as readonly string[]).includes(name) ? effectiveAttribute(reader, expressId, name) || null : undefined;
+  if (!(EDITABLE_ATTRIBUTES as readonly string[]).includes(name)) return undefined;
+  // The reader gives '' for a written '' and for `$` alike; only the source record says whether the slot is written.
+  const value = effectiveAttribute(reader, expressId, name);
+  return value || (new EntityNode(reader.dataStore, expressId).allAttributes().some(attr => attr.name === name) ? '' : null);
 }
 
 const TEXT_BOOLEAN = /^(true|false)$/i;

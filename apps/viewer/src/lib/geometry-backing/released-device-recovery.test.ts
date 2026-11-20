@@ -15,7 +15,10 @@ import type { TapState } from './store-backing-tap';
 import { noteSceneGeometry } from './released-scene-replay';
 import { rebuildReleasedScene } from './released-device-recovery';
 import { modelIndices } from '@/lib/model-placement/model-indices';
-import { enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
+import { drainInstancedShards, enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
+
+/** The renderer's drain: the scene draws every queued shard. */
+const drawQueued = () => drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
 
 function mesh(expressId: number, z: number): MeshData {
   return { expressId, ifcType: 'IfcWall', positions: Float32Array.from([0, 0, z, 1, 0, z, 0, 1, z]),
@@ -114,6 +117,7 @@ describe('released device recovery rebuild (viewer)', () => {
     await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `recovery-hidden-${process.pid}`, locks: null } } as never });
     try {
       enqueueInstancedShards('ih', [shardBytes(77)], instancedShardSupplyToken('ih'));
+      drawQueued();
       const [status] = await geometryBackingCommand(store, undefined, { action: 'seal' }) as Array<{ complete: boolean }>;
       assert.equal(status.complete, true);
       releaseCpuMeshBuffers(meshes);
@@ -128,6 +132,36 @@ describe('released device recovery rebuild (viewer)', () => {
       assert.deepEqual(shards, [77], 'the instanced occurrence is restaged');
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
+
+  for (const after of ['drawn', 'queued'] as const) {
+    it(`#10937 a shard ${after === 'drawn' ? 'drawn after the seal (its successor generation still pending)' : 'still queued at the loss'}: the older complete acknowledgement is not the drawn set, so recovery fails closed`, async () => {
+      const id = `ns-${after}`, meshes = [mesh(1, 0)];
+      const geometryResult: GeometryResult = { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+      useViewerStore.setState({ models: new Map([[id, { id, idOffset: 0, maxExpressId: 100, geometryResult }]]) } as never);
+      const store = useViewerStore as unknown as StoreApi<TapState>;
+      await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `recovery-after-seal-${after}-${process.pid}`, locks: null } } as never });
+      try {
+        enqueueInstancedShards(id, [shardBytes(77)], instancedShardSupplyToken(id));
+        drawQueued();
+        const [status] = await geometryBackingCommand(store, undefined, { action: 'seal' }) as Array<{ complete: boolean }>;
+        assert.equal(status.complete, true, 'the acknowledged generation holds 77, complete');
+        enqueueInstancedShards(id, [shardBytes(78)], instancedShardSupplyToken(id)); // a later batch of the load
+        if (after === 'drawn') drawQueued(); // the scene draws 78 before the device is lost; no seal since
+        releaseCpuMeshBuffers(meshes);
+        noteSceneGeometry([]);
+        const { context } = recordingScene();
+        const shards: number[] = [];
+        (context.scene as unknown as { addInstancedShard: (d: unknown, shard: { instances: Array<{ entityId: number }> }) => void })
+          .addInstancedShard = (_d, shard) => { shards.push(...shard.instances.map((i) => i.entityId)); };
+        const held = new Set([modelIndices(useViewerStore.getState().models).get(id)!]);
+        assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: held }), false, 'never a whole recovery from the older set');
+        assert.deepEqual(shards, [], after === 'drawn' ? 'never restaged without 78' : 'never restaged ahead of the drain that will draw 78');
+      } finally {
+        drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'dropped'); });
+        await geometryBackingCommand(store, undefined, { action: 'stop' });
+      }
+    });
+  }
 
   it('#10937 a model whose instanced templates were not in the scene before the loss is not restaged', async () => {
     const meshes = [mesh(1, 0)];

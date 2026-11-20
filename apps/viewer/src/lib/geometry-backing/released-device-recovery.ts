@@ -90,7 +90,9 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
     // Exactly the templates the scene held before the loss: a hidden or removed model stays out.
     if (!hasInstancedShards(modelId) || modelIndex === undefined || !instancedModelIndices.has(modelIndex)) continue;
     // The scene drew this model's instances: only its own complete backing can put them back.
-    if (!source?.backing?.isCurrent || !source.backing.isComplete) return false;
+    // And exactly the set it drew: a shard ingested after the seal (a pending successor), one
+    // withheld since, or one still queued means the acknowledged copy is not that set.
+    if (!source?.backing?.isCurrent || !source.backing.isComplete || !tap.holdsDrawnShards(modelId)) return false;
     for await (const shard of source.backing.reader.instancedShards()) {
       if (!isCurrent()) return false;
       scene.addInstancedShard(device, liftedCopy(shard, lift), modelIndex);

@@ -60,7 +60,7 @@ describe('released scene replay (content reload)', () => {
     const list = releasedList();
     let attempts = 0, available = false;
     const uploaded: MeshData[][] = [];
-    splitReleasedForReplay(renderer, list, async (_r, released) => {
+    splitReleasedForReplay(renderer, list, undefined, async (_r, released) => {
       attempts++;
       if (attempts === 3) { available = true; notifyReleasedGeometryMetadataChanged(); throw new Error('read began before the seal'); }
       if (!available) throw new Error('backing unavailable');

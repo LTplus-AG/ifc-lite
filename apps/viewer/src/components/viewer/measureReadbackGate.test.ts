@@ -33,11 +33,14 @@ const raycasts: Array<[number, number]> = [];
 let view: number[] = [];
 /** The renderer's pick-geometry revision; a renderer-side model move bumps it with no store change. */
 let pickRevision = 0;
+/** The renderer's pick-clip revision; a section cut that changes bumps it. */
+let clipRevision = 0;
 function ctx(): MouseHandlerContext {
   const renderer = {
     getScene: () => released,
     getCamera: () => ({ getViewProjMatrix: () => ({ m: Float32Array.from(view) }) }),
     getPickGeometryRevision: () => pickRevision,
+    getPickClipRevision: () => clipRevision,
     raycastSceneMagnetic: (x: number, y: number) => {
       raycasts.push([x, y]);
       return { intersection: { point: { x, y, z: 0 } }, snapTarget: null,
@@ -74,7 +77,7 @@ const original = globalThis.requestAnimationFrame;
 const originalCancel = globalThis.cancelAnimationFrame;
 beforeEach(() => {
   reads = []; frames = []; snapTargets = []; residue = []; raycasts.length = 0;
-  view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; pickRevision = 0;
+  view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; pickRevision = 0; clipRevision = 0;
   globalThis.requestAnimationFrame = ((cb: () => void) => { frames.push(cb); return frames.length; }) as typeof requestAnimationFrame;
   globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
   setMeasureReadbackFeedForTest((_r, x, y) => new Promise((settle) => { reads.push({ x, y, settle }); }));
@@ -176,6 +179,32 @@ describe('#10880 drag and placement readback', () => {
     reads[1].settle('fed');
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after its model moved');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+  });
+
+  it('a placement whose Snap setting changed before its read ran is dropped', async () => {
+    const c = ctx();
+    handlePolylineClick(c, 0, 0);
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick();
+    c.snapEnabledRef.current = false; // the second point was clicked snapped; it must not land unsnapped
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after Snap changed');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+  });
+
+  it('a placement whose section cut changed before its read ran is dropped', async () => {
+    const c = ctx();
+    handlePolylineClick(c, 0, 0);
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick();
+    clipRevision++; // a section plane moves, exposing another surface under the second click's pixel
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after the cut changed');
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
   });
 

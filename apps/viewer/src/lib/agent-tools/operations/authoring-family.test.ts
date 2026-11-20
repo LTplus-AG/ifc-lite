@@ -128,6 +128,36 @@ describe('native reviewed authoring operations (full automation follow-up #10525
     const name = state.getMutationView(SAMPLE_MODEL)?.getAttributeMutationsForEntity(expressId).find(row => row.name === 'Name')?.value;
     assert.equal(name ?? store.entities.getName(expressId), BACK_WALL_NAME);
   });
+  it('refuses malformed mutation rows before staging a change set (#10795 item 31)', async () => {
+    const common = { id: 'wrong', timestamp: 0, modelId: SAMPLE_MODEL, entityId: 1 };
+    for (const mutation of [
+      null, 17, { ...common, type: 'constructor' }, { ...common, type: '__proto__' },
+      { ...common, type: 'UPDATE_ATTRIBUTE' },
+      { ...common, type: 'UPDATE_ATTRIBUTE', attributeName: 'Name' },
+    ]) {
+      const result = await invoke('changeSets.import', { json: JSON.stringify({ changeSet: { name: 'Malformed', mutations: [mutation] } }) }, true);
+      assert.equal(result.isError, true);
+      assert.match(result.text, /Invalid native change-set file/);
+    }
+    assert.equal(useViewerStore.getState().changeSets.size, 0);
+  });
+  it('exports an imported change set with a long title and preserves its file extension (#10795 item 61)', async () => {
+    const name = 'Imported building review '.repeat(35);
+    const { id } = answer<{ id: string }>(await invoke('changeSets.import', { json: JSON.stringify({ changeSet: { name, mutations: [] } }) }, true));
+    const result = answer<{ filename: string }>(await invoke('changeSets.export', { id }, true));
+    assert.match(result.filename, /^Imported-building-review.*\.changeset\.json$/);
+    assert.ok(result.filename.length <= 60, 'the artifact filename must fit the 60-character limit');
+    assert.equal(useViewerStore.getState().changeSets.get(id)?.name, name);
+  });
+  it('reports the failed native property transaction reason (#10795 item 54)', async () => {
+    const store = useViewerStore.getState().models.get(SAMPLE_MODEL)!.ifcDataStore!;
+    const express_id = store.entities.getExpressIdByGlobalId(BACK_WALL);
+    useViewerStore.setState({ mutationViews: new Map() });
+    const result = await invoke('properties.reassignClass', { express_id, IfcClass: 'IfcSlab',
+      PredefinedType: '', expected_class: store.entities.getTypeName(express_id) }, true);
+    assert.equal(result.isError, true);
+    assert.match(result.text, /Native retype refused/);
+  });
   it('configures zones and stages change sets with no IFC model loaded', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });
     const made = answer<{ set_id: string }>(await invoke('zones.set.create', { name: 'Planning boxes', expected_configuration: await zoneRevision() }, true));

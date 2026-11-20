@@ -254,6 +254,15 @@ describe('summarizeClashes', () => {
     expect(summary.total).toBe(2);
   });
 
+  it('counts rule IDs that are also object prototype keys (#10795 item 13)', () => {
+    const summary = summarizeClashes([
+      clashOf('a', 'constructor', 'IfcWall', 'IfcBeam', 'major'),
+      clashOf('b', 'constructor', 'IfcWall', 'IfcBeam', 'major'),
+      clashOf('c', '__proto__', 'IfcWall', 'IfcBeam', 'major'),
+    ]);
+    expect(Object.entries(summary.byRule)).toEqual([['constructor', 2], ['__proto__', 1]]);
+  });
+
   it('tallies byRule per rule id', () => {
     const summary = summarizeClashes([
       clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),

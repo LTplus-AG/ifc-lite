@@ -33,6 +33,8 @@ interface Rule {
   readonly whole: readonly number[];
   /** Form -> null (drop), `T:NAME` (wrap), `U` (unwrap), `U1` (one member) or an integer form (`I`, `AI`). */
   readonly forms: ReadonlyMap<string, string | null>;
+  /** Typed forms with a payload row (`T:NAME(F)`), the only ones whose payload is read. */
+  readonly payload: ReadonlySet<string>;
 }
 
 const SCHEMAS = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);
@@ -60,6 +62,7 @@ function rulesFor(from: string, to: string, type: string): Rules {
     empty: slot.empty,
     whole: slot.whole,
     forms: new Map(slot.rejected.map((f) => [f.split('>')[0], f.split('>')[1] ?? null])),
+    payload: new Set(slot.rejected.filter((f) => f.split('>')[0].endsWith(')')).map((f) => f.slice(0, f.indexOf('(')))),
   })) };
   byType.set(type, rules);
   return rules;
@@ -89,6 +92,21 @@ function onlyMember(list: string | null): string | null {
   return members?.length === 1 ? members[0].trim() : null;
 }
 
+/** A whole STEP real as an integer token; null for a fraction or one past the safe range. */
+function asInteger(token: string): string | null {
+  const n = parseStepNumber(token);
+  return wholeDecimal(token) && Number.isSafeInteger(n) ? String(n) : null;
+}
+
+/** A typed `NAME(payload)` whose payload form a `T:NAME(F)` row converts (`I`) or drops. */
+function narrowed(value: string, body: string, form: string, rule: Rule): { value: string | null; lost: number } {
+  const arg = unwrapped(body), payload = arg === null ? null : valueForm(arg);
+  const to = payload === null ? undefined : rule.forms.get(`${form}(${payload})`);
+  if (to === undefined) return { value, lost: 0 };
+  const int = to === 'I' ? asInteger(arg!) : null;
+  return int === null ? { value: null, lost: 1 } : { value: `${body.slice(0, body.indexOf('(')).trimEnd()}(${int})`, lost: 0 };
+}
+
 /** `value` in the target's form (null to drop it), and how many values that lost. */
 function fix(value: string, prefix: string, rule: Rule): { value: string | null; lost: number } {
   const start = skipStepTrivia(value, 0);
@@ -110,14 +128,13 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   const body = withoutComments(value);
   const form = valueForm(body);
   const to = form === null ? undefined : rule.forms.get(prefix + form);
-  if (to === undefined) return { value, lost: 0 };
+  if (to === undefined) return form !== null && rule.payload.has(prefix + form) ? narrowed(value, body, prefix + form, rule) : { value, lost: 0 };
   // The shared STEP number grammar gates the integer form; `wholeDecimal` reads the digits.
-  const n = parseStepNumber(body);
   const fixed = to === null ? null
     : to.startsWith('T:') ? `${to.slice(2)}(${body})`
     : to === 'U' ? unwrapped(body)
     : to === 'U1' ? onlyMember(unwrapped(body))
-    : wholeDecimal(body) && Number.isSafeInteger(n) ? String(n) : null; // an integer form, `I` or `AI`
+    : asInteger(body); // an integer form, `I` or `AI`
   // A set of references that could not be unwrapped loses each of them, and at least one value,
   // so an emptied slot is always named.
   const inner = to === 'U1' ? unwrapped(body) : null;

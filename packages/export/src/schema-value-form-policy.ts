@@ -25,7 +25,7 @@
  * IfcTextStyleTextModel) is kept: a line converter cannot read the
  * referenced record's type.
  *
- * Three rejections convert instead, written `FORM>TO`:
+ * Some rows convert instead of dropping, written `FORM>TO`:
  *  - `R>T:NAME`: an untyped value of the source's own defined type NAME, in
  *    a target select that takes NAME typed, is wrapped as `NAME(value)`
  *    (IFC4 IfcParameterValue -> IFC4X3 IfcCurveMeasureSelect);
@@ -34,6 +34,10 @@
  *  - `R>I`: a real with no fraction, in an integer slot, is written as that
  *    integer (IFC4X3 made IfcCountMeasure an INTEGER); a fractional real is
  *    dropped, so this one is lossless only for whole numbers;
+ *  - `T:NAME(R)>I`, a payload row on a typed member the target takes: a NAME
+ *    whose defined type narrowed from a number
+ *    to an INTEGER (IFC4X3 IfcCountMeasure) keeps a whole payload as that
+ *    integer and is dropped with a fractional one;
  *  - `T:NAME>U1`: a typed NAME set of the references the target slot takes
  *    (IFC4 IfcPropertySetDefinitionSet in IFC2X3's IfcPropertySetDefinition)
  *    is written as its member when it has one, and dropped otherwise.
@@ -154,7 +158,10 @@ export function rejectedForms(
   const own = definedType(source, from), slot = definedType(target, to);
   const rejected: string[] = [];
   for (const [form, entities] of attributeForms(source, from)) {
-    if (fits(source, form, entities, target, accepted.get(form))) continue;
+    if (fits(source, form, entities, target, accepted.get(form))) {
+      rejected.push(...narrowedPayload(source, target, form));
+      continue;
+    }
     if (own && 'SRIEB'.includes(form) && accepted.has(`T:${own}`)) rejected.push(`${form}>T:${own}`);
     else if (slot && form === `T:${slot}`) rejected.push(`${form}>U`);
     else if (setOfAccepted(source, form, target, accepted)) rejected.push(`${form}>U1`);
@@ -162,6 +169,27 @@ export function rejectedForms(
     else rejected.push(form);
   }
   return rejected.sort();
+}
+
+/** A registry's spelling of the UPPERCASE defined type `upper`. */
+const typeNamed = (reg: ValueFormRegistry, upper: string): string | undefined => Object.keys(reg.types).find((t) => t.toUpperCase() === upper);
+
+/** The primitive forms a value of defined type `name` takes in `reg`; empty when it is not a primitive. */
+function payloadForms(reg: ValueFormRegistry, name: string | undefined): string[] {
+  if (name === undefined || Object.hasOwn(reg.selects, name)) return [];
+  const out: Forms = new Map();
+  collect(reg, reg.types[name], '', false, out, new Set());
+  return [...out.keys()].every((f) => 'SRIEB'.includes(f)) ? [...out.keys()] : [];
+}
+
+/** For a typed member both sides take, the payload forms the target's defined type no longer holds. */
+function narrowedPayload(source: ValueFormRegistry, target: ValueFormRegistry, form: string): string[] {
+  const typed = /^(A*)T:(.+)$/.exec(form);
+  if (!typed) return [];
+  const held = payloadForms(target, typeNamed(target, typed[2]));
+  if (!held.length) return [];
+  return payloadForms(source, typeNamed(source, typed[2])).filter((p) => !held.includes(p))
+    .map((p) => (p === 'R' && held.includes('I') ? `${form}(R)>I` : `${form}(${p})`));
 }
 
 /** Whether a value of `form` naming `entities` fits a target slot whose same form names `named`. */
@@ -172,7 +200,7 @@ function fits(source: ValueFormRegistry, form: string, entities: Set<string>, ta
 
 /** Whether `form` is a typed set (`T:NAME`, NAME an aggregate type) whose every member form the target slot takes. */
 function setOfAccepted(source: ValueFormRegistry, form: string, target: ValueFormRegistry, accepted: Forms): boolean {
-  const name = form.startsWith('T:') ? Object.keys(source.types).find((t) => t.toUpperCase() === form.slice(2)) : undefined;
+  const name = form.startsWith('T:') ? typeNamed(source, form.slice(2)) : undefined;
   if (name === undefined || !/^(?:LIST|SET|BAG|ARRAY)\s*\[/i.test(source.types[name])) return false;
   const inner: Forms = new Map();
   collect(source, source.types[name], '', false, inner, new Set());

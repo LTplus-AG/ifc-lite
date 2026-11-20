@@ -5,10 +5,11 @@
 //! (`schema-value-form-policy.ts`, which documents the forms). A value of a
 //! rejected form is written `$` and counted dropped; one a row converts is
 //! wrapped (`R>T:NAME`), unwrapped (`T:NAME>U`) or written as an integer
-//! (`R>I`), or written as its one member (`T:NAME>U1`); anything else stays.
+//! (`R>I`, and `T:NAME(R)>I` for a typed member whose defined type became an
+//! INTEGER), or written as its one member (`T:NAME>U1`); anything else stays.
 //! An aggregate loses only its rejected members, unless they are positional:
-//! then it and the slots it pairs with are emptied, each as below. A required aggregate
-//! that may be empty and loses every member is written `()`. Twin of
+//! then it and the slots it pairs with are emptied, each as below. A required
+//! aggregate that may be empty and loses every member is written `()`. Twin of
 //! `packages/export/src/schema-converter-value-forms.ts`.
 use std::collections::BTreeMap;
 use ifc_lite_core::parser::skip_step_trivia;
@@ -62,7 +63,29 @@ fn whole_decimal(token: &str) -> bool {
 
 /// How many values a slot holds: its members, or one unless it is `$`.
 fn value_count(slot: &str) -> usize {
-    list_items(slot).map_or_else(|| usize::from(value_form(&crate::schema_attr_maps::without_comments(slot)).is_some()), |m| m.len())
+    list_items(slot).map_or_else(|| usize::from(value_form(&crate::step_slot::without_comments(slot)).is_some()), |m| m.len())
+}
+
+/// A whole STEP real as an integer token; `None` for a fraction or one past
+/// the safe range. Twin of `asInteger`.
+fn as_integer(token: &str) -> Option<String> {
+    token.parse::<f64>().ok().filter(|n| whole_decimal(token) && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64))
+}
+
+/// A typed `NAME(payload)` whose payload form a `T:NAME(F)` row converts
+/// (`I`) or drops. Twin of `narrowed`.
+fn narrowed(value: &str, body: &str, form: &str, rows: &[&str]) -> (Option<String>, usize) {
+    let Some((name, arg)) = typed_arg(body) else { return (Some(value.to_owned()), 0) };
+    let Some(to) = value_form(arg).and_then(|p| rule(rows, &format!("{form}({p})"))) else { return (Some(value.to_owned()), 0) };
+    match to.filter(|to| *to == "I").and_then(|_| as_integer(arg)) {
+        Some(int) => (Some(format!("{name}({int})")), 0),
+        None => (None, 1),
+    }
+}
+
+/// A typed value's name and argument, `NAME(arg)` -> (`NAME`, `arg`). Twin of `unwrapped`.
+fn typed_arg(body: &str) -> Option<(&str, &str)> {
+    body.find('(').zip(body.rfind(')')).map(|(open, close)| (body[..open].trim_end(), body[open + 1..close].trim()))
 }
 
 /// `value` in the target's form (`None` to drop it), and how many values that lost.
@@ -81,15 +104,20 @@ fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     }
     // Classified and converted without comments, so a trailing `/* .. */` changes nothing.
     let body = crate::step_slot::without_comments(value);
-    let Some(to) = value_form(&body).and_then(|form| rule(rows, &format!("{prefix}{form}"))) else { return (Some(value.to_owned()), 0) };
-    // A typed value's argument, `NAME(arg)` -> `arg`.
-    let inner = || body.find('(').zip(body.rfind(')')).map(|(open, close)| body[open + 1..close].trim());
+    let Some(form) = value_form(&body) else { return (Some(value.to_owned()), 0) };
+    let key = format!("{prefix}{form}");
+    let Some(to) = rule(rows, &key) else {
+        // Only a typed value with a payload row (`T:NAME(F)`) is read further.
+        let payload = form.starts_with("T:") && rows.iter().any(|r| r.strip_prefix(key.as_str()).is_some_and(|rest| rest.starts_with('(')));
+        return if payload { narrowed(value, &body, &key, rows) } else { (Some(value.to_owned()), 0) };
+    };
+    let inner = || typed_arg(&body).map(|(_, arg)| arg);
     let fixed = match to {
         None => None,
         Some(to) if to.starts_with("T:") => Some(format!("{}({body})", &to[2..])),
         Some("U") => inner().map(str::to_owned),
         Some("U1") => inner().and_then(list_items).filter(|m| m.len() == 1).map(|m| m[0].trim().to_owned()),
-        Some(_) => body.parse::<f64>().ok().filter(|n| whole_decimal(&body) && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64)),
+        Some(_) => as_integer(&body),
     };
     // A set of references that could not be unwrapped loses each of them, and
     // at least one value, so an emptied slot is always named.

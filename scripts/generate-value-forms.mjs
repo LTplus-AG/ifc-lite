@@ -70,6 +70,9 @@ const rows = [];
 for (const [from, to] of DIRECTIONS) {
   const here = valueFormSlots(REGISTRIES[from], REGISTRIES[to], from, to, MAPS);
   for (const slot of here) {
+    // Both converters convert only a real payload to an integer; any other narrowing needs review.
+    const payload = slot.rejected.find((f) => f.split('>')[0].endsWith(')') && !f.endsWith('(R)>I') && !f.endsWith('(R)>AI'));
+    if (payload) throw new Error(`generate-value-forms: ${from} → ${to} ${slot.type}.${slot.attribute} has a payload row no converter handles: ${payload}.`);
     // Both converters clear a positional group by its own slots' rows, so each slot needs one, alike.
     for (const i of slot.whole) {
       const partner = here.find((s) => s.type === slot.type && s.index === i);
@@ -116,6 +119,9 @@ const text = [
   'Forms: `#` entity reference, `S` string, `R` real, `I` integer, `E` enumeration (and BOOLEAN /',
   'LOGICAL), `B` binary, `T:NAME` a typed select member, and `A` before a form for an aggregate member.',
   'A reference is rejected only when no entity the source names is related to one the target names.',
+  'A `>TO` row converts instead of dropping. `T:NAME(F)` is a payload row: a typed member the target',
+  'takes whose defined type no longer holds payload form F (IFC4X3 made IfcCountMeasure an INTEGER), so',
+  '`T:NAME(R)>I` writes a whole payload as the integer and drops a fractional one.',
   '',
   '| Direction | Slots |',
   '| --- | --- |',

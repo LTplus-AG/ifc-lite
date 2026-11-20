@@ -84,7 +84,7 @@ export class StoreGeometryBackingTap {
 
   private constructor(
     private readonly registry: GeometryBackingRegistry,
-    private readonly store: StoreApi<TapState>,
+    store: StoreApi<TapState>, // read once here; the store subscription in `start` drives every sync
     private readonly options: ModelBackingOptions,
   ) {
     this.contentVersion = store.getState().geometryContentVersion;

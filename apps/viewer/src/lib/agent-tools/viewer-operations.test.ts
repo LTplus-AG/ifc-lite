@@ -269,6 +269,7 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     // A joined control is marked grouped rather than claiming a per-control binding (#10592 review).
     assert.ok(report.panels.find(panel => panel.id === 'bcf')?.controls.some(control => 'grouped' in control && control.grouped === true));
     assert.ok(report.non_panel.find(row => row.id === 'preferences')?.notes?.length);
+    for (const id of ['contextual-entity', 'tours-mobile']) assert.ok(report.non_panel.find(row => row.id === id)?.notes?.some(note => note.includes('bound to an audited')), id);
     assert.deepEqual(report.unbound_operations, [], 'every registered operation is bound to an audited control');
     // Non-panel families are bound to audited controls too, and count toward complete.
     assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap}`)), []);

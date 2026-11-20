@@ -93,10 +93,12 @@ export function viewerOperationCoverage() {
   });
   // Non-panel families list operations by prefix; each must still be bound to an audited control somewhere.
   const audited = new Set([...panels, ...tools, ...exports].flatMap(row => row.controls.flatMap(control => control.operations)));
-  const withGaps = <T extends { implemented?: readonly string[]; controls?: readonly Control[] }>(row: T) => {
+  const withGaps = <T extends { implemented?: readonly string[]; controls?: readonly Control[]; notes?: readonly string[] }>(row: T) => {
     const own = new Set(row.controls?.flatMap(control => control.operations) ?? []);
     const gaps = (row.implemented ?? []).filter(id => !audited.has(id) && !own.has(id)).map(id => `Operation not in the control audit: ${id}`);
-    return { ...row, complete: gaps.length === 0, gaps };
+    // A row with operations but no controls of its own is complete only in the bound-elsewhere sense; say so.
+    const notes = row.implemented?.length && !row.controls?.length ? [...(row.notes ?? []), 'No control inventory of its own: complete means each listed operation is bound to an audited panel, tool or export control.'] : row.notes;
+    return { ...row, ...(notes ? { notes } : {}), complete: gaps.length === 0, gaps };
   };
   const nonPanel = [
       { id: 'viewport', controls: inventory.filter(row => row.owner === 'viewport').flatMap(row => row.controls) },

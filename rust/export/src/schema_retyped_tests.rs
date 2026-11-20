@@ -49,6 +49,21 @@ fn a_currency_member_becomes_a_label_and_back_10778() {
     assert_eq!(convert("#5=IFCMONETARYUNIT('USD');", "IFC5", "IFC2X3").0, "#5=IFCMONETARYUNIT(.USD.);");
 }
 
+/// Claude review on #10806 (discussion_r4641418586): the dotless i of `ıNR`
+/// folds to `I` only under Unicode case rules, and JS trims a U+FEFF Rust does
+/// not; the twins fold case and trim whitespace ASCII only, so neither label
+/// names a member.
+#[test]
+fn a_non_ascii_letter_or_space_names_no_currency_10778() {
+    assert_eq!(convert("#5=IFCMONETARYUNIT('\\X2\\0131\\X0\\NR');", "IFC4", "IFC2X3"), ("#5=IFCMONETARYUNIT($);".to_owned(), 1));
+    assert_eq!(convert("#5=IFCMONETARYUNIT('\\X2\\FEFF\\X0\\INR');", "IFC4", "IFC2X3"), ("#5=IFCMONETARYUNIT($);".to_owned(), 1));
+    assert_eq!(convert("#5=IFCMONETARYUNIT(' inr ');", "IFC4", "IFC2X3").0, "#5=IFCMONETARYUNIT(.INR.);");
+    // Raw, not encoded: a byte-order mark and a no-break space in the literal itself.
+    for raw in ["\u{FEFF}INR", "INR\u{A0}"] {
+        assert_eq!(convert(&format!("#5=IFCMONETARYUNIT('{raw}');"), "IFC4", "IFC2X3"), ("#5=IFCMONETARYUNIT($);".to_owned(), 1), "{raw:?}");
+    }
+}
+
 /// A label IFC2X3 has no member for is dropped and counted, and the required
 /// slot left `$` is reported by the slot fill.
 #[test]

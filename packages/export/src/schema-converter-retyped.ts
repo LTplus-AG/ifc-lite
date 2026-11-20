@@ -47,6 +47,8 @@ function soleValue(slot: string): string | null {
 }
 
 const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3' || s === 'IFC5';
+/** `s` with only a-z upper-cased (members are ASCII upper-case). */
+const asciiUpper = (s: string): string => s.replace(/[a-z]+/g, (run) => run.toUpperCase());
 
 /** `line`, already converted from `fromSchema` to `toSchema`, with every
  *  retyped slot in the target's type. `null` passes through. */
@@ -61,15 +63,16 @@ export function retypeInPlace(line: string | null, fromSchema: IfcSchemaVersion,
   const slots = [...record.slots];
   const value = soleValue(slots[slot[1]]);
   if (value === null) return line;
-  const inner = value.slice(1, -1).trim();
+  const inner = value.slice(1, -1); // untrimmed, as Rust: only the decoded label trims, ASCII-only
   if (up) {
     if (!value.startsWith('.') || !value.endsWith('.')) return line;
     slots[slot[1]] = `'${inner}'`;
   } else {
     if (!value.startsWith("'") || !value.endsWith("'")) return line;
-    // A label may spell the code in a STEP encoding (`\X2\0045...\X0\`).
-    const label = decodeStepStringLiteral(inner).trim().toUpperCase();
-    const member = slot[2].find((m) => m.toUpperCase() === label);
+    // A label may spell the code in a STEP encoding (`\X2\0045...\X0\`). Case and
+    // whitespace fold ASCII only, as in Rust: `ıNR` is no `INR` (#10806 review).
+    const label = asciiUpper(decodeStepStringLiteral(inner).replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, ''));
+    const member = slot[2].find((m) => m === label);
     slots[slot[1]] = member ? `.${member}.` : '$';
   }
   return `${record.prefix}${slots.join(',')}${record.suffix}`;

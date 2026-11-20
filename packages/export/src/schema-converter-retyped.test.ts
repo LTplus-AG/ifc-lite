@@ -56,6 +56,18 @@ describe('retyped slots (#10778)', () => {
     expect(slots.warnings()).toContainEqual(expect.stringMatching(/^1 slot\(s\) keep \$ where IFC2X3 requires/));
   });
 
+  // Claude review on #10806 (discussion_r4641418586): JS upper-cases the dotless i of `ıNR` to `INR`;
+  // Rust folds ASCII only, so the label names no member and is `$` in both twins.
+  it('folds case and whitespace ASCII only, so a non-ASCII letter or space invents no currency', () => {
+    expect(convertStepLine("#5=IFCMONETARYUNIT('\\X2\\0131\\X0\\NR');", 'IFC4', 'IFC2X3')).toBe('#5=IFCMONETARYUNIT($);');
+    expect(convertStepLine("#5=IFCMONETARYUNIT('\\X2\\FEFF\\X0\\INR');", 'IFC4', 'IFC2X3'), 'a byte-order mark').toBe('#5=IFCMONETARYUNIT($);');
+    expect(convertStepLine("#5=IFCMONETARYUNIT(' inr ');", 'IFC4', 'IFC2X3'), 'ASCII case and space still fold').toBe('#5=IFCMONETARYUNIT(.INR.);');
+    // Raw, not encoded: a byte-order mark and a no-break space in the literal itself.
+    const slots = new Ifc2x3SlotFill();
+    for (const raw of ['\uFEFFINR', 'INR\u00A0']) expect(convertStepLine(`#5=IFCMONETARYUNIT('${raw}');`, 'IFC4', 'IFC2X3', undefined, slots), JSON.stringify(raw)).toBe('#5=IFCMONETARYUNIT($);');
+    expect(slots.warnings()).toContainEqual(expect.stringMatching(/^2 slot\(s\) keep \$ where IFC2X3 requires/));
+  });
+
   it('reads the currency past comments beside it, as Rust does', () => {
     expect(convertStepLine('#5=IFCMONETARYUNIT(/* c */.EUR. /* d */);', 'IFC2X3', 'IFC4')).toBe("#5=IFCMONETARYUNIT('EUR');");
     expect(convertStepLine("#5=IFCMONETARYUNIT(/* c */'EUR'/* d */);", 'IFC4', 'IFC2X3')).toBe('#5=IFCMONETARYUNIT(.EUR.);');

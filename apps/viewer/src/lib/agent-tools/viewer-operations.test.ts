@@ -261,6 +261,10 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.ok(report.panels.every(panel => panel.controls.length > 0));
     assert.ok(report.panels.some(panel => panel.controls.some(control => control.classification === 'native-boundary')));
     assert.ok(report.human_only.length > 0);
+    // Boundaries are classified controls, not prose notes (#10592 review).
+    const classes = (id: string) => report.panels.find(panel => panel.id === id)?.controls.map(control => control.classification) ?? [];
+    assert.ok(classes('lists').includes('presentation-only'));
+    assert.ok(classes('bcf').includes('native-boundary'));
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {
     assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);

@@ -32,12 +32,20 @@ function control(control: string, operations: readonly string[], classification:
 export function operationControlInventory(): Inventory[] {
   return [
     ...coreControlInventory.map(row => ({ owner: row.owner, family: 'core' as const, controls: row.controls.map(item => control(item.control, item.operations)), notes: row.notes, gaps: [] })),
-    ...analyticsControlInventory.map(row => ({ owner: row.panel, family: 'analytics' as const, controls: row.controls.map(item => control(item.control, item.operations)),
-      notes: [...row.notes, ...('presentationOnly' in row ? row.presentationOnly : []), ...('nativeUnsupported' in row ? row.nativeUnsupported : [])], gaps: [] })),
+    // Presentation-only and unsupported controls are classified controls, not notes, so callers can find their boundaries.
+    ...analyticsControlInventory.map(row => ({ owner: row.panel, family: 'analytics' as const, controls: [
+      ...row.controls.map(item => control(item.control, item.operations)),
+      ...('presentationOnly' in row ? row.presentationOnly : []).map(item => control(item, [], 'presentation-only')),
+      ...('nativeUnsupported' in row ? row.nativeUnsupported : []).map(item => control(item, [], 'native-boundary', item)),
+    ], notes: row.notes, gaps: [] })),
     ...analyticsControlBoundaries.map(row => ({ owner: row.panel, family: 'analytics' as const,
       controls: [control(row.control, [], classify(row.classification), row.native)], notes: [], gaps: [] })),
     ...coordinationControlInventory.map(row => ({ owner: row.owner, family: 'coordination' as const,
-      controls: [control(row.implemented.join('; '), row.operations)], notes: (['hostBoundary', 'presentationOnly', 'equivalentControls', 'sourceWriteBack'] as const).flatMap(key => key in row ? [String((row as Record<string, unknown>)[key])] : []), gaps: row.outstanding })),
+      controls: [control(row.implemented.join('; '), row.operations),
+        // The manual approvals and presentation a workflow keeps native are controls of their own.
+        ...('hostBoundary' in row ? [control(String(row.hostBoundary), [], 'native-boundary', String(row.hostBoundary))] : []),
+        ...('presentationOnly' in row ? [control(String(row.presentationOnly), [], 'presentation-only')] : [])],
+      notes: (['equivalentControls', 'sourceWriteBack'] as const).flatMap(key => key in row ? [String((row as Record<string, unknown>)[key])] : []), gaps: row.outstanding })),
     ...authoringControlBindings.map(row => ({ owner: row.owner === 'ids' ? 'idsStudio' : row.owner, family: 'authoring' as const,
       controls: [control(row.controls.join('; '), row.operations, classify(row.status), row.reason)], notes: [], gaps: [] })),
     ...clashControlBindings.map(row => ({ owner: 'clash', family: 'clash' as const,

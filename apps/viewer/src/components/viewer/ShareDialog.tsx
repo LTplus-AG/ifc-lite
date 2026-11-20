@@ -26,7 +26,7 @@
  * dialog on a live room shows what was shared.
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { AlertTriangle, Check, Copy, Link2, Users } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -40,7 +40,7 @@ import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
 import { seedableModelsInScope, shareRefusesEveryModel, shareScopeIsChoice, unshareableModelsInScope, type ShareScope } from '@/lib/collab/share-scope';
-import { useCollabShareReview } from '@/lib/collab/share-review';
+import { useShareCandidate } from './useShareCandidate';
 import { useShareRoomCreation } from './useShareRoomCreation';
 import { ShareScopeField } from './ShareScopeField';
 
@@ -76,26 +76,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // The room is created only on an explicit "Create link": creating it
   // uploads the model (#5599), and its scope is fixed by the seed (#4444).
   const [scopeConfirmed, setScopeConfirmed] = useState(false);
-  const shareCandidate = useCollabShareReview(state => state.candidate);
-  // A candidate applies only as the dialog opens. One staged while it is already open would
-  // overwrite the user's role choice, and the mint effect would create that invite unasked.
-  const wasOpenRef = useRef(false);
-  // An unmounted dialog is not open, whatever its last render said.
-  useEffect(() => () => { useCollabShareReview.setState({ dialogOpen: false }); }, []);
-  useEffect(() => {
-    const justOpened = open && !wasOpenRef.current;
-    wasOpenRef.current = open;
-    if (useCollabShareReview.getState().dialogOpen !== open) useCollabShareReview.setState({ dialogOpen: open });
-    if (!open || !shareCandidate) return;
-    if (!justOpened) { useCollabShareReview.setState({ candidate: null }); return; }
-    const state = useViewerStore.getState();
-    // The agent prepared a scope over specific models: a different active model
-    // or model set means the user would be shown a scope nobody inspected.
-    if (shareCandidate.mutationVersion !== state.mutationVersion || shareCandidate.geometryVersion !== state.geometryContentVersion || shareCandidate.roomId !== state.collabRoomId
-      || (shareCandidate.scope === 'active' && !shareCandidate.roomId && shareCandidate.activeModelId !== state.activeModelId) || shareCandidate.loadedModelIds.join('\n') !== [...state.models.keys()].join('\n')) { useCollabShareReview.setState({ candidate: null }); return; }
-    // Apply the agent's choice once; afterwards the dialog's own controls own scope and role.
-    setScope(shareCandidate.scope); setRole(shareCandidate.role); useCollabShareReview.setState({ candidate: null });
-  }, [open, shareCandidate]);
+  useShareCandidate(open, setScope, setRole);
   const [link, setLink] = useState<string>('');
   // Room creation in flight (no room yet) / invite mint in flight.
   const [minting, setMinting] = useState(false);

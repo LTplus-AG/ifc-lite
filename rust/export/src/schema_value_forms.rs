@@ -7,7 +7,7 @@
 //! wrapped (`R>T:NAME`), unwrapped (`T:NAME>U`) or written as an integer
 //! (`R>I`), or written as its one member (`T:NAME>U1`); anything else stays.
 //! An aggregate loses only its rejected members, unless they are positional:
-//! then it and the slots it pairs with are written `$`. A required aggregate
+//! then it and the slots it pairs with are emptied, each as below. A required aggregate
 //! that may be empty and loses every member is written `()`. Twin of
 //! `packages/export/src/schema-converter-value-forms.ts`.
 use std::collections::BTreeMap;
@@ -91,7 +91,13 @@ fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
         Some("U1") => inner().and_then(list_items).filter(|m| m.len() == 1).map(|m| m[0].trim().to_owned()),
         Some(_) => body.parse::<f64>().ok().filter(|n| whole_decimal(&body) && n.abs() < 9_007_199_254_740_992.0).map(|n| format!("{}", n as i64)),
     };
-    let lost = usize::from(fixed.is_none());
+    // A set of references that could not be unwrapped loses each of them, and
+    // at least one value, so an emptied slot is always named.
+    let lost = match (fixed.is_none(), to) {
+        (false, _) => 0,
+        (true, Some("U1")) => inner().map_or(1, value_count).max(1),
+        (true, _) => 1,
+    };
     (fixed, lost)
 }
 
@@ -119,17 +125,23 @@ impl ValueForms {
         let mut changed = false;
         for &(index, attribute, required, empty, whole, rows) in slots {
             let Some(slot) = args.get(usize::from(index)) else { continue };
-            let (mut fixed, mut lost) = fix(slot, "", rows);
+            let (mut fixed, lost) = fix(slot, "", rows);
             if lost > 0 && !whole.is_empty() {
-                // Positional members: the aggregate and its partners go whole.
-                lost = whole.iter().filter_map(|&i| args.get(usize::from(i))).map(|s| value_count(s)).sum();
+                // Positional members: every slot of the group goes whole, each named for what it held.
                 for &i in whole {
-                    if let Some(partner) = args.get_mut(usize::from(i)).filter(|s| i != index && *s != "$") {
-                        *partner = "$".to_owned();
-                        changed = true;
-                    }
+                    // The generator gives every slot of a group a row like this one.
+                    let Some(&(_, own, own_required, own_empty, _, _)) = slots.iter().find(|s| s.0 == i) else { continue };
+                    let Some(partner) = args.get_mut(usize::from(i)) else { continue };
+                    let held = value_count(partner);
+                    if held == 0 { continue; }
+                    let emptied = if own_empty && own_required { "()" } else { "$" };
+                    *dropped += held;
+                    let into = if emptied == "$" && own_required { &mut self.emptied } else { &mut self.dropped };
+                    *into.entry(format!("{ty}.{own}")).or_default() += held;
+                    *partner = emptied.to_owned();
+                    changed = true;
                 }
-                fixed = None;
+                continue;
             }
             if fixed.is_none() && empty && required { fixed = Some("()".to_owned()); }
             if lost > 0 {

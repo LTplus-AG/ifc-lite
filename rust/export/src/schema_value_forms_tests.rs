@@ -98,11 +98,11 @@ fn positional_members_are_dropped_whole_with_their_partners_10847() {
     let table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCDATE('2020-01-01'),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
     let (out, dropped, warnings) = convert(table, "IFC4", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$);", 4));
-    assert_eq!(warnings, ["4 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCPROPERTYTABLEVALUE.DefiningValues (#10847)."]);
+    assert_eq!(warnings, ["4 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847)."]);
     let uri = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCLABEL('k1'),IFCLABEL('k2')),(IFCLABEL('v'),IFCURIREFERENCE('u')),$,$,$,$);";
     let (out, dropped, warnings) = convert(uri, "IFC4X3", "IFC4");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$,$);", 4));
-    assert_eq!(warnings, ["4 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYTABLEVALUE.DefinedValues (#10847)."]);
+    assert_eq!(warnings, ["4 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847)."]);
     assert_eq!(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCDATE('2020-01-01')),.F.);", "IFC4", "IFC2X3").0, "#5=IFCTABLEROW($,.F.);");
     let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", "IFC4", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);", 1));
@@ -113,9 +113,13 @@ fn positional_members_are_dropped_whole_with_their_partners_10847() {
 fn a_one_member_property_set_definition_set_is_unwrapped_10847() {
     let (out, dropped, warnings) = convert("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),IFCPROPERTYSETDEFINITIONSET((#9)));", "IFC4", "IFC2X3");
     assert_eq!((out.as_str(), dropped, warnings.len()), ("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),#9);", 0, 0));
+    // An empty set (already invalid: SET [1:?]) still names the slot it empties.
+    let (out, dropped, warnings) = convert("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),IFCPROPERTYSETDEFINITIONSET(()));", "IFC4", "IFC2X3");
+    assert_eq!((out.as_str(), dropped, warnings.len()), ("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),$);", 1, 1));
     let (out, dropped, warnings) = convert("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),IFCPROPERTYSETDEFINITIONSET((#9,#10)));", "IFC4X3", "IFC2X3");
-    assert_eq!((out.as_str(), dropped), ("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),$);", 1));
-    assert!(warnings.iter().any(|w| w.contains("IFCRELDEFINESBYPROPERTIES.RelatingPropertyDefinition")), "{warnings:?}");
+    // Each property set the set linked is lost.
+    assert_eq!((out.as_str(), dropped), ("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),$);", 2));
+    assert_eq!(warnings, ["2 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCRELDEFINESBYPROPERTIES.RelatingPropertyDefinition (#10847)."]);
 }
 
 /// A required aggregate that may be empty is written `()` when it loses every member.

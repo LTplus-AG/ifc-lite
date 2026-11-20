@@ -71,13 +71,13 @@ describe('value forms a target slot rejects (#10847)', () => {
     const table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCDATE('2020-01-01'),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
     expect(convert(table, 'IFC4', 'IFC2X3')).toEqual({
       out: "#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$);",
-      warnings: ['4 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCPROPERTYTABLEVALUE.DefiningValues (#10847).'],
+      warnings: ['4 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847).'],
     });
     // Optional in IFC4, so both go `$` and the record stays valid (WR21: neither, or equal sizes).
     const uri = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCLABEL('k1'),IFCLABEL('k2')),(IFCLABEL('v'),IFCURIREFERENCE('u')),$,$,$,$);";
     expect(convert(uri, 'IFC4X3', 'IFC4')).toEqual({
       out: "#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$,$);",
-      warnings: ['4 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYTABLEVALUE.DefinedValues (#10847).'],
+      warnings: ['4 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847).'],
     });
     expect(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCDATE('2020-01-01')),.F.);", 'IFC4', 'IFC2X3').out).toBe('#5=IFCTABLEROW($,.F.);');
     // A non-positional list still loses only the member.
@@ -102,7 +102,11 @@ describe('value forms a target slot rejects (#10847)', () => {
       .toEqual({ out: "#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),#9);", warnings: [] });
     const two = convert("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),IFCPROPERTYSETDEFINITIONSET((#9,#10)));", 'IFC4X3', 'IFC2X3');
     expect(two.out).toBe("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),$);");
-    expect(two.warnings.join('\n')).toContain('IFCRELDEFINESBYPROPERTIES.RelatingPropertyDefinition');
+    // An empty set (already invalid: SET [1:?]) still names the slot it empties.
+    const none = convert("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),IFCPROPERTYSETDEFINITIONSET(()));", 'IFC4', 'IFC2X3');
+    expect(none.out).toBe("#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,(#7),$);");
+    expect(none.warnings.join('\n')).toContain('1 value(s)');
+    expect(two.warnings).toEqual(['2 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCRELDEFINESBYPROPERTIES.RelatingPropertyDefinition (#10847).']);
   });
 
   it('writes a required aggregate that may be empty as () when every member is dropped', () => {

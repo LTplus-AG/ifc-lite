@@ -195,6 +195,22 @@ describe('#10880 drag and placement readback', () => {
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
   });
 
+  it('a placement whose canvas resized before its read ran is dropped, even when the matrix is unchanged', async () => {
+    const c = ctx();
+    let width = 800;
+    Object.defineProperty(c.canvas, 'clientWidth', { get: () => width, configurable: true });
+    Object.defineProperty(c.canvas, 'clientHeight', { get: () => width / 2, configurable: true });
+    handlePolylineClick(c, 0, 0);
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick();
+    width = 1000; // a proportional resize: same aspect, same view-projection, a different ray under the CSS pixel
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after the canvas resized');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
+  });
+
   it('a placement whose section cut changed before its read ran is dropped', async () => {
     const c = ctx();
     handlePolylineClick(c, 0, 0);

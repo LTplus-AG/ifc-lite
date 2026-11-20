@@ -34,6 +34,9 @@ export const coordinationCompareOperations = [
       if (live.models.get(base.id) !== base || live.models.get(head.id) !== head || live.geometryContentVersion !== initial.geometryContentVersion || live.mutationVersion !== initial.mutationVersion || live.compareRunning) throw new Error('Comparison inputs changed during extraction.');
       // A clear or a newer comparison published during extraction outranks this run.
       if (live.compareResult !== initial.compareResult) throw new Error('The comparison was cleared or replaced during extraction.');
+      // A panel option the user changed during extraction outranks this run's parameters.
+      if (live.compareScope !== initial.compareScope || live.compareExcludedTypes !== initial.compareExcludedTypes || live.compareMatchByContent !== initial.compareMatchByContent || live.compareKeyProperty !== initial.compareKeyProperty || live.compareBaseModelId !== initial.compareBaseModelId || live.compareHeadModelId !== initial.compareHeadModelId)
+        throw new Error('The Compare panel options changed during extraction; run the comparison again.');
       return c.commit(() => {
         // Clearing first releases the panel's cached pair, so its option effect
         // cannot re-diff this result from fingerprints older than this run.

@@ -8,7 +8,11 @@ const metadata = (id: string, description: string) => ({ id, owner: 'properties'
 export const coordinationGeorefOperations = [
   viewerOperation<{ query: string }>(metadata('georeference.lookupEpsg', 'Search code prefixes or names through the exact native offline EPSG index and viewer starter-code preference. This current control performs no external network lookup.'), {
     type: 'object', properties: { query: { type: 'string', minLength: 1, maxLength: 500 } }, required: ['query'], additionalProperties: false,
-  }, async (i, c) => { const { searchViewerEpsg } = await import('@/components/viewer/properties/epsg-search'); return { results: await searchViewerEpsg(i.query, c.signal) }; }),
+  }, async (i, c) => {
+    // A blank query would come back as an empty result, indistinguishable from a search with no match.
+    if (!i.query.trim()) throw new Error('An EPSG code or name to search for is required.');
+    const { searchViewerEpsg } = await import('@/components/viewer/properties/epsg-search'); return { results: await searchViewerEpsg(i.query, c.signal) };
+  }),
   viewerOperation(metadata('georeference.realignmentState', 'Inspect exact federation sources and revisions needed for a guarded native Re-align reload.'), emptySchema, () => {
     const s = useViewerStore.getState(); return { model_ids: [...s.models.keys()].sort(), mutation_version: s.mutationVersion, geometry_version: s.geometryContentVersion,
       sources: [...s.models.values()].map(model => ({ model_id: model.id, name: model.name, source_available: !!model.sourceFile })) };

@@ -14,6 +14,7 @@ import { seedAuthoringSample, SAMPLE_MODEL } from '@/test/authoring-sample-fixtu
 import { setFieldOp, setSpecTextOp } from '@/lib/ids-studio/ops';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 import { useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
+import { refuseContentWrites } from '@/test/content-fixture';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
 import { viewerOperation } from './registry';
@@ -125,15 +126,10 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
       setBcfExportProgress: progress => { if (progress?.phase === 'writing') controller.abort(); }, emit: () => { cancelledEmits++; } }), { name: 'AbortError' });
     assert.equal(cancelledEmits, 0);
   });
-  it('refuses to close or replace an IDS whose draft storage refused, then closes once it saves (#11013)', async ({ mock }) => {
+  it('refuses to close or replace an IDS whose draft storage refused, then closes once it saves (#11013)', async () => {
     useViewerStore.getState().idsStudioOpen(fixture.doc);
     const draftId = useViewerStore.getState().idsStudioDraftId!;
-    const transaction = IDBDatabase.prototype.transaction;
-    const refusal = mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
-      stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
-      if (stores === 'items' && mode === 'readwrite') throw new DOMException('Storage full', 'QuotaExceededError');
-      return transaction.call(this, stores, mode, options);
-    });
+    const refusal = refuseContentWrites();
     const execute = (operation_id: string, input: unknown) => dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true });
     try {
       useViewerStore.getState().idsStudioDispatch([setSpecTextOp(fixture.specId, 'name', 'Unsaved walls')]);

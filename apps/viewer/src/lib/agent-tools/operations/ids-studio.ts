@@ -34,10 +34,10 @@ async function dependencies(c: ViewerOperationContext) {
   assertToolActive(c);
   return contexts;
 }
-async function saveOpenDraft(c: ViewerOperationContext) {
+/** Callers re-check revision and grants after this await. */
+async function saveOpenDraft() {
   const { saveOpenIdsDraft } = await import('@/lib/ids-studio/draft-viewer');
   await saveOpenIdsDraft();
-  assertToolActive(c);
 }
 function read() {
   const state = useViewerStore.getState();
@@ -107,7 +107,7 @@ export const idsOperations = [
     // A whole-document candidate replaces the open draft. Check that it still owns the revision before saving.
     if (candidate.document && candidate.result === undefined && useViewerStore.getState().idsStudioDraftId) {
       revision(candidate.revision); writeGuard(c);
-      await saveOpenDraft(c);
+      await saveOpenDraft();
     }
     // Another apply of this token finished during the await: it dispatched once, so answer as a replay.
     if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
@@ -161,7 +161,7 @@ export const idsOperations = [
   operation<{ document_revision: number }>(meta('ids.document.close', 'Close the native IDS document after checking its exact revision.', true), {
     type: 'object', properties: { document_revision: { type: 'integer', minimum: 0 } }, required: ['document_revision'], additionalProperties: false,
   }, async (i, c) => {
-    revision(i.document_revision); writeGuard(c); await saveOpenDraft(c); revision(i.document_revision); writeGuard(c);
+    revision(i.document_revision); await saveOpenDraft(); revision(i.document_revision); writeGuard(c);
     return c.commit(() => { useViewerStore.getState().idsStudioClose(); return read(); });
   }),
   operation<{ document_revision: number; view: 'inspector' | 'xml'; selection_id: string }>(meta('ids.settings', 'Set the native Studio view and selected document/spec/facet node; empty selection_id clears selection.', true), {

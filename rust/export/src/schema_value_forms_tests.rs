@@ -168,3 +168,24 @@ fn work_control_durations_convert_exact_seconds_and_refuse_calendar_months_10879
     let (out, dropped, _) = convert(down, "IFC4X3", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,93784.5,$,$,$,.ACTUAL.,$);", 1));
 }
+
+#[test]
+fn calendar_dates_and_zoned_times_round_trip_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_calendar_dates.ifc");
+    let up = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
+    let up = crate::export_step(input, &up).unwrap();
+    assert!(up.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{up}");
+    assert!(up.contains("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));"), "{up}");
+    for obsolete in ["IFCCALENDARDATE(", "IFCDATEANDTIME(", "IFCLOCALTIME(", "IFCCOORDINATEDUNIVERSALTIMEOFFSET("] {
+        assert!(!up.contains(obsolete), "{up}");
+    }
+    let down = crate::StepOptions { schema: Some("IFC2X3".to_owned()), ..Default::default() };
+    let step = crate::export_step(up.as_bytes(), &down).unwrap();
+    let (log, _) = crate::export_step_with_log(up.as_bytes(), &down, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[up.as_bytes()], &crate::MergedOptions { schema: down.schema.clone(), ..Default::default() });
+    for output in [&step, &log, &merged] {
+        assert!(output.contains("IFCCALENDARDATE(29,2,2024);"), "{output}");
+        assert!(output.contains("IFCLOCALTIME(10,30,15.5,#"), "{output}");
+        assert!(output.contains("IFCCOORDINATEDUNIVERSALTIMEOFFSET(5,30,.AHEAD.);"), "{output}");
+    }
+}

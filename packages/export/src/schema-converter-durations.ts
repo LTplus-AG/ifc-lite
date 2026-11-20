@@ -3,8 +3,8 @@
 import { toStepReal } from './step-serialization.js';
 import { parseStepNumber } from './step-slot-grammar.js';
 
-/** IfcDuration has no exponent notation. Expand the STEP decimal without rounding it. */
-export function durationFromSeconds(token: string): string | null {
+/** Expand the STEP decimal without rounding it. */
+export function decimalSeconds(token: string): string | null {
   if (!Number.isFinite(parseStepNumber(token))) return null;
   const m = /^([+-]?)(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(token);
   if (!m) return null;
@@ -17,7 +17,13 @@ export function durationFromSeconds(token: string): string | null {
   const tail = point <= 0 ? '0'.repeat(-point) + digits : digits.slice(point);
   const trimmed = tail.replace(/0+$/, '');
   const decimal = whole.replace(/^0+(?=\d)/, '') + (trimmed ? '.' + trimmed : '');
-  return "'" + (sign === '-' && decimal !== '0' ? '-' : '') + 'PT' + decimal + "S'";
+  return (sign === '-' && decimal !== '0' ? '-' : '') + decimal;
+}
+
+export function durationFromSeconds(token: string): string | null {
+  const decimal = decimalSeconds(token);
+  if (decimal === null) return null;
+  return decimal.startsWith('-') ? "'-PT" + decimal.slice(1) + "S'" : "'PT" + decimal + "S'";
 }
 
 /** Weeks, days and clock units are fixed in seconds. Calendar years and months need a date. */

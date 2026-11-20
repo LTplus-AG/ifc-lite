@@ -227,7 +227,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
-    let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
+    let mut checks = ConversionChecks::new(); checks.forms.enable_dates();
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
@@ -405,6 +405,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
 
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
     stats.warnings.extend(slot_fill.warnings());
+    stats.written = stats.written.saturating_add_signed(checks.finish_dates(&mut out));
     stats.warnings.extend(checks.warnings());
     stats.warnings.extend(parents.apply_folds(&mut out)); // #5774 folds, after every model is written
     // One product per placement in IFC2X3 (#9209); the header holds no record to change.

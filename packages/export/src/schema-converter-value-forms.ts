@@ -15,6 +15,7 @@
  */
 
 import { getCanonicalEntityName, getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
+import { CalendarDates } from './schema-calendar-dates.js';
 import { valueForm, valueFormSlotsOf } from './schema-value-form-policy.js';
 import { getAttrMaps } from './schema-converter-attr-maps.js';
 import { withoutComments } from './step-comment-skip.js';
@@ -36,6 +37,7 @@ interface Rule {
   readonly forms: ReadonlyMap<string, string | null>;
   /** Typed forms with a payload row (`T:NAME(F)`), the only ones whose payload is read. */
   readonly payload: ReadonlySet<string>;
+  readonly hasCalendar: boolean;
 }
 
 const SCHEMAS = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);
@@ -63,6 +65,7 @@ function rulesFor(from: string, to: string, type: string): Rules {
     empty: slot.empty,
     whole: slot.whole,
     forms: new Map(slot.rejected.map((f) => [f.split('>')[0], f.split('>')[1] ?? null])),
+    hasCalendar: slot.rejected.some((f) => f.includes('>C')),
     payload: new Set(slot.rejected.filter((f) => f.split('>')[0].endsWith(')')).map((f) => f.slice(0, f.indexOf('(')))),
   })) };
   byType.set(type, rules);
@@ -156,6 +159,9 @@ export class ValueForms {
   /** Per `TYPE.Attribute`: values dropped, and those that left a required slot `$`. */
   private readonly dropped = new Map<string, number>();
   private readonly emptied = new Map<string, number>();
+  readonly dates: CalendarDates;
+
+  constructor(deferDates = false) { this.dates = new CalendarDates(deferDates); }
 
   /** `line`, already converted from `from` to `to`, with every slot in a form the target accepts. */
   apply(line: string, from: string, to: string): string {
@@ -170,6 +176,10 @@ export class ValueForms {
     let changed = false;
     for (const rule of rules) {
       if (rule.index >= slots.length) continue;
+      const form = rule.hasCalendar ? valueForm(withoutComments(slots[rule.index])) : null;
+      const calendar = form === null ? null : rule.forms.get(form);
+      if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar,
+        () => this.count(rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
       const fixed = fix(slots[rule.index], '', rule);
       if (fixed.lost && rule.whole.length) {
         // Positional members: every slot of the group goes whole, each named for what it held.
@@ -209,6 +219,7 @@ export class ValueForms {
     return [
       ...line(this.dropped, 'were dropped'),
       ...line(this.emptied, 'left a slot the target requires as $, so the file is not valid against its header'),
+      ...this.dates.warnings(),
     ];
   }
 }

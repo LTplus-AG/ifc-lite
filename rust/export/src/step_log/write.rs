@@ -262,10 +262,14 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     write_header(out, opts, content, converting, &target, pass.new_entity_count + pass.ledger.modified_count())?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
-    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, target_is_ifc2x3);
+    let has_dates = |bytes: &[u8]| crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target);
+    let date_buffer = has_dates(content) || pass.created_lines.iter().any(|(_, line)| has_dates(line.as_bytes()))
+        || pass.mutated_lines.values().filter_map(|(line, _)| line.as_deref()).any(|line| has_dates(line.as_bytes()));
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, date_buffer);
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
+    if target_is_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));

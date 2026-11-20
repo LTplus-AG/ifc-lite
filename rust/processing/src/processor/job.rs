@@ -18,7 +18,7 @@ use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 
 use super::color_layer::{
-    resolve_element_color_for_product_definition_shape,
+    resolve_element_style_for_product_definition_shape,
     resolve_presentation_layer_for_product_definition_shape,
 };
 
@@ -30,6 +30,8 @@ pub(super) struct EntityJob {
     pub(super) end: usize,
     pub(super) product_definition_shape_id: Option<u32>,
     pub(super) element_color: [f32; 4],
+    /// Where `element_color` came from, decided with it (#10698).
+    pub(super) element_style: crate::element::StyleSource,
     pub(super) global_id: Option<String>,
     pub(super) name: Option<String>,
     pub(super) presentation_layer: Option<String>,
@@ -86,7 +88,7 @@ pub(super) struct AppearanceResolver {
     pub(super) element_material_color: FxHashMap<u32, [f32; 4]>,
     pub(super) layer_by_assigned_representation: FxHashMap<u32, String>,
     pub(super) include_presentation_layers: bool,
-    color_by_shape: FxHashMap<u32, Option<[f32; 4]>>,
+    color_by_shape: FxHashMap<u32, Option<([f32; 4], u32)>>,
     layer_by_shape: FxHashMap<u32, Option<String>>,
     layer_by_representation: FxHashMap<u32, Option<String>>,
 }
@@ -120,13 +122,15 @@ impl AppearanceResolver {
             return;
         };
         let resolved_color = self.color_by_shape.entry(shape_id).or_insert_with(|| {
-            resolve_element_color_for_product_definition_shape(shape_id, styles, decoder)
+            resolve_element_style_for_product_definition_shape(shape_id, styles, decoder)
         });
-        if let Some(color) = resolved_color {
+        if let Some((color, source)) = resolved_color {
             job.element_color = *color;
+            job.element_style = crate::element::StyleSource::Style(*source);
         } else if let Some(color) = self.element_material_color.get(&job.id) {
             // No direct/indexed geometry style: inherit the material appearance (#407).
             job.element_color = *color;
+            job.element_style = crate::element::StyleSource::Unstyled;
         }
         if self.include_presentation_layers {
             let assigned = &self.layer_by_assigned_representation;

@@ -2,8 +2,9 @@
 //! Per-part colour resolution for M11-A. One precedence: exact's own resolver
 //! (`presentation_source::color`, `resolve_color_for_representation_map`).
 use crate::element::assembly_job::AssemblyJob;
-use crate::element::element_color::{find_geometry_item_style_source, resolve_color_for_representation_map};
+use crate::element::element_color::representation_map_style_source;
 use crate::element::presentation_source::color;
+use crate::element::StyleSource;
 use crate::element::session_retained::error::RetainedExecutionError as Error;
 use crate::element::session_retained::publication::PartAppearance;
 use crate::element::session_retained::refusal::{RefusalOrigin, RetainedProductRefusal};
@@ -31,8 +32,9 @@ impl PartSource {
 pub(super) struct Bound {
     pub(super) source: PartSource,
     pub(super) fact: PresentationFacts,
-    /// Style-source ids of the enclosing `IfcMappedItem` occurrences, inner to outer. They never decide the
-    /// colour; they say which exact sub-mesh the part belongs to (one leaf under two occurrences is two).
+    /// Style-source ids of the enclosing `IfcMappedItem` occurrences, inner to outer (`StyledSubMeshes`
+    /// in exact). They say which exact sub-mesh the part belongs to (one leaf under two occurrences is two),
+    /// and, with material colours, a styled one colours an unstyled leaf (#10698), as in exact.
     pub(super) occurrences: Vec<u32>,
 }
 impl Bound {
@@ -45,7 +47,8 @@ impl Bound {
 /// enclosing `IfcMappedItem` occurrence (`mapping_retained.rs`), and exact keys a styled sub-mesh by the
 /// item the walk reached (`mapping_accept.rs` `Merging::Styled(item.item().id, ..)`), calling `color` once
 /// per such leaf: so the LAST item binding decides (a Boolean result's own binding follows its host's), never
-/// the occurrence. A type part is the exception: exact colours it through its representation map, so the
+/// the occurrence; the occurrences ride along in `Bound::occurrences`, where a styled one can colour an
+/// unstyled leaf. A type part is the exception: exact colours it through its representation map, so the
 /// type completion decides. A texture or palette flag on ANY of the value's bindings is kept, so it refuses
 /// whichever binding decides. A value with bindings but no item or type binding has no sub-mesh identity
 /// in exact to match, and refuses.
@@ -75,10 +78,15 @@ struct Shared {
 /// One appearance per part, in part order. The material cursor spans the
 /// product's parts as it spans exact's collection, and a class's fixed display
 /// colour overrides the result as `session_run::apply_fixed_color` does.
+///
+/// `style_id` is the styled item the part's colour came from (#10698), decided
+/// with the colour as exact decides it (`presentation_source::color`): `None`
+/// when no style decided it. `element_color.1` is where the element colour
+/// came from; a fixed display colour keeps the part's source, as in exact.
 pub(super) fn resolve_parts(
     job: &AssemblyJob<'_>,
     parts: &[Bound],
-    element_color: [f32; 4],
+    element_color: ([f32; 4], StyleSource),
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
 ) -> Result<Vec<PartAppearance>, Error> {
@@ -95,30 +103,33 @@ pub(super) fn resolve_parts(
         let mut part = match (fact.type_product, source) {
             (Some((_, class)), _) => {
                 let map = fact.representation_map.ok_or_else(|| unsupported(fact.geometry_id, "binding"))?;
-                // `type_parts`: the map's style colour, else the type's own colour.
-                let rgba = resolve_color_for_representation_map(map, ctx.geometry_style_index, decoder)
-                    .unwrap_or(fact.fallback_color.unwrap_or(element_color));
-                PartAppearance { rgba, geometry_class: class, style_id: None, material_name: None,
+                // `type_parts`: the map's style colour, else the type's own colour (passed as RGBA alone).
+                let styles = ctx.geometry_style_index;
+                let (rgba, style) = representation_map_style_source(map, &|item| styles.contains_key(&item), decoder)
+                    .and_then(|source| styles.get(&source).map(|style| (style.color, StyleSource::Style(source))))
+                    .or(fact.fallback_color.map(|rgba| (rgba, StyleSource::Unavailable)))
+                    .unwrap_or(element_color);
+                PartAppearance { rgba, geometry_class: class, style_id: style.style(), material_name: None,
                     geometry_item_id: None, material_id: None, texture_pending, palette_pending }
             }
             (None, PartSource::Material(id)) => {
                 // The model prepass joins material styles under their own ids, as
                 // exact's flat style wire does. Missing styles use the same product-wide
                 // material cursor as exact's collection; styled bands do not advance it.
-                let (rgba, material_name) = color(job, *id, element_color, materials, &mut next_material, ctx, decoder, true);
+                let (rgba, material_name, style) = color(job, *id, &[], element_color, materials, &mut next_material, ctx, decoder, true);
                 PartAppearance { rgba, geometry_class: crate::element::GEOM_CLASS_LAYER_SLICE,
-                    style_id: ctx.geometry_style_index.contains_key(id).then_some(*id),
+                    style_id: style.style(),
                     material_name, geometry_item_id: None, material_id: Some(*id), texture_pending, palette_pending }
             },
             // `presentation_source::fallback`: the element colour, no item, no name.
-            (None, PartSource::Unbound) => PartAppearance { rgba: element_color, geometry_class: 0, style_id: None,
+            (None, PartSource::Unbound) => PartAppearance { rgba: element_color.0, geometry_class: 0, style_id: element_color.1.style(),
                 material_name: None, geometry_item_id: None, material_id: None, texture_pending, palette_pending },
             (None, PartSource::Item(id)) => {
                 let shared = match last.take() {
                     Some(shared) if shared.key.0 == *source && shared.key.1 == *occurrences => shared,
                     _ => {
-                        let (rgba, material_name) = color(job, *id, element_color, materials, &mut next_material, ctx, decoder, true);
-                        let style_id = find_geometry_item_style_source(*id, &|id| ctx.geometry_style_index.contains_key(&id), decoder);
+                        let (rgba, material_name, style) = color(job, *id, occurrences, element_color, materials, &mut next_material, ctx, decoder, true);
+                        let style_id = style.style();
                         Shared { key: (*source, occurrences.clone()), rgba, material_name, style_id }
                     }
                 };

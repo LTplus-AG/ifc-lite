@@ -5,7 +5,7 @@ use super::{ProductOutput, Sink};
 use crate::router::frame_parts::{frames_mergeable, merge_admitted, mesh_bounds, union_bounds, FrameParts};
 use crate::router::processing::SourceHygiene;
 use crate::router::transforms::{instancing_enabled, ObjectPlacement};
-use crate::{GeometryRouter, InstanceMeta, Mesh, Result, SubMeshCollection};
+use crate::{GeometryRouter, InstanceMeta, Mesh, Result, styled_parts::StyledParts};
 
 /// The merged walk's accumulators.
 #[derive(Default)]
@@ -68,7 +68,7 @@ pub(in crate::program) enum Prepared {
     Merged { primary: Mesh, far: FrameParts, rebased: (Mesh, Option<[f32; 6]>), hygiene: SourceHygiene },
     /// An `IfcAlignment`'s axis: placed alone, with no source hygiene.
     Alignment(Mesh),
-    Styled(SubMeshCollection),
+    Styled(StyledParts),
 }
 
 /// Close the accumulators. Source-triangle hygiene runs before placement
@@ -109,7 +109,7 @@ pub(super) fn finish(sink: Sink, hygiene: SourceHygiene) -> Result<Prepared> {
             // textured sub-mesh stays `IndexOnly` because an appended apex
             // vertex would desynchronise its parallel UV array. The layered
             // early-return channel cleans at its own site (#5313).
-            for sub in &mut sub_meshes.sub_meshes {
+            for sub in sub_meshes.subs_mut(0) {
                 let own = if sub.uvs.is_some() { SourceHygiene::IndexOnly } else { hygiene };
                 own.apply(&mut sub.mesh);
             }

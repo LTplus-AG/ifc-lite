@@ -101,6 +101,7 @@ fn direct_assignment_applies_every_grouped_property_set() {
         end: 0,
         product_definition_shape_id: None,
         element_color: [0.0; 4],
+        element_style: crate::element::StyleSource::Unstyled,
         global_id: None,
         name: None,
         presentation_layer: None,

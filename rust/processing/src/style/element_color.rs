@@ -18,6 +18,21 @@ pub fn resolve_element_color(
     geometry_styles: &FxHashMap<u32, [f32; 4]>,
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
+    resolve_element_style(entity, geometry_styles, decoder).map(|(color, _)| color)
+}
+
+/// [`resolve_element_color`] and the styled item it took the colour from, from
+/// the same walk (#10698): the product shape's first styled item, else a style
+/// keyed by the element itself. Pass the source to
+/// [`produce_element_meshes_owned_styled`] with the colour, so a mesh that
+/// falls back to the element colour takes that item's finish and no other.
+///
+/// [`produce_element_meshes_owned_styled`]: crate::element::produce_element_meshes_owned_styled
+pub fn resolve_element_style(
+    entity: &DecodedEntity,
+    geometry_styles: &FxHashMap<u32, [f32; 4]>,
+    decoder: &mut EntityDecoder,
+) -> Option<([f32; 4], crate::element::StyleSource)> {
     if geometry_styles.is_empty() {
         return None;
     }
@@ -27,8 +42,8 @@ pub fn resolve_element_color(
                 shape, &|id| geometry_styles.contains_key(&id), decoder,
             )
         })
-        .and_then(|source| geometry_styles.get(&source).copied())
-        .or_else(|| geometry_styles.get(&entity.id).copied())
+        .or_else(|| geometry_styles.contains_key(&entity.id).then_some(entity.id))
+        .and_then(|source| geometry_styles.get(&source).map(|&color| (color, crate::element::StyleSource::Style(source))))
 }
 
 #[cfg(test)]

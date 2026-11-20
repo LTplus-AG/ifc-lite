@@ -37,10 +37,10 @@ impl<'a> GeometryProgram<'a> {
     /// (nested maps included), with the #1623 don't-bake template/placeholder
     /// decision at the top level when `allow_instancing`.
     #[cfg(test)]
-    pub(crate) fn styled_item(item: &'a DecodedEntity, meshes: crate::SubMeshCollection, allow_instancing: bool,
+    pub(crate) fn styled_item(item: &'a DecodedEntity, meshes: impl Into<crate::styled_parts::StyledParts>, allow_instancing: bool,
         textures: Option<&'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>,
         offset_meters: (f64, f64, f64)) -> Self {
-        let control = MappingControl::styled(Reached::Root(item), meshes, allow_instancing, textures, offset_meters);
+        let control = MappingControl::styled(Reached::Root(item), meshes.into(), allow_instancing, textures, offset_meters);
         Self::with_control(Control::Mapping(control))
     }
 
@@ -87,7 +87,7 @@ impl<'a> GeometryProgram<'a> {
     #[cfg(test)]
     pub(crate) fn voided_hosts(host: &'a DecodedEntity, ids: &'a [u32],
         hosts: Option<crate::SubMeshCollection>) -> Self {
-        Self::with_control(Control::Voids(VoidControl::styled(host, ids, hosts)))
+        Self::with_control(Control::Voids(VoidControl::styled(host, ids, hosts.map(Into::into))))
     }
 
     /// One material-layer attempt with an explicit `buildup`, over the host

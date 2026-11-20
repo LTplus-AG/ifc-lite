@@ -108,7 +108,7 @@ fn presentation_repairs_winding_and_normals_against_analytic_tetrahedron_8049() 
         let entity = decoder.decode_by_id(10).unwrap();
         let meta = metadata(10);
         let data = Data::default();
-        let (meshes, occurrences) = super::presentation_source::submeshes(
+        let (meshes, occurrences) = super::presentation_source::submeshes_plain(
             &AssemblyJob::from(&job(&entity, &meta)), collection, RED,
             &data.ctx(), &mut decoder, &mut None, 0, super::presentation::CollectionTopology::ItemsUncut,
         );

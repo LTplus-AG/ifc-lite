@@ -106,7 +106,22 @@ impl std::ops::DerefMut for WorkerCacheGuard<'_, '_> {
 /// the whole model, not per chunk/part. `.map`/`.flatten_iter()` at the call
 /// site keeps the former `flat_map_iter` order; the caches are pure
 /// memoization, so meshes are byte-identical.
-pub(super) fn run_job(job: &EntityJob, ctx: &PassContext<'_>) -> Vec<MeshData> {
+/// One chunk's jobs, in job order, split for the sink: the meshes, and the
+/// source of each one's colour (#10698), the same length and order. The sink
+/// takes plain meshes, so the pairs are split here, once, and the pass emits
+/// the two lists chunk for chunk.
+pub(super) fn run_chunk(jobs: &mut [EntityJob], ctx: &PassContext<'_>) -> (Vec<MeshData>, Vec<crate::element::StyleSource>) {
+    use rayon::prelude::*;
+    super::scheduling::element_tasks(jobs)
+        .map(|job| run_job(job, ctx))
+        .flatten_iter()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|produced| (produced.mesh, produced.style))
+        .unzip()
+}
+
+pub(super) fn run_job(job: &EntityJob, ctx: &PassContext<'_>) -> Vec<crate::element::ProducedMesh> {
     // A job runs here under whatever lexical resource state this thread
     // already carries: a stolen job inside another caller's scope, or a worker
     // still in a stopped terminal domain, is refused or degraded by it without
@@ -172,7 +187,7 @@ fn mesh_job(
     ctx: &PassContext<'_>,
     worker_point_cache: &mut FxHashMap<u32, (f64, f64, f64)>,
     worker_placement_cache: &mut FxHashMap<u32, [f64; 16]>,
-) -> Vec<MeshData> {
+) -> Vec<crate::element::ProducedMesh> {
     if ctx.skipped_entity_ids.contains(&job.id) {
         return Vec::new();
     }
@@ -228,7 +243,7 @@ fn mesh_job(
     #[cfg(all(feature = "observability", not(target_arch = "wasm32")))]
     let brep_timer = std::time::Instant::now();
 
-    let produced = crate::element::produce_element_meshes_owned(
+    let produced = crate::element::produce_element_meshes_owned_styled(
         &crate::element::ElementMeshJob {
             id: job.id,
             ifc_type: crate::execution::job_type(&entity, ctx.content, span, Some(&job.ifc_type)),
@@ -237,6 +252,8 @@ fn mesh_job(
             element_color: Some(job.element_color),
             metadata: Some(&metadata),
         },
+        // Decided with `element_color` by the appearance step (#10698).
+        job.element_style,
         ctx.run.context(),
         // Geometry hashing is a viewer diff feature: off on the native path.
         &crate::element::MeshProductionOptions::default(),
@@ -249,6 +266,9 @@ fn mesh_job(
     let Ok(produced) = produced else {
         return super::run_snapshot::refused_by_context();
     };
+    // `into_parts` gives one source per mesh, in order; they are paired again
+    // below once the diagnostics have read the plain output.
+    let (produced, mesh_styles, _) = produced.into_parts();
 
     // The warm cache is moved back to the worker by `WorkerCacheGuard::drop`, on
     // every exit path.
@@ -273,7 +293,7 @@ fn mesh_job(
         }
     }
 
-    produced.meshes
+    produced.meshes.into_iter().zip(mesh_styles).map(|(mesh, style)| crate::element::ProducedMesh { mesh, style }).collect()
 }
 
 pub(super) fn build_color_updates_for_jobs(

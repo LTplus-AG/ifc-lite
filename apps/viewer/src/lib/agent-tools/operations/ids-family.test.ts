@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -12,6 +13,7 @@ import { wallFixture } from '@/test/ids-studio-fixture';
 import { seedAuthoringSample, SAMPLE_MODEL } from '@/test/authoring-sample-fixture';
 import { setFieldOp, setSpecTextOp } from '@/lib/ids-studio/ops';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
+import { useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
 import { viewerOperation } from './registry';
@@ -122,6 +124,34 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     await assert.rejects(runIdsBcfExport({ ...params, signal: controller.signal,
       setBcfExportProgress: progress => { if (progress?.phase === 'writing') controller.abort(); }, emit: () => { cancelledEmits++; } }), { name: 'AbortError' });
     assert.equal(cancelledEmits, 0);
+  });
+  it('refuses to close or replace an IDS whose draft storage refused, then closes once it saves (#11013)', async ({ mock }) => {
+    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    const draftId = useViewerStore.getState().idsStudioDraftId!;
+    const transaction = IDBDatabase.prototype.transaction;
+    const refusal = mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+      stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+      if (stores === 'items' && mode === 'readwrite') throw new DOMException('Storage full', 'QuotaExceededError');
+      return transaction.call(this, stores, mode, options);
+    });
+    const execute = (operation_id: string, input: unknown) => dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true });
+    try {
+      useViewerStore.getState().idsStudioDispatch([setSpecTextOp(fixture.specId, 'name', 'Unsaved walls')]);
+      const revision = useViewerStore.getState().idsStudioRevision;
+      const closed = await execute('ids.document.close', { document_revision: revision });
+      assert.equal(closed.isError, true); assert.match(closed.text, /could not be saved/);
+      const replacement = await call<{ token: string }>('ids.document.prepare', { format: 'new', content: 'Replacement', document_revision: revision });
+      const replaced = await execute('ids.candidate.apply', { token: replacement.token });
+      assert.equal(replaced.isError, true); assert.match(replaced.text, /could not be saved/);
+      const live = useViewerStore.getState();
+      assert.equal(live.idsStudioDraftId, draftId); assert.equal(live.idsStudioState!.doc.ids.specifications[0].name, 'Unsaved walls');
+    } finally {
+      refusal.mock.restore();
+    }
+    await call('ids.document.close', { document_revision: useViewerStore.getState().idsStudioRevision }, true);
+    assert.equal(useViewerStore.getState().idsStudioState, null);
+    const saved = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draftId);
+    assert.ok(saved?.document.includes('Unsaved walls'), 'close waited for the draft write');
   });
   it('authors an independent Manual checklist without a model and rejects stale library edits', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });

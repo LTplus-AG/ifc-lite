@@ -65,10 +65,17 @@ function openIdsDraft(draft: IdsStudioDraft): void {
 
 export function flushIdsDrafts(): Promise<boolean> { return autosave.flushAll(); }
 
-/** Save the open draft before something replaces its document. */
-export async function flushOpenIdsDraft(): Promise<boolean> {
+export class IdsDraftUnsavedError extends Error {
+  constructor() {
+    super('The open IDS draft could not be saved in this browser, so it was not closed or replaced. Retry once storage accepts writes; the user can discard it from the IDS Studio panel.');
+    this.name = 'IdsDraftUnsavedError';
+  }
+}
+
+/** Agent close and replace cannot ask the user, so an unsaved open draft refuses them. */
+export async function saveOpenIdsDraft(): Promise<void> {
   const id = useViewerStore.getState().idsStudioDraftId;
-  return !id || autosave.flush(id);
+  if (id && !(await autosave.flush(id))) throw new IdsDraftUnsavedError();
 }
 
 export function checkInitialIdsDraft(isMounted: () => boolean): Promise<void> {

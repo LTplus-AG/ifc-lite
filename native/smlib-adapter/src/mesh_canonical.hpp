@@ -30,10 +30,16 @@ void order_mesh(AdapterMesh& mesh);
 // no longer matters: a greedy constrained triangulation adds interior
 // diagonals in (3D squared length, lower vertex, upper vertex) order, skipping
 // one that passes through a vertex, crosses an accepted edge, leaves the face
-// (holes included) or is already an edge of another face (faces are visited in
-// source-face order). A quad therefore takes its shorter diagonal, and on a tie
-// (a rectangle) the one through its lowest vertex. A face is left as the SDK
-// split it when the result does not reproduce its triangle count, edge use and
-// area, when it has more than 256 vertices, or when its edges are not manifold.
+// (holes and pinch vertices included) or is an edge of a face that is not
+// retriangulated (or any face's boundary). A quad therefore takes its shorter
+// diagonal, and on a tie (a rectangle) the one through its lowest vertex.
+// Every geometric decision uses one exact orientation predicate, so
+// near-collinear vertices (rotated or georeferenced faces) cannot make two
+// tests disagree. A face is left as the SDK split it when the result does not
+// reproduce its triangle count, directed edge use and area, when it has more
+// than 256 vertices, or when its edges are not manifold. Interior diagonals of
+// other retriangulated faces are not avoided: they can only coincide in
+// overlapping (degenerate) faces, which then share one canonical split.
+// Cost is O(V^3) per face in the worst case: about 10 ms for 256 vertices.
 // Requires order_mesh first (canonical vertex IDs, faces contiguous).
 void canonical_planar_faces(AdapterMesh& mesh, const std::vector<bool>& planar_faces);

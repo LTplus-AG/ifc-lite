@@ -88,7 +88,9 @@ using Tri=std::array<uint32_t,3>;
 double orient(const std::vector<Point>& p,uint32_t a,uint32_t b,uint32_t c) {
     return (p[b][0]-p[a][0])*(p[c][1]-p[a][1])-(p[b][1]-p[a][1])*(p[c][0]-p[a][0]);
 }
-AdapterMesh variant(const std::vector<Point>& points,std::vector<Tri> triangles,unsigned flips,std::mt19937& random) {
+AdapterMesh variant(const std::vector<Point>& points,std::vector<Tri> triangles,unsigned flips,std::mt19937& random,
+    const std::vector<Point>* flat=nullptr) {
+    const auto& plane=flat ? *flat : points;
     for (unsigned f=0;f<flips;++f) {
         const size_t x=random()%triangles.size(),y=random()%triangles.size();
         if (x==y) continue;
@@ -96,7 +98,7 @@ AdapterMesh variant(const std::vector<Point>& points,std::vector<Tri> triangles,
         for (unsigned i=0;i<3;++i) for (unsigned j=0;j<3;++j) {
             if (!(b[j]==a[(i+1)%3] && b[(j+1)%3]==a[i])) continue;
             const uint32_t u=a[i],v=a[(i+1)%3],p=a[(i+2)%3],q=b[(j+2)%3];
-            if (orient(points,p,u,q)>0 && orient(points,q,v,p)>0) { triangles[x]={p,u,q}; triangles[y]={q,v,p}; }
+            if (orient(plane,p,u,q)>0 && orient(plane,q,v,p)>0) { triangles[x]={p,u,q}; triangles[y]={q,v,p}; }
             i=3; break;
         }
     }
@@ -113,17 +115,43 @@ AdapterMesh variant(const std::vector<Point>& points,std::vector<Tri> triangles,
     return mesh;
 }
 void planar_face_is_canonical(const std::vector<Point>& points,const std::vector<Tri>& triangles,
-    std::mt19937& random,const char* name) {
-    AdapterMesh reference=variant(points,triangles,0,random);
+    std::mt19937& random,const char* name,const std::vector<Point>* flat=nullptr,unsigned runs=48) {
+    AdapterMesh reference=variant(points,triangles,0,random,flat);
     const auto vertices=vertex_set(reference); const double area=face_areas(reference).at(0);
     canonicalize(reference,{true});
     require(reference.indices.size()==3*triangles.size() && vertex_set(reference)==vertices,name);
     require(std::abs(face_areas(reference).at(0)-area)<=1e-12*area,name);
-    for (unsigned run=0;run<48;++run) {
-        AdapterMesh mesh=variant(points,triangles,run,random);
+    for (unsigned run=0;run<runs;++run) {
+        AdapterMesh mesh=variant(points,triangles,run,random,flat);
         canonicalize(mesh,{true});
         same_bytes(mesh,reference,name);
     }
+}
+// An n x m grid of `spacing` cells, minus `holes`, each cell split along a
+// random diagonal, mapped into 3D by `place`. Returns the 3D points, the flat
+// grid coordinates (for flips) and the triangles.
+template<class Place>
+void grid(unsigned n,unsigned m,const std::set<std::pair<unsigned,unsigned>>& holes,Place place,std::mt19937& random,
+    std::vector<Point>& points,std::vector<Point>& flat,std::vector<Tri>& triangles) {
+    std::vector<int> id((n+1)*(m+1),-1);
+    auto vertex=[&](unsigned i,unsigned j) {
+        int& v=id[j*(n+1)+i];
+        if (v<0) { v=int(points.size()); flat.push_back({double(i),double(j),0}); points.push_back(place(double(i),double(j))); }
+        return uint32_t(v);
+    };
+    for (unsigned j=0;j<m;++j) for (unsigned i=0;i<n;++i) {
+        if (holes.count({i,j})) continue;
+        const uint32_t a=vertex(i,j),b=vertex(i+1,j),c=vertex(i+1,j+1),d=vertex(i,j+1);
+        if (random()%2) { triangles.push_back({a,b,c}); triangles.push_back({a,c,d}); }
+        else { triangles.push_back({a,b,d}); triangles.push_back({b,c,d}); }
+    }
+}
+// A face the retriangulation must decline: canonicalized it is exactly the
+// SDK's split in canonical order.
+void declined(AdapterMesh mesh,const std::vector<bool>& planar,const char* name) {
+    AdapterMesh ordered=mesh; order_mesh(ordered); order_mesh(ordered);
+    canonicalize(mesh,planar);
+    same_bytes(mesh,ordered,name);
 }
 }
 
@@ -256,5 +284,112 @@ void run_mesh_canonical_tests() {
         // A square with an interior vertex and a vertex on one edge.
         const std::vector<Point> inner{{0,0,0},{2,0,0},{2,2,0},{0,2,0},{.7,.9,0},{1,0,0}};
         planar_face_is_canonical(inner,{{0,5,4},{5,1,4},{1,2,4},{2,3,4},{3,0,4}},random,"interior and edge vertices canonical");
+    }
+    // Rotated, offset grids with holes in arbitrary planes: near-collinear
+    // vertices once made the double predicates disagree, the face fell back
+    // to the SDK split and every enumeration gave different bytes.
+    {
+        const double c30=std::cos(0.5235987755982988),s30=std::sin(0.5235987755982988);
+        std::vector<Point> points,flat; std::vector<Tri> triangles;
+        grid(6,6,{{2,2},{2,3},{3,2},{3,3}},[&](double i,double j) {
+            return Point{12+0.6*(c30*i-s30*j),12+0.6*(s30*i+c30*j),3}; },random,points,flat,triangles);
+        planar_face_is_canonical(points,triangles,random,"rotated offset grid with a hole is canonical",&flat,41);
+        // Property: random rotations, offsets up to 3e6 m, spacings and planes.
+        std::uniform_real_distribution<double> unit(0,1);
+        for (unsigned trial=0;trial<60;++trial) {
+            const double angle=1.57*unit(random),offset=std::pow(10.,6.5*unit(random)),spacing=0.01+1.5*unit(random);
+            const unsigned n=3+random()%6,m=3+random()%6,plane=random()%4;
+            std::set<std::pair<unsigned,unsigned>> holes;
+            for (unsigned h=random()%4;h>0;--h) holes.insert({1+random()%(n-2),1+random()%(m-2)});
+            const double c=std::cos(angle),s=std::sin(angle);
+            std::vector<Point> p3,p2; std::vector<Tri> t;
+            grid(n,m,holes,[&](double i,double j) {
+                const double u=offset+spacing*(c*i-s*j),v=offset/2+spacing*(s*i+c*j);
+                switch (plane) {
+                case 0: return Point{u,v,3.};
+                case 1: return Point{u,7.,v};
+                case 2: return Point{1.5,u,v};
+                default: return Point{u,v,0.3*u+0.7*v}; // tilted
+                } },random,p3,p2,t);
+            planar_face_is_canonical(p3,t,random,"random rotated/offset/tilted grid is canonical",&p2,8);
+        }
+    }
+    // Declined faces keep the SDK's split (in canonical order).
+    {
+        // More than 256 vertices: a 140-segment curved wall top (282 vertices).
+        std::vector<Point> points; std::vector<Tri> triangles;
+        for (unsigned i=0;i<=140;++i) for (double r:{5.0,5.3}) points.push_back({r*std::cos(1.2*i/140),r*std::sin(1.2*i/140),3});
+        for (uint32_t i=0;i<140;++i) { triangles.push_back({2*i,2*i+2,2*i+3}); triangles.push_back({2*i,2*i+3,2*i+1}); }
+        declined(variant(points,triangles,0,random),{true},"face over 256 vertices is left as split");
+        // A non-manifold face: three triangles on one edge.
+        AdapterMesh book; book.positions={0,0,0,1,0,0,.5,1,0,.5,-1,0,.5,2,0};
+        book.indices={0,1,2,1,0,3,0,1,4}; book.faces={0,0,0}; book.normals.assign(27,0.);
+        declined(book,{true},"non-manifold face is left as split");
+    }
+    // A diagonal that another face already has is not created, also on a face
+    // of more than two triangles, and the result is still canonical.
+    {
+        std::vector<Point> hexagon;
+        for (unsigned i=0;i<6;++i) hexagon.push_back({std::cos(i*1.0471975511965976),std::sin(i*1.0471975511965976)*0.7,0});
+        const std::vector<Tri> fan{{0,1,2},{0,2,3},{0,3,4},{0,4,5}};
+        AdapterMesh alone=variant(hexagon,fan,0,random); canonicalize(alone,{true});
+        // Pick a diagonal of the canonical result and give it to face 1.
+        Point a{},b{};
+        for (size_t t=0;t<alone.faces.size() && a==b;++t) for (unsigned k=0;k<3;++k) {
+            const uint32_t x=alone.indices[3*t+k],y=alone.indices[3*t+(k+1)%3];
+            const bool ring=(std::max(x,y)-std::min(x,y))%6==1 || (std::max(x,y)-std::min(x,y))==5;
+            (void)ring;
+            Point px{alone.positions[3*x],alone.positions[3*x+1],alone.positions[3*x+2]},py{alone.positions[3*y],alone.positions[3*y+1],alone.positions[3*y+2]};
+            bool boundary=false;
+            for (unsigned i=0;i<6;++i) if ((px==hexagon[i] && py==hexagon[(i+1)%6]) || (py==hexagon[i] && px==hexagon[(i+1)%6])) boundary=true;
+            if (!boundary) { a=px; b=py; break; }
+        }
+        require(!(a==b),"hexagon has an interior diagonal");
+        std::vector<AdapterMesh> results;
+        for (unsigned run=0;run<16;++run) {
+            AdapterMesh mesh=variant(hexagon,fan,run,random);
+            const auto base=uint32_t(mesh.positions.size()/3);
+            mesh.positions.insert(mesh.positions.end(),{0,0,1});
+            auto find=[&](const Point& p) { for (uint32_t v=0;v<base;++v) if (Point{mesh.positions[3*v],mesh.positions[3*v+1],mesh.positions[3*v+2]}==p) return v; return 0u; };
+            mesh.indices.insert(mesh.indices.end(),{find(a),find(b),base}); mesh.faces.push_back(1);
+            mesh.normals.assign(mesh.indices.size()*3,0.);
+            canonicalize(mesh,{true,false}); results.push_back(mesh);
+            for (size_t t=0;t<mesh.faces.size();++t) if (mesh.faces[t]==0) for (unsigned k=0;k<3;++k) {
+                const uint32_t x=mesh.indices[3*t+k],y=mesh.indices[3*t+(k+1)%3];
+                const Point px{mesh.positions[3*x],mesh.positions[3*x+1],mesh.positions[3*x+2]},py{mesh.positions[3*y],mesh.positions[3*y+1],mesh.positions[3*y+2]};
+                require(!((px==a && py==b) || (px==b && py==a)),"face 0 does not reuse face 1's edge");
+            }
+        }
+        for (const auto& mesh:results) same_bytes(mesh,results[0],"foreign-edge exception is canonical");
+    }
+    // Back-to-back coplanar faces over one region (degenerate geometry): the
+    // first face never sees the other's not-yet-replaced split, the second
+    // avoids the first's new diagonals, so both are canonical.
+    {
+        const std::vector<Point> points{{0,0,0},{1,0,0},{2,0,0},{0,1,0},{1,1,0},{2,1,0},{0,2,0},{1,2,0},{2,2,0}};
+        auto split=[&](uint32_t a,uint32_t b,uint32_t c,uint32_t d,bool flip,bool reverse,std::vector<Tri>& out) {
+            Tri x=flip ? Tri{a,b,c} : Tri{a,b,d}, y=flip ? Tri{a,c,d} : Tri{b,c,d};
+            if (reverse) { std::swap(x[1],x[2]); std::swap(y[1],y[2]); }
+            out.push_back(x); out.push_back(y);
+        };
+        std::vector<AdapterMesh> results;
+        for (unsigned run=0;run<40;++run) {
+            std::vector<Tri> front,back;
+            for (uint32_t j=0;j<2;++j) for (uint32_t i=0;i<2;++i) {
+                const uint32_t a=3*j+i,b=a+1,c=a+4,d=a+3;
+                split(a,b,c,d,random()%2,false,front); split(a,b,c,d,random()%2,true,back);
+            }
+            std::vector<uint32_t> ids(points.size()); std::iota(ids.begin(),ids.end(),0u); std::shuffle(ids.begin(),ids.end(),random);
+            AdapterMesh mesh; mesh.positions.resize(points.size()*3);
+            for (size_t v=0;v<points.size();++v) for (unsigned axis=0;axis<3;++axis) mesh.positions[3*ids[v]+axis]=points[v][axis];
+            std::vector<std::pair<uint32_t,Tri>> all;
+            for (const auto& t:front) all.push_back({0,t});
+            for (const auto& t:back) all.push_back({1,t});
+            std::shuffle(all.begin(),all.end(),random);
+            for (const auto& [face,t]:all) { mesh.indices.insert(mesh.indices.end(),{ids[t[0]],ids[t[1]],ids[t[2]]}); mesh.faces.push_back(face); }
+            mesh.normals.assign(mesh.indices.size()*3,0.);
+            canonicalize(mesh,{true,true}); results.push_back(mesh);
+        }
+        for (const auto& mesh:results) same_bytes(mesh,results[0],"back-to-back coplanar faces are canonical");
     }
 }

@@ -1,17 +1,20 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index e47414e1d9..ca4e32be05 100644
+index 880dbb3..6fd0e0e 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -138,7 +138,7 @@ export class StoreGeometryBackingTap {
-       const carried: DecodedInstancedShard[] = [];
-       if (shards === 'carry') {
-         if (!previous?.backing || previous.failure || previous.instancedLost) next.instancedLost = true;
--        else void previous.backing;
-+        else for await (const shard of previous.backing.reader.instancedShards()) carried.push(shard);
+@@ -213,7 +213,10 @@ export class StoreGeometryBackingTap {
+         // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
+         const source = next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
+         if (!source?.backing || source.failure || (source.instancedLost && !next.resupply)) next.instancedLost = true;
+-        else void source.backing;
++        else for await (const shard of source.backing.reader.instancedShards()) {
++          next.shards++; next.occurrences += shard.instances.length;
++          await next.backing.writer.appendInstancedShard(shard);
++        }
        }
-       next.backing = await this.registry.begin(modelId, this.options);
-       for (const shard of carried) {
-@@ -228,7 +228,7 @@ export class StoreGeometryBackingTap {
+     });
+     next.chain = this.settle(next, begun);
+@@ -366,7 +369,7 @@ export class StoreGeometryBackingTap {
  
    /** Shards were enqueued for this model that the tap never saw. */
    private missedShards(modelId: string): boolean {

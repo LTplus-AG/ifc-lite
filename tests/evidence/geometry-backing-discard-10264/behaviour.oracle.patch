@@ -1,5 +1,5 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 2f5c5ec..a8b1a2a 100644
+index 2f5c5ec..6fd0e0e 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 @@ -123,6 +123,11 @@ export class StoreGeometryBackingTap {
@@ -18,7 +18,7 @@ index 2f5c5ec..a8b1a2a 100644
    /** Close every model's writer and acknowledge complete generations. */
    async seal(): Promise<ModelBackingStatus[]> {
      // A statement holds only while its queue generation does: a full discard since (even of nothing) voids it.
-+    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, instancedShardGeneration())) this.abandon(modelId, { generation: tracked.supplied!.generation, epoch: Infinity });
++    for (const [modelId, tracked] of this.tracked) if (statementVoided(tracked, supplyPoint(modelId))) this.abandon(modelId, { generation: tracked.supplied!.generation, epoch: tracked.supplied!.epoch });
      await this.whenIdle();
      let acknowledged = false;
      for (const [modelId, tracked] of this.tracked) {

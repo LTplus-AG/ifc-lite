@@ -20,7 +20,7 @@ import '@/test/setup-dom.js';
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { QuantityType } from '@ifc-lite/data';
-import { advance, cleanup, render, type } from '@/test/render.js';
+import { advance, cleanup, render, settle, type } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
@@ -75,6 +75,7 @@ const PANEL_ROWS = ['72:Custom_A:A1', '72:Custom_A:A2', '72:Custom_B:B1'];
 async function mountPanel(): Promise<{ store: IfcDataStore; container: HTMLElement }> {
   const store = await parseStep(MODEL);
   seedModel(MODEL_ID, ID_OFFSET, store, WALL);
+  await settle();
   const container = render(<PropertiesPanel />);
   await advance(0);
   assert.deepEqual(panelRows(container), PANEL_ROWS);
@@ -85,6 +86,7 @@ async function mountPanel(): Promise<{ store: IfcDataStore; container: HTMLEleme
 async function press(direction: 'undo' | 'redo'): Promise<void> {
   replayWorkspaceHistory(useViewerStore.getState(), direction);
   await advance(0);
+  await settle();
 }
 
 async function exportedPsets(store: IfcDataStore): Promise<string[]> {
@@ -107,6 +109,7 @@ describe('undo / redo of a whole property set reach the panel and the export (#5
     const { store, container } = await mountPanel();
 
     await addPropertyThroughDialog(container, 'Custom_New', 'N1', 'n1');
+    await settle();
     assert.deepEqual(panelRows(container), [...PANEL_ROWS, '72:Custom_New:N1'].sort());
 
     await press('undo');
@@ -129,6 +132,7 @@ describe('undo / redo of a whole property set reach the panel and the export (#5
 
     assert.ok(useViewerStore.getState().deletePropertySet(MODEL_ID, WALL, 'Custom_A'));
     await advance(0);
+    await settle();
     assert.deepEqual(panelRows(container), ['72:Custom_B:B1']);
     assert.deepEqual(await exportedPsets(store), ['Custom_B.B1=b1']);
 

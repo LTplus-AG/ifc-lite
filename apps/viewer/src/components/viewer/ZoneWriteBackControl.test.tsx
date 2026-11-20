@@ -16,7 +16,7 @@ import '@/test/setup-dom.js';
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, settle } from '@/test/render.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store/index.js';
@@ -86,6 +86,7 @@ after(cleanup);
 describe('ZonesPanel: writing zone data into the model', () => {
   beforeEach(async () => {
     await seed();
+    await settle(); // earlier tests' panels stay mounted (cleanup runs after all); let their edits settle (#10535)
   });
 
   it('disables writer controls and explains Edit mode while preserving the export controls (#5901)', () => {
@@ -126,6 +127,7 @@ describe('ZonesPanel: writing zone data into the model', () => {
     const data = await seed();
     const missing: FederatedModel = { ...fixtureModel('m1'), maxExpressId: WALL_ID, ifcDataStore: null };
     useViewerStore.setState({ models: new Map([['m1', missing]]) });
+    await settle();
     const ui = render(<ZoneWriteBackControl zoneSet={ZONE_SET} />);
     assert.equal(writeButton(ui).disabled, true);
     assert.match(writeButton(ui).title, /no editable IFC data/);

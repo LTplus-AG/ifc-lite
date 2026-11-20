@@ -23,7 +23,7 @@ import type { WorkflowArtifact } from '@/lib/flow/artifact';
 import { blankDocument } from '@/lib/document/presets';
 import { BimProvider } from '@/sdk/BimProvider';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { cleanup, click, render, waitFor } from '@/test/render';
+import { cleanup, click, render, settle, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
@@ -108,6 +108,7 @@ test('#6833 a real Flow run is offered from the run bar, stamped after its own w
     click([...root.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Run')!);
   });
   await waitFor(() => !useViewerStore.getState().flowRunning && useViewerStore.getState().flowLastRun !== null, 'run finished');
+  await settle();
   const state = useViewerStore.getState();
   assert.ok(state.mutationVersion > 0, 'the run wrote to the model');
 

@@ -4,7 +4,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { operationPageViolations } from './lib/operation-page-revision.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
+const missingRevisions = operationPageViolations(root);
+if (missingRevisions.length) {
+  console.error(`Operation cursors must include page_revision. Use boundedPage for offset paging:\n${missingRevisions.join('\n')}`);
+  process.exit(1);
+}
 const run = spawnSync('pnpm', ['exec', 'tsx', '--tsconfig', 'apps/viewer/tsconfig.json', '--import', './apps/viewer/src/test/vite-module-hooks.mjs', 'scripts/generate-viewer-operations.ts', ...(process.argv.includes('--update') ? [] : ['--check'])], { cwd: root, stdio: 'inherit', env: process.env });
 if (run.error) console.error(run.error);
 process.exit(run.status ?? 1);

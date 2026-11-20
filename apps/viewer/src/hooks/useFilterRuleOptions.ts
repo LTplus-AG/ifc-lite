@@ -70,12 +70,17 @@ export function useFilterRuleOptions(rules: readonly FilterRule[], modelIdOverri
     && cachedEntry?.mutationVersion === mutationVersion ? cachedEntry : undefined;
 
   // Cheap schema discovery — runs once per active model.
+  // Discovers for the live session, not the frame this panel shows: a panel
+  // still settling an edit (#10535) must not discover the version it is leaving.
   useEffect(() => {
     if (!selectedModelId || !activeStore) return;
-    const cached = useViewerStore.getState().searchFilterSchema.get(selectedModelId);
-    if (cached?.sourceStore === activeStore && cached.mutationVersion === mutationVersion) return;
-    setFilterSchema(selectedModelId, discoverFilterSchema(activeStore, activeView), {
-      sourceStore: activeStore, mutationVersion,
+    const live = useViewerStore.getState();
+    const store = live.models.get(selectedModelId)?.ifcDataStore;
+    if (!store) return;
+    const cached = live.searchFilterSchema.get(selectedModelId);
+    if (cached?.sourceStore === store && cached.mutationVersion === live.mutationVersion) return;
+    setFilterSchema(selectedModelId, discoverFilterSchema(store, live.mutationViews.get(selectedModelId)), {
+      sourceStore: store, mutationVersion: live.mutationVersion,
     });
   }, [selectedModelId, activeStore, activeView, mutationVersion, schemaMap, setFilterSchema]);
 

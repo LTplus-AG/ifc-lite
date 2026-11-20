@@ -18,7 +18,6 @@ import { nativeExportRegistryInventory } from './export-native-inventory';
 type Classification = 'implemented' | 'presentation-only' | 'native-boundary' | 'native-unsupported' | 'unimplemented';
 /** grouped: the control names several native controls whose operations are listed together; per-control mapping is not recorded. */
 interface Control { control: string; operations: readonly string[]; native_tools?: readonly string[]; classification: Classification; reason?: string; grouped?: true }
-const grouped = (row: Control): Control => ({ ...row, grouped: true });
 interface Inventory { owner: string; family: AuditFamily; controls: readonly Control[]; notes: readonly string[]; gaps: readonly string[] }
 function classify(status: string): Classification {
   if (status === 'implemented') return status;
@@ -46,17 +45,17 @@ export function operationControlInventory(): Inventory[] {
     ...analyticsControlBoundaries.map(row => ({ owner: row.panel, family: 'analytics' as const,
       controls: [control(row.control, [], classify(row.classification), row.native)], notes: [], gaps: [] })),
     ...coordinationControlInventory.map(row => ({ owner: row.owner, family: 'coordination' as const,
-      controls: [grouped(control(row.implemented.join('; '), row.operations)),
+      controls: [(control(row.implemented.join('; '), row.operations)),
         // The manual approvals and presentation a workflow keeps native are controls of their own.
         ...('hostBoundary' in row ? [control(String(row.hostBoundary), [], 'native-boundary', String(row.hostBoundary))] : []),
         ...('presentationOnly' in row ? [control(String(row.presentationOnly), [], 'presentation-only')] : [])],
       notes: (['equivalentControls', 'sourceWriteBack'] as const).flatMap(key => key in row ? [String((row as Record<string, unknown>)[key])] : []), gaps: row.outstanding })),
     ...authoringControlBindings.map(row => ({ owner: row.owner === 'ids' ? 'idsStudio' : row.owner, family: 'authoring' as const,
-      controls: [grouped(control(row.controls.join('; '), row.operations, classify(row.status), row.reason))], notes: [], gaps: [] })),
+      controls: [(control(row.controls.join('; '), row.operations, classify(row.status), row.reason))], notes: [], gaps: [] })),
     ...clashControlBindings.map(row => ({ owner: 'clash', family: 'clash' as const,
-      controls: [grouped(control(row.controls.join('; '), row.operations, classify(row.status), 'boundary' in row ? row.boundary : undefined))], notes: [], gaps: [] })),
+      controls: [(control(row.controls.join('; '), row.operations, classify(row.status), 'boundary' in row ? row.boundary : undefined))], notes: [], gaps: [] })),
     ...appearanceNativeControlBindings.map(row => ({ owner: 'appearance', family: 'appearance' as const,
-      controls: [grouped(control(row.controls.join('; '), row.operations, classify(row.status), row.boundary))], notes: [], gaps: [] })),
+      controls: [(control(row.controls.join('; '), row.operations, classify(row.status), row.boundary))], notes: [], gaps: [] })),
   ];
 }
 function missingControls(controls: readonly Control[], registered: ReadonlySet<string>): string[] {

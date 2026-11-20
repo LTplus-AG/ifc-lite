@@ -8,6 +8,18 @@ use super::GeometryRouter;
 use crate::{coord_is_large, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+/// Whether rebasing a raw item whose first vertex is `point` (metres, item
+/// frame) to `shifted` by the model RTC preserves precision.
+///
+/// #5684: vertices several km from their object origin can still be local to
+/// a site millions of metres away. Subtracting the site's RTC there would
+/// INCREASE their f32 magnitude and collapse thin geometry, so such meshes
+/// stay in their object frame until final world placement.
+pub(in crate::router) fn rtc_rebase_benefits(point: (f64, f64, f64), shifted: (f64, f64, f64)) -> bool {
+    let magnitude = |p: (f64, f64, f64)| p.0.abs().max(p.1.abs()).max(p.2.abs());
+    coord_is_large(point) && magnitude(shifted) < magnitude(point)
+}
+
 impl GeometryRouter {
     pub(in crate::router) fn representation_item_first_vertex_meters(
         &self,
@@ -92,30 +104,6 @@ impl GeometryRouter {
         }
         let centre = |axis: usize| (min[axis] + max[axis]) * 0.5 * self.unit_scale();
         Some((centre(0), centre(1), centre(2)))
-    }
-
-    /// Check the proposed offset in the SAME frame as the item's coordinates.
-    /// Element-aware callers pull world RTC through their inverse rotation first.
-    pub(in crate::router) fn representation_item_benefits_from_rtc(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        offset_meters: (f64, f64, f64),
-    ) -> bool {
-        let Some(point) = self.representation_item_first_vertex_meters(item, decoder) else {
-            return false;
-        };
-        let magnitude = |p: (f64, f64, f64)| p.0.abs().max(p.1.abs()).max(p.2.abs());
-        let shifted = (
-            point.0 - offset_meters.0,
-            point.1 - offset_meters.1,
-            point.2 - offset_meters.2,
-        );
-        // #5684: vertices several km from their object origin can still be
-        // local to a site millions of metres away. Subtracting the site's RTC
-        // here would INCREASE their f32 magnitude and collapse thin geometry.
-        // Keep such meshes in their object frame until final world placement.
-        coord_is_large(point) && magnitude(shifted) < magnitude(point)
     }
 
     /// The element-frame RTC offset a raw-coordinate `item` is meshed in, or

@@ -5,6 +5,7 @@
 //! Core element processing: resolving representations, processing items, and caching.
 
 use super::frame_parts::{mesh_bounds, single_frame};
+use super::rtc_offset::raw_coordinate::rtc_rebase_benefits;
 use super::GeometryRouter;
 use crate::{Mesh, Result, SubMeshCollection};
 
@@ -296,12 +297,11 @@ impl GeometryRouter {
         offset_meters: (f64, f64, f64),
     ) -> Option<RawRebase> {
         let scale = self.unit_scale();
-        if self.local_frame_enabled() {
-            let point = self.representation_item_first_vertex_meters(item, decoder);
-            let shifted = point.map(|p| (p.0 - offset_meters.0, p.1 - offset_meters.1, p.2 - offset_meters.2));
-            // An item the model RTC already brings near keeps that rebase.
-            let far = point.is_some_and(crate::coord_is_large) && shifted.is_some_and(crate::coord_is_large);
-            if let Some(anchor) = far.then(|| self.representation_item_anchor_meters(item, decoder)).flatten() {
+        let point = self.representation_item_first_vertex_meters(item, decoder)?;
+        let shifted = (point.0 - offset_meters.0, point.1 - offset_meters.1, point.2 - offset_meters.2);
+        // An item the model RTC already brings near keeps that rebase.
+        if self.local_frame_enabled() && crate::coord_is_large(point) && crate::coord_is_large(shifted) {
+            if let Some(anchor) = self.representation_item_anchor_meters(item, decoder) {
                 let anchor = (anchor.0.round(), anchor.1.round(), anchor.2.round());
                 return Some(RawRebase {
                     file_units: (anchor.0 / scale, anchor.1 / scale, anchor.2 / scale),
@@ -310,9 +310,7 @@ impl GeometryRouter {
                 });
             }
         }
-        (self.has_rtc_offset()
-            && self.representation_item_benefits_from_rtc(item, decoder, offset_meters))
-        .then(|| RawRebase {
+        (self.has_rtc_offset() && rtc_rebase_benefits(point, shifted)).then(|| RawRebase {
             file_units: (offset_meters.0 / scale, offset_meters.1 / scale, offset_meters.2 / scale),
             meters: offset_meters,
             anchored: false,

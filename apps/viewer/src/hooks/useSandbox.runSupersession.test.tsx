@@ -418,19 +418,22 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     // run reach its gate before resetting, by which point a
     // capture-after-await has already happened. Here `reset()` fires
     // synchronously, in the same turn as `execute()`, before any await —
-    // exactly the window a late capture would miss.
-    let rA: ScriptResult | null | undefined;
+    // exactly the window a late capture would miss. The run is instance B's
+    // and the reset instance A's: a reset on the run's own instance also
+    // cancels it before eval, which would hide a late capture.
     await act(async () => {
-      const pA = execute1!(GATED).then((r) => { rA = r; });
+      const pB = execute2!(GATED);
       reset1!();
-      await pA;
-      assert.equal(gates.length, 0, 'a run reset() superseded before its sandbox existed never enters the guest');
+      await waitForGates(1);
+      assert.equal(gates.length, 1, "another instance's reset does not cancel B's run, so it reaches its gate");
+      gates[0]!({ marker: 'stale' });
+      await pB;
     });
 
-    assert.equal(rA, null, "a run reset() superseded before its first await must resolve null");
     const state = useViewerStore.getState();
     assert.equal(state.scriptLastResult, null, "the run must not publish over what reset() cleared");
     assert.equal(state.scriptLastError, null, "the run must not publish an error over what reset() cleared");
+    assert.equal(state.scriptExecutionState, 'idle', 'the run must not move the state reset() left');
   });
 
   it('explicit native cancellation before sandbox creation prevents guest effects while ordinary supersession still drains (#10525)', async () => {

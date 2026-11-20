@@ -58,7 +58,7 @@ export function createNodeElementsResolver(
       const storeyId = node.expressIds[0];
       const modelId = node.modelIds[0];
 
-      if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
+      if (modelId === 'legacy' && !models.has(modelId) && ifcDataStore?.spatialHierarchy) {
         const elements = effectiveSpatialMembers(ifcDataStore, legacyView, storeyId);
         if (elements.length) return elements;
       }
@@ -72,7 +72,7 @@ export function createNodeElementsResolver(
       const spaceId = node.expressIds[0];
       const modelId = node.modelIds[0];
 
-      if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
+      if (modelId === 'legacy' && !models.has(modelId) && ifcDataStore?.spatialHierarchy) {
         const elements = effectiveSpatialMembers(ifcDataStore, legacyView, spaceId);
         return [spaceId, ...elements];
       }

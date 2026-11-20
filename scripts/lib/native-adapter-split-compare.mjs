@@ -85,11 +85,15 @@ export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : t
  *   - per face (revisionLocalFaces): its triangle count, its set of corner
  *     normals, how many of its triangles map to each source surface
  *     (surfaceIndices: a count per surface, not a set, so moving one triangle
- *     to another surface still differs), and the set of vertex POSITIONS its
- *     triangles use;
+ *     to another surface still differs), the set of vertex POSITIONS its
+ *     triangles use, and its BOUNDARY: the edges (position pairs) exactly one of
+ *     its triangles uses. Another diagonal keeps a face's outline, so this does not
+ *     depend on triangulation; [0,1,2],[0,1,3] in a square (one half covered twice,
+ *     the other empty, same area) changes it (#10858 review);
  * as a coverage check, each face's total triangle area within 1e-9 relative;
  * and, in each copy on its own, no face may hold two triangles with the same
- * three positions and no triangle may have zero area. Without those two, a face
+ * three positions, no edge may be shared by more than two of a face's
+ * triangles, and no triangle may have zero area. Without those two, a face
  * [0,1,2],[0,2,3] rewritten as [0,1,2],[0,1,2] kept every invariant above (#10858
  * review): half the face went missing and still compared equal. Any such defect
  * fails the comparison. None of this depends on triangle order or diagonals.
@@ -110,7 +114,7 @@ export function m11nInvariants(reference) {
     const faces = new Map();
     for (let t = 0; t * 3 < indices.length; t += 1) {
       const id = revisionLocalFaces?.[t] ?? null;
-      const face = faces.get(id) ?? { triangles: 0, normals: new Set(), surfaces: new Map(), area: 0, used: new Set(), seen: new Set() };
+      const face = faces.get(id) ?? { triangles: 0, normals: new Set(), surfaces: new Map(), area: 0, used: new Set(), seen: new Set(), edges: new Map() };
       face.triangles += 1;
       for (let k = 0; k < 3; k += 1) if (Array.isArray(normals)) face.normals.add(JSON.stringify(xyz(normals, t * 3 + k)));
       const surface = JSON.stringify(surfaceIndices?.[t] ?? null);
@@ -121,6 +125,10 @@ export function m11nInvariants(reference) {
       face.area += area;
       const corners = [a, b, c].map((q) => JSON.stringify(q));
       for (const q of corners) face.used.add(q);
+      for (const [i, j] of [[0, 1], [1, 2], [2, 0]]) {
+        const edge = [corners[i], corners[j]].sort().join('|');
+        face.edges.set(edge, (face.edges.get(edge) ?? 0) + 1);
+      }
       const key = [...corners].sort().join('|');
       if (face.seen.has(key)) defects.push(`face ${id}: two triangles on the same three positions ${key}`);
       face.seen.add(key);
@@ -128,10 +136,14 @@ export function m11nInvariants(reference) {
       faces.set(id, face);
     }
     const ids = [...faces.keys()].sort((x, y) => String(x).localeCompare(String(y), 'en', { numeric: true }));
-    for (const id of ids) areas.push(faces.get(id).area);
+    for (const id of ids) {
+      areas.push(faces.get(id).area);
+      for (const [edge, n] of faces.get(id).edges) if (n > 2) defects.push(`face ${id}: edge ${edge} shared by ${n} triangles`);
+    }
+    const boundary = (face) => [...face.edges].filter(([, n]) => n === 1).map(([edge]) => edge).sort();
     return {
       ...rest, vertices: vertices.sort(), triangleCount: indices.length / 3,
-      faces: ids.map((id) => [id, faces.get(id).triangles, [...faces.get(id).normals].sort(), [...faces.get(id).surfaces].sort(([a], [b]) => a.localeCompare(b)), [...faces.get(id).used].sort()]),
+      faces: ids.map((id) => [id, faces.get(id).triangles, [...faces.get(id).normals].sort(), [...faces.get(id).surfaces].sort(([a], [b]) => a.localeCompare(b)), [...faces.get(id).used].sort(), boundary(faces.get(id))]),
     };
   };
   const exact = reference.map((model) => ({ ...model, rows: model.rows?.map((row) => (Array.isArray(row.parts) ? { ...row, parts: row.parts.map(part) } : row)) }));

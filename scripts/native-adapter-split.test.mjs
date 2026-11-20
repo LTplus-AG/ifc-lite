@@ -194,8 +194,17 @@ test('m11-n compares by mesh invariants: SMLib order and quad diagonals do not c
   // Each face carries the set of positions its triangles use (here the square's four corners, then face 1's three).
   const faces = m11nInvariants(JSON.parse(m11n().toString())).exact[0].rows[0].parts[0].faces;
   assert.deepEqual(faces.map(([id, , , , used]) => [id, used]), [[0, ['[0,0,0]', '[0,1,0]', '[1,0,0]', '[1,1,0]']], [1, ['[0,0,1]', '[0,1,1]', '[1,0,1]']]]);
+  // The square's outline is its four sides, whichever diagonal splits it.
+  const outline = ['[0,0,0]|[0,1,0]', '[0,0,0]|[1,0,0]', '[0,1,0]|[1,1,0]', '[1,0,0]|[1,1,0]'];
+  for (const diagonal of [0, 1]) assert.deepEqual(m11nInvariants(JSON.parse(m11n({ diagonal }).toString())).exact[0].rows[0].parts[0].faces[0][5], outline, `diagonal ${diagonal}`);
+  // Three of a face's triangles on one edge (0-1: [0,1,2], [0,1,3] and [0,1,5]) is a defect.
+  const fanOn01 = (p) => { for (const v of [3, 5]) { p.indices.push(0, 1, v); p.normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1); p.revisionLocalFaces.push(0); p.surfaceIndices.push(7); } };
+  assert.equal(m11nInvariants(JSON.parse(m11n({ edit: fanOn01 }).toString())).defects.some((d) => d.includes('shared by 3 triangles')), true, 'edge shared by three triangles');
   // Moving face 1's triangle onto the square's positions changes that set (and the area).
   assert.equal(same(m11n({ edit: (p) => { p.indices.splice(6, 3, 0, 1, 2); } })), false, 'face 1 uses other positions');
+  // The second review counter-example: [0,1,2],[0,1,3] covers one half twice and leaves the other empty,
+  // with the same positions, counts, normals, surfaces and area and no duplicate or flat triangle. Its outline differs.
+  assert.equal(same(m11n({ edit: (p) => { p.indices.splice(3, 3, 0, 1, 3); } })), false, 'overlapping triangles leave part of the face empty');
   // A zero-area triangle fails on its own.
   const flat = m11n({ edit: (p) => { p.indices.push(0, 1, 1); p.normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1); p.revisionLocalFaces.push(0); p.surfaceIndices.push(7); } });
   assert.equal(sameReference('temp/m11-n-native.json', flat, flat), false, 'zero-area triangle');

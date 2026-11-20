@@ -36,6 +36,8 @@ export interface AdoptedSceneSnapshot {
   shards: ArrayBuffer[];
   /** The model's shard supply when adoption BEGAN (before any await): a reset or discard since supersedes these shards. */
   supply: ReturnType<typeof instancedShardSupplyToken>;
+  /** Every shard reached the scene; a failed upload means nothing may attest the set (#10264). */
+  shardsUploaded: boolean;
   fit: SnapshotCameraFit;
   firstVisible: Promise<void>;
 }
@@ -74,16 +76,32 @@ async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3
 }
 
 /** Direct, unlike a stream's queued shards (`instancedShardQueue`): the first frame is complete, and an abandoned adoption can remove them. */
-function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): void {
+export function uploadSnapshotShards(scene: Pick<SceneContents, 'addInstancedShard'>, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): boolean {
   if (shards.length > 0) noteInstancedShardModel(modelId);
+  let all = true;
   for (const bytes of shards) {
     try {
       const shard = decodeInstancedShard(new Uint8Array(bytes));
       if (shard) scene.addInstancedShard(device, shard, 0);
+      else all = false;
     } catch (err) {
+      all = false;
       console.warn('[useIfcCache] snapshot shard upload failed (device lost?), skipping:', err);
     }
   }
+  return all;
+}
+
+/**
+ * A committed adoption's shards, attested to the geometry backing only when every one reached
+ * the scene. Otherwise nothing is attested and the model's instancing fails closed: a backing
+ * must never hold an occurrence the scene does not draw.
+ */
+export function attestAdoptedShards(modelId: string, adopted: Pick<AdoptedSceneSnapshot, 'shards' | 'shardsUploaded'>,
+  token: Parameters<typeof completeInstancedShardSupply>[2]): void {
+  if (!adopted.shardsUploaded) return;
+  announceAdoptedInstancedShards(modelId, adopted.shards, token);
+  completeInstancedShardSupply(modelId, adopted.shards.length, token);
 }
 
 /** Draw the entry's finished scene, or return null so the hit streams. */
@@ -116,13 +134,13 @@ export async function adoptCachedSceneSnapshot(
   if (!adoption) return null;
   trace.milestone('scene.snapshotAdopted');
   tapSceneSnapshot('adopted', snapshot);
-  uploadSnapshotShards(scene, device, modelId, shards);
+  const shardsUploaded = uploadSnapshotShards(scene, device, modelId, shards);
   const camera = renderer.getCamera();
   camera.reset();
   fitCameraToSnapshot(renderer, host);
   renderer.clearCaches();
   renderer.requestRender();
-  return { adoption, shards, supply, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+  return { adoption, shards, supply, shardsUploaded, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
 }
 
 /** Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives. */
@@ -144,10 +162,7 @@ export async function publishAdoptedSceneMeshes(
     enqueueInstancedShards(modelId, adopted.shards, shardGeneration);
     completeInstancedShardSupply(modelId, adopted.shards.length, shardGeneration);
     forgetRefusedSnapshot(cacheResult, cacheKey);
-  }, adopted.fit, trace, () => {
-    announceAdoptedInstancedShards(modelId, adopted.shards, shardGeneration);
-    completeInstancedShardSupply(modelId, adopted.shards.length, shardGeneration);
-  });
+  }, adopted.fit, trace, () => attestAdoptedShards(modelId, adopted, shardGeneration));
   append(modelId, meshes, open.coordinateInfo);
   return meshes;
 }

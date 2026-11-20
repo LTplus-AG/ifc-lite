@@ -11,6 +11,7 @@ import { openBackendWriteCapture, trackBackendWrite, type BackendWriteCapture } 
 import { mutationDenial } from '../../store/mutation-permission.js';
 import { attributeUndoPrior } from '@/lib/actions/model-change-values';
 import { getModelForRef } from './model-compat.js';
+import { mutationViewBaseStore } from '@/utils/configureMutationView';
 
 export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
   const assertCanEdit = (operation: string, modelId: string): void => {
@@ -47,7 +48,8 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       const view = getOrCreateMutationView(store, ref.modelId);
       if (!view) return undefined;
       // The value before the edit, so its undo restores it here and in a collab room; the legacy store too (#10810).
-      const dataStore = getModelForRef(state, ref.modelId)?.ifcDataStore;
+      // Read from the store the view is built on, so a prior never comes from another file.
+      const dataStore = mutationViewBaseStore(view) ?? getModelForRef(state, ref.modelId)?.ifcDataStore;
       state.setAttribute?.(normalizedModelId, ref.expressId, attrName, value, dataStore ? attributeUndoPrior({ dataStore, view }, ref.expressId, attrName) : undefined);
       return undefined;
     },

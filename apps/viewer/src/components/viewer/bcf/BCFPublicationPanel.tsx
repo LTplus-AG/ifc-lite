@@ -21,7 +21,7 @@ import type { DraftBatch } from '@/lib/bcf-drafts/draft-types';
 import { sameTarget, type DispatchReport, type PublicationConnection } from '@/lib/bcf-publication/outbox-dispatch';
 import { draftPublicationId, planDraftPublication } from '@/lib/bcf-publication/outbox-plan';
 import { preflightPublication, type PreflightReport } from '@/lib/bcf-publication/outbox-preflight';
-import { useBcfPublicationReview, publishNativeBcfReview } from '@/lib/bcf-publication/review-candidate';
+import { useBcfPublicationReview, publishNativeBcfReview, noteBcfPublicationUserChoice, bcfPublicationCandidateCurrent } from '@/lib/bcf-publication/review-candidate';
 import { preselectTopicTypes, publicationRules, unknownTopicTypes, type TopicTypeChoice } from '@/lib/bcf-publication/outbox-server-rules';
 import { publicationCounts } from '@/lib/bcf-publication/outbox-state';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
@@ -70,7 +70,8 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   useEffect(() => {
     if (!candidate || candidate.batchId !== batch.id || candidate.target.serverUrl !== config?.serverUrl || candidate.target.userId !== config?.userId) return;
     // A batch edited after staging would show the old preflight as current.
-    if (candidate.modifiedAt !== batch.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); return; }
+    // An edited batch, or a choice the user made while the agent prepared, outranks the candidate.
+    if (candidate.modifiedAt !== batch.modifiedAt || !bcfPublicationCandidateCurrent(candidate)) { useBcfPublicationReview.setState({ candidate: null }); return; }
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
     // As the native Check does, so the dialog can offer the server's assignees.
     onUsers(candidate.preflight.extensions.user_id_type ?? []);
@@ -114,7 +115,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const check = () => act(async () => {
     if (!target || !connection) return;
     // The user's own Check supersedes an agent-staged candidate, as editing a choice does.
-    useBcfPublicationReview.setState({ candidate: null });
+    noteBcfPublicationUserChoice();
     const plan = await planDraftPublication(batch, record, target, undefined, { rules: publicationRules(connection), topicTypes });
     const result = await preflightPublication(connection.client, plan.record);
     adopt(result);
@@ -138,7 +139,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       <label className="flex items-center gap-2">
         {t('bcfDrafts.publish.project')}
         <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={projectId}
-          disabled={!projects?.length || busy} onChange={event => { useBcfPublicationReview.setState({ candidate: null }); setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
+          disabled={!projects?.length || busy} onChange={event => { noteBcfPublicationUserChoice(); setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
           {(projects ?? []).map(project => <option key={project.project_id} value={project.project_id}>{project.name ?? project.project_id}</option>)}
         </select>
       </label>
@@ -164,7 +165,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
         <label key={type} className="flex flex-wrap items-center gap-2 rounded bg-warn-surface px-2 py-1">
           {t('bcfDrafts.publish.topicType', { type })}
           <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={topicTypes[type] ?? ''} disabled={busy}
-            onChange={event => { useBcfPublicationReview.setState({ candidate: null }); setTopicTypes(current => ({ ...current, [type]: event.target.value })); }}>
+            onChange={event => { noteBcfPublicationUserChoice(); setTopicTypes(current => ({ ...current, [type]: event.target.value })); }}>
             {allowed.map(option => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>

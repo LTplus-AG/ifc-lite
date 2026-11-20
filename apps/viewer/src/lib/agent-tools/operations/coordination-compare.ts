@@ -42,13 +42,17 @@ export const coordinationCompareOperations = [
       });
     } finally { built.dispose(); }
   }),
-  modelCoordination<CompareInput>('compare.analyze', 'Compare the targeted base model with a loaded head model through the native fingerprint/diff service. Returns the terminal analysis without altering panel configuration or review decisions.', ['read'], comparisonInputSchema, async (input, c) => {
+  modelCoordination<CompareInput & { key_property: string }>('compare.analyze', 'Compare the targeted base model with a loaded head model through the native fingerprint/diff service. Returns the terminal analysis without altering panel configuration or review decisions.', ['read'], {
+    ...comparisonInputSchema, properties: { ...comparisonInputSchema.properties, key_property: { type: 'string', maxLength: 500 } },
+    required: [...comparisonInputSchema.required, 'key_property'],
+  }, async (input, c) => {
     const { prepareComparison, comparePreparedPair } = await import('@/lib/compare/run-comparison');
     const s = useViewerStore.getState(); const base = s.models.get(c.model.id), head = s.models.get(input.head_model_id);
     if (!base || !head) throw new Error('Both comparison models must be loaded.');
     const version = s.geometryContentVersion, mutation = s.mutationVersion;
     c.checkpoint?.();
-    const built = await prepareComparison({ baseModel: base, headModel: head, contentVersion: version, mutationVersion: mutation, getMutationView: s.getMutationView, signal: c.signal });
+    // The same authored key selection as compare.run, so both match entities alike.
+    const built = await prepareComparison({ baseModel: base, headModel: head, contentVersion: version, mutationVersion: mutation, getMutationView: s.getMutationView, keyProperty: input.key_property || undefined, signal: c.signal });
     try {
       c.checkpoint?.(); const live = useViewerStore.getState();
       if (live.models.get(base.id) !== base || live.models.get(head.id) !== head || live.geometryContentVersion !== version || live.mutationVersion !== mutation) throw new Error('Comparison inputs changed; result discarded.');

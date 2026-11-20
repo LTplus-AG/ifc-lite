@@ -13,7 +13,8 @@ export const coordinationAssistantAttachmentOperations = [
     if (useAssistant.getState().snapshot?.id !== i.evidence_id) throw new Error('Native assistant evidence changed.');
     if (!i.selection && !i.screenshot && !i.room_candidate_id) throw new Error('Select at least one explicit native attachment source.');
     const selection = i.selection ? captureSelectionGrounding(useViewerStore.getState()) : null;
-    if (selection && !selection.elements.length) throw new Error('Native selection is empty.');
+    // A requested selection must exist: no selected element is a refusal, not an empty attachment.
+    if (i.selection && !selection?.elements.length) throw new Error('Native selection is empty.');
     let screenshot: string | null = null;
     if (i.screenshot) { const [{ getModelById }, { captureViewportScreenshot }] = await Promise.all([import('@/lib/llm/models'), import('@/components/viewer/assistant/viewport-screenshot')]); if (getModelById(useViewerStore.getState().chatActiveModel)?.supportsImages !== true) throw new Error('The current native assistant model does not accept image attachments.'); screenshot = await captureViewportScreenshot(); if (!screenshot) throw new Error('Native viewport capture failed.'); }
     const rooms = i.room_candidate_id ? await (await import('./authoring-graphs')).captureRoomGroundingForCandidate(c.host, i.room_candidate_id, i.room_model_id) : null;

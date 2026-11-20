@@ -13,14 +13,16 @@ import type { PublicationTarget } from './outbox-types';
 import type { PreflightReport } from './outbox-preflight';
 export interface BcfPublicationReview {
   id: string; batchId: string; modifiedAt: string; target: PublicationTarget; topicTypes: TopicTypeChoice;
+  /** When preparation started; a user choice made after it wins over the candidate. */
+  requestedAt: number;
   plan: PublicationPlan; preflight: PreflightReport; digest: string;
 }
 export const useBcfPublicationReview = create<{ candidate: BcfPublicationReview | null }>(() => ({ candidate: null }));
 export function publicationReviewDigest(batch: DraftBatch, target: PublicationTarget, topicTypes: TopicTypeChoice, plan: PublicationPlan): string {
   return digestStrings([JSON.stringify(batch), JSON.stringify(target), JSON.stringify(topicTypes), ...plan.record.entries.map(entry => `${entry.id}:${entry.digest}:${entry.state}:${entry.receipt?.remoteGuid ?? ''}`).sort()]);
 }
-export function stageBcfPublicationReview(batch: DraftBatch, target: PublicationTarget, topicTypes: TopicTypeChoice, plan: PublicationPlan, preflight: PreflightReport): BcfPublicationReview {
-  const candidate: BcfPublicationReview = { id: crypto.randomUUID(), batchId: batch.id, modifiedAt: batch.modifiedAt, target, topicTypes, plan, preflight, digest: publicationReviewDigest(batch, target, topicTypes, plan) };
+export function stageBcfPublicationReview(batch: DraftBatch, target: PublicationTarget, topicTypes: TopicTypeChoice, plan: PublicationPlan, preflight: PreflightReport, requestedAt = Date.now()): BcfPublicationReview {
+  const candidate: BcfPublicationReview = { id: crypto.randomUUID(), requestedAt, batchId: batch.id, modifiedAt: batch.modifiedAt, target, topicTypes, plan, preflight, digest: publicationReviewDigest(batch, target, topicTypes, plan) };
   useBcfPublicationReview.setState({ candidate }); return candidate;
 }
 /** Only the existing native Publish click calls this: staging a candidate is never approval. */
@@ -42,3 +44,9 @@ export async function publishNativeBcfReview(batch: DraftBatch, target: Publicat
   try { return await publishDraftBatch(batch, target, connection, { timeoutMs: 60_000, topicTypes }); }
   finally { if (candidate?.batchId === batch.id) release(); }
 }
+
+let lastUserChoiceAt = 0;
+/** The publication panel records each choice the user makes itself (project, topic type, Check). */
+export function noteBcfPublicationUserChoice(): void { lastUserChoiceAt = Date.now(); useBcfPublicationReview.setState({ candidate: null }); }
+/** False for a candidate whose preparation began before the user's latest own choice. */
+export function bcfPublicationCandidateCurrent(candidate: BcfPublicationReview): boolean { return candidate.requestedAt > lastUserChoiceAt; }

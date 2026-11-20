@@ -8827,13 +8827,18 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "match_by_content": {
           "type": "boolean"
+        },
+        "key_property": {
+          "type": "string",
+          "maxLength": 500
         }
       },
       "required": [
         "head_model_id",
         "scope",
         "excluded_types",
-        "match_by_content"
+        "match_by_content",
+        "key_property"
       ],
       "additionalProperties": false
     },

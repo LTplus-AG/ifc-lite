@@ -22,7 +22,7 @@ export interface OperationJob {
   result?: unknown;
   error?: string;
 }
-interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; delivered?: boolean }
+interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; deliver(): void; delivered?: boolean }
 const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
 const MAX_JOBS = 32;
 interface AppliedRequest { signature: string; store: ReadyModel['store'] | undefined; result: Promise<unknown> }
@@ -213,7 +213,7 @@ export async function executeOperation(
   const snapshot: OperationJob = { id: crypto.randomUUID(), operation_id: entry.id, model_id: model?.id ?? null, revision, state: 'running' };
   const active = () => { controller.signal.throwIfAborted(); check(); };
   checkpoint = active;
-  owned.set(snapshot.id, { snapshot, abort: controller, current: check, discard: discardResult });
+  owned.set(snapshot.id, { snapshot, abort: controller, current: check, discard: discardResult, deliver: () => { retained.length = 0; } });
   // Retain and settle the actual service promise. Cancellation never claims rollback.
   void Promise.resolve().then(() => { active(); return entry.execute(input, { ...operationContext, signal: controller.signal, checkpoint: active, progress: detail => {
       active(); snapshot.progress = detail;
@@ -247,7 +247,7 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
       }
       throw error;
     }
-    job.delivered = true;
+    if (!job.delivered) { job.delivered = true; job.deliver(); } // the caller owns it now; nothing is left to undo
   }
   // A cancellation request is observable, but terminal cancellation awaits runner settlement.
   return { ...job.snapshot, ...(cancel && job.snapshot.state === 'running' ? { cancellationRequested: true } : {}) };

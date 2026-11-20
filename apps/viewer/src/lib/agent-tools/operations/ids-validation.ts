@@ -8,7 +8,7 @@ import { assertToolActive } from '../cancellation';
 import type { ValidationReport } from '@ifc-lite/ids';
 import type { IdsReportBlock } from '@/lib/document/ids-report-types';
 import type { ToolHost } from '../types';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 import { boundedPage, pageInput, type PageInput } from './result-limit';
 import { libraryPage } from './library-page';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
@@ -87,7 +87,8 @@ export const nativeValidationOperations = [
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'ids'))) throw new Error('Models changed during IDS validation.');
     if (c.host.models().find(model => model.id === c.model.id)?.store !== c.model.store) throw new Error('Models changed during IDS validation.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'ids', inputs, source: { modelId: c.model.id, store: c.model.store } }); c.retain(() => { runs(c).delete(id); });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); 
+    retainCandidate(c, runs(c), id, { ...result, kind: 'ids', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ express_ids: number[]; pset: string; name: string; facet_data_type: string; raw_value: string; title: string }>(meta('validation.fix.prepare', 'Draft a native IDS property correction from explicit target IDs and a supplied raw value. Uses native type inference, IDS-to-model unit conversion and expected-value capture, then the existing properties review/apply service.'), {
@@ -115,7 +116,8 @@ export const nativeValidationOperations = [
     const result = await runInformationCheck({ ruleSet: parsed.file, models, definedModelTagIds: definedModelTagIdsOf(s), reportModels: s.models, signal: c.signal });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'rules'))) throw new Error('Models changed during validation. Discarded result.');
     if (c.host.models().find(model => model.id === c.model.id)?.store !== c.model.store) throw new Error('Models changed during validation. Discarded result.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'rules', inputs, source: { modelId: c.model.id, store: c.model.store } }); c.retain(() => { runs(c).delete(id); });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); 
+    retainCandidate(c, runs(c), id, { ...result, kind: 'rules', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<PageInput & { run_id: string; offset: number; limit: number }>(meta('validation.results', 'Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification. Pass next_offset and page_revision to continue.'), {

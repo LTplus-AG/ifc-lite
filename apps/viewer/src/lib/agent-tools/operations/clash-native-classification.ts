@@ -9,7 +9,7 @@ import type { ClashGroupDraft } from '@/lib/assistant/clash-group-draft';
 import type { ClassifyPlan } from '@/lib/assistant/clash-classify-chunks';
 import type { EvidenceSnapshot } from '@/lib/assistant/evidence';
 import type { ClashGroupApplyPlan } from '@/lib/clash/group-apply';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -83,8 +83,7 @@ export const clashClassificationOperations = [
         evidence = captureEvidence('clash');
       evictOldest(reviews(c), 32);
       const token = crypto.randomUUID();
-      reviews(c).set(token, { result: s.clashResult, plan, evidence, model: s.chatActiveModel });
-      c.retain(() => { reviews(c).delete(token); });
+      retainCandidate(c, reviews(c), token, { result: s.clashResult, plan, evidence, model: s.chatActiveModel });
       return out({
         token,
         evidence,

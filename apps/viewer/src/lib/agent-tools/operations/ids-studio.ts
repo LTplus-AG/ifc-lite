@@ -7,7 +7,7 @@ import type { StudioDocument, StudioOp } from '@ifc-lite/ids-authoring';
 import { useViewerStore } from '@/store';
 import { viewerOperation as nativeOperation, operation as modelOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { admitCandidate, candidateStillApplies } from './host-handles';
+import { admitCandidate, retainCandidate, candidateStillApplies } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 function operation<T>(...args: Parameters<typeof nativeOperation<T>>) {
@@ -49,8 +49,8 @@ function remember(c: ViewerOperationContext, candidate: Candidate) {
   const revision = useViewerStore.getState().idsStudioRevision, stillApplies = candidateStillApplies();
   admitCandidate(candidates(c), { cap: 64, refusal: 'IDS candidate capacity reached; apply or discard a pending candidate.',
     pending: entry => entry.result === undefined, canApply: entry => stillApplies(entry.result !== undefined, () => entry.revision === revision) });
-  const token = crypto.randomUUID(); candidates(c).set(token, candidate);
-  c.retain(() => { if (candidates(c).get(token)?.result === undefined) candidates(c).delete(token); });
+  const token = crypto.randomUUID();
+  retainCandidate(c, candidates(c), token, candidate, { keep: entry => entry.result !== undefined });
   return token;
 }
 const tokenSchema: JSONSchemaType<{ token: string }> = { type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false };

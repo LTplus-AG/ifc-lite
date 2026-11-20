@@ -9,7 +9,7 @@ import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
 import type { ZoneSet } from '@/lib/zones/types';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 import { boundedPage } from './result-limit';
 import { stateRevision } from './state-revision';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -79,8 +79,8 @@ export const zoneWriteOperations = [
     const set = zoneSet(i.set_id), rows = buildZoneTable(set, i.basis);
     const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult, content: state.geometryContentVersion,
       inputs: writebackInputs(i.action, set, rows) };
-    validate(candidate); evictOldest(owned(c), 32); const token = crypto.randomUUID(); owned(c).set(token, candidate);
-    c.retain(() => { if (owned(c).get(token)?.result === undefined) owned(c).delete(token); });
+    validate(candidate); evictOldest(owned(c), 32); const token = crypto.randomUUID();
+    retainCandidate(c, owned(c), token, candidate, { keep: entry => entry.result !== undefined });
     // The token covers every row; the preview carries as many as fit the result limit (#10794).
     const rest = { token, action: i.action, model_ids: i.model_ids, row_count: rows.length, truncated: true, undo: 'explicit-native-remove; not history Undo', partial_outcomes: true };
     // A one-page preview: nothing pages after it, so no list revision is needed.

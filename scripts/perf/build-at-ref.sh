@@ -27,6 +27,13 @@
 #                         copied out before the next build can overwrite it.
 #   --worktree-root <dir> where the worktree is created (default $TMPDIR)
 #   --log <file>          append the build log here instead of stderr
+#   --rustc-out <file>    write `rustc -vV`'s version line, AS RESOLVED INSIDE
+#                         the worktree, here. Rustup picks the toolchain from
+#                         the directory it runs in, so the ref's
+#                         rust-toolchain.toml governs this build and the
+#                         caller's own directory may resolve to a different
+#                         compiler entirely. A harness recording provenance
+#                         wants this value, not its own.
 #
 # The worktree is removed on exit, success or not. Exit 1 if the patch does
 # not apply or the build fails; the cause is in the log.
@@ -45,6 +52,7 @@ PATCH=""
 TARGET_DIR=""
 WT_ROOT="${TMPDIR:-/tmp}"
 LOG=""
+RUSTC_OUT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --ref) REF="${2:?--ref needs a ref}"; shift 2;;
@@ -58,7 +66,8 @@ while [ $# -gt 0 ]; do
     --target-dir) TARGET_DIR="${2:?--target-dir needs a directory}"; shift 2;;
     --worktree-root) WT_ROOT="${2:?--worktree-root needs a directory}"; shift 2;;
     --log) LOG="${2:?--log needs a file}"; shift 2;;
-    -h|--help) sed -n '2,34p' "$0"; exit 0;;
+    --rustc-out) RUSTC_OUT="${2:?--rustc-out needs a path}"; shift 2;;
+    -h|--help) sed -n '2,41p' "$0"; exit 0;;
     *) echo "build-at-ref.sh: unknown argument $1" >&2; exit 2;;
   esac
 done
@@ -134,6 +143,23 @@ if ! ( cd "$WT" && CARGO_TARGET_DIR="$TARGET_DIR" \
     cargo build --profile "$PROFILE" -p "$PACKAGE" "${TARGET_ARGS[@]}" >&3 2>&3 ); then
   echo "build-at-ref.sh: building $WHAT of $PACKAGE at $REF failed" >&3
   exit 1
+fi
+# The compiler that built it, resolved where it was resolved for the build:
+# same directory, same environment, after the build so a toolchain rustup had
+# to install first is the one reported. Written before the binary is copied
+# out, so a caller that finds $OUT finds this too.
+if [ -n "$RUSTC_OUT" ]; then
+  mkdir -p "$(dirname "$RUSTC_OUT")"
+  if ! RUSTC_VV="$( cd "$WT" && rustc -vV 2>&3 )"; then
+    echo "build-at-ref.sh: could not record rustc -vV in the worktree" >&3
+    exit 1
+  fi
+  # First line only ("rustc 1.x.y (hash date)"); the rest is host/LLVM detail.
+  printf '%s\n' "$RUSTC_VV" | head -1 > "$RUSTC_OUT"
+  if [ ! -s "$RUSTC_OUT" ]; then
+    echo "build-at-ref.sh: rustc -vV printed no version line in the worktree" >&3
+    exit 1
+  fi
 fi
 mkdir -p "$(dirname "$OUT")"
 # Copy then rename: an interrupted copy must never leave a truncated binary

@@ -30,6 +30,8 @@ export interface RunIdsBcfExportParams {
   /** Host-owned artifact sink; browser callers retain the native download default. */
   emit?: (blob: Blob, filename: string) => void | Promise<void>;
   signal?: AbortSignal;
+  /** Honor the supplied snapshot setting for every grouping when called by an operation. */
+  explicitSnapshots?: boolean;
   report: ValidationReport;
   settings: IDSBCFExportSettings;
   models: Map<string, FederatedModel>;
@@ -59,8 +61,9 @@ export async function runIdsBcfExport({
   setBcfExportProgress,
   setBcfProject,
   setBcfPanelVisible,
-  emit = downloadBlob,
+  emit,
   signal,
+  explicitSnapshots = false,
 }: RunIdsBcfExportParams): Promise<void> {
   signal?.throwIfAborted();
   const {
@@ -70,12 +73,11 @@ export async function runIdsBcfExport({
     includeSnapshots,
     loadIntoBcfPanel,
   } = settings;
-  // BCF tools such as BIMcollab ignore viewpoints without a snapshot (#7974).
-  // Grouped topics are few, so they always try a real capture regardless of the
-  // (hidden) switch; if one can't be taken, the reporter's placeholder image
-  // keeps the viewpoint usable.
+  // The panel offers automatic capture for grouped topics, whose snapshot
+  // switch is hidden. Native callers can explicitly opt out of that capture.
+  const captureGroupedSnapshots = (!explicitSnapshots || includeSnapshots) && getGlobalRenderer() !== null;
   const snapshots = topicGrouping === 'per-specification'
-    ? (getGlobalRenderer() ? 'best-effort' : 'off')
+    ? (captureGroupedSnapshots ? 'best-effort' : 'off')
     : includeSnapshots ? 'required' : 'off';
 
   // Phase 1: Collect entity bounds (needed for both camera and snapshots)
@@ -151,8 +153,12 @@ export async function runIdsBcfExport({
 
   const blob = await writeBCF(bcfProject);
   signal?.throwIfAborted();
-  await emit(blob, bcfExportFilename(`ids-report-${new Date().toISOString().split('T')[0]}`));
-  trackExportCompleted({ format: 'bcfzip', surface: 'ids_panel' });
+  const filename = bcfExportFilename(`ids-report-${new Date().toISOString().split('T')[0]}`);
+  if (emit) await emit(blob, filename);
+  else {
+    downloadBlob(blob, filename);
+    trackExportCompleted({ format: 'bcfzip', surface: 'ids_panel' });
+  }
 
   // Phase 5: Load into BCF panel if requested
   if (loadIntoBcfPanel) {

@@ -137,17 +137,19 @@ export const nativeValidationOperations = [
   }, async (i, c) => {
     const { runIdsBcfExport } = await import('@/hooks/ids/idsBcfExport'); const value = run(c, i.run_id), s = useViewerStore.getState(); assertToolActive(c);
     let captured: { blob: Blob; filename: string } | undefined;
-    await runIdsBcfExport({ report: value.report, settings: { topicGrouping: i.topic_grouping, includePassingEntities: i.include_passing, includeCamera: i.include_camera, includeSnapshots: i.include_snapshots, loadIntoBcfPanel: false },
+    await runIdsBcfExport({ report: value.report, explicitSnapshots: true, settings: { topicGrouping: i.topic_grouping, includePassingEntities: i.include_passing, includeCamera: i.include_camera, includeSnapshots: i.include_snapshots, loadIntoBcfPanel: false },
       models: s.models, legacyGeometryResult: s.geometryResult, bcfAuthor: s.bcfAuthor, toViewerGlobalId: (modelId, expressId) => s.models.has(modelId) ? s.toGlobalId(modelId, expressId) : undefined,
       setBcfExportProgress: () => undefined, setBcfProject: s.setBcfProject, setBcfPanelVisible: s.setBcfPanelVisible, signal: c.signal,
       emit: (blob, filename) => { captured = { blob, filename }; } });
     assertToolActive(c); run(c, i.run_id); if (!captured) throw new Error('The native BCF exporter produced no artifact.');
     return c.artifacts.create({ filename: captured.filename, mimeType: 'application/zip', data: captured.blob });
   }),
-  operation<{ run_id: string; name: string }>(meta('validation.report.save', 'Save an exact current validation result through the native durable report library.', 'configuration'), {
+  operation<{ run_id: string; name: string }>(meta('validation.report.save', 'Save an exact current validation result through the native report library and return its per-report storage status.', 'configuration'), {
     type: 'object', properties: { ...runInput.properties, name: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['run_id', 'name'], additionalProperties: false,
   }, async (i, c) => { const value = run(c, i.run_id); const id = await c.commitAsync(() => useViewerStore.getState().saveValidationReport(value.snapshot, i.name), saved => !!saved);
-    if (!id) throw new Error('Native report persistence failed.'); return out({ id }); }),
+    if (!id) throw new Error('Native report persistence failed.');
+    return out({ id, storage: useViewerStore.getState().validationReportsStorage.items[id] ?? null });
+  }),
   viewerOperation<PageInput>(meta('validation.reports.read', 'Read the native durable report library, one page at a time (pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), and its persistence diagnostics with no model required. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Historical evidence never installs old entity IDs into the scene.'), pageInput, async (i, c) => {
     await useViewerStore.getState().initializeValidationReports(); assertToolActive(c); const s = useViewerStore.getState();
     const expected_reports = stateRevision(s.savedValidationReports), { entries: reports, page, storage } = libraryPage(s.savedValidationReports, s.validationReportsStorage, i, { expected_reports });

@@ -143,6 +143,16 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.match(unload.text, /unexported changes/);
     assert.ok(useViewerStore.getState().models.has('A'));
   });
+  it('reports the actual artifact filename for a long single-model name (#10795 item 82)', async () => {
+    const models = new Map(useViewerStore.getState().models);
+    models.set('A', { ...models.get('A')!, name: `${'long-name-'.repeat(12)}.ifc` });
+    const view = new MutablePropertyView(null, 'A');
+    view.setAttribute(1, 'Name', 'Renamed');
+    useViewerStore.setState({ models, mutationViews: new Map([['A', view]]), mutationVersion: 1 });
+    const { result } = data<{ result: { artifact: { filename: string }; files: Array<{ filename: string }> } }>(await execute('exports.changedModels'));
+    assert.equal(result.files[0].filename, result.artifact.filename);
+    assert.match(result.artifact.filename, /\.ifc$/);
+  });
   it('validates every basket reference before changing native basket isolation', async () => {
     useViewerStore.getState().clearBasket();
     const before = useViewerStore.getState().isolatedEntities;

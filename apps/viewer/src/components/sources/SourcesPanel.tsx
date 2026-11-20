@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/i18n/catalogues/sources-panel.en';
-import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { RegistrationFailureMessage } from './SourceRegistrationFailureMessage';
@@ -32,7 +33,7 @@ import {
   type SourceRevisionUpdate,
 } from '@/lib/sources/revisionWatch';
 
-const RegistrySource = lazy(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
+const RegistrySource = lazyChunk(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
 
 interface SourcesPanelProps {
   onClose: () => void;

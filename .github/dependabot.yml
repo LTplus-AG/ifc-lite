@@ -65,10 +65,6 @@ updates:
       # (HelpHint popovers, IconButton aria-describedby). Upgrade the whole
       # family together, with the popover patch rebased, in a hand-made PR.
       - dependency-name: "@radix-ui/*"
-      # 3.11's .splat reader turns alpha 255 into an infinite opacity logit,
-      # which the viewer's Gaussian decoder refuses (#10613).
-      - dependency-name: "@playcanvas/splat-transform"
-        versions: ["3.11.x"]
 
   - package-ecosystem: cargo
     directory: /

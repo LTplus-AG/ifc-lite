@@ -19,6 +19,8 @@ export const viewerShellDe = {
   "viewerShell.chunkError.crashedDetail": "Ein unerwarteter Fehler hat die Darstellung verhindert.",
   "viewerShell.chunkError.reload": "Neu laden",
   "viewerShell.staleDeployment.notice": "Eine neue Viewer-Version ist verfügbar — zum Fortfahren neu laden.",
+  "viewerShell.staleDeployment.offline": "Du bist offline. Stelle die Verbindung wieder her, um fortzufahren.",
+  "viewerShell.staleDeployment.reconnected": "Die Verbindung ist wiederhergestellt. Lade die Seite neu, um fortzufahren.",
   "viewerShell.staleDeployment.reopenPrompt": "Der Viewer wurde aktualisiert und neu geladen. Öffnen Sie {files} erneut, um fortzufahren.",
   "viewerShell.staleDeployment.reopenAction": "Datei öffnen…",
   "viewerShell.hostConfig.errorTitle": "Der Viewer konnte nicht gestartet werden",

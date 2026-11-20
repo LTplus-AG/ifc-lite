@@ -69,3 +69,4 @@ export { snapshotOverlay, restoreOverlay, OverlaySourceMismatchError } from './o
 export type { OverlaySnapshotV1, OverlaySnapshotHistory, OverlaySnapshotOptions, OverlayRestoreOptions, OverlayRestoreResult } from './overlay-snapshot-types.js';
 
 export type { EntityChangeTracker } from './overlay-change-tracker.js';
+export { prepareMutationViewMerge } from './merge-overlay-state.js';

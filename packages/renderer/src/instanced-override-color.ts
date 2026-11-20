@@ -26,22 +26,7 @@ export function composeInstancedOverrideColor(
   return ghosted ? [rgba[0], rgba[1], rgba[2], ghostAlpha] : [rgba[0], rgba[1], rgba[2], rgba[3]];
 }
 
-/** Restore every occurrence's own authored RGB while applying one alpha. */
-export function writeOriginalInstancedColors(
-  device: GPUDevice,
-  occurrences: readonly { templateIndex: number; byteOffset: number; originalColor: readonly [number, number, number, number] }[],
-  templates: readonly ({ instanceBuffer: GPUBuffer } | undefined)[],
-  colorOffset: number,
-  alpha: number,
-): void {
-  for (const occurrence of occurrences) {
-    const buffer = templates[occurrence.templateIndex]?.instanceBuffer;
-    if (!buffer) continue;
-    const color = occurrence.originalColor;
-    device.queue.writeBuffer(
-      buffer,
-      occurrence.byteOffset + colorOffset,
-      new Float32Array([color[0], color[1], color[2], alpha]),
-    );
-  }
+/** An occurrence's original colour at `alpha` (X-Ray fade of an un-overridden occurrence). */
+export function originalColorWithAlpha(color: readonly [number, number, number, number], alpha: number): Float32Array {
+  return new Float32Array([color[0], color[1], color[2], alpha]);
 }

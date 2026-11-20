@@ -6,7 +6,8 @@
 // (vite.config.mjs; prepare.mjs pins sizes and SHA-256). IFC meshes come from the
 // published @ifc-lite/wasm runtime exactly as the spike decodes them; captures
 // are parsed by SplatTransform, never by code in this repository.
-import { MemoryReadFileSystem, readFile, materializeToDataTable, createChunkDataPool } from '@playcanvas/splat-transform';
+import { materializeGaussianLayers } from '../../../apps/viewer/src/hooks/ingest/gaussianMaterialize.ts';
+import { MemoryReadFileSystem, readFile, createChunkDataPool } from '@playcanvas/splat-transform';
 
 async function fetchBytes(path) {
   const response = await fetch(path);
@@ -59,7 +60,7 @@ export async function loadCaptureColumns(url, inputFormat) {
   const sources = await readFile({ filename, inputFormat, fileSystem: fs });
   const pool = createChunkDataPool({ maxPooledBytes: 32 * 1024 * 1024 });
   try {
-    const table = await materializeToDataTable(sources[0], pool);
+    const table = await materializeGaussianLayers(sources[0], pool);
     const columns = Object.fromEntries(table.columns.map(column => [column.name, column.data instanceof Float32Array ? column.data : Float32Array.from(column.data)]));
     const rest = Object.keys(columns).filter(name => name.startsWith('f_rest_')).length;
     const shDegree = { 0: 0, 9: 1, 24: 2, 45: 3 }[rest];

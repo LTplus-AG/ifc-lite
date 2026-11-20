@@ -27,7 +27,7 @@ export async function captureNativeBcfViewpoint(renderer: Renderer | null, canva
   const getBounds = () => renderFrameBounds(models);
   const getWorldOffset = () => bcfWorldOffset(models, useViewerStore.getState().geometryResult);
   const getCameraState = () => bcfCameraState(renderer);
-  const captureFrame = () => captureBcfFrame(renderer, canvas, getCameraState);
+  const captureFrame = () => captureBcfFrame(renderer, canvas, getCameraState, opts.signal);
   const {
     includeSnapshot = true, snapshotOverride, capturedSectionPlane,
     includeSelection = true,
@@ -97,6 +97,15 @@ export async function captureNativeBcfViewpoint(renderer: Renderer | null, canva
     );
   }
 
+  // Resolve visibility GUIDs now too: after the GPU wait a model may be gone or replaced.
+  const capture = visibilityState ? captureVisibility(
+    visibilityState.isolatedEntities,
+    visibilityState.hiddenEntities,
+    resolveCapturedRef,
+    isCapturedRefPending,
+    hasCapturedRefWithoutGlobalId,
+  ) : null;
+
   // The central capture reads camera metadata just after its full render,
   // then owns that drawing buffer through completion and image readback.
   let snapshot: string | undefined = snapshotOverride;
@@ -105,6 +114,10 @@ export async function captureNativeBcfViewpoint(renderer: Renderer | null, canva
     const frame = await captureFrame();
     if (opts.isCaptureStillValid && !opts.isCaptureStillValid()) return null;
     if (frame) { snapshot = frame.snapshot; cameraState = frame.camera; }
+    else if (opts.requireSnapshot) {
+      console.warn('[useBCF] Cannot create viewpoint: the required snapshot was not captured');
+      return null;
+    }
   }
   cameraState ??= getCameraState();
   if (!cameraState) {
@@ -137,14 +150,7 @@ export async function captureNativeBcfViewpoint(renderer: Renderer | null, canva
   // Pure decision in hooks/bcf/visibility-capture.ts (#4509, #4529).
   let hiddenGuids: string[] | undefined;
   let visibleGuids: string[] | undefined;
-  if (visibilityState) {
-    const capture = captureVisibility(
-      visibilityState.isolatedEntities,
-      visibilityState.hiddenEntities,
-      resolveCapturedRef,
-      isCapturedRefPending,
-      hasCapturedRefWithoutGlobalId,
-    );
+  if (visibilityState && capture) {
     ({ visibleGuids, hiddenGuids } = capture);
     let notice = capture.notice;
     if (visibilityState.isolatedEntities !== null

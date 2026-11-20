@@ -62,12 +62,22 @@ export function statedMergeSkips(models: ReadonlyMap<string, FederatedModel>): M
     .map(model => ({ name: model.name, reason: 'noRecords' as const }));
 }
 
+/**
+ * The loaded models a merged export writes: the ones `buildMergeInputs` keeps, by the same store test. Read
+ * before hydration, so a store still loading counts as left out until it arrives.
+ */
+export function mergedModels(models: ReadonlyMap<string, FederatedModel>): FederatedModel[] {
+  return exportableModels(models).filter(model => stepSkipReason(model.ifcDataStore) === null);
+}
+
 /** Assemble one `MergeModelInput` per writable model, and name the rest. */
 export function buildMergeInputs(
   hydrated: readonly HydratedMergeModel[],
   options: {
     applyMutations: boolean;
     getMutationView: (modelId: string) => MutablePropertyView | null;
+    /** Pending georeference edits by model, applied like the single-model export does (#10669). */
+    georefMutations: ReadonlyMap<string, MergeModelInput['georefMutations']>;
   },
 ): MergeInputs {
   const inputs: MergeModelInput[] = [];
@@ -82,7 +92,7 @@ export function buildMergeInputs(
     const roomView = options.applyMutations ? (options.getMutationView(model.id) ?? undefined) : undefined;
     const { input, portable } = roomMergeInput({
       id: model.id, name: model.name, store: dataStore,
-      roomView, applyMutations: options.applyMutations,
+      roomView, applyMutations: options.applyMutations, georefMutations: options.georefMutations.get(model.id),
     });
     if (portable) portableByModel.set(model.id, portable);
     inputs.push(input);

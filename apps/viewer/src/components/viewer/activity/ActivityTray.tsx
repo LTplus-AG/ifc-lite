@@ -11,7 +11,8 @@
  * say so; ephemeral jobs cut off by a reload show as interrupted.
  */
 
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { Activity } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -23,7 +24,7 @@ import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import { JOB_STATUS } from './activity-status';
 
-const ActivityTrayList = lazy(() => import('./ActivityTrayList').then(module => ({ default: module.ActivityTrayList })));
+const ActivityTrayList = lazyChunk(() => import('./ActivityTrayList').then(module => ({ default: module.ActivityTrayList })));
 
 /**
  * Announces a session job that finishes while the viewer is open ("Export

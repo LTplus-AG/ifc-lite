@@ -1,0 +1,313 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/backing-database.ts b/apps/viewer/src/lib/geometry-backing/backing-database.ts
+index 17f72da96c..0e9dd7243a 100644
+--- a/apps/viewer/src/lib/geometry-backing/backing-database.ts
++++ b/apps/viewer/src/lib/geometry-backing/backing-database.ts
+@@ -166,12 +166,14 @@ export class BackingDatabase {
+ 
+   private async sweepStaleSessions(): Promise<void> {
+     if (!this.locks) return;
+-    const snapshot = await this.locks.query();
+-    const held = new Set((snapshot.held ?? []).map((lock) => lock.name));
+     const sessions = await this.read([SESSIONS], (tx) => {
+       const request = tx.objectStore(SESSIONS).getAllKeys();
+       return () => request.result;
+     });
++    // Session publication follows lock acquisition. Read keys first so a new
++    // page cannot publish after our lock snapshot and be mistaken for dead.
++    const snapshot = await this.locks.query();
++    const held = new Set((snapshot.held ?? []).map((lock) => lock.name));
+     const stale = sessions.filter((key): key is string => typeof key === 'string'
+       && key !== this.session && !held.has(`${LOCK_PREFIX}${key}`));
+     if (stale.length === 0) return;
+diff --git a/apps/viewer/src/lib/geometry-backing/backing-reader.ts b/apps/viewer/src/lib/geometry-backing/backing-reader.ts
+index b70c8476e9..6bc4dbd58e 100644
+--- a/apps/viewer/src/lib/geometry-backing/backing-reader.ts
++++ b/apps/viewer/src/lib/geometry-backing/backing-reader.ts
+@@ -94,6 +94,8 @@ export class BackingReader {
+     this.fence(signal);
+     const key = [this.db.session, this.backingId, index];
+     const requested: number[] = [];
++    // Pin live weak-cache hits across the transaction completion await too.
++    const loaded = new Map<number, Uint32Array>();
+     const { record, fetched } = await this.db.read([CHUNKS, SOURCES], (tx) => {
+       const request = tx.objectStore(CHUNKS).get(key);
+       const fetched = new Map<number, unknown>();
+@@ -103,7 +105,12 @@ export class BackingReader {
+           const source = mesh.appearance?.source;
+           if (!source || !('pooled' in source)) continue;
+           const id = source.pooled;
+-          if (requested.includes(id) || this.sources.get(id)?.deref()) continue;
++          if (requested.includes(id) || loaded.has(id)) continue;
++          const existing = this.sources.get(id)?.deref();
++          if (existing) {
++            loaded.set(id, existing);
++            continue;
++          }
+           requested.push(id);
+           const sourceRequest = tx.objectStore(SOURCES).get([this.db.session, this.backingId, id]);
+           sourceRequest.onsuccess = () => { fetched.set(id, sourceRequest.result); };
+@@ -113,12 +120,14 @@ export class BackingReader {
+     });
+     this.fence(signal);
+     if (!record) throw new GeometryNotBackedError(`Backed chunk ${index} is missing from storage`);
+-    const loaded = new Map<number, Uint32Array>();
+     for (const id of requested) {
+       const indices = fetched.get(id);
+       if (!(indices instanceof Uint32Array)) throw new GeometryNotBackedError(`Canonical source ${id} of chunk ${index} is missing`);
+-      this.sources.set(id, new WeakRef(indices));
+-      loaded.set(id, indices);
++      // A concurrent decode of another chunk may have published this source
++      // while ours was in flight: adopt it so pieces share one instance.
++      const shared = this.sources.get(id)?.deref() ?? indices;
++      this.sources.set(id, new WeakRef(shared));
++      loaded.set(id, shared);
+     }
+     const pinned = loaded;
+     const context = {
+@@ -167,7 +176,8 @@ export class BackingReader {
+ 
+   private release(entry: Decoded): void {
+     entry.leases--;
+-    this.trim();
++    if (this.current()) this.trim();
++    else this.clear();
+   }
+ 
+   private trim(): void {
+@@ -182,6 +192,7 @@ export class BackingReader {
+ 
+   /** Lease the given chunks together; all or nothing. */
+   async leaseChunks(indices: readonly number[], options: ReadOptions = {}): Promise<MeshLease> {
++    this.fence(options.signal);
+     const held: Decoded[] = [];
+     let released = false;
+     const release = () => {
+@@ -191,6 +202,7 @@ export class BackingReader {
+     };
+     try {
+       for (const index of indices) held.push(await this.acquire(index, options.signal));
++      this.fence(options.signal);
+     } catch (error) {
+       release();
+       throw error;
+@@ -201,18 +213,27 @@ export class BackingReader {
+   /** Every backed flat mesh of one entity (as owner or colour-merged host). */
+   async leaseEntity(expressId: number, options: ReadOptions = {}): Promise<MeshLease> {
+     const lease = await this.leaseChunks(this.directory.chunksOf(expressId), options);
+-    const meshes = lease.meshes.filter((mesh) => mesh.expressId === expressId || mesh.entityIds?.includes(expressId));
+-    return { meshes, release: lease.release };
++    try {
++      this.fence(options.signal);
++      const meshes = lease.meshes.filter((mesh) => mesh.expressId === expressId || mesh.entityIds?.includes(expressId));
++      return { meshes, release: lease.release };
++    } catch (error) {
++      lease.release();
++      throw error;
++    }
+   }
+ 
+   /** Stream every backed flat mesh, optionally limited to chunks meeting a box. */
+   async *meshes(options: ReadOptions & { bounds?: { min: Vec3; max: Vec3 } } = {}): AsyncGenerator<readonly MeshData[]> {
++    // Fenced even when nothing matches: an empty stale or aborted read is not "no geometry".
++    this.fence(options.signal);
+     const indices = options.bounds
+       ? this.directory.chunksIntersecting(options.bounds.min, options.bounds.max)
+       : this.directory.chunks.map((chunk) => chunk.index);
+     for (const index of indices) {
+       const entry = await this.acquire(index, options.signal);
+       try {
++        this.fence(options.signal);
+         yield entry.meshes;
+       } finally {
+         this.release(entry);
+@@ -223,6 +244,7 @@ export class BackingReader {
+ 
+   /** Stream every backed instanced shard (templates and occurrences). */
+   async *instancedShards(options: ReadOptions = {}): AsyncGenerator<DecodedInstancedShard> {
++    this.fence(options.signal);
+     for (const shard of this.directory.shards) {
+       await this.writer.whenDurable('shard', shard.index);
+       this.fence(options.signal);
+diff --git a/apps/viewer/src/lib/geometry-backing/backing-writer.ts b/apps/viewer/src/lib/geometry-backing/backing-writer.ts
+index ee222b1b37..001fa4d9ce 100644
+--- a/apps/viewer/src/lib/geometry-backing/backing-writer.ts
++++ b/apps/viewer/src/lib/geometry-backing/backing-writer.ts
+@@ -64,6 +64,7 @@ export class BackingWriter {
+   private closed = false;
+   private progress: Waiter[] = [];
+   private readonly recordWaiters = new Map<string, Waiter[]>();
++  private appendTurn: Promise<void> = Promise.resolve();
+ 
+   constructor(
+     private readonly db: BackingDatabase,
+@@ -89,8 +90,24 @@ export class BackingWriter {
+     if (this.closed) throw new GeometryBackingFailedError('Geometry backing writer is closed');
+   }
+ 
++  /** Serialize copying and close/flush boundaries, including concurrent callers.
++   * The barrier itself always resolves; operation failures reach their callers
++   * and terminal writer state rather than becoming an unhandled tail rejection.
++   * Producers must leave their input unchanged until their append resolves. */
++  private async serialized(operation: () => Promise<void>): Promise<void> {
++    const previous = this.appendTurn;
++    let release!: () => void;
++    this.appendTurn = new Promise<void>((resolve) => { release = resolve; });
++    await previous;
++    try { await operation(); } finally { release(); }
++  }
++
+   /** Copy `meshes` into the backing; resolves when the queue has room again. */
+-  async append(meshes: readonly MeshData[]): Promise<void> {
++  append(meshes: readonly MeshData[]): Promise<void> {
++    return this.serialized(() => this.appendMeshes(meshes));
++  }
++
++  private async appendMeshes(meshes: readonly MeshData[]): Promise<void> {
+     this.usable();
+     try {
+       for (const mesh of meshes) {
+@@ -102,6 +119,12 @@ export class BackingWriter {
+         this.sources.push(...encoded.sources);
+         this.uncommitted += encoded.bytes;
+         if (this.builder.bytes >= this.chunkBytes) this.seal();
++        // A single append can contain a model's entire resident mesh list.
++        // Stop after the first mesh crossing the bound, before copying more.
++        if (this.uncommitted > this.queueBytes) {
++          await this.room();
++          this.usable();
++        }
+       }
+     } catch (error) {
+       throw this.fail(error, 'Geometry could not be encoded for local backing');
+@@ -110,7 +133,11 @@ export class BackingWriter {
+   }
+ 
+   /** Back one decoded instanced shard: templates and every occurrence. */
+-  async appendInstancedShard(shard: DecodedInstancedShard): Promise<void> {
++  appendInstancedShard(shard: DecodedInstancedShard): Promise<void> {
++    return this.serialized(() => this.appendShard(shard));
++  }
++
++  private async appendShard(shard: DecodedInstancedShard): Promise<void> {
+     this.usable();
+     let encoded: ReturnType<typeof encodeShardRecord>;
+     try {
+@@ -230,7 +257,11 @@ export class BackingWriter {
+   }
+ 
+   /** Seal the partial chunk and resolve once everything appended is committed. */
+-  async flush(): Promise<void> {
++  flush(): Promise<void> {
++    return this.serialized(() => this.flushPending());
++  }
++
++  private async flushPending(): Promise<void> {
+     this.usable();
+     this.seal();
+     while (this.queue.length > 0) await this.nextProgress();
+@@ -238,9 +269,13 @@ export class BackingWriter {
+   }
+ 
+   /** Flush, then refuse further appends. Resolution = complete, committed backing. */
+-  async close(): Promise<void> {
+-    await this.flush();
+-    this.closed = true;
++  close(): Promise<void> {
++    return this.serialized(async () => {
++      // Two consumers can request the same final acknowledgement concurrently.
++      if (this.closed && !this.failure) return;
++      await this.flushPending();
++      this.closed = true;
++    });
+   }
+ 
+   /** Resolves once a sealed record is committed; rejects if it never will be. */
+diff --git a/apps/viewer/src/lib/geometry-backing/geometry-backing-registry.ts b/apps/viewer/src/lib/geometry-backing/geometry-backing-registry.ts
+index c251904007..eaeb2944ba 100644
+--- a/apps/viewer/src/lib/geometry-backing/geometry-backing-registry.ts
++++ b/apps/viewer/src/lib/geometry-backing/geometry-backing-registry.ts
+@@ -91,6 +91,7 @@ export class ModelGeometryBacking {
+ export class GeometryBackingRegistry {
+   private readonly models = new Map<string, ModelGeometryBacking>();
+   private readonly generations = new Map<string, number>();
++  private closed = false;
+ 
+   private constructor(private readonly db: BackingDatabase) {}
+ 
+@@ -102,14 +103,18 @@ export class GeometryBackingRegistry {
+   /** Whether closed pages' leftovers can be detected (Web Locks). */
+   get sweepsStaleSessions(): boolean { return this.db.sweeps; }
+ 
+-  /** Start a new generation for `modelId`, ending and deleting the previous one first. */
++  /** Atomically replace the current generation, then await the previous one's disposal. */
+   async begin(modelId: string, options: ModelBackingOptions = {}): Promise<ModelGeometryBacking> {
+-    await this.invalidate(modelId);
++    if (this.closed) throw new GeometryBackingFailedError('Geometry backing registry is closed');
++    const previous = this.models.get(modelId);
+     const generation = (this.generations.get(modelId) ?? 0) + 1;
+     this.generations.set(modelId, generation);
+     const backing = new ModelGeometryBacking(this.db, modelId, generation,
+       `${modelId}\u0000${generation}`, options);
+     this.models.set(modelId, backing);
++    // Publish before awaiting disposal: a concurrent begin must retire this
++    // generation, rather than create a second untracked live backing.
++    if (previous) await previous.dispose();
+     return backing;
+   }
+ 
+@@ -134,6 +139,7 @@ export class GeometryBackingRegistry {
+ 
+   /** Free storage of every model and give up this page's session. */
+   async close(): Promise<void> {
++    this.closed = true;
+     const models = [...this.models.keys()];
+     try {
+       await Promise.all(models.map((modelId) => this.invalidate(modelId, 'Geometry backing closed')));
+diff --git a/apps/viewer/src/lib/geometry-backing/mesh-record.ts b/apps/viewer/src/lib/geometry-backing/mesh-record.ts
+index 37a7ea2c65..2dfe251839 100644
+--- a/apps/viewer/src/lib/geometry-backing/mesh-record.ts
++++ b/apps/viewer/src/lib/geometry-backing/mesh-record.ts
+@@ -139,7 +139,9 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
+     const view = mesh[field];
+     if (view !== undefined) slots[field] = slot(view);
+   }
+-  const record: MeshRecord = { fields, arrays, slots };
++  // Snapshot mutable tuples and metadata now, rather than when a queued IDB
++  // transaction eventually starts after the producer has edited the mesh.
++  const record: MeshRecord = { fields: structuredClone(fields), arrays, slots };
+   if (mesh.texture) {
+     const { rgba, width, height, repeatS, repeatT } = mesh.texture;
+     slots.textureRgba = slot(rgba);
+@@ -151,7 +153,9 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
+     if (appearance.kind !== 'canonical-item') {
+       throw new UnsupportedBackingFieldError(`Mesh ${mesh.expressId} has appearance kind ${String(appearance.kind)}`);
+     }
+-    // A source aliasing an array of this mesh stays a slot; otherwise pool it.
++    // Slot the fence first: a source aliasing it (or any other array of this
++    // mesh) must stay that slot so decode restores the identity; else pool it.
++    const fence = slot(appearance.indices);
+     const local = slotOf.get(appearance.sourceIndices);
+     let source: { pooled: number } | { slot: number };
+     if (local !== undefined) source = { slot: local };
+@@ -161,7 +165,7 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
+       source = { pooled: interned.id };
+     }
+     record.appearance = {
+-      kind: 'canonical-item', fence: slot(appearance.indices), source,
++      kind: 'canonical-item', fence, source,
+       ...(appearance.cornerIndices !== undefined ? { corners: slot(appearance.cornerIndices) } : {}),
+     };
+   }
+diff --git a/apps/viewer/src/lib/geometry-backing/shard-record.ts b/apps/viewer/src/lib/geometry-backing/shard-record.ts
+index 06291ee067..7b886bc630 100644
+--- a/apps/viewer/src/lib/geometry-backing/shard-record.ts
++++ b/apps/viewer/src/lib/geometry-backing/shard-record.ts
+@@ -47,7 +47,7 @@ export function encodeShardRecord(shard: DecodedInstancedShard): EncodedShard {
+   const entities = new Set<number>();
+   const instances = shard.instances.map((instance) => {
+     refuseUnknown(instance, INSTANCE_FIELDS, 'occurrence');
+-    if (instance.templateIndex < 0 || instance.templateIndex >= templates.length) {
++    if (!Number.isInteger(instance.templateIndex) || instance.templateIndex < 0 || instance.templateIndex >= templates.length) {
+       throw new RangeError(`Instanced occurrence of ${instance.entityId} names missing template ${instance.templateIndex}`);
+     }
+     entities.add(instance.entityId);

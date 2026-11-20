@@ -14,15 +14,42 @@ const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, effect: 'read' | 'model' | 'artifact' = 'read') => ({ id, owner: 'zones', description, effects: [effect],
   capability: effect === 'read' ? 'read' as const : 'commands-and-edits' as const, implementation: 'native-store' as const, outputSchema,
   policy: effect === 'model' ? { model: 'native-reviewed' as const } : effect === 'artifact' ? { artifact: 'native-export' as const } : undefined });
-interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ReturnType<typeof useViewerStore.getState>['models']; revision: number; geometry: unknown; configuration: string; result?: unknown }
+type ViewerState = ReturnType<typeof useViewerStore.getState>;
+interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ViewerState['models']; revision: number; geometry: ViewerState['geometryResult']; content: number; configuration: string; result?: unknown }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) { let value = hosts.get(c.host); if (!value) { value = new Map(); hosts.set(c.host, value); } return value; }
 function zoneSet(id: string) { const set = useViewerStore.getState().zoneSets.find(row => row.id === id); if (!set) throw new Error('Unknown zone set.'); return set; }
+/** Same own fields, by identity, except `ignored`. */
+function sameExcept(a: object, b: object, ignored: string) {
+  const keys = Object.keys(a).filter(key => key !== ignored);
+  return keys.length === Object.keys(b).filter(key => key !== ignored).length && keys.every(key => Object.hasOwn(b, key) && Reflect.get(a, key) === Reflect.get(b, key));
+}
+/**
+ * Geometry as the proved volumes read it. A recolour replaces every mesh with `{ ...mesh, color }`, and with it
+ * `geometryResult` and the `models` Map, but keeps each mesh's buffers; any other change still differs (#10669).
+ */
+function sameGeometry(a: ViewerState['geometryResult'] | undefined, b: ViewerState['geometryResult'] | undefined) {
+  if (a === b) return true;
+  if (!a || !b || a.meshes.length !== b.meshes.length || !sameExcept(a, b, 'meshes')) return false;
+  return a.meshes.every((mesh, index) => sameExcept(mesh, b.meshes[index], 'color'));
+}
+/** Stricter than streaming-refresh's sameModelsExceptGeometry, which also ignores retained geometry. */
+function sameModels(a: ViewerState['models'], b: ViewerState['models']) {
+  if (a === b) return true;
+  return a.size === b.size && [...a].every(([id, model]) => {
+    const other = b.get(id);
+    return other !== undefined && sameExcept(model, other, 'geometryResult') && sameGeometry(model.geometryResult, other.geometryResult);
+  });
+}
 function validate(candidate: Candidate) {
   const state = useViewerStore.getState();
-  // geometryResult: a geometry-only update changes the proved volumes without touching models or mutationVersion.
-  // (Not geometryUpdateTick, which a recolour also bumps.)
-  if (state.models !== candidate.models || state.mutationVersion !== candidate.revision || state.geometryResult !== candidate.geometry || JSON.stringify(zoneSet(candidate.setId)) !== candidate.configuration) throw new Error('Zone/model inputs changed after review.');
+  // Geometry too: a geometry-only update changes the proved volumes without touching mutationVersion, and an in-place
+  // one (realignFederation) bumps only geometryContentVersion.
+  if (!sameModels(state.models, candidate.models) || state.mutationVersion !== candidate.revision || !sameGeometry(state.geometryResult, candidate.geometry)
+    || state.geometryContentVersion !== candidate.content
+    || JSON.stringify(zoneSet(candidate.setId)) !== candidate.configuration) throw new Error('Zone/model inputs changed after review.');
+  // Equal but for colour: track the current objects, so the next check is an identity check, not another walk.
+  candidate.models = state.models; candidate.geometry = state.geometryResult;
   const permission = mutationPermissionForModels(state, candidate.modelIds); if (!permission.allowed) throw new Error(`Native write refused: ${permission.reason}`);
 }
 export const zoneWriteOperations = [
@@ -34,7 +61,7 @@ export const zoneWriteOperations = [
     const current = [...state.models].filter(([, model]) => model.ifcDataStore).map(([id]) => id).sort();
     if (JSON.stringify([...i.model_ids].sort()) !== JSON.stringify(current) || !i.model_ids.includes(c.model.id)) throw new Error('model_ids must explicitly name every currently loaded IFC target.');
     const set = zoneSet(i.set_id), rows = buildZoneTable(set, i.basis);
-    const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult, configuration: JSON.stringify(set) };
+    const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult, content: state.geometryContentVersion, configuration: JSON.stringify(set) };
     validate(candidate); evictOldest(owned(c), 32); const token = crypto.randomUUID(); owned(c).set(token, candidate);
     return out({ token, action: i.action, model_ids: i.model_ids, rows, undo: 'explicit-native-remove; not history Undo', partial_outcomes: true });
   }),

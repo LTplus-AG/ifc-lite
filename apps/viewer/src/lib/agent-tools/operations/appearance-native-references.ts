@@ -18,6 +18,7 @@ import type { ToolHost } from '../types';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { restoreReferenceSource, referenceEditSettings } from '@/lib/appearance/references/edit';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
+import { invalidInput, stale, unavailable } from './refusals';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -53,7 +54,7 @@ function release(value: Candidate) {
 function assertPreviewCapacity(c: ViewerOperationContext) {
   let live = 0;
   for (const row of candidates(c).values()) if (!row.placed) live++;
-  if (live >= 32) throw new Error('Reference preview capacity reached.');
+  if (live >= 32) throw unavailable('Reference preview capacity reached.');
 }
 function candidates(c: ViewerOperationContext) {
   let map = hosts.get(c.host);
@@ -113,7 +114,7 @@ export const appearanceReferenceOperations = [
     async (i, c) => {
       assertToolActive(c);
       const record = useViewerStore.getState().appearanceReferences.get(i.reference_id);
-      if (!record) throw new Error('Unknown native reference.');
+      if (!record) throw invalidInput('unknown-target', 'Unknown native reference.');
       const settings = referenceEditSettings(record);
       return out(c.commit(() => ({ source: restoreReferenceSource(record), settings })));
     },
@@ -138,13 +139,13 @@ export const appearanceReferenceOperations = [
     async (i, c) => {
       const settings = await decodeAppearanceSettings(i.settings_json);
       assertToolActive(c);
-      if (!c.signal) throw new Error('A live cancellation signal is required.');
+      if (!c.signal) throw unavailable('A live cancellation signal is required.');
       const s = useViewerStore.getState(),
         source = s.appearanceSources.find((item) => item.id === i.source_id),
         editing = i.edit_reference_id ? (s.appearanceReferences.get(i.edit_reference_id) ?? null) : null,
         renderer = getGlobalRenderer();
       if (!source || JSON.stringify(source) !== i.expected_source || !renderer || (i.edit_reference_id && !editing))
-        throw new Error('Reference source/edit identity or renderer changed.');
+        throw stale('Reference source/edit identity or renderer changed.');
       for (const [token, row] of candidates(c)) if (row.placed) candidates(c).delete(token);
       assertPreviewCapacity(c);
       const owner = { kind: 'draft' as const, id: crypto.randomUUID() },
@@ -161,7 +162,7 @@ export const appearanceReferenceOperations = [
         );
         const assertInputsCurrent = () => {
           if (getGlobalRenderer() !== renderer || (editing && useViewerStore.getState().appearanceReferences.get(editing.id) !== editing))
-            throw new Error('Native reference inputs changed during preparation.');
+            throw stale('Native reference inputs changed during preparation.');
           assertReferencePlacementCurrent(prepared);
         };
         assertToolActive(c);
@@ -195,12 +196,12 @@ export const appearanceReferenceOperations = [
     tokenInput,
     async (i, c) => {
       const saved = candidates(c).get(i.token);
-      if (!saved) throw new Error('Unknown reference candidate for this host.');
-      if (saved.discard) throw new Error('The reference candidate is being discarded.');
+      if (!saved) throw invalidInput('unknown-target', 'Unknown reference candidate for this host.');
+      if (saved.discard) throw unavailable('The reference candidate is being discarded.');
       if (saved.placed) return out({ reference_id: saved.placed, placed: true });
       assertToolActive(c);
-      if (!c.signal || getGlobalRenderer() !== saved.renderer) throw new Error('Native renderer/session changed.');
-      if (saved.placing) throw new Error('The reference candidate is being placed.');
+      if (!c.signal || getGlobalRenderer() !== saved.renderer) throw stale('Native renderer/session changed.');
+      if (saved.placing) throw unavailable('The reference candidate is being placed.');
       saved.placing = true;
       try {
         const expected = ownReference(saved.prepared.record);
@@ -230,10 +231,10 @@ export const appearanceReferenceOperations = [
     tokenInput,
     async (i, c) => {
       const saved = candidates(c).get(i.token);
-      if (!saved) throw new Error('Unknown reference candidate.');
-      if (saved.placing) throw new Error('The reference candidate is being placed.');
+      if (!saved) throw invalidInput('unknown-target', 'Unknown reference candidate.');
+      if (saved.placing) throw unavailable('The reference candidate is being placed.');
       assertToolActive(c);
-      if (saved.discard === 'pending') throw new Error('The reference candidate is being discarded.');
+      if (saved.discard === 'pending') throw unavailable('The reference candidate is being discarded.');
       saved.discard = 'pending';
       try { release(saved); }
       catch (error) { saved.discard = 'failed'; throw error; }
@@ -274,13 +275,13 @@ export const appearanceReferenceOperations = [
         c.commit(() => {
           const s = useViewerStore.getState();
           if (s.collabRoomId || s.referenceRevision !== i.reference_revision)
-            throw new Error('Native reference workspace changed or is in a shared room.');
+            throw stale('Native reference workspace changed or is in a shared room.');
           if (
             ['update', 'remove', 'select'].includes(i.action) &&
             i.reference_id &&
             !s.appearanceReferences.has(i.reference_id)
           )
-            throw new Error('Unknown reference.');
+            throw invalidInput('unknown-target', 'Unknown reference.');
           if (i.action === 'update')
             s.updateAppearanceReference(i.reference_id, { visible: i.visible, locked: i.locked, opacity: i.opacity });
           else if (i.action === 'remove') s.removeAppearanceReference(i.reference_id);

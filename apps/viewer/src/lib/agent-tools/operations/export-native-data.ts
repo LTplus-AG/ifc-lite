@@ -11,19 +11,20 @@ import { resolveTerrainSelection, runLandXmlTerrainExport, landXmlTerrainFilenam
 import { viewerOperation } from './contract';
 import { exportMetadata } from './exports-common';
 import { nativeExportTarget, nativeExportGuard, nativeArtifact, targetSchema } from './export-native-runtime';
+import { internal, invalidInput, unavailable } from './refusals';
 const suffix = { entities: '_entities', properties: '_properties', quantities: '_quantities', spatial: '_spatial-hierarchy' };
 export const exportNativeDataOperations = [
   viewerOperation<{ target_model_id: string; table: CsvMode }>(exportMetadata('exports.csv', 'Await one native registry CSV table (entities with properties, properties, quantities or spatial hierarchy), from an explicit model including its pending edits. Uses the exact Rust CSV producer shared by toolbar exports. Does not silently combine federated express IDs.'), {
     type: 'object', properties: { target_model_id: targetSchema, table: { type: 'string', enum: ['entities', 'properties', 'quantities', 'spatial'] } }, required: ['target_model_id', 'table'], additionalProperties: false,
   } satisfies JSONSchemaType<{ target_model_id: string; table: CsvMode }>, async (i, c) => {
-    const model = nativeExportTarget(i.target_model_id); if (!model.ifcDataStore?.source.byteLength) throw new Error('Native CSV requires a parsed source store.');
+    const model = nativeExportTarget(i.target_model_id); if (!model.ifcDataStore?.source.byteLength) throw unavailable('Native CSV requires a parsed source store.');
     const check = nativeExportGuard(c, [model.id]); check(); const content = await exportCsvFromBytes(editedModelBytes(model.ifcDataStore, useViewerStore.getState().getMutationView(model.id)), i.table, { includeProperties: i.table === 'entities' });
     return nativeArtifact(c, new Blob([content], { type: 'text/csv' }), modelExportFilename(model.name, 'csv', suffix[i.table]), { model_id: model.id, table: i.table, scope: 'one-model' }, check);
   }),
   viewerOperation<{ target_model_id: string }>(exportMetadata('exports.json', 'Produce the native toolbar JSON entity envelope for one explicit model using its effective pending-edit view and canonical row builder. Preserve exact IFC EXPRESS names and native JSON value representation.'), {
     type: 'object', properties: { target_model_id: targetSchema }, required: ['target_model_id'], additionalProperties: false,
   } satisfies JSONSchemaType<{ target_model_id: string }>, async (i, c) => {
-    const model = nativeExportTarget(i.target_model_id); if (!model.ifcDataStore) throw new Error('Native JSON requires a parsed entity store.');
+    const model = nativeExportTarget(i.target_model_id); if (!model.ifcDataStore) throw unavailable('Native JSON requires a parsed entity store.');
     const check = nativeExportGuard(c, [model.id]); check(); const entities = buildCommandPaletteJsonEntities(model.ifcDataStore, useViewerStore.getState().getMutationView(model.id));
     return nativeArtifact(c, new Blob([JSON.stringify({ entities }, null, 2)], { type: 'application/json' }), modelExportFilename(model.name, 'json', '_data'), { model_id: model.id, rows: entities.length, scope: 'one-model' }, check);
   }),
@@ -32,10 +33,11 @@ export const exportNativeDataOperations = [
   } satisfies JSONSchemaType<{ target_model_id: string; express_ids: number[]; linear_unit: 'metre' | 'internationalFoot' | 'usSurveyFoot'; decimals: number; surface_names: { express_id: number; name: string }[] }>, async (i, c) => {
     const model = nativeExportTarget(i.target_model_id); const s = useViewerStore.getState(); const check = nativeExportGuard(c, [model.id]); check();
     const selection = resolveTerrainSelection({ refs: i.express_ids.map(expressId => ({ modelId: model.id === '__legacy__' ? 'legacy' : model.id, expressId })), models: s.models, legacyStore: s.ifcDataStore });
-    if (selection.kind !== 'ready' || selection.skipped) throw new Error('Every requested product must be native-exportable IfcGeographicElement or IfcSite in the exact model.');
-    if (new Set(i.surface_names.map(row => row.express_id)).size !== i.surface_names.length || i.surface_names.some(row => !selection.productIds.includes(row.express_id))) throw new Error('Duplicate or unrelated terrain surface name.');
+    if (selection.kind !== 'ready' || selection.skipped) throw invalidInput('invalid-value', 'Every requested product must be native-exportable IfcGeographicElement or IfcSite in the exact model.');
+    if (new Set(i.surface_names.map(row => row.express_id)).size !== i.surface_names.length || i.surface_names.some(row => !selection.productIds.includes(row.express_id))) throw invalidInput('invalid-value', 'Duplicate or unrelated terrain surface name.');
     const outcome = await runLandXmlTerrainExport(editedModelBytes(selection.store, s.getMutationView(selection.modelId)), selection.productIds, undefined, { linearUnit: i.linear_unit, decimals: i.decimals, surfaceNames: Object.fromEntries(i.surface_names.map(row => [row.express_id, row.name])) });
-    check(); if (outcome.status !== 'ready') throw new Error(outcome.status === 'refused' ? outcome.reason : outcome.status === 'failed' ? outcome.message : 'Native terrain exporter unavailable.');
+    check(); if (outcome.status === 'refused') throw invalidInput('refused', outcome.reason);
+    if (outcome.status === 'failed') throw internal(outcome.message); if (outcome.status !== 'ready') throw unavailable('Native terrain exporter unavailable.');
     const { xml, ...diagnostics } = outcome.result;
     return nativeArtifact(c, new Blob([xml], { type: 'application/xml' }), landXmlTerrainFilename(model.name), diagnostics, check);
   }),

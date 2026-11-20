@@ -317,4 +317,42 @@ it('#10887 unscoped mixed exports combine backed geometry with resident flat and
     useViewerStore.setState(initial, true);
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   }
+
+  it('#10887 a direct resident collector call while a wrapped export of another model awaits keeps its own instances', async () => {
+    const a: GeometryResult = { meshes: [mesh(1, 2)], totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    const b: GeometryResult = { meshes: [mesh(101, 9)], totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    useViewerStore.setState({ models: new Map([
+      ['A', { id: 'A', idOffset: 0, maxExpressId: 100, geometryResult: a }],
+      ['B', { id: 'B', idOffset: 100, maxExpressId: 100, geometryResult: b }],
+    ]) } as never);
+    const indexOfB = modelIndices(useViewerStore.getState().models).get('B')!;
+    const store = useViewerStore as unknown as StoreApi<TapState>;
+    const liveB = { ...mesh(150, 4), modelIndex: indexOfB }; // B's resident instanced occurrence
+    const scene = { isGeometryDataReleased: () => false, placeAppearanceSource: (m: MeshData) => m,
+      getAllInstancedMeshData: () => [liveB] as MeshData[] };
+    setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+    let allow!: () => void;
+    const held = new Promise<void>((resolve) => { allow = resolve; });
+    let entered!: () => void;
+    const inside = new Promise<void>((resolve) => { entered = resolve; });
+    let wrapped: Promise<unknown> = Promise.resolve();
+    try {
+      await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `export-ambient-${process.pid}`, locks: null } } as never });
+      await geometryBackingCommand(store, undefined, { action: 'seal' });
+      releaseCpuMeshBuffers(a.meshes); // A is released; B stays resident
+      wrapped = withReleasedExportGeometry(async () => { entered(); await held; return withInstancedMeshes(a, { modelId: 'A', idOffset: 0, maxExpressId: 100 }); }, ['A']);
+      await inside;
+      // Unrelated code exports resident B directly while A's export is in flight.
+      const direct = withInstancedMeshes(b, { modelId: 'B', idOffset: 100, maxExpressId: 100 });
+      assert.deepEqual(direct.meshes.map((m) => m.expressId), [101, 150], "B's own instance, never A's scope");
+      allow();
+      const out = await wrapped as GeometryResult;
+      assert.equal(out.meshes[0].positions[2], 2, 'A still reads back inside its own export');
+    } finally {
+      allow();
+      await wrapped.catch(() => undefined);
+      await geometryBackingCommand(store, undefined, { action: 'stop' });
+      setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+    }
+  });
 });

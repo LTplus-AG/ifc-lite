@@ -81,7 +81,13 @@ export function withInstancedMeshes(
 ): GeometryResult {
   // Released CPU geometry (#10264): substitute what the export context read back;
   // outside one, fail rather than export empty arrays and no occurrences.
-  const prepared = releasedExport;
+  // The read-back context belongs to the export that prepared it (#10887). Collectors are synchronous
+  // and that export may await, so a call made meanwhile by unrelated code would see it too: apply it
+  // only to calls inside its scope (the owner it prepared, or released geometry it must answer).
+  const callOwner = modelRange?.rendererModelIndex ?? (modelRange?.modelId ? modelIndices(getViewerState().models).get(modelRange.modelId) : undefined);
+  const renderer = getGlobalRenderer();
+  const prepared = releasedExport && (callOwner !== undefined ? releasedExport.scopeModelIndices.has(callOwner)
+    : !geometryResult.meshes.every(meshIsResident) || (!!renderer && sceneGeometryReleased(renderer))) ? releasedExport : null;
   if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : undefined)) {
     throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');
   }

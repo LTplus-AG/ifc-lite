@@ -396,7 +396,7 @@ describe('IDS candidates and validation runs (#10792)', () => {
   it('#38: concurrent applies dispatch once, and a discard during apply wins', async () => {
     const token = await prepareOps('Once');
     const [a, b] = await Promise.all([invoke('ids.candidate.apply', { token }, true), invoke('ids.candidate.apply', { token }, true)]);
-    answer(a); answer(b);
+    assert.deepEqual(answer(a), answer(b));
     assert.equal(useViewerStore.getState().idsStudioState!.history.past.length, 1);
     const discarded = await prepareOps('Discarded');
     // A dispatched discard settles only after apply's short await, so run the discard operation's own
@@ -414,6 +414,31 @@ describe('IDS candidates and validation runs (#10792)', () => {
     await discard;
     assert.equal(apply.isError, true, apply.text);
     assert.equal(useViewerStore.getState().idsStudioState!.doc.ids.specifications[0].name, 'Once');
+  });
+
+  it('#11054: a concurrent replay refuses a discarded IDS token', async () => {
+    const token = await prepareOps('Committed');
+    const discardOperation = idsOperations.find(row => row.id === 'ids.candidate.discard')!;
+    let discard: Promise<unknown> | undefined;
+    const canEdit = () => {
+      // Discard synchronously in the second apply's grant check after the first apply committed.
+      if (!discard && useViewerStore.getState().idsStudioRevision > 0 && new Error().stack?.includes('writeGuard')) {
+        discard = discardOperation.execute({ token }, { host, canEdit: () => true } as Parameters<typeof discardOperation.execute>[1]);
+      }
+      return true;
+    };
+    const [first, replay] = await Promise.all([
+      invoke('ids.candidate.apply', { token }, true),
+      invoke('ids.candidate.apply', { token }, true, canEdit),
+    ]);
+    answer(first);
+    assert.ok(discard, 'the second apply reached the replay gate');
+    await discard;
+    assert.equal(replay.isError, true, 'a removed token must not replay');
+    assert.match(replay.text, /IDS candidate was discarded/);
+    const state = useViewerStore.getState().idsStudioState!;
+    assert.equal(state.doc.ids.specifications[0].name, 'Committed');
+    assert.equal(state.history.past.length, 1);
   });
 
   it('#63: a prepare cancelled during its imports evicts no other candidate', async () => {

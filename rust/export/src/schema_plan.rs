@@ -61,8 +61,10 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
 fn plan_and_route(entity_type: &str, cfrom: &'static str, cto: &'static str) -> (Plan, Route) {
     let renamed = rename_type(entity_type, cfrom, cto);
     let new_type = renamed.unwrap_or(entity_type);
+    // An alignment product has no representation in the target either: the
+    // warnings name it with the other proxies (Claude review on #10988).
     if should_skip_entity(new_type, cto) {
-        return (Plan::ProductProxy, Route::Written);
+        return (Plan::ProductProxy, Route::Unrepresented);
     }
     let src_names = schema_attribute_names(cfrom, entity_type);
     let route = missing_type_route(entity_type, new_type, cfrom, cto, src_names.is_some());

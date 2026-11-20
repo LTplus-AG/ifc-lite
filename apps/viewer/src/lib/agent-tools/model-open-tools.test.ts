@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { useViewerStore } from '@/store';
+import { fixtureDataStore } from '@/test/store-fixture';
 import { registerAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { modelOpenTools, MODEL_OPEN_SPECS, OPEN_MODEL_WAIT_MS } from './model-open-tools';
 import { VIEWER_COMMAND_SPECS } from './viewer-command-tools';
@@ -57,9 +58,10 @@ async function fakeLoad(kind: 'replace' | 'add' | 'stack', files: File[], onErro
     onError?.('bad STEP');
     return null;
   }
+  const ifcDataStore = kind === 'stack' ? fixtureDataStore() : null;
   for (const f of files) {
     const fileId = primaryId ?? `m-${calls.length}-${f.name}`;
-    models.set(fileId, model(fileId, f.name) as never);
+    models.set(fileId, { ...model(fileId, f.name), ifcDataStore } as never);
   }
   useViewerStore.setState({ loading: false, models: models as never });
   // Another load in the tab closes what this call added.
@@ -283,10 +285,25 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     unregister = registerAgentModelLoader({
       loadFile: async () => {}, addModel: async () => null,
       // Same deterministic ids as the stack already open.
-      loadStack: async (files) => { useViewerStore.setState({ models: new Map(files.map((f, i) => [first[i], model(first[i], f.name)])) as never }); },
+      loadStack: async (files) => {
+        const ifcDataStore = fixtureDataStore();
+        useViewerStore.setState({ models: new Map(files.map((f, i) => [first[i], { ...model(first[i], f.name), ifcDataStore }])) as never });
+      },
     });
     const out = await run({ sample: 'layers-demo', mode: 'replace' });
     assert.equal((out.structured as { state: string }).state, 'loaded');
+  });
+
+  it('refuses to report an existing layer stack as reopened when no layers were loaded (#9523 code review)', async () => {
+    serveStackSample();
+    await run({ sample: 'layers-demo' });
+    unregister();
+    unregister = registerAgentModelLoader({
+      loadFile: async () => {}, addModel: async () => null, loadStack: async () => {},
+    });
+    await assert.rejects(run({ sample: 'layers-demo', mode: 'replace' }), {
+      code: 'UNSUPPORTED_OPERATION', message: /did not open the layer stack/,
+    });
   });
 
   it('reports a failed stack load through the store error (#9523 code review)', async () => {

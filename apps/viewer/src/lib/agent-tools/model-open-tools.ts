@@ -232,10 +232,11 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
       `The loaded models have ${unexported} unexported change(s). Replacing them would discard those edits; ask the user to export or discard them, or use mode: 'add'.`);
   }
 
-  const before = new Set(state.models.keys());
+  const before = state.models;
   const stack = files.length > 1;
   const snapshot = () => [...store.getState().models.values()].map((m) => ({
-    model_id: m.id, name: m.name, schema: m.schemaVersion ?? null, new: !before.has(m.id),
+    model_id: m.id, name: m.name, schema: m.schemaVersion ?? null,
+    new: !before.has(m.id) || (stack && m.ifcDataStore !== null && m.ifcDataStore !== before.get(m.id)?.ifcDataStore),
     failed: m.loadState === 'error', error: m.loadError ?? null,
   }));
   const name = stack ? 'the layer stack' : files[0].name;
@@ -260,12 +261,11 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     return couldNotLoad(loadError ?? (err instanceof Error ? err.message : String(err)));
   }), deadline - Date.now());
   if (!loaded) return stillLoading();
-  // This call's own records: an add's returned id (none when it failed), a replace's chosen id, and for the
-  // stack (no per-call id, layer ids repeat across loads) its exact file names: a stack load clears every
-  // model before composing, so after it only this load's layers carry those names.
+  // Stack layer ids can repeat. A successful composition publishes a fresh shared data store, so require
+  // new layers with the expected names even when those ids were already present.
   const stackNames = new Set(files.map((f) => f.name));
-  const isMine = (m: { model_id: string; name: string }) => (request.mode === 'add' ? m.model_id === loaded.id
-    : stack ? stackNames.has(m.name) : m.model_id === primaryId);
+  const isMine = (m: { model_id: string; name: string; new: boolean }) => (request.mode === 'add' ? m.model_id === loaded.id
+    : stack ? m.new && stackNames.has(m.name) : m.model_id === primaryId);
 
   // The stack loader reports failures only through the store, before it resolves and sometimes before it
   // clears anything, so an earlier stack's same-named layers may still be open: read its error now. Only

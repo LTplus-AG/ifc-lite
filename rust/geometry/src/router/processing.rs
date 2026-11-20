@@ -296,6 +296,11 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         offset_meters: (f64, f64, f64),
     ) -> Option<RawRebase> {
+        // Without a model RTC there is no rebase to replace: skip the probe,
+        // which decodes the item's coordinates, for every item of such a model.
+        if !self.has_rtc_offset() {
+            return None;
+        }
         let scale = self.unit_scale();
         let point = self.representation_item_first_vertex_meters(item, decoder)?;
         let shifted = (point.0 - offset_meters.0, point.1 - offset_meters.1, point.2 - offset_meters.2);
@@ -310,7 +315,7 @@ impl GeometryRouter {
                 });
             }
         }
-        (self.has_rtc_offset() && rtc_rebase_benefits(point, shifted)).then(|| RawRebase {
+        rtc_rebase_benefits(point, shifted).then(|| RawRebase {
             file_units: (offset_meters.0 / scale, offset_meters.1 / scale, offset_meters.2 / scale),
             meters: offset_meters,
             anchored: false,

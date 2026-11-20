@@ -1,8 +1,8 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts b/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
-index bfc0c84aa1..c2a42eef87 100644
+index 180629b..f354a95 100644
 --- a/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
 +++ b/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
-@@ -51,8 +51,7 @@ function place(scene: Pick<SceneContents, 'placeAppearanceSource'>, mesh: MeshDa
+@@ -61,8 +61,7 @@ function place(scene: Pick<SceneContents, 'placeAppearanceSource'>, mesh: MeshDa
  function modelOffset(scene: Pick<SceneContents, 'placeAppearanceSource'>, modelIndex: number | undefined): [number, number, number] {
    const probe: MeshData = { expressId: 0, positions: new Float32Array(0), normals: new Float32Array(0),
      indices: new Uint32Array(0), color: [0, 0, 0, 0], origin: [0, 0, 0], ...(modelIndex !== undefined ? { modelIndex } : {}) };
@@ -12,7 +12,7 @@ index bfc0c84aa1..c2a42eef87 100644
  }
  
  export class ReadbackRaycastFeeder {
-@@ -121,7 +120,7 @@ export class ReadbackRaycastFeeder {
+@@ -155,7 +154,7 @@ export class ReadbackRaycastFeeder {
          seen.add(mesh);
          // Only what the scene draws: the store also holds type-filtered meshes
          // (spaces, openings) and class-2 type templates the scene never had.
@@ -20,4 +20,4 @@ index bfc0c84aa1..c2a42eef87 100644
 +        if ((mesh.geometryClass ?? 0) === 2 || scene.getEntityBoundingBox(mesh.expressId) === null) continue;
          meshes.push(place(scene, mesh));
        }
-       this.swap(leases, meshes);
+       // Occurrences are model-local like flat sources; the same placement applies.

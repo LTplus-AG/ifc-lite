@@ -129,6 +129,29 @@ describe('IdsStudioPanel (IDS-030 … IDS-032)', () => {
     assert.equal(byText(ui, '[role="status"]', 'Draft saved in this browser'), undefined);
   });
 
+  it('resumes autosaving after browser storage refuses a draft write (#10585)', async ({ mock }) => {
+    const fixture = await wallFixture();
+    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    const ui = render(<IdsStudioPanel />);
+    const status = (message: string) => byText(ui, '[role="status"]', message) !== undefined;
+    await waitFor(() => status('Draft saved in this browser'), 'the first snapshot commits');
+    const transaction = IDBDatabase.prototype.transaction;
+    const refusal = mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+      stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+      if (stores === 'items' && mode === 'readwrite') throw new DOMException('Storage full', 'QuotaExceededError');
+      return transaction.call(this, stores, mode, options);
+    });
+    try {
+      click(byText(ui, 'button', 'Add specification') as HTMLElement);
+      await waitFor(() => !!byText(ui, '[role="alert"]', 'The IDS draft could not be saved'), 'quota refusal reaches the editor');
+    } finally {
+      refusal.mock.restore();
+    }
+    click(byText(ui, 'button', 'Add specification') as HTMLElement);
+    await waitFor(() => status('Draft saved in this browser'), 'the next edit saves after quota recovers');
+    assert.equal(doc()?.ids.specifications.length, 3);
+  });
+
   it('undoes and redoes with the panel keyboard shortcuts', async () => {
     const fixture = await wallFixture();
     useViewerStore.getState().idsStudioOpen(fixture.doc);

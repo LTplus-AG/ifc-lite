@@ -11,14 +11,25 @@ import { createIdsDraftAutosave, restoreIdsDraft, restoreInitialIdsDraft, type I
 type DraftFeedback = IdsDraftFeedback | 'unreadable';
 export const useIdsDraftFeedback = create<Record<string, DraftFeedback | undefined>>(() => Object.create(null));
 const report = (id: string, feedback?: DraftFeedback) => useIdsDraftFeedback.setState(state => ({ ...state, [id]: feedback }));
-const baselines = new Map<string, string>();
+interface DraftBaseline {
+  durable?: string;
+  staged?: string;
+}
+const baselines = new Map<string, DraftBaseline>();
 const autosave = createIdsDraftAutosave(async draft => {
-  const known = baselines.get(draft.id);
-  const visible = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draft.id);
-  // Refreshes can advance the library revision while the editor still owns an older snapshot.
-  if (known !== undefined && visible?.document !== known) return 'conflict';
-  baselines.set(draft.id, draft.document);
-  return idsStudioDraftLibrary.put(draft.id, draft);
+  const visible = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draft.id)?.document;
+  const baseline = baselines.get(draft.id) ?? { durable: visible };
+  // The library may show an optimistic draft after a refusal. Recognize that
+  // draft and the last committed snapshot while still rejecting an external change.
+  if (visible !== baseline.durable && (baseline.staged === undefined || visible !== baseline.staged)) return 'conflict';
+  baseline.staged = draft.document;
+  baselines.set(draft.id, baseline);
+  const saved = await idsStudioDraftLibrary.put(draft.id, draft);
+  if (saved) {
+    baseline.durable = draft.document;
+    if (baseline.staged === draft.document) baseline.staged = undefined;
+  }
+  return saved;
 }, (id, reason) => report(id, reason ?? undefined));
 let installed = false;
 let restoring: string | null = null;
@@ -45,7 +56,7 @@ function openIdsDraft(draft: IdsStudioDraft): void {
   restoring = live.id;
   try {
     const opened = restoreIdsDraft(live, useViewerStore.getState().idsStudioOpen);
-    if (opened) baselines.set(live.id, live.document);
+    if (opened) baselines.set(live.id, { durable: live.document });
     report(live.id, opened ? undefined : 'unreadable');
   } finally {
     restoring = null;

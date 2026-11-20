@@ -54,6 +54,13 @@ export const VARIANT_KEYS = VARIANTS.map((v) => v.key);
 /** The variant every acceptance delta is measured against. */
 export const BASELINE = 'base-inmem';
 
+/**
+ * The smallest spread any comparison is read against, in percent. Even two
+ * perfectly constant medians are two samples of a shared host, not a
+ * measurement accurate to zero.
+ */
+export const NOISE_FLOOR_PCT = 3;
+
 /** Metrics per variant. Peak RSS leads: it is the quantity #9584 is about. */
 export const METRICS = [
   { key: 'peakRssBytes', label: 'peak RSS', unit: 'MiB', scale: 1 / (1024 * 1024) },
@@ -194,10 +201,15 @@ function comparisons(variants) {
       const fromStat = a.metrics.find((m) => m.key === metric);
       const toStat = b.metrics.find((m) => m.key === metric);
       const deltaPct = pctDelta(toStat.rawMedian, fromStat.rawMedian);
-      // The noisier of the two sides, never below 3%: a delta smaller than
-      // the swing of either side it was computed from is not a reading.
-      const noisePct = Math.max(fromStat.spreadPct ?? 0, toStat.spreadPct ?? 0);
-      const real = deltaPct != null && Math.abs(deltaPct) > Math.max(noisePct, 3);
+      // The noisier of the two sides, never below NOISE_FLOOR_PCT: a delta
+      // smaller than the swing of either side it was computed from is not a
+      // reading. The floor is folded in HERE rather than at the comparison,
+      // so the number the report prints as the floor is the number the
+      // verdict was taken against: two silent sides and a 2% delta read
+      // "within noise (floor ±3%)", not "±0%", which would invite a reader
+      // to call a delta real that this harness already refused.
+      const noisePct = Math.max(fromStat.spreadPct ?? 0, toStat.spreadPct ?? 0, NOISE_FLOOR_PCT);
+      const real = deltaPct != null && Math.abs(deltaPct) > noisePct;
       out.push({
         from, to, label, why, metric, metricLabel, unit, deltaPct, noisePct, real,
         direction: deltaPct == null ? null : deltaPct < 0 ? 'lower' : deltaPct > 0 ? 'higher' : 'unchanged',
@@ -244,11 +256,21 @@ export function summarize(rows, { minRounds = 5 } = {}) {
   const identityBroken = models.some((m) => m.identity.disagrees);
   const unstable = models.some((m) => m.identity.unstable);
   const incomplete = models.some((m) => m.incomplete);
+  // A FAILED ROW IS NOT A FOOTNOTE. `incomplete` only catches a variant that
+  // never succeeded at all; a variant that failed one round out of six still
+  // has enough successes to satisfy `minRounds`, and its median is then taken
+  // over whichever rounds happened to survive. That is a biased sample — the
+  // round that OOM-killed, or that /usr/bin/time printed no peak for, is
+  // exactly the round with the highest peak — so a run holding any failure
+  // is diagnostic, never acceptance evidence. The failures are reported per
+  // model above; this is what stops them being admitted.
+  const failedRuns = models.reduce((n, m) => n + m.failures.length, 0);
+  const failed = failedRuns > 0;
   const underSampled = models.some((m) => m.rounds > 0 && m.rounds < minRounds);
   const tooNoisy = models.some((m) =>
     m.variants.some((v) => v.metrics.some((metric) => metric.key === 'peakRssBytes' && metric.spreadPct != null && metric.spreadPct > 15))
   );
-  return { models, identityBroken, unstable, incomplete, underSampled, tooNoisy, minRounds };
+  return { models, identityBroken, unstable, incomplete, failed, failedRuns, underSampled, tooNoisy, minRounds };
 }
 
 const fmt = (n) => (n == null ? '—' : Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1));
@@ -259,7 +281,7 @@ function provenanceLines(p) {
   const lines = ['### Provenance', ''];
   lines.push(`- **merge base** \`${p.baseSha ?? '?'}\` · **head** \`${p.headSha ?? '?'}\``);
   lines.push(`- **profile** \`${p.profile ?? '?'}\` · **RAYON_NUM_THREADS** \`${p.threads ?? '?'}\` · **rounds** ${p.iters ?? '?'} interleaved per variant`);
-  if (p.toolchain) lines.push(`- **toolchain** \`${p.toolchain}\`${p.toolchainPinned ? ` (pinned \`${p.toolchainPinned}\`, identical at both refs)` : ''}`);
+  if (p.toolchain) lines.push(`- **toolchain** \`${p.toolchain}\` (as resolved in the build worktrees)${p.toolchainPinned ? ` · pinned \`${p.toolchainPinned}\`, identical at both refs` : ''}`);
   if (p.host) lines.push(`- **host** ${p.host}`);
   if (p.loadavg) lines.push(`- **host load (1 min) over the run** ${p.loadavg}`);
   if (p.startedAt) lines.push(`- **run** ${p.startedAt}${p.finishedAt ? ` → ${p.finishedAt}` : ''}`);
@@ -332,6 +354,12 @@ export function formatReport(summary, provenance = {}) {
     lines.push('⚠️ **Output identity failed.** The memory and timing deltas above are not like-for-like and this run is not acceptance evidence.');
   } else if (summary.incomplete) {
     lines.push('⚠️ **Incomplete.** At least one variant has no successful run on some model, so that model is not a paired result. See the failures above.');
+  } else if (summary.failed) {
+    lines.push(
+      `⚠️ **A measurement failed.** ${summary.failedRuns} run${summary.failedRuns === 1 ? '' : 's'} did not produce a peak RSS ` +
+      '(see the failures above). The remaining rounds are a sample chosen by which runs survived, so this run is not acceptance ' +
+      'evidence however good the medians look. Re-run it under admission.'
+    );
   } else if (summary.tooNoisy) {
     lines.push("⚠️ **Too noisy to call.** The baseline's own peak-RSS spread exceeds 15% on at least one model. Re-run under admission on an idle host.");
   } else {

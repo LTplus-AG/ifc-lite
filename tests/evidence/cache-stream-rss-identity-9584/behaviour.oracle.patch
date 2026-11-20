@@ -1,7 +1,7 @@
 diff --git a/scripts/perf/cache-stream-report.mjs b/scripts/perf/cache-stream-report.mjs
 --- a/scripts/perf/cache-stream-report.mjs
 +++ b/scripts/perf/cache-stream-report.mjs
-@@ -232,7 +232,7 @@
+@@ -244,7 +244,7 @@
          // a writer missing and the rest agreeing (or no output at all) is
          // neither: it is unverified, and `incomplete` already fails the run.
          agrees: measured.length === VARIANT_KEYS.length && hashes.length === 1,

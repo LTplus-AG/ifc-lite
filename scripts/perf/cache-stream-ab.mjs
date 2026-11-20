@@ -162,9 +162,6 @@ const pinnedAt = (ref) => {
 const basePin = pinnedAt(baseSha);
 if (basePin !== pinnedAt(headSha)) die('the base and head pin different toolchains (rust-toolchain.toml differs); this pairing is not like-for-like');
 const toolchainPinned = /channel\s*=\s*"([^"]+)"/.exec(basePin ?? '')?.[1] ?? null;
-const rustc = (() => {
-  try { return execFileSync('rustc', ['-vV'], { encoding: 'utf8' }).split('\n')[0].trim(); } catch { return null; }
-})();
 
 // --- fixtures -------------------------------------------------------------
 const MODELS_DIR = join(ROOT, 'tests/models');
@@ -211,14 +208,27 @@ const targetDir = opts['target-dir'] ? resolve(opts['target-dir']) : join(scratc
 // runs the cleanup that would otherwise delete the log it just told you to
 // read.
 const buildLog = join(tmpdir(), `ifc-cache-rss-build-${process.pid}.log`);
+// The compiler is recorded by the BUILDER, inside the worktree it builds in,
+// because that is where rustup resolves it: the worktree carries the ref's
+// rust-toolchain.toml, while this process may have been started from any
+// directory at all — including outside the repository, where the default
+// stable toolchain answers instead. Provenance naming a compiler that did not
+// build the binaries is worse than none.
+const compilers = new Map();
 const build = ({ ref, out, example, bin }) => {
+  const rustcOut = `${out}.rustc`;
   const args = [join(HERE, 'build-at-ref.sh'), '--ref', ref, '--out', out, '--package', PACKAGE,
-    '--profile', opts.profile, '--worktree-root', scratch, '--target-dir', targetDir, '--log', buildLog];
+    '--profile', opts.profile, '--worktree-root', scratch, '--target-dir', targetDir, '--log', buildLog,
+    '--rustc-out', rustcOut];
   args.push(...(bin ? ['--bin', bin] : ['--example', example]));
   const what = bin ? `bin ${bin}` : `example ${example}`;
   console.error(`cache-stream-ab: building ${what} @ ${ref.slice(0, 9)} (log ${buildLog})…`);
   const run = spawnSync('bash', args, { cwd: ROOT, stdio: ['ignore', 'inherit', 'inherit'] });
   if (run.status !== 0) die(`building ${what} @ ${ref.slice(0, 9)} failed; see ${buildLog}`, 1);
+  let compiler = null;
+  try { compiler = readFileSync(rustcOut, 'utf8').trim() || null; } catch { compiler = null; }
+  if (!compiler) die(`the build of ${what} @ ${ref.slice(0, 9)} recorded no compiler; see ${buildLog}`, 1);
+  compilers.set(`${what} @ ${ref.slice(0, 9)}`, compiler);
   return out;
 };
 const BINARIES = {
@@ -226,6 +236,14 @@ const BINARIES = {
   'head-inmem': build({ ref: headSha, out: join(scratch, 'conformance_writer-head'), example: 'conformance_writer' }),
   'head-streamed': build({ ref: headSha, out: join(scratch, 'ifc-build-cache-head'), bin: 'ifc-build-cache' }),
 };
+// Both refs pin the same toolchain (checked above), so the three builds must
+// have resolved the same compiler. If they did not, something outside the pin
+// decided one of them, and the pairing is of two compilers again.
+const distinctCompilers = [...new Set(compilers.values())];
+if (distinctCompilers.length !== 1) {
+  die(`the builds did not use one compiler: ${[...compilers].map(([k, v]) => `${k} → ${v}`).join('; ')}`);
+}
+const rustc = distinctCompilers[0];
 
 // --- one measurement ------------------------------------------------------
 // Kept outputs live OUTSIDE the scratch directory, which is removed on exit:
@@ -316,6 +334,9 @@ if (opts.json) {
 }
 if (opts['keep-outputs']) console.error(`cache-stream-ab: outputs kept in ${outDir} — delete it yourself, it holds one cache per run`);
 
-// A broken identity, a non-deterministic writer or a variant that never ran
-// is a failed run, not a footnote on a memory table.
-process.exitCode = summary.identityBroken || summary.unstable || summary.incomplete ? 1 : 0;
+// A broken identity, a non-deterministic writer, a variant that never ran or
+// ANY failed measurement is a failed run, not a footnote on a memory table.
+// `summary.failed` is the last of those: five good rounds out of six satisfy
+// the round count while the sixth — the one that was killed, or that printed
+// no peak — is silently dropped from the median it belonged in.
+process.exitCode = summary.identityBroken || summary.unstable || summary.incomplete || summary.failed ? 1 : 0;

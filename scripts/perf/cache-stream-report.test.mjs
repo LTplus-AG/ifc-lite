@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { seededRand } from './ab-order.mjs';
-import { InvalidRuns, VARIANT_KEYS, formatReport, groupRuns, outputName, summarize, variantOrder } from './cache-stream-report.mjs';
+import { InvalidRuns, NOISE_FLOOR_PCT, VARIANT_KEYS, formatReport, groupRuns, outputName, summarize, variantOrder } from './cache-stream-report.mjs';
 
 const MODEL = 'ara3d/AC20-FZK-Haus.ifc';
 const run = (variant, round, peakMiB, { hash = 'aaaa', elapsedMs = 1000, model = MODEL, stats } = {}) => ({
@@ -169,6 +169,85 @@ test('fewer than five rounds is a smoke run, and the report says so', () => {
   const summary = summarize(matrix({ 'base-inmem': [100], 'head-inmem': [100], 'head-streamed': [50] }));
   assert.equal(summary.underSampled, true);
   assert.match(formatReport(summary).join('\n'), /not acceptance evidence/);
+});
+
+test('a six-round run with one failed measurement is not acceptance evidence', () => {
+  // coderabbitai on 0a6315a1b: a missing peak RSS is recorded as a failed
+  // row, but five surviving rounds satisfied `minRounds`, so `incomplete`
+  // stayed false and the run printed an ordinary verdict and exited 0 — a
+  // median taken over whichever rounds happened not to be killed, admitted
+  // as the memory result for #9584.
+  const rows = [
+    ...matrix({
+      'base-inmem': [1000, 1000, 1000, 1000, 1000, 1000],
+      'head-inmem': [1000, 1000, 1000, 1000, 1000, 1000],
+      'head-streamed': [700, 700, 700, 700, 700],
+    }),
+    { model: MODEL, variant: 'head-streamed', round: 6, status: 'failed', error: '/usr/bin/time printed no peak RSS' },
+  ];
+  const summary = summarize(rows);
+  // Every other gate is clean: this run is admissible on round count,
+  // identity, stability and spread. Only the failure stands between it and
+  // an acceptance verdict.
+  assert.equal(summary.incomplete, false);
+  assert.equal(summary.underSampled, false);
+  assert.equal(summary.identityBroken, false);
+  assert.equal(summary.unstable, false);
+  assert.equal(summary.tooNoisy, false);
+  assert.equal(summary.failed, true);
+  assert.equal(summary.failedRuns, 1);
+  const report = formatReport(summary).join('\n');
+  assert.match(report, /A measurement failed/);
+  assert.match(report, /not acceptance\s+evidence/);
+  assert.match(report, /printed no peak RSS/);
+  // The saving the surviving rounds would have shown must NOT be stated as
+  // a result under a failed run.
+  assert.doesNotMatch(report, /a real saving/);
+});
+
+test('a clean run is still admitted', () => {
+  // The guard above must refuse failures, not refuse everything: the same
+  // six rounds with nothing failed produce the acceptance verdict.
+  const summary = summarize(matrix({
+    'base-inmem': [1000, 1000, 1000, 1000, 1000, 1000],
+    'head-inmem': [1000, 1000, 1000, 1000, 1000, 1000],
+    'head-streamed': [700, 700, 700, 700, 700, 700],
+  }));
+  assert.equal(summary.failed, false);
+  assert.equal(summary.failedRuns, 0);
+  const report = formatReport(summary).join('\n');
+  assert.doesNotMatch(report, /A measurement failed/);
+  assert.match(report, /a real saving/);
+});
+
+test('the printed noise floor is the floor the verdict used', () => {
+  // coderabbitai on 0a6315a1b: with constant measurements and a 2% delta the
+  // comparison stored noisePct 0 while classifying against 3, so the report
+  // read "within noise (floor ±0%)" — a floor no reader could square with
+  // the call that was made against it.
+  const summary = summarize(matrix({
+    'base-inmem': [1000, 1000, 1000, 1000, 1000],
+    'head-inmem': [1000, 1000, 1000, 1000, 1000],
+    'head-streamed': [980, 980, 980, 980, 980],
+  }));
+  const claim = summary.models[0].comparisons.find(
+    (c) => c.from === 'base-inmem' && c.to === 'head-streamed' && c.metric === 'peakRssBytes'
+  );
+  assert.equal(claim.noisePct, NOISE_FLOOR_PCT);
+  assert.equal(claim.real, false);
+  const report = formatReport(summary).join('\n');
+  assert.match(report, /-2\.0% — within noise \(floor ±3%\)/);
+  assert.doesNotMatch(report, /floor ±0%/);
+  // A measured spread wider than the floor still wins.
+  const noisier = summarize(matrix({
+    'base-inmem': [1000, 1000, 1000, 1000, 1000],
+    'head-inmem': [1000, 1000, 1000, 1000, 1000],
+    'head-streamed': [810, 900, 990, 900, 900],
+  }));
+  const wide = noisier.models[0].comparisons.find(
+    (c) => c.from === 'base-inmem' && c.to === 'head-streamed' && c.metric === 'peakRssBytes'
+  );
+  assert.ok(wide.noisePct > NOISE_FLOOR_PCT, `expected the measured spread, got ${wide.noisePct}`);
 });
 
 test('the report carries the provenance a later reader needs', () => {

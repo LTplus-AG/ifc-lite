@@ -26,6 +26,7 @@ import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
+import { retypeInPlace } from './schema-converter-retyped.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
@@ -289,7 +290,7 @@ export function convertStepLine(
   enums?: EnumReconciliation,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural);
+  let converted = retypeInPlace(convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural), fromSchema, toSchema); // #10778
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
@@ -448,12 +449,8 @@ export function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion)
   return toSchema !== 'IFC4X3' && toSchema !== 'IFC5' && SKIP_TYPES.has(entityType);
 }
 
-/**
- * Trim a STEP attribute list to a maximum number of attributes.
- *
- * Keeps the first `maxCount` of `args`, the record's already-validated split
- * (one split per record, #7683).
- */
+/** Keep the first `maxCount` of `args`, the record's already-validated split
+ *  (one split per record, #7683). */
 function trimAttributes(attrsRaw: string, args: readonly string[], maxCount: number): string {
   if (!attrsRaw.trim()) return attrsRaw;
   // An entity with no attributes in the target schema keeps none.
